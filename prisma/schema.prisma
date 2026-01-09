@@ -1,0 +1,33 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Definição do Usuário
+model User {
+  id        String   @id @default(cuid()) // ID único (ex: clq2...)
+  name      String?
+  email     String   @unique
+  password  String   // Vamos salvar a senha aqui (criptografada futuramente)
+  role      String   @default("USER") // Níveis: "ADMIN", "DOCTOR", "USER"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Aqui podemos adicionar relações futuras (ex: logs, agendamentos)
+  logs      Log[]
+}
+
+// Tabela de Auditoria (Já pensando no seu menu "Log de Auditoria")
+model Log {
+  id        String   @id @default(cuid())
+  action    String   // O que foi feito (ex: "Criou usuário")
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  timestamp DateTime @default(now())
+}

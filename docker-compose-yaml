@@ -1,0 +1,31 @@
+# docker-compose.yml
+version: '3.8'
+
+services:
+  # Serviço 1: Seu Site
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      # MÁGICA AQUI: Mapeia o arquivo do host para dentro do container
+      - ./fila.db:/app/fila.db
+    restart: always
+
+  # Serviço 2: Seu Robô
+  worker:
+    build:
+      context: ./workers
+      dockerfile: Dockerfile
+    volumes:
+      # O robô vê o mesmo arquivo que o frontend
+      # Nota: Precisamos mapear para onde o script python espera salvar (../fila.db)
+      # Ou ajustar o script python para salvar na pasta atual.
+      - ./fila.db:/app/fila.db
+    environment:
+      - FEEGOW_USER=${FEEGOW_USER}
+      - FEEGOW_PASS=${FEEGOW_PASS}
+      - DB_PATH=/app/fila.db
+    restart: always
