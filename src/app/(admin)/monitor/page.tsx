@@ -1,10 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Clock, Users, Activity, RefreshCw, AlertCircle, Accessibility, Baby, WifiOff } from 'lucide-react';
+import { Clock, Users, Activity, RefreshCw, AlertCircle, Accessibility, Baby, WifiOff, Ticket, Timer } from 'lucide-react';
 import { useAutoAnimate } from '@formkit/auto-animate/react';
 
-// --- TIPAGEM ---
+// --- TIPAGEM MÉDICA ---
 export interface Patient {
   id: string | number;
   name: string;
@@ -24,26 +24,74 @@ export interface Patient {
 export interface UnitData {
   id: number | string;
   name: string;
-  patients: Patient[];
+  patients: Patient[]; // Pode vir undefined da API, trataremos isso no componente
 }
+
+// --- TIPAGEM RECEPÇÃO ---
+export interface ReceptionUnitStats {
+  fila: number;
+  tempo_medio: number; 
+  nome_unidade?: string;
+}
+
+export interface ReceptionResponse {
+  global: {
+    total_fila: number;
+    tempo_medio: number;
+  };
+  por_unidade: Record<string, ReceptionUnitStats>;
+}
+
+// --- Componente: Card de KPI da Recepção ---
+const ReceptionKpiCard = ({ unitId, stats }: { unitId: string, stats: ReceptionUnitStats }) => {
+  const unitNames: Record<string, string> = {
+    '2': 'Ouro Verde',
+    '3': 'Cambuí',
+    '12': 'Shopping',
+    [unitId]: stats.nome_unidade || `Unidade ${unitId}`
+  };
+
+  const displayName = unitNames[unitId] || unitId;
+  const isHighWait = stats.tempo_medio > 15;
+
+  return (
+    <div className="bg-white p-4 rounded-lg shadow-sm border border-slate-200 flex flex-col justify-between min-w-[200px]">
+      <div className="flex justify-between items-start mb-2">
+        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">{displayName}</h3>
+        <Ticket size={16} className="text-slate-300" />
+      </div>
+      
+      <div className="flex gap-4 mt-1">
+        <div>
+          <span className="text-[10px] text-slate-400 font-semibold block">AGUARDANDO</span>
+          <div className="flex items-center gap-1 text-2xl font-bold text-slate-700">
+            <Users size={20} className="text-blue-500" />
+            {stats.fila}
+          </div>
+        </div>
+        <div className="w-px bg-slate-100 mx-1"></div>
+        <div>
+          <span className="text-[10px] text-slate-400 font-semibold block">MÉDIA ESPERA</span>
+          <div className={`flex items-center gap-1 text-lg font-bold ${isHighWait ? 'text-amber-600' : 'text-slate-700'}`}>
+            <Timer size={18} className={isHighWait ? 'text-amber-500' : 'text-green-500'} />
+            {stats.tempo_medio}m
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // --- Componente: Linha do Paciente ---
 const PatientRow = ({ patient }: { patient: Patient }) => {
   const isInService = patient.status === 'in_service';
-  
-  // Regra de Pulse: Apenas se > 60 min E não estiver em atendimento
   const isCriticalWait = patient.waitTime > 60 && !isInService;
-
-  // Regra da Barra de SLA (Meta: 30 min)
-  // Calcula porcentagem preenchida (máximo 100%)
   const slaPercentage = Math.min((patient.waitTime / 30) * 100, 100);
   
-  // Cor da barra baseada no tempo
-  let slaColor = 'bg-emerald-500'; // Até 20 min (Seguro)
-  if (patient.waitTime > 20) slaColor = 'bg-amber-500'; // 20-30 min (Atenção)
-  if (patient.waitTime >= 30) slaColor = 'bg-red-500';   // 30+ min (Estourou meta)
+  let slaColor = 'bg-emerald-500'; 
+  if (patient.waitTime > 20) slaColor = 'bg-amber-500'; 
+  if (patient.waitTime >= 30) slaColor = 'bg-red-500';
 
-  // Ícones de Prioridade
   const PriorityIcons = () => (
     <div className="flex items-center gap-1 mr-1 text-slate-500">
       {patient.priority?.isWheelchair && <Accessibility size={14} className="text-blue-600" title="Cadeirante" />}
@@ -59,28 +107,20 @@ const PatientRow = ({ patient }: { patient: Patient }) => {
       ${isInService ? 'bg-green-50/50' : ''}
       ${isCriticalWait ? 'bg-red-50/60 animate-pulse' : ''} 
     `}>
-      {/* NOTA: O 'animate-pulse' padrão do Tailwind afeta a opacidade de tudo. 
-         Se achar muito forte, podemos criar uma classe CSS personalizada depois.
-      */}
-
       <div className="flex-1 min-w-0 pr-2 z-10">
-        {/* Nome Completo + Ícones + Badges */}
         <div className="flex flex-col"> 
           <div className="flex flex-wrap items-center gap-1 mb-0.5">
              <PriorityIcons />
-             
              {patient.isFirstTime && (
                 <span className="bg-cyan-100 text-cyan-700 text-[9px] font-bold px-1.5 py-0.5 rounded border border-cyan-200 uppercase tracking-tight shrink-0">
                   1ª Vez
                 </span>
              )}
           </div>
-          
           <p className={`font-bold text-sm leading-tight break-words ${isCriticalWait ? 'text-red-900' : 'text-gray-800'}`}>
             {patient.name}
           </p>
         </div>
-
         <div className="text-[10px] text-gray-500 mt-1 leading-snug space-y-0.5 pl-0.5 border-l-2 border-slate-200 ml-0.5">
             <p className="break-words font-medium text-slate-600 pl-1">{patient.service}</p>
             {patient.professional && (
@@ -88,7 +128,6 @@ const PatientRow = ({ patient }: { patient: Patient }) => {
             )}
         </div>
       </div>
-
       <div className="flex flex-col items-end shrink-0 min-w-[65px] z-10">
         {isInService ? (
           <span className="px-2 py-0.5 bg-green-100 text-green-700 text-[9px] font-bold rounded-full border border-green-200 uppercase tracking-wide">
@@ -107,8 +146,6 @@ const PatientRow = ({ patient }: { patient: Patient }) => {
            {patient.arrival}
         </span>
       </div>
-
-      {/* BARRA DE SLA (PROGRESSO DA META DE 30 MIN) */}
       {!isInService && (
           <div className="absolute bottom-0 left-0 h-[3px] w-full bg-slate-100 opacity-80">
             <div 
@@ -121,24 +158,22 @@ const PatientRow = ({ patient }: { patient: Patient }) => {
   );
 };
 
-// --- Componente: Card da Unidade ---
-const UnitCard = ({ unit }: { unit: UnitData }) => {
-  // Hook de Animação Automática (Lista suave)
+// --- Componente: Card da Unidade Médica (CORRIGIDO) ---
+const MedicUnitCard = ({ unit }: { unit: UnitData }) => {
   const [animationParent] = useAutoAnimate();
 
+  // CORREÇÃO CRÍTICA: Garante que patients é um array vazio se vier undefined
+  const patients = unit.patients || [];
+
   const metrics = useMemo(() => {
-    const waiting = unit.patients.filter(p => p.status === 'waiting');
-    const inService = unit.patients.filter(p => p.status === 'in_service');
-    
+    // Agora usamos 'patients' que é seguro, e não 'unit.patients'
+    const waiting = patients.filter(p => p.status === 'waiting');
+    const inService = patients.filter(p => p.status === 'in_service');
     const totalWaitTime = waiting.reduce((acc, curr) => acc + curr.waitTime, 0);
     const avgWait = waiting.length > 0 ? Math.round(totalWaitTime / waiting.length) : 0;
 
-    return {
-      waitingCount: waiting.length,
-      inServiceCount: inService.length,
-      avgWait: avgWait
-    };
-  }, [unit.patients]);
+    return { waitingCount: waiting.length, inServiceCount: inService.length, avgWait: avgWait };
+  }, [patients]);
 
   const isHighLoad = metrics.avgWait > 45 || metrics.waitingCount > 10;
 
@@ -150,7 +185,7 @@ const UnitCard = ({ unit }: { unit: UnitData }) => {
             {unit.name}
           </h3>
           <span className="bg-white text-gray-500 text-[10px] font-bold px-2 py-0.5 rounded border border-gray-200 shadow-sm">
-            Total: {unit.patients.length}
+            Total: {patients.length}
           </span>
         </div>
 
@@ -181,19 +216,16 @@ const UnitCard = ({ unit }: { unit: UnitData }) => {
         </div>
       </div>
 
-      {/* Lista com Animação */}
-      <div 
-        ref={animationParent} 
-        className="flex-1 overflow-y-auto custom-scrollbar relative"
-      >
-        {unit.patients.length > 0 ? (
-          unit.patients.map((patient, idx) => (
-            <PatientRow key={`${patient.id}-${idx}`} patient={patient} />
+      <div ref={animationParent} className="flex-1 overflow-y-auto custom-scrollbar relative">
+        {patients.length > 0 ? (
+          patients.map((patient, idx) => (
+            // Uso de ID + IDX para garantir unicidade da chave
+            <PatientRow key={`${patient.id || 'p'}-${idx}`} patient={patient} />
           ))
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400">
             <Users size={32} className="mb-2 opacity-20" />
-            <p className="text-xs font-medium">Sem pacientes na fila</p>
+            <p className="text-xs font-medium">Sem fila médica</p>
           </div>
         )}
       </div>
@@ -203,29 +235,42 @@ const UnitCard = ({ unit }: { unit: UnitData }) => {
 
 // --- Página Principal ---
 export default function MonitorPage() {
-  const [data, setData] = useState<UnitData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [lastUpdatedTime, setLastUpdatedTime] = useState<Date | null>(null); // Objeto Date real
-  const [lastUpdatedString, setLastUpdatedString] = useState<string | null>(null); // Texto formatado
-  const [error, setError] = useState<string | null>(null);
+  const [medicData, setMedicData] = useState<UnitData[]>([]);
+  const [receptionData, setReceptionData] = useState<ReceptionResponse | null>(null);
   
-  // Estado para controlar se os dados estão "velhos" (Stale)
+  const [loading, setLoading] = useState(true);
+  const [lastUpdatedTime, setLastUpdatedTime] = useState<Date | null>(null);
+  const [lastUpdatedString, setLastUpdatedString] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [isDataStale, setIsDataStale] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const response = await fetch('/api/queue', { cache: 'no-store' });
-      if (!response.ok) throw new Error('Falha ao buscar dados');
-      
-      const jsonData = await response.json();
-      if (Array.isArray(jsonData)) {
-        setData(jsonData);
-        const now = new Date();
-        setLastUpdatedTime(now);
-        setLastUpdatedString(now.toLocaleTimeString('pt-BR'));
-        setError(null);
-        setIsDataStale(false); // Reseta alerta de stale
+      const [resMedic, resRecep] = await Promise.all([
+        fetch('/api/queue/medic', { cache: 'no-store' }),
+        fetch('/api/queue/reception', { cache: 'no-store' })
+      ]);
+
+      if (!resMedic.ok && !resRecep.ok) throw new Error('Falha total na comunicação');
+
+      if (resMedic.ok) {
+        const jsonMedic = await resMedic.json();
+        const data = Array.isArray(jsonMedic) ? jsonMedic : (jsonMedic?.data || []);
+        setMedicData(data);
       }
+
+      if (resRecep.ok) {
+        const jsonRecep = await resRecep.json();
+        // Fallback seguro se vier null
+        setReceptionData(jsonRecep.data || jsonRecep || null);
+      }
+
+      const now = new Date();
+      setLastUpdatedTime(now);
+      setLastUpdatedString(now.toLocaleTimeString('pt-BR'));
+      setError(null);
+      setIsDataStale(false);
+
     } catch (err) {
       console.error(err);
       setError('Erro de conexão');
@@ -234,27 +279,20 @@ export default function MonitorPage() {
     }
   }, []);
 
-  // Polling de Dados (15s)
   useEffect(() => {
     fetchData();
     const intervalId = setInterval(fetchData, 15000);
     return () => clearInterval(intervalId);
   }, [fetchData]);
 
-  // Verificador de "Dados Obsoletos" (Roda a cada 5 segundos)
   useEffect(() => {
     const checkStale = setInterval(() => {
       if (lastUpdatedTime) {
         const now = new Date();
         const diffInSeconds = (now.getTime() - lastUpdatedTime.getTime()) / 1000;
-        
-        // Se a diferença for maior que 300 segundos (5 minutos), ativa o alerta
-        if (diffInSeconds > 300) {
-            setIsDataStale(true);
-        }
+        if (diffInSeconds > 300) setIsDataStale(true);
       }
     }, 5000);
-
     return () => clearInterval(checkStale);
   }, [lastUpdatedTime]);
 
@@ -262,68 +300,96 @@ export default function MonitorPage() {
     <div className={`p-4 min-h-screen transition-colors duration-500 ${isDataStale ? 'bg-red-50' : 'bg-slate-100'}`}>
       <header className="mb-6 flex flex-col sm:flex-row sm:justify-between sm:items-end gap-4">
         <div>
-           {/* Título Muda se estiver Obsoleto */}
            <h1 className="text-2xl font-bold flex items-center gap-2 text-slate-800">
-             {isDataStale ? (
-                 <WifiOff className="text-red-600 animate-pulse" />
-             ) : (
-                 <Clock className="text-blue-600" />
-             )}
-             
-             {isDataStale ? (
-                 <span className="text-red-600">DADOS DESATUALIZADOS</span>
-             ) : (
-                 <span>Painel de Espera</span>
-             )}
+             {isDataStale ? <WifiOff className="text-red-600 animate-pulse" /> : <Clock className="text-blue-600" />}
+             {isDataStale ? <span className="text-red-600">DADOS DESATUALIZADOS</span> : <span>Painel de Espera</span>}
            </h1>
-           
            <p className={`text-sm mt-1 font-medium ${isDataStale ? 'text-red-500' : 'text-slate-500'}`}>
-             {isDataStale 
-               ? 'Verifique a conexão do servidor. Os dados exibidos não são atuais.' 
-               : 'Monitoramento em Tempo Real'}
+             {isDataStale ? 'Verifique a conexão. Dados obsoletos.' : 'Monitoramento Integrado (Recepção + Médicos)'}
            </p>
         </div>
 
         <div className="flex items-center gap-3">
-            {error ? (
+            {error && (
                 <div className="flex items-center gap-1 text-red-600 text-xs font-bold bg-red-50 px-3 py-1.5 rounded-full border border-red-100">
                     <AlertCircle size={14} />
                     <span>{error}</span>
                 </div>
-            ) : (
-                <div className={`flex items-center gap-2 text-xs transition-colors ${isDataStale ? 'text-red-600 font-bold' : 'text-slate-500'}`}>
-                    <span className="relative flex h-2 w-2">
-                      <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isDataStale ? 'bg-red-400' : 'bg-green-400'}`}></span>
-                      <span className={`relative inline-flex rounded-full h-2 w-2 ${isDataStale ? 'bg-red-500' : 'bg-green-500'}`}></span>
-                    </span>
-                    Atualizado às {lastUpdatedString || '--:--:--'}
-                </div>
             )}
-            
+            <div className={`flex items-center gap-2 text-xs transition-colors ${isDataStale ? 'text-red-600 font-bold' : 'text-slate-500'}`}>
+                <span className="relative flex h-2 w-2">
+                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${isDataStale ? 'bg-red-400' : 'bg-green-400'}`}></span>
+                  <span className={`relative inline-flex rounded-full h-2 w-2 ${isDataStale ? 'bg-red-500' : 'bg-green-500'}`}></span>
+                </span>
+                {lastUpdatedString || '--:--:--'}
+            </div>
             <button 
                 onClick={fetchData}
                 disabled={loading}
                 className="flex items-center gap-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold px-4 py-2 rounded-lg border border-slate-200 shadow-sm transition-all active:scale-95 disabled:opacity-50"
             >
                 <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
-                {loading ? '...' : 'Atualizar'}
             </button>
         </div>
       </header>
 
-      {loading && data.length === 0 ? (
-         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3].map((i) => (
-                <div key={i} className="h-[500px] bg-slate-200 rounded-lg animate-pulse"></div>
-            ))}
-         </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {data.map((unit) => (
-                <UnitCard key={unit.id} unit={unit} />
-            ))}
-        </div>
-      )}
+      {/* SEÇÃO 1: RECEPÇÃO (KPIs) */}
+      <section className="mb-6">
+        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <Ticket size={16} /> Chegada na Recepção (Totem)
+        </h2>
+        
+        {loading && !receptionData ? (
+           <div className="flex gap-4">
+             {/* Key fixa para skeletons */}
+             {[1, 2, 3].map(i => <div key={`skel-recep-${i}`} className="h-24 w-48 bg-slate-200 rounded-lg animate-pulse" />)}
+           </div>
+        ) : receptionData && receptionData.por_unidade ? (
+           <div className="flex flex-wrap gap-4">
+              <div className="bg-gradient-to-br from-blue-600 to-blue-700 text-white p-4 rounded-lg shadow-sm flex flex-col justify-between min-w-[200px]">
+                  <span className="text-[10px] font-bold opacity-80 uppercase">Visão Geral</span>
+                  <div className="flex justify-between items-end">
+                     <div>
+                        <span className="text-xs opacity-80 block">Total Fila</span>
+                        <span className="text-3xl font-bold">{receptionData.global.total_fila}</span>
+                     </div>
+                     <div className="text-right">
+                        <span className="text-xs opacity-80 block">Média Geral</span>
+                        <span className="text-xl font-bold">{receptionData.global.tempo_medio}m</span>
+                     </div>
+                  </div>
+              </div>
+
+              {Object.entries(receptionData.por_unidade).map(([id, stats]) => (
+                <ReceptionKpiCard key={`recep-unit-${id}`} unitId={id} stats={stats} />
+              ))}
+           </div>
+        ) : (
+           <div className="text-slate-400 text-sm italic">Dados de recepção indisponíveis.</div>
+        )}
+      </section>
+
+      {/* SEÇÃO 2: ESPERA MÉDICA (Lista Detalhada) */}
+      <section>
+        <h2 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+          <Activity size={16} /> Fila de Atendimento Médico
+        </h2>
+
+        {loading && medicData.length === 0 ? (
+           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {[1, 2, 3].map((i) => (
+                  <div key={`skel-medic-${i}`} className="h-[500px] bg-slate-200 rounded-lg animate-pulse"></div>
+              ))}
+           </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {medicData.map((unit, idx) => (
+                  // Usa ID + Index para garantir chave única no render
+                  <MedicUnitCard key={`medic-unit-${unit.id || idx}`} unit={unit} />
+              ))}
+          </div>
+        )}
+      </section>
     </div>
   );
 }

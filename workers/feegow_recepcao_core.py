@@ -4,6 +4,13 @@ import json
 import pandas as pd
 from dotenv import load_dotenv
 
+try:
+    # Tenta importação direta (funciona quando você roda o script dentro da pasta workers)
+    from database_manager import DatabaseManager
+except ImportError:
+    # Tenta importação relativa (funciona se for chamado como módulo de fora)
+    from .database_manager import DatabaseManager
+
 load_dotenv()
 
 class FeegowRecepcaoSystem:

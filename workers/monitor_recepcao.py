@@ -2,13 +2,21 @@ import time
 import sys
 import os
 from datetime import datetime
-from feegow_recepcao_core import FeegowRecepcaoSystem
-from database_manager import DatabaseManager
+from dotenv import load_dotenv
 
-sys.path.append(os.path.join(os.path.dirname(__file__), 'workers'))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from feegow_recepcao_core import FeegowRecepcaoSystem
+    from database_manager import DatabaseManager
+except ImportError:
+    from .feegow_recepcao_core import FeegowRecepcaoSystem
+    from .database_manager import DatabaseManager
+
+load_dotenv()
 
 def run_monitor_recepcao():
-    print("=== MONITOR RECEPÇÃO (COM INFERÊNCIA DE ATENDIMENTO) INICIADO ===")
+    print("=== MONITOR RECEPÇÃO (MODO TOKEN MANUAL) INICIADO ===")
     
     sistema = FeegowRecepcaoSystem()
     db = DatabaseManager()
@@ -18,39 +26,41 @@ def run_monitor_recepcao():
             db.limpar_dias_anteriores()
             timestamp = datetime.now().strftime('%H:%M:%S')
 
-            # 1. Coleta TODOS os dados brutos
+            # Coleta dados (ele lê o cookie do banco sozinho)
             dados_brutos, msg_erro = sistema.obter_dados_brutos(unidades=[2, 3, 12])
 
-            if msg_erro != "OK" and not dados_brutos:
-                print(f"[{timestamp}] Erro na coleta: {msg_erro}")
-                # Se deu erro de conexão, NÃO rodamos a baixa de ausentes
-                # para não limpar a fila inteira por engano.
+            # --- DETECÇÃO DE TOKEN EXPIRADO ---
+            if "Cookie Expirou" in msg_erro or "403" in msg_erro:
+                print(f"\n[{timestamp}] 🚨 ALERTA: O TOKEN DA RECEPÇÃO EXPIROU!")
+                print("   Ação Necessária: Rode 'python atualizar_token.py' e cole um novo cookie.")
+                print("   (O monitor continuará tentando a cada 15s até você atualizar)\n")
+            
+            elif msg_erro != "OK" and not dados_brutos:
+                print(f"[{timestamp}] Erro técnico: {msg_erro}")
+            
             else:
-                # 2. Salva quem está PRESENTE (UPSERT)
+                # Fluxo Normal
                 if dados_brutos:
                     db.salvar_dados_recepcao(dados_brutos)
                 
-                # 3. Processa SAÍDAS por Unidade
-                # Precisamos separar os IDs por unidade para fazer a baixa correta
+                # Baixa automática de quem saiu da fila
                 for uid in [2, 3, 12]:
-                    # Filtra IDs desta unidade que vieram na API
                     ids_nesta_unidade = [
                         item['id'] for item in dados_brutos 
                         if item.get('UnidadeID') == uid or item.get('UnidadeID_Coleta') == uid
                     ]
-                    
-                    # Chama a função mágica:
-                    # "Quem é desta unidade, estava esperando, e NÃO está nessa lista de IDs?"
-                    db.finalizar_ausentes(uid, ids_nesta_unidade)
+                    db.finalizar_ausentes_recepcao(uid, ids_nesta_unidade)
 
-                qtd = len(dados_brutos)
-                print(f"[{timestamp}] Ciclo concluído. {qtd} pessoas na fila agora.")
+                if dados_brutos:
+                    print(f"[{timestamp}] OK. {len(dados_brutos)} pessoas na fila.")
+                else:
+                    print(".", end="", flush=True)
 
         except KeyboardInterrupt:
             print("\nMonitor encerrado.")
             break
         except Exception as e:
-            print(f"[ERRO CRÍTICO] {e}")
+            print(f"\n[ERRO CRÍTICO] {e}")
 
         time.sleep(15)
 

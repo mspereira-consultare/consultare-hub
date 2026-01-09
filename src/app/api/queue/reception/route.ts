@@ -1,36 +1,32 @@
-import { exec } from 'child_process';
 import { NextResponse } from 'next/server';
+import { exec } from 'child_process';
 import path from 'path';
+import util from 'util';
+
+const execPromise = util.promisify(exec);
 
 export async function GET() {
-  return new Promise((resolve) => {
-    // 1. Define o caminho absoluto para o script na raiz
+  try {
+    // Caminho absoluto para o script
     const scriptPath = path.join(process.cwd(), 'workers', 'worker_recepcao.py');
     
-    // 2. Executa o script
-    // Nota: O child_process herda process.env por padrão, então FEEGOW_USER/PASS estarão disponíveis
-    exec(`python "${scriptPath}"`, (error, stdout, stderr) => {
-      
-      if (error) {
-        console.error("Erro no Worker Python:", stderr);
-        // Retorna zero em caso de erro para não quebrar o painel
-        resolve(NextResponse.json({ 
-            status: 'error', 
-            data: { 
-              global: { total_fila: 0, tempo_medio: 0, tempo_medio_fmt: "--" },
-              por_unidade: {}
-            } 
-        }, { status: 500 }));
-        return;
-      }
+    // Executa o Python. 
+    // OBS: Certifique-se que o comando 'python' está no PATH ou use o caminho do venv
+    const { stdout, stderr } = await execPromise(`python "${scriptPath}"`);
 
-      try {
-        const data = JSON.parse(stdout);
-        resolve(NextResponse.json(data));
-      } catch (e) {
-        console.error("Erro ao parsear JSON do Python:", stdout);
-        resolve(NextResponse.json({ status: 'error', msg: 'JSON inválido' }, { status: 500 }));
-      }
-    });
-  });
+    if (stderr) {
+      console.warn('Python Stderr:', stderr); // Warnings do Python podem cair aqui
+    }
+
+    // Faz o parse do JSON retornado pelo Python
+    const data = JSON.parse(stdout);
+
+    return NextResponse.json(data, { status: 200 });
+  } catch (error) {
+    console.error('Erro ao executar worker de recepção:', error);
+    return NextResponse.json(
+      { error: 'Falha ao processar dados da recepção' }, 
+      { status: 500 }
+    );
+  }
 }

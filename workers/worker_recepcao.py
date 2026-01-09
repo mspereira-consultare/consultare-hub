@@ -11,11 +11,12 @@ from dotenv import load_dotenv
 env_path = Path(__file__).resolve().parent.parent / '.env'
 load_dotenv(dotenv_path=env_path)
 
-sys.path.append(os.path.join(os.path.dirname(__file__)))
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Imports dos novos módulos
-from feegow_recepcao_core import FeegowRecepcaoSystem
-from database_manager import DatabaseManager
+try:
+    from database_manager import DatabaseManager
+except ImportError:
+    from .database_manager import DatabaseManager
 
 def run():
     output = {
@@ -29,31 +30,29 @@ def run():
     }
 
     try:
-        # Bloco silencioso (exceto erros fatais)
+        # Bloco silencioso para não sujar o JSON
         with redirect_stdout(sys.stderr):
-            # 1. Instancia Gerenciadores
-            sistema = FeegowRecepcaoSystem()
             db = DatabaseManager()
-
-            # 2. Limpeza Matinal (Remove dias anteriores)
-            db.limpar_dias_anteriores()
-
-            # 3. Coleta Dados Vivos
-            dados_brutos, msg_erro = sistema.obter_dados_brutos(unidades=[2, 3, 12])
             
-            # 4. Persiste no Banco (Aqui a mágica acontece)
-            # Mesmo que a fila esteja vazia agora, o histórico do dia está salvo no DB
-            if dados_brutos:
-                db.salvar_dados_recepcao(dados_brutos)
+            # --- LEITURA EXCLUSIVA DO BANCO ---
+            # Lê a tabela recepcao_historico que o monitor está alimentando
+            query = """
+            SELECT 
+                unidade_id,
+                status,
+                dt_chegada,
+                dt_atendimento
+            FROM recepcao_historico 
+            WHERE dia_referencia = ? AND status != 'Cancelado'
+            """
+            hoje = datetime.date.today().isoformat()
+            
+            with list(db._init_db() or []) or sqlite3.connect(db.db_path) as conn:
+                 df = pd.read_sql_query(query, conn, params=(hoje,))
 
-            # 5. Consulta os KPIs Consolidados do Dia
-            df_kpis = db.obter_kpis_do_dia()
-
-        # Montagem do JSON de Resposta
+        # Montagem da Resposta
         output["status"] = "success"
-        if msg_erro != "OK":
-            output["message"] = msg_erro
-
+        
         # Estrutura padrão zerada
         detalhes = {
             "2": {"fila": 0, "tempo_medio": 0, "total_passaram": 0}, 
@@ -61,34 +60,49 @@ def run():
             "12": {"fila": 0, "tempo_medio": 0, "total_passaram": 0}
         }
 
-        # Preenche com dados do banco se houver
         global_fila = 0
         soma_ponderada = 0
         total_com_tempo = 0
 
-        if not df_kpis.empty:
-            for _, row in df_kpis.iterrows():
-                uid = str(int(row['unidade_id']))
-                fila = int(row['fila_atual'])
-                # Se média for nula (ninguém atendido), vira 0
-                media = int(row['media_espera_minutos']) if pd.notna(row['media_espera_minutos']) else 0
-                total_dia = int(row['total_passaram'])
+        # Se tiver dados no banco, preenche
+        if not df.empty:
+            # Converte colunas de data
+            df['dt_chegada'] = pd.to_datetime(df['dt_chegada'])
+            df['dt_atendimento'] = pd.to_datetime(df['dt_atendimento'])
+            agora = datetime.datetime.now()
 
-                if uid in detalhes:
-                    detalhes[uid] = {
-                        "fila": fila,
-                        "tempo_medio": media,
-                        "total_passaram": total_dia
-                    }
+            for uid_int, grupo in df.groupby('unidade_id'):
+                uid = str(int(uid_int))
+                if uid not in detalhes: continue
 
-                global_fila += fila
-                if media > 0:
-                    # Para média global ponderada (simplificada por unidade atendida)
-                    # Nota: O ideal seria fazer a query global no SQL, mas aqui aproximamos
-                    soma_ponderada += media * total_dia
-                    total_com_tempo += total_dia
+                # 1. Total Passaram (Todos do dia)
+                total_passaram = len(grupo)
 
-        # Cálculo Global
+                # 2. Fila Atual (Status 'Espera' e sem data de atendimento)
+                fila_atual = len(grupo[(grupo['status'] == 'Espera') & (grupo['dt_atendimento'].isna())])
+
+                # 3. Tempo Médio (Apenas de quem JÁ FOI ATENDIDO - status fechado)
+                # Cálculo: (Atendimento - Chegada) em minutos
+                atendidos = grupo.dropna(subset=['dt_atendimento']).copy()
+                media = 0
+                if not atendidos.empty:
+                    atendidos['espera_min'] = (atendidos['dt_atendimento'] - atendidos['dt_chegada']).dt.total_seconds() / 60
+                    media = int(atendidos['espera_min'].mean())
+
+                # Atualiza JSON
+                detalhes[uid] = {
+                    "fila": fila_atual,
+                    "tempo_medio": media,
+                    "total_passaram": total_passaram
+                }
+
+                # Acumula Global
+                global_fila += fila_atual
+                if media > 0 and total_passaram > 0:
+                    soma_ponderada += (media * total_passaram)
+                    total_com_tempo += total_passaram
+
+        # Cálculo da Média Global Ponderada
         media_global = 0
         if total_com_tempo > 0:
             media_global = int(soma_ponderada / total_com_tempo)
@@ -103,9 +117,10 @@ def run():
     except Exception as e:
         output["message"] = str(e)
         output["status"] = "error"
-        sys.stderr.write(f"Erro worker: {e}\n")
+        # sys.stderr.write(f"Erro worker: {e}\n")
 
     print(json.dumps(output))
 
 if __name__ == "__main__":
+    import sqlite3 # Import local para o caso de execução direta
     run()
