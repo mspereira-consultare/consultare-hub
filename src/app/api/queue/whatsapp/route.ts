@@ -5,7 +5,7 @@ export async function GET() {
   try {
     const db = getDbConnection();
 
-    // Busca todos os grupos salvos no snapshot
+    // Busca os grupos já com nomes corretos salvos pelo worker
     const stmt = db.prepare(`
       SELECT group_id, group_name, queue_size, avg_wait_seconds 
       FROM clinia_group_snapshots 
@@ -13,16 +13,16 @@ export async function GET() {
     `);
     
     const groups = stmt.all() as { 
-      group_id: string, 
-      group_name: string, 
-      queue_size: number, 
-      avg_wait_seconds: number 
+      group_id: string;
+      group_name: string; 
+      queue_size: number; 
+      avg_wait_seconds: number; 
     }[];
 
-    // Calcula totais globais na hora
+    // Calcula totais globais
     const totalQueue = groups.reduce((acc, g) => acc + g.queue_size, 0);
     
-    // Média ponderada ou simples? Vamos usar média simples dos grupos ativos para simplificar
+    // Média apenas dos grupos com tempo > 0
     const activeGroups = groups.filter(g => g.avg_wait_seconds > 0);
     const totalWait = activeGroups.reduce((acc, g) => acc + g.avg_wait_seconds, 0);
     const avgWait = activeGroups.length > 0 ? Math.round(totalWait / activeGroups.length) : 0;
@@ -40,6 +40,9 @@ export async function GET() {
 
   } catch (error) {
     console.error('Erro API WhatsApp:', error);
-    return NextResponse.json({ status: 'error', data: { global: { queue: 0, avgWaitSeconds: 0 }, groups: [] } });
+    return NextResponse.json({ 
+        status: 'error', 
+        data: { global: { queue: 0, avgWaitSeconds: 0 }, groups: [] } 
+    });
   }
 }

@@ -1,3 +1,6 @@
+// src/app/(admin)/monitor/types.ts
+
+// --- MÉDICO ---
 export interface Patient {
   id: string | number;
   name: string;
@@ -19,8 +22,10 @@ export interface UnitData {
   name: string;
   patients: Patient[];
   totalAttended?: number;
+  averageWaitDay?: number;
 }
 
+// --- RECEPÇÃO ---
 export interface ReceptionUnitStats {
   fila: number;
   tempo_medio: number;
@@ -34,4 +39,20 @@ export interface ReceptionResponse {
     tempo_medio: number;
   };
   por_unidade: Record<string, ReceptionUnitStats>;
+}
+
+// --- WHATSAPP (DIGITAL) ---
+export interface WhatsAppGroup {
+  group_id: string;
+  group_name: string;
+  queue_size: number;
+  avg_wait_seconds: number;
+}
+
+export interface WhatsAppResponse {
+  global: {
+    queue: number;
+    avgWaitSeconds: number;
+  };
+  groups: WhatsAppGroup[];
 }

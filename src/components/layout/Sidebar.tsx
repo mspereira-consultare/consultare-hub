@@ -40,7 +40,7 @@ const menuItems: MenuItem[] = [
   { href: '/dashboard', label: 'Visão Geral', icon: LayoutDashboard, group: 'PRINCIPAL', roles: ['ADMIN', 'GESTOR', 'OPERADOR'] },
   
   // Operações: Todos veem (ou restrinja se quiser)
-  { href: '/crc', label: 'Monitoramento CRC', icon: PhoneCall, group: 'OPERAÇÕES', roles: ['ADMIN', 'GESTOR', 'OPERADOR'] },
+  { href: '/monitor', label: 'Monitoramento CRC', icon: PhoneCall, group: 'OPERAÇÕES', roles: ['ADMIN', 'GESTOR', 'OPERADOR'] },
   
   // Financeiro: Apenas Admin e Gestor
   { href: '/financeiro', label: 'Financeiro', icon: DollarSign, group: 'INTELIGÊNCIA', roles: ['ADMIN', 'GESTOR'] },
