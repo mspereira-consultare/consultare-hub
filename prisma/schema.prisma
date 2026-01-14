@@ -31,3 +31,16 @@ model Log {
   user      User     @relation(fields: [userId], references: [id])
   timestamp DateTime @default(now())
 }
+
+// Tabela de Metas
+model Goal {
+  id        String   @id @default(uuid())
+  category  String   // Ex: 'comercial', 'financeiro', 'operacional'
+  metric    String   // Ex: 'agendamentos_diarios', 'faturamento_mensal'
+  label     String   // Nome legível: 'Agendamentos (Dia)'
+  value     Float    // O valor da meta (ex: 484)
+  month     String   // Formato 'YYYY-MM' para metas mensais
+  updatedAt DateTime @updatedAt
+
+  @@unique([metric, month]) // Garante apenas uma meta por métrica/mês
+}

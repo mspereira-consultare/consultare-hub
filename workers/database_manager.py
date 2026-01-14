@@ -4,6 +4,8 @@ import os
 import hashlib
 import pandas as pd
 
+DB_PATH = os.path.join(os.getcwd(), 'data', 'dados_clinica.db')
+
 class DatabaseManager:
     def __init__(self, db_name="dados_clinica.db"):
         # Define o caminho para a pasta /data na raiz
@@ -152,3 +154,25 @@ class DatabaseManager:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("DELETE FROM recepcao_historico WHERE dia_referencia < ?", (hoje,))
             conn.execute("DELETE FROM espera_medica_historico WHERE dia_referencia < ?", (hoje,))
+
+def setup_goals_table():
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+
+    # Tabela de Configuração de Metas
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS goals_config (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sector TEXT NOT NULL,       -- Ex: 'Comercial', 'Financeiro', 'Recepção'
+            name TEXT NOT NULL,         -- Ex: 'Agendamentos', 'Faturamento', 'T.M.E'
+            period TEXT NOT NULL,       -- Ex: 'daily', 'weekly', 'monthly'
+            target_value REAL NOT NULL, -- O valor da meta (ex: 484, 100000.00)
+            unit TEXT DEFAULT 'qtd',    -- Ex: 'qtd', 'currency', 'percent', 'minutes'
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    conn.commit()
+    conn.close()
+    print("Tabela de metas configurada.")
+
