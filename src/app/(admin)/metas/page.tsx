@@ -4,7 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { Goal } from './constants';
 import { GoalHeader } from './components/GoalHeader';
 import { GoalModal } from './components/GoalModal';
-import { GoalCard } from './components/GoalCard';
+import { GoalTable } from './components/GoalTable';
+import { GoalDetailsModal } from './components/GoalDetailsModal'; // IMPORTAR
+
+interface GoalWithFilter extends Goal {
+    filter_group?: string;
+}
 
 interface DashboardData {
     goal_id: number;
@@ -13,24 +18,37 @@ interface DashboardData {
 }
 
 export default function GoalsPage() {
-  const [goals, setGoals] = useState<Goal[]>([]);
+  const [goals, setGoals] = useState<GoalWithFilter[]>([]);
   const [dashboardData, setDashboardData] = useState<Record<number, DashboardData>>({});
   const [loading, setLoading] = useState(true);
   
   const [statusFilter, setStatusFilter] = useState('active');
   const [sectorFilter, setSectorFilter] = useState('all');
+  
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [editingGoal, setEditingGoal] = useState<Goal | undefined>(undefined);
+  const [editingGoal, setEditingGoal] = useState<GoalWithFilter | undefined>(undefined);
+
+  // NOVO ESTADO: Controle do Drill-down
+  const [detailsGoal, setDetailsGoal] = useState<GoalWithFilter | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-        // 1. Busca Metas (Configurações)
+        // 1. Busca Configuração das Metas
         const resGoals = await fetch('/api/admin/goals', { cache: 'no-store' });
         const goalsList = await resGoals.json();
-        setGoals(goalsList);
 
-        // 2. Busca Valores (Dashboard) - FORÇANDO NO-CACHE
+        // --- CORREÇÃO DE SEGURANÇA ---
+        if (Array.isArray(goalsList)) {
+            setGoals(goalsList);
+        } else {
+            console.error("ERRO CRÍTICO NA API DE METAS:", goalsList);
+            // Se der erro, mantém lista vazia para não quebrar a tela
+            setGoals([]); 
+        }
+        // ------------------------------
+
+        // 2. Busca Dados Calculados (Dashboard)
         const resDash = await fetch('/api/admin/goals/dashboard', { 
             cache: 'no-store',
             headers: { 'Pragma': 'no-cache' } 
@@ -39,19 +57,19 @@ export default function GoalsPage() {
         if (resDash.ok) {
             const dashList: DashboardData[] = await resDash.json();
             
-            // DEBUG: Veja isso no Console do Chrome (F12)
-            console.log("💰 DADOS RECEBIDOS DO DASHBOARD:", dashList);
-
-            // Transforma lista em Objeto para acesso rápido por ID
-            const dashMap = dashList.reduce((acc, item) => {
-                acc[item.goal_id] = item;
-                return acc;
-            }, {} as Record<number, DashboardData>);
-            
-            setDashboardData(dashMap);
+            // Verifica se é array antes de rodar o reduce
+            if (Array.isArray(dashList)) {
+                const dashMap = dashList.reduce((acc, item) => {
+                    acc[item.goal_id] = item;
+                    return acc;
+                }, {} as Record<number, DashboardData>);
+                
+                setDashboardData(dashMap);
+            }
         }
     } catch (error) {
-        console.error("Erro ao carregar metas:", error);
+        console.error("Erro de conexão:", error);
+        setGoals([]); // Garante que não quebre
     } finally {
         setLoading(false);
     }
@@ -59,9 +77,9 @@ export default function GoalsPage() {
 
   useEffect(() => { fetchData(); }, []);
 
-  // ... (Resto das funções handleSave, handleDelete iguais) ...
-  const handleSave = async (goal: Goal) => {
-      const payload = { ...goal, target_value: isNaN(goal.target_value) ? 0 : goal.target_value };
+  // ... (handleSave e handleDelete iguais) ...
+  const handleSave = async (goal: GoalWithFilter) => {
+      const payload = { ...goal, target_value: Number(goal.target_value) || 0 };
       await fetch('/api/admin/goals', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -72,13 +90,13 @@ export default function GoalsPage() {
   };
 
   const handleDelete = async (id: number) => {
-      if(!confirm('Excluir esta meta permanentemente?')) return;
+      if(!confirm('Confirmar exclusão?')) return;
       await fetch(`/api/admin/goals?id=${id}`, { method: 'DELETE' });
       fetchData();
   };
 
   const openNew = () => { setEditingGoal(undefined); setIsModalOpen(true); };
-  const openEdit = (g: Goal) => { setEditingGoal(g); setIsModalOpen(true); };
+  const openEdit = (g: GoalWithFilter) => { setEditingGoal(g); setIsModalOpen(true); };
 
   const filteredGoals = goals.filter(g => {
       if (sectorFilter !== 'all' && g.sector !== sectorFilter) return false;
@@ -98,38 +116,38 @@ export default function GoalsPage() {
       />
 
       {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-               {[1,2,3].map(i => <div key={i} className="h-40 bg-slate-200 rounded-xl animate-pulse"></div>)}
+          <div className="space-y-4 mt-6">
+               {[1,2,3].map(i => <div key={i} className="h-24 bg-slate-200 rounded-xl animate-pulse"></div>)}
           </div>
       ) : filteredGoals.length === 0 ? (
-          <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300">
-              <p className="text-slate-500 font-medium">Nenhuma meta encontrada.</p>
+          <div className="text-center py-20 bg-white rounded-xl border border-dashed border-slate-300 mt-6">
+              <p className="text-slate-500">Nenhuma meta encontrada.</p>
           </div>
       ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {filteredGoals.map(goal => {
-                  // Cruza o ID da meta com o ID dos dados
-                  const data = dashboardData[goal.id!] || { current: 0, percentage: 0 };
-                  
-                  return (
-                      <GoalCard 
-                        key={goal.id} 
-                        goal={goal}
-                        currentValue={data.current} 
-                        percentage={data.percentage} 
-                        onEdit={openEdit} 
-                        onDelete={handleDelete} 
-                      />
-                  );
-              })}
+          <div className="mt-6">
+              <GoalTable 
+                goals={filteredGoals}
+                dashboardData={dashboardData} 
+                onEdit={openEdit} 
+                onDelete={handleDelete} 
+                onViewDetails={(g) => setDetailsGoal(g)} // Abre o Drill-down
+              />
           </div>
       )}
 
+      {/* MODAL DE EDIÇÃO */}
       <GoalModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
         onSave={handleSave} 
         initialData={editingGoal}
+      />
+
+      {/* MODAL DE DETALHES (DRILL-DOWN) */}
+      <GoalDetailsModal 
+        goal={detailsGoal}
+        onClose={() => setDetailsGoal(null)}
+        currentValue={detailsGoal ? (dashboardData[detailsGoal.id!]?.current || 0) : 0}
       />
     </div>
   );

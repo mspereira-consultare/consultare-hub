@@ -9,7 +9,6 @@ export const UNITS = [
     { value: 'minutes', label: 'Tempo (Min)' },
 ] as const;
 
-// Nova definição de Periodicidade (O "Reset")
 export const PERIODICITY_OPTIONS = [
     { value: 'daily', label: 'Meta Diária (Reseta todo dia)', short: 'Diária' },
     { value: 'weekly', label: 'Meta Semanal (Reseta toda seg)', short: 'Semanal' },
@@ -20,20 +19,18 @@ export const PERIODICITY_OPTIONS = [
 export const AVAILABLE_KPIS = [
     { id: 'manual', label: 'Entrada Manual (Sem vínculo)', group: 'Geral' },
     
-    // Digital
-    { id: 'whatsapp_queue_current', label: 'Fila WhatsApp (Agora)', group: 'Digital' },
-    { id: 'whatsapp_wait_time', label: 'Tempo Médio Espera (Min)', group: 'Digital' },
-    
-    // Fontes Individuais
-    { id: 'appointments_total_clinia', label: 'Agendamentos (Só Clinia)', group: 'Comercial' },
-    { id: 'appointments_bot_only', label: 'Agendamentos (Só Robô)', group: 'Comercial' },
-    
-    // Fonte Mesclada
-    { id: 'appointments_merged_total', label: 'Agendamentos TOTAL (Clinia + Feegow)', group: 'Comercial' },
-
     // Financeiro (Feegow)
     { id: 'revenue_total', label: 'Faturamento Total (R$)', group: 'Financeiro' },
     { id: 'ticket_average', label: 'Ticket Médio (R$)', group: 'Financeiro' },
+
+    // Volume / Operacional (Feegow) - NOVOS
+    { id: 'appointments_total_volume', label: 'Ocupação de Agenda (Agendados + Realizados)', group: 'Operacional' },
+    { id: 'appointments_realized', label: 'Atendimentos Realizados (Só presença)', group: 'Operacional' },
+    { id: 'absenteeism_rate', label: 'Taxa de Absenteísmo (Faltas %)', group: 'Operacional' },
+
+    // Digital
+    { id: 'whatsapp_queue_current', label: 'Fila WhatsApp (Agora)', group: 'Digital' },
+    { id: 'whatsapp_wait_time', label: 'Tempo Médio Espera (Min)', group: 'Digital' },
 ] as const;
 
 export interface Goal {

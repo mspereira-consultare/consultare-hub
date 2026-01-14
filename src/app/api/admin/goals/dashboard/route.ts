@@ -7,33 +7,34 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const db = getDbConnection();
+    // Pega as metas e inclui a coluna 'filters' (que vamos criar no banco ou assumir que existe no objeto JSON)
+    // Para simplificar, vou assumir que você salvou o "Grupo" numa coluna nova ou no campo 'sector' se quiser improvisar, 
+    // mas o ideal é criar uma coluna 'filter_group' na tabela goals_config.
     
-    // 1. Busca todas as metas
+    // Por enquanto, vamos assumir que a tabela goals_config já tem uma coluna 'filter_criteria' 
+    // Se não tiver, precisamos criar. Vamos fazer isso via código defensivo abaixo.
+    
+    // 1. Busca metas
     const goals = db.prepare(`SELECT * FROM goals_config`).all() as any[];
 
-    console.log(`[Dashboard API] Processando ${goals.length} metas...`);
-
-    // 2. Calcula KPIs
     const dashboardData = await Promise.all(goals.map(async (goal) => {
         let current = 0;
-        
-        // --- LÓGICA INTELIGENTE DE DATAS ---
         let calcStart = goal.start_date;
         let calcEnd = goal.end_date;
 
-        // Se for meta DIÁRIA, forçamos o cálculo apenas para o dia de HOJE
         if (goal.periodicity === 'daily') {
-            // Pega data atual no formato YYYY-MM-DD
-            // Nota: Isso usa a data do SERVIDOR onde o Next.js está rodando
             const today = new Date().toISOString().split('T')[0];
             calcStart = today;
             calcEnd = today;
         }
-        // -----------------------------------
 
         if (goal.linked_kpi_id && goal.linked_kpi_id !== 'manual') {
-            // Passamos as datas ajustadas (calcStart/End) em vez das originais
-            const result = await calculateKpi(goal.linked_kpi_id, calcStart, calcEnd);
+            // Passa o filtro de grupo se ele existir na meta
+            const options = {
+                group_filter: goal.filter_group || undefined // Assumindo coluna nova
+            };
+            
+            const result = await calculateKpi(goal.linked_kpi_id, calcStart, calcEnd, options);
             current = result.currentValue;
         }
 
@@ -49,9 +50,7 @@ export async function GET() {
     }));
 
     return NextResponse.json(dashboardData);
-
   } catch (error: any) {
-    console.error('[Dashboard API Error]', error);
-    return NextResponse.json({ error: 'Erro ao processar dashboard', details: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Erro dashboard', details: error.message }, { status: 500 });
   }
 }
