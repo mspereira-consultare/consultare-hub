@@ -4,9 +4,12 @@ import datetime
 import os
 import time
 import json
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # --- CONFIGURAÇÕES ---
-DB_PATH = os.path.join(os.path.dirname(__file__), '../data/dados_clinica.db')
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../data/dados_clinica.db')
 
 # URLs
 API_URL_METADATA = "https://dashboard.clinia.io/api/users-group"
@@ -14,7 +17,7 @@ API_URL_MONITOR = "https://dashboard.clinia.io/api/statistics/group/card" # Fila
 API_URL_REPORT = "https://dashboard.clinia.io/api/statistics/group/chart"  # Histórico/Dia
 API_URL_APPOINTMENTS = "https://dashboard.clinia.io/api/statistics/appointments"
 
-# HEADER (Mantenha seu Cookie atualizado aqui)
+# HEADER BASE (Sem o Cookie fixo)
 HEADERS = {
     "accept": "application/json",
     "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
@@ -29,9 +32,21 @@ HEADERS = {
     "sec-fetch-mode": "cors",
     "sec-fetch-site": "same-origin",
     "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36",
-    # INSIRA SEU COOKIE ATUALIZADO ABAIXO
-    "cookie": "_hjSessionUser_5172862=eyJpZCI6IjFkNzg0YmM4LWQ2ZmUtNTQxNC1hNWRlLWNjOTM5ODJlNTkyZCIsImNyZWF0ZWQiOjE3Njc3MDc0NTQyNTYsImV4aXN0aW5nIjp0cnVlfQ==; _gcl_au=1.1.2106454193.1767788884; _ga=GA1.1.1855253267.1767788884; _fbp=fb.1.1767788884415.997373546558420173; _ga_NKRK03SR2L=GS2.1.s1767791522$o2$g1$t1767791691$j32$l0$h355565389; __Host-next-auth.csrf-token=6742b8785587b091b48b20be4b3064f9222e095eb99a5b799cbc4b448036bc90%7C4ed542cf42453fea07bf9fc8d0b51036dcdc139ca8297fedc835acc8c00f3b2b; __Secure-next-auth.callback-url=https%3A%2F%2Fdashboard.clinia.io%2F%2F; _hjSession_5172862=eyJpZCI6ImRlMWUxN2UzLTNhOTMtNGI0Ni04MTA3LTgwNzMxOTdiOWZiMCIsImMiOjE3NjgyNDYwMTQxMzYsInMiOjAsInIiOjAsInNiIjowLCJzciI6MCwic2UiOjAsImZzIjowLCJzcCI6MH0=; __Secure-next-auth.session-token=eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..yOtb9D8ph6k5IU8q.t4iSOylteTkj4UzpgVd9WARoxsYnSW--k8Nc1bmgKQK8_SNstKatRFfOgnWHb5rSzRaoS_2dDOYPOC_c-E54ZOPtrPeCkCXjzup8AGP_eyXYDFZRqgTZ54vj0zHmVF9cPVE8xfv7jEQRddbaRZnaytelJXfBNjNeidTcuAcWqN6-WyB4KDj4-a8Y12KmdGrKZTK3HF4DfC7olx7T-enBt-uKaSxBsQewUq-gBNiJhnyLwrou-CdI-sDVoEZMR9Ttc9anWrNLNNCI6ywJL9zVZI478wkvX2FkKyc8btMSaFawP5q1OFiGGDc9-Dc24qS6NN_4b5IUeje2ZdLds10TJPQ9zBUV8EqLuksZSF1YasWD7vvfIKbewVejrSOaT-lcRsUdE6FH8XQ.gznwRM2Ijc_5HeXf1lHGCA"
+    # Cookie será injetado dinamicamente
 }
+
+def get_clinia_cookie_from_db():
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        # Busca o token na tabela nova
+        res = cursor.execute("SELECT token FROM integrations_config WHERE service = 'clinia'").fetchone()
+        conn.close()
+        if res and res[0]:
+            return res[0]
+    except:
+        pass
+    return None
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -56,7 +71,13 @@ def get_params(mode="this-week"):
 
 def safe_request(url, params=None):
     try:
+        # Usa o dicionário global HEADERS que já foi atualizado em process_and_save
         response = requests.get(url, params=params, headers=HEADERS, timeout=20)
+        
+        if response.status_code == 401 or response.status_code == 403:
+            print(f" [401/403] Acesso Negado em {url}. O Cookie pode ter expirado.")
+            return None
+            
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -65,6 +86,19 @@ def safe_request(url, params=None):
 
 def process_and_save():
     print(f"--- Atualizando Clinia: {datetime.datetime.now()} ---")
+    
+    # 1. ATUALIZA O HEADER COM O COOKIE DO BANCO
+    token_db = get_clinia_cookie_from_db()
+    if token_db:
+        HEADERS['cookie'] = token_db
+    else:
+        # Fallback para .env se houver, ou alerta
+        env_token = os.getenv("CLINIA_COOKIE") 
+        if env_token:
+            HEADERS['cookie'] = env_token
+        else:
+            print(" [AVISO] Nenhum cookie Clinia encontrado no banco. Configure no painel Admin.")
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -101,21 +135,20 @@ def process_and_save():
     today_json_fmt = datetime.datetime.now().strftime('%d/%m')
 
     # 1. METADADOS (Nomes)
-    print(" Buscando nomes (/users-group)...")
+    # print(" Buscando nomes (/users-group)...")
     groups_meta = safe_request(API_URL_METADATA)
     group_names_map = {}
     
-    # CORREÇÃO: Acessa a chave 'groups' que descobrimos no teste
     if groups_meta and isinstance(groups_meta, dict) and 'groups' in groups_meta:
         for g in groups_meta['groups']:
             if 'id' in g and 'name' in g:
                 group_names_map[g['id']] = g['name']
-        print(f" -> Nomes carregados: {len(group_names_map)} grupos mapeados.")
+        # print(f" -> Nomes carregados: {len(group_names_map)} grupos mapeados.")
     else:
-        print(" -> [AVISO] Falha ao ler estrutura de nomes. Verifique o cookie.")
+        print(" -> [AVISO] Falha ao ler estrutura de nomes. Verifique se o cookie é válido.")
 
     # 2. MONITOR TEMPO REAL (Fila Agora)
-    print(" Buscando Monitor (/card?search=current)...")
+    # print(" Buscando Monitor (/card?search=current)...")
     monitor_params = get_params(mode="monitor_current")
     monitor_data = safe_request(API_URL_MONITOR, params=monitor_params)
 
@@ -137,7 +170,7 @@ def process_and_save():
         print(" -> Monitor atualizado.")
 
     # 3. RELATÓRIO DIÁRIO (Totais acumulados)
-    print(" Buscando Relatório (/chart?type=this-week)...")
+    # print(" Buscando Relatório (/chart?type=this-week)...")
     report_params = get_params(mode="report_history")
     report_data = safe_request(API_URL_REPORT, params=report_params)
 
@@ -179,7 +212,7 @@ def process_and_save():
         print(f" -> Relatório do dia: {total_conv} conversas.")
 
     # 4. AGENDAMENTOS
-    print(" Buscando Agendamentos...")
+    # print(" Buscando Agendamentos...")
     appt_params = {
         "type": "specific",
         "startDate": monitor_params["startDate"],

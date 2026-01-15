@@ -3,9 +3,9 @@ import { getDbConnection } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
 
-// --- AUTO-CORREÇÃO DE SCHEMA (BLINDADO) ---
+// --- AUTO-CORREÇÃO DE SCHEMA (VERSÃO COMPATÍVEL) ---
 function ensureSchema(db: any) {
-  // 1. Garante que a tabela base existe
+  // 1. Cria a tabela se não existir
   db.exec(`
     CREATE TABLE IF NOT EXISTS goals_config (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -16,27 +16,36 @@ function ensureSchema(db: any) {
       periodicity TEXT,
       target_value REAL,
       unit TEXT,
-      linked_kpi_id TEXT
+      linked_kpi_id TEXT,
+      filter_group TEXT,
+      created_at TEXT,
+      updated_at TEXT
     )
   `);
 
-  // 2. Lista de colunas obrigatórias que podem faltar em versões antigas
+  // 2. Verifica colunas individualmente para tabelas antigas
+  // NOTA: Removemos "DEFAULT CURRENT_TIMESTAMP" para evitar o erro de 'non-constant default'
   const columnsToCheck = [
-    { name: 'filter_group', def: 'TEXT DEFAULT NULL' },
-    { name: 'created_at', def: "DATETIME DEFAULT CURRENT_TIMESTAMP" },
-    { name: 'updated_at', def: "DATETIME DEFAULT CURRENT_TIMESTAMP" }
+    { name: 'filter_group', def: 'TEXT' },
+    { name: 'created_at', def: 'TEXT' },
+    { name: 'updated_at', def: 'TEXT' }
   ];
 
-  // 3. Verifica uma por uma e cria se faltar
   columnsToCheck.forEach(col => {
     try {
       db.prepare(`SELECT ${col.name} FROM goals_config LIMIT 1`).get();
     } catch (error: any) {
       if (error.message.includes('no such column')) {
-        console.log(`⚠️ Coluna '${col.name}' ausente. Criando...`);
+        console.log(`⚠️ Coluna '${col.name}' ausente. Criando (Simple Mode)...`);
         try {
+          // Adiciona a coluna sem valor padrão complexo (fica NULL nos registros antigos)
           db.prepare(`ALTER TABLE goals_config ADD COLUMN ${col.name} ${col.def}`).run();
           console.log(`✅ Coluna '${col.name}' criada!`);
+          
+          // Opcional: Preenche datas vazias com uma data fixa para não quebrar a ordenação
+          if (col.name === 'created_at' || col.name === 'updated_at') {
+              db.prepare(`UPDATE goals_config SET ${col.name} = datetime('now') WHERE ${col.name} IS NULL`).run();
+          }
         } catch (e) {
           console.error(`Erro ao criar ${col.name}:`, e);
         }
@@ -51,15 +60,17 @@ export async function GET(request: Request) {
     const id = searchParams.get('id');
     const db = getDbConnection();
 
-    // Roda a correção do banco antes de tentar ler
-    ensureSchema(db);
+    ensureSchema(db); // Repara o banco
 
     if (id) {
       const goal = db.prepare('SELECT * FROM goals_config WHERE id = ?').get(id);
       return NextResponse.json(goal);
     } else {
-      // Agora seguro pois created_at existe
-      const goals = db.prepare('SELECT * FROM goals_config ORDER BY created_at DESC').all();
+      // Coalesce garante que não quebre se a data for null
+      const goals = db.prepare(`
+        SELECT * FROM goals_config 
+        ORDER BY COALESCE(created_at, '') DESC
+      `).all();
       
       if (!Array.isArray(goals)) return NextResponse.json([]);
       return NextResponse.json(goals);
@@ -80,7 +91,7 @@ export async function POST(request: Request) {
     } = body;
 
     const db = getDbConnection();
-    ensureSchema(db);
+    ensureSchema(db); // Repara o banco
 
     const finalFilterGroup = (filter_group && String(filter_group).trim() !== '') ? String(filter_group) : null;
 
@@ -139,4 +150,4 @@ export async function DELETE(request: Request) {
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
+} 

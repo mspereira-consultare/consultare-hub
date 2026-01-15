@@ -4,9 +4,33 @@ import os
 import time
 import html
 import re
+import sqlite3
 from io import StringIO
 from datetime import datetime
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Caminho absoluto para o banco de dados
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../data/dados_clinica.db')
+
+def get_feegow_config_from_db():
+    """Busca credenciais no banco de dados SQLite"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        res = conn.execute("SELECT username, password, token FROM integrations_config WHERE service = 'feegow'").fetchone()
+        conn.close()
+        if res:
+            return {
+                "user": res[0],
+                "pass": res[1],
+                "token": res[2] # Cookie de Fallback
+            }
+    except Exception as e:
+        # print(f"Aviso: Não foi possível ler config do banco: {e}")
+        pass
+    return None
 
 class FeegowSystem:
     def __init__(self):
@@ -21,9 +45,19 @@ class FeegowSystem:
     def login(self):
         """Realiza o login via POST e valida a sessão"""
         url = f"{self.base_url}/main/?P=Login&U=&Partner=&qs="
+        
+        # 1. Tenta pegar do banco
+        config = get_feegow_config_from_db()
+        user = config['user'] if config and config['user'] else os.getenv("FEEGOW_USER")
+        password = config['pass'] if config and config['pass'] else os.getenv("FEEGOW_PASS")
+
+        if not user or not password:
+            print("   [ERRO] Credenciais não encontradas (Configure no Painel Admin ou .env)")
+            return False
+
         payload = {
-            "User": os.getenv("FEEGOW_USER"),
-            "password": os.getenv("FEEGOW_PASS"),
+            "User": user,
+            "password": password,
             "btnLogar": "Entrar"
         }
         
@@ -75,9 +109,15 @@ class FeegowSystem:
         Login específico no APP e Ponte de Cookies para o CORE.
         """
         url = "https://app.feegow.com/main/?P=Login"
+        
+        # Usa as mesmas credenciais do login principal
+        config = get_feegow_config_from_db()
+        user = config['user'] if config and config['user'] else os.getenv("FEEGOW_USER")
+        password = config['pass'] if config and config['pass'] else os.getenv("FEEGOW_PASS")
+
         payload = {
-            "User": os.getenv("FEEGOW_USER"),
-            "password": os.getenv("FEEGOW_PASS"),
+            "User": user,
+            "password": password,
             "btnLogar": "Entrar"
         }
         try:
@@ -161,10 +201,12 @@ class FeegowSystem:
         url_api_post = f"{base_url_core}/reports/r/queue/table" 
         hoje = datetime.now().strftime('%d/%m/%Y')
 
-        # 1. Carregar o Cookie Completo do .ENV (A Chave Mestra)
-        cookie_full = os.getenv("FEEGOW_CORE_COOKIE_FULL")
+        # 1. Carregar o Cookie Completo do Banco (Prioridade) ou .ENV
+        config = get_feegow_config_from_db()
+        cookie_full = config['token'] if config and config['token'] else os.getenv("FEEGOW_CORE_COOKIE_FULL")
+
         if not cookie_full:
-            print("   [ERRO] .env sem FEEGOW_CORE_COOKIE_FULL")
+            print("   [ERRO] Cookie Core não configurado (Verifique Painel Admin ou .env)")
             return pd.DataFrame()
 
         # 2. Configurar Headers IDÊNTICOS ao script que funcionou
@@ -183,7 +225,7 @@ class FeegowSystem:
             resp_dash = requests.get(url_dashboard, headers=headers_custom, timeout=15)
             
             if "login" in resp_dash.url:
-                print(f"   [ERRO] Cookie expirado (Redirecionou para Login). Atualize o FEEGOW_CORE_COOKIE_FULL no .env")
+                print(f"   [ERRO] Cookie expirado (Redirecionou para Login). Atualize no Painel Admin.")
                 return pd.DataFrame()
 
             # Extração do Token via Regex

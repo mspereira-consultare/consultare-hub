@@ -1,0 +1,7 @@
+playwright
+pandas
+requests
+python-dotenv
+lxml
+html5lib
+BeautifulSoup4
