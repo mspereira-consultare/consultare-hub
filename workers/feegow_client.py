@@ -52,15 +52,69 @@ def list_especialidades():
         return df[['especialidade_id', 'nome']]
     return df
 
+def list_procedures():
+    """
+    Busca a lista de procedimentos para obter o link: procedimento_id -> grupo_id
+    """
+    data = request_endpoint("procedures/list", method="GET")
+    df = pd.DataFrame(normalize_content(data))
+    
+    if df.empty:
+        return df
+
+    # Tenta encontrar a coluna de ID (Robustez para variações da API)
+    id_col = None
+    for col in ['id', 'ID', 'Id', 'procedimento_id', 'ProcedimentoID']:
+        if col in df.columns:
+            id_col = col
+            break
+            
+    # Tenta encontrar a coluna de Grupo ID
+    grp_col = None
+    for col in ['grupo_procedimento_id', 'grupo_id', 'GrupoProcedimentoID', 'procedure_group_id']:
+        if col in df.columns:
+            grp_col = col
+            break
+
+    if id_col:
+        # Prepara renomeação
+        cols_to_keep = [id_col]
+        rename_map = {id_col: 'proc_ref_id'}
+        
+        if grp_col:
+            cols_to_keep.append(grp_col)
+            rename_map[grp_col] = 'grupo_procedimento_id'
+            
+        return df[cols_to_keep].rename(columns=rename_map)
+    
+    # Se não achou ID, retorna vazio para não quebrar o merge lá na frente
+    print(f"AVISO: Coluna de ID não encontrada na lista de procedimentos. Colunas disponíveis: {df.columns.tolist()}")
+    return pd.DataFrame()
+
 def list_procedure_groups():
-    # Endpoint fornecido: GET /procedures/groups
     data = request_endpoint("procedures/groups", method="GET")
     df = pd.DataFrame(normalize_content(data))
     
-    # O JSON retornado tem 'id' e 'NomeGrupo'
-    if not df.empty and 'id' in df.columns:
-        # Renomeia para facilitar o merge
-        return df[['id', 'NomeGrupo']].rename(columns={'id': 'grupo_id', 'NomeGrupo': 'nome_grupo'})
+    if df.empty:
+        return df
+
+    # Robustez para ID do Grupo
+    id_col = None
+    for col in ['id', 'ID', 'grupo_id']:
+        if col in df.columns:
+            id_col = col
+            break
+
+    # Robustez para Nome do Grupo
+    nome_col = None
+    for col in ['NomeGrupo', 'nome', 'Nome', 'description']:
+        if col in df.columns:
+            nome_col = col
+            break
+
+    if id_col and nome_col:
+        return df[[id_col, nome_col]].rename(columns={id_col: 'grupo_ref_id', nome_col: 'nome_grupo'})
+    
     return df
 
 # --- BUSCA PRINCIPAL ---
@@ -84,9 +138,10 @@ def fetch_financial_data(start_date, end_date):
     # 2. Busca Auxiliares
     df_prof = list_profissionals()
     df_esp = list_especialidades()
-    df_grupos = list_procedure_groups() # Nova busca
+    df_procs = list_procedures()      
+    df_grupos = list_procedure_groups() 
     
-    # 3. MERGES
+    # 3. MERGES (CRUZAMENTOS)
     
     # --- Merge Profissional ---
     if not df_prof.empty and "profissional_id" in df.columns:
@@ -111,22 +166,41 @@ def fetch_financial_data(start_date, end_date):
     else:
         df['especialidade'] = 'Geral'
 
-    # --- Merge Grupo de Procedimento (NOVO) ---
-    # Assume que a coluna no agendamento é 'grupo_procedimento_id' conforme informado
+    # --- Merge Grupo de Procedimento (PONTE DUPLA) ---
+    # Passo A: Agendamento -> Procedimento
+    if not df_procs.empty and "procedimento_id" in df.columns:
+        # Verifica se temos a coluna chave de referência antes de tentar o merge
+        if 'proc_ref_id' in df_procs.columns:
+            try:
+                df['procedimento_id'] = df['procedimento_id'].fillna(0).astype(int)
+                df_procs['proc_ref_id'] = df_procs['proc_ref_id'].fillna(0).astype(int)
+                
+                # Merge 1: Descobrir o ID do Grupo
+                df = df.merge(df_procs, left_on='procedimento_id', right_on='proc_ref_id', how='left')
+            except Exception as e:
+                print(f"Erro merge procedimentos: {e}")
+        else:
+            print("AVISO: Tabela de procedimentos baixada mas sem coluna 'proc_ref_id'. Merge ignorado.")
+
+    # Passo B: Procedimento -> Grupo
     if not df_grupos.empty and "grupo_procedimento_id" in df.columns:
-        try:
-            df['grupo_procedimento_id'] = df['grupo_procedimento_id'].fillna(0).astype(int)
-            df_grupos['grupo_id'] = df_grupos['grupo_id'].astype(int)
-            
-            df = df.merge(df_grupos, left_on='grupo_procedimento_id', right_on='grupo_id', how='left')
-            
-            if 'nome_grupo' in df.columns:
-                df['procedure_group'] = df['nome_grupo'].fillna('Outros')
-        except Exception as e:
-            print(f"Erro merge grupos: {e}")
-            df['procedure_group'] = 'Erro Grupo'
+        if 'grupo_ref_id' in df_grupos.columns:
+            try:
+                df['grupo_procedimento_id'] = df['grupo_procedimento_id'].fillna(0).astype(int)
+                df_grupos['grupo_ref_id'] = df_grupos['grupo_ref_id'].fillna(0).astype(int)
+                
+                # Merge 2: Descobrir o Nome do Grupo
+                df = df.merge(df_grupos, left_on='grupo_procedimento_id', right_on='grupo_ref_id', how='left')
+                
+                if 'nome_grupo' in df.columns:
+                    df['procedure_group'] = df['nome_grupo'].fillna('Outros')
+            except Exception as e:
+                print(f"Erro merge grupos: {e}")
+                df['procedure_group'] = 'Geral'
+        else:
+             df['procedure_group'] = 'Geral'
     else:
-        # Se não tiver a coluna, tenta usar especialidade ou define padrão
+        # Se falhou a cadeia, marca como Geral
         df['procedure_group'] = 'Geral'
 
     return df

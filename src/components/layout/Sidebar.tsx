@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { signOut } from 'next-auth/react';
-import Cookies from 'js-cookie';
 import { 
   LayoutDashboard, 
   PhoneCall, 
@@ -14,7 +13,8 @@ import {
   Settings, 
   Menu, 
   X,
-  LogOut
+  LogOut,
+  Target // Importando ícone de Alvo/Meta
 } from 'lucide-react';
 
 const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(' ');
@@ -24,7 +24,6 @@ const cn = (...classes: (string | undefined | null | false)[]) => classes.filter
 type UserRole = 'ADMIN' | 'GESTOR' | 'OPERADOR';
 
 // SIMULAÇÃO DO USUÁRIO LOGADO
-// Mude esta string para 'GESTOR' ou 'OPERADOR' para testar a sidebar mudando!
 const currentUserRole: UserRole = 'ADMIN'; 
 
 interface MenuItem {
@@ -44,6 +43,9 @@ const menuItems: MenuItem[] = [
   
   // Financeiro: Apenas Admin e Gestor
   { href: '/financeiro', label: 'Financeiro', icon: DollarSign, group: 'INTELIGÊNCIA', roles: ['ADMIN', 'GESTOR'] },
+  
+  // --- NOVO ITEM: METAS ---
+  { href: '/metas', label: 'Metas e Indicadores', icon: Target, group: 'INTELIGÊNCIA', roles: ['ADMIN', 'GESTOR'] },
   
   // Sistema: Apenas Admin
   { href: '/users', label: 'Gestão de Usuários', icon: Users, group: 'SISTEMA', roles: ['ADMIN'] },

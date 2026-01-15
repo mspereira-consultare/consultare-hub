@@ -35,19 +35,38 @@ model Goal {
   label        String   
   value        Float    
   month        String   
-  filter_group String?  // Mapeado para 'grupo' ou 'unidade'
+  filter_group String?  
   updatedAt    DateTime @updatedAt
   @@unique([metric, month])
 }
 
+// TABELA FINANCEIRA (Origem: Scraper - worker_faturamento_scraping.py)
+// Contém apenas o que foi faturado/pago.
 model FaturamentoAnalitico {
-  hash_id    String   @id
-  unidade    String
-  grupo      String?  // Nova coluna extraída do Scraper
-  total_pago Float?
-  data       String?  // Formato DD/MM/YYYY vindo do Python
-  paciente   String?
-  updated_at String
+  hash_id        String   @id
+  unidade        String
+  grupo          String?  
+  procedimento   String?
+  total_pago     Float?   @map("total_pago")
+  data_pagamento String?  @map("data_do_pagamento") // DD/MM/YYYY
+  data_ref       String?  @map("data_de_referência")
+  paciente       String?
+  updated_at     String
   
   @@map("faturamento_analitico")
+}
+
+// TABELA DE AGENDAMENTOS (Origem: API - worker_feegow.py)
+// Contém status futuros e não faturados.
+model FeegowAppointment {
+  appointment_id    Int      @id
+  date              String   // YYYY-MM-DD
+  status_id         Int
+  value             Float
+  specialty         String?
+  professional_name String?
+  procedure_group   String?
+  updated_at        DateTime @default(now())
+
+  @@map("feegow_appointments")
 }
