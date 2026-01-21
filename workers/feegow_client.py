@@ -25,7 +25,7 @@ def request_endpoint(endpoint, method="GET", json_body=None):
     url = f"{BASE_URL}/{endpoint}"
     headers = get_headers()
     try:
-        response = requests.request(method=method, url=url, headers=headers, json=json_body, timeout=20)
+        response = requests.request(method=method, url=url, headers=headers, json=json_body, timeout=60)
         response.raise_for_status()
         return response.json()
     except Exception as e:
@@ -204,3 +204,18 @@ def fetch_financial_data(start_date, end_date):
         df['procedure_group'] = 'Geral'
 
     return df
+
+def fetch_proposals(start_date, end_date):
+    """
+    Busca propostas comerciais no período.
+    Endpoint: /proposal/list
+    """
+    payload = {
+        "data_inicio": start_date,
+        "data_fim": end_date,
+        "tipo_data": "I" # I = Inclusão (Data da proposta)
+    }
+    # Nota: A documentação da Feegow às vezes varia os nomes dos parâmetros.
+    # Se der erro, verifique se é 'date_start' ou 'data_inicio'.
+    data = request_endpoint("proposal/list", method="GET", json_body=payload)
+    return pd.DataFrame(normalize_content(data))
