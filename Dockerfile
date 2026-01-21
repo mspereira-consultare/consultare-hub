@@ -1,21 +1,23 @@
-# Usa uma imagem oficial do Playwright (já tem python e navegadores)
-FROM mcr.microsoft.com/playwright/python:v1.40.0-jammy
+# Usa uma imagem Python leve
+FROM python:3.10-slim
 
-# Define diretório de trabalho
+# 1. Instala dependências do sistema necessárias para o Chrome/Playwright e Compilação
+RUN apt-get update && apt-get install -y \
+    wget gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Define a pasta de trabalho
 WORKDIR /app
 
-# Copia os arquivos do projeto
-COPY . .
-
-# Instala dependências do Python
+# 2. Copia os arquivos de requisitos e instala as libs Python
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Expõe a porta do Next.js (se for rodar o front junto) ou do worker
-EXPOSE 3000
+# 3. Instala os navegadores do Playwright (O pulo do gato!)
+RUN playwright install chromium --with-deps
 
-# Comando de inicialização
-# Aqui você decide: vai rodar o Next.js? Vai rodar só os workers?
-# Exemplo para rodar o Next.js (que chama os workers via API ou cron)
-RUN npm install
-RUN npm run build
-CMD ["npm", "start"]
+# 4. Copia todo o resto do seu código para dentro do container
+COPY . .
+
+# 5. Comando para rodar o Orquestrador quando o servidor ligar
+CMD ["python", "workers/main.py"]
