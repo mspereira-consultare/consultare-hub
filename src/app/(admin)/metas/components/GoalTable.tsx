@@ -34,35 +34,26 @@ export const GoalTable = ({ goals, dashboardData, onEdit, onDelete, onViewDetail
         return fmtNum(val);
     };
 
-    // --- CÁLCULO DE PROJEÇÃO (Mensal e Diária) ---
+    // --- CÁLCULO DE PROJEÇÃO ---
     const calculateProjection = (goal: GoalWithFilter, current: number) => {
         const today = new Date();
         
-        // Lógica Diária (Baseada em horário comercial 08:00 - 18:00)
         if (goal.periodicity === 'daily') {
             const startHour = 8;
             const endHour = 18;
-            const currentHour = today.getHours() + (today.getMinutes() / 60); // Ex: 14.5 para 14:30
-            
-            // Se ainda não começou ou já acabou o dia
+            const currentHour = today.getHours() + (today.getMinutes() / 60);
             if (currentHour < startHour) return 0;
             if (currentHour >= endHour) return current;
-
-            // Extrapolação linear
             const hoursPassed = currentHour - startHour;
             const totalHours = endHour - startHour;
-            
-            if (hoursPassed <= 0) return 0;
             return (current / hoursPassed) * totalHours;
         }
 
-        // Lógica Mensal / Total (Baseada em dias corridos)
         if (goal.periodicity === 'monthly' || goal.periodicity === 'total') {
             const start = new Date(goal.start_date);
             const end = new Date(goal.end_date);
             const totalDays = Math.max(1, (end.getTime() - start.getTime()) / 86400000);
             const daysPassed = Math.max(1, (Math.min(today.getTime(), end.getTime()) - start.getTime()) / 86400000);
-            
             if (daysPassed <= 0) return 0;
             return (current / daysPassed) * totalDays;
         }
@@ -145,23 +136,28 @@ export const GoalTable = ({ goals, dashboardData, onEdit, onDelete, onViewDetail
                                                                 : <Target size={18} className="text-blue-600 shrink-0 mt-1" />
                                                             }
                                                             <div className="space-y-1">
-                                                                <p className="font-bold text-slate-700 text-sm group-hover:text-blue-700 transition-colors">{goal.name}</p>
+                                                                <div className="flex items-center gap-2">
+                                                                    <p className="font-bold text-slate-700 text-sm group-hover:text-blue-700 transition-colors">{goal.name}</p>
+                                                                    {/* BADGE DE ESCOPO (NOVO) */}
+                                                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase ${goal.scope === 'CARD' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
+                                                                        {goal.scope === 'CARD' ? 'CARTÃO' : 'CLÍNICA'}
+                                                                    </span>
+                                                                </div>
                                                                 
-                                                                {/* FILTRO AVANÇADO (VISÍVEL) */}
-                                                                {goal.filter_group && (
-                                                                    <div className="flex items-center gap-1.5">
-                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100">
+                                                                {/* FILTROS E DATAS */}
+                                                                <div className="flex flex-wrap gap-2 items-center">
+                                                                    {goal.filter_group && (
+                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
                                                                             <Filter size={8} />
                                                                             {goal.filter_group}
                                                                         </span>
+                                                                    )}
+                                                                    <div className="text-slate-400 flex items-center gap-1">
+                                                                        <Calendar size={10}/>
+                                                                        <span className="text-[10px]">
+                                                                            {new Date(goal.start_date).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})} - {new Date(goal.end_date).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})}
+                                                                        </span>
                                                                     </div>
-                                                                )}
-                                                                
-                                                                <div className="text-slate-400 flex items-center gap-1 pt-0.5">
-                                                                    <Calendar size={10}/>
-                                                                    <span className="text-[10px]">
-                                                                        {new Date(goal.start_date).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})} - {new Date(goal.end_date).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})}
-                                                                    </span>
                                                                 </div>
                                                             </div>
                                                         </div>
@@ -176,9 +172,7 @@ export const GoalTable = ({ goals, dashboardData, onEdit, onDelete, onViewDetail
                                                         </span>
                                                     </td>
 
-                                                    {/* COLUNA REALIZADO COM DESTAQUE */}
                                                     <td className="px-4 py-3 text-right">
-                                                         {/* Valor Grande e Destacado */}
                                                          <div className="font-black text-blue-700 text-lg leading-tight">
                                                             {formatValue(data.current, goal.unit)} 
                                                          </div>
@@ -192,7 +186,6 @@ export const GoalTable = ({ goals, dashboardData, onEdit, onDelete, onViewDetail
                                                                 {data.percentage}%
                                                              </span>
 
-                                                             {/* PROJEÇÃO (Agora suporta Diária) */}
                                                              {projection !== null && !isDone && (
                                                                  <div className="flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">
                                                                      <BarChart2 size={10} className="text-amber-500"/>

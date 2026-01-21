@@ -96,7 +96,6 @@ export default function FinancialPage() {
   const [selectedGroup, setSelectedGroup] = useState('all');
   const [selectedProcedure, setSelectedProcedure] = useState('all');
   
-  // Data Inicial: 1º de Janeiro do ano atual (Garante que pegue dados de 2026)
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0], 
     end: new Date().toISOString().split('T')[0]
@@ -134,7 +133,6 @@ export default function FinancialPage() {
                 qtd: m.qtd || 0
             })) || []);
             
-            // MAP: Garante que o GroupList receba 'label' mesmo se a API mandar 'procedure_group'
             if (selectedGroup === 'all') {
                 setGroups(data.groups?.map((g: any) => ({
                     ...g,
@@ -162,7 +160,7 @@ export default function FinancialPage() {
         <div className="flex items-center gap-3">
             <div className="p-3 bg-blue-900 rounded-xl text-white shadow-md"><DollarSign size={24} /></div>
             <div>
-                <h1 className="text-xl font-bold text-slate-800">Financeiro</h1>
+                <h1 className="text-xl font-bold text-slate-800">Financeiro Clínicas</h1>
                 <p className="text-slate-500 text-xs">
                     {selectedGroup !== 'all' ? selectedGroup : 'Visão Geral'}
                 </p>
@@ -170,7 +168,6 @@ export default function FinancialPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
-            {/* SELETOR DE PROCEDIMENTOS (NOVO) */}
             <SearchableSelect 
                 options={procedures} 
                 value={selectedProcedure} 
@@ -178,7 +175,6 @@ export default function FinancialPage() {
                 placeholder="Todos Procedimentos"
             />
 
-            {/* SELETOR DE DATA */}
             <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
                 <Calendar size={16} className="text-slate-500" />
                 <input 
@@ -209,8 +205,13 @@ export default function FinancialPage() {
 
       <FinancialKPIs data={totals} />
 
-      <div className="grid grid-cols-1 xl:grid-cols-4 gap-6 items-start relative z-10">
-          <div className="xl:col-span-1">
+      {/* --- GRID DE LAYOUT (ALTERADO) --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative z-10">
+          
+          {/* --- LINHA SUPERIOR (3 CARDS LADO A LADO) --- */}
+          
+          {/* 1. Grupos de Procedimento */}
+          <div className="lg:col-span-1">
               <GroupList 
                 groups={groups} 
                 selected={selectedGroup} 
@@ -218,20 +219,33 @@ export default function FinancialPage() {
                     setSelectedGroup(g); 
                     setSelectedProcedure('all'); 
                 }} 
-                className="h-[620px]" 
+                className="h-[350px]" 
               />
           </div>
 
-          <div className="xl:col-span-3 space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[350px]">
-                  <HistoryChart title="Evolução Mensal" data={monthly} color="#1e3a8a" className="h-full" />
-                  <HistoryTable title="Detalhe Mensal" data={monthly} className="h-full" />
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 h-[350px]">
-                   <HistoryChart title="Curva Diária" data={daily} color="#0ea5e9" className="h-full" />
-                  <HistoryTable title="Detalhe Diário" data={daily} className="h-full" />
-              </div>
+          {/* 2. Evolução Mensal */}
+          <div className="lg:col-span-1">
+              <HistoryChart title="Evolução Mensal" data={monthly} color="#1e3a8a" className="h-[350px]" />
           </div>
+
+          {/* 3. Detalhe Mensal */}
+          <div className="lg:col-span-1">
+              <HistoryTable title="Detalhe Mensal" data={monthly} className="h-[350px]" />
+          </div>
+
+
+          {/* --- LINHA INFERIOR --- */}
+
+          {/* 4. Curva Diária (Ocupa a largura das colunas 1 e 2 de cima) */}
+          <div className="lg:col-span-2">
+              <HistoryChart title="Curva Diária" data={daily} color="#0ea5e9" className="h-[400px]" />
+          </div>
+
+          {/* 5. Detalhe Diário (Ocupa a largura da coluna 3 de cima e mesma altura do gráfico) */}
+          <div className="lg:col-span-1">
+               <HistoryTable title="Detalhe Diário" data={daily} className="h-[400px]" />
+          </div>
+
       </div>
     </div>
   );

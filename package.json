@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "concurrently \"next dev\" \"python workers/main.py\" --kill-others --names \"NEXT,PYTHON\" --prefix-colors \"bgBlue.bold,bgYellow.bold\"",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -35,6 +35,7 @@
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.23",
     "babel-plugin-react-compiler": "1.0.0",
+    "concurrently": "^9.2.1",
     "e": "^0.2.33",
     "eslint": "^9",
     "eslint-config-next": "16.1.1",

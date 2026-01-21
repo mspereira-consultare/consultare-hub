@@ -16,7 +16,7 @@ export async function GET(request: Request) {
 
     if (!goal) return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
 
-    // Ajuste de datas para meta diária (pega o mês atual para mostrar contexto)
+    // Ajuste de datas para meta diária (pega o mês atual para mostrar contexto no gráfico)
     let start = goal.start_date;
     let end = goal.end_date;
     
@@ -26,11 +26,16 @@ export async function GET(request: Request) {
         end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     }
 
+    // --- CORREÇÃO AQUI ---
+    // Agora passamos o 'scope' (CLINIC ou CARD) para o engine saber onde buscar
     const history = await getKpiHistory(
         goal.linked_kpi_id, 
         start, 
         end, 
-        { group_filter: goal.filter_group }
+        { 
+            group_filter: goal.filter_group,
+            scope: goal.scope // <--- ADICIONADO: Define se olha faturamento ou contratos
+        }
     );
 
     return NextResponse.json(history);

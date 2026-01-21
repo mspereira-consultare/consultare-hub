@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, HelpCircle, ChevronDown, ChevronRight, Filter } from 'lucide-react';
-import { Goal, SECTORS, UNITS, PERIODICITY_OPTIONS, AVAILABLE_KPIS } from '../constants';
+import { X, Save, HelpCircle, ChevronDown, ChevronRight, Filter, Building2, CreditCard } from 'lucide-react';
+import { Goal, SECTORS, UNITS, PERIODICITY_OPTIONS, AVAILABLE_KPIS, GOAL_SCOPES } from '../constants';
 
 interface GoalWithFilter extends Goal {
     filter_group?: string;
@@ -20,6 +20,7 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
     // Estado do formulário
     const defaultGoal: GoalWithFilter = {
         name: '',
+        scope: 'CLINIC', // Padrão
         sector: 'Comercial',
         start_date: new Date().toISOString().split('T')[0],
         end_date: new Date(new Date().getFullYear(), 11, 31).toISOString().split('T')[0],
@@ -59,9 +60,9 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
             if (initialData) {
                 setFormData({ 
                     ...initialData,
+                    scope: initialData.scope || 'CLINIC', // Garante valor se for antigo
                     filter_group: initialData.filter_group || '' 
                 });
-                // Abre o filtro se já houver um valor selecionado
                 if (initialData.filter_group) setIsFiltersOpen(true);
             } else {
                 setFormData(defaultGoal);
@@ -77,11 +78,16 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
         onSave(formData);
     };
 
-    // Garante que o valor selecionado exista na lista (fallback para evitar bug visual)
     const currentGroup = formData.filter_group || '';
     const groupsToList = (!currentGroup || availableGroups.includes(currentGroup))
         ? availableGroups
         : [currentGroup, ...availableGroups];
+
+    // --- LÓGICA DE FILTRO DE KPIS ---
+    // Mostra apenas KPIs do escopo selecionado (ou globais 'ALL')
+    const filteredKpis = AVAILABLE_KPIS.filter(kpi => 
+        kpi.scope === 'ALL' || kpi.scope === formData.scope
+    );
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
@@ -93,14 +99,9 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                         <h2 className="text-lg font-bold text-slate-800">
                             {initialData ? 'Editar Meta' : 'Nova Meta'}
                         </h2>
-                        <p className="text-xs text-slate-500">Defina os parâmetros e o alvo</p>
+                        <p className="text-xs text-slate-500">Defina o escopo, parâmetros e o alvo</p>
                     </div>
-                    {/* Botão de Fechar com type="button" explícito */}
-                    <button 
-                        type="button" 
-                        onClick={onClose} 
-                        className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition"
-                    >
+                    <button type="button" onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition">
                         <X size={20} />
                     </button>
                 </div>
@@ -108,6 +109,35 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                 {/* Formulário */}
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
                     
+                    {/* SELEÇÃO DE ESCOPO (Visual de Cards) */}
+                    <div className="grid grid-cols-2 gap-4">
+                        {GOAL_SCOPES.map((scopeOpt) => {
+                            const isSelected = formData.scope === scopeOpt.value;
+                            return (
+                                <button
+                                    key={scopeOpt.value}
+                                    type="button"
+                                    onClick={() => {
+                                        setFormData(prev => ({ 
+                                            ...prev, 
+                                            scope: scopeOpt.value as any,
+                                            linked_kpi_id: '' // Reseta KPI ao trocar escopo para evitar incompatibilidade
+                                        }));
+                                    }}
+                                    className={`
+                                        p-3 rounded-lg border-2 flex flex-col items-center justify-center gap-2 transition-all
+                                        ${isSelected 
+                                            ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' 
+                                            : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'}
+                                    `}
+                                >
+                                    {scopeOpt.value === 'CLINIC' ? <Building2 size={20} /> : <CreditCard size={20} />}
+                                    <span className="text-sm">{scopeOpt.label}</span>
+                                </button>
+                            );
+                        })}
+                    </div>
+
                     {/* Linha 1: Nome e Setor */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1.5">
@@ -115,7 +145,7 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                             <input 
                                 required
                                 type="text" 
-                                placeholder="Ex: Faturamento Exames Jan/26"
+                                placeholder={formData.scope === 'CARD' ? "Ex: Atingir 300k de MRR" : "Ex: Faturamento Exames Jan/26"}
                                 className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
                                 value={formData.name}
                                 onChange={e => setFormData({...formData, name: e.target.value})}
@@ -133,7 +163,7 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                         </div>
                     </div>
 
-                    {/* Linha 2: Fonte de Dados (KPI) */}
+                    {/* Linha 2: Fonte de Dados (KPI Filtrado) */}
                     <div className="space-y-1.5">
                         <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
                             Fonte de Dados (KPI)
@@ -144,15 +174,21 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                             value={formData.linked_kpi_id}
                             onChange={e => setFormData({...formData, linked_kpi_id: e.target.value})}
                         >
-                            {AVAILABLE_KPIS.map(kpi => (
+                            <option value="">Selecione um indicador...</option>
+                            <option value="manual">Entrada Manual (Sem vínculo)</option>
+                            
+                            {filteredKpis.filter(k => k.id !== 'manual').map(kpi => (
                                 <option key={kpi.id} value={kpi.id}>
                                     [{kpi.group}] {kpi.label}
                                 </option>
                             ))}
                         </select>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                            Mostrando indicadores disponíveis para: <strong>{formData.scope === 'CLINIC' ? 'Clínica Médica' : 'Cartão de Benefícios'}</strong>
+                        </p>
                     </div>
 
-                    {/* Linha 3: Filtros Avançados (Colapsável) */}
+                    {/* Linha 3: Filtros Avançados */}
                     <div className="border border-slate-200 rounded-lg overflow-hidden">
                         <button
                             type="button" 
@@ -170,11 +206,9 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                             <div className="p-4 bg-white border-t border-slate-100 space-y-4">
                                 <div className="space-y-1.5">
                                     <label className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                                        Grupo de Procedimento
-                                        <HelpCircle size={12} className="text-slate-400" title="Filtra os dados para considerar apenas este grupo" />
+                                        Grupo de Procedimento / Filtro
+                                        <HelpCircle size={12} className="text-slate-400" title="Para Cartão, use isso para filtrar Planos se necessário" />
                                     </label>
-                                    
-                                    {/* DROPDOWN BLINDADO */}
                                     <select
                                         className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm bg-white"
                                         value={formData.filter_group || ''}
@@ -186,9 +220,6 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                             <option key={g} value={g}>{g}</option>
                                         ))}
                                     </select>
-                                    <p className="text-[10px] text-slate-400">
-                                        Selecione um grupo para restringir o cálculo desta meta.
-                                    </p>
                                 </div>
                             </div>
                         )}
@@ -259,20 +290,9 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
 
                 {/* Footer */}
                 <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
-                    <button 
-                        type="button" 
-                        onClick={onClose}
-                        className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 rounded-lg transition"
-                    >
-                        Cancelar
-                    </button>
-                    <button 
-                        type="submit" 
-                        onClick={handleSubmit}
-                        className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md transition flex items-center gap-2"
-                    >
-                        <Save size={18} />
-                        Salvar Meta
+                    <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 rounded-lg transition">Cancelar</button>
+                    <button type="submit" onClick={handleSubmit} className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md transition flex items-center gap-2">
+                        <Save size={18} /> Salvar Meta
                     </button>
                 </div>
             </div>

@@ -15,7 +15,8 @@ import {
   X,
   LogOut,
   Target,
-  UserCheck
+  UserCheck,
+  Briefcase
 } from 'lucide-react';
 
 const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(' ');
@@ -44,16 +45,17 @@ const menuItems: MenuItem[] = [
   
   // Financeiro: Apenas Admin e Gestor
   { href: '/financeiro', label: 'Financeiro', icon: DollarSign, group: 'INTELIGÊNCIA', roles: ['ADMIN', 'GESTOR'] },
+  { href: '/contratos', label: 'ResolveSaúde', icon: DollarSign, group: 'INTELIGÊNCIA', roles: ['ADMIN', 'GESTOR'] },
   
   // --- NOVO ITEM: METAS ---
   { href: '/metas', label: 'Metas e Indicadores', icon: Target, group: 'INTELIGÊNCIA', roles: ['ADMIN', 'GESTOR'] },
   
   // Sistema: Apenas Admin
   { href: '/users', label: 'Gestão de Usuários', icon: Users, group: 'SISTEMA', roles: ['ADMIN'] },
-  { href: '/admin/audit', label: 'Log de Auditoria', icon: ShieldCheck, group: 'SISTEMA', roles: ['ADMIN'] },
   { href: '/settings', label: 'Configurações', icon: Settings, group: 'SISTEMA', roles: ['ADMIN'] },
 
-  { href: '/produtividade', label: 'Produtividade & Qualidade', icon: UserCheck, group: 'OPERAÇÕES', roles: ['ADMIN', 'GESTOR', 'OPERADOR'] },
+  { href: '/produtividade', label: 'Produtividade de Agendamento', icon: UserCheck, group: 'OPERAÇÕES', roles: ['ADMIN', 'GESTOR', 'OPERADOR'] },
+  { href: '/comercial', label: 'Gestão de Propostas', icon: Briefcase, group: 'INTELIGÊNCIA', roles: ['ADMIN', 'GESTOR'] },
 ];
 
 export function Sidebar() {

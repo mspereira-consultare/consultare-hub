@@ -13,46 +13,55 @@ export async function GET(request: Request) {
 
     const db = getDbConnection();
 
-    // 1. COLUNA DE DATA (Faturamento)
+    // 1. CORREÇÃO DE DATA
+    // O banco agora salva como 'YYYY-MM-DD' (ISO), então usamos a coluna diretamente.
     const dateCol = 'data_do_pagamento';
-    const sqlDate = `substr(${dateCol}, 7, 4) || '-' || substr(${dateCol}, 4, 2) || '-' || substr(${dateCol}, 1, 2)`;
-
+    
     // 2. FILTROS
     let whereClause = `WHERE 1=1`;
     const params: any[] = [];
 
-    // Filtro Robusto (TRIM/UPPER)
+    // --- REGRA DE NEGÓCIO: EXCLUIR RESOLVECARD ---
+    // Este painel é da Clínica Médica, não deve somar o Cartão de Benefícios.
+    whereClause += ` AND (unidade IS NULL OR (unidade NOT LIKE '%RESOLVECARD%' AND unidade NOT LIKE '%GESTÃO DE BENEFICOS%'))`;
+
+    // Filtro de Grupo
     if (groupFilter && groupFilter !== 'all') {
         whereClause += ` AND UPPER(TRIM(grupo)) = UPPER(TRIM(?))`;
         params.push(groupFilter);
     }
+    // Filtro de Procedimento
     if (procedureFilter && procedureFilter !== 'all') {
         whereClause += ` AND procedimento = ?`;
         params.push(procedureFilter);
     }
+    // Filtro de Data (Comparação direta de string ISO funciona perfeitamente)
     if (startDate && endDate) {
-        whereClause += ` AND ${sqlDate} BETWEEN ? AND ?`;
+        whereClause += ` AND ${dateCol} BETWEEN ? AND ?`;
         params.push(startDate, endDate);
     } else {
-        whereClause += ` AND ${sqlDate} >= date('now', '-30 days')`;
+        whereClause += ` AND ${dateCol} >= date('now', '-30 days')`;
     }
 
     // 3. QUERIES (Financeiro)
 
+    // Agrupamento Diário (Já está em YYYY-MM-DD, basta agrupar)
     const daily = db.prepare(`
-        SELECT ${sqlDate} as d, SUM(total_pago) as total, COUNT(*) as qtd
+        SELECT ${dateCol} as d, SUM(total_pago) as total, COUNT(*) as qtd
         FROM faturamento_analitico
         ${whereClause}
         GROUP BY d ORDER BY d ASC
     `).all(...params) || [];
 
+    // Agrupamento Mensal (Extraímos os primeiros 7 caracteres: YYYY-MM)
     const monthly = db.prepare(`
-        SELECT substr(${dateCol}, 7, 4) || '-' || substr(${dateCol}, 4, 2) as m, SUM(total_pago) as total
+        SELECT substr(${dateCol}, 1, 7) as m, SUM(total_pago) as total
         FROM faturamento_analitico
         ${whereClause}
         GROUP BY m ORDER BY m ASC
     `).all(...params) || [];
 
+    // Totais Gerais
     const totals = db.prepare(`
         SELECT SUM(total_pago) as total, COUNT(*) as qtd
         FROM faturamento_analitico
@@ -60,29 +69,32 @@ export async function GET(request: Request) {
     `).get(...params) as { total: number, qtd: number } || { total: 0, qtd: 0 };
 
     // --- LISTA DE GRUPOS UNIFICADA (Faturamento + Agenda) ---
-    // Isso garante que grupos como "Vacina" (que só estão na agenda) apareçam na lista
     
-    // Verifica se a tabela agenda existe para evitar erro
+    // Verifica se a tabela agenda existe
     let hasAgenda = false;
     try {
         const check = db.prepare("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='feegow_appointments'").get() as any;
         hasAgenda = check['count(*)'] > 0;
     } catch (e) {}
 
+    // Query base para grupos (com filtro de unidade aplicado)
+    // Note que aplicamos o filtro de unidade aqui também para não sujar a lista de filtros
     let groupsQuery = `
         SELECT TRIM(grupo) as name, SUM(total_pago) as total, COUNT(*) as qtd
         FROM faturamento_analitico
         WHERE grupo IS NOT NULL AND grupo != ''
+        AND (unidade IS NULL OR (unidade NOT LIKE '%RESOLVECARD%' AND unidade NOT LIKE '%GESTÃO DE BENEFICOS%'))
         GROUP BY TRIM(grupo)
     `;
 
     if (hasAgenda) {
-        // Faz UNION para trazer grupos da agenda também (com total 0 pois não tem faturamento ainda)
+        // Union com Agenda
         groupsQuery = `
             SELECT name, SUM(total) as total, SUM(qtd) as qtd FROM (
                 SELECT TRIM(grupo) as name, SUM(total_pago) as total, COUNT(*) as qtd 
                 FROM faturamento_analitico 
                 WHERE grupo IS NOT NULL AND grupo != '' 
+                AND (unidade IS NULL OR (unidade NOT LIKE '%RESOLVECARD%' AND unidade NOT LIKE '%GESTÃO DE BENEFICOS%'))
                 GROUP BY 1
                 
                 UNION ALL
@@ -99,13 +111,16 @@ export async function GET(request: Request) {
 
     const groups = db.prepare(groupsQuery).all().map((g: any) => ({
         ...g,
-        label: g.name, // Garante que o GroupList tenha label
+        label: g.name,
         procedure_group: g.name
     })) || [];
 
 
     // --- LISTA DE PROCEDIMENTOS ---
+    // Também aplicamos o filtro de unidade aqui
     let procWhere = `WHERE procedimento IS NOT NULL AND procedimento != ''`;
+    procWhere += ` AND (unidade IS NULL OR (unidade NOT LIKE '%RESOLVECARD%' AND unidade NOT LIKE '%GESTÃO DE BENEFICOS%'))`;
+    
     const procParams = [];
     if (groupFilter && groupFilter !== 'all') {
         procWhere += ` AND UPPER(TRIM(grupo)) = UPPER(TRIM(?))`;
