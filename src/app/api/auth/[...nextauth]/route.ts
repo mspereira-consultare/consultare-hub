@@ -1,16 +1,16 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import { getDbConnection } from "@/lib/db"; // Usa sua conexão SQLite existente
-import bcrypt from "bcryptjs";
+import { getDbConnection } from "@/lib/db"; 
+import { compare } from "bcryptjs";
 
 export const authOptions: NextAuthOptions = {
-  // Ativa logs para debug em desenvolvimento
+  // Debug apenas em desenvolvimento
   debug: process.env.NODE_ENV === 'development',
   
   secret: process.env.NEXTAUTH_SECRET,
 
   pages: {
-    signIn: "/login", // Certifique-se que esta rota existe
+    signIn: "/login",
   },
   session: {
     strategy: "jwt",
@@ -29,42 +29,54 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          // 1. Conecta ao banco SQLite (mesmo usado na criação de usuários)
           const db = getDbConnection();
           
-          // 2. Busca o usuário pelo email
-          // Nota: O tipo 'any' é usado aqui pois better-sqlite3 retorna objetos genéricos
-          const user = db.prepare('SELECT * FROM users WHERE email = ?').get(credentials.email) as any;
+          // CORREÇÃO: Usar .query() em vez de .prepare().get()
+          // O método query sempre retorna um array (Promise<any[]>)
+          const rows = await db.query(
+            "SELECT * FROM users WHERE email = ?", 
+            [credentials.email]
+          );
+
+          const user = rows[0]; // Pega o primeiro resultado
 
           if (!user) {
-            console.log("LOGIN: Usuário não encontrado:", credentials.email);
+            console.log("LOGIN FALHOU: Usuário não encontrado:", credentials.email);
             return null;
           }
 
-          // 3. Verifica a senha (Hash vs Texto Plano)
-          const isPasswordValid = await bcrypt.compare(credentials.password, user.password_hash);
+          // Verifica senha (bcrypt)
+          // Tenta acessar user.password ou user.password_hash dependendo de como foi salvo
+          const storedHash = user.password || user.password_hash;
+          
+          if (!storedHash) {
+             console.log("LOGIN FALHOU: Usuário sem senha definida.");
+             return null;
+          }
+
+          const isPasswordValid = await compare(credentials.password, storedHash);
 
           if (!isPasswordValid) {
-            console.log("LOGIN: Senha incorreta para:", credentials.email);
+            console.log("LOGIN FALHOU: Senha incorreta para:", credentials.email);
             return null;
           }
 
-          // 4. Verifica se está ativo
-          if (user.status === 'INATIVO') {
-            throw new Error("Usuário desativado.");
-          }
-
-          // 5. Atualiza último acesso (opcional, mas recomendado)
+          // Atualiza último acesso (Fire and forget)
           try {
-            const now = new Date().toLocaleString('pt-BR');
-            db.prepare('UPDATE users SET last_access = ? WHERE id = ?').run(now, user.id);
+             // Formato ISO para compatibilidade universal
+             const now = new Date().toISOString();
+             // CORREÇÃO: Usar .execute() em vez de .prepare().run()
+             await db.execute(
+                 "UPDATE users SET last_access = ? WHERE id = ?", 
+                 [now, user.id]
+             );
           } catch (e) {
-            console.error("Erro ao atualizar last_access", e);
+             console.error("Erro update last_access", e);
           }
 
-          // 6. Retorna objeto do usuário para o NextAuth
+          // Retorna objeto do usuário para a sessão
           return {
-            id: user.id.toString(), // NextAuth prefere IDs como string
+            id: String(user.id), // Garante string para o NextAuth
             name: user.name,
             email: user.email,
             role: user.role,
@@ -72,14 +84,13 @@ export const authOptions: NextAuthOptions = {
           };
 
         } catch (error) {
-          console.error("ERRO NO LOGIN:", error);
+          console.error("ERRO CRÍTICO NO LOGIN:", error);
           return null;
         }
       },
     }),
   ],
   callbacks: {
-    // Passa dados do usuário para o Token JWT
     async jwt({ token, user }: any) {
       if (user) {
         token.id = user.id;
@@ -88,7 +99,6 @@ export const authOptions: NextAuthOptions = {
       }
       return token;
     },
-    // Passa dados do Token para a Sessão (disponível no front via useSession)
     async session({ session, token }: any) {
       if (session.user) {
         session.user.id = token.id;
@@ -96,10 +106,9 @@ export const authOptions: NextAuthOptions = {
         session.user.department = token.department;
       }
       return session;
-    },
-  },
+    }
+  }
 };
 
 const handler = NextAuth(authOptions);
-
 export { handler as GET, handler as POST };
