@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
+// Verifica se tem credenciais Turso configuradas
 const useTurso = process.env.TURSO_URL && process.env.TURSO_TOKEN;
 
 export interface DbInterface {
@@ -12,7 +13,8 @@ export interface DbInterface {
 
 export const getDbConnection = (): DbInterface => {
   if (useTurso) {
-    // MODO NUVEM
+    // --- MODO NUVEM (TURSO) ---
+    // Conecta via HTTP, funciona em qualquer lugar
     const client = createClient({
       url: process.env.TURSO_URL!,
       authToken: process.env.TURSO_TOKEN!,
@@ -28,7 +30,8 @@ export const getDbConnection = (): DbInterface => {
         }
     };
   } else {
-    // MODO LOCAL
+    // --- MODO LOCAL (SQLITE) ---
+    // Fallback caso não tenha internet ou chaves
     const dbPath = path.resolve(process.cwd(), 'data/dados_clinica.db');
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });

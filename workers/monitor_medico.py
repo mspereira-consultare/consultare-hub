@@ -34,6 +34,7 @@ def run_monitor_medico():
 
     while True:
         try:
+            db.update_heartbeat("Monitor Medico", "RUNNING", "Iniciando ciclo...")
             # 1. Autocura de Sessão (Login)
             if not sessao_ativa:
                 print("   [AUTH] Realizando login...")

@@ -3,24 +3,18 @@ import os
 import sys
 import pandas as pd
 import datetime
-import sqlite3
 import re
 from playwright.sync_api import sync_playwright
 from io import StringIO
 
 # --- SETUP DE IMPORTS ---
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-sys.path.append(parent_dir)
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from lib.database_manager import DatabaseManager
+    from database_manager import DatabaseManager
+    import libsql_client
 except ImportError:
-    try:
-        from database_manager import DatabaseManager
-    except ImportError:
-        sys.path.append(os.path.join(parent_dir, '..'))
-        from lib.database_manager import DatabaseManager
+    pass
 
 def clean_column_name(name):
     name = str(name).lower().strip()
@@ -29,11 +23,7 @@ def clean_column_name(name):
     return name
 
 def clean_currency(value):
-    """
-    Converte valores monetários.
-    Se já for número, retorna direto.
-    Se for string, trata símbolos e sinal negativo corretamente.
-    """
+    """Lógica original de limpeza de moeda mantida"""
     if pd.isna(value): return 0.0
     if isinstance(value, (int, float)): return float(value)
     
@@ -42,7 +32,6 @@ def clean_currency(value):
 
     is_negative = '-' in val_str or '−' in val_str or '(' in val_str
     
-    # Remove R$, pontos e espaços, mantém vírgula
     clean = val_str.replace('R$', '').replace('.', '').replace(' ', '')
     clean = re.sub(r'[^\d,]', '', clean)
     
@@ -53,26 +42,100 @@ def clean_currency(value):
         return -val_float if is_negative else val_float
     except: return 0.0
 
-def convert_date_iso(date_str):
+def save_dataframe_to_db(db, df, table_name, delete_condition=None):
+    """
+    Função auxiliar para salvar DataFrame no Turso ou SQLite.
+    Substitui o pandas.to_sql que falha com drivers HTTP.
+    """
+    if df.empty: return
+    
+    conn = db.get_connection()
     try:
-        return datetime.datetime.strptime(str(date_str), "%d/%m/%Y").strftime("%Y-%m-%d")
-    except:
-        return None
+        # 1. Garante a tabela (Criação Dinâmica baseada no DF)
+        # Mapeia tipos do Pandas para SQLite
+        type_map = {
+            'int64': 'INTEGER', 'float64': 'REAL', 'object': 'TEXT',
+            'bool': 'INTEGER', 'datetime64[ns]': 'TEXT'
+        }
+        cols_def = []
+        for col, dtype in df.dtypes.items():
+            sql_type = type_map.get(str(dtype), 'TEXT')
+            cols_def.append(f"{col} {sql_type}")
+        
+        create_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(cols_def)})"
+        
+        if db.use_turso: conn.execute(create_sql)
+        else: conn.execute(create_sql)
+
+        # 2. Limpeza (Delete prévio)
+        if delete_condition:
+            del_sql = f"DELETE FROM {table_name} WHERE {delete_condition}"
+            print(f"   🗑️  Executando limpeza: {del_sql}")
+            if db.use_turso: conn.execute(del_sql)
+            else: conn.execute(del_sql)
+
+        # 3. Inserção em Lote (Batch)
+        cols = list(df.columns)
+        placeholders = ', '.join(['?'] * len(cols))
+        insert_sql = f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders})"
+        
+        # Converte DataFrame para lista de tuplas (tratando NaNs como None)
+        data = df.where(pd.notnull(df), None).values.tolist()
+        
+        # Conversão extra para garantir tipos primitivos (int, float, str)
+        # O driver do Turso pode reclamar de tipos numpy
+        clean_data = []
+        for row in data:
+            clean_row = []
+            for item in row:
+                if hasattr(item, 'item'): item = item.item() # Numpy to Python
+                clean_row.append(item)
+            clean_data.append(tuple(clean_row))
+
+        print(f"   💾 Salvando {len(clean_data)} registros...")
+
+        if db.use_turso:
+            # Batch Turso
+            stmts = [libsql_client.Statement(insert_sql, row) for row in clean_data]
+            # O Turso tem limite de batch. Vamos dividir em chunks de 500.
+            CHUNK_SIZE = 500
+            for i in range(0, len(stmts), CHUNK_SIZE):
+                conn.batch(stmts[i:i + CHUNK_SIZE])
+        else:
+            # Batch Local
+            conn.executemany(insert_sql, clean_data)
+            conn.commit()
+            
+    except Exception as e:
+        print(f"❌ Erro ao salvar no banco: {e}")
+        raise e
+    finally:
+        conn.close()
 
 def run_scraper():
-    print(f"--- Scraping Financeiro (Ajuste Estorno Retroativo): {datetime.datetime.now().strftime('%H:%M:%S')} ---")
+    print(f"--- Scraping Financeiro (Híbrido): {datetime.datetime.now().strftime('%H:%M:%S')} ---")
     
+    db = DatabaseManager()
+    
+    # 1. Busca Credenciais (Híbrido)
     try:
-        db = DatabaseManager()
-        config = db.get_integration_config('feegow')
-        user = config.get('username') if config else os.getenv("FEEGOW_USER")
-        password = config.get('password') if config else os.getenv("FEEGOW_PASS")
+        # Tenta buscar no banco primeiro
+        res = db.execute_query("SELECT username, password FROM integrations_config WHERE service = 'feegow'")
+        if res:
+            row = res[0]
+            if isinstance(row, (tuple, list)):
+                user, password = row[0], row[1]
+            else:
+                user, password = row.username, row.password
+        else:
+            raise Exception("Não achou no banco")
     except:
+        # Fallback .env
         user = os.getenv("FEEGOW_USER")
         password = os.getenv("FEEGOW_PASS")
 
     if not user or not password:
-        print("❌ Credenciais não encontradas.")
+        print("❌ Credenciais não encontradas (Banco ou .env).")
         return
 
     hoje = datetime.datetime.now()
@@ -81,7 +144,8 @@ def run_scraper():
     iso_inicio = hoje.replace(day=1).strftime("%Y-%m-%d")
     iso_fim = hoje.strftime("%Y-%m-%d")
 
-    print(f"📅 Janela de Extração: {inicio_vis} até {fim_vis}")
+    print(f"📅 Janela: {inicio_vis} até {fim_vis}")
+    db.update_heartbeat("Faturamento (Scraping)", "RUNNING", f"Extraindo {inicio_vis}-{fim_vis}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -89,7 +153,8 @@ def run_scraper():
         page = context.new_page()
 
         try:
-            print("🔐 1. Login...")
+            # --- LÓGICA DE SCRAPING ORIGINAL (INTACTA) ---
+            print("🔐 Login...")
             page.goto("https://franchising.feegow.com/main/?P=Login")
             try:
                 if page.get_by_role("textbox", name="E-mail").is_visible(timeout=3000):
@@ -98,12 +163,11 @@ def run_scraper():
                     page.get_by_role("button", name="Entrar ").click()
             except: pass
 
-            print("🔄 2. Reset Contexto...")
             time.sleep(2)
             page.goto("https://franchising.feegow.com/v8.1/?P=MudaLocal&Pers=1&MudaLocal=0", timeout=60000)
             time.sleep(3)
 
-            print("📂 3. Acessando Relatório...")
+            print("📂 Acessando Relatório...")
             page.goto("https://franchising.feegow.com/main/?P=RelatoriosModoFranquia&Pers=1&TR=72")
 
             try:
@@ -112,8 +176,6 @@ def run_scraper():
             except: pass
 
             page.wait_for_selector(".multiselect.dropdown-toggle", state="visible", timeout=20000)
-
-            print("   Selecionando unidades...")
             page.locator(".multiselect.dropdown-toggle").first.click()
             menu = page.locator("ul.multiselect-container.dropdown-menu").first
             menu.wait_for(state="visible", timeout=5000)
@@ -133,7 +195,6 @@ def run_scraper():
                 page.locator('button[onclick*="alteraUnidade"]').click()
             except: pass
 
-            print(f"   Injetando datas...")
             page.wait_for_selector("#De", state="visible", timeout=10000)
             script_datas = f"""() => {{
                 const elDe = document.querySelector('#De');
@@ -144,10 +205,10 @@ def run_scraper():
             page.evaluate(script_datas)
             page.locator("body").click(force=True)
 
-            print("🔎 4. Pesquisando...")
+            print("🔎 Pesquisando...")
             page.locator("#btn-filtrar").click()
 
-            print("⏳ 5. Scroll Infinito...")
+            print("⏳ Baixando...")
             page.wait_for_selector("#table-resultado tbody tr", timeout=30000)
             
             last_count = 0
@@ -162,9 +223,9 @@ def run_scraper():
                 else:
                     no_change_count += 1
             
-            print(f"✅ Download finalizado: {last_count} linhas.")
+            print(f"✅ Extraído: {last_count} linhas.")
 
-            # --- PROCESSAMENTO ---
+            # --- PROCESSAMENTO DOS DADOS ---
             html = page.content()
             dfs = pd.read_html(StringIO(html), decimal=',', thousands='.')
             df_raw = max(dfs, key=lambda x: x.size)
@@ -172,78 +233,54 @@ def run_scraper():
             df = df_raw.copy()
             df.columns = [clean_column_name(c) for c in df.columns]
 
-            # Conversão de Valores
             cols_fin = [c for c in df.columns if any(t in c for t in ['valor', 'total', 'pago', 'liquido'])]
             for col in cols_fin:
                 df[col] = df[col].apply(clean_currency)
 
-            # Conversão de Datas
             col_data = next((c for c in df.columns if 'pagamento' in c and 'data' in c), None)
             if not col_data:
                 col_data = next((c for c in df.columns if 'data' in c), 'data')
             
-            # Helper para normalizar data
             def normalize_accounting_date(row):
                 d_str = row[col_data]
                 val = row['total_pago'] if 'total_pago' in row else 0
-                
                 try:
-                    # Tenta converter
                     d_obj = datetime.datetime.strptime(str(d_str), "%d/%m/%Y")
                     d_iso = d_obj.strftime("%Y-%m-%d")
-                    
-                    # REGRA DE NEGÓCIO: ESTORNO RETROATIVO
-                    # Se for negativo (cancelamento) E a data for anterior ao início da janela (ex: Dezembro)
-                    # Forçamos a data para o início da janela (01/Jan) para que o valor seja abatido AGORA.
+                    # Lógica de Estorno Retroativo (Mantida)
                     if val < 0 and d_iso < iso_inicio:
                         return iso_inicio
-                    
                     return d_iso
                 except:
                     return None
 
-            # Aplica a normalização (Data Real ou Data Forçada para Estornos)
             df['data_contabil'] = df.apply(normalize_accounting_date, axis=1)
-            
-            # Validação
             df_validas = df[df['data_contabil'].notna()].copy()
             
-            # Substitui a coluna original pela data contábil ajustada
             df_validas[col_data] = df_validas['data_contabil']
             df_validas = df_validas.drop(columns=['data_contabil'])
 
             df = df_validas
             df['updated_at'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # --- AUDITORIA RÁPIDA DE AJUSTES ---
+            # --- AUDITORIA ---
             ajustados = df[df[col_data] == iso_inicio]
             negativos_ajustados = ajustados[ajustados['total_pago'] < 0]
             if not negativos_ajustados.empty:
-                print(f"   ⚖️  Ajuste Contábil: {len(negativos_ajustados)} estornos antigos trazidos para {iso_inicio}.")
-                print(f"      Valor total ajustado: R$ {negativos_ajustados['total_pago'].sum():.2f}")
+                print(f"   ⚖️  Ajuste Retroativo: {len(negativos_ajustados)} estornos movidos para {iso_inicio}.")
 
-            # --- ATUALIZAÇÃO DO BANCO ---
-            print("💾 6. Substituindo dados no Banco...")
-            conn = sqlite3.connect(db.db_path)
+            # --- SALVAMENTO HÍBRIDO ---
+            # Define condição de limpeza para evitar duplicidade no período
+            condition = f"{col_data} >= '{iso_inicio}' AND {col_data} <= '{iso_fim}'"
             
-            df.head(0).to_sql('faturamento_analitico', conn, if_exists='append', index=False)
+            save_dataframe_to_db(db, df, 'faturamento_analitico', delete_condition=condition)
             
-            cursor = conn.execute(f"""
-                DELETE FROM faturamento_analitico 
-                WHERE {col_data} >= '{iso_inicio}' 
-                AND {col_data} <= '{iso_fim}'
-            """)
-            print(f"   🗑️  Limpeza da janela ({iso_inicio} a {iso_fim}): {cursor.rowcount} registros substituídos.")
-
-            df.to_sql('faturamento_analitico', conn, if_exists='append', index=False)
-            
-            conn.commit()
-            conn.close()
-
-            print(f"🚀 SUCESSO! Banco atualizado.")
+            print(f"🚀 Finalizado com Sucesso.")
+            db.update_heartbeat("Faturamento (Scraping)", "ONLINE", f"{len(df)} registros")
 
         except Exception as e:
-            print(f"❌ Erro: {e}")
+            print(f"❌ Erro Scraping: {e}")
+            db.update_heartbeat("Faturamento (Scraping)", "ERROR", str(e))
         finally:
             browser.close()
 

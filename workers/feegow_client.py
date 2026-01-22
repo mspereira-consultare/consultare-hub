@@ -42,6 +42,8 @@ def list_profissionals():
     data = request_endpoint("professional/list", method="GET")
     df = pd.DataFrame(normalize_content(data))
     if not df.empty and 'profissional_id' in df.columns:
+        # Garante ID numérico para merge seguro
+        df['profissional_id'] = pd.to_numeric(df['profissional_id'], errors='coerce').fillna(0).astype(int)
         return df[['profissional_id', 'nome']]
     return df
 
@@ -49,72 +51,42 @@ def list_especialidades():
     data = request_endpoint("specialties/list", method="GET")
     df = pd.DataFrame(normalize_content(data))
     if not df.empty and 'especialidade_id' in df.columns:
+        df['especialidade_id'] = pd.to_numeric(df['especialidade_id'], errors='coerce').fillna(0).astype(int)
         return df[['especialidade_id', 'nome']]
     return df
 
 def list_procedures():
-    """
-    Busca a lista de procedimentos para obter o link: procedimento_id -> grupo_id
-    """
     data = request_endpoint("procedures/list", method="GET")
     df = pd.DataFrame(normalize_content(data))
-    
-    if df.empty:
-        return df
+    if df.empty: return df
 
-    # Tenta encontrar a coluna de ID (Robustez para variações da API)
-    id_col = None
-    for col in ['id', 'ID', 'Id', 'procedimento_id', 'ProcedimentoID']:
-        if col in df.columns:
-            id_col = col
-            break
-            
-    # Tenta encontrar a coluna de Grupo ID
-    grp_col = None
-    for col in ['grupo_procedimento_id', 'grupo_id', 'GrupoProcedimentoID', 'procedure_group_id']:
-        if col in df.columns:
-            grp_col = col
-            break
+    id_col = next((c for c in ['id', 'ID', 'procedimento_id'] if c in df.columns), None)
+    grp_col = next((c for c in ['grupo_procedimento_id', 'grupo_id'] if c in df.columns), None)
 
     if id_col:
-        # Prepara renomeação
-        cols_to_keep = [id_col]
-        rename_map = {id_col: 'proc_ref_id'}
+        # Padroniza IDs para int
+        if grp_col: 
+            df[grp_col] = pd.to_numeric(df[grp_col], errors='coerce').fillna(0).astype(int)
         
-        if grp_col:
-            cols_to_keep.append(grp_col)
-            rename_map[grp_col] = 'grupo_procedimento_id'
-            
-        return df[cols_to_keep].rename(columns=rename_map)
-    
-    # Se não achou ID, retorna vazio para não quebrar o merge lá na frente
-    print(f"AVISO: Coluna de ID não encontrada na lista de procedimentos. Colunas disponíveis: {df.columns.tolist()}")
+        df[id_col] = pd.to_numeric(df[id_col], errors='coerce').fillna(0).astype(int)
+        
+        cols = {id_col: 'proc_ref_id'}
+        if grp_col: cols[grp_col] = 'grupo_procedimento_id'
+        
+        return df[list(cols.keys())].rename(columns=cols)
     return pd.DataFrame()
 
 def list_procedure_groups():
     data = request_endpoint("procedures/groups", method="GET")
     df = pd.DataFrame(normalize_content(data))
-    
-    if df.empty:
-        return df
+    if df.empty: return df
 
-    # Robustez para ID do Grupo
-    id_col = None
-    for col in ['id', 'ID', 'grupo_id']:
-        if col in df.columns:
-            id_col = col
-            break
-
-    # Robustez para Nome do Grupo
-    nome_col = None
-    for col in ['NomeGrupo', 'nome', 'Nome', 'description']:
-        if col in df.columns:
-            nome_col = col
-            break
+    id_col = next((c for c in ['id', 'ID', 'grupo_id'] if c in df.columns), None)
+    nome_col = next((c for c in ['NomeGrupo', 'nome', 'Nome'] if c in df.columns), None)
 
     if id_col and nome_col:
+        df[id_col] = pd.to_numeric(df[id_col], errors='coerce').fillna(0).astype(int)
         return df[[id_col, nome_col]].rename(columns={id_col: 'grupo_ref_id', nome_col: 'nome_grupo'})
-    
     return df
 
 # --- BUSCA PRINCIPAL ---

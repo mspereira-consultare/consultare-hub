@@ -1,183 +1,219 @@
 import requests
-import sqlite3
 import datetime
 import time
 import os
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from database_manager import DatabaseManager
+    import libsql_client
+except ImportError:
+    pass
+
 load_dotenv()
 
-DB_PATH = os.path.join(os.path.dirname(__file__), '../data/dados_clinica.db')
 URL_API = "https://cartao-beneficios.feegow.com/external/contract/datagrid"
 TOKEN = os.getenv("FEEGOW_ACCESS_TOKEN")
-
-def get_db_connection():
-    return sqlite3.connect(DB_PATH)
-
-def create_table():
-    conn = get_db_connection()
-    conn.execute('''
-        CREATE TABLE IF NOT EXISTS feegow_contracts (
-            contract_id TEXT PRIMARY KEY,
-            created_at TEXT,
-            start_date TEXT,
-            patient_name TEXT,
-            plan_name TEXT,
-            status_contract TEXT,
-            status_financial TEXT,
-            recurrence_value REAL,
-            membership_value REAL,
-            registration_number INTEGER,
-            updated_at TEXT
-        )
-    ''')
-    conn.close()
+MAX_WORKERS = 10 
 
 def safe_date_raw(iso_date):
-    """Retorna data YYYY-MM-DD sem converter fuso (UTC Puro)"""
     if not iso_date: return None
     try: return iso_date[:10]
     except: return None
 
-def fetch_page_with_retry(url, payload, headers, max_retries=3):
-    for attempt in range(max_retries):
+def fetch_page_data(url, payload, headers, page_num):
+    payload_local = payload.copy()
+    payload_local["page"] = page_num
+    for attempt in range(3):
         try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=45)
+            resp = requests.post(url, json=payload_local, headers=headers, timeout=60)
             if resp.status_code == 200: return resp.json()
-            if resp.status_code >= 500:
-                print(f" [⚠️ 500 - Retrying {attempt+1}]", end="", flush=True)
-                time.sleep(3)
-                continue
-            return None
-        except:
-            time.sleep(3)
+            if resp.status_code >= 500: time.sleep(2); continue
+        except: time.sleep(2)
     return None
 
-def process_items(items, cursor):
-    count = 0
+def process_and_save_batch(db, items):
+    if not items: return 0
+    conn = db.get_connection()
+    data_params = []
+    
+    # SQL atualizado para a NOVA estrutura
+    sql = '''
+        INSERT INTO feegow_contracts (
+            registration_number, contract_id, created_at, start_date, 
+            patient_name, plan_name,
+            status_contract, status_financial, 
+            recurrence_value, membership_value,
+            updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(registration_number) DO UPDATE SET
+            contract_id = excluded.contract_id,
+            created_at = excluded.created_at,
+            start_date = excluded.start_date,
+            status_contract = excluded.status_contract,
+            status_financial = excluded.status_financial,
+            recurrence_value = excluded.recurrence_value,
+            membership_value = excluded.membership_value,
+            updated_at = excluded.updated_at
+    '''
+
     for item in items:
-        # Tenta usar o ID, se não tiver, usa matrícula com prefixo PEND
+        # Usa Matrícula como chave principal
+        reg_num = item.get('registrationNumber')
         c_id = item.get('contractId')
-        if not c_id:
-            reg = item.get('registrationNumber')
-            if reg: c_id = f"PEND_{reg}"
-            else: continue 
+        p_name = item.get('name') or 'Desconhecido'
+
+        # Garante uma chave única (Matrícula ou Fallback composto)
+        if reg_num:
+            unique_key = str(reg_num)
+        elif c_id:
+            import hashlib
+            name_hash = hashlib.md5(p_name.encode()).hexdigest()[:6]
+            unique_key = f"{c_id}_{name_hash}"
+        else:
+            continue 
 
         try:
-            # DATAS (UTC Raw)
             raw_created = item.get('contractDate')
-            date_created = safe_date_raw(raw_created)
-            if not date_created: date_created = datetime.datetime.now().strftime('%Y-%m-%d')
-
+            date_created = safe_date_raw(raw_created) or datetime.datetime.now().strftime('%Y-%m-%d')
+            
             raw_start = item.get('initialDate') or item.get('startDate')
-            date_start = safe_date_raw(raw_start)
-            if not date_start: date_start = date_created
+            date_start = safe_date_raw(raw_start) or date_created
 
             val_rec = float(item.get('amountRecurrence') or 0)
             val_mem = float(item.get('amountMembership') or item.get('membershipValue') or 0)
             
-            cursor.execute('''
-                INSERT INTO feegow_contracts (
-                    contract_id, created_at, start_date, 
-                    patient_name, plan_name,
-                    status_contract, status_financial, 
-                    recurrence_value, membership_value,
-                    registration_number, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-                ON CONFLICT(contract_id) DO UPDATE SET
-                    created_at = excluded.created_at,
-                    start_date = excluded.start_date,
-                    status_contract = excluded.status_contract,
-                    status_financial = excluded.status_financial,
-                    recurrence_value = excluded.recurrence_value,
-                    membership_value = excluded.membership_value,
-                    updated_at = excluded.updated_at
-            ''', (
-                c_id, date_created, date_start,
-                item.get('name'), item.get('plan'),
-                item.get('statusContract'), item.get('statusRecurrenceDescription'),
-                val_rec, val_mem, item.get('registrationNumber')
-            ))
-            count += 1
+            params = (
+                unique_key,                 # PK
+                str(c_id or ''),            # Coluna normal
+                date_created, date_start,
+                str(p_name), str(item.get('plan') or ''),
+                str(item.get('statusContract') or ''), str(item.get('statusRecurrenceDescription') or ''),
+                val_rec, val_mem
+            )
+            data_params.append(params)
         except: pass
-    return count
+
+    if not data_params: return 0
+
+    try:
+        if db.use_turso:
+            stmts = [libsql_client.Statement(sql, p) for p in data_params]
+            conn.batch(stmts)
+        else:
+            conn.executemany(sql, data_params)
+            conn.commit()
+        return len(data_params)
+    except Exception as e:
+        # Debug: Se der erro, mostra no terminal para sabermos o motivo
+        # print(f"Erro Batch: {e}") 
+        return 0
+    finally:
+        conn.close()
+
+def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=30, fill='█'):
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filled_length = int(length * iteration // total)
+    bar = fill * filled_length + '-' * (length - filled_length)
+    sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix}')
+    sys.stdout.flush()
 
 def run_worker_contracts():
-    print(f"--- Worker Contratos (V9 - Automático): {datetime.datetime.now().strftime('%H:%M:%S')} ---")
+    print(f"--- Worker Contratos (Reset Schema): {datetime.datetime.now().strftime('%H:%M:%S')} ---")
     
-    if not TOKEN: return
-    create_table()
-    
-    headers = {"x-access-token": TOKEN, "Content-Type": "application/json"}
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    total_global = 0
+    if not TOKEN:
+        print("❌ Token não encontrado")
+        return
 
-    # =========================================================================
-    # ESTRATÉGIA 1: VARREDURA DO MÊS ATUAL (AUTOMÁTICO)
-    # Pega o dia 1 do mês atual até o dia de hoje
-    # =========================================================================
-    now = datetime.datetime.now()
-    start_date_scan = now.strftime('%Y-%m-01') # Sempre o dia 01 do mês corrente
-    end_date_scan = now.strftime('%Y-%m-%d')   # Hoje
+    db = DatabaseManager()
+    conn = db.get_connection()
     
-    print(f"\n📅 ESTRATÉGIA 1: Varredura Cirúrgica ({start_date_scan} até {end_date_scan})")
-    
-    page = 1
-    has_more = True
-    while has_more:
-        print(f"   > Scan Mês Atual Pág {page}...", end="", flush=True)
-        
-        payload = { 
-            "page": page, "perPage": 100,
-            "createdStartDate": start_date_scan,
-            "createdEndDate": end_date_scan
-        }
-        
-        data = fetch_page_with_retry(URL_API, payload, headers)
-        if not data: break
-        
-        items = data.get('data', [])
-        if not items: break
-        
-        saved = process_items(items, cursor)
-        conn.commit()
-        total_global += saved
-        print(f" ✅ {saved} itens.")
-        
-        if page >= data.get('pages', 1): has_more = False
-        else: page += 1
+    # === AQUI ESTÁ A CORREÇÃO ===
+    # Forçamos a exclusão da tabela antiga para garantir que a nova seja criada corretamente
+    print("🧹 Limpando tabela antiga para aplicar nova estrutura (Matrícula como Chave)...")
+    try:
+        conn.execute("DROP TABLE IF EXISTS feegow_contracts")
+        if not db.use_turso: conn.commit()
+        print("✅ Tabela antiga removida.")
+    except Exception as e:
+        print(f"⚠️ Aviso ao dropar: {e}")
 
-    # =========================================================================
-    # ESTRATÉGIA 2: CARGA GERAL (Histórico)
-    # Garante a base legada e contratos antigos
-    # =========================================================================
-    print("\n📚 ESTRATÉGIA 2: Carga Geral (Histórico)")
-    page = 1
-    has_more = True
-    while has_more:
-        print(f"   > Histórico Pág {page}...", end="", flush=True)
-        payload = { "page": page, "perPage": 100 }
-        
-        data = fetch_page_with_retry(URL_API, payload, headers)
-        if not data: 
-            page += 1; continue 
-        
-        items = data.get('data', [])
-        if not items: break
-        
-        saved = process_items(items, cursor)
-        conn.commit()
-        total_global += saved
-        print(f" ✅ {saved} itens.")
-        
-        if page >= data.get('pages', 1): has_more = False
-        else: page += 1
+    # Cria a NOVA tabela
+    try:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS feegow_contracts (
+                registration_number TEXT PRIMARY KEY, 
+                contract_id TEXT, 
+                created_at TEXT, 
+                start_date TEXT,
+                patient_name TEXT, 
+                plan_name TEXT, 
+                status_contract TEXT,
+                status_financial TEXT, 
+                recurrence_value REAL, 
+                membership_value REAL,
+                updated_at TEXT
+            )
+        ''')
+        if not db.use_turso: conn.commit()
+        print("✅ Nova tabela criada com sucesso.")
+    except Exception as e:
+        print(f"❌ Erro fatal criando tabela: {e}")
+        conn.close()
+        return
 
     conn.close()
-    print(f"\n🚀 Finalizado! Total processado: {total_global}")
+
+    headers = {"x-access-token": TOKEN, "Content-Type": "application/json"}
+    base_payload = { "perPage": 100 }
+    
+    print(f"📡 Modo: FULL SCAN")
+    db.update_heartbeat("Contratos (API)", "RUNNING", "Iniciando...")
+
+    # Discovery
+    first_page = fetch_page_data(URL_API, base_payload, headers, 1)
+    if not first_page:
+        print("⚠️ Erro ao buscar página 1.")
+        return
+
+    total_pages = first_page.get('pages', 1)
+    total_items = first_page.get('total', 0)
+    
+    if total_items == 0 and total_pages > 0: total_items = f"~{total_pages * 100}"
+    print(f"📊 Volume: {total_items} registros em {total_pages} páginas.")
+
+    total_saved = process_and_save_batch(db, first_page.get('data', []))
+    
+    if total_pages > 1:
+        print(f"🚀 Baixando com {MAX_WORKERS} threads...")
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            future_to_page = {
+                executor.submit(fetch_page_data, URL_API, base_payload, headers, p): p 
+                for p in range(2, total_pages + 1)
+            }
+            processed_count = 0
+            total_tasks = len(future_to_page)
+            print_progress_bar(0, total_tasks, prefix='Progresso:', suffix='Iniciando', length=40)
+
+            for future in as_completed(future_to_page):
+                try:
+                    data = future.result()
+                    if data:
+                        saved = process_and_save_batch(db, data.get('data', []))
+                        total_saved += saved
+                    processed_count += 1
+                    print_progress_bar(processed_count, total_tasks, prefix='Progresso:', suffix=f'({processed_count}/{total_tasks})', length=40)
+                except Exception:
+                    processed_count += 1
+    
+    print()
+    msg_final = f"Finalizado. Total Salvo: {total_saved}"
+    print(f"🏁 {msg_final}")
+    db.update_heartbeat("Contratos (API)", "ONLINE", msg_final)
 
 if __name__ == "__main__":
     run_worker_contracts()

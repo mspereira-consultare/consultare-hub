@@ -1,0 +1,14 @@
+# --- Essenciais ---
+requests
+python-dotenv
+schedule
+libsql-client
+
+# --- Dados e Processamento ---
+pandas
+lxml
+html5lib
+beautifulsoup4
+
+# --- Scraping ---
+playwright

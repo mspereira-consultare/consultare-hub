@@ -5,9 +5,9 @@ import sys
 import pandas as pd
 from dotenv import load_dotenv
 
-# Configuração Híbrida: Tenta Turso, se falhar (Windows), vai de SQLite
+# Tenta importar o cliente Turso (HTTP)
 try:
-    import libsql_experimental as libsql
+    import libsql_client
     HAS_TURSO_LIB = True
 except ImportError:
     HAS_TURSO_LIB = False
@@ -20,80 +20,88 @@ LOCAL_DB_PATH = os.path.join(BASE_DIR, 'data', 'dados_clinica.db')
 
 class DatabaseManager:
     def __init__(self):
-        # 1. Configuração Turso
         self.turso_url = os.getenv("TURSO_URL")
         self.turso_token = os.getenv("TURSO_TOKEN")
-        self.use_turso = HAS_TURSO_LIB and self.turso_url and self.turso_token
         
+        # --- FIX PARA ERRO 505 ---
+        # Força o uso de HTTPS em vez de libsql:// ou wss://
+        # O cliente Python funciona melhor com HTTP puro em alguns ambientes
+        if self.turso_url:
+            self.turso_url = self.turso_url.replace("libsql://", "https://").replace("wss://", "https://")
+
+        # Usa Turso se tiver URL configurada E a lib instalada
+        self.use_turso = HAS_TURSO_LIB and self.turso_url and "https" in self.turso_url
         self.db_path = LOCAL_DB_PATH
         
         if not self.use_turso:
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-            print(f"🔌 Database: LOCAL (SQLite) -> {self.db_path}")
+            print(f"🔌 [DB] Usando LOCAL (SQLite): {self.db_path}")
         else:
-            print(f"☁️ Database: NUVEM (Turso)")
+            print(f"☁️ [DB] Usando NUVEM (Turso HTTPS)")
 
         self._init_db()
 
     def get_connection(self):
+        """Retorna conexão apropriada (Objeto Turso ou SQLite Connection)"""
         if self.use_turso:
-            return libsql.connect(self.turso_url, auth_token=self.turso_token)
+            # Usa 'auth_token' (snake_case) para o Python
+            return libsql_client.create_client_sync(url=self.turso_url, auth_token=self.turso_token)
         else:
             return sqlite3.connect(self.db_path)
 
     def _init_db(self):
-        """Cria tabelas essenciais se não existirem"""
+        """Cria as tabelas necessárias"""
         conn = self.get_connection()
         try:
-            # Tabela de Status (Heartbeat)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS system_status (
-                    service_name TEXT PRIMARY KEY, 
-                    status TEXT, 
-                    last_run TEXT, 
-                    details TEXT
-                )
-            """)
-            
-            # Tabela de Configurações
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS integrations_config (
-                    service TEXT PRIMARY KEY,
-                    username TEXT,
-                    password TEXT,
-                    token TEXT,
-                    unit_id TEXT,
+            queries = [
+                # Tabela de Status do Sistema (Heartbeat)
+                """CREATE TABLE IF NOT EXISTS system_status (
+                    service_name TEXT PRIMARY KEY, status TEXT, last_run TEXT, details TEXT
+                )""",
+                # Tabela de Configurações
+                """CREATE TABLE IF NOT EXISTS integrations_config (
+                    service TEXT PRIMARY KEY, username TEXT, password TEXT, token TEXT, unit_id TEXT, updated_at TEXT
+                )""",
+                # Tabela Fila Médica
+                """CREATE TABLE IF NOT EXISTS espera_medica (
+                    hash_id TEXT PRIMARY KEY,
+                    unidade TEXT,
+                    paciente TEXT,
+                    chegada TEXT,
+                    espera TEXT,
+                    status TEXT,
+                    profissional TEXT,
                     updated_at TEXT
-                )
-            """)
-            
-            # Tabelas de Negócio (Médico/Recepção) - Garantia
-            # (Adicionei campos genéricos baseados no seu uso, o sqlite aceita dinamicamente na inserção se não for strict)
-            conn.commit()
-        except Exception as e:
-            print(f"⚠️ Erro init DB: {e}")
-        finally:
-            try: conn.close()
-            except: pass
+                )""",
+                # Tabela Fila Recepção
+                """CREATE TABLE IF NOT EXISTS recepcao_historico (
+                    hash_id TEXT PRIMARY KEY,
+                    id_externo INTEGER,
+                    unidade_id INTEGER,
+                    unidade_nome TEXT,
+                    paciente_nome TEXT,
+                    dt_chegada TEXT,
+                    dt_atendimento TEXT,
+                    status TEXT,
+                    dia_referencia TEXT,
+                    updated_at TEXT
+                )"""
+            ]
 
-    # --- MÉTODOS AUXILIARES ---
-    
-    def execute_query(self, sql, params=()):
-        conn = self.get_connection()
-        try:
             if self.use_turso:
-                res = conn.execute(sql, params).fetchall()
+                for q in queries: conn.execute(q)
             else:
-                res = conn.execute(sql, params).fetchall()
-            conn.commit()
-            return res
+                cursor = conn.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL;")
+                for q in queries: cursor.execute(q)
+                conn.commit()
+                
         except Exception as e:
-            print(f"❌ Erro Query: {e}")
-            return []
+            print(f"⚠️ Erro _init_db: {e}")
         finally:
-            try: conn.close()
-            except: pass
+            conn.close()
 
+    # --- MÉTODO GENÉRICO PARA HEARTBEAT ---
     def update_heartbeat(self, service_name, status, details=""):
         conn = self.get_connection()
         try:
@@ -106,46 +114,47 @@ class DatabaseManager:
                     last_run = excluded.last_run,
                     details = excluded.details
             """
-            conn.execute(sql, (service_name, status, agora, str(details)))
-            conn.commit()
+            params = (service_name, status, agora, str(details))
+            
+            if self.use_turso:
+                conn.execute(sql, params)
+            else:
+                conn.execute(sql, params)
+                conn.commit()
         except Exception as e:
             print(f"⚠️ Erro Heartbeat ({service_name}): {e}")
         finally:
-            try: conn.close()
-            except: pass
+            conn.close()
 
-    # --- LÓGICA DE NEGÓCIO (PRESERVADA) ---
-
-    def salvar_dados_medicos(self, df):
-        """Salva o DataFrame de médicos no banco (Compatível Turso/SQLite)"""
-        if df.empty: return
-        
+    # --- MÉTODO GENÉRICO DE QUERY ---
+    def execute_query(self, sql, params=()):
         conn = self.get_connection()
         try:
-            # Em vez de to_sql (que exige SQLAlchemy), fazemos insert manual para garantir compatibilidade
-            # Supondo colunas: UNIDADE, PACIENTE, CHEGADA, ESPERA, STATUS, PROFISSIONAL, etc.
-            # Ajuste os campos conforme seu DataFrame real
-            
-            # 1. Garante tabela
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS espera_medica (
-                    hash_id TEXT PRIMARY KEY,
-                    unidade TEXT,
-                    paciente TEXT,
-                    chegada TEXT,
-                    espera TEXT,
-                    status TEXT,
-                    profissional TEXT,
-                    updated_at TEXT
-                )
-            """)
-            
+            if self.use_turso:
+                rs = conn.execute(sql, params)
+                return rs.rows
+            else:
+                cursor = conn.cursor()
+                rs = cursor.execute(sql, params).fetchall()
+                conn.commit()
+                return rs
+        except Exception as e:
+            print(f"❌ Erro Query: {e}")
+            return []
+        finally:
+            conn.close()
+
+    # --- LÓGICA MÉDICA ---
+    def salvar_dados_medicos(self, df):
+        if df.empty: return
+        conn = self.get_connection()
+        try:
             agora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             
             for _, row in df.iterrows():
-                # Cria um ID único para não duplicar
+                # Cria ID único
                 raw_id = f"{row.get('UNIDADE')}-{row.get('PACIENTE')}-{row.get('CHEGADA')}"
-                hash_id = str(hash(raw_id)) # Simplificado, ideal usar md5 se tiver importado
+                hash_id = str(hash(raw_id)).replace("-", "N") 
                 
                 sql = """
                     INSERT INTO espera_medica (hash_id, unidade, paciente, chegada, espera, status, profissional, updated_at)
@@ -156,71 +165,128 @@ class DatabaseManager:
                         profissional = excluded.profissional,
                         updated_at = excluded.updated_at
                 """
-                conn.execute(sql, (
-                    hash_id, 
-                    row.get('UNIDADE'), 
-                    row.get('PACIENTE'), 
-                    row.get('CHEGADA'),
-                    row.get('ESPERA'),
-                    row.get('STATUS'),
-                    row.get('PROFISSIONAL'),
-                    agora
-                ))
-            conn.commit()
+                params = (
+                    hash_id, row.get('UNIDADE'), row.get('PACIENTE'), 
+                    row.get('CHEGADA'), row.get('ESPERA'), 
+                    row.get('STATUS'), row.get('PROFISSIONAL'), agora
+                )
+                
+                if self.use_turso: conn.execute(sql, params)
+                else: conn.execute(sql, params)
+            
+            if not self.use_turso: conn.commit()
         except Exception as e:
             print(f"Erro salvar médicos: {e}")
         finally:
-            try: conn.close()
-            except: pass
+            conn.close()
 
     def finalizar_ausentes_medicos(self, nome_unidade, hashes_presentes):
-        """Marca como atendidos os pacientes que sumiram da lista da Feegow"""
         conn = self.get_connection()
         try:
-            if not hashes_presentes:
-                # Se a lista veio vazia, talvez a API falhou. Não finalizamos todos por segurança.
-                return 
+            agora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            if not hashes_presentes: return
 
             placeholders = ','.join(['?'] * len(hashes_presentes))
-            # ATENÇÃO: Turso/LibSQL tem suporte limitado a DELETE/UPDATE complexo com IN
-            # Mas para listas pequenas funciona.
-            
             sql = f"""
-                UPDATE espera_medica 
-                SET status = 'Finalizado (Saiu da Fila)', updated_at = ?
-                WHERE unidade = ? 
-                AND status NOT LIKE 'Finalizado%'
+                UPDATE espera_medica SET status = 'Finalizado (Saiu)', updated_at = ?
+                WHERE unidade = ? AND status NOT LIKE 'Finalizado%' 
                 AND hash_id NOT IN ({placeholders})
             """
-            params = [datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S'), nome_unidade] + hashes_presentes
+            params = [agora, nome_unidade] + hashes_presentes
             
-            conn.execute(sql, params)
-            conn.commit()
+            if self.use_turso: conn.execute(sql, params)
+            else: 
+                conn.execute(sql, params)
+                conn.commit()
         except Exception as e:
-            # Erro comum se a lista for muito grande para o SQL
             print(f"Erro finalizar médicos: {e}")
         finally:
-            try: conn.close()
-            except: pass
+            conn.close()
 
+    # --- LÓGICA RECEPÇÃO ---
     def salvar_dados_recepcao(self, dados_brutos):
-        # Implementação similar à de médicos, adaptada para a lista de dicionários da recepção
-        # ... (Sua lógica existente aqui) ...
-        pass 
-
-    def finalizar_ausentes_recepcao(self, unidade_id, ids_presentes):
-        # ... (Sua lógica existente aqui) ...
-        pass
-
-    def limpar_dias_anteriores(self):
-        """Limpa registros muito antigos para não lotar o banco"""
+        if not dados_brutos: return
         conn = self.get_connection()
         try:
-            # Exemplo: Manter apenas últimos 7 dias na tabela de fila "viva"
-            limit_date = (datetime.datetime.now() - datetime.timedelta(days=7)).strftime('%Y-%m-%d')
-            conn.execute("DELETE FROM espera_medica WHERE updated_at < ?", (limit_date,))
-            conn.commit()
+            agora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            dia_ref = datetime.datetime.now().strftime('%Y-%m-%d')
+
+            for item in dados_brutos:
+                id_ext = item.get('id')
+                uid = item.get('UnidadeID') or item.get('UnidadeID_Coleta')
+                unidade_nome = "Desconhecida"
+                if uid == 2: unidade_nome = "Ouro Verde"
+                elif uid == 3: unidade_nome = "Centro Cambui"
+                elif uid == 12: unidade_nome = "Campinas Shopping"
+
+                paciente = item.get('PacienteNome', 'Desconhecido')
+                dt_chegada = item.get('DataChegada') 
+                dt_atend = item.get('DataAtendimento') 
+                status = item.get('StatusNome', 'Indefinido')
+
+                hash_id = f"REC_{id_ext}_{uid}"
+
+                sql = """
+                    INSERT INTO recepcao_historico (
+                        hash_id, id_externo, unidade_id, unidade_nome, paciente_nome,
+                        dt_chegada, dt_atendimento, status, dia_referencia, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(hash_id) DO UPDATE SET
+                        dt_atendimento = excluded.dt_atendimento,
+                        status = excluded.status,
+                        updated_at = excluded.updated_at
+                """
+                params = (hash_id, id_ext, uid, unidade_nome, paciente, dt_chegada, dt_atend, status, dia_ref, agora)
+
+                if self.use_turso: conn.execute(sql, params)
+                else: conn.execute(sql, params)
+
+            if not self.use_turso: conn.commit()
+        except Exception as e:
+            print(f"Erro salvar recepção: {e}")
+        finally:
+            conn.close()
+
+    def finalizar_ausentes_recepcao(self, unidade_id, ids_presentes):
+        conn = self.get_connection()
+        try:
+            agora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            dia_ref = datetime.datetime.now().strftime('%Y-%m-%d')
+            
+            if not ids_presentes: return
+
+            placeholders = ','.join(['?'] * len(ids_presentes))
+            
+            # Atualiza para 'Finalizado' quem sumiu da lista da API (foi atendido/foi embora)
+            sql = f"""
+                UPDATE recepcao_historico 
+                SET status = 'Finalizado (Saiu)', updated_at = ?
+                WHERE unidade_id = ? 
+                AND dia_referencia = ?
+                AND status NOT LIKE 'Finalizado%'
+                AND id_externo NOT IN ({placeholders})
+            """
+            params = [agora, unidade_id, dia_ref] + ids_presentes
+            
+            if self.use_turso:
+                conn.execute(sql, params)
+            else:
+                conn.execute(sql, params)
+                conn.commit()
+        except Exception as e:
+            print(f"Erro finalizar recepção: {e}")
+        finally:
+            conn.close()
+
+    def limpar_dias_anteriores(self):
+        conn = self.get_connection()
+        try:
+            limit = (datetime.datetime.now() - datetime.timedelta(days=3)).strftime('%Y-%m-%d')
+            if self.use_turso:
+                conn.execute("DELETE FROM espera_medica WHERE updated_at < ?", (limit,))
+            else:
+                conn.execute("DELETE FROM espera_medica WHERE updated_at < ?", (limit,))
+                conn.commit()
         except: pass
         finally:
-            try: conn.close()
-            except: pass
+            conn.close()

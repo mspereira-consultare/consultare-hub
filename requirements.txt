@@ -1,8 +1,0 @@
-playwright
-pandas
-requests
-python-dotenv
-lxml
-html5lib
-BeautifulSoup4
-libsql-experimental; sys_platform != 'win32'

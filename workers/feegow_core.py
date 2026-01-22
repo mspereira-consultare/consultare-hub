@@ -4,7 +4,7 @@ import os
 import time
 import html
 import re
-import sqlite3
+import sys
 from io import StringIO
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -13,20 +13,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Caminho absoluto para o banco de dados
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../data/dados_clinica.db')
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+try:
+    from database_manager import DatabaseManager
+except ImportError:
+    pass
 
 def get_feegow_config_from_db():
-    """Busca credenciais no banco de dados SQLite"""
+    """Busca credenciais no banco de dados (Híbrido)"""
     try:
-        conn = sqlite3.connect(DB_PATH)
-        res = conn.execute("SELECT username, password, token FROM integrations_config WHERE service = 'feegow'").fetchone()
-        conn.close()
+        db = DatabaseManager()
+        res = db.execute_query("SELECT username, password, token FROM integrations_config WHERE service = 'feegow'")
+        
         if res:
-            return {
-                "user": res[0],
-                "pass": res[1],
-                "token": res[2] # Cookie de Fallback
-            }
+            row = res[0]
+            # Extração segura (Tupla ou Objeto)
+            if isinstance(row, (tuple, list)):
+                return {"user": row[0], "pass": row[1], "token": row[2]}
+            else:
+                return {"user": row.username, "pass": row.password, "token": row.token}
     except Exception as e:
         # print(f"Aviso: Não foi possível ler config do banco: {e}")
         pass
@@ -35,10 +41,8 @@ def get_feegow_config_from_db():
 class FeegowSystem:
     def __init__(self):
         self.session = requests.Session()
-        # Headers que fingem ser um navegador Chrome
         self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
-            "Content-Type": "application/x-www-form-urlencoded"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
         })
         self.base_url = "https://franchising.feegow.com"
 
