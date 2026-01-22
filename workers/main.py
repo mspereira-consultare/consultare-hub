@@ -5,9 +5,10 @@ import sys
 import datetime
 import schedule
 
-# --- CONFIGURAÇÃO PARA LOGS IMEDIATOS NO DOCKER ---
-sys.stdout.reconfigure(line_buffering=True)
-sys.stderr.reconfigure(line_buffering=True)
+# --- CONFIGURAÇÃO: LOGS IMEDIATOS + SUPORTE A EMOJIS (WINDOWS) ---
+# O encoding='utf-8' impede o erro 'charmap codec can't encode character' no Windows
+sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
+sys.stderr.reconfigure(line_buffering=True, encoding='utf-8')
 
 # Adiciona diretório atual ao path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -21,7 +22,6 @@ try:
     from worker_contracts import run_worker_contracts
     
     # Monitores (Loops infinitos)
-    # Nota: monitor_recepcao e monitor_medico já possuem while True interno.
     from monitor_recepcao import run_monitor_recepcao
     from monitor_medico import run_monitor_medico
     
@@ -86,14 +86,10 @@ def run_on_demand_listener():
         time.sleep(5)
 
 # --- WRAPPERS DE SEGURANÇA ---
-# Esses wrappers protegem o main de cair se um monitor der crash
-
 def run_monitor_recepcao_safe():
     while True:
         if is_working_hours():
             try: 
-                # O monitor já tem while True, mas se der crash fatal, ele sai.
-                # Aqui nós reiniciamos ele.
                 run_monitor_recepcao()
             except Exception as e: 
                 print(f"⚠️ Crash Monitor Recepção: {e}. Reiniciando em 10s...")
@@ -115,7 +111,7 @@ def run_clinia_safe():
                 clinia_cycle()
             except Exception as e:
                 print(f"⚠️ Erro Clinia: {e}")
-            time.sleep(60) # Roda a cada 1 minuto
+            time.sleep(60) 
         else:
             time.sleep(1800)
 
@@ -135,8 +131,6 @@ def run_scheduler():
         
     # Agendamento
     schedule.every().day.at("06:00").do(daily_full_sync)
-    
-    # Backup: roda contratos de novo no almoço para pegar matriculas novas
     schedule.every().day.at("12:00").do(lambda: run_worker_contracts())
 
     while True:
@@ -144,6 +138,7 @@ def run_scheduler():
         time.sleep(60)
 
 def start_orchestrator():
+    # Os emojis abaixo causavam erro no Windows sem o encoding='utf-8'
     print("\n🎹 ORQUESTRADOR HÍBRIDO INICIADO 🎹")
     print(f"🌍 Ambiente: {'RAILWAY/PROD' if os.getenv('RAILWAY_ENVIRONMENT') else 'LOCAL'}")
     
@@ -157,7 +152,6 @@ def start_orchestrator():
 
     for t in threads: t.start()
 
-    # Mantém a thread principal viva
     try:
         while True: time.sleep(10)
     except KeyboardInterrupt:
