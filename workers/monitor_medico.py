@@ -95,15 +95,21 @@ def run_monitor_medico():
                 print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
 
             if sessao_ativa:
+                msg = f"Ciclo concluído. Total detectado: {total_detectado_ciclo}"
+                # AVISA QUE ESTÁ VIVO
+                db.update_heartbeat("Monitor Médico", "online", msg)
+                
                 if total_detectado_ciclo == 0:
-                    # Imprime ponto se ninguém em nenhuma unidade (para não poluir)
                     print(".", end="", flush=True)
                 else:
-                    print(f"[{timestamp}] Ciclo concluído. Total: {total_detectado_ciclo}")
+                    print(f"[{timestamp}] {msg}")
 
         except Exception as e:
             print(f"\n[ERRO CRÍTICO] Monitor Médico: {e}")
-            sessao_ativa = False # Força relogin
+            # AVISA QUE DEU ERRO
+            try: db.update_heartbeat("Monitor Médico", "error", str(e))
+            except: pass
+            sessao_ativa = False
         
         # Espera 15s para o próximo ciclo
         time.sleep(15)
