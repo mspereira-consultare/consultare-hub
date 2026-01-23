@@ -1,7 +1,10 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { DollarSign, FilterX, Calendar, Stethoscope, ChevronDown, Search } from 'lucide-react';
+import { 
+    DollarSign, FilterX, Calendar, Stethoscope, ChevronDown, Search,
+    RefreshCw, Clock, Loader2 // Novos ícones
+} from 'lucide-react';
 import { FinancialKPIs } from './components/FinancialKPIs';
 import { HistoryTable } from './components/HistoryTable';
 import { GroupList } from './components/GroupList';
@@ -23,8 +26,9 @@ const SearchableSelect = ({ options, value, onChange, placeholder }: any) => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
+    // CORREÇÃO: Proteção contra null
     const filteredOptions = options.filter((opt: any) => 
-        opt.name.toLowerCase().includes(searchTerm.toLowerCase())
+        (opt.name || '').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     const selectedLabel = value === 'all' ? placeholder : value;
@@ -60,7 +64,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder }: any) => {
                         </div>
                     </div>
                     
-                    <div className="max-h-[250px] overflow-y-auto">
+                    <div className="max-h-[250px] overflow-y-auto custom-scrollbar">
                         <div 
                             onClick={() => { onChange('all'); setIsOpen(false); }}
                             className={`px-4 py-2 text-sm cursor-pointer hover:bg-blue-50 hover:text-blue-700 ${value === 'all' ? 'bg-blue-50 text-blue-700 font-medium' : 'text-slate-600'}`}
@@ -107,8 +111,14 @@ export default function FinancialPage() {
   const [procedures, setProcedures] = useState<any[]>([]);
   const [totals, setTotals] = useState({ total: 0, qtd: 0 });
 
+  // --- CONTROLE DE ATUALIZAÇÃO ---
+  const [heartbeat, setHeartbeat] = useState<any>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+
   const fetchData = async () => {
-    setLoading(true);
+    // Não ativa loading fullscreen se for apenas polling
+    if (!heartbeat) setLoading(true);
+
     try {
         const params = new URLSearchParams({
             group: selectedGroup,
@@ -133,15 +143,29 @@ export default function FinancialPage() {
                 qtd: m.qtd || 0
             })) || []);
             
+            // Só atualiza listas se não estiver filtrando
             if (selectedGroup === 'all') {
                 setGroups(data.groups?.map((g: any) => ({
                     ...g,
                     label: g.procedure_group || g.label || g.name || 'Desconhecido'
                 })) || []);
             }
+            if (selectedProcedure === 'all') {
+                setProcedures(data.procedures || []);
+            }
 
-            setProcedures(data.procedures || []);
             setTotals(data.totals || { total: 0, qtd: 0 });
+
+            // HEARTBEAT
+            if (data.heartbeat) {
+                setHeartbeat(data.heartbeat);
+                if (data.heartbeat.status === 'RUNNING' || data.heartbeat.status === 'PENDING') {
+                    setIsUpdating(true);
+                    setTimeout(fetchData, 3000); // Polling
+                } else {
+                    setIsUpdating(false);
+                }
+            }
         }
     } catch (err) {
         console.error("Erro Financeiro:", err);
@@ -150,7 +174,25 @@ export default function FinancialPage() {
     }
   };
 
+  const handleManualUpdate = async () => {
+    setIsUpdating(true);
+    try {
+        await fetch('/api/admin/financial/history', { method: 'POST' });
+        setTimeout(fetchData, 1000);
+    } catch (e) {
+        console.error(e);
+        setIsUpdating(false);
+    }
+  };
+
   useEffect(() => { fetchData(); }, [selectedGroup, selectedProcedure, dateRange]);
+
+  // Formatador de Data do Status
+  const formatLastUpdate = (dateString: string) => {
+    if (!dateString) return 'Nunca';
+    const isoString = dateString.replace(' ', 'T') + 'Z';
+    try { return new Date(isoString).toLocaleString('pt-BR'); } catch (e) { return dateString; }
+  };
 
   return (
     <div className="p-6 bg-slate-50 min-h-screen flex flex-col gap-6">
@@ -160,14 +202,70 @@ export default function FinancialPage() {
         <div className="flex items-center gap-3">
             <div className="p-3 bg-blue-900 rounded-xl text-white shadow-md"><DollarSign size={24} /></div>
             <div>
-                <h1 className="text-xl font-bold text-slate-800">Financeiro Clínicas</h1>
+                <h1 className="text-xl font-bold text-slate-800">Faturamento & Produção</h1>
                 <p className="text-slate-500 text-xs">
-                    {selectedGroup !== 'all' ? selectedGroup : 'Visão Geral'}
+                    Visão analítica de procedimentos realizados e receita.
                 </p>
             </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto">
+            
+            {/* STATUS (NOVO) */}
+            {heartbeat && (
+                <div className="hidden lg:flex flex-col items-end mr-4 border-r border-slate-100 pr-4">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                        Última Sincronização
+                    </span>
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                        <Clock size={12} />
+                        {formatLastUpdate(heartbeat.last_run)}
+                    </div>
+                </div>
+            )}
+
+            {/* BOTÃO ATUALIZAR (NOVO) */}
+            <button 
+                onClick={handleManualUpdate}
+                disabled={isUpdating}
+                className={`
+                    flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border
+                    ${isUpdating 
+                        ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-wait' 
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-blue-600'
+                    }
+                `}
+            >
+                 {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                 {isUpdating ? 'Sincronizando...' : 'Atualizar'}
+            </button>
+            
+            {/* DATE PICKER (MANTIDO) */}
+            <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
+                <Calendar size={16} className="text-slate-500" />
+                <input 
+                    type="date" 
+                    value={dateRange.start}
+                    onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                    className="bg-transparent text-sm text-slate-700 outline-none w-28"
+                />
+                <span className="text-slate-400">-</span>
+                <input 
+                    type="date" 
+                    value={dateRange.end}
+                    onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                    className="bg-transparent text-sm text-slate-700 outline-none w-28"
+                />
+            </div>
+
+            {/* FILTROS DE GRUPO/PROC (MANTIDOS) */}
+            <SearchableSelect 
+                options={groups} 
+                value={selectedGroup} 
+                onChange={setSelectedGroup} 
+                placeholder="Todos os Grupos"
+            />
+
             <SearchableSelect 
                 options={procedures} 
                 value={selectedProcedure} 
@@ -175,29 +273,12 @@ export default function FinancialPage() {
                 placeholder="Todos Procedimentos"
             />
 
-            <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
-                <Calendar size={16} className="text-slate-500" />
-                <input 
-                    type="date" 
-                    value={dateRange.start}
-                    onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                    className="bg-transparent text-sm text-slate-700 outline-none w-32"
-                />
-                <span className="text-slate-400">-</span>
-                <input 
-                    type="date" 
-                    value={dateRange.end}
-                    onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                    className="bg-transparent text-sm text-slate-700 outline-none w-32"
-                />
-            </div>
-
             {(selectedGroup !== 'all' || selectedProcedure !== 'all') && (
                 <button 
                     onClick={() => { setSelectedGroup('all'); setSelectedProcedure('all'); }} 
                     className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition"
                 >
-                    <FilterX size={14} /> Limpar
+                    <FilterX size={14} />
                 </button>
             )}
         </div>
@@ -205,43 +286,30 @@ export default function FinancialPage() {
 
       <FinancialKPIs data={totals} />
 
-      {/* --- GRID DE LAYOUT (ALTERADO) --- */}
+      {/* --- GRID DE LAYOUT (MANTIDO) --- */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 relative z-10">
           
-          {/* --- LINHA SUPERIOR (3 CARDS LADO A LADO) --- */}
-          
-          {/* 1. Grupos de Procedimento */}
           <div className="lg:col-span-1">
               <GroupList 
                 groups={groups} 
                 selected={selectedGroup} 
-                onSelect={(g) => { 
-                    setSelectedGroup(g); 
-                    setSelectedProcedure('all'); 
-                }} 
+                onSelect={(g) => { setSelectedGroup(g); setSelectedProcedure('all'); }} 
                 className="h-[350px]" 
               />
           </div>
 
-          {/* 2. Evolução Mensal */}
           <div className="lg:col-span-1">
               <HistoryChart title="Evolução Mensal" data={monthly} color="#1e3a8a" className="h-[350px]" />
           </div>
 
-          {/* 3. Detalhe Mensal */}
           <div className="lg:col-span-1">
               <HistoryTable title="Detalhe Mensal" data={monthly} className="h-[350px]" />
           </div>
 
-
-          {/* --- LINHA INFERIOR --- */}
-
-          {/* 4. Curva Diária (Ocupa a largura das colunas 1 e 2 de cima) */}
           <div className="lg:col-span-2">
               <HistoryChart title="Curva Diária" data={daily} color="#0ea5e9" className="h-[400px]" />
           </div>
 
-          {/* 5. Detalhe Diário (Ocupa a largura da coluna 3 de cima e mesma altura do gráfico) */}
           <div className="lg:col-span-1">
                <HistoryTable title="Detalhe Diário" data={daily} className="h-[400px]" />
           </div>

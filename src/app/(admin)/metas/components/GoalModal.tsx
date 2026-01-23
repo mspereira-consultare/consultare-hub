@@ -1,26 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, HelpCircle, ChevronDown, ChevronRight, Filter, Building2, CreditCard } from 'lucide-react';
-import { Goal, SECTORS, UNITS, PERIODICITY_OPTIONS, AVAILABLE_KPIS, GOAL_SCOPES } from '../constants';
-
-interface GoalWithFilter extends Goal {
-    filter_group?: string;
-}
+import { X, Save, HelpCircle, Filter, Building2, CreditCard, Database } from 'lucide-react';
+import { SECTORS, UNITS, PERIODICITY_OPTIONS, KPIS_AVAILABLE, GOAL_SCOPES, Goal } from '../constants';
 
 interface GoalModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (goal: GoalWithFilter) => void;
-    initialData?: GoalWithFilter;
+    onSave: (goal: Goal) => void;
+    initialData?: Goal;
 }
 
 export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalProps) => {
     
-    // Estado do formulário
-    const defaultGoal: GoalWithFilter = {
+    const defaultGoal: Goal = {
         name: '',
-        scope: 'CLINIC', // Padrão
+        scope: 'CLINIC',
         sector: 'Comercial',
         start_date: new Date().toISOString().split('T')[0],
         end_date: new Date(new Date().getFullYear(), 11, 31).toISOString().split('T')[0],
@@ -31,130 +26,95 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
         filter_group: '' 
     };
 
-    const [formData, setFormData] = useState<GoalWithFilter>(defaultGoal);
-    
-    // Estado para controle visual
-    const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-    const [availableGroups, setAvailableGroups] = useState<string[]>([]);
-    const [loadingGroups, setLoadingGroups] = useState(false);
+    const [formData, setFormData] = useState<Goal>(defaultGoal);
 
-    // Carrega opções de grupos do backend
-    useEffect(() => {
-        if (isOpen) {
-            setLoadingGroups(true);
-            fetch('/api/admin/options/groups')
-                .then(res => res.json())
-                .then(data => {
-                    if (Array.isArray(data)) {
-                        setAvailableGroups(data);
-                    }
-                })
-                .catch(err => console.error("Erro ao carregar grupos:", err))
-                .finally(() => setLoadingGroups(false));
-        }
-    }, [isOpen]);
-
-    // Preenche dados ao abrir para edição
     useEffect(() => {
         if (isOpen) {
             if (initialData) {
-                setFormData({ 
+                setFormData({
+                    ...defaultGoal, // Garante campos padrão
                     ...initialData,
-                    scope: initialData.scope || 'CLINIC', // Garante valor se for antigo
-                    filter_group: initialData.filter_group || '' 
+                    // Garante datas válidas
+                    start_date: initialData.start_date?.split('T')[0] || defaultGoal.start_date,
+                    end_date: initialData.end_date?.split('T')[0] || defaultGoal.end_date,
                 });
-                if (initialData.filter_group) setIsFiltersOpen(true);
             } else {
                 setFormData(defaultGoal);
-                setIsFiltersOpen(false);
             }
         }
-    }, [initialData, isOpen]);
+    }, [isOpen, initialData]);
 
-    if (!isOpen) return null;
+    // 1. Filtra KPIs pelo Escopo (Clínica ou Cartão)
+    const availableKpis = KPIS_AVAILABLE.filter(k => k.scope === 'ALL' || k.scope === formData.scope);
+    
+    // 2. Verifica se o KPI selecionado suporta Filtro de Grupo
+    const selectedKpiConfig = KPIS_AVAILABLE.find(k => k.id === formData.linked_kpi_id);
+    const showGroupFilter = selectedKpiConfig?.supportsFilter;
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(formData);
     };
 
-    const currentGroup = formData.filter_group || '';
-    const groupsToList = (!currentGroup || availableGroups.includes(currentGroup))
-        ? availableGroups
-        : [currentGroup, ...availableGroups];
-
-    // --- LÓGICA DE FILTRO DE KPIS ---
-    // Mostra apenas KPIs do escopo selecionado (ou globais 'ALL')
-    const filteredKpis = AVAILABLE_KPIS.filter(kpi => 
-        kpi.scope === 'ALL' || kpi.scope === formData.scope
-    );
+    if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-200">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
                 
-                {/* Cabeçalho */}
+                {/* Header */}
                 <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                    <div>
-                        <h2 className="text-lg font-bold text-slate-800">
-                            {initialData ? 'Editar Meta' : 'Nova Meta'}
-                        </h2>
-                        <p className="text-xs text-slate-500">Defina o escopo, parâmetros e o alvo</p>
-                    </div>
-                    <button type="button" onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full text-slate-500 transition">
+                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                        {initialData ? <Save size={18} className="text-blue-600" /> : <Filter size={18} className="text-blue-600" />}
+                        {initialData ? 'Editar Meta' : 'Nova Meta & OKR'}
+                    </h2>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
                         <X size={20} />
                     </button>
                 </div>
 
-                {/* Formulário */}
-                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+                {/* Form Body */}
+                <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
                     
-                    {/* SELEÇÃO DE ESCOPO (Visual de Cards) */}
-                    <div className="grid grid-cols-2 gap-4">
-                        {GOAL_SCOPES.map((scopeOpt) => {
-                            const isSelected = formData.scope === scopeOpt.value;
-                            return (
-                                <button
-                                    key={scopeOpt.value}
-                                    type="button"
-                                    onClick={() => {
-                                        setFormData(prev => ({ 
-                                            ...prev, 
-                                            scope: scopeOpt.value as any,
-                                            linked_kpi_id: '' // Reseta KPI ao trocar escopo para evitar incompatibilidade
-                                        }));
-                                    }}
-                                    className={`
-                                        p-3 rounded-lg border-2 flex flex-col items-center justify-center gap-2 transition-all
-                                        ${isSelected 
-                                            ? 'border-blue-500 bg-blue-50 text-blue-700 font-bold' 
-                                            : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:bg-slate-50'}
-                                    `}
-                                >
-                                    {scopeOpt.value === 'CLINIC' ? <Building2 size={20} /> : <CreditCard size={20} />}
-                                    <span className="text-sm">{scopeOpt.label}</span>
-                                </button>
-                            );
-                        })}
-                    </div>
-
-                    {/* Linha 1: Nome e Setor */}
+                    {/* SEÇÃO 1: Identificação e Escopo */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1.5">
+                        <div className="md:col-span-2 space-y-1.5">
                             <label className="text-sm font-semibold text-slate-700">Nome da Meta</label>
                             <input 
-                                required
                                 type="text" 
-                                placeholder={formData.scope === 'CARD' ? "Ex: Atingir 300k de MRR" : "Ex: Faturamento Exames Jan/26"}
-                                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                                required
+                                placeholder="Ex: Faturamento Consultas - Unidade Matriz"
+                                className="w-full p-2.5 border border-slate-300 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                                 value={formData.name}
                                 onChange={e => setFormData({...formData, name: e.target.value})}
                             />
                         </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-sm font-semibold text-slate-700">Escopo (Empresa)</label>
+                            <div className="flex bg-slate-100 p-1 rounded-lg">
+                                {GOAL_SCOPES.map(scope => (
+                                    <button
+                                        key={scope.value}
+                                        type="button"
+                                        onClick={() => setFormData({...formData, scope: scope.value as any, linked_kpi_id: 'manual', filter_group: ''})}
+                                        className={`flex-1 text-xs font-bold py-2 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
+                                            formData.scope === scope.value 
+                                            ? 'bg-white text-blue-700 shadow-sm' 
+                                            : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                    >
+                                        {scope.value === 'CLINIC' ? <Building2 size={14} /> : <CreditCard size={14} />}
+                                        {scope.label.split(' ')[0]}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         <div className="space-y-1.5">
                             <label className="text-sm font-semibold text-slate-700">Setor Responsável</label>
                             <select 
-                                className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
+                                className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
                                 value={formData.sector}
                                 onChange={e => setFormData({...formData, sector: e.target.value})}
                             >
@@ -163,122 +123,116 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                         </div>
                     </div>
 
-                    {/* Linha 2: Fonte de Dados (KPI Filtrado) */}
-                    <div className="space-y-1.5">
-                        <label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                            Fonte de Dados (KPI)
-                            <span className="text-xs font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">Automático</span>
-                        </label>
-                        <select 
-                            className="w-full p-2.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white"
-                            value={formData.linked_kpi_id}
-                            onChange={e => setFormData({...formData, linked_kpi_id: e.target.value})}
-                        >
-                            <option value="">Selecione um indicador...</option>
-                            <option value="manual">Entrada Manual (Sem vínculo)</option>
-                            
-                            {filteredKpis.filter(k => k.id !== 'manual').map(kpi => (
-                                <option key={kpi.id} value={kpi.id}>
-                                    [{kpi.group}] {kpi.label}
-                                </option>
-                            ))}
-                        </select>
-                        <p className="text-[10px] text-slate-400 mt-1">
-                            Mostrando indicadores disponíveis para: <strong>{formData.scope === 'CLINIC' ? 'Clínica Médica' : 'Cartão de Benefícios'}</strong>
-                        </p>
-                    </div>
+                    {/* SEÇÃO 2: Fonte de Dados (Engine) - AQUI ESTÁ A CORREÇÃO */}
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 space-y-4 relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-3 opacity-10">
+                            <Database size={64} className="text-blue-600" />
+                        </div>
 
-                    {/* Linha 3: Filtros Avançados */}
-                    <div className="border border-slate-200 rounded-lg overflow-hidden">
-                        <button
-                            type="button" 
-                            onClick={() => setIsFiltersOpen(!isFiltersOpen)}
-                            className="w-full flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100 transition-colors"
-                        >
-                            <div className="flex items-center gap-2 text-slate-700 font-semibold text-sm">
-                                <Filter size={16} className="text-blue-600" />
-                                Filtros Avançados
+                        <div className="flex items-center gap-2 text-blue-800 mb-1 relative z-10">
+                            <Database size={18} />
+                            <h3 className="font-bold text-sm">Fonte de Dados (Automação)</h3>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold uppercase text-blue-700">Indicador (KPI)</label>
+                                <select 
+                                    className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={formData.linked_kpi_id}
+                                    onChange={e => setFormData({...formData, linked_kpi_id: e.target.value})}
+                                >
+                                    {availableKpis.map(k => <option key={k.id} value={k.id}>{k.label}</option>)}
+                                </select>
                             </div>
-                            {isFiltersOpen ? <ChevronDown size={16} className="text-slate-400"/> : <ChevronRight size={16} className="text-slate-400"/>}
-                        </button>
-                        
-                        {isFiltersOpen && (
-                            <div className="p-4 bg-white border-t border-slate-100 space-y-4">
-                                <div className="space-y-1.5">
-                                    <label className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-                                        Grupo de Procedimento / Filtro
-                                        <HelpCircle size={12} className="text-slate-400" title="Para Cartão, use isso para filtrar Planos se necessário" />
+
+                            {/* Campo de Filtro Avançado (Restaurado) */}
+                            {showGroupFilter && (
+                                <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
+                                    <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
+                                        Grupo de Procedimento
+                                        <HelpCircle size={12} title="Filtra os dados do Feegow por grupo (Ex: Consultas, Exames, Cirurgias)" />
                                     </label>
-                                    <select
-                                        className="w-full p-2 border border-slate-300 rounded focus:border-blue-500 outline-none text-sm bg-white"
+                                    <input 
+                                        type="text" 
+                                        placeholder="Ex: Consultas, Exames..."
+                                        className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-blue-300"
                                         value={formData.filter_group || ''}
                                         onChange={e => setFormData({...formData, filter_group: e.target.value})}
-                                        disabled={loadingGroups}
+                                    />
+                                </div>
+                            )}
+                        </div>
+                        
+                        <div className="text-[11px] text-blue-600/80 italic relative z-10 mt-2">
+                            {formData.linked_kpi_id === 'manual' 
+                                ? "⚠ Os dados deverão ser atualizados manualmente." 
+                                : `✓ O valor será calculado automaticamente baseado no indicador selecionado${showGroupFilter && formData.filter_group ? ` e filtrado por '${formData.filter_group}'` : ''}.`
+                            }
+                        </div>
+                    </div>
+
+                    {/* SEÇÃO 3: Valores e Datas */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                        <div className="space-y-3">
+                            <h3 className="text-xs font-bold uppercase text-slate-400 border-b pb-1">Período de Vigência</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-500">Início</label>
+                                    <input 
+                                        type="date" 
+                                        required
+                                        className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                                        value={formData.start_date}
+                                        onChange={e => setFormData({...formData, start_date: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-500">Fim</label>
+                                    <input 
+                                        type="date" 
+                                        required
+                                        className="w-full p-2 border border-slate-300 rounded-lg text-sm"
+                                        value={formData.end_date}
+                                        onChange={e => setFormData({...formData, end_date: e.target.value})}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-3">
+                            <h3 className="text-xs font-bold uppercase text-slate-400 border-b pb-1">Meta a Atingir</h3>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-500">Valor Alvo</label>
+                                    <input 
+                                        type="number" 
+                                        required
+                                        step="0.01"
+                                        className="w-full p-2 border border-slate-300 rounded-lg text-sm font-bold text-slate-800"
+                                        value={formData.target_value}
+                                        onChange={e => setFormData({...formData, target_value: parseFloat(e.target.value)})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-xs font-semibold text-slate-500">Periodicidade</label>
+                                    <select 
+                                        className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white"
+                                        value={formData.periodicity}
+                                        onChange={e => setFormData({...formData, periodicity: e.target.value})}
                                     >
-                                        <option value="">(Todos os Grupos)</option>
-                                        {groupsToList.map(g => (
-                                            <option key={g} value={g}>{g}</option>
-                                        ))}
+                                        {PERIODICITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                                     </select>
                                 </div>
                             </div>
-                        )}
-                    </div>
-
-                    {/* Linha 4: Datas e Periodicidade */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-semibold text-slate-700">Início Vigência</label>
-                            <input 
-                                type="date" 
-                                className="w-full p-2.5 border border-slate-300 rounded-lg text-sm"
-                                value={formData.start_date}
-                                onChange={e => setFormData({...formData, start_date: e.target.value})}
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-semibold text-slate-700">Fim Vigência</label>
-                            <input 
-                                type="date" 
-                                className="w-full p-2.5 border border-slate-300 rounded-lg text-sm"
-                                value={formData.end_date}
-                                onChange={e => setFormData({...formData, end_date: e.target.value})}
-                            />
-                        </div>
-                        <div className="space-y-1.5">
-                            <label className="text-sm font-semibold text-slate-700">Periodicidade</label>
-                            <select 
-                                className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white"
-                                value={formData.periodicity}
-                                onChange={e => setFormData({...formData, periodicity: e.target.value as any})}
-                            >
-                                {PERIODICITY_OPTIONS.map(opt => (
-                                    <option key={opt.value} value={opt.value}>{opt.short}</option>
-                                ))}
-                            </select>
-                        </div>
-                    </div>
-
-                    {/* Linha 5: O Alvo */}
-                    <div className="p-4 bg-blue-50/50 rounded-lg border border-blue-100">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-bold text-blue-800">Valor Alvo (Meta)</label>
-                                <input 
-                                    type="number" 
-                                    step="0.01"
-                                    required
-                                    className="w-full p-2.5 border-2 border-blue-200 rounded-lg focus:border-blue-600 focus:ring-4 focus:ring-blue-100 outline-none text-lg font-bold text-slate-800"
-                                    value={formData.target_value}
-                                    onChange={e => setFormData({...formData, target_value: parseFloat(e.target.value)})}
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-sm font-semibold text-slate-700">Unidade de Medida</label>
+                            
+                            {/* Unidade */}
+                            <div>
+                                <label className="text-xs font-semibold text-slate-500">Unidade de Medida</label>
                                 <select 
-                                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white h-[46px]"
+                                    className="w-full p-2 border border-slate-300 rounded-lg text-sm bg-white"
                                     value={formData.unit}
-                                    onChange={e => setFormData({...formData, unit: e.target.value as any})}
+                                    onChange={e => setFormData({...formData, unit: e.target.value})}
                                 >
                                     {UNITS.map(u => <option key={u.value} value={u.value}>{u.label}</option>)}
                                 </select>

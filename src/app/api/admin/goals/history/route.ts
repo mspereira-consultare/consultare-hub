@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
-import { getKpiHistory } from '@/lib/kpi_engine';
+// Importamos calculateHistory conforme definimos no kpi_engine.ts atualizado
+import { calculateHistory } from '@/lib/kpi_engine'; 
 
 export const dynamic = 'force-dynamic';
 
@@ -12,35 +13,42 @@ export async function GET(request: Request) {
     if (!goalId) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
     const db = getDbConnection();
-    const goal = db.prepare('SELECT * FROM goals_config WHERE id = ?').get(goalId) as any;
+    
+    // 1. Busca a configuração da meta (Async)
+    const result = await db.query('SELECT * FROM goals_config WHERE id = ?', [goalId]);
+    const goal = result[0] as any;
 
     if (!goal) return NextResponse.json({ error: 'Goal not found' }, { status: 404 });
 
-    // Ajuste de datas para meta diária (pega o mês atual para mostrar contexto no gráfico)
+    // 2. Lógica de Datas (Mantida do original)
+    // Se for meta diária, mostra o histórico do mês atual inteiro
     let start = goal.start_date;
     let end = goal.end_date;
     
     if (goal.periodicity === 'daily') {
         const now = new Date();
+        // Primeiro dia do mês atual
         start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+        // Último dia do mês atual
         end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     }
 
-    // --- CORREÇÃO AQUI ---
-    // Agora passamos o 'scope' (CLINIC ou CARD) para o engine saber onde buscar
-    const history = await getKpiHistory(
+    // 3. Chama o Engine (Async)
+    // Passamos o objeto de opções com scope e filter_group
+    const history = await calculateHistory(
         goal.linked_kpi_id, 
         start, 
-        end, 
+        end,
         { 
             group_filter: goal.filter_group,
-            scope: goal.scope // <--- ADICIONADO: Define se olha faturamento ou contratos
+            scope: goal.scope // 'CLINIC' ou 'CARD'
         }
     );
 
     return NextResponse.json(history);
 
   } catch (error: any) {
+    console.error("Erro History Route:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

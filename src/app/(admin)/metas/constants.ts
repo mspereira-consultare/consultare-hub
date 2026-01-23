@@ -1,61 +1,59 @@
 // src/app/(admin)/metas/constants.ts
 
-// --- 1. ESCOPOS (Onde a meta vai atuar?) ---
+export interface Goal {
+    id?: number;
+    name: string;
+    scope: 'CLINIC' | 'CARD';
+    sector: string;
+    start_date: string;
+    end_date: string;
+    periodicity: string;
+    target_value: number;
+    unit: string;
+    linked_kpi_id: string; // ID do KPI para automação
+    filter_group?: string; // Filtro avançado (Ex: Consultas, Exames)
+}
+
 export const GOAL_SCOPES = [
-    { value: 'CLINIC', label: 'Clínica Médica (Consultare)' },
-    { value: 'CARD', label: 'Cartão de Benefícios (Resolve)' },
+    { value: 'CLINIC', label: 'Clínica (Consultare)' },
+    { value: 'CARD', label: 'Cartão (Resolve)' },
 ] as const;
 
-export const SECTORS = ['Comercial', 'Financeiro', 'Recepção', 'Médico', 'Operacional', 'Marketing'] as const;
+export const SECTORS = [
+    'Comercial', 'Financeiro', 'Recepção', 'Médico', 'Operacional', 'Marketing', 'Diretoria'
+] as const;
 
 export const UNITS = [
-    { value: 'qtd', label: 'Quantidade (UN)' },
     { value: 'currency', label: 'Moeda (R$)' },
+    { value: 'qtd', label: 'Quantidade (UN)' },
     { value: 'percent', label: 'Porcentagem (%)' },
     { value: 'minutes', label: 'Tempo (Min)' },
 ] as const;
 
 export const PERIODICITY_OPTIONS = [
-    { value: 'daily', label: 'Meta Diária (Reseta todo dia)', short: 'Diária' },
-    { value: 'weekly', label: 'Meta Semanal (Reseta toda seg)', short: 'Semanal' },
-    { value: 'monthly', label: 'Meta Mensal (Reseta dia 1)', short: 'Mensal' },
-    { value: 'total', label: 'Meta Acumulada (Alvo total do período)', short: 'Total' },
+    { value: 'daily', label: 'Diária (Reseta todo dia)' },
+    { value: 'monthly', label: 'Mensal (Reseta dia 1)' },
+    { value: 'total', label: 'Período Total (Acumulado)' },
 ] as const;
 
-// --- 2. KPIS DISPONÍVEIS (Mapeados para as APIs) ---
-// Adicionei a propriedade 'scope' para ajudar o Front-end a filtrar a lista
-export const AVAILABLE_KPIS = [
-    { id: 'manual', label: 'Entrada Manual (Sem vínculo automático)', group: 'Geral', scope: 'ALL' },
+// --- DEFINIÇÃO DAS FONTES DE DADOS ---
+export const KPIS_AVAILABLE = [
+    { id: 'manual', label: 'Sem Vínculo (Preenchimento Manual)', scope: 'ALL', supportsFilter: false },
     
-    // === CLÍNICA MÉDICA (Scope: CLINIC) ===
-    { id: 'revenue', label: 'Faturamento Total (R$)', group: 'Financeiro', scope: 'CLINIC' },
-    { id: 'ticket_avg', label: 'Ticket Médio (R$)', group: 'Financeiro', scope: 'CLINIC' },
-    { id: 'appointments', label: 'Total de Atendimentos (Qtd)', group: 'Operacional', scope: 'CLINIC' },
-    { id: 'absenteeism', label: 'Taxa de Absenteísmo / Faltas (%)', group: 'Operacional', scope: 'CLINIC' },
+    // ESCOPO: CLÍNICA (Suportam Filtro de Grupo do Feegow)
+    { id: 'revenue', label: 'Faturamento Total (Pago)', scope: 'CLINIC', supportsFilter: true },
+    { id: 'appointments', label: 'Qtd. Atendimentos', scope: 'CLINIC', supportsFilter: true },
+    { id: 'ticket_medio', label: 'Ticket Médio', scope: 'CLINIC', supportsFilter: true },
+    { id: 'absenteeism', label: 'Taxa de Absenteísmo (%)', scope: 'CLINIC', supportsFilter: false },
     
-    // === CARTÃO DE BENEFÍCIOS (Scope: CARD) ===
-    { id: 'mrr', label: 'MRR / Receita Recorrente (R$)', group: 'Financeiro', scope: 'CARD' },
-    { id: 'sales_value', label: 'Vendas Novas / Adesão (R$)', group: 'Comercial', scope: 'CARD' },
-    { id: 'sales_qty', label: 'Vendas Novas / Quantidade (Qtd)', group: 'Comercial', scope: 'CARD' },
-    { id: 'churn_rate', label: 'Taxa de Cancelamento / Churn (%)', group: 'Retenção', scope: 'CARD' },
-    { id: 'default_rate', label: 'Taxa de Inadimplência (%)', group: 'Financeiro', scope: 'CARD' },
-
-    // === DIGITAL / SUPORTE (Pode ser ambos ou específico) ===
-    { id: 'whatsapp_queue', label: 'Fila de Espera WhatsApp (Qtd)', group: 'Digital', scope: 'ALL' },
-    { id: 'whatsapp_time', label: 'Tempo Médio de Resposta (Min)', group: 'Digital', scope: 'ALL' },
+    // ESCOPO: CARTÃO
+    { id: 'proposals', label: 'Propostas Criadas (Qtd)', scope: 'CARD', supportsFilter: false },
+    { id: 'contracts', label: 'Vendas Totais (R$)', scope: 'CARD', supportsFilter: false },
+    { id: 'sales', label: 'Novas Adesões (R$)', scope: 'CARD', supportsFilter: false },
+    { id: 'sales_qty', label: 'Qtd. Novas Adesões', scope: 'CARD', supportsFilter: false },
+    { id: 'churn_rate', label: 'Churn Rate (%)', scope: 'CARD', supportsFilter: false },
+    
+    // DIGITAIS
+    { id: 'whatsapp_queue', label: 'Fila WhatsApp', scope: 'ALL', supportsFilter: false },
+    { id: 'whatsapp_time', label: 'Tempo de Resposta', scope: 'ALL', supportsFilter: false },
 ] as const;
-
-// --- 3. INTERFACE ATUALIZADA (Compatível com o Banco) ---
-export interface Goal {
-  id?: number;
-  name: string;
-  scope: 'CLINIC' | 'CARD'; // Novo campo obrigatório
-  sector: string;
-  start_date: string; 
-  end_date: string;   
-  periodicity: 'daily' | 'weekly' | 'monthly' | 'total';
-  target_value: number;
-  unit: 'qtd' | 'currency' | 'percent' | 'minutes';
-  linked_kpi_id: string; 
-  filter_group?: string; // Opcional (Para grupos de procedimento ou planos)
-}

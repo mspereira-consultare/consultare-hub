@@ -1,209 +1,179 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Edit2, Trash2, ChevronDown, ChevronRight, CheckCircle2, Target, Calendar, BarChart2, Filter } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Edit2, Trash2, ChevronDown, ChevronRight, CheckCircle2, Target, Calendar, TrendingUp, AlertCircle, Filter } from 'lucide-react';
 import { Goal } from '../constants';
 
-interface GoalWithFilter extends Goal {
-    filter_group?: string;
-}
-
 interface GoalTableProps {
-    goals: GoalWithFilter[];
+    goals: Goal[];
     dashboardData: Record<number, { current: number, percentage: number }>;
-    onEdit: (goal: GoalWithFilter) => void;
+    onEdit: (goal: Goal) => void;
     onDelete: (id: number) => void;
-    onViewDetails: (goal: GoalWithFilter) => void;
+    onViewDetails: (goal: Goal) => void;
 }
 
 export const GoalTable = ({ goals, dashboardData, onEdit, onDelete, onViewDetails }: GoalTableProps) => {
-    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
-        goals.reduce((acc, g) => ({ ...acc, [g.sector || 'Geral']: true }), {})
-    );
+    
+    // Agrupa metas por setor (Acordeão)
+    const groupedGoals = useMemo(() => {
+        return goals.reduce((acc, goal) => {
+            const group = goal.sector || 'Geral';
+            if (!acc[group]) acc[group] = [];
+            acc[group].push(goal);
+            return acc;
+        }, {} as Record<string, Goal[]>);
+    }, [goals]);
+
+    const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
+        const initialGroups: Record<string, boolean> = {};
+        Object.keys(groupedGoals).forEach(key => { initialGroups[key] = true; });
+        return initialGroups;
+    });
 
     const toggleGroup = (sector: string) => {
         setExpandedGroups(prev => ({ ...prev, [sector]: !prev[sector] }));
     };
 
-    const fmtMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
-    const fmtNum = (v: number) => v.toLocaleString('pt-BR');
-
     const formatValue = (val: number, unit: string) => {
-        if (unit === 'currency') return fmtMoney(val);
-        if (unit === 'percent') return `${val}%`;
-        return fmtNum(val);
+        const v = val || 0;
+        if (unit === 'currency') return v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+        if (unit === 'percent') return `${v.toFixed(1)}%`;
+        if (unit === 'minutes') return `${v} min`;
+        return v.toLocaleString('pt-BR');
     };
-
-    // --- CÁLCULO DE PROJEÇÃO ---
-    const calculateProjection = (goal: GoalWithFilter, current: number) => {
-        const today = new Date();
-        
-        if (goal.periodicity === 'daily') {
-            const startHour = 8;
-            const endHour = 18;
-            const currentHour = today.getHours() + (today.getMinutes() / 60);
-            if (currentHour < startHour) return 0;
-            if (currentHour >= endHour) return current;
-            const hoursPassed = currentHour - startHour;
-            const totalHours = endHour - startHour;
-            return (current / hoursPassed) * totalHours;
-        }
-
-        if (goal.periodicity === 'monthly' || goal.periodicity === 'total') {
-            const start = new Date(goal.start_date);
-            const end = new Date(goal.end_date);
-            const totalDays = Math.max(1, (end.getTime() - start.getTime()) / 86400000);
-            const daysPassed = Math.max(1, (Math.min(today.getTime(), end.getTime()) - start.getTime()) / 86400000);
-            if (daysPassed <= 0) return 0;
-            return (current / daysPassed) * totalDays;
-        }
-
-        return null;
-    };
-
-    const groupedGoals = goals.reduce((acc, goal) => {
-        const sector = goal.sector || 'Geral';
-        if (!acc[sector]) acc[sector] = [];
-        acc[sector].push(goal);
-        return acc;
-    }, {} as Record<string, GoalWithFilter[]>);
 
     return (
-        <div className="space-y-4">
+        <div className="space-y-6">
             {Object.entries(groupedGoals).map(([sector, sectorGoals]) => {
                 const isExpanded = expandedGroups[sector];
-                
-                const groupStats = sectorGoals.reduce((acc, g) => {
-                    const data = dashboardData[g.id!] || { percentage: 0 };
-                    return { 
-                        sumPct: acc.sumPct + Math.min(data.percentage, 100), 
-                        count: acc.count + 1 
-                    };
-                }, { sumPct: 0, count: 0 });
-                const groupAvg = groupStats.count > 0 ? Math.round(groupStats.sumPct / groupStats.count) : 0;
-                
+                const totalGoals = sectorGoals.length;
+                const completedGoals = sectorGoals.filter(g => (dashboardData[g.id!]?.percentage || 0) >= 100).length;
+
                 return (
-                    <div key={sector} className="border border-slate-200 rounded-lg bg-white shadow-sm overflow-hidden">
-                        
+                    <div key={sector} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                        {/* Header do Grupo */}
                         <div 
+                            className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between cursor-pointer hover:bg-slate-100 transition-colors"
                             onClick={() => toggleGroup(sector)}
-                            className={`flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-50 border-b ${isExpanded ? 'border-slate-100' : 'border-transparent'}`}
                         >
                             <div className="flex items-center gap-3">
-                                {isExpanded ? <ChevronDown size={18} className="text-slate-400" /> : <ChevronRight size={18} className="text-slate-400" />}
-                                <h3 className="font-bold text-slate-700 text-sm uppercase tracking-wide flex items-center gap-2">
+                                <button className="text-slate-400 hover:text-slate-600">
+                                    {isExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+                                </button>
+                                <h3 className="font-bold text-slate-800 text-sm uppercase tracking-wide flex items-center gap-2">
                                     {sector}
-                                    <span className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full border border-slate-200">
-                                        {sectorGoals.length}
-                                    </span>
+                                    <span className="bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full text-[10px]">{totalGoals}</span>
                                 </h3>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <div className="w-24 h-2 bg-slate-100 rounded-full overflow-hidden">
-                                    <div className={`h-full rounded-full ${groupAvg >= 100 ? 'bg-green-500' : groupAvg >= 70 ? 'bg-blue-500' : 'bg-amber-500'}`} style={{ width: `${groupAvg}%` }}></div>
-                                </div>
-                                <span className={`text-xs font-bold ${groupAvg >= 100 ? 'text-green-600' : 'text-slate-600'}`}>{groupAvg}%</span>
+                            <div className="flex items-center gap-1 text-xs font-medium text-slate-500">
+                                <CheckCircle2 size={14} className={completedGoals > 0 ? "text-emerald-500" : "text-slate-300"} />
+                                <span>{completedGoals}/{totalGoals} Batidas</span>
                             </div>
                         </div>
 
+                        {/* Tabela do Grupo */}
                         {isExpanded && (
-                            <div className="bg-white">
-                                <table className="w-full text-xs text-left">
-                                    <thead className="bg-slate-50 text-slate-400 font-medium border-b border-slate-100">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left">
+                                    <thead className="bg-white text-[10px] uppercase text-slate-400 font-bold border-b border-slate-100">
                                         <tr>
-                                            <th className="px-4 py-2 w-[40%]">Detalhes</th>
-                                            <th className="px-4 py-2 w-[20%] text-right">Alvo</th>
-                                            <th className="px-4 py-2 w-[30%] text-right">Realizado / Projeção</th>
-                                            <th className="px-4 py-2 w-[10%] text-center"></th>
+                                            <th className="px-6 py-3 w-1/3">Meta / Fonte</th>
+                                            <th className="px-6 py-3">Escopo</th>
+                                            <th className="px-6 py-3">Alvo</th>
+                                            <th className="px-6 py-3">Realizado</th>
+                                            <th className="px-6 py-3 w-48">Progresso</th>
+                                            <th className="px-6 py-3 text-right">Ações</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-slate-50">
+                                    <tbody className="divide-y divide-slate-50 text-sm">
                                         {sectorGoals.map((goal) => {
                                             const data = dashboardData[goal.id!] || { current: 0, percentage: 0 };
-                                            const isDone = data.percentage >= 100;
-                                            const projection = calculateProjection(goal, data.current);
+                                            const progress = Math.min(Math.max(data.percentage, 0), 100);
+
+                                            // Cores
+                                            let statusColor = "bg-red-500";
+                                            let icon = <AlertCircle size={18} className="text-red-500" />;
+                                            let bgIcon = "bg-red-50";
+
+                                            if (data.percentage >= 100) {
+                                                statusColor = "bg-emerald-500";
+                                                icon = <CheckCircle2 size={18} className="text-emerald-500" />;
+                                                bgIcon = "bg-emerald-50";
+                                            } else if (data.percentage >= 70) {
+                                                statusColor = "bg-amber-500";
+                                                icon = <TrendingUp size={18} className="text-amber-500" />;
+                                                bgIcon = "bg-amber-50";
+                                            }
 
                                             return (
-                                                <tr 
-                                                    key={goal.id} 
-                                                    className="hover:bg-blue-50/30 transition-colors group cursor-pointer"
-                                                    onClick={() => onViewDetails(goal)}
-                                                >
-                                                    <td className="px-4 py-3">
-                                                        <div className="flex items-start gap-3">
-                                                            {isDone 
-                                                                ? <CheckCircle2 size={18} className="text-green-500 shrink-0 mt-1" />
-                                                                : <Target size={18} className="text-blue-600 shrink-0 mt-1" />
-                                                            }
-                                                            <div className="space-y-1">
-                                                                <div className="flex items-center gap-2">
-                                                                    <p className="font-bold text-slate-700 text-sm group-hover:text-blue-700 transition-colors">{goal.name}</p>
-                                                                    {/* BADGE DE ESCOPO (NOVO) */}
-                                                                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border uppercase ${goal.scope === 'CARD' ? 'bg-purple-50 text-purple-700 border-purple-100' : 'bg-blue-50 text-blue-700 border-blue-100'}`}>
-                                                                        {goal.scope === 'CARD' ? 'CARTÃO' : 'CLÍNICA'}
+                                                <tr key={goal.id} className="hover:bg-slate-50/80 transition-colors group cursor-pointer" onClick={() => onViewDetails(goal)}>
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${bgIcon}`}>
+                                                                {icon}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <div className="font-semibold text-slate-800 truncate pr-2">{goal.name}</div>
+                                                                <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                                                                    <span className="flex items-center gap-1">
+                                                                        <Calendar size={10} />
+                                                                        {goal.periodicity}
                                                                     </span>
-                                                                </div>
-                                                                
-                                                                {/* FILTROS E DATAS */}
-                                                                <div className="flex flex-wrap gap-2 items-center">
+                                                                    {/* EXIBIÇÃO DO FILTRO DE GRUPO (RESTAURADO) */}
                                                                     {goal.filter_group && (
-                                                                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
+                                                                        <span className="flex items-center gap-1 text-blue-600 bg-blue-50 px-1.5 rounded border border-blue-100">
                                                                             <Filter size={8} />
                                                                             {goal.filter_group}
                                                                         </span>
                                                                     )}
-                                                                    <div className="text-slate-400 flex items-center gap-1">
-                                                                        <Calendar size={10}/>
-                                                                        <span className="text-[10px]">
-                                                                            {new Date(goal.start_date).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})} - {new Date(goal.end_date).toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit'})}
-                                                                        </span>
-                                                                    </div>
                                                                 </div>
                                                             </div>
                                                         </div>
                                                     </td>
 
-                                                    <td className="px-4 py-3 text-right align-middle">
-                                                        <span className="text-sm font-semibold text-slate-500 block">
+                                                    <td className="px-6 py-4">
+                                                        <span className={`text-[10px] font-bold px-2 py-1 rounded border uppercase ${
+                                                            goal.scope === 'CARD' 
+                                                            ? 'bg-purple-50 text-purple-700 border-purple-200' 
+                                                            : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                                                        }`}>
+                                                            {goal.scope === 'CARD' ? 'Cartão' : 'Clínica'}
+                                                        </span>
+                                                    </td>
+
+                                                    <td className="px-6 py-4">
+                                                        <div className="flex items-center gap-1.5 text-slate-500 font-medium">
+                                                            <Target size={14} />
                                                             {formatValue(goal.target_value, goal.unit)}
-                                                        </span>
-                                                        <span className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">
-                                                            {goal.periodicity === 'daily' ? 'Diária' : 'Mensal'}
-                                                        </span>
+                                                        </div>
                                                     </td>
 
-                                                    <td className="px-4 py-3 text-right">
-                                                         <div className="font-black text-blue-700 text-lg leading-tight">
-                                                            {formatValue(data.current, goal.unit)} 
-                                                         </div>
-                                                         
-                                                         <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden flex justify-end my-1.5">
-                                                            <div className={`h-full rounded-full ${isDone ? 'bg-green-500' : 'bg-blue-600'}`} style={{ width: `${Math.min(data.percentage, 100)}%` }}></div>
-                                                         </div>
-                                                         
-                                                         <div className="flex justify-end items-center gap-3">
-                                                             <span className={`text-xs font-bold ${isDone ? 'text-green-600' : 'text-slate-500'}`}>
-                                                                {data.percentage}%
-                                                             </span>
-
-                                                             {projection !== null && !isDone && (
-                                                                 <div className="flex items-center gap-1 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-100">
-                                                                     <BarChart2 size={10} className="text-amber-500"/>
-                                                                     <span className="text-[10px] font-medium text-slate-500">
-                                                                        Proj: <span className="text-amber-700 font-bold">{formatValue(projection, goal.unit)}</span>
-                                                                     </span>
-                                                                 </div>
-                                                             )}
-                                                         </div>
+                                                    <td className="px-6 py-4">
+                                                        <div className="font-bold text-slate-800 text-base">
+                                                            {formatValue(data.current, goal.unit)}
+                                                        </div>
                                                     </td>
 
-                                                    <td className="px-4 py-3 text-center align-middle">
-                                                        <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <button onClick={(e) => { e.stopPropagation(); onEdit(goal); }} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded">
-                                                                <Edit2 size={14} />
+                                                    <td className="px-6 py-4">
+                                                        <div className="w-full">
+                                                            <div className="flex justify-between text-xs mb-1.5 font-bold">
+                                                                <span className={data.percentage >= 100 ? "text-emerald-600" : "text-slate-600"}>
+                                                                    {data.percentage}%
+                                                                </span>
+                                                            </div>
+                                                            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                                                <div style={{ width: `${progress}%` }} className={`h-full ${statusColor} transition-all duration-700 ease-out`} />
+                                                            </div>
+                                                        </div>
+                                                    </td>
+
+                                                    <td className="px-6 py-4 text-right">
+                                                        <div className="flex items-center justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button onClick={(e) => { e.stopPropagation(); onEdit(goal); }} className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors">
+                                                                <Edit2 size={16} />
                                                             </button>
-                                                            <button onClick={(e) => { e.stopPropagation(); onDelete(goal.id!); }} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded">
-                                                                <Trash2 size={14} />
+                                                            <button onClick={(e) => { e.stopPropagation(); onDelete(goal.id!); }} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                                                                <Trash2 size={16} />
                                                             </button>
                                                         </div>
                                                     </td>

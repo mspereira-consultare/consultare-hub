@@ -1,149 +1,154 @@
 import { NextResponse } from 'next/server';
-import Database from 'better-sqlite3';
-import path from 'path';
-import fs from 'fs';
+import { getDbConnection } from '@/lib/db';
 
-// Função para converter data
-function parseDate(dateStr: string) {
-    if (!dateStr) return null;
-    try {
-        if (dateStr.includes('/')) {
-            const [day, month, year] = dateStr.split('/');
-            return new Date(Number(year), Number(month) - 1, Number(day));
-        }
-        if (dateStr.includes('-')) {
-            return new Date(dateStr);
-        }
-    } catch (e) { return null; }
-    return null;
-}
-
-// Formata data para chave do gráfico
-function formatDateKey(date: Date) {
-    return date.toISOString().split('T')[0];
-}
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
-    const { searchParams } = new URL(request.url);
-    const startDateStr = searchParams.get('startDate') || '2026-01-01';
-    const endDateStr = searchParams.get('endDate') || '2026-01-20';
-
-    const startDate = new Date(startDateStr);
-    const endDate = new Date(endDateStr);
-    endDate.setHours(23, 59, 59, 999);
-
-    const dbPath = path.resolve(process.cwd(), 'data', 'dados_clinica.db');
-
-    if (!fs.existsSync(dbPath)) {
-        return NextResponse.json({ error: "Banco de dados não encontrado" }, { status: 500 });
-    }
-
     try {
-        const db = new Database(dbPath, { readonly: true });
+        const { searchParams } = new URL(request.url);
+        const startDateStr = searchParams.get('startDate') || '2026-01-01'; 
+        const endDateStr = searchParams.get('endDate') || new Date().toISOString().split('T')[0];
 
-        // =========================================================================
-        // 1. DADOS DE CONTRATOS (API OFICIAL)
-        // =========================================================================
+        // Datas para filtro de TIMESTAMP (Tabela feegow_contracts usa created_at)
+        const dbStart = `${startDateStr} 00:00:00`;
+        const dbEnd = `${endDateStr} 23:59:59`;
+
+        // Datas para filtro de DATA TEXTO (Tabela faturamento_analitico usa YYYY-MM-DD)
+        const simpleStart = startDateStr;
+        const simpleEnd = endDateStr;
+
+        const db = getDbConnection();
+
+        // ---------------------------------------------------------
+        // 1. TOTAIS GERAIS (ACUMULADO - Contratos Ativos)
+        // ---------------------------------------------------------
         
-        // --- A. TOTAIS GERAIS (ACUMULADO / CARTEIRA) ---
-        // Contratos Ativos (Aprovados)
-        const totalContracts = db.prepare(`
-            SELECT COUNT(*) as qtd, SUM(recurrence_value) as mrr
+        // CORREÇÃO: Contagem distinta de Contratos vs Pacientes
+        const totalContractsRes = await db.query(`
+            SELECT 
+                COUNT(DISTINCT contract_id) as qtd_contratos,
+                COUNT(DISTINCT registration_number) as qtd_pacientes,
+                SUM(recurrence_value) as mrr 
             FROM feegow_contracts 
             WHERE status_contract = 'Aprovado'
-        `).get() as any;
+        `);
+        const totalContracts = totalContractsRes[0] || { qtd_contratos: 0, qtd_pacientes: 0, mrr: 0 };
 
-        // Inadimplência Total da Carteira (Acumulado Histórico)
-        const totalDefaulters = db.prepare(`
-            SELECT COUNT(*) as qtd, SUM(recurrence_value) as valor
+        // Inadimplentes (Mantido membership_value para valor da dívida)
+        const totalDefaultersRes = await db.query(`
+            SELECT count(*) as qtd, SUM(recurrence_value) as valor 
             FROM feegow_contracts 
             WHERE status_financial = 'Inadimplente'
-        `).get() as any;
+        `);
+        const totalDefaulters = totalDefaultersRes[0] || { qtd: 0, valor: 0 };
 
-        // --- B. PERÍODO (NOVAS VENDAS / FLUXO) ---
+        // ---------------------------------------------------------
+        // 2. DADOS DO PERÍODO (Novas Vendas - feegow_contracts)
+        // ---------------------------------------------------------
         
-        // Novas Vendas (Adesão) no Período
-        // Baseado na DATA DE INÍCIO do contrato
-        const periodSales = db.prepare(`
-            SELECT SUM(membership_value) as total_adesao, SUM(recurrence_value) as total_mensalidade
+        const periodSalesRes = await db.query(`
+            SELECT 
+                SUM(membership_value) as total_adesao, 
+                SUM(recurrence_value) as total_mensalidade 
             FROM feegow_contracts 
-            WHERE status_contract = 'Aprovado'
-            AND start_date BETWEEN ? AND ?
-        `).get(startDateStr, endDateStr) as any;
+            WHERE status_contract = 'Aprovado' 
+            AND created_at BETWEEN ? AND ?
+        `, [dbStart, dbEnd]);
+        const periodSales = periodSalesRes[0] || { total_adesao: 0, total_mensalidade: 0 };
 
-        // Inadimplência no Período (Vendas "Podres")
-        // Contratos que COMEÇARAM neste mês e já constam como Inadimplente
-        const periodDefaulters = db.prepare(`
-            SELECT COUNT(*) as qtd, SUM(recurrence_value) as valor
+        // Inadimplência no Período
+        const periodDefaultersRes = await db.query(`
+            SELECT count(*) as qtd, SUM(recurrence_value) as valor 
             FROM feegow_contracts 
-            WHERE status_financial = 'Inadimplente'
-            AND start_date BETWEEN ? AND ?
-        `).get(startDateStr, endDateStr) as any;
+            WHERE status_financial = 'Inadimplente' 
+            AND created_at BETWEEN ? AND ?
+        `, [dbStart, dbEnd]);
+        const periodDefaulters = periodDefaultersRes[0] || { qtd: 0, valor: 0 };
 
         // Cancelamentos no Período
-        // CORREÇÃO: Alterado de 'updated_at' para 'start_date'
-        // Isso alinha com o filtro "Data Início" do relatório do Feegow, que mostra contratos
-        // iniciados no período que foram cancelados (ex: erros de cadastro ou desistência imediata).
-        const periodCancelled = db.prepare(`
-            SELECT COUNT(*) as qtd
+        const periodCancelledRes = await db.query(`
+            SELECT count(*) as qtd 
             FROM feegow_contracts 
             WHERE status_contract = 'Cancelado' 
-            AND start_date BETWEEN ? AND ?
-        `).get(startDateStr, endDateStr) as any;
+            AND created_at BETWEEN ? AND ?
+        `, [dbStart, dbEnd]);
+        const periodCancelled = periodCancelledRes[0] || { qtd: 0 };
 
+        // ---------------------------------------------------------
+        // 3. FATURAMENTO REALIZADO (faturamento_analitico)
+        // ---------------------------------------------------------
+        
+        // REGRA DE NEGÓCIO: Apenas unidade 'RESOLVECARD...'
+        const unidadeResolve = 'RESOLVECARD GESTÃO DE BENEFICOS E MEIOS DE PAGAMENTOS';
 
-        // =========================================================================
-        // 2. FATURAMENTO REALIZADO (RESOLVECARD APENAS)
-        // =========================================================================
-        let billingRealized = 0;
-        let billingDailyMap: Record<string, number> = {};
+        const billingRes = await db.query(`
+            SELECT 
+                data_do_pagamento as date, 
+                SUM(total_pago) as faturamento
+            FROM faturamento_analitico 
+            WHERE unidade = ?
+            AND data_do_pagamento BETWEEN ? AND ?
+            GROUP BY date
+            ORDER BY date ASC
+        `, [unidadeResolve, simpleStart, simpleEnd]);
 
-        try {
-            const rawBilling = db.prepare(`
-                SELECT data_do_pagamento, total_pago
-                FROM faturamento_analitico 
-                WHERE (unidade LIKE '%RESOLVECARD%' OR unidade LIKE '%GESTÃO DE BENEFICOS%')
-                AND data_do_pagamento BETWEEN ? AND ?
-            `).all(startDateStr, endDateStr) as any[];
+        const billingRealized = billingRes.reduce((acc: number, curr: any) => acc + (Number(curr.faturamento) || 0), 0);
 
-            rawBilling.forEach(row => {
-                const val = Number(row.total_pago || 0);
-                billingRealized += val;
-                
-                const key = row.data_do_pagamento; 
-                billingDailyMap[key] = (billingDailyMap[key] || 0) + val;
-            });
-
-        } catch (e) {
-            console.error("Erro no faturamento scraper:", e);
-        }
-
-        // Formatar Gráfico Diário
-        const dailyChart = Object.keys(billingDailyMap).sort().map(date => ({
-            date,
-            faturamento: billingDailyMap[date]
+        const dailyChart = billingRes.map((r: any) => ({
+            date: r.date,
+            faturamento: Number(r.faturamento || 0)
         }));
+
+        // ---------------------------------------------------------
+        // 4. HEARTBEAT (Status do Worker)
+        // ---------------------------------------------------------
+        const statusResult = await db.query(`
+            SELECT status, last_run, message 
+            FROM system_status 
+            WHERE service_name = 'contratos'
+        `);
+        const heartbeat = statusResult[0] || { status: 'UNKNOWN', last_run: null, message: '' };
 
         return NextResponse.json({ 
             totals: {
-                activeContractsCount: totalContracts?.qtd || 0,
-                activeContractsMRR: totalContracts?.mrr || 0,
-                defaultersCount: totalDefaulters?.qtd || 0,
-                defaultersValue: totalDefaulters?.valor || 0
+                activeContractsCount: totalContracts.qtd_contratos || 0, // Contratos Únicos
+                activePatientsCount: totalContracts.qtd_pacientes || 0,   // Pacientes Únicos (Novo)
+                activeContractsMRR: totalContracts.mrr || 0,
+                defaultersCount: totalDefaulters.qtd || 0,
+                defaultersValue: totalDefaulters.valor || 0
             },
             period: {
-                salesMembership: periodSales?.total_adesao || 0,
-                salesMRR: periodSales?.total_mensalidade || 0,
-                defaultersCount: periodDefaulters?.qtd || 0,
-                defaultersValue: periodDefaulters?.valor || 0,
-                cancelledCount: periodCancelled?.qtd || 0,
+                salesMembership: periodSales.total_adesao || 0,
+                salesMRR: periodSales.total_mensalidade || 0,
+                defaultersCount: periodDefaulters.qtd || 0,
+                defaultersValue: periodDefaulters.valor || 0,
+                cancelledCount: periodCancelled.qtd || 0,
                 billingRealized: billingRealized,
                 dailyChart: dailyChart
-            }
+            },
+            heartbeat
         });
 
     } catch (error: any) {
-        console.error("Erro Geral API:", error);
+        console.error("Erro API Contratos:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+}
+
+// Trigger de Atualização Manual
+export async function POST() {
+    try {
+        const db = getDbConnection();
+        await db.execute(`
+            INSERT INTO system_status (service_name, status, last_run, message)
+            VALUES ('contratos', 'PENDING', datetime('now'), 'Solicitado via Painel')
+            ON CONFLICT(service_name) DO UPDATE SET
+                status = 'PENDING',
+                message = 'Solicitado via Painel',
+                last_run = datetime('now')
+        `);
+        return NextResponse.json({ success: true, message: "Atualização solicitada" });
+    } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

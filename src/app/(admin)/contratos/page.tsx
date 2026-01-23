@@ -6,23 +6,44 @@ import {
 } from 'recharts';
 import { 
   Users, DollarSign, AlertCircle, Calendar, 
-  CheckCircle, TrendingDown, FileText
+  CheckCircle, TrendingDown, FileText,
+  RefreshCw, Clock, Loader2 
 } from 'lucide-react';
 
 export default function ContratosDashboard() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  
+  // Controle de Datas
   const [dates, setDates] = useState({
     startDate: '2026-01-01',
     endDate: new Date().toISOString().split('T')[0]
   });
 
+  // --- CONTROLE DE ATUALIZAÇÃO (HEARTBEAT) ---
+  const [heartbeat, setHeartbeat] = useState<any>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
+
   async function fetchData() {
-    setLoading(true);
+    // Só mostra "Carregando..." na tela cheia se não tiver dados E não for um refresh de status
+    if (!data && !heartbeat) setLoading(true);
+
     try {
       const res = await fetch(`/api/admin/contratos?startDate=${dates.startDate}&endDate=${dates.endDate}`);
       const json = await res.json();
       setData(json);
+
+      // Atualiza status do worker
+      if (json.heartbeat) {
+          setHeartbeat(json.heartbeat);
+          if (json.heartbeat.status === 'RUNNING' || json.heartbeat.status === 'PENDING') {
+              setIsUpdating(true);
+              setTimeout(fetchData, 3000); // Polling
+          } else {
+              setIsUpdating(false);
+          }
+      }
+
     } catch (error) {
       console.error("Erro:", error);
     } finally {
@@ -30,16 +51,40 @@ export default function ContratosDashboard() {
     }
   }
 
+  // Trigger Manual
+  const handleManualUpdate = async () => {
+    setIsUpdating(true);
+    try {
+        await fetch('/api/admin/contratos', { method: 'POST' });
+        setTimeout(fetchData, 1000);
+    } catch (e) {
+        console.error(e);
+        setIsUpdating(false);
+    }
+  };
+
   useEffect(() => {
     fetchData();
   }, [dates]);
 
   const formatMoney = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val || 0);
 
-  if (loading && !data) return <div className="p-8 text-center text-gray-500">Carregando indicadores...</div>;
+  // Formata data do status
+  const formatLastUpdate = (dateString: string) => {
+    if (!dateString) return 'Nunca';
+    const isoString = dateString.replace(' ', 'T') + 'Z';
+    try { return new Date(isoString).toLocaleString('pt-BR'); } catch (e) { return dateString; }
+  };
+
+  if (loading && !data) return (
+      <div className="flex flex-col items-center justify-center p-8 text-gray-500 h-screen">
+          <Loader2 className="animate-spin mb-2" />
+          Carregando indicadores...
+      </div>
+  );
 
   return (
-    <div className="space-y-6 pb-10">
+    <div className="space-y-6 pb-10 p-8 max-w-[1600px] mx-auto bg-slate-50 min-h-screen">
       
       {/* --- CABEÇALHO --- */}
       <div className="flex flex-col md:flex-row justify-between items-center bg-white p-4 rounded-lg shadow-sm">
@@ -47,46 +92,99 @@ export default function ContratosDashboard() {
           <h1 className="text-2xl font-bold text-gray-800">Cartão de Benefícios</h1>
           <p className="text-sm text-gray-500">Visão consolidada: API Contratos (Aprovados) + Receita Bruta Analítica</p>
         </div>
-        <div className="flex gap-2 items-center bg-gray-50 p-2 rounded border mt-4 md:mt-0">
-            <Calendar size={16} className="text-gray-500" />
-            <input 
-              type="date" 
-              value={dates.startDate}
-              onChange={(e) => setDates(prev => ({ ...prev, startDate: e.target.value }))}
-              className="bg-transparent text-sm outline-none"
-            />
-            <span className="text-gray-400">até</span>
-            <input 
-              type="date" 
-              value={dates.endDate}
-              onChange={(e) => setDates(prev => ({ ...prev, endDate: e.target.value }))}
-              className="bg-transparent text-sm outline-none"
-            />
-            <button 
-                onClick={fetchData}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs font-bold uppercase tracking-wide ml-2"
-            >
-                Filtrar
-            </button>
+        
+        <div className="flex flex-wrap items-center gap-3 mt-4 md:mt-0">
+            
+            {/* Status Sincronização */}
+            {heartbeat && (
+                <div className="hidden lg:flex flex-col items-end mr-2">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                        Última Sincronização
+                    </span>
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                        <Clock size={12} />
+                        {formatLastUpdate(heartbeat.last_run)}
+                        {heartbeat.status === 'ERROR' && <span className="text-red-500 font-bold ml-1">Erro</span>}
+                    </div>
+                </div>
+            )}
+
+            <div className="flex gap-2 items-center bg-gray-50 p-2 rounded border">
+                <Calendar size={16} className="text-gray-500" />
+                <input 
+                  type="date" 
+                  value={dates.startDate}
+                  onChange={(e) => setDates(prev => ({ ...prev, startDate: e.target.value }))}
+                  className="bg-transparent text-sm outline-none w-28"
+                />
+                <span className="text-gray-400">até</span>
+                <input 
+                  type="date" 
+                  value={dates.endDate}
+                  onChange={(e) => setDates(prev => ({ ...prev, endDate: e.target.value }))}
+                  className="bg-transparent text-sm outline-none w-28"
+                />
+                
+                {/* Botão de Atualizar */}
+                <button 
+                    onClick={handleManualUpdate}
+                    disabled={isUpdating}
+                    className={`
+                        ml-2 px-3 py-1 rounded text-xs font-bold uppercase tracking-wide flex items-center gap-1 transition-all
+                        ${isUpdating 
+                            ? 'bg-blue-100 text-blue-700 cursor-wait' 
+                            : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        }
+                    `}
+                    title="Sincronizar dados mais recentes"
+                >
+                    {isUpdating ? <Loader2 className="animate-spin" size={12} /> : <RefreshCw size={12} />}
+                    {isUpdating ? 'Sincronizando...' : 'Atualizar'}
+                </button>
+            </div>
         </div>
       </div>
 
       {/* --- LINHA 1: DESTAQUES PRINCIPAIS --- */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         
-        {/* 1. CONTRATOS ATIVOS (TITULARES) */}
+        {/* 1. BASE DE CLIENTES (CONTRATOS E PACIENTES) */}
+        {/* 1. BASE DE CLIENTES (CONTRATOS E PACIENTES) */}
         <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-blue-600">
           <div className="flex justify-between items-start">
-            <div>
-              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">Contratos Ativos</p>
-              <h3 className="text-4xl font-extrabold text-gray-800 mt-2">
-                {data?.totals?.activeContractsCount || 0}
-              </h3>
-              <p className="text-xs text-blue-600 mt-1 font-medium bg-blue-50 inline-block px-2 py-0.5 rounded">
-                Titulares Aprovados
-              </p>
+            {/* Lado Esquerdo: Conteúdo */}
+            <div className="flex-1">
+              <p className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-2">Base Ativa</p>
+              
+              {/* Grupo de Valores */}
+              <div className="flex items-end gap-6">
+                  {/* Valor 1: Contratos */}
+                  <div>
+                      <h3 className="text-3xl font-bold text-gray-800 mt-1">
+                        {data?.totals?.activeContractsCount || 0}
+                      </h3>
+                      <p className="text-xs text-blue-600 mt-1 font-medium bg-blue-50 inline-block px-2 py-0.5 rounded">
+                        Contratos
+                      </p>
+                  </div>
+
+                  {/* Divisor Vertical (Opcional, mas ajuda visualmente) */}
+                  <div className="w-px h-10 bg-slate-100 self-center"></div>
+
+                  {/* Valor 2: Pacientes */}
+                  <div>
+                      <h3 className="text-3xl font-bold text-gray-800 mt-1">
+                        {data?.totals?.activePatientsCount || 0}
+                      </h3>
+                      <p className="text-xs text-indigo-600 mt-1 font-medium bg-indigo-50 inline-block px-2 py-0.5 rounded">
+                        Pacientes
+                      </p>
+                  </div>
+              </div>
             </div>
-            <div className="p-3 bg-blue-50 rounded-lg text-blue-600">
+
+            {/* Lado Direito: Ícone */}
+            <div className="p-3 bg-blue-50 rounded-lg text-blue-600 ml-4">
               <Users size={28} />
             </div>
           </div>

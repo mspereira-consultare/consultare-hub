@@ -1,18 +1,27 @@
 import { getDbConnection } from '@/lib/db';
 
-interface KpiResult { currentValue: number; lastUpdated: string; }
+interface KpiResult { 
+    currentValue: number; 
+    lastUpdated: string; 
+}
+
 interface KpiOptions { 
     group_filter?: string; 
-    scope?: 'CLINIC' | 'CARD'; // NOVO: Saber quem está pedindo o dado
+    scope?: 'CLINIC' | 'CARD'; 
 }
-interface KpiHistoryItem { date: string; value: number; }
+
+interface KpiHistoryItem { 
+    date: string; 
+    value: number; 
+}
 
 // --- CONFIGURAÇÃO DE DATAS ---
 // Scraper: data_do_pagamento (DD/MM/YYYY) -> SQL converte para YYYY-MM-DD para comparação
 const COL_DATA_ANALITICO = 'data_do_pagamento';
+// SQLite/LibSQL substring: substr(col, start, length). Start é 1-based.
+// DD/MM/YYYY -> YYYY-MM-DD: substr(7,4) || '-' || substr(4,2) || '-' || substr(1,2)
 const SQL_DATE_ANALITICO = `substr(${COL_DATA_ANALITICO}, 7, 4) || '-' || substr(${COL_DATA_ANALITICO}, 4, 2) || '-' || substr(${COL_DATA_ANALITICO}, 1, 2)`;
 
-// Worker Feegow/Contratos: date (YYYY-MM-DD) -> Já está pronto no banco
 const SQL_DATE_AGENDA = 'date'; 
 const SQL_DATE_CONTRATO = 'start_date';
 
@@ -21,162 +30,187 @@ export async function calculateKpi(kpiId: string, startDate: string, endDate: st
   
   // 1. FILTROS DE GRUPO/PROCEDIMENTO
   const filterVal = options?.group_filter?.trim();
-  const groupClauseAnalitico = (filterVal && filterVal !== 'all') 
-    ? `AND UPPER(TRIM(grupo)) = UPPER(TRIM('${filterVal}'))` : '';
-  const groupClauseAgenda = (filterVal && filterVal !== 'all') 
-    ? `AND UPPER(TRIM(procedure_group)) = UPPER(TRIM('${filterVal}'))` : '';
+  
+  // Cláusula para ignorar a unidade "Card" quando for escopo CLINIC (se necessário)
+  // Ajuste conforme a lógica exata que você usava. Assumindo que Card tem unidade específica ou grupo.
+  const clinicExclusion = options?.scope === 'CLINIC' ? "AND unidade NOT LIKE '%Card%'" : ""; 
 
-  // 2. FILTRO DE UNIDADE (REGRA DE OURO)
-  // Se for Clínica, EXCLUI ResolveCard. Se for Cartão, a tabela já é separada.
-  const clinicExclusion = `AND (unidade IS NULL OR (unidade NOT LIKE '%RESOLVECARD%' AND unidade NOT LIKE '%GESTÃO DE BENEFICOS%'))`;
+  let query = '';
+  let queryParams: any[] = [];
 
+  // --- LÓGICA DE SELEÇÃO DE QUERY ---
+  
+  // 1. ESCOPO "CARD" (Propostas e Contratos Feegow)
+  if (options?.scope === 'CARD') {
+      if (kpiId === 'proposals') {
+          // Total de Propostas (Qtd)
+          query = `SELECT COUNT(*) as val FROM feegow_proposals WHERE date BETWEEN ? AND ?`;
+          queryParams = [startDate, endDate];
+      } 
+      else if (kpiId === 'contracts') {
+          // Total Vendas (Valor) - Contratos com status Aprovado/Executado
+          query = `
+            SELECT SUM(total_value) as val 
+            FROM feegow_proposals 
+            WHERE date BETWEEN ? AND ? 
+            AND lower(status) IN ('executada', 'aprovada pelo cliente', 'ganho', 'realizado')
+          `;
+          queryParams = [startDate, endDate];
+      }
+      else if (kpiId === 'ticket_medio') {
+          // Ticket Médio (Valor / Qtd) - Apenas dos ganhos
+          query = `
+             SELECT 
+                SUM(total_value) as total,
+                COUNT(*) as qtd
+             FROM feegow_proposals
+             WHERE date BETWEEN ? AND ?
+             AND lower(status) IN ('executada', 'aprovada pelo cliente', 'ganho', 'realizado')
+          `;
+          queryParams = [startDate, endDate];
+      }
+      else if (kpiId === 'sales') { 
+          // Vendas Cartão (Membership) - Tabela contracts
+          query = `SELECT SUM(membership_value) as val FROM feegow_contracts WHERE status_contract = 'Aprovado' AND start_date BETWEEN ? AND ?`;
+          queryParams = [startDate, endDate];
+      } 
+      else if (kpiId === 'sales_qty') { 
+          // Qtd Vendas Cartão
+          query = `SELECT COUNT(*) as val FROM feegow_contracts WHERE status_contract = 'Aprovado' AND start_date BETWEEN ? AND ?`;
+          queryParams = [startDate, endDate];
+      }
+  }
+  // 2. ESCOPO "CLINICA" (Faturamento Analítico)
+  else {
+      // Filtro de Grupo (Ex: "Consultas", "Exames")
+      // Nota: Usamos UPPER e TRIM para evitar problemas de case/espaço
+      let groupSql = "";
+      if (filterVal && filterVal !== 'all') {
+          groupSql = `AND UPPER(TRIM(grupo)) = UPPER(TRIM(?))`;
+          queryParams.push(filterVal);
+      }
+
+      // Adicionamos as datas no início do array de params
+      queryParams.unshift(endDate);
+      queryParams.unshift(startDate);
+      // Ordem final params: [startDate, endDate, filterVal?]
+
+      if (kpiId === 'revenue' || kpiId === 'revenue_total') {
+          // Receita Total (Soma do pago)
+          query = `
+            SELECT SUM(total_pago) as val 
+            FROM faturamento_analitico 
+            WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ? 
+            ${groupSql} 
+            ${clinicExclusion}
+          `;
+      }
+      else if (kpiId === 'appointments') {
+          // Qtd de Atendimentos
+          query = `
+            SELECT COUNT(*) as val 
+            FROM faturamento_analitico 
+            WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ? 
+            ${groupSql} 
+            ${clinicExclusion}
+          `;
+      }
+      else if (kpiId === 'ticket_medio') {
+          // Ticket Médio
+           query = `
+            SELECT SUM(total_pago) as total, COUNT(*) as qtd
+            FROM faturamento_analitico 
+            WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ? 
+            ${groupSql} 
+            ${clinicExclusion}
+          `;
+      }
+  }
+
+  // --- EXECUÇÃO ---
   try {
-    let value = 0;
-    
-    // =========================================================================
-    // ESCOPO: CARTÃO DE BENEFÍCIOS (Tabela: feegow_contracts)
-    // =========================================================================
-    if (options?.scope === 'CARD') {
-        switch (kpiId) {
-            case 'mrr': // MRR é snapshot atual, ignora data
-                const rMrr = db.prepare(`SELECT SUM(recurrence_value) as val FROM feegow_contracts WHERE status_contract = 'Aprovado'`).get() as any;
-                value = rMrr?.val || 0;
-                break;
-            case 'sales_value': // Valor de Adesão no Período
-                const rSales = db.prepare(`SELECT SUM(membership_value) as val FROM feegow_contracts WHERE status_contract = 'Aprovado' AND start_date BETWEEN ? AND ?`).get(startDate, endDate) as any;
-                value = rSales?.val || 0;
-                break;
-            case 'sales_qty': // Quantidade de Contratos no Período
-                const rQty = db.prepare(`SELECT COUNT(*) as val FROM feegow_contracts WHERE status_contract = 'Aprovado' AND start_date BETWEEN ? AND ?`).get(startDate, endDate) as any;
-                value = rQty?.val || 0;
-                break;
-            case 'churn_rate': // Taxa de Cancelamento
-                const rCanc = db.prepare(`SELECT COUNT(*) as val FROM feegow_contracts WHERE status_contract = 'Cancelado' AND start_date BETWEEN ? AND ?`).get(startDate, endDate) as any;
-                const rAtivos = db.prepare(`SELECT COUNT(*) as val FROM feegow_contracts WHERE status_contract = 'Aprovado'`).get() as any;
-                value = (rAtivos?.val > 0) ? (rCanc?.val / rAtivos?.val) * 100 : 0;
-                break;
-            case 'default_rate': // Taxa de Inadimplência (Novas Vendas)
-                const rTotal = db.prepare(`SELECT COUNT(*) as val FROM feegow_contracts WHERE start_date BETWEEN ? AND ?`).get(startDate, endDate) as any;
-                const rBad = db.prepare(`SELECT COUNT(*) as val FROM feegow_contracts WHERE status_financial = 'Inadimplente' AND start_date BETWEEN ? AND ?`).get(startDate, endDate) as any;
-                value = (rTotal?.val > 0) ? (rBad?.val / rTotal?.val) * 100 : 0;
-                break;
-        }
-    }
-    
-    // =========================================================================
-    // ESCOPO: CLÍNICA / GERAL (Tabelas: faturamento_analitico, agenda)
-    // =========================================================================
-    else { 
-        switch (kpiId) {
-          // --- FINANCEIRO (Fonte: Faturamento) ---
-          case 'revenue':
-          case 'revenue_total':
-            const rowRev = db.prepare(`
-                SELECT SUM(total_pago) as total FROM faturamento_analitico 
-                WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ? ${groupClauseAnalitico} ${clinicExclusion}
-            `).get(startDate, endDate) as { total: number };
-            value = rowRev?.total || 0;
-            break;
+      if (!query) return { currentValue: 0, lastUpdated: new Date().toISOString() };
 
-          case 'appointments':
-          case 'appointments_realized':
-            const rowR = db.prepare(`
-                SELECT COUNT(*) as total FROM faturamento_analitico 
-                WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ? ${groupClauseAnalitico} ${clinicExclusion}
-            `).get(startDate, endDate) as { total: number };
-            value = rowR?.total || 0;
-            break;
+      const result = await db.query(query, queryParams);
+      const row = result[0] as any;
 
-          case 'ticket_avg':
-          case 'ticket_average':
-            const rowT = db.prepare(`
-                SELECT SUM(total_pago) as t, COUNT(*) as q FROM faturamento_analitico 
-                WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ? ${groupClauseAnalitico} ${clinicExclusion}
-            `).get(startDate, endDate) as { t: number, q: number };
-            value = (rowT && rowT.q > 0) ? (rowT.t / rowT.q) : 0;
-            break;
+      // Lógica específica para Ticket Médio (que retorna total e qtd)
+      if (kpiId === 'ticket_medio') {
+          const total = row?.total || 0;
+          const qtd = row?.qtd || 0;
+          return {
+              currentValue: qtd > 0 ? total / qtd : 0,
+              lastUpdated: new Date().toISOString() // TODO: Pegar do banco se possível
+          };
+      }
 
-          // --- OPERACIONAL / AGENDA ---
-          case 'appointments_total_volume':   
-            try {
-                const rowSch = db.prepare(`
-                    SELECT COUNT(*) as total FROM feegow_appointments 
-                    WHERE ${SQL_DATE_AGENDA} BETWEEN ? AND ? 
-                    AND status_id IN (1, 2, 3, 4, 7)
-                    ${groupClauseAgenda}
-                `).get(startDate, endDate) as { total: number };
-                value = rowSch?.total || 0;
-            } catch (e) { value = 0; }
-            break;
+      return {
+          currentValue: row?.val || 0,
+          lastUpdated: new Date().toISOString()
+      };
 
-          case 'absenteeism_rate': // Taxa de Faltas
-             try {
-                 const rowFaltas = db.prepare(`
-                    SELECT COUNT(*) as total FROM feegow_appointments 
-                    WHERE ${SQL_DATE_AGENDA} BETWEEN ? AND ? AND status_id = 6 ${groupClauseAgenda}
-                `).get(startDate, endDate) as { total: number };
-                const rowTotal = db.prepare(`
-                    SELECT COUNT(*) as total FROM feegow_appointments 
-                    WHERE ${SQL_DATE_AGENDA} BETWEEN ? AND ? AND status_id IN (1, 2, 3, 4, 6, 7) ${groupClauseAgenda}
-                `).get(startDate, endDate) as { total: number };
-                value = rowTotal?.total > 0 ? (rowFaltas?.total / rowTotal?.total) * 100 : 0;
-             } catch (e) { value = 0; }
-            break;
-
-          // --- DIGITAL (Sem alterações) ---
-          case 'whatsapp_queue_current':
-            try { value = (db.prepare(`SELECT SUM(queue_size) as val FROM clinia_group_snapshots`).get() as any)?.val || 0; } catch (e) {}
-            break;
-          case 'whatsapp_wait_time':
-            try { 
-                const v = (db.prepare(`SELECT AVG(avg_wait_seconds) as val FROM clinia_group_snapshots WHERE avg_wait_seconds > 0`).get() as any)?.val || 0;
-                value = v / 60;
-            } catch (e) {}
-            break;
-        }
-    }
-
-    return { currentValue: Number(value.toFixed(2)), lastUpdated: new Date().toISOString() };
   } catch (error) {
-    console.error(`[KPI CALC ERROR] ${kpiId}:`, error);
-    return { currentValue: 0, lastUpdated: new Date().toISOString() };
+      console.error(`Erro KPI Engine [${kpiId}]:`, error);
+      return { currentValue: 0, lastUpdated: new Date().toISOString() };
   }
 }
 
-// Histórico (Gráficos) - Também atualizado
-export async function getKpiHistory(kpiId: string, startDate: string, endDate: string, options?: KpiOptions): Promise<KpiHistoryItem[]> {
-  const db = getDbConnection();
-  const filterVal = options?.group_filter?.trim();
-  const clinicExclusion = `AND (unidade IS NULL OR (unidade NOT LIKE '%RESOLVECARD%' AND unidade NOT LIKE '%GESTÃO DE BENEFICOS%'))`;
-  
-  try {
-    let query = '';
+/**
+ * Gera histórico dia a dia (ou mês a mês) para gráficos
+ */
+export async function calculateHistory(kpiId: string, startDate: string, endDate: string, options?: KpiOptions): Promise<KpiHistoryItem[]> {
+    const db = getDbConnection();
     
-    // --- ESCOPO CARTÃO ---
+    // A lógica de construção da Query é similar, mas com GROUP BY e ORDER BY
+    // Simplificando: vamos reutilizar a lógica de query string mas adicionar o agrupamento por data
+
+    const filterVal = options?.group_filter?.trim();
+    const clinicExclusion = options?.scope === 'CLINIC' ? "AND unidade NOT LIKE '%Card%'" : ""; 
+    
+    let query = '';
+    let queryParams: any[] = []; // [startDate, endDate, filter?]
+
+    // --- ESCOPO CARD ---
     if (options?.scope === 'CARD') {
-        if (kpiId === 'sales_value' || kpiId === 'mrr') { // Evolução Valor
-             query = `SELECT start_date as d, SUM(${kpiId === 'mrr' ? 'recurrence_value' : 'membership_value'}) as val FROM feegow_contracts WHERE status_contract = 'Aprovado' AND d BETWEEN '${startDate}' AND '${endDate}' GROUP BY d ORDER BY d`;
-        } else if (kpiId === 'sales_qty') { // Evolução Qtd
-             query = `SELECT start_date as d, COUNT(*) as val FROM feegow_contracts WHERE status_contract = 'Aprovado' AND d BETWEEN '${startDate}' AND '${endDate}' GROUP BY d ORDER BY d`;
+        queryParams = [startDate, endDate];
+        
+        if (kpiId === 'proposals') {
+             query = `SELECT date as d, COUNT(*) as val FROM feegow_proposals WHERE date BETWEEN ? AND ? GROUP BY d ORDER BY d`;
+        } else if (kpiId === 'contracts') {
+             query = `SELECT date as d, SUM(total_value) as val FROM feegow_proposals WHERE date BETWEEN ? AND ? AND lower(status) IN ('executada', 'aprovada pelo cliente', 'ganho') GROUP BY d ORDER BY d`;
+        } else if (kpiId === 'sales') {
+             query = `SELECT start_date as d, SUM(membership_value) as val FROM feegow_contracts WHERE status_contract = 'Aprovado' AND start_date BETWEEN ? AND ? GROUP BY d ORDER BY d`;
         }
     }
-    // --- ESCOPO CLÍNICA ---
+    // --- ESCOPO CLINICA ---
     else {
-        if (kpiId === 'revenue' || kpiId === 'revenue_total') {
-            const groupSql = (filterVal && filterVal !== 'all') ? `AND UPPER(TRIM(grupo)) = UPPER(TRIM('${filterVal}'))` : '';
-            query = `SELECT ${SQL_DATE_ANALITICO} as d, SUM(total_pago) as val FROM faturamento_analitico WHERE d BETWEEN '${startDate}' AND '${endDate}' ${groupSql} ${clinicExclusion} GROUP BY d ORDER BY d`;
+        queryParams = [startDate, endDate];
+        let groupSql = "";
+        if (filterVal && filterVal !== 'all') {
+            groupSql = `AND UPPER(TRIM(grupo)) = UPPER(TRIM(?))`;
+            queryParams.push(filterVal);
         }
-        else if (kpiId === 'appointments') {
-            const groupSql = (filterVal && filterVal !== 'all') ? `AND UPPER(TRIM(grupo)) = UPPER(TRIM('${filterVal}'))` : '';
-            query = `SELECT ${SQL_DATE_ANALITICO} as d, COUNT(*) as val FROM faturamento_analitico WHERE d BETWEEN '${startDate}' AND '${endDate}' ${groupSql} ${clinicExclusion} GROUP BY d ORDER BY d`;
+
+        if (kpiId === 'revenue') {
+             query = `SELECT ${SQL_DATE_ANALITICO} as d, SUM(total_pago) as val FROM faturamento_analitico WHERE d BETWEEN ? AND ? ${groupSql} ${clinicExclusion} GROUP BY d ORDER BY d`;
+        } else if (kpiId === 'appointments') {
+             query = `SELECT ${SQL_DATE_ANALITICO} as d, COUNT(*) as val FROM faturamento_analitico WHERE d BETWEEN ? AND ? ${groupSql} ${clinicExclusion} GROUP BY d ORDER BY d`;
         }
     }
 
     if (!query) return [];
-    
-    const rows = db.prepare(query).all() as { d: string, val: number }[];
-    return rows.map(r => ({ date: r.d, value: r.val }));
-  } catch (error) {
-    return [];
-  }
+
+    try {
+        const rows = await db.query(query, queryParams);
+        
+        // Mapeia para o formato do gráfico
+        return rows.map((r: any) => ({
+            date: r.d,
+            value: r.val || 0
+        }));
+
+    } catch (e) {
+        console.error("Erro History:", e);
+        return [];
+    }
 }

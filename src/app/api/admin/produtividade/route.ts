@@ -8,43 +8,91 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate') || new Date().toISOString().split('T')[0];
     const endDate = searchParams.get('endDate') || startDate;
+    const selectedTeam = searchParams.get('team') || 'CRC'; // Padrão CRC se não vier nada
     
+    const dbStart = `${startDate} 00:00:00`;
+    const dbEnd = `${endDate} 23:59:59`;
+
     const db = getDbConnection();
 
-    // 1. RANKING DE USUÁRIOS (Agendamentos por status)
-    const userStats = db.prepare(`
+    // 1. RANKING INDIVIDUAL
+    // Agora traz também o time de cada usuário para exibir no card
+    const userStats = await db.query(`
         SELECT 
-            scheduled_by as user,
-            status_id,
-            COUNT(*) as qtd,
-            SUM(value) as total_valor
-        FROM feegow_appointments
-        WHERE date BETWEEN ? AND ?
-        AND scheduled_by IS NOT NULL AND scheduled_by != '' AND scheduled_by != 'Sistema'
-        GROUP BY scheduled_by, status_id
-        ORDER BY qtd DESC
-    `).all(startDate, endDate);
+            f.scheduled_by as user,
+            t.team_name,
+            COUNT(*) as total,
+            SUM(CASE WHEN f.status_id IN (3, 7) THEN 1 ELSE 0 END) as confirmados
+        FROM feegow_appointments f
+        LEFT JOIN team_config t ON f.scheduled_by = t.user_name
+        WHERE f.scheduled_at BETWEEN ? AND ?
+        AND f.scheduled_by IS NOT NULL AND f.scheduled_by != '' AND f.scheduled_by != 'Sistema'
+        GROUP BY f.scheduled_by, t.team_name
+        ORDER BY total DESC
+    `, [dbStart, dbEnd]);
 
-    // 2. TAXA DE CONFIRMAÇÃO POR UNIDADE
-    // Considera: Total = Todos os agendamentos | Confirmados = Status 7
-    const unitStats = db.prepare(`
+    // 2. ESTATÍSTICAS GERAIS (GLOBAL - TODA A CLÍNICA)
+    const globalStatsRes = await db.query(`
         SELECT 
-            unit_name,
-            COUNT(*) as total_agendado,
-            SUM(CASE WHEN status_id = 7 THEN 1 ELSE 0 END) as confirmados
+            COUNT(*) as total,
+            SUM(CASE WHEN status_id IN (3, 7) THEN 1 ELSE 0 END) as confirmados
         FROM feegow_appointments
-        WHERE date BETWEEN ? AND ?
-        AND unit_name IS NOT NULL
-        GROUP BY unit_name
-        ORDER BY total_agendado DESC
-    `).all(startDate, endDate);
+        WHERE scheduled_at BETWEEN ? AND ?
+    `, [dbStart, dbEnd]);
+    const globalStats = globalStatsRes[0] || { total: 0, confirmados: 0 };
+
+    // 3. ESTATÍSTICAS DA EQUIPE SELECIONADA (Dinâmico via banco)
+    const teamStatsRes = await db.query(`
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN f.status_id IN (3, 7) THEN 1 ELSE 0 END) as confirmados,
+            COUNT(DISTINCT f.scheduled_by) as active_members
+        FROM feegow_appointments f
+        JOIN team_config t ON f.scheduled_by = t.user_name
+        WHERE f.scheduled_at BETWEEN ? AND ?
+        AND t.team_name = ?
+    `, [dbStart, dbEnd, selectedTeam]);
+    
+    const teamStats = teamStatsRes[0] || { total: 0, confirmados: 0, active_members: 0 };
+
+    // 4. HEARTBEAT
+    const statusRes = await db.query(`
+        SELECT status, last_run, message 
+        FROM system_status 
+        WHERE service_name = 'agendamentos'
+    `);
+    const heartbeat = statusRes[0] || { status: 'UNKNOWN', last_run: null, message: '' };
 
     return NextResponse.json({ 
         userStats, 
-        unitStats
+        globalStats,
+        teamStats: {
+            ...teamStats,
+            name: selectedTeam
+        },
+        heartbeat
     });
 
   } catch (error: any) {
+    console.error("Erro API Produtividade:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+}
+
+// POST: Trigger de Atualização Manual
+export async function POST() {
+    try {
+        const db = getDbConnection();
+        await db.execute(`
+            INSERT INTO system_status (service_name, status, last_run, message)
+            VALUES ('agendamentos', 'PENDING', datetime('now'), 'Solicitado via Painel')
+            ON CONFLICT(service_name) DO UPDATE SET
+                status = 'PENDING',
+                message = 'Solicitado via Painel',
+                last_run = datetime('now')
+        `);
+        return NextResponse.json({ success: true, message: "Atualização solicitada" });
+    } catch (error: any) {
+        return NextResponse.json({ error: error.message }, { status: 500 });
+    }
 }
