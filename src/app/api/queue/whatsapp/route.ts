@@ -1,23 +1,27 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const db = getDbConnection();
 
     // Busca os grupos já com nomes corretos salvos pelo worker
-    const stmt = db.prepare(`
+    // Migrado de db.prepare().all() para await db.query()
+    const groupsRaw = await db.query(`
       SELECT group_id, group_name, queue_size, avg_wait_seconds 
       FROM clinia_group_snapshots 
       ORDER BY queue_size DESC
     `);
     
-    const groups = stmt.all() as { 
-      group_id: string;
-      group_name: string; 
-      queue_size: number; 
-      avg_wait_seconds: number; 
-    }[];
+    // Garante tipagem numérica para evitar erros nos cálculos
+    const groups = groupsRaw.map((g: any) => ({
+        group_id: g.group_id,
+        group_name: g.group_name,
+        queue_size: Number(g.queue_size || 0),
+        avg_wait_seconds: Number(g.avg_wait_seconds || 0)
+    }));
 
     // Calcula totais globais
     const totalQueue = groups.reduce((acc, g) => acc + g.queue_size, 0);

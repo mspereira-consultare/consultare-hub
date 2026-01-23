@@ -1,32 +1,62 @@
 import { NextResponse } from 'next/server';
-import { exec } from 'child_process';
-import path from 'path';
-import util from 'util';
+import { getDbConnection } from '@/lib/db';
 
-const execPromise = util.promisify(exec);
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    // Caminho absoluto para o script
-    const scriptPath = path.join(process.cwd(), 'workers', 'worker_recepcao.py');
+    const db = getDbConnection();
+    console.log("=== API RECEPTION DEBUG ===");
     
-    // Executa o Python. 
-    // OBS: Certifique-se que o comando 'python' está no PATH ou use o caminho do venv
-    const { stdout, stderr } = await execPromise(`python "${scriptPath}"`);
+    // Pega data Brasil
+    const today = new Date().toLocaleString('pt-BR', { 
+        timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' 
+    }).split('/').reverse().join('-');
+    
+    console.log(`[RECEPTION] Data filtro usada: ${today}`);
 
-    if (stderr) {
-      console.warn('Python Stderr:', stderr); // Warnings do Python podem cair aqui
+    // Query
+    const sql = `SELECT * FROM recepcao_historico WHERE dia_referencia = ?`;
+    const rows = await db.query(sql, [today]);
+
+    console.log(`[RECEPTION] Linhas retornadas: ${rows.length}`);
+    if (rows.length > 0) {
+        console.log(`[RECEPTION] Exemplo linha 1:`, rows[0]);
+    } else {
+        // Tenta buscar sem filtro para ver se o problema é a data
+        const check = await db.query("SELECT count(*) as total FROM recepcao_historico", []);
+        console.warn(`[RECEPTION] Query vazia para hoje. Total na tabela inteira:`, check[0]);
     }
 
-    // Faz o parse do JSON retornado pelo Python
-    const data = JSON.parse(stdout);
+    const response = {
+      global: { total_fila: 0, tempo_medio: 0 },
+      por_unidade: {
+          "2": { fila: 0, tempo_medio: 0, total_passaram: 0, nome_unidade: "Ouro Verde" },
+          "3": { fila: 0, tempo_medio: 0, total_passaram: 0, nome_unidade: "Centro Cambuí" },
+          "12": { fila: 0, tempo_medio: 0, total_passaram: 0, nome_unidade: "Campinas Shopping" }
+      } as Record<string, any>
+    };
 
-    return NextResponse.json(data, { status: 200 });
+    (rows as any[]).forEach((row: any) => {
+      const id = String(row.unidade_id);
+      const status = (row.status || '').toLowerCase();
+      
+      if (response.por_unidade[id]) {
+          if ((status.includes('aguardando') || status.includes('triagem')) && !status.includes('atendimento')) {
+              response.por_unidade[id].fila++;
+              response.global.total_fila++;
+          }
+          if (status.includes('atendido') || status.includes('finalizado')) {
+              response.por_unidade[id].total_passaram++;
+          }
+      }
+    });
+
+    console.log(`[RECEPTION] Resumo final:`, JSON.stringify(response.global));
+    return NextResponse.json({ status: 'success', data: response, timestamp: new Date().toISOString() });
+
   } catch (error) {
-    console.error('Erro ao executar worker de recepção:', error);
-    return NextResponse.json(
-      { error: 'Falha ao processar dados da recepção' }, 
-      { status: 500 }
-    );
+    console.error('[RECEPTION ERROR]', error);
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }

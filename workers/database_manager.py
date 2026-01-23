@@ -167,8 +167,8 @@ class DatabaseManager:
                 """
                 params = (
                     hash_id, row.get('UNIDADE'), row.get('PACIENTE'), 
-                    row.get('CHEGADA'), row.get('ESPERA'), 
-                    row.get('STATUS'), row.get('PROFISSIONAL'), agora
+                    row.get('CHEGADA'), row.get('ESPERA_MINUTOS'), 
+                    row.get('STATUS_DETECTADO'), row.get('PROFISSIONAL'), agora
                 )
                 
                 if self.use_turso: conn.execute(sql, params)
