@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import json
 from dotenv import load_dotenv
+from database_manager import DatabaseManager
 
 # --- CARREGA AMBIENTE ---
 env_path = os.path.join(os.path.dirname(__file__), '../.env')
@@ -13,12 +14,17 @@ FEEGOW_TOKEN = os.getenv("FEEGOW_ACCESS_TOKEN")
 BASE_URL = "https://api.feegow.com/v1/api"
 
 def get_headers():
-    if not FEEGOW_TOKEN:
-        print("!!! ERRO: Token FEEGOW_ACCESS_TOKEN não encontrado no .env !!!")
+    db = DatabaseManager()
+    # Usamos a unidade 2 (Ouro Verde) como padrão para consultas financeiras/listas
+    sessao = db.obter_token_unidade_feegow(12) 
+    
+    if not sessao or not sessao.get("x-access-token"):
+        print("!!! ERRO: Token não encontrado no DB. Verifique se o worker_auth rodou. !!!")
         return {}
+        
     return {
         "Content-Type": "application/json",
-        "x-access-token": FEEGOW_TOKEN
+        "x-access-token": sessao["x-access-token"]
     }
 
 def request_endpoint(endpoint, method="GET", json_body=None):

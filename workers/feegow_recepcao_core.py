@@ -1,94 +1,95 @@
 import requests
-import os
 import json
-import sys
-import pandas as pd
-from dotenv import load_dotenv
-
-# Ajuste de path para imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-try:
-    from database_manager import DatabaseManager
-except ImportError:
-    # Se falhar o import aqui, tentamos relativo ou passamos
-    pass
-
-load_dotenv()
-
-# Caminho mantido apenas para referência se necessário, mas o DB Manager resolve
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../data/dados_clinica.db')
-
-def get_feegow_token_db():
-    """Busca o token (cookie) no banco de dados de forma Híbrida (Turso/Local)"""
-    try:
-        # Usa o gerenciador centralizado
-        db = DatabaseManager()
-        res = db.execute_query("SELECT token FROM integrations_config WHERE service = 'feegow'")
-        
-        if res:
-            row = res[0]
-            # Compatibilidade Turso/SQLite
-            if isinstance(row, (tuple, list)):
-                return row[0]
-            if hasattr(row, 'token'): 
-                return row.token
-            if hasattr(row, '__getitem__'):
-                return row['token']
-    except Exception as e:
-        print(f"Erro buscando token no DB: {e}")
-    return None
+import logging
+from datetime import datetime
+from database_manager import DatabaseManager
 
 class FeegowRecepcaoSystem:
     def __init__(self):
-        pass
+        self.db = DatabaseManager()
+        self.SESSOES = {}
+        
+        # Carrega tokens usando o novo método que busca múltiplas linhas
+        tokens_db = self.db.obter_todos_tokens_feegow()
+        
+        if tokens_db:
+            print(f"Carregando {len(tokens_db)} sessões do Banco de Dados...")
+            # Defesa: Garante que só converte chaves numéricas ("2" -> 2)
+            # Isso evita erro se tiver um id "admin" ou vazio
+            self.SESSOES = {
+                int(k): v for k, v in tokens_db.items() 
+                if str(k).strip().isdigit()
+            }
+        else:
+            print("⚠️ Aviso: Nenhum token encontrado no banco de dados.")
 
     def obter_dados_brutos(self, unidades=[2, 3, 12]):
-        # 1. Busca Cookie no Banco (Agora via Turso/Local)
-        cookie_full = get_feegow_token_db()
-        
-        # 2. Fallback para .env
-        if not cookie_full:
-            cookie_full = os.getenv("FEEGOW_CORE_COOKIE_FULL")
+        todos_pacientes = []
+        url = "https://core.feegow.com/totem-queue/admin/get-queue-by-filter?filter="
+        erros = []
 
-        if not cookie_full:
-            return [], "ERRO: Cookie não configurado no Painel Admin ou .env"
-
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
-            "Cookie": cookie_full,
-            "X-Requested-With": "XMLHttpRequest",
-            "Referer": "https://core.feegow.com/totem-queue/admin/queue"
-        }
-        
-        endpoint = "https://core.feegow.com/totem-queue/admin/get-queue-by-filter"
-        todos_dados = []
-        logs = []
-
-        # --- LÓGICA DE REQUEST ORIGINAL MANTIDA ---
-        for uid in unidades:
-            try:
-                url = f"{endpoint}?filter=&unit_id={uid}"
-                resp = requests.get(url, headers=headers, timeout=10)
-
-                if resp.status_code == 200:
-                    data = resp.json()
-                    if isinstance(data, dict): data = [data]
-                    if isinstance(data, list):
-                        for item in data:
-                            if 'UnidadeID' not in item or not item['UnidadeID']:
-                                item['UnidadeID'] = uid
-                        todos_dados.extend(data)
-                
-                elif resp.status_code == 403:
-                    logs.append(f"UID {uid}: 403 (Cookie Expirou - Atualize no Painel)")
-                else:
-                    logs.append(f"UID {uid}: {resp.status_code}")
-                    
-            except Exception as e:
-                logs.append(f"UID {uid}: Erro req: {str(e)}")
-
-        if not todos_dados and logs:
-            return [], " | ".join(logs)
+        for unidade_id in unidades:
+            # Busca a sessão já convertida para int
+            sessao = self.SESSOES.get(unidade_id)
             
-        return todos_dados, "OK"
+            if not sessao:
+                msg = f"⚠️ Unidade {unidade_id}: Sem credenciais no banco."
+                print(msg)
+                erros.append(msg)
+                continue
+
+            # Extração segura dos dados
+            token = sessao.get("x-access-token", "")
+            cookie = sessao.get("cookie", "")
+
+            headers = {
+                "accept": "*/*",
+                "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
+                "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
+                "sec-ch-ua-mobile": "?0",
+                "sec-ch-ua-platform": "\"Windows\"",
+                "sec-fetch-dest": "empty",
+                "sec-fetch-mode": "cors",
+                "sec-fetch-site": "same-site",
+                "Referer": "https://franchising.feegow.com/",
+                "Referrer-Policy": "strict-origin-when-cross-origin",
+                # USANDO OS DADOS VINDOS DO BANCO
+                "x-access-token": token,
+                "Cookie": cookie
+            }
+
+            try:
+                print(f"Consultando Fila Unidade {unidade_id}...")
+                response = requests.get(url, headers=headers, timeout=10)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if isinstance(data, list):
+                        # Injeta o ID da unidade para o monitor saber de onde veio
+                        for item in data:
+                            item['UnidadeID_Coleta'] = unidade_id
+                        
+                        todos_pacientes.extend(data)
+                        print(f"✅ Unidade {unidade_id}: {len(data)} pacientes na fila.")
+                    else:
+                        print(f"Unidade {unidade_id}: Retorno vazio.")
+                        
+                elif response.status_code in [401, 403]:
+                    msg = f"Unidade {unidade_id}: 🔒 Token Expirado (403/401)"
+                    print(msg)
+                    erros.append(msg)
+                else:
+                    msg = f"Unidade {unidade_id}: Erro HTTP {response.status_code}"
+                    print(msg)
+                    erros.append(msg)
+            
+            except Exception as e:
+                msg = f"Erro de Conexão Unidade {unidade_id}: {e}"
+                print(msg)
+                erros.append(str(e))
+
+        # Retorna lista vazia e erros acumulados se houver falha total
+        if not todos_pacientes and erros:
+            return [], " | ".join(erros)
+            
+        return todos_pacientes, "OK"

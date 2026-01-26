@@ -40,6 +40,7 @@ def run_monitor_recepcao():
             
             else:
                 if dados_brutos:
+                    print(dados_brutos)
                     db.salvar_dados_recepcao(dados_brutos)
                 
                 for uid in [2, 3, 12]:

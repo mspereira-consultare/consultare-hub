@@ -20,6 +20,7 @@ try:
     from worker_proposals import update_proposals
     from worker_faturamento_scraping import run_scraper
     from worker_contracts import run_worker_contracts
+    from worker_auth import FeegowTokenRenewer
     
     # Monitores (Loops infinitos)
     from monitor_recepcao import run_monitor_recepcao
@@ -38,6 +39,20 @@ END_HOUR = 23 # Estendido um pouco para garantir fechamento
 def is_working_hours():
     h = datetime.datetime.now().hour
     return START_HOUR <= h < END_HOUR
+
+def run_token_renewal():
+    """Roda o Playwright para renovar tokens e salvar no banco"""
+    print("\n🔑 Iniciando Renovação de Tokens (Auth)...")
+    db = DatabaseManager()
+    try:
+        db.update_heartbeat("Auth Feegow", "RUNNING", "Renovando tokens...")
+        renewer = FeegowTokenRenewer()
+        renewer.obter_tokens() # Isso popula as linhas unit_id 2, 3, 12 no banco
+        print("✅ Tokens renovados com sucesso.")
+        db.update_heartbeat("Auth Feegow", "COMPLETED", "Tokens atualizados")
+    except Exception as e:
+        print(f"❌ Falha na renovação de tokens: {e}")
+        db.update_heartbeat("Auth Feegow", "ERROR", str(e))
 
 def run_on_demand_listener():
     print("👂 Listener de Atualizações Manuais iniciado.")
@@ -71,6 +86,8 @@ def run_on_demand_listener():
                         update_proposals()
                     elif service == 'contratos':
                         run_worker_contracts()
+                    elif service == 'auth':
+                        run_token_renewal()
                     
                     elapsed = round(time.time() - start_time, 2)
                     db.update_heartbeat(service, "COMPLETED", f"Concluído em {elapsed}s")
@@ -121,6 +138,7 @@ def run_scheduler():
     def daily_full_sync():
         print("🌅 Job Diário: Sincronização Completa...")
         try:
+            run_token_renewal()
             update_financial_data()
             run_scraper()
             update_proposals()
@@ -130,8 +148,11 @@ def run_scheduler():
             print(f"❌ Falha no Job Diário: {e}")
         
     # Agendamento
+    schedule.every().day.at("05:00").do(run_token_renewal)
     schedule.every().day.at("06:00").do(daily_full_sync)
     schedule.every().day.at("12:00").do(lambda: run_worker_contracts())
+
+    schedule.every().day.at("12:00").do(run_token_renewal)
 
     while True:
         schedule.run_pending()

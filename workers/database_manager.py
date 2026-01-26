@@ -2,7 +2,9 @@ import sqlite3
 import datetime
 import os
 import sys
+import logging
 import pandas as pd
+import traceback
 from dotenv import load_dotenv
 
 # Tenta importar o cliente Turso (HTTP)
@@ -60,7 +62,14 @@ class DatabaseManager:
                 )""",
                 # Tabela de Configurações
                 """CREATE TABLE IF NOT EXISTS integrations_config (
-                    service TEXT PRIMARY KEY, username TEXT, password TEXT, token TEXT, unit_id TEXT, updated_at TEXT
+                    service TEXT, 
+                    username TEXT, 
+                    password TEXT, 
+                    token TEXT, 
+                    unit_id TEXT, 
+                    cookies TEXT,
+                    updated_at TEXT,
+                    PRIMARY KEY (service, unit_id)
                 )""",
                 # Tabela Fila Médica
                 """CREATE TABLE IF NOT EXISTS espera_medica (
@@ -288,5 +297,130 @@ class DatabaseManager:
                 conn.execute("DELETE FROM espera_medica WHERE updated_at < ?", (limit,))
                 conn.commit()
         except: pass
+        finally:
+            conn.close()
+
+    def obter_credenciais_feegow(self):
+        """Retorna (username, password) da tabela integrations_config"""
+        conn = self.get_connection()
+        try:
+            # Garante que a tabela existe (Segurança)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS integrations_config (
+                    service TEXT PRIMARY KEY,
+                    username TEXT,
+                    password TEXT,
+                    token TEXT,
+                    updated_at TEXT
+                )
+            """)
+            
+            sql = "SELECT username, password FROM integrations_config WHERE service='feegow'"
+            
+            # Executa a query
+            cursor = conn.execute(sql)
+            
+            # Lógica para pegar o resultado (compatível com SQLite e Turso)
+            # Em SQLite conn.execute retorna cursor, em Turso retorna ResultSet
+            row = None
+            if hasattr(cursor, 'fetchone'):
+                row = cursor.fetchone()
+            else:
+                # Fallback para Turso/LibSQL se comportar como lista
+                rows = list(cursor)
+                if rows: row = rows[0]
+
+            if row:
+                # Retorna username (col 0) e password (col 1)
+                # Acessa por índice para garantir compatibilidade tuple vs Row object
+                return row[0], row[1]
+            return None, None
+
+        except Exception as e:
+            print(f"Erro ao obter credenciais: {e}")
+            return None, None
+        finally:
+            conn.close()
+
+    def salvar_unidade_feegow(self, unit_id, dados):
+        """Salva os dados de uma única unidade por vez de forma estruturada"""
+        conn = self.get_connection()
+        try:
+            from datetime import datetime
+            agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            u_id = str(unit_id).strip()
+            token = str(dados.get('x-access-token', '')).strip()
+            cookie = str(dados.get('cookie', '')).strip()
+
+            # Agora o ON CONFLICT vai funcionar porque não há mais PRIMARY KEY no service
+            sql = """
+                INSERT INTO integrations_config (service, token, cookies, unit_id, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(service, unit_id) DO UPDATE SET
+                    token = excluded.token,
+                    cookies = excluded.cookies,
+                    updated_at = excluded.updated_at
+            """
+            
+            params = ('feegow', token, cookie, u_id, agora)
+            conn.execute(sql, params)
+            
+            if not getattr(self, 'use_turso', False):
+                conn.commit()
+                
+            logging.info(f"✅ Unidade {u_id} salva com sucesso.")
+                    
+        except Exception as e:
+            logging.error(f"❌ Erro ao salvar unidade {unit_id}: {e}")
+        finally:
+            conn.close()
+
+    def obter_token_unidade_feegow(self, unit_id):
+        """Retorna o token e cookies de uma unidade específica com tratamento para Turso/SQLite"""
+        conn = self.get_connection()
+        try:
+            sql = "SELECT token, cookies FROM integrations_config WHERE service = ? AND unit_id = ?"
+            cursor = conn.execute(sql, ('feegow', str(unit_id)))
+            
+            # Tratamento de retorno para compatibilidade total
+            row = None
+            if hasattr(cursor, 'fetchone'):
+                row = cursor.fetchone()
+            else:
+                rows = list(cursor)
+                if rows: row = rows[0]
+            
+            if row:
+                return {
+                    "x-access-token": row[0], # feegow_client espera exatamente esta chave
+                    "cookie": row[1]
+                }
+            return None
+
+        except Exception as e:
+            logging.error(f"❌ Erro ao ler token da unidade {unit_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def obter_todos_tokens_feegow(self):
+        """Retorna um dicionário com todas as unidades e seus respectivos tokens (útil para loops)"""
+        conn = self.get_connection()
+        try:
+            sql = "SELECT unit_id, token, cookies FROM integrations_config WHERE service = 'feegow' AND unit_id IS NOT NULL"
+            cursor = conn.execute(sql)
+            
+            tokens = {}
+            for row in cursor:
+                tokens[row[0]] = {
+                    "x-access-token": row[1],
+                    "cookie": row[2]
+                }
+            return tokens
+
+        except Exception as e:
+            logging.error(f"Erro ao ler todos os tokens: {e}")
+            return {}
         finally:
             conn.close()
