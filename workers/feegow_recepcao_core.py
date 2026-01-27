@@ -27,7 +27,7 @@ class FeegowRecepcaoSystem:
         todos_pacientes = []
         url = "https://core.feegow.com/totem-queue/admin/get-queue-by-filter?filter="
         erros = []
-
+        
         for unidade_id in unidades:
             # Busca a sessão já convertida para int
             sessao = self.SESSOES.get(unidade_id)
@@ -38,50 +38,32 @@ class FeegowRecepcaoSystem:
                 erros.append(msg)
                 continue
 
-            # Extração segura dos dados
-            token = sessao.get("x-access-token", "")
-            cookie = sessao.get("cookie", "")
-
             headers = {
-                "accept": "*/*",
-                "accept-language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
-                "sec-ch-ua": "\"Not(A:Brand\";v=\"8\", \"Chromium\";v=\"144\", \"Google Chrome\";v=\"144\"",
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": "\"Windows\"",
-                "sec-fetch-dest": "empty",
-                "sec-fetch-mode": "cors",
-                "sec-fetch-site": "same-site",
-                "Referer": "https://franchising.feegow.com/",
-                "Referrer-Policy": "strict-origin-when-cross-origin",
-                # USANDO OS DADOS VINDOS DO BANCO
-                "x-access-token": token,
-                "Cookie": cookie
+                "accept": "application/json",
+                "x-access-token": sessao["x-access-token"],
+                "Cookie": sessao["cookie"]
             }
 
             try:
-                print(f"Consultando Fila Unidade {unidade_id}...")
-                response = requests.get(url, headers=headers, timeout=10)
+                # 2. FORÇAR unit_id na URL (Isso resolve a replicação)
+                url_com_unidade = f"{url}&unit_id={unidade_id}"
+                
+                response = requests.get(url_com_unidade, headers=headers, timeout=10)
                 
                 if response.status_code == 200:
                     data = response.json()
                     if isinstance(data, list):
-                        # Injeta o ID da unidade para o monitor saber de onde veio
-                        for item in data:
+                        # 3. FILTRO DE SEGURANÇA: Só aceita se o UnidadeID no dado bater com o solicitado
+                        # Isso impede que o dado da 12 "vaze" para a 2
+                        dados_filtrados = [
+                            item for item in data 
+                            if str(item.get('UnidadeID')) == str(unidade_id)
+                        ]
+                        
+                        for item in dados_filtrados:
                             item['UnidadeID_Coleta'] = unidade_id
                         
-                        todos_pacientes.extend(data)
-                        print(f"✅ Unidade {unidade_id}: {len(data)} pacientes na fila.")
-                    else:
-                        print(f"Unidade {unidade_id}: Retorno vazio.")
-                        
-                elif response.status_code in [401, 403]:
-                    msg = f"Unidade {unidade_id}: 🔒 Token Expirado (403/401)"
-                    print(msg)
-                    erros.append(msg)
-                else:
-                    msg = f"Unidade {unidade_id}: Erro HTTP {response.status_code}"
-                    print(msg)
-                    erros.append(msg)
+                        todos_pacientes.extend(dados_filtrados)
             
             except Exception as e:
                 msg = f"Erro de Conexão Unidade {unidade_id}: {e}"

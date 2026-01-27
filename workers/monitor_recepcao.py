@@ -40,22 +40,25 @@ def run_monitor_recepcao():
             
             else:
                 if dados_brutos:
-                    print(dados_brutos)
                     db.salvar_dados_recepcao(dados_brutos)
                 
+                resumo_unidades = []
                 for uid in [2, 3, 12]:
                     ids_nesta_unidade = [
                         item['id'] for item in dados_brutos 
-                        if item.get('UnidadeID') == uid or item.get('UnidadeID_Coleta') == uid
+                        if str(item.get('UnidadeID_Coleta')) == str(uid)
                     ]
                     db.finalizar_ausentes_recepcao(uid, ids_nesta_unidade)
+                    
+                    # Nome curto para o log
+                    nome_u = "Ouro Verde" if uid == 2 else "Cambuí" if uid == 3 else "Shop. Campinas"
+                    resumo_unidades.append(f"{nome_u}: {len(ids_nesta_unidade)}")
 
-                status_msg = f"OK. Fila: {len(dados_brutos)}"
-                if dados_brutos:
-                    print(f"[{timestamp}] {status_msg}")
-                else:
-                    print(".", end="", flush=True)
+                # Monta a linha única de log
+                string_unidades = " | ".join(resumo_unidades)
+                status_msg = f"Fila: {len(dados_brutos)} ({string_unidades})"
                 
+                print(f"[{timestamp}] ✅ {status_msg}")
                 db.update_heartbeat("Monitor Recepcao", "ONLINE", status_msg)
 
         except KeyboardInterrupt:

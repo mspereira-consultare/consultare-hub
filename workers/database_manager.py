@@ -218,6 +218,7 @@ class DatabaseManager:
         conn = self.get_connection()
         try:
             agora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            horario_atual = datetime.datetime.now().strftime('%H:%M:%S') # Captura apenas a hora
             dia_ref = datetime.datetime.now().strftime('%Y-%m-%d')
 
             for item in dados_brutos:
@@ -229,7 +230,11 @@ class DatabaseManager:
                 elif uid == 12: unidade_nome = "Campinas Shopping"
 
                 paciente = item.get('PacienteNome', 'Desconhecido')
-                dt_chegada = item.get('DataChegada') 
+                
+                # ALTERAÇÃO: Concatena a Data do Feegow com o Horário da detecção
+                dt_chegada_raw = item.get('DataChegada') or dia_ref
+                dt_chegada = f"{dt_chegada_raw} {horario_atual}"
+                
                 dt_atend = item.get('DataAtendimento') 
                 status = item.get('StatusNome', 'Indefinido')
 
@@ -241,14 +246,14 @@ class DatabaseManager:
                         dt_chegada, dt_atendimento, status, dia_referencia, updated_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(hash_id) DO UPDATE SET
-                        dt_atendimento = excluded.dt_atendimento,
                         status = excluded.status,
                         updated_at = excluded.updated_at
                 """
+                # Removido dt_atendimento do UPDATE para que o finalizar_ausentes tenha prioridade sobre ele
+                
                 params = (hash_id, id_ext, uid, unidade_nome, paciente, dt_chegada, dt_atend, status, dia_ref, agora)
 
-                if self.use_turso: conn.execute(sql, params)
-                else: conn.execute(sql, params)
+                conn.execute(sql, params)
 
             if not self.use_turso: conn.commit()
         except Exception as e:
@@ -256,32 +261,36 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def finalizar_ausentes_recepcao(self, unidade_id, ids_presentes):
+    def finalizar_ausentes_recepcao(self, unidade_id, ids_ativos):
+        """Marca como finalizado quem sumiu da lista da API"""
         conn = self.get_connection()
         try:
             agora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            dia_ref = datetime.datetime.now().strftime('%Y-%m-%d')
+            hoje = datetime.date.today().isoformat()
             
-            if not ids_presentes: return
-
-            placeholders = ','.join(['?'] * len(ids_presentes))
+            # Converte IDs ativos para string
+            ativos_str = [str(i) for i in ids_ativos]
+            placeholder = ','.join(['?'] * len(ativos_str)) if ativos_str else "NULL"
             
-            # Atualiza para 'Finalizado' quem sumiu da lista da API (foi atendido/foi embora)
-            sql = f"""
+            # REMOVIDO: status = 'Aguardando' (substituído por NOT LIKE 'Finalizado')
+            # Isso garante que mesmo que o status venha vazio do Feegow, ele seja atualizado
+            sql = f'''
                 UPDATE recepcao_historico 
-                SET status = 'Finalizado (Saiu)', updated_at = ?
+                SET status = 'Finalizado (Saiu)', 
+                    dt_atendimento = ?, 
+                    updated_at = ?
                 WHERE unidade_id = ? 
                 AND dia_referencia = ?
                 AND status NOT LIKE 'Finalizado%'
-                AND id_externo NOT IN ({placeholders})
-            """
-            params = [agora, unidade_id, dia_ref] + ids_presentes
+                AND id_externo NOT IN ({placeholder})
+            '''
             
-            if self.use_turso:
-                conn.execute(sql, params)
-            else:
-                conn.execute(sql, params)
-                conn.commit()
+            params = [agora, agora, str(unidade_id), hoje] + ativos_str
+            
+            if self.use_turso: conn.execute(sql, params)
+            else: conn.execute(sql, params)
+            
+            if not self.use_turso: conn.commit()
         except Exception as e:
             print(f"Erro finalizar recepção: {e}")
         finally:
@@ -405,20 +414,24 @@ class DatabaseManager:
             conn.close()
 
     def obter_todos_tokens_feegow(self):
-        """Retorna um dicionário com todas as unidades e seus respectivos tokens (útil para loops)"""
+        """Retorna um dicionário com todas as unidades e seus respectivos tokens"""
         conn = self.get_connection()
         try:
+            # Selecionamos explicitamente para evitar problemas de ordem de coluna
             sql = "SELECT unit_id, token, cookies FROM integrations_config WHERE service = 'feegow' AND unit_id IS NOT NULL"
             cursor = conn.execute(sql)
             
+            # Para o Turso/LibSQL, precisamos garantir que lemos os resultados antes de fechar a conn
+            rows = cursor.fetchall() if hasattr(cursor, 'fetchall') else list(cursor)
+            
             tokens = {}
-            for row in cursor:
-                tokens[row[0]] = {
+            for row in rows:
+                u_id = str(row[0]).strip() # Remove espaços em branco
+                tokens[u_id] = {
                     "x-access-token": row[1],
                     "cookie": row[2]
                 }
             return tokens
-
         except Exception as e:
             logging.error(f"Erro ao ler todos os tokens: {e}")
             return {}
