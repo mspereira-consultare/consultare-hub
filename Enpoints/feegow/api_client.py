@@ -332,7 +332,7 @@ def get_feegow_auth(target_unidade_id=None):
     """
     with sync_playwright() as p:
         # headless=True para produção. Mantenha False se quiser ver rodando.
-        browser = p.chromium.launch(headless=False) 
+        browser = p.chromium.launch(headless=True) 
         context = browser.new_context()
         page = context.new_page()
 
