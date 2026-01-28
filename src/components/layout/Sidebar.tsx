@@ -9,14 +9,15 @@
     PhoneCall, 
     DollarSign, 
     Users, 
-    ShieldCheck, 
+    Settings2, 
     Settings, 
     Menu, 
     X,
     LogOut,
     Target,
     UserCheck,
-    Briefcase
+    Briefcase,
+    CreditCard
   } from 'lucide-react';
 
   const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(' ');
@@ -42,12 +43,12 @@
     
     // Financeiro: Apenas Admin e Gestor
     { href: '/financeiro', label: 'Financeiro', icon: DollarSign, group: 'FINANCEIRO', roles: ['ADMIN', 'GESTOR'] },
-    { href: '/contratos', label: 'ResolveSaúde', icon: DollarSign, group: 'FINANCEIRO', roles: ['ADMIN', 'GESTOR'] },
+    { href: '/contratos', label: 'ResolveSaúde', icon: CreditCard, group: 'FINANCEIRO', roles: ['ADMIN', 'GESTOR'] },
     { href: '/propostas', label: 'Gestão de Propostas', icon: Briefcase, group: 'FINANCEIRO', roles: ['ADMIN', 'GESTOR'] },
     
     // --- NOVO ITEM: METAS ---
     { href: '/metas/dashboard', label: 'Painel de Metas', icon: Target, group: 'INTELIGÊNCIA', roles: ['ADMIN', 'GESTOR', 'OPERADOR'] },
-    { href: '/metas', label: 'Gestão de Metas', icon: Target, group: 'INTELIGÊNCIA', roles: ['ADMIN', 'GESTOR'] },
+    { href: '/metas', label: 'Gestão de Metas', icon: Settings2, group: 'INTELIGÊNCIA', roles: ['ADMIN', 'GESTOR'] },
     
     // Sistema: Apenas Admin
     { href: '/users', label: 'Gestão de Usuários', icon: Users, group: 'SISTEMA', roles: ['ADMIN'] },

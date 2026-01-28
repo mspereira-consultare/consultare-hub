@@ -1,11 +1,15 @@
 import sqlite3
-import datetime
 import os
 import sys
 import logging
 import pandas as pd
 import traceback
+import hashlib
+import pytz
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
+
+tz = pytz.timezone("America/Sao_Paulo")
 
 # Tenta importar o cliente Turso (HTTP)
 try:
@@ -19,6 +23,9 @@ sys.path.append(BASE_DIR)
 load_dotenv()
 
 LOCAL_DB_PATH = os.path.join(BASE_DIR, 'data', 'dados_clinica.db')
+
+def gerar_hash(raw_id):
+    return hashlib.md5(raw_id.encode()).hexdigest()
 
 class DatabaseManager:
     def __init__(self):
@@ -114,7 +121,7 @@ class DatabaseManager:
     def update_heartbeat(self, service_name, status, details=""):
         conn = self.get_connection()
         try:
-            agora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
             sql = """
                 INSERT INTO system_status (service_name, status, last_run, details)
                 VALUES (?, ?, ?, ?)
@@ -158,68 +165,72 @@ class DatabaseManager:
         if df.empty: return
         conn = self.get_connection()
         try:
-            agora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            
+            agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+
             for _, row in df.iterrows():
-                # Cria ID único
                 raw_id = f"{row.get('UNIDADE')}-{row.get('PACIENTE')}-{row.get('CHEGADA')}"
-                hash_id = str(hash(raw_id)).replace("-", "N") 
-                
+                hash_id = gerar_hash(raw_id)
+
+                espera_raw = row.get('ESPERA_MINUTOS')
+                try:
+                    espera = int(espera_raw)
+                except:
+                    espera = None
+
                 sql = """
-                    INSERT INTO espera_medica (hash_id, unidade, paciente, chegada, espera, status, profissional, updated_at)
+                    INSERT INTO espera_medica 
+                    (hash_id, unidade, paciente, chegada, espera_minutos, status, profissional, updated_at)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(hash_id) DO UPDATE SET
-                        espera = excluded.espera,
+                        espera_minutos = excluded.espera_minutos,
                         status = excluded.status,
                         profissional = excluded.profissional,
                         updated_at = excluded.updated_at
                 """
                 params = (
-                    hash_id, row.get('UNIDADE'), row.get('PACIENTE'), 
-                    row.get('CHEGADA'), row.get('ESPERA_MINUTOS'), 
+                    hash_id, row.get('UNIDADE'), row.get('PACIENTE'),
+                    row.get('CHEGADA'), espera,
                     row.get('STATUS_DETECTADO'), row.get('PROFISSIONAL'), agora
                 )
-                
-                if self.use_turso: conn.execute(sql, params)
-                else: conn.execute(sql, params)
-            
-            if not self.use_turso: conn.commit()
+
+                conn.execute(sql, params)
+
         except Exception as e:
             print(f"Erro salvar médicos: {e}")
         finally:
             conn.close()
 
-    def finalizar_ausentes_medicos(self, nome_unidade, hashes_presentes):
+
+    def finalizar_expirados_medicos(self, nome_unidade, minutos=5):
         conn = self.get_connection()
         try:
-            agora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            if not hashes_presentes: return
+            agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+            limite = (datetime.now(tz) - timedelta(minutes=minutos)).strftime('%Y-%m-%d %H:%M:%S')
 
-            placeholders = ','.join(['?'] * len(hashes_presentes))
-            sql = f"""
-                UPDATE espera_medica SET status = 'Finalizado (Saiu)', updated_at = ?
-                WHERE unidade = ? AND status NOT LIKE 'Finalizado%' 
-                AND hash_id NOT IN ({placeholders})
+            sql = """
+                UPDATE espera_medica
+                SET status = 'Finalizado (Saiu)', updated_at = ?
+                WHERE unidade = ?
+                AND status NOT LIKE 'Finalizado%'
+                AND updated_at < ?
             """
-            params = [agora, nome_unidade] + hashes_presentes
-            
-            if self.use_turso: conn.execute(sql, params)
-            else: 
-                conn.execute(sql, params)
-                conn.commit()
+
+            conn.execute(sql, (agora, nome_unidade, limite))
+
         except Exception as e:
-            print(f"Erro finalizar médicos: {e}")
+            print(f"Erro finalizar expirados médicos: {e}")
         finally:
             conn.close()
+
 
     # --- LÓGICA RECEPÇÃO ---
     def salvar_dados_recepcao(self, dados_brutos):
         if not dados_brutos: return
         conn = self.get_connection()
         try:
-            agora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            horario_atual = datetime.datetime.now().strftime('%H:%M:%S') # Captura apenas a hora
-            dia_ref = datetime.datetime.now().strftime('%Y-%m-%d')
+            agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+            horario_atual = datetime.now(tz).strftime('%H:%M:%S') # Captura apenas a hora
+            dia_ref = datetime.now(tz).strftime('%Y-%m-%d')
 
             for item in dados_brutos:
                 id_ext = item.get('id')
@@ -265,8 +276,8 @@ class DatabaseManager:
         """Marca como finalizado quem sumiu da lista da API"""
         conn = self.get_connection()
         try:
-            agora = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            hoje = datetime.date.today().isoformat()
+            agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+            hoje = datetime.now(tz).date().isoformat()
             
             # Converte IDs ativos para string
             ativos_str = [str(i) for i in ids_ativos]
@@ -299,7 +310,7 @@ class DatabaseManager:
     def limpar_dias_anteriores(self):
         conn = self.get_connection()
         try:
-            limit = (datetime.datetime.now() - datetime.timedelta(days=3)).strftime('%Y-%m-%d')
+            limit = (datetime.now(tz) - timedelta(days=3)).strftime('%Y-%m-%d')
             if self.use_turso:
                 conn.execute("DELETE FROM espera_medica WHERE updated_at < ?", (limit,))
             else:
@@ -356,7 +367,7 @@ class DatabaseManager:
         conn = self.get_connection()
         try:
             from datetime import datetime
-            agora = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
             
             u_id = str(unit_id).strip()
             token = str(dados.get('x-access-token', '')).strip()

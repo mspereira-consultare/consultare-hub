@@ -1,3 +1,4 @@
+import pytz
 import requests
 import pandas as pd
 import os
@@ -5,6 +6,7 @@ import time
 import html
 import re
 import sys
+import pytz
 from io import StringIO
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -159,38 +161,43 @@ class FeegowSystem:
         try:
             html_content = html.unescape(html_content)
             dfs = pd.read_html(StringIO(html_content))
-            # Pega as 7 colunas originais do print
             df = dfs[0].iloc[:, :7].copy()
             df.columns = ['HORA', 'CHEGADA', 'PACIENTE', 'IDADE', 'PROFISSIONAL', 'COMPROMISSO', 'TEMPO_TEXTO']
 
-            # Função para extrair dados da coluna de texto
-            def processar_status_tempo(texto):
-                texto = str(texto).strip()
-                
-                # Caso 1: "Em atendimento"
-                if "atendimento" in texto.lower():
-                    return "Em Atendimento", 0 # Status, Minutos
-                
-                # Caso 2: "Aguardando há 316 minutos"
-                # Extrai apenas os números usando Regex
-                match = re.search(r'(\d+)', texto)
-                minutos = int(match.group(1)) if match else 0
-                return "Espera", minutos
+            tz = pytz.timezone("America/Sao_Paulo")
+            agora = datetime.now(tz)
 
-            # Aplica a lógica
-            dados_processados = df['TEMPO_TEXTO'].apply(processar_status_tempo)
-            
-            # Cria as novas colunas limpas
-            df['STATUS_DETECTADO'] = [x[0] for x in dados_processados]
-            df['ESPERA_MINUTOS'] = [x[1] for x in dados_processados]
-            
-            # Limpeza padrão
+            def calcular_espera_minutos(hora_chegada):
+                try:
+                    hoje = agora.strftime("%Y-%m-%d")
+                    chegada = datetime.strptime(f"{hoje} {hora_chegada}", "%Y-%m-%d %H:%M")
+                    chegada = tz.localize(chegada)
+                    diff = int((agora - chegada).total_seconds() / 60)
+                    return max(diff, 0)
+                except:
+                    return None
+
+            def processar_linha(row):
+                texto = str(row['TEMPO_TEXTO']).lower()
+                chegada = str(row['CHEGADA']).strip()
+
+                # Status
+                if "atendimento" in texto:
+                    status = "Em Atendimento"
+                else:
+                    status = "Espera"
+
+                espera = calcular_espera_minutos(chegada)
+                return pd.Series([status, espera])
+
+            df[['STATUS_DETECTADO', 'ESPERA_MINUTOS']] = df.apply(processar_linha, axis=1)
             df['UNIDADE'] = nome_unidade
-            
-            # Removemos a coluna suja original para não atrapalhar
-            # df = df.drop(columns=['TEMPO_TEXTO']) 
-            
+
+            # Opcional: remover TEMPO_TEXTO
+            # df = df.drop(columns=['TEMPO_TEXTO'])
+
             return df
+
         except Exception as e:
             print(f"Erro parse: {e}")
             return pd.DataFrame()
@@ -289,6 +296,7 @@ class FeegowSystem:
         if not html_content: return pd.DataFrame()
         soup = BeautifulSoup(html_content, 'html.parser')
         table = soup.find('table')
+
         if not table: return pd.DataFrame()
 
         try:

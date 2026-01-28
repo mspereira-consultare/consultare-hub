@@ -33,17 +33,25 @@ export default function MonitorPage() {
 
       if (resMedic.ok) {
         const json = await resMedic.json();
-        setMedicData(Array.isArray(json) ? json : (json?.data || []));
+        const parsed = Array.isArray(json) ? json : json?.data;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMedicData(parsed);
+        }
       }
 
       if (resRecep.ok) {
         const json = await resRecep.json();
-        setReceptionData(json.data || json || null);
+        const parsed = json?.data || json;
+        if (parsed && Object.keys(parsed).length > 0) {
+          setReceptionData(parsed);
+        }
       }
 
       if (resWhats.ok) {
         const json = await resWhats.json();
-        setWhatsAppData(json.data || null);
+        if (json?.data) {
+          setWhatsAppData(json.data);
+        }
       }
 
       const now = new Date();
@@ -61,15 +69,20 @@ export default function MonitorPage() {
   useEffect(() => {
     fetchData();
     const intervalId = setInterval(fetchData, 15000);
-    
+
     const staleId = setInterval(() => {
-        if (lastUpdatedTime && (new Date().getTime() - lastUpdatedTime.getTime()) > 300000) {
-            setIsDataStale(true);
-        }
+      setIsDataStale(prev => {
+        if (!lastUpdatedTime) return prev;
+        return (new Date().getTime() - lastUpdatedTime.getTime()) > 300000;
+      });
     }, 5000);
-    
-    return () => { clearInterval(intervalId); clearInterval(staleId); };
-  }, [fetchData, lastUpdatedTime]);
+
+    return () => {
+      clearInterval(intervalId);
+      clearInterval(staleId);
+    };
+  }, [fetchData]);
+
 
   return (
     <div className={`p-4 min-h-screen transition-colors duration-500 ${isDataStale ? 'bg-red-50' : 'bg-slate-100'}`}>

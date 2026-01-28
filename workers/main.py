@@ -60,42 +60,38 @@ def run_on_demand_listener():
     
     while True:
         try:
-            # Busca pedidos PENDING
-            pedidos = db.execute_query("SELECT service_name FROM system_status WHERE status = 'PENDING'")
-            
-            if pedidos:
-                # Marca como na fila para não pegar duas vezes
-                conn = db.get_connection()
-                conn.execute("UPDATE system_status SET status = 'QUEUED' WHERE status = 'PENDING'")
-                conn.commit()
-                conn.close()
+            pedidos = db.execute_query("""
+                SELECT service_name 
+                FROM system_status 
+                WHERE status IN ('PENDING', 'ERROR', 'QUEUED')
+            """)
 
             for row in pedidos:
                 service = row[0] if isinstance(row, (tuple, list)) else row['service_name']
                 
                 print(f"\n⚡ GATILHO RECEBIDO: {service}")
                 db.update_heartbeat(service, "RUNNING", "Processando...")
-                
+
                 try:
                     start_time = time.time()
                     
                     if service == 'financeiro':
-                        update_financial_data() # API
-                        run_scraper()           # Scraping
+                        update_financial_data()
+                        run_scraper()
                     elif service == 'comercial':
                         update_proposals()
                     elif service == 'contratos':
                         run_worker_contracts()
                     elif service == 'auth':
                         run_token_renewal()
-                    
+
                     elapsed = round(time.time() - start_time, 2)
                     db.update_heartbeat(service, "COMPLETED", f"Concluído em {elapsed}s")
                     
                 except Exception as e:
                     print(f"❌ Erro {service}: {e}")
                     db.update_heartbeat(service, "ERROR", str(e))
-            
+
         except Exception as e:
             print(f"⚠️ Erro Listener: {e}")
             time.sleep(5)

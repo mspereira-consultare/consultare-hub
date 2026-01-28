@@ -8,7 +8,12 @@ export async function middleware(req: NextRequest) {
   // --- 1. ROTA DE FUGA (PÚBLICA) ---
   // Se o usuário estiver tentando acessar a página de Login (raiz /) ou a página de cadastro,
   // liberamos o acesso imediatamente sem verificar token para evitar Loop Infinito.
-  if (pathname === '/' || pathname === '/login' || pathname === '/register') {
+  if (pathname === '/') {
+    return NextResponse.redirect(new URL('/login', req.url));
+  }
+
+  // Liberamos apenas login e registro. Se não estiver logado, não passa daqui.
+  if (pathname === '/login' || pathname === '/register') {
     return NextResponse.next();
   }
 

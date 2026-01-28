@@ -10,13 +10,22 @@ env_path = os.path.join(os.path.dirname(__file__), '../.env')
 load_dotenv(env_path)
 
 # --- CONFIGURAÇÃO ---
-FEEGOW_TOKEN = os.getenv("FEEGOW_ACCESS_TOKEN")
 BASE_URL = "https://api.feegow.com/v1/api"
+
+def get_api_headers():
+    token = os.getenv("FEEGOW_ACCESS_TOKEN")
+    if not token:
+        raise Exception("FEEGOW_ACCESS_TOKEN não encontrado no .env")
+    return {
+        "x-access-token": token,
+        "Content-Type": "application/json"
+    }
 
 def get_headers():
     db = DatabaseManager()
     # Usamos a unidade 2 (Ouro Verde) como padrão para consultas financeiras/listas
     sessao = db.obter_token_unidade_feegow(12) 
+    print(sessao.get("x-access-token"))
     
     if not sessao or not sessao.get("x-access-token"):
         print("!!! ERRO: Token não encontrado no DB. Verifique se o worker_auth rodou. !!!")
@@ -29,7 +38,8 @@ def get_headers():
 
 def request_endpoint(endpoint, method="GET", json_body=None):
     url = f"{BASE_URL}/{endpoint}"
-    headers = get_headers()
+    headers = get_api_headers()
+
     try:
         response = requests.request(method=method, url=url, headers=headers, json=json_body, timeout=60)
         response.raise_for_status()
