@@ -23,6 +23,7 @@ def run_monitor_recepcao():
 
     while True:
         try:
+            sistema = FeegowRecepcaoSystem()
             db.update_heartbeat("Monitor Recepcao", "RUNNING", "Buscando dados...")
             
             timestamp = datetime.now().strftime('%H:%M:%S')

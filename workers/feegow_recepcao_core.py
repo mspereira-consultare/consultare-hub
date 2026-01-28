@@ -23,55 +23,45 @@ class FeegowRecepcaoSystem:
         else:
             print("⚠️ Aviso: Nenhum token encontrado no banco de dados.")
 
-    def obter_dados_brutos(self, unidades=[2, 3, 12]):
+    def obter_dados_brutos(self, unidades=[3, 2, 12]):
         todos_pacientes = []
-        url = "https://core.feegow.com/totem-queue/admin/get-queue-by-filter?filter="
-        erros = []
+        url_base = "https://core.feegow.com/totem-queue/admin/get-queue-by-filter?filter="
         
-        for unidade_id in unidades:
-            # Busca a sessão já convertida para int
-            sessao = self.SESSOES.get(unidade_id)
-            
-            if not sessao:
-                msg = f"⚠️ Unidade {unidade_id}: Sem credenciais no banco."
-                print(msg)
-                erros.append(msg)
-                continue
+        # 🟢 RECARREGA DO BANCO: Garante que estamos pegando os cookies novos do worker_auth
+        self.SESSOES = self.db.obter_todos_tokens_feegow()
 
+        for unidade_id in unidades:
+            sessao = self.SESSOES.get(str(unidade_id))
+            if not sessao: continue
+
+            # 🟢 HEADER LIMPO: Sem herança de sessões anteriores
             headers = {
                 "accept": "application/json",
                 "x-access-token": sessao["x-access-token"],
-                "Cookie": sessao["cookie"]
+                "Cookie": sessao["cookie"] 
             }
 
             try:
-                # 2. FORÇAR unit_id na URL (Isso resolve a replicação)
-                url_com_unidade = f"{url}&unit_id={unidade_id}"
+                # Forçamos o unit_id na URL para redundância
+                url_final = f"{url_base}&unit_id={unidade_id}"
                 
-                response = requests.get(url_com_unidade, headers=headers, timeout=10)
+                # Usamos requests.get direto (sem usar self.session global)
+                response = requests.get(url_final, headers=headers, timeout=10)
                 
                 if response.status_code == 200:
                     data = response.json()
-                    if isinstance(data, list):
-                        # 3. FILTRO DE SEGURANÇA: Só aceita se o UnidadeID no dado bater com o solicitado
-                        # Isso impede que o dado da 12 "vaze" para a 2
-                        dados_filtrados = [
-                            item for item in data 
-                            if str(item.get('UnidadeID')) == str(unidade_id)
-                        ]
-                        
-                        for item in dados_filtrados:
-                            item['UnidadeID_Coleta'] = unidade_id
-                        
-                        todos_pacientes.extend(dados_filtrados)
-            
+                    # 🟢 FILTRO DE SEGURANÇA: Só aceita se a UnidadeID no JSON for a correta
+                    dados_filtrados = [
+                        item for item in data 
+                        if str(item.get('UnidadeID')) == str(unidade_id)
+                    ]
+                    
+                    for item in dados_filtrados:
+                        item['UnidadeID_Coleta'] = unidade_id
+                    
+                    todos_pacientes.extend(dados_filtrados)
+                    print(f"   Unidade {unidade_id}: {len(dados_filtrados)} registros.")
             except Exception as e:
-                msg = f"Erro de Conexão Unidade {unidade_id}: {e}"
-                print(msg)
-                erros.append(str(e))
+                print(f"   Erro Unidade {unidade_id}: {e}")
 
-        # Retorna lista vazia e erros acumulados se houver falha total
-        if not todos_pacientes and erros:
-            return [], " | ".join(erros)
-            
         return todos_pacientes, "OK"

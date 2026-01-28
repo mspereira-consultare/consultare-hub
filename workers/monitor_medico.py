@@ -80,7 +80,7 @@ def run_monitor_medico():
                     db.salvar_dados_medicos(df)
 
                 # 🔥 NOVO MODELO: Finaliza apenas quem sumiu por tempo
-                db.finalizar_expirados_medicos(nome_unidade, minutos=5)
+                db.finalizar_expirados_medicos(nome_unidade, minutos=120)
 
                 print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
 

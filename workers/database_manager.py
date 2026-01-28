@@ -31,6 +31,10 @@ class DatabaseManager:
     def __init__(self):
         self.turso_url = os.getenv("TURSO_URL")
         self.turso_token = os.getenv("TURSO_TOKEN")
+
+        print("DEBUG TURSO_URL:", os.getenv("TURSO_URL"))
+        print("DEBUG TURSO_TOKEN:", "SET" if os.getenv("TURSO_TOKEN") else "MISSING")
+        print("DEBUG HAS_TURSO_LIB:", HAS_TURSO_LIB)
         
         # --- FIX PARA ERRO 505 ---
         # Força o uso de HTTPS em vez de libsql:// ou wss://
@@ -201,7 +205,7 @@ class DatabaseManager:
             conn.close()
 
 
-    def finalizar_expirados_medicos(self, nome_unidade, minutos=5):
+    def finalizar_expirados_medicos(self, nome_unidade, minutos=60):
         conn = self.get_connection()
         try:
             agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')

@@ -11,92 +11,100 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 class FeegowTokenRenewer:
     def __init__(self):
         self.db = DatabaseManager()
-        self.unidades = [2, 3, 12] # IDs das unidades para capturar
+        self.unidades = [2, 3, 12] 
         self.tokens_coletados = {}
 
     def obter_tokens(self):
         user, pwd = self.db.obter_credenciais_feegow()
         
         if not user or not pwd:
-            logging.error("Credenciais do Feegow não encontradas no banco (integrations_config).")
+            logging.error("Credenciais do Feegow não encontradas.")
             return
 
         with sync_playwright() as p:
-            # Lança o browser (headless=True para rodar em background)
             browser = p.chromium.launch(headless=True) 
-            context = browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-            )
-            page = context.new_page()
 
             try:
-                logging.info("Acessando página de login...")
-                page.goto("https://franchising.feegow.com/v8.1/")
-                
-                # Login
-                page.get_by_role("textbox", name="E-mail").fill(user)
-                page.get_by_role("textbox", name="Senha").fill(pwd)
-                page.get_by_role("button", name="Entrar ").click()
-                
-                # Espera login completar (verifica se mudou URL ou elemento apareceu)
-                page.wait_for_load_state("networkidle")
-                
-                # Lida com popup de escolha de unidade inicial (se houver)
-                if page.is_visible("text=Selecione a unidade"):
-                    logging.info("Selecionando unidade padrão...")
-                    page.click("text=Confirmar") # Ou lógica para selecionar a primeira
+                for idx, unidade_id in enumerate(self.unidades):
+                    context = browser.new_context(
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                    )
+                    page = context.new_page()
 
-                logging.info("Login realizado com sucesso.")
+                    try:
+                        logging.info(f"--- Processando Unidade {unidade_id} ---")
+                        
+                        # Função auxiliar para o login (reutilizável após deslogar)
+                        def realizar_login():
+                            page.goto("https://franchising.feegow.com/v8.1/")
+                            # Tenta preencher usando o seletor inicial ou o legado
+                            campo_u = page.locator("#User").or_(page.get_by_role("textbox", name="E-mail"))
+                            campo_u.fill(user)
+                            
+                            campo_p = page.locator("#password").or_(page.get_by_role("textbox", name="Senha"))
+                            campo_p.fill(pwd)
+                            
+                            btn = page.locator("#Entrar").or_(page.get_by_role("button", name="Entrar "))
+                            btn.click()
+                            page.wait_for_load_state("networkidle")
 
-                # ITERA SOBRE AS UNIDADES
-                for unidade_id in self.unidades:
-                    logging.info(f"--- Capturando token Unidade {unidade_id} ---")
-                    
-                    url_troca = f"https://franchising.feegow.com/v8.1/?P=MudaLocal&Pers=1&MudaLocal={unidade_id}"
-                    page.goto(url_troca)
-                    page.wait_for_load_state("networkidle")
+                        realizar_login()
 
-                    target_url = "https://franchising.feegow.com/v8.1/?P=Totem"
-                    token_info = {"found": False}
+                        # --- TRATAMENTO DE BLOQUEIO (SESSÃO ATIVA) ---
+                        modal = page.locator("#confirmaDesloga")
+                        if modal.is_visible(timeout=3000):
+                            logging.info(f"⚠️ Bloqueio na Unidade {unidade_id}. Deslogando sessão anterior...")
+                            # Preenche a senha no modal e clica em Deslogar
+                            page.locator("#confirmaDesloga >> #password").fill(pwd)
+                            page.locator("#Deslogar").click()
+                            page.wait_for_load_state("networkidle")
+                            
+                            # Refaz o login após o redirecionamento
+                            logging.info("🔄 Refazendo login pós-limpeza...")
+                            realizar_login()
 
-                    def handle_request(request):
-                        if request.resource_type in ["xhr", "fetch"]:
-                            headers = request.headers
-                            if "x-access-token" in headers:
-                                # Captura cookies reais do contexto
-                                browser_cookies = context.cookies(request.url)
+                        # Troca para a unidade específica
+                        url_troca = f"https://franchising.feegow.com/v8.1/?P=MudaLocal&Pers=1&MudaLocal={unidade_id}"
+                        page.goto(url_troca)
+                        page.wait_for_load_state("networkidle")
+
+                        # Captura de Token e Cookie
+                        target_url = "https://franchising.feegow.com/v8.1/?P=Totem"
+                        token_info = {"found": False}
+
+                        def handle_request(request):
+                            if "x-access-token" in request.headers and not token_info["found"]:
+                                browser_cookies = context.cookies()
                                 cookie_str = "; ".join([f"{c['name']}={c['value']}" for c in browser_cookies])
                                 
                                 self.tokens_coletados[str(unidade_id)] = {
-                                    "x-access-token": headers["x-access-token"],
+                                    "x-access-token": request.headers["x-access-token"],
                                     "cookie": cookie_str
                                 }
                                 token_info["found"] = True
-                                logging.info(f"✅ Sucesso Unidade {unidade_id}: ...{headers['x-access-token'][-10:]} / ...{cookie_str[-10:]}")
+                                logging.info(f"✅ Unidade {unidade_id}: Token/Cookie capturados.")
 
-                    page.on("request", handle_request)
-                    page.goto(target_url)
-                    
-                    try:
+                        page.on("request", handle_request)
+                        page.goto(target_url)
                         page.wait_for_timeout(7000)
-                    except: pass
 
-                    if str(unidade_id) in self.tokens_coletados:
-                        self.db.salvar_unidade_feegow(unidade_id, self.tokens_coletados[str(unidade_id)])
-                    
-                    page.remove_listener("request", handle_request)
+                        if str(unidade_id) in self.tokens_coletados:
+                            self.db.salvar_unidade_feegow(unidade_id, self.tokens_coletados[str(unidade_id)])
+                        
+                        page.remove_listener("request", handle_request)
 
-            except Exception as e:
-                logging.error(f"Erro durante scraping: {e}")
-                # Tira screenshot se der erro para debug
-                try:
-                    page.screenshot(path="error_screenshot.png")
-                except: pass
-            
+                    except Exception as e:
+                        logging.error(f"❌ Erro na unidade {unidade_id}: {e}")
+                    finally:
+                        context.close()
+
+                    if idx < len(self.unidades) - 1:
+                        logging.info(f"⏳ Aguardando 2 minutos antes da Unidade {self.unidades[idx+1]}...")
+                        time.sleep(120)
+
             finally:
                 browser.close()
 
 if __name__ == "__main__":
     renewer = FeegowTokenRenewer()
-    # Executa uma vez. Você pode colocar num loop while True com time.sleep(4h)
     renewer.obter_tokens()
