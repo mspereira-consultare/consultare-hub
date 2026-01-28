@@ -1,5 +1,4 @@
 import { createClient } from '@libsql/client';
-import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 
@@ -27,23 +26,6 @@ export const getDbConnection = (): DbInterface => {
         },
         execute: async (sql: string, params: any[] = []) => {
             await client.execute({ sql, args: params });
-        }
-    };
-  } else {
-    // --- MODO LOCAL (SQLITE) ---
-    // Fallback caso não tenha internet ou chaves
-    const dbPath = path.resolve(process.cwd(), 'data/dados_clinica.db');
-    const dir = path.dirname(dbPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-
-    const db = new Database(dbPath);
-    
-    return {
-        query: async (sql: string, params: any[] = []) => {
-            return db.prepare(sql).all(...params);
-        },
-        execute: async (sql: string, params: any[] = []) => {
-            db.prepare(sql).run(...params);
         }
     };
   }
