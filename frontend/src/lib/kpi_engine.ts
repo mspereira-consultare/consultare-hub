@@ -181,13 +181,12 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
 
         // 3. Execução da Query
         const rows = await db.query(query, queryParams);
-+
-+        // Debug: quando não houver linhas, logamos a query e os params para diagnóstico
-+        if (!rows || rows.length === 0) {
-+            console.debug(`[KPI_ENGINE] Query retornou 0 linhas para kpi=${kpiId}`, { query, queryParams });
-+            return [];
-+        }
-+
+        
+        // Debug: quando não houver linhas, logamos a query e os params para diagnóstico
+        if (!rows || rows.length === 0) {
+            console.debug(`[KPI_ENGINE] Query retornou 0 linhas para kpi=${kpiId}`, { query, queryParams });
+            return [];
+        }
         // 4. Mapeamento e Limpeza (Garante que valores nulos virem 0)
         return rows.map((row: any) => ({
             date: row.d,
