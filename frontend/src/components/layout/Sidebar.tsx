@@ -1,4 +1,4 @@
-  "use client";
+"use client";
 
   import React, { useState } from 'react';
   import Link from 'next/link';
@@ -72,7 +72,17 @@
     const groups = Array.from(new Set(authorizedItems.map(item => item.group)));
 
     const handleLogout = async () => {
-      await signOut({ callbackUrl: '/login' });
+      try {
+        // Faz signOut sem redirecionamento automático (mais confiável em produção)
+        await signOut({ redirect: false });
+        // Redireciona localmente para a página de login
+        router.push('/login');
+        router.refresh();
+      } catch (e) {
+        console.error("Erro ao deslogar:", e);
+        // Fallback rígido
+        window.location.href = '/login';
+      }
     };
 
     return (
