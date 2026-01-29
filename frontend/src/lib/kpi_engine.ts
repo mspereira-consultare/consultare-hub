@@ -21,7 +21,9 @@ interface KpiHistoryItem {
  * * faturamento_analitico: data_do_pagamento vem como 'DD/MM/YYYY' (String)
  * feegow_proposals/contracts: date/start_date vem como 'YYYY-MM-DD' (ISO)
  */
-const SQL_DATE_ANALITICO = `substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2)`;
+// Aceita duas formas de data: original 'DD/MM/YYYY' (com barras) OU já em ISO 'YYYY-MM-DD'
+// Se contém '/', converte para 'YYYY-MM-DD', caso contrário usa o valor diretamente.
+const SQL_DATE_ANALITICO = `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
 
 /**
  * MOTOR DE CÁLCULO CONSOLIDADO
@@ -187,6 +189,10 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
             console.debug(`[KPI_ENGINE] Query retornou 0 linhas para kpi=${kpiId}`, { query, queryParams });
             return [];
         }
+
+        // Log de amostra para ajudar a inspecionar rapidamente o resultado da query
+        console.debug(`[KPI_ENGINE] Query retornou ${rows.length} linhas para kpi=${kpiId}. Amostra:`, rows.slice(0, 4));
+
         // 4. Mapeamento e Limpeza (Garante que valores nulos virem 0)
         return rows.map((row: any) => ({
             date: row.d,
