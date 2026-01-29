@@ -50,7 +50,7 @@ export default function LoginPage() {
         <div className="text-center">
           {/* Logo ajustado para h-24 (aprox. 96px) */}
           <Image
-            src="/logo-color.png"
+            src="https://www.consultare.com.br/wp-content/uploads/2021/07/consultare-logo-vertical.png"
             alt="Logo Consultare"
             width={256}
             height={128}
