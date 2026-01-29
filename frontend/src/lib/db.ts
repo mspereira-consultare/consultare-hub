@@ -1,30 +1,33 @@
 import { createClient } from '@libsql/client';
 
-// Verifica se tem credenciais Turso configuradas
-const useTurso = process.env.TURSO_URL && process.env.TURSO_TOKEN;
-
 export interface DbInterface {
-    query: (sql: string, params?: any[]) => Promise<any[]>;
-    execute: (sql: string, params?: any[]) => Promise<void>;
+  query: (sql: string, params?: any[]) => Promise<any[]>;
+  execute: (sql: string, params?: any[]) => Promise<any>;
 }
 
-export const getDbConnection = (): DbInterface => {
-  if (useTurso) {
-    // --- MODO NUVEM (TURSO) ---
-    // Conecta via HTTP, funciona em qualquer lugar
-    const client = createClient({
-      url: process.env.TURSO_URL!,
-      authToken: process.env.TURSO_TOKEN!,
-    });
-    
-    return {
-        query: async (sql: string, params: any[] = []) => {
-            const res = await client.execute({ sql, args: params });
-            return res.rows;
-        },
-        execute: async (sql: string, params: any[] = []) => {
-            await client.execute({ sql, args: params });
-        }
-    };
+let client: ReturnType<typeof createClient> | null = null;
+
+export function getDbConnection(): DbInterface {
+  const url = process.env.TURSO_URL;
+  const authToken = process.env.TURSO_TOKEN;
+
+  if (!url || !authToken) {
+    throw new Error(
+      'TURSO_URL/TURSO_TOKEN não configurados. Configure as variáveis no Railway (service do frontend).'
+    );
   }
-};
+
+  if (!client) {
+    client = createClient({ url, authToken });
+  }
+
+  return {
+    query: async (sql: string, params: any[] = []) => {
+      const res = await client!.execute({ sql, args: params });
+      return (res.rows ?? []) as any[];
+    },
+    execute: async (sql: string, params: any[] = []) => {
+      return client!.execute({ sql, args: params });
+    },
+  };
+}

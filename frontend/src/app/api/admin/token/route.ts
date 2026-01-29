@@ -1,30 +1,27 @@
-import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
+import { NextResponse } from 'next/server';
 
-export async function POST(request: Request) {
+export async function POST(req: Request) {
   try {
-    const { token, chave } = await request.json(); // chave pode ser 'cookie_recepcao'
-
-    if (!token || !chave) {
-      return NextResponse.json({ error: 'Dados incompletos' }, { status: 400 });
-    }
+    const { chave, valor } = await req.json();
+    if (!chave) return NextResponse.json({ error: 'chave obrigatória' }, { status: 400 });
 
     const db = getDbConnection();
 
-    // Upsert (Inserir ou Atualizar)
-    const stmt = db.prepare(`
-      INSERT INTO config (chave, valor, dt_atualizacao) 
+    await db.execute(
+      `
+      INSERT INTO config (chave, valor, dt_atualizacao)
       VALUES (?, ?, datetime('now'))
-      ON CONFLICT(chave) DO UPDATE SET 
+      ON CONFLICT(chave) DO UPDATE SET
         valor = excluded.valor,
         dt_atualizacao = excluded.dt_atualizacao
-    `);
+      `,
+      [chave, valor ?? '']
+    );
 
-    stmt.run(chave, token);
-
-    return NextResponse.json({ message: 'Token atualizado com sucesso' });
-
+    return NextResponse.json({ ok: true });
   } catch (error) {
+    console.error('[TOKEN] Erro:', error);
     return NextResponse.json({ error: 'Erro ao salvar token' }, { status: 500 });
   }
 }

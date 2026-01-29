@@ -4,42 +4,44 @@ import { getDbConnection } from '@/lib/db';
 export const dynamic = 'force-dynamic';
 
 // --- AUTO-CORREÇÃO DE SCHEMA ---
-function ensureSettingsSchema(db: any) {
-  db.exec(`
+async function ensureSettingsSchema(db: any) {
+  // Alterado para .execute para garantir compatibilidade com Turso
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS integrations_config (
-      service TEXT PRIMARY KEY, -- 'feegow' ou 'clinia'
+      service TEXT PRIMARY KEY, 
       username TEXT,
       password TEXT,
-      token TEXT, -- Para o Cookie Completo ou Token de API
-      unit_id TEXT, -- Específico para Feegow (Unidade Padrão)
+      token TEXT, 
+      unit_id TEXT,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 }
 
-// GET: Busca as configurações (ocultando senhas reais)
+// GET: Busca as configurações
 export async function GET() {
   try {
     const db = getDbConnection();
-    ensureSettingsSchema(db);
+    await ensureSettingsSchema(db);
 
-    const configs = db.prepare('SELECT * FROM integrations_config').all();
+    // Alterado: de .prepare().all() para .query()
+    const configs = await db.query('SELECT * FROM integrations_config');
     
-    // Mascara a senha para segurança visual no front
     const safeConfigs = configs.map((c: any) => ({
         ...c,
         password: c.password ? '********' : '', 
-        token: c.token ? (c.token.substring(0, 10) + '...') : '', // Mostra só o comecinho do token
+        token: c.token ? (c.token.substring(0, 10) + '...') : '',
         is_configured: !!c.password || !!c.token
     }));
 
     return NextResponse.json(safeConfigs);
   } catch (error: any) {
+    console.error("Erro GET Settings:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// POST: Salva as configurações
+// POST: Salva ou atualiza configurações
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -50,23 +52,24 @@ export async function POST(request: Request) {
     }
 
     const db = getDbConnection();
-    ensureSettingsSchema(db);
+    await ensureSettingsSchema(db);
 
-    // Verifica se já existe para manter a senha antiga se o usuário não digitou uma nova
-    const existing = db.prepare('SELECT password, token FROM integrations_config WHERE service = ?').get(service) as any;
+    // Alterado: de .prepare().get() para .query() pegando o primeiro resultado
+    const results = await db.query('SELECT password, token FROM integrations_config WHERE service = ?', [service]);
+    const existing = results.length > 0 ? results[0] : null;
 
     let finalPassword = password;
     if (password === '********' && existing) {
         finalPassword = existing.password;
     }
 
-    // Lógica similar para o Token (se o usuário não mudou, mantém)
     let finalToken = token;
     if (token && token.includes('...') && existing) {
          finalToken = existing.token;
     }
 
-    const stmt = db.prepare(`
+    // Alterado: de .prepare().run() para .execute() direto
+    await db.execute(`
       INSERT INTO integrations_config (service, username, password, token, unit_id, updated_at)
       VALUES (?, ?, ?, ?, ?, datetime('now'))
       ON CONFLICT(service) DO UPDATE SET
@@ -75,14 +78,12 @@ export async function POST(request: Request) {
         token=excluded.token,
         unit_id=excluded.unit_id,
         updated_at=datetime('now')
-    `);
-
-    stmt.run(service, username, finalPassword, finalToken, unit_id);
+    `, [service, username, finalPassword, finalToken, unit_id]);
 
     return NextResponse.json({ success: true });
 
   } catch (error: any) {
-    console.error("Erro ao salvar config:", error);
+    console.error("Erro POST Settings:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
