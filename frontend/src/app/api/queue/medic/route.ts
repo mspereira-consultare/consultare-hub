@@ -44,13 +44,15 @@ export async function GET() {
       const updatedAt = new Date(row.updated_at.replace(' ', 'T'));
       if (isNaN(updatedAt.getTime())) return;
 
+      const normalizedId = normalizeUnitId(row.unidade);
+      const targetUnit = unitsMap.get(normalizedId);
+      if (!targetUnit) return;
+
       const status = (row.status || '').toUpperCase();
       const isService = status.includes('ATENDIMENTO') || status.includes('SALA');
 
-      const waitTime =
-        typeof row.espera_minutos === 'number' && row.espera_minutos >= 0
-          ? row.espera_minutos
-          : 0;
+      const waitTimeRaw = Number(row.espera_minutos);
+      const waitTime = Number.isFinite(waitTimeRaw) && waitTimeRaw >= 0 ? waitTimeRaw : 0;
 
       targetUnit.patients.push({
         id: row.hash_id,
@@ -58,7 +60,7 @@ export async function GET() {
         service: '',
         professional: row.profissional || '',
         arrival: row.chegada,
-        waitTime: waitTime,
+        waitTime,
         status: isService ? 'in_service' : 'waiting',
         priority: {
           isElderly: row.paciente?.toLowerCase().includes('idoso'),
