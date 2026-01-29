@@ -4,7 +4,6 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import { signIn } from 'next-auth/react'; 
-import Image from 'next/image';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -49,13 +48,10 @@ export default function LoginPage() {
         
         <div className="text-center">
           {/* Logo ajustado para h-24 (aprox. 96px) */}
-          <Image
-            src="https://www.consultare.com.br/wp-content/uploads/2021/07/consultare-logo-vertical.png"
-            alt="Logo Consultare"
-            width={256}
-            height={128}
-            priority
-            className="mx-auto h-32 w-auto mb-4"
+          <img 
+            src="https://www.consultare.com.br/wp-content/uploads/2021/07/consultare-logo-vertical.png" 
+            alt="Consultare Logo" 
+            className="mx-auto h-32 w-auto mb-4" 
           />
           <h2 className="text-2xl font-bold text-gray-900">Acesso ao Painel</h2>
           <p className="mt-1 text-sm text-gray-500">Insira suas credenciais para continuar</p>
