@@ -151,7 +151,9 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                 <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
                                     <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
                                         Grupo de Procedimento
-                                        <HelpCircle size={12} title="Filtra os dados do Feegow por grupo (Ex: Consultas, Exames, Cirurgias)" />
+                                        <span title="Filtra os dados do Feegow por grupo (Ex: Consultas, Exames, Cirurgias)">
+                                            <HelpCircle size={12} />
+                                        </span>
                                     </label>
                                     <input 
                                         type="text" 
@@ -245,7 +247,7 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                 {/* Footer */}
                 <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
                     <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 rounded-lg transition">Cancelar</button>
-                    <button type="submit" onClick={handleSubmit} className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md transition flex items-center gap-2">
+                    <button type="submit" className="px-6 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-md transition flex items-center gap-2">
                         <Save size={18} /> Salvar Meta
                     </button>
                 </div>
