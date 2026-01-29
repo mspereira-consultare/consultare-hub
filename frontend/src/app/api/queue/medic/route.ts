@@ -29,10 +29,13 @@ export async function GET() {
 
     // 1️⃣ FILA ATUAL (somente ativos recentes)
     const filaSql = `
-      SELECT *
+      SELECT hash_id, unidade, paciente, chegada, espera_minutos, status, profissional, updated_at
       FROM espera_medica
       WHERE status NOT LIKE 'Finalizado%'
-      ORDER BY updated_at DESC
+        AND datetime(updated_at, '+3 hours') >= datetime('now', '-60 minutes')
+      ORDER BY
+        CASE WHEN status = 'Em Atendimento' THEN 0 ELSE 1 END,
+        datetime(updated_at, '+3 hours') DESC
     `;
     const filaRows = await db.query(filaSql);
     const limite = new Date(Date.now() - 60 * 60000);
