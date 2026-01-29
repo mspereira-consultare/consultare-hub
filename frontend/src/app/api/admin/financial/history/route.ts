@@ -51,7 +51,8 @@ export async function GET(request: Request) {
     const monthlyRes = await db.query(`
         SELECT 
             substr(${dateCol}, 1, 7) as m, 
-            SUM(${valueCol}) as total
+            SUM(${valueCol}) as total,
+            COUNT(*) as qtd
         FROM faturamento_analitico
         ${baseWhere}
         GROUP BY m 
