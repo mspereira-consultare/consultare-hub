@@ -1,6 +1,4 @@
 import { createClient } from '@libsql/client';
-import path from 'path';
-import fs from 'fs';
 
 // Verifica se tem credenciais Turso configuradas
 const useTurso = process.env.TURSO_URL && process.env.TURSO_TOKEN;

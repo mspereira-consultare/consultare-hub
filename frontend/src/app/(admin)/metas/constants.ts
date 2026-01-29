@@ -44,7 +44,6 @@ export const KPIS_AVAILABLE = [
     { id: 'revenue', label: 'Faturamento Total (Pago)', scope: 'CLINIC', supportsFilter: true },
     { id: 'appointments', label: 'Qtd. Atendimentos', scope: 'CLINIC', supportsFilter: true },
     { id: 'ticket_medio', label: 'Ticket Médio', scope: 'CLINIC', supportsFilter: true },
-    { id: 'absenteeism', label: 'Taxa de Absenteísmo (%)', scope: 'CLINIC', supportsFilter: false },
     
     // ESCOPO: CARTÃO
     { id: 'proposals', label: 'Propostas Criadas (Qtd)', scope: 'CARD', supportsFilter: false },
