@@ -38,17 +38,11 @@ export async function GET() {
         datetime(updated_at, '+3 hours') DESC
     `;
     const filaRows = await db.query(filaSql);
-    const limite = new Date(Date.now() - 60 * 60000);
 
     (filaRows as any[]).forEach(row => {
       if (!row.updated_at) return;
       const updatedAt = new Date(row.updated_at.replace(' ', 'T'));
       if (isNaN(updatedAt.getTime())) return;
-
-      if (updatedAt < limite) return;
-      const normalizedId = normalizeUnitId(row.unidade);
-      const targetUnit = unitsMap.get(normalizedId);
-      if (!targetUnit) return;
 
       const status = (row.status || '').toUpperCase();
       const isService = status.includes('ATENDIMENTO') || status.includes('SALA');
@@ -119,7 +113,7 @@ export async function GET() {
         if (a.status !== 'in_service' && b.status === 'in_service') return 1;
         return b.waitTime - a.waitTime;
       });
-    });
+    }); 
 
     return NextResponse.json({
       status: 'success',

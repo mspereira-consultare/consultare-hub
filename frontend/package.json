@@ -6,7 +6,7 @@
     "node": ">=20.9.0"
   },
   "scripts": {
-    "dev": "concurrently \"next dev\" \"python workers/main.py\" --kill-others --names \"NEXT,PYTHON\" --prefix-colors \"bgBlue.bold,bgYellow.bold\"",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
