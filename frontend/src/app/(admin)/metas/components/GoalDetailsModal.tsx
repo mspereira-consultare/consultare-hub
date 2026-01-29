@@ -154,7 +154,10 @@ export function GoalDetailsModal({ isOpen, onClose, goal, currentData }: GoalDet
                             <Tooltip 
                                 contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
                                 labelFormatter={(label) => new Date(label).toLocaleDateString('pt-BR')}
-                                formatter={(value: number) => [formatValue(value), 'Realizado']}
+                                formatter={(value) => {
+                                  const n = typeof value === 'number' ? value : Number(value);
+                                  return [formatValue(Number.isFinite(n) ? n : 0), 'Realizado'];
+                                }}
                             />
                             <Area 
                                 type="monotone" 
