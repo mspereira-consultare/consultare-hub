@@ -13,8 +13,18 @@ export const PatientRow = ({ patient }: { patient: Patient }) => {
 
   const PriorityIcons = () => (
     <div className="flex items-center gap-1 mr-1 text-slate-500">
-      {patient.priority?.isWheelchair && <Accessibility size={14} className="text-blue-600" title="Cadeirante" />}
-      {patient.priority?.isPregnant && <Baby size={14} className="text-pink-500" title="Gestante" />}
+      {patient.priority?.isWheelchair && (
+        <span title="Cadeirante">
+          <Accessibility size={14} className="text-blue-600" />
+        </span>
+      )}
+
+      {patient.priority?.isPregnant && (
+        <span title="Gestante">
+          <Baby size={14} className="text-pink-500" />
+        </span>
+      )}
+      
       {patient.priority?.isElderly && <span className="text-[10px] font-bold bg-slate-200 px-1 rounded text-slate-600" title="Idoso">60+</span>}
     </div>
   );
