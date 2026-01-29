@@ -50,6 +50,39 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
     // 2. Verifica se o KPI selecionado suporta Filtro de Grupo
     const selectedKpiConfig = KPIS_AVAILABLE.find(k => k.id === formData.linked_kpi_id);
     const showGroupFilter = selectedKpiConfig?.supportsFilter;
+    
+    // Lista de grupos (vinda do endpoint /api/admin/options/groups)
+    const [groups, setGroups] = useState<string[]>([]);
+    const [loadingGroups, setLoadingGroups] = useState(false);
+
+    useEffect(() => {
+        // Carrega grupos quando o modal abre e quando o KPI passa a suportar filtro
+        if (!isOpen) return;
+        if (!showGroupFilter) {
+            setGroups([]);
+            return;
+        }
+
+        let mounted = true;
+        (async () => {
+            setLoadingGroups(true);
+            try {
+                const res = await fetch('/api/admin/options/groups', { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (mounted) setGroups(Array.isArray(data) ? data : []);
+                } else {
+                    if (mounted) setGroups([]);
+                }
+            } catch (e) {
+                if (mounted) setGroups([]);
+            } finally {
+                if (mounted) setLoadingGroups(false);
+            }
+        })();
+
+        return () => { mounted = false; };
+    }, [isOpen, showGroupFilter]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -155,13 +188,27 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                             <HelpCircle size={12} />
                                         </span>
                                     </label>
-                                    <input 
-                                        type="text" 
-                                        placeholder="Ex: Consultas, Exames..."
-                                        className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-blue-300"
-                                        value={formData.filter_group || ''}
-                                        onChange={e => setFormData({...formData, filter_group: e.target.value})}
-                                    />
+
+                                    {loadingGroups ? (
+                                        <div className="text-sm text-slate-400">Carregando opções...</div>
+                                    ) : groups.length > 0 ? (
+                                        <select
+                                            className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                            value={formData.filter_group ?? 'all'}
+                                            onChange={e => setFormData({...formData, filter_group: e.target.value})}
+                                        >
+                                            <option value="all">Todos</option>
+                                            {groups.map(g => <option key={g} value={g}>{g}</option>)}
+                                        </select>
+                                    ) : (
+                                        <input 
+                                            type="text" 
+                                            placeholder="Ex: Consultas, Exames..."
+                                            className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-blue-300"
+                                            value={formData.filter_group || ''}
+                                            onChange={e => setFormData({...formData, filter_group: e.target.value})}
+                                        />
+                                    )}
                                 </div>
                             )}
                         </div>
