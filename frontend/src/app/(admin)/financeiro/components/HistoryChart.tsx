@@ -58,7 +58,7 @@ export const HistoryChart = ({
                             tickFormatter={(value) => `${value/1000}k`} 
                         />
                         <Tooltip 
-                            formatter={(value: number) => [fmtMoney(value), 'Faturamento']}
+                            formatter={(value?: number) => [fmtMoney(value ?? 0), 'Faturamento']}
                             contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)', fontSize: '12px' }}
                             labelStyle={{ color: '#64748b', marginBottom: '2px', fontSize: '10px' }}
                         />
