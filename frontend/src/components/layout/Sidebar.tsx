@@ -63,7 +63,7 @@
     const pathname = usePathname();
     const router = useRouter();
     const { data: session } = useSession();
-    const currentUserRole: UserRole = (session?.user?.role as UserRole) || 'OPERADOR';
+    const currentUserRole: UserRole = (session?.user?.role as UserRole) ?? "OPERADOR";
 
     // Filtra os itens baseado no cargo do usuário atual
     const authorizedItems = menuItems.filter(item => item.roles.includes(currentUserRole));
