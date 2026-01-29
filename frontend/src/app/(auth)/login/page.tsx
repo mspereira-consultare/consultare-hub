@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import { signIn } from 'next-auth/react'; 
+import Image from 'next/image';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -48,10 +49,13 @@ export default function LoginPage() {
         
         <div className="text-center">
           {/* Logo ajustado para h-24 (aprox. 96px) */}
-          <img 
-            src="/logo-color.png?v=2" 
-            alt="Logo" 
-            className="mx-auto h-32 w-auto mb-4" 
+          <Image
+            src="/logo-color.png"
+            alt="Logo Consultare"
+            width={256}
+            height={128}
+            priority
+            className="mx-auto h-32 w-auto mb-4"
           />
           <h2 className="text-2xl font-bold text-gray-900">Acesso ao Painel</h2>
           <p className="mt-1 text-sm text-gray-500">Insira suas credenciais para continuar</p>
