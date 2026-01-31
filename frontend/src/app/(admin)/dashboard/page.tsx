@@ -429,7 +429,7 @@ export default function DashboardPage() {
               if (goal.periodicity === 'daily') {
                 const now = new Date();
                 const hoursPassed = now.getHours();
-                const hoursInDay = 24;
+                const hoursInDay = 11;
                 const hourlyRate = hoursPassed > 0 ? goal.current / hoursPassed : 0;
                 projectedValue = hourlyRate * hoursInDay;
                 projLabel = `Projeção (hoje - ${hoursInDay}h):`;

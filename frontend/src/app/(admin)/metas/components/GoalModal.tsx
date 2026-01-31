@@ -98,19 +98,11 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
         (async () => {
             setLoadingUnits(true);
             try {
-                const res = await fetch('/api/admin/financial/history', { cache: 'no-store' });
-                if (res.ok) {
-                    const data = await res.json();
-                    if (mounted && Array.isArray(data.units)) {
-                        setClinicUnits(data.units.map((u: any) => u.name || u.label).filter(Boolean));
-                    }
-                } else {
-                    if (mounted) setClinicUnits([]);
-                }
-            } catch (e) {
-                if (mounted) setClinicUnits([]);
-            } finally {
-                if (mounted) setLoadingUnits(false);
+                    const res = await fetch('/api/admin/options/units', { cache: 'no-store' });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (mounted && Array.isArray(data)) {
+                            setClinicUnits(data.map((u: any) => u.name || u.label).filter(Boolean));
             }
         })();
 

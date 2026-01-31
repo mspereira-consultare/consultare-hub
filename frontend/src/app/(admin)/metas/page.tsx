@@ -266,7 +266,7 @@ export default function GoalsPage() {
                       if (isDaily) {
                         const now = new Date();
                         const hoursPassed = now.getHours();
-                        const hoursInDay = 24;
+                        const hoursInDay = 11;
                         const hourlyRate = hoursPassed > 0 ? (goalData?.current || 0) / hoursPassed : 0;
                         projValue = hourlyRate * hoursInDay;
                         projLabel = `Projeção (hoje - ${hoursInDay}h)`;
