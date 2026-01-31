@@ -263,7 +263,7 @@ export default function ProposalsPage() {
                     <div className="relative">
                         <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Taxa Conversão</p>
                         <h3 className="text-2xl font-bold text-slate-800">
-                            {summary.conversionRate.toFixed(1)}%
+                            {(Number(summary?.conversionRate) || 0).toFixed(1)}%
                         </h3>
                         <div className="mt-2 flex items-center gap-1 text-xs text-amber-600 font-medium">
                             <PieChart size={12} />
@@ -281,7 +281,7 @@ export default function ProposalsPage() {
                         </h3>
                         <div className="mt-2 flex items-center gap-1 text-xs text-red-600 font-medium">
                             <AlertCircle size={12} />
-                            <span>{summary.lostRate.toFixed(1)}% do total</span>
+                            <span>{(Number(summary?.lostRate) || 0).toFixed(1)}% do total</span>
                         </div>
                     </div>
                 </div>
@@ -370,7 +370,7 @@ export default function ProposalsPage() {
                                                     </span>
                                                     {seller.valor > 0 && (
                                                         <div className="text-[9px] text-slate-500 mt-1">
-                                                            {(((seller.valor_executado || 0) / seller.valor) * 100).toFixed(0)}%
+                                                            {(Number((seller.valor_executado || 0) / (seller.valor || 1) * 100) || 0).toFixed(0)}%
                                                         </div>
                                                     )}
                                                 </td>
