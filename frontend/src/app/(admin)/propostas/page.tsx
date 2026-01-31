@@ -47,7 +47,9 @@ export default function ProposalsPage() {
             
             // Extrai lista de unidades disponíveis
             if (data.byUnit && selectedUnit === 'all') {
-                const units = [...new Set(data.byUnit.map((item: any) => item.unit_name))].sort();
+                const raw = data.byUnit.map((item: any) => item.unit_name);
+                const units = Array.from(new Set(raw.map((u: any) => (u == null ? '' : String(u))))).filter(Boolean) as string[];
+                units.sort();
                 setAvailableUnits(units);
             }
             
