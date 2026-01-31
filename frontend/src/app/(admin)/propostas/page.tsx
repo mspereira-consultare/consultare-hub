@@ -219,7 +219,7 @@ export default function ProposalsPage() {
             </div>
 
             {/* --- CARDS DE KPI --- */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
                     <div className="relative">
@@ -279,11 +279,11 @@ export default function ProposalsPage() {
                     <div className="relative">
                         <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Valor Perdido</p>
                         <h3 className="text-2xl font-bold text-slate-800">
-                            {summary.lostValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                            {(summary.valor - summary.wonValue).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                         </h3>
                         <div className="mt-2 flex items-center gap-1 text-xs text-red-600 font-medium">
                             <AlertCircle size={12} />
-                            <span>{(Number(summary?.lostRate) || 0).toFixed(1)}% do total</span>
+                            <span>{summary.valor > 0 ? ((((summary.valor - summary.wonValue) / summary.valor) * 100).toFixed(1)) : '0'}% do total</span>
                         </div>
                     </div>
                 </div>

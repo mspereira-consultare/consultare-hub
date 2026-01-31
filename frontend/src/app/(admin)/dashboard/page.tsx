@@ -422,11 +422,24 @@ export default function DashboardPage() {
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {goalsData.map((goal: any) => {
-              // Calcula projeção baseada na percentagem
-              const daysInMonth = 30;
-              const daysPassed = Math.min(new Date().getDate(), daysInMonth);
-              const dailyRate = daysPassed > 0 ? goal.current / daysPassed : 0;
-              const projectedValue = dailyRate * daysInMonth;
+              // Calcula projeção considerando a periodicidade
+              let projLabel = 'Projeção (mês):';
+              let projectedValue = 0;
+              
+              if (goal.periodicity === 'daily') {
+                const now = new Date();
+                const hoursPassed = now.getHours();
+                const hoursInDay = 24;
+                const hourlyRate = hoursPassed > 0 ? goal.current / hoursPassed : 0;
+                projectedValue = hourlyRate * hoursInDay;
+                projLabel = `Projeção (hoje - ${hoursInDay}h):`;
+              } else {
+                const daysInMonth = 30;
+                const daysPassed = Math.min(new Date().getDate(), daysInMonth);
+                const dailyRate = daysPassed > 0 ? goal.current / daysPassed : 0;
+                projectedValue = dailyRate * daysInMonth;
+                projLabel = `Projeção (mês - ${daysInMonth}d):`;
+              }
               
               return (
                 <div 
@@ -496,7 +509,7 @@ export default function DashboardPage() {
 
                   {/* Projeção */}
                   <div className="pt-2 border-t border-slate-300/50 text-[10px]">
-                    <p className="text-slate-500 mb-1">Projeção (mês):</p>
+                    <p className="text-slate-500 mb-1">{projLabel}</p>
                     <p className="font-bold text-slate-700">
                       {typeof goal.current === 'number' && goal.unit === 'currency'
                         ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(projectedValue)

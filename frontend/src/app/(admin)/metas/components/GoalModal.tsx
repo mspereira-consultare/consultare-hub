@@ -213,7 +213,7 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                         </div>
                     </div>
 
-                    {/* SEÇÃO 2: Fonte de Dados (Engine) - AQUI ESTÁ A CORREÇÃO */}
+                    {/* SEÇÃO 2: Fonte de Dados (Engine) */}
                     <div className="bg-blue-50 border border-blue-100 rounded-xl p-5 space-y-4 relative overflow-hidden">
                         <div className="absolute top-0 right-0 p-3 opacity-10">
                             <Database size={64} className="text-blue-600" />
@@ -222,6 +222,13 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                         <div className="flex items-center gap-2 text-blue-800 mb-1 relative z-10">
                             <Database size={18} />
                             <h3 className="font-bold text-sm">Fonte de Dados (Automação)</h3>
+                        </div>
+
+                        {/* Alerta sobre campos de condição */}
+                        <div className="bg-blue-100/50 border border-blue-200 rounded-lg p-3 relative z-10">
+                            <p className="text-xs text-blue-800">
+                                <strong>⚠️ Nota:</strong> Os campos de <strong>Grupo de Procedimento</strong> e <strong>Colaborador</strong> são opcionais e servem para refinar os dados. Se preenchidos de forma inválida, podem retornar dados imprecisos.
+                            </p>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative z-10">
@@ -236,99 +243,90 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                 </select>
                             </div>
 
-                            {/* Campo de Filtro Avançado (Restaurado) */}
-                            {showGroupFilter && (
-                                <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
-                                    <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
-                                        Grupo de Procedimento
-                                        <span title="Filtra os dados do Feegow por grupo (Ex: Consultas, Exames, Cirurgias)">
-                                            <HelpCircle size={12} />
-                                        </span>
-                                    </label>
+                            {/* Campo de Filtro de Grupo (SEMPRE VISÍVEL) */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
+                                    Grupo de Procedimento
+                                    <span title="Filtra os dados por grupo (Ex: Consultas, Exames, Cirurgias). Opcional.">
+                                        <HelpCircle size={12} />
+                                    </span>
+                                </label>
 
-                                    {loadingGroups ? (
-                                        <div className="text-sm text-slate-400">Carregando opções...</div>
-                                    ) : groups.length > 0 ? (
-                                        <select
-                                            className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
-                                            value={formData.filter_group ?? 'all'}
-                                            onChange={e => setFormData({...formData, filter_group: e.target.value})}
-                                        >
-                                            <option value="all">Todos</option>
-                                            {groups.map(g => <option key={g} value={g}>{g}</option>)}
-                                        </select>
-                                    ) : (
-                                        <input 
-                                            type="text" 
-                                            placeholder="Ex: Consultas, Exames..."
-                                            className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-blue-300"
-                                            value={formData.filter_group || ''}
-                                            onChange={e => setFormData({...formData, filter_group: e.target.value})}
-                                        />
-                                    )}
+                                {loadingGroups ? (
+                                    <div className="text-sm text-slate-400">Carregando opções...</div>
+                                ) : groups.length > 0 ? (
+                                    <select
+                                        className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={formData.filter_group ?? 'all'}
+                                        onChange={e => setFormData({...formData, filter_group: e.target.value})}
+                                    >
+                                        <option value="all">Todos (padrão)</option>
+                                        {groups.map(g => <option key={g} value={g}>{g}</option>)}
+                                    </select>
+                                ) : (
+                                    <input 
+                                        type="text" 
+                                        placeholder="Ex: Consultas, Exames... (opcional)"
+                                        className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-blue-300"
+                                        value={formData.filter_group || ''}
+                                        onChange={e => setFormData({...formData, filter_group: e.target.value})}
+                                    />
+                                )}
+                            </div>
 
-                                                    {/* Campo de Filtro de Unidade Clínica */}
-                                                    <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
-                                                        <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
-                                                            Unidade Clínica
-                                                            <span title="Aplica esta meta apenas para uma unidade específica">
-                                                                <HelpCircle size={12} />
-                                                            </span>
-                                                        </label>
+                            {/* Campo de Unidade Clínica - SEMPRE DROPDOWN */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
+                                    Unidade Clínica
+                                    <span title="Aplica esta meta apenas para uma unidade específica">
+                                        <HelpCircle size={12} />
+                                    </span>
+                                </label>
 
-                                                        {loadingUnits ? (
-                                                            <div className="text-sm text-slate-400">Carregando unidades...</div>
-                                                        ) : clinicUnits.length > 0 ? (
-                                                            <select
-                                                                className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
-                                                                value={formData.clinic_unit ?? 'all'}
-                                                                onChange={e => setFormData({...formData, clinic_unit: e.target.value})}
-                                                            >
-                                                                <option value="all">Todas as Unidades</option>
-                                                                {clinicUnits.map(u => <option key={u} value={u}>{u}</option>)}
-                                                            </select>
-                                                        ) : (
-                                                            <input 
-                                                                type="text" 
-                                                                placeholder="Ex: Unidade Matriz, Filial..."
-                                                                className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-blue-300"
-                                                                value={formData.clinic_unit || 'all'}
-                                                                onChange={e => setFormData({...formData, clinic_unit: e.target.value})}
-                                                            />
-                                                        )}
-                                                    </div>
-                                                    {/* Campo de Filtro de Colaborador */}
-                                                    <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
-                                                        <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
-                                                            Colaborador
-                                                            <span title="Aplica esta meta apenas para um colaborador específico">
-                                                                <HelpCircle size={12} />
-                                                            </span>
-                                                        </label>
+                                {loadingUnits ? (
+                                    <div className="text-sm text-slate-400">Carregando unidades...</div>
+                                ) : (
+                                    <select
+                                        className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={formData.clinic_unit ?? 'all'}
+                                        onChange={e => setFormData({...formData, clinic_unit: e.target.value})}
+                                    >
+                                        <option value="all">Todas as Unidades (padrão)</option>
+                                        {clinicUnits.map(u => <option key={u} value={u}>{u}</option>)}
+                                    </select>
+                                )}
+                            </div>
 
-                                                        {loadingProfessionals ? (
-                                                            <div className="text-sm text-slate-400">Carregando colaboradores...</div>
-                                                        ) : professionals.length > 0 ? (
-                                                            <select
-                                                                className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
-                                                                value={(formData as any).collaborator ?? 'all'}
-                                                                onChange={e => setFormData({...formData, collaborator: e.target.value})}
-                                                            >
-                                                                <option value="all">Todos os Colaboradores</option>
-                                                                {professionals.map(p => <option key={p} value={p}>{p}</option>)}
-                                                            </select>
-                                                        ) : (
-                                                            <input 
-                                                                type="text" 
-                                                                placeholder="Nome do colaborador..."
-                                                                className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-blue-300"
-                                                                value={(formData as any).collaborator || 'all'}
-                                                                onChange={e => setFormData({...formData, collaborator: e.target.value})}
-                                                            />
-                                                        )}
-                                                    </div>
-                                </div>
-                            )}
+                            {/* Campo de Filtro de Colaborador (SEMPRE VISÍVEL) */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
+                                    Colaborador
+                                    <span title="Aplica esta meta apenas para um colaborador específico. Opcional.">
+                                        <HelpCircle size={12} />
+                                    </span>
+                                </label>
+
+                                {loadingProfessionals ? (
+                                    <div className="text-sm text-slate-400">Carregando colaboradores...</div>
+                                ) : professionals.length > 0 ? (
+                                    <select
+                                        className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={(formData as any).collaborator ?? 'all'}
+                                        onChange={e => setFormData({...formData, collaborator: e.target.value})}
+                                    >
+                                        <option value="all">Todos os Colaboradores (padrão)</option>
+                                        {professionals.map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+                                ) : (
+                                    <input 
+                                        type="text" 
+                                        placeholder="Nome do colaborador... (opcional)"
+                                        className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-blue-300"
+                                        value={(formData as any).collaborator || 'all'}
+                                        onChange={e => setFormData({...formData, collaborator: e.target.value})}
+                                    />
+                                )}
+                            </div>
                         </div>
                         
                         <div className="text-[11px] text-blue-600/80 italic relative z-10 mt-2">
