@@ -70,3 +70,24 @@ model FeegowAppointment {
 
   @@map("feegow_appointments")
 }
+
+// Configurações de metas salvas pelo painel
+model GoalsConfig {
+  id            Int     @id @default(autoincrement())
+  name          String
+  scope         String
+  sector        String
+  start_date    String
+  end_date      String
+  periodicity   String
+  target_value  Float
+  unit          String
+  linked_kpi_id String?
+  filter_group  String?
+  clinic_unit   String?
+  collaborator  String?
+  created_at    String?
+  updated_at    String?
+
+  @@map("goals_config")
+}

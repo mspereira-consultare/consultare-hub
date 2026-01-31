@@ -44,6 +44,8 @@ export async function POST(request: Request) {
         linked_kpi_id, 
         filter_group 
     } = body;
+  const clinic_unit = body.clinic_unit || null;
+  const collaborator = body.collaborator || null;
 
     const db = getDbConnection();
     const finalScope = scope || 'CLINIC';
@@ -51,43 +53,86 @@ export async function POST(request: Request) {
 
     if (id) {
       // --- EDIÇÃO (UPDATE) ---
-      await db.execute(`
-        UPDATE goals_config 
-        SET 
-            name = ?, 
-            scope = ?, 
-            sector = ?, 
-            start_date = ?, 
-            end_date = ?, 
-            periodicity = ?, 
-            target_value = ?, 
-            unit = ?, 
-            linked_kpi_id = ?, 
-            filter_group = ?, 
-            updated_at = datetime('now') 
-        WHERE id = ?
-      `, [
-        name, finalScope, sector, start_date, end_date, 
-        periodicity, target_value, unit, linked_kpi_id, 
-        finalFilterGroup, id
-      ]);
+      // Tentativa com colunas novas (clinic_unit, collaborator). Se falhar (coluna não existe), faz fallback para versão antiga.
+      try {
+        await db.execute(`
+          UPDATE goals_config 
+          SET 
+              name = ?, 
+              scope = ?, 
+              sector = ?, 
+              start_date = ?, 
+              end_date = ?, 
+              periodicity = ?, 
+              target_value = ?, 
+              unit = ?, 
+              linked_kpi_id = ?, 
+              filter_group = ?, 
+              clinic_unit = ?,
+              collaborator = ?,
+              updated_at = datetime('now') 
+          WHERE id = ?
+        `, [
+          name, finalScope, sector, start_date, end_date, 
+          periodicity, target_value, unit, linked_kpi_id, 
+          finalFilterGroup, clinic_unit, collaborator, id
+        ]);
+      } catch (e) {
+        // Fallback para schema antigo sem novas colunas
+        await db.execute(`
+          UPDATE goals_config 
+          SET 
+              name = ?, 
+              scope = ?, 
+              sector = ?, 
+              start_date = ?, 
+              end_date = ?, 
+              periodicity = ?, 
+              target_value = ?, 
+              unit = ?, 
+              linked_kpi_id = ?, 
+              filter_group = ?, 
+              updated_at = datetime('now') 
+          WHERE id = ?
+        `, [
+          name, finalScope, sector, start_date, end_date, 
+          periodicity, target_value, unit, linked_kpi_id, 
+          finalFilterGroup, id
+        ]);
+      }
 
       return NextResponse.json({ success: true, action: 'updated' });
 
     } else {
       // --- CRIAÇÃO (INSERT) ---
-      const result = await db.execute(`
-        INSERT INTO goals_config (
-            name, scope, sector, start_date, end_date, 
-            periodicity, target_value, unit, linked_kpi_id, 
-            filter_group, created_at, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-      `, [
-        name, finalScope, sector, start_date, end_date, 
-        periodicity, target_value, unit, linked_kpi_id, 
-        finalFilterGroup
-      ]);
+      try {
+        const result = await db.execute(`
+          INSERT INTO goals_config (
+              name, scope, sector, start_date, end_date, 
+              periodicity, target_value, unit, linked_kpi_id, 
+              filter_group, clinic_unit, collaborator, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `, [
+          name, finalScope, sector, start_date, end_date, 
+          periodicity, target_value, unit, linked_kpi_id, 
+          finalFilterGroup, clinic_unit, collaborator
+        ]);
+      } catch (e) {
+        // Fallback: insert sem as novas colunas
+        const result = await db.execute(`
+          INSERT INTO goals_config (
+              name, scope, sector, start_date, end_date, 
+              periodicity, target_value, unit, linked_kpi_id, 
+              filter_group, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+        `, [
+          name, finalScope, sector, start_date, end_date, 
+          periodicity, target_value, unit, linked_kpi_id, 
+          finalFilterGroup
+        ]);
+      }
       
       // O cliente Turso retorna o ID inserido no result
       // Nota: Dependendo da versão do driver, pode ser result.lastInsertRowid ou similar.

@@ -10,6 +10,7 @@ import {
 export default function ProposalsPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [selectedUnit, setSelectedUnit] = useState('all');
     
     // Filtro de Data
     const today = new Date();
@@ -19,9 +20,10 @@ export default function ProposalsPage() {
     });
     
     // Dados
-    const [summary, setSummary] = useState<any>({ qtd: 0, valor: 0, conversionRate: 0, wonValue: 0 });
+    const [summary, setSummary] = useState<any>({ qtd: 0, valor: 0, conversionRate: 0, wonValue: 0, lostValue: 0 });
     const [unitData, setUnitData] = useState<any[]>([]);
     const [sellerData, setSellerData] = useState<any[]>([]);
+    const [availableUnits, setAvailableUnits] = useState<string[]>([]);
     
     // Heartbeat (Controle de Atualização)
     const [heartbeat, setHeartbeat] = useState<any>(null);
@@ -32,23 +34,36 @@ export default function ProposalsPage() {
         if (!heartbeat) setLoading(true);
         
         try {
-            const params = new URLSearchParams({ startDate: dateRange.start, endDate: dateRange.end });
+            const params = new URLSearchParams({ 
+                startDate: dateRange.start, 
+                endDate: dateRange.end,
+                unit: selectedUnit
+            });
             const res = await fetch(`/api/admin/propostas?${params.toString()}`);
             const data = await res.json();
             
             if (data.byUnit) processUnitData(data.byUnit);
             if (data.byProposer) processSellerData(data.byProposer);
             
+            // Extrai lista de unidades disponíveis
+            if (data.byUnit && selectedUnit === 'all') {
+                const units = [...new Set(data.byUnit.map((item: any) => item.unit_name))].sort();
+                setAvailableUnits(units);
+            }
+            
             // Processa Sumário
             const totalQtd = data.summary?.qtd || 0;
             const totalVal = data.summary?.valor || 0;
             const wonVal = data.summary?.wonValue || 0;
+            const lostVal = data.summary?.lostValue || 0;
 
             setSummary({
                 qtd: totalQtd,
                 valor: totalVal,
                 wonValue: wonVal,
-                conversionRate: totalVal > 0 ? (wonVal / totalVal) * 100 : 0
+                lostValue: lostVal,
+                conversionRate: totalVal > 0 ? (wonVal / totalVal) * 100 : 0,
+                lostRate: totalVal > 0 ? (lostVal / totalVal) * 100 : 0
             });
 
             // Atualiza Heartbeat
@@ -103,7 +118,7 @@ export default function ProposalsPage() {
 
     useEffect(() => {
         fetchData();
-    }, [dateRange]);
+    }, [dateRange, selectedUnit]);
 
     // Filtros visuais
     const filteredSellers = sellerData.filter(s => 
@@ -184,6 +199,18 @@ export default function ProposalsPage() {
                             className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer"
                         />
                     </div>
+
+                    {/* Filtro de Unidade */}
+                    <select
+                        value={selectedUnit}
+                        onChange={(e) => setSelectedUnit(e.target.value)}
+                        className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-sm"
+                    >
+                        <option value="all">Todas as Unidades</option>
+                        {availableUnits.map((unit) => (
+                            <option key={unit} value={unit}>{unit}</option>
+                        ))}
+                    </select>
                 </div>
             </div>
 
@@ -224,7 +251,7 @@ export default function ProposalsPage() {
                         </h3>
                         <div className="mt-2 flex items-center gap-1 text-xs text-purple-600 font-medium">
                             <TrendingUp size={12} />
-                            <span>Confirmado</span>
+                            <span>Executado</span>
                         </div>
                     </div>
                 </div>
@@ -239,6 +266,20 @@ export default function ProposalsPage() {
                         <div className="mt-2 flex items-center gap-1 text-xs text-amber-600 font-medium">
                             <PieChart size={12} />
                             <span>Eficiência</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-red-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative">
+                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Valor Perdido</p>
+                        <h3 className="text-2xl font-bold text-slate-800">
+                            {summary.lostValue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </h3>
+                        <div className="mt-2 flex items-center gap-1 text-xs text-red-600 font-medium">
+                            <AlertCircle size={12} />
+                            <span>{summary.lostRate.toFixed(1)}% do total</span>
                         </div>
                     </div>
                 </div>
@@ -305,7 +346,8 @@ export default function ProposalsPage() {
                                         <tr>
                                             <th className="px-4 py-3">Profissional</th>
                                             <th className="px-4 py-3 text-right">Qtd</th>
-                                            <th className="px-4 py-3 text-right">Total Gerado</th>
+                                            <th className="px-4 py-3 text-right">Total Estimado</th>
+                                            <th className="px-4 py-3 text-right">Total Executado</th>
                                             <th className="px-4 py-3 text-center">Ticket Médio</th>
                                         </tr>
                                     </thead>
@@ -317,8 +359,18 @@ export default function ProposalsPage() {
                                                     {seller.professional_name || 'Sistema'}
                                                 </td>
                                                 <td className="px-4 py-3 text-right text-slate-600">{seller.qtd}</td>
-                                                <td className="px-4 py-3 text-right text-indigo-600 font-bold">
-                                                    {seller.valor.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                <td className="px-4 py-3 text-right text-slate-700 font-semibold">
+                                                    {(seller.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                </td>
+                                                <td className="px-4 py-3 text-right font-bold">
+                                                    <span className="text-emerald-600">
+                                                        {(seller.valor_executado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                    </span>
+                                                    {seller.valor > 0 && (
+                                                        <div className="text-[9px] text-slate-500 mt-1">
+                                                            {(((seller.valor_executado || 0) / seller.valor) * 100).toFixed(0)}%
+                                                        </div>
+                                                    )}
                                                 </td>
                                                 <td className="px-4 py-3 text-center text-slate-400 text-xs">
                                                     {(seller.valor / (seller.qtd || 1)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}

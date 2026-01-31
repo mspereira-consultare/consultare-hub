@@ -99,6 +99,7 @@ export default function FinancialPage() {
   // Filtros
   const [selectedGroup, setSelectedGroup] = useState('all');
   const [selectedProcedure, setSelectedProcedure] = useState('all');
+  const [selectedUnit, setSelectedUnit] = useState('all');
   
   const [dateRange, setDateRange] = useState({
     start: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0], 
@@ -109,6 +110,7 @@ export default function FinancialPage() {
   const [monthly, setMonthly] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
   const [procedures, setProcedures] = useState<any[]>([]);
+  const [units, setUnits] = useState<any[]>([]);
   const [totals, setTotals] = useState({ total: 0, qtd: 0 });
 
   // --- CONTROLE DE ATUALIZAÇÃO ---
@@ -121,6 +123,7 @@ export default function FinancialPage() {
 
     try {
         const params = new URLSearchParams({
+            unit: selectedUnit,
             group: selectedGroup,
             procedure: selectedProcedure,
             startDate: dateRange.start,
@@ -144,6 +147,12 @@ export default function FinancialPage() {
             })) || []);
             
             // Só atualiza listas se não estiver filtrando
+            if (selectedUnit === 'all') {
+                setUnits(data.units?.map((u: any) => ({
+                    ...u,
+                    label: u.name
+                })) || []);
+            }
             if (selectedGroup === 'all') {
                 setGroups(data.groups?.map((g: any) => ({
                     ...g,
@@ -185,7 +194,7 @@ export default function FinancialPage() {
     }
   };
 
-  useEffect(() => { fetchData(); }, [selectedGroup, selectedProcedure, dateRange]);
+  useEffect(() => { fetchData(); }, [selectedUnit, selectedGroup, selectedProcedure, dateRange]);
 
   // Formatador de Data do Status
   const formatLastUpdate = (dateString: string) => {
@@ -258,7 +267,14 @@ export default function FinancialPage() {
                 />
             </div>
 
-            {/* FILTROS DE GRUPO/PROC (MANTIDOS) */}
+            {/* FILTROS DE UNIDADE/GRUPO/PROC (MANTIDOS) */}
+            <SearchableSelect 
+                options={units} 
+                value={selectedUnit} 
+                onChange={setSelectedUnit} 
+                placeholder="Todas as Unidades"
+            />
+
             <SearchableSelect 
                 options={groups} 
                 value={selectedGroup} 
@@ -273,9 +289,9 @@ export default function FinancialPage() {
                 placeholder="Todos Procedimentos"
             />
 
-            {(selectedGroup !== 'all' || selectedProcedure !== 'all') && (
+            {(selectedUnit !== 'all' || selectedGroup !== 'all' || selectedProcedure !== 'all') && (
                 <button 
-                    onClick={() => { setSelectedGroup('all'); setSelectedProcedure('all'); }} 
+                    onClick={() => { setSelectedUnit('all'); setSelectedGroup('all'); setSelectedProcedure('all'); }} 
                     className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition"
                 >
                     <FilterX size={14} />

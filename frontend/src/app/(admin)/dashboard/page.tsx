@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Users, 
   Clock, 
@@ -19,31 +19,52 @@ interface DashboardData {
   reception: any;
   whatsapp: any;
   finance: any;
+  financeByUnit?: any;
 }
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [goalsData, setGoalsData] = useState<any[]>([]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const alertTriggeredRef = useRef<boolean>(false);
 
   const fetchDashboardData = useCallback(async (isManual = false) => {
-    if (isManual) setLoading(true);
+    if (isManual) {
+      setLoading(true);
+      // Ativa o worker de faturamento analítico quando refresh manual é clicado
+      try {
+        await fetch('/api/admin/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ service: 'worker_faturamento_scraping' })
+        });
+      } catch (error) {
+        console.error("Erro ao ativar worker de faturamento:", error);
+      }
+    }
+    
     try {
       const today = new Date().toISOString().split('T')[0];
       
-      const [resMedic, resRecep, resWhats, resFinance] = await Promise.all([
+      const [resMedic, resRecep, resWhats, resFinance, resFinanceByUnit, resGoals] = await Promise.all([
         fetch('/api/queue/medic').then(r => r.json()),
         fetch('/api/queue/reception').then(r => r.json()),
         fetch('/api/queue/whatsapp').then(r => r.json()),
-        fetch(`/api/admin/financial/history?startDate=${today}&endDate=${today}`).then(r => r.json())
+        fetch(`/api/admin/financial/history?startDate=${today}&endDate=${today}`).then(r => r.json()),
+        fetch(`/api/admin/financial/history?startDate=${today}&endDate=${today}&unit=all`).then(r => r.json()),
+        fetch('/api/admin/goals/dashboard').then(r => r.json())
       ]);
 
       setData({
         medic: resMedic.data || [],
         reception: resRecep.data || { global: { total_fila: 0, tempo_medio: 0 }, por_unidade: {} },
         whatsapp: resWhats.data || { global: { queue: 0, avgWaitSeconds: 0 }, groups: [] },
-        finance: resFinance || { totals: { total: 0, qtd: 0 } }
+        finance: resFinance || { totals: { total: 0, qtd: 0 } },
+        financeByUnit: resFinanceByUnit || { totals: { total: 0, qtd: 0 } }
       });
+      setGoalsData(Array.isArray(resGoals) ? resGoals : []);
       setLastUpdate(new Date());
     } catch (error) {
       console.error("Erro ao carregar dashboard:", error);
@@ -57,6 +78,63 @@ export default function DashboardPage() {
     const interval = setInterval(() => fetchDashboardData(false), 60000); 
     return () => clearInterval(interval);
   }, [fetchDashboardData]);
+
+  // --- EFEITO: VERIFICAR PACIENTES AGUARDANDO HÁ MAIS DE 30 MINUTOS ---
+  useEffect(() => {
+    if (!data?.medic) return;
+
+    // Verifica se há pacientes aguardando mais de 30 minutos
+    const hasLongWaiters = data.medic.some((unit: any) => {
+      const waitersOver30 = unit.patients?.filter((p: any) => {
+        if (p.status !== 'waiting') return false;
+        if (!p.checkInTime) return false;
+        
+        const now = new Date();
+        const checkInTime = new Date(p.checkInTime);
+        const waitTimeMinutes = (now.getTime() - checkInTime.getTime()) / (1000 * 60);
+        return waitTimeMinutes > 30;
+      });
+      return (waitersOver30?.length || 0) > 0;
+    });
+
+    // Se há pacientes aguardando há mais de 30 minutos e alerta ainda não foi disparado
+    if (hasLongWaiters && !alertTriggeredRef.current) {
+      // Toca o som de alerta
+      try {
+        if (!audioRef.current) {
+          // Cria um AudioContext para gerar um beep sonoro se nenhum arquivo de áudio estiver disponível
+          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const oscillator = audioContext.createOscillator();
+          const gainNode = audioContext.createGain();
+          
+          oscillator.connect(gainNode);
+          gainNode.connect(audioContext.destination);
+          
+          oscillator.frequency.value = 800; // Frequência do som
+          oscillator.type = 'sine';
+          
+          gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+          
+          oscillator.start(audioContext.currentTime);
+          oscillator.stop(audioContext.currentTime + 0.5);
+        } else {
+          audioRef.current.play().catch(e => console.error("Erro ao tocar som:", e));
+        }
+        
+        alertTriggeredRef.current = true;
+        
+        // Reseta o alerta após 5 minutos para permitir novo alerta
+        setTimeout(() => {
+          alertTriggeredRef.current = false;
+        }, 5 * 60 * 1000);
+      } catch (error) {
+        console.error("Erro ao disparar alerta sonoro:", error);
+      }
+    } else if (!hasLongWaiters) {
+      alertTriggeredRef.current = false;
+    }
+  }, [data?.medic]);
 
   if (!data && loading) {
     return (
@@ -80,6 +158,12 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+      {/* Audio element para alerta sonoro */}
+      <audio 
+        ref={audioRef} 
+        src="data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAA=="
+        style={{ display: 'none' }}
+      />
       
       {/* Header Clean */}
       <div className="flex justify-between items-center">
@@ -95,7 +179,7 @@ export default function DashboardPage() {
           <button 
             onClick={() => fetchDashboardData(true)}
             className="p-2.5 bg-white rounded-full border border-slate-200 shadow-sm hover:bg-slate-50 active:scale-95 transition-all group"
-            title="Atualizar agora"
+            title="Atualizar Dashboard e ativar worker de faturamento analítico"
           >
             <RefreshCw size={20} className={`${loading ? 'animate-spin' : 'group-hover:rotate-180'} text-blue-600 transition-transform duration-500`} />
           </button>
@@ -160,23 +244,61 @@ export default function DashboardPage() {
         </div>
 
         {/* Coluna 2: Médicos */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative">
           <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
             <Activity size={18} className="text-slate-400" />
             <h2 className="font-bold text-slate-700">Aguardando Médico</h2>
+            {data?.medic?.some((unit: any) => {
+              const waitersOver30 = unit.patients?.filter((p: any) => {
+                if (p.status !== 'waiting') return false;
+                if (!p.checkInTime) return false;
+                const now = new Date();
+                const checkInTime = new Date(p.checkInTime);
+                const waitTimeMinutes = (now.getTime() - checkInTime.getTime()) / (1000 * 60);
+                return waitTimeMinutes > 30;
+              });
+              return (waitersOver30?.length || 0) > 0;
+            }) && (
+              <span className="ml-auto px-2 py-1 text-[9px] font-bold bg-red-500 text-white rounded-full animate-pulse">
+                ⚠️ ALERTA 30+min
+              </span>
+            )}
           </div>
           <div className="space-y-3">
             {data?.medic.map((unit: any) => {
               const waiting = unit.patients?.filter((p:any) => p.status === 'waiting').length || 0;
+              const waitersOver30 = unit.patients?.filter((p: any) => {
+                if (p.status !== 'waiting') return false;
+                if (!p.checkInTime) return false;
+                const now = new Date();
+                const checkInTime = new Date(p.checkInTime);
+                const waitTimeMinutes = (now.getTime() - checkInTime.getTime()) / (1000 * 60);
+                return waitTimeMinutes > 30;
+              }).length || 0;
+              
               return (
-                <div key={unit.id} className="flex justify-between items-center p-3 bg-slate-50/50 rounded-lg border border-slate-100">
+                <div 
+                  key={unit.id} 
+                  className={`flex justify-between items-center p-3 rounded-lg border ${
+                    waitersOver30 > 0
+                      ? 'bg-red-50 border-red-200'
+                      : 'bg-slate-50/50 border-slate-100'
+                  }`}
+                >
                   <div>
                     <p className="text-sm font-bold text-slate-700">{unit.name}</p>
                     <p className="text-[10px] text-slate-400 font-medium">ESPERA MÉDIA: {unit.averageWaitDay} MIN</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-black text-amber-600 leading-none">{waiting}</p>
+                    <p className={`text-xl font-black leading-none ${
+                      waitersOver30 > 0 ? 'text-red-600' : 'text-amber-600'
+                    }`}>
+                      {waiting}
+                    </p>
                     <p className="text-[9px] uppercase font-bold text-slate-400 mt-1">Pacientes</p>
+                    {waitersOver30 > 0 && (
+                      <p className="text-[8px] text-red-600 font-bold mt-1">{waitersOver30} 30+ min</p>
+                    )}
                   </div>
                 </div>
               );
@@ -231,6 +353,162 @@ export default function DashboardPage() {
         </div>
 
       </div>
+
+      {/* --- LINHA 3: FATURAMENTO POR UNIDADE --- */}
+      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
+          <DollarSign size={18} className="text-slate-400" />
+          <h2 className="font-bold text-slate-700">Faturamento Consolidado (Hoje)</h2>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          {/* Card: Consolidado */}
+          <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100/30 border border-emerald-200 rounded-lg">
+            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Total Consolidado</p>
+            <p className="text-3xl font-black text-emerald-900">
+              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data?.finance?.totals?.total || 0)}
+            </p>
+            <p className="text-xs text-emerald-600 mt-2">Guias processadas: <strong>{data?.finance?.totals?.qtd || 0}</strong></p>
+          </div>
+          
+          {/* Card: Média por Unidade */}
+          <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100/30 border border-blue-200 rounded-lg">
+            <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Unidades Ativas</p>
+            <p className="text-3xl font-black text-blue-900">
+              {Object.keys(data?.reception?.por_unidade || {}).length}
+            </p>
+            <p className="text-xs text-blue-600 mt-2">Faturando hoje</p>
+          </div>
+        </div>
+
+        {/* Tabela de Unidades */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50/50">
+                <th className="px-3 py-2 font-bold text-slate-600">Unidade</th>
+                <th className="px-3 py-2 text-right font-bold text-slate-600">Faturado</th>
+                <th className="px-3 py-2 text-right font-bold text-slate-600">Guias</th>
+                <th className="px-3 py-2 text-right font-bold text-slate-600">Ticket Médio</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {Object.entries(data?.reception?.por_unidade || {}).map(([id, unit]: [string, any]) => (
+                <tr key={id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-3 py-2.5 font-medium text-slate-700">{unit.nome_unidade}</td>
+                  <td className="px-3 py-2.5 text-right text-emerald-600 font-bold">-</td>
+                  <td className="px-3 py-2.5 text-right text-slate-600">-</td>
+                  <td className="px-3 py-2.5 text-right text-slate-500 text-xs">-</td>
+                </tr>
+              ))}
+              {Object.keys(data?.reception?.por_unidade || {}).length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-3 py-6 text-center text-slate-400 text-sm">Sem dados disponíveis</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* --- LINHA 4: MONITORAMENTO DE METAS --- */}
+      {goalsData && goalsData.length > 0 && (
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
+            <TrendingUp size={18} className="text-slate-400" />
+            <h2 className="font-bold text-slate-700">Monitoramento de Metas</h2>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {goalsData.map((goal: any) => {
+              // Calcula projeção baseada na percentagem
+              const daysInMonth = 30;
+              const daysPassed = Math.min(new Date().getDate(), daysInMonth);
+              const dailyRate = daysPassed > 0 ? goal.current / daysPassed : 0;
+              const projectedValue = dailyRate * daysInMonth;
+              
+              return (
+                <div 
+                  key={goal.goal_id}
+                  className={`p-4 rounded-lg border ${
+                    goal.status === 'SUCCESS' 
+                      ? 'bg-emerald-50 border-emerald-200' 
+                      : goal.status === 'WARNING' 
+                      ? 'bg-amber-50 border-amber-200' 
+                      : 'bg-red-50 border-red-200'
+                  }`}
+                >
+                  <div className="flex justify-between items-start mb-2">
+                    <p className={`text-xs font-bold uppercase tracking-wider ${
+                      goal.status === 'SUCCESS' 
+                        ? 'text-emerald-700' 
+                        : goal.status === 'WARNING' 
+                        ? 'text-amber-700' 
+                        : 'text-red-700'
+                    }`}>
+                      {goal.name}
+                    </p>
+                    <span className={`text-xs font-bold px-2 py-1 rounded ${
+                      goal.status === 'SUCCESS' 
+                        ? 'bg-emerald-200 text-emerald-900' 
+                        : goal.status === 'WARNING' 
+                        ? 'bg-amber-200 text-amber-900' 
+                        : 'bg-red-200 text-red-900'
+                    }`}>
+                      {goal.percentage}%
+                    </span>
+                  </div>
+                  
+                  {/* Progress Bar */}
+                  <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden mb-2">
+                    <div 
+                      className={`h-full transition-all ${
+                        goal.status === 'SUCCESS' 
+                          ? 'bg-emerald-600' 
+                          : goal.status === 'WARNING' 
+                          ? 'bg-amber-600' 
+                          : 'bg-red-600'
+                      }`}
+                      style={{ width: `${Math.min(goal.percentage, 100)}%` }}
+                    />
+                  </div>
+
+                  {/* Values */}
+                  <div className="flex justify-between text-xs mb-2">
+                    <span className="text-slate-600 font-medium">
+                      {typeof goal.current === 'number' && goal.unit === 'currency'
+                        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(goal.current)
+                        : typeof goal.current === 'number' 
+                        ? goal.current.toFixed(0)
+                        : goal.current
+                      }
+                    </span>
+                    <span className="text-slate-500">
+                      / {typeof goal.target === 'number' && goal.unit === 'currency'
+                        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(goal.target)
+                        : typeof goal.target === 'number'
+                        ? goal.target.toFixed(0)
+                        : goal.target
+                      }
+                    </span>
+                  </div>
+
+                  {/* Projeção */}
+                  <div className="pt-2 border-t border-slate-300/50 text-[10px]">
+                    <p className="text-slate-500 mb-1">Projeção (mês):</p>
+                    <p className="font-bold text-slate-700">
+                      {typeof goal.current === 'number' && goal.unit === 'currency'
+                        ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(projectedValue)
+                        : projectedValue.toFixed(0)
+                      }
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

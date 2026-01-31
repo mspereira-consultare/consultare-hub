@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Filter, Building2 } from 'lucide-react';
 import { GoalHeader } from './components/GoalHeader';
 import { GoalModal } from './components/GoalModal';
 import { GoalTable } from './components/GoalTable';
@@ -20,6 +20,8 @@ export default function GoalsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<any>(undefined);
   const [detailsGoal, setDetailsGoal] = useState<any>(null);
+  const [selectedUnit, setSelectedUnit] = useState<string>('all');
+  const [availableUnits, setAvailableUnits] = useState<string[]>([]);
 
   const fetchData = async () => {
     setLoading(true);
@@ -45,6 +47,15 @@ export default function GoalsPage() {
             }
             setDashboardData(dashMap);
         }
+        
+        // 3. Extrai unidades disponíveis dos goals
+        const unitsSet = new Set<string>();
+        validGoals.forEach((g: any) => {
+            if (g.clinic_unit && g.clinic_unit !== 'all' && g.clinic_unit !== null) {
+                unitsSet.add(g.clinic_unit);
+            }
+        });
+        setAvailableUnits(Array.from(unitsSet).sort());
     } catch (error) {
         console.error("Erro ao carregar metas:", error);
     } finally {
@@ -97,8 +108,14 @@ export default function GoalsPage() {
     // Filtro de Status (Vigência)
     if (statusFilter === 'active') {
         const today = new Date().toISOString().split('T')[0];
-        return g.end_date >= today;
+        if (g.end_date < today) return false;
     }
+    
+    // Filtro de Unidade Clínica
+    if (selectedUnit !== 'all') {
+        return g.clinic_unit === selectedUnit;
+    }
+    
     return true;
   });
 
@@ -111,11 +128,30 @@ export default function GoalsPage() {
   return (
     <div className="flex flex-col h-full bg-slate-50 min-h-screen">
       <div className="p-6 bg-white border-b border-slate-200 shadow-sm">
+        <div className="flex flex-col gap-4">
           <GoalHeader 
             onNew={() => { setEditingGoal(undefined); setIsModalOpen(true); }} 
             statusFilter={statusFilter} setStatusFilter={setStatusFilter}
             sectorFilter={activeTab} setSectorFilter={setActiveTab} 
           />
+          
+          {/* Filtro de Unidade Clínica */}
+          {availableUnits.length > 0 && (
+            <div className="flex items-center gap-3 pt-2 border-t border-slate-100">
+              <Building2 size={18} className="text-slate-500" />
+              <select
+                value={selectedUnit}
+                onChange={(e) => setSelectedUnit(e.target.value)}
+                className="px-3 py-2 text-sm border border-slate-300 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Todas as Unidades</option>
+                {availableUnits.map(unit => (
+                  <option key={unit} value={unit}>{unit}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       <GoalTabs activeTab={activeTab} onChange={setActiveTab} counts={sectorCounts} />
@@ -141,6 +177,92 @@ export default function GoalsPage() {
                 onDelete={handleDelete} 
                 onViewDetails={(g) => setDetailsGoal(g)}
             />
+        )}
+      </div>
+
+      {/* --- BLOCO DE METAS POR GRUPO DE PROCEDIMENTO --- */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm mt-6 mx-6 mb-6">
+        <h2 className="text-lg font-bold text-slate-800 mb-4">Metas por Grupo de Procedimento (Faturamento)</h2>
+        
+        {filteredGoals && filteredGoals.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredGoals
+              .filter((g: any) => g.sector === 'faturamento' || g.name?.toLowerCase().includes('faturamento'))
+              .map((goal: any) => {
+                const goalData = dashboardData[goal.id];
+                return (
+                  <div 
+                    key={goal.id}
+                    className={`p-4 rounded-lg border transition-all cursor-pointer hover:shadow-md ${
+                      goalData?.status === 'SUCCESS' 
+                        ? 'bg-emerald-50 border-emerald-200' 
+                        : goalData?.status === 'WARNING' 
+                        ? 'bg-amber-50 border-amber-200' 
+                        : 'bg-red-50 border-red-200'
+                    }`}
+                    onClick={() => setDetailsGoal(goal)}
+                  >
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className={`text-xs font-bold uppercase tracking-wider ${
+                          goalData?.status === 'SUCCESS' 
+                            ? 'text-emerald-700' 
+                            : goalData?.status === 'WARNING' 
+                            ? 'text-amber-700' 
+                            : 'text-red-700'
+                        }`}>
+                          {goal.name}
+                        </p>
+                        {goal.filter_group && (
+                          <p className="text-xs text-slate-500 mt-1">Grupo: {goal.filter_group}</p>
+                        )}
+                      </div>
+                      <span className={`text-xs font-bold px-2 py-1 rounded ${
+                        goalData?.status === 'SUCCESS' 
+                          ? 'bg-emerald-200 text-emerald-900' 
+                          : goalData?.status === 'WARNING' 
+                          ? 'bg-amber-200 text-amber-900' 
+                          : 'bg-red-200 text-red-900'
+                      }`}>
+                        {goalData?.percentage || 0}%
+                      </span>
+                    </div>
+                    
+                    {/* Progress Bar */}
+                    <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden mb-2">
+                      <div 
+                        className={`h-full transition-all ${
+                          goalData?.status === 'SUCCESS' 
+                            ? 'bg-emerald-600' 
+                            : goalData?.status === 'WARNING' 
+                            ? 'bg-amber-600' 
+                            : 'bg-red-600'
+                        }`}
+                        style={{ width: `${Math.min(goalData?.percentage || 0, 100)}%` }}
+                      />
+                    </div>
+
+                    {/* Values */}
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-600 font-medium">
+                        {goal.unit === 'currency'
+                          ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(goalData?.current || 0)
+                          : goalData?.current?.toFixed(0) || '0'
+                        }
+                      </span>
+                      <span className="text-slate-500">
+                        / {goal.unit === 'currency'
+                          ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(goal.target_value)
+                          : goal.target_value.toFixed(0)
+                        }
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        ) : (
+          <p className="text-slate-400 text-sm">Nenhuma meta de faturamento configurada.</p>
         )}
       </div>
 

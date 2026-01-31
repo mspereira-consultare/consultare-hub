@@ -12,6 +12,8 @@ export interface Goal {
     unit: string;
     linked_kpi_id: string; // ID do KPI para automação
     filter_group?: string; // Filtro avançado (Ex: Consultas, Exames)
+    clinic_unit?: string; // Filtro de unidade clínica (Ex: Matriz, Filial)
+    collaborator?: string; // Nome do colaborador (Ex: Profissional / Agendador)
 }
 
 export const GOAL_SCOPES = [

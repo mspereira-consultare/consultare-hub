@@ -23,6 +23,7 @@ export default function ProductivityPage() {
     const [rankingData, setRankingData] = useState<any[]>([]);
     const [globalStats, setGlobalStats] = useState<any>(null);
     const [teamStats, setTeamStats] = useState<any>(null);
+    const [goalsData, setGoalsData] = useState<any[]>([]);
     const [heartbeat, setHeartbeat] = useState<any>(null);
     
     // Controle UI
@@ -42,15 +43,28 @@ export default function ProductivityPage() {
                 endDate: dateRange.end,
                 team: selectedTeam 
             });
-            const res = await fetch(`/api/admin/produtividade?${params.toString()}`);
-            const data = await res.json();
+            const [prodRes, goalsRes] = await Promise.all([
+                fetch(`/api/admin/produtividade?${params.toString()}`),
+                fetch('/api/admin/goals/dashboard')
+            ]);
             
-            if (data.userStats) setRankingData(data.userStats);
-            if (data.globalStats) setGlobalStats(data.globalStats);
-            if (data.teamStats) setTeamStats(data.teamStats);
-            if (data.heartbeat) setHeartbeat(data.heartbeat);
+            const prodData = await prodRes.json();
+            const goalsDataRes = await goalsRes.json();
+            
+            if (prodData.userStats) setRankingData(prodData.userStats);
+            if (prodData.globalStats) setGlobalStats(prodData.globalStats);
+            if (prodData.teamStats) setTeamStats(prodData.teamStats);
+            if (prodData.heartbeat) setHeartbeat(prodData.heartbeat);
+            
+            // Filtra apenas metas relacionadas a agendamentos/produtividade
+            if (Array.isArray(goalsDataRes)) {
+                const filteredGoals = goalsDataRes.filter((g: any) => 
+                    g.name && (g.name.toLowerCase().includes('agendamento') || g.name.toLowerCase().includes('produtividade'))
+                );
+                setGoalsData(filteredGoals);
+            }
 
-            if (data.heartbeat && (data.heartbeat.status === 'RUNNING' || data.heartbeat.status === 'PENDING')) {
+            if (prodData.heartbeat && (prodData.heartbeat.status === 'RUNNING' || prodData.heartbeat.status === 'PENDING')) {
                 setIsUpdating(true);
                 setTimeout(fetchData, 3000); 
             } else {
@@ -215,6 +229,92 @@ export default function ProductivityPage() {
                     </div>
                 )}
             </div>
+
+            {/* METAS DE AGENDAMENTOS */}
+            {goalsData && goalsData.length > 0 && (
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+                    <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
+                        <Trophy size={18} className="text-slate-400" />
+                        <h2 className="font-bold text-slate-700">Metas de Agendamentos</h2>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        {goalsData.map((goal: any) => {
+                          // Calcula projeção baseada na percentagem
+                          const daysInMonth = 30;
+                          const daysPassed = Math.min(new Date().getDate(), daysInMonth);
+                          const dailyRate = daysPassed > 0 ? goal.current / daysPassed : 0;
+                          const projectedValue = dailyRate * daysInMonth;
+
+                          return (
+                            <div 
+                                key={goal.goal_id}
+                                className={`p-4 rounded-lg border ${
+                                    goal.status === 'SUCCESS' 
+                                        ? 'bg-emerald-50 border-emerald-200' 
+                                        : goal.status === 'WARNING' 
+                                        ? 'bg-amber-50 border-amber-200' 
+                                        : 'bg-red-50 border-red-200'
+                                }`}
+                            >
+                                <div className="flex justify-between items-start mb-2">
+                                    <p className={`text-xs font-bold uppercase tracking-wider ${
+                                        goal.status === 'SUCCESS' 
+                                            ? 'text-emerald-700' 
+                                            : goal.status === 'WARNING' 
+                                            ? 'text-amber-700' 
+                                            : 'text-red-700'
+                                    }`}>
+                                        {goal.name}
+                                    </p>
+                                    <span className={`text-xs font-bold px-2 py-1 rounded ${
+                                        goal.status === 'SUCCESS' 
+                                            ? 'bg-emerald-200 text-emerald-900' 
+                                            : goal.status === 'WARNING' 
+                                            ? 'bg-amber-200 text-amber-900' 
+                                            : 'bg-red-200 text-red-900'
+                                    }`}>
+                                        {goal.percentage}%
+                                    </span>
+                                </div>
+                                
+                                {/* Progress Bar */}
+                                <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden mb-2">
+                                    <div 
+                                        className={`h-full transition-all ${
+                                            goal.status === 'SUCCESS' 
+                                                ? 'bg-emerald-600' 
+                                                : goal.status === 'WARNING' 
+                                                ? 'bg-amber-600' 
+                                                : 'bg-red-600'
+                                        }`}
+                                        style={{ width: `${Math.min(goal.percentage, 100)}%` }}
+                                    />
+                                </div>
+
+                                {/* Values */}
+                                <div className="flex justify-between text-xs mb-2">
+                                    <span className="text-slate-600 font-medium">
+                                        {typeof goal.current === 'number' ? goal.current.toFixed(0) : goal.current}
+                                    </span>
+                                    <span className="text-slate-500">
+                                        / {typeof goal.target === 'number' ? goal.target.toFixed(0) : goal.target}
+                                    </span>
+                                </div>
+
+                                {/* Projeção */}
+                                <div className="pt-2 border-t border-slate-300/50 text-[10px]">
+                                    <p className="text-slate-500 mb-1">Projeção:</p>
+                                    <p className="font-bold text-slate-700">
+                                        {projectedValue.toFixed(0)}
+                                    </p>
+                                </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* RANKING INDIVIDUAL */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">

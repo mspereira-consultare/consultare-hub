@@ -11,7 +11,7 @@ export async function GET(request: Request) {
     
     const db = getDbConnection();
 
-    // 1. TOTAIS GERAIS + CÁLCULO DE CONVERSÃO
+    // 1. TOTAIS GERAIS + CÁLCULO DE CONVERSÃO + VALOR PERDIDO
     // Adicionei 'executada' e 'aprovada pelo cliente' (tudo minúsculo para bater com lower(status))
     const summaryResult = await db.query(`
         SELECT 
@@ -23,7 +23,14 @@ export async function GET(request: Request) {
                     THEN total_value 
                     ELSE 0 
                 END
-            ) as won_value
+            ) as won_value,
+            SUM(
+                CASE 
+                    WHEN lower(status) IN ('cancelado', 'recusado', 'perdido', 'rejeição', 'cancelada') 
+                    THEN total_value 
+                    ELSE 0 
+                END
+            ) as lost_value
         FROM feegow_proposals
         WHERE date BETWEEN ? AND ?
     `, [startDate, endDate]);
@@ -34,7 +41,8 @@ export async function GET(request: Request) {
     const summary = {
         qtd: rawSummary.qtd || 0,
         valor: rawSummary.valor || 0,
-        wonValue: rawSummary.won_value || 0 
+        wonValue: rawSummary.won_value || 0,
+        lostValue: rawSummary.lost_value || 0
     };
 
     // 2. POR UNIDADE
@@ -50,12 +58,19 @@ export async function GET(request: Request) {
         ORDER BY unit_name, valor DESC
     `, [startDate, endDate]);
 
-    // 3. RANKING DE VENDEDORES
+    // 3. RANKING DE VENDEDORES (COM SEPARAÇÃO DE STATUS)
     const byProposer = await db.query(`
         SELECT 
             professional_name,
             COUNT(*) as qtd,
-            SUM(total_value) as valor
+            SUM(total_value) as valor,
+            SUM(
+                CASE 
+                    WHEN lower(status) IN ('executada', 'aprovada pelo cliente', 'ganho', 'realizado', 'concluido', 'pago') 
+                    THEN total_value 
+                    ELSE 0 
+                END
+            ) as valor_executado
         FROM feegow_proposals
         WHERE date BETWEEN ? AND ?
         GROUP BY professional_name

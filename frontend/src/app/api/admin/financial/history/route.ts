@@ -8,6 +8,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const groupFilter = searchParams.get('group');
     const procedureFilter = searchParams.get('procedure');
+    const unitFilter = searchParams.get('unit');
     // O painel envia YYYY-MM-DD
     const startDate = searchParams.get('startDate') || new Date().toISOString().split('T')[0];
     const endDate = searchParams.get('endDate') || startDate;
@@ -19,13 +20,17 @@ export async function GET(request: Request) {
     const valueCol = 'total_pago';
     
     // REGRA 1: Filtro de Unidade (Excluir RESOLVECARD)
-    const unitFilter = `(unidade IS NULL OR (unidade NOT LIKE '%RESOLVECARD%' AND unidade NOT LIKE '%GESTÃO DE BENEFICOS%'))`;
+    const unitFilterExclude = `(unidade IS NULL OR (unidade NOT LIKE '%RESOLVECARD%' AND unidade NOT LIKE '%GESTÃO DE BENEFICOS%'))`;
 
     // Filtro de Data (Comparação de string ISO YYYY-MM-DD funciona no SQLite)
-    let baseWhere = `WHERE ${dateCol} BETWEEN ? AND ? AND ${unitFilter}`;
+    let baseWhere = `WHERE ${dateCol} BETWEEN ? AND ? AND ${unitFilterExclude}`;
     const baseParams: any[] = [startDate, endDate];
 
     // Filtros Opcionais
+    if (unitFilter && unitFilter !== 'all') {
+        baseWhere += ` AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
+        baseParams.push(unitFilter);
+    }
     if (groupFilter && groupFilter !== 'all') {
         baseWhere += ` AND UPPER(TRIM(grupo)) = UPPER(TRIM(?))`;
         baseParams.push(groupFilter);
@@ -81,8 +86,15 @@ export async function GET(request: Request) {
             SELECT TRIM(grupo) as name, SUM(${valueCol}) as total, COUNT(*) as qtd 
             FROM faturamento_analitico 
             WHERE ${dateCol} BETWEEN ? AND ? 
-            AND ${unitFilter}
-            AND grupo IS NOT NULL AND grupo != ''
+            AND ${unitFilterExclude}`;
+    
+    // Se há filtro de unidade, aplica aqui também
+    if (unitFilter && unitFilter !== 'all') {
+        groupsQuery += ` AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
+        groupParams.push(unitFilter);
+    }
+    
+    groupsQuery += ` AND grupo IS NOT NULL AND grupo != ''
             GROUP BY 1
             
             UNION ALL
@@ -97,7 +109,7 @@ export async function GET(request: Request) {
     `;
     
     // Duplicamos params para o UNION
-    const unionParams = [...groupParams, ...groupParams];
+    const unionParams = [...groupParams, startDate, endDate];
 
     // Tenta rodar com Agenda. Se falhar (tabela não existe), roda só Faturamento.
     let groups = [];
@@ -106,16 +118,23 @@ export async function GET(request: Request) {
         groups = groupsRes;
     } catch (e) {
         // Fallback: Tabela agenda não existe
-        const simpleGroupsQuery = `
+        let simpleGroupsQuery = `
             SELECT TRIM(grupo) as name, SUM(${valueCol}) as total, COUNT(*) as qtd
             FROM faturamento_analitico
             WHERE ${dateCol} BETWEEN ? AND ?
-            AND ${unitFilter}
-            AND grupo IS NOT NULL AND grupo != ''
+            AND ${unitFilterExclude}`;
+        
+        const simpleParams = [startDate, endDate];
+        if (unitFilter && unitFilter !== 'all') {
+            simpleGroupsQuery += ` AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
+            simpleParams.push(unitFilter);
+        }
+        
+        simpleGroupsQuery += ` AND grupo IS NOT NULL AND grupo != ''
             GROUP BY 1
             ORDER BY total DESC
         `;
-        groups = await db.query(simpleGroupsQuery, groupParams);
+        groups = await db.query(simpleGroupsQuery, simpleParams);
     }
 
     // Normaliza para o frontend
@@ -126,8 +145,12 @@ export async function GET(request: Request) {
     }));
 
     // 6. QUERY: LISTA DE PROCEDIMENTOS (Combobox)
-    let procWhere = `WHERE procedimento IS NOT NULL AND procedimento != '' AND ${unitFilter}`;
+    let procWhere = `WHERE procedimento IS NOT NULL AND procedimento != '' AND ${unitFilterExclude}`;
     const procParams = [];
+    if (unitFilter && unitFilter !== 'all') {
+        procWhere += ` AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
+        procParams.push(unitFilter);
+    }
     if (groupFilter && groupFilter !== 'all') {
         procWhere += ` AND UPPER(TRIM(grupo)) = UPPER(TRIM(?))`;
         procParams.push(groupFilter);
@@ -140,7 +163,22 @@ export async function GET(request: Request) {
         ORDER BY name ASC
     `, procParams);
 
-    // 7. HEARTBEAT (Status)
+    // 7. QUERY: LISTA DE UNIDADES (Combobox - Novo)
+    const unitsRes = await db.query(`
+        SELECT DISTINCT TRIM(unidade) as name
+        FROM faturamento_analitico
+        WHERE ${dateCol} BETWEEN ? AND ?
+        AND ${unitFilterExclude}
+        AND unidade IS NOT NULL AND unidade != ''
+        ORDER BY name ASC
+    `, [startDate, endDate]);
+
+    const units = unitsRes.map((u: any) => ({
+        ...u,
+        label: u.name
+    }));
+
+    // 8. HEARTBEAT (Status)
     const statusRes = await db.query(`
         SELECT status, last_run, message 
         FROM system_status 
@@ -152,7 +190,8 @@ export async function GET(request: Request) {
         daily: dailyRes, 
         monthly: monthlyRes, 
         groups, 
-        procedures, 
+        procedures,
+        units,
         totals,
         heartbeat 
     });

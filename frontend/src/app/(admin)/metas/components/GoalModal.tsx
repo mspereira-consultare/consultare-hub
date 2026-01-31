@@ -23,7 +23,9 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
         target_value: 0,
         unit: 'currency',
         linked_kpi_id: 'manual',
-        filter_group: '' 
+        filter_group: '',
+        clinic_unit: 'all',
+        collaborator: 'all'
     };
 
     const [formData, setFormData] = useState<Goal>(defaultGoal);
@@ -54,6 +56,10 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
     // Lista de grupos (vinda do endpoint /api/admin/options/groups)
     const [groups, setGroups] = useState<string[]>([]);
     const [loadingGroups, setLoadingGroups] = useState(false);
+    const [clinicUnits, setClinicUnits] = useState<string[]>([]);
+    const [loadingUnits, setLoadingUnits] = useState(false);
+    const [professionals, setProfessionals] = useState<string[]>([]);
+    const [loadingProfessionals, setLoadingProfessionals] = useState(false);
 
     useEffect(() => {
         // Carrega grupos quando o modal abre e quando o KPI passa a suportar filtro
@@ -83,6 +89,57 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
 
         return () => { mounted = false; };
     }, [isOpen, showGroupFilter]);
+
+    // Carrega unidades clínicas quando o modal abre
+    useEffect(() => {
+        if (!isOpen) return;
+
+        let mounted = true;
+        (async () => {
+            setLoadingUnits(true);
+            try {
+                const res = await fetch('/api/admin/financial/history', { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (mounted && Array.isArray(data.units)) {
+                        setClinicUnits(data.units.map((u: any) => u.name || u.label).filter(Boolean));
+                    }
+                } else {
+                    if (mounted) setClinicUnits([]);
+                }
+            } catch (e) {
+                if (mounted) setClinicUnits([]);
+            } finally {
+                if (mounted) setLoadingUnits(false);
+            }
+        })();
+
+        return () => { mounted = false; };
+    }, [isOpen]);
+
+    // Carrega colaboradores/profissionais quando o modal abre
+    useEffect(() => {
+        if (!isOpen) return;
+        let mounted = true;
+        (async () => {
+            setLoadingProfessionals(true);
+            try {
+                const res = await fetch('/api/admin/options/professionals', { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (mounted && Array.isArray(data)) setProfessionals(data.map((p:any)=>p.name||p.label).filter(Boolean));
+                } else {
+                    if (mounted) setProfessionals([]);
+                }
+            } catch (e) {
+                if (mounted) setProfessionals([]);
+            } finally {
+                if (mounted) setLoadingProfessionals(false);
+            }
+        })();
+
+        return () => { mounted = false; };
+    }, [isOpen]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -209,6 +266,67 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                             onChange={e => setFormData({...formData, filter_group: e.target.value})}
                                         />
                                     )}
+
+                                                    {/* Campo de Filtro de Unidade Clínica */}
+                                                    <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
+                                                        <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
+                                                            Unidade Clínica
+                                                            <span title="Aplica esta meta apenas para uma unidade específica">
+                                                                <HelpCircle size={12} />
+                                                            </span>
+                                                        </label>
+
+                                                        {loadingUnits ? (
+                                                            <div className="text-sm text-slate-400">Carregando unidades...</div>
+                                                        ) : clinicUnits.length > 0 ? (
+                                                            <select
+                                                                className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                                                value={formData.clinic_unit ?? 'all'}
+                                                                onChange={e => setFormData({...formData, clinic_unit: e.target.value})}
+                                                            >
+                                                                <option value="all">Todas as Unidades</option>
+                                                                {clinicUnits.map(u => <option key={u} value={u}>{u}</option>)}
+                                                            </select>
+                                                        ) : (
+                                                            <input 
+                                                                type="text" 
+                                                                placeholder="Ex: Unidade Matriz, Filial..."
+                                                                className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-blue-300"
+                                                                value={formData.clinic_unit || 'all'}
+                                                                onChange={e => setFormData({...formData, clinic_unit: e.target.value})}
+                                                            />
+                                                        )}
+                                                    </div>
+                                                    {/* Campo de Filtro de Colaborador */}
+                                                    <div className="space-y-1.5 animate-in fade-in slide-in-from-top-2">
+                                                        <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
+                                                            Colaborador
+                                                            <span title="Aplica esta meta apenas para um colaborador específico">
+                                                                <HelpCircle size={12} />
+                                                            </span>
+                                                        </label>
+
+                                                        {loadingProfessionals ? (
+                                                            <div className="text-sm text-slate-400">Carregando colaboradores...</div>
+                                                        ) : professionals.length > 0 ? (
+                                                            <select
+                                                                className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                                                value={(formData as any).collaborator ?? 'all'}
+                                                                onChange={e => setFormData({...formData, collaborator: e.target.value})}
+                                                            >
+                                                                <option value="all">Todos os Colaboradores</option>
+                                                                {professionals.map(p => <option key={p} value={p}>{p}</option>)}
+                                                            </select>
+                                                        ) : (
+                                                            <input 
+                                                                type="text" 
+                                                                placeholder="Nome do colaborador..."
+                                                                className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500 placeholder:text-blue-300"
+                                                                value={(formData as any).collaborator || 'all'}
+                                                                onChange={e => setFormData({...formData, collaborator: e.target.value})}
+                                                            />
+                                                        )}
+                                                    </div>
                                 </div>
                             )}
                         </div>
