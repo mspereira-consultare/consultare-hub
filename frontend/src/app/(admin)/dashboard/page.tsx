@@ -48,14 +48,17 @@ export default function DashboardPage() {
     
     try {
       const today = new Date();
+      const todayStr = today.toISOString().split('T')[0];
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
-      const monthEnd = new Date().toISOString().split('T')[0];
+      const monthEnd = todayStr;
       
-      const [resMedic, resRecep, resWhats, resFinance, resFinanceByUnit, resGoals] = await Promise.all([
+      const [resMedic, resRecep, resWhats, resFinanceDaily, resFinanceMonth, resFinanceByUnitDaily, resFinanceByUnitMonth, resGoals] = await Promise.all([
         fetch('/api/queue/medic').then(r => r.json()),
         fetch('/api/queue/reception').then(r => r.json()),
         fetch('/api/queue/whatsapp').then(r => r.json()),
+        fetch(`/api/admin/financial/history?startDate=${todayStr}&endDate=${todayStr}`).then(r => r.json()),
         fetch(`/api/admin/financial/history?startDate=${monthStart}&endDate=${monthEnd}`).then(r => r.json()),
+        fetch(`/api/admin/financial/history?startDate=${todayStr}&endDate=${todayStr}&unit=all`).then(r => r.json()),
         fetch(`/api/admin/financial/history?startDate=${monthStart}&endDate=${monthEnd}&unit=all`).then(r => r.json()),
         fetch('/api/admin/goals/dashboard').then(r => r.json())
       ]);
@@ -64,8 +67,8 @@ export default function DashboardPage() {
         medic: resMedic.data || [],
         reception: resRecep.data || { global: { total_fila: 0, tempo_medio: 0 }, por_unidade: {} },
         whatsapp: resWhats.data || { global: { queue: 0, avgWaitSeconds: 0 }, groups: [] },
-        finance: resFinance || { totals: { total: 0, qtd: 0 } },
-        financeByUnit: resFinanceByUnit || { totals: { total: 0, qtd: 0 } }
+        finance: { daily: resFinanceDaily, monthly: resFinanceMonth },
+        financeByUnit: { daily: resFinanceByUnitDaily, monthly: resFinanceByUnitMonth }
       });
       setGoalsData(Array.isArray(resGoals) ? resGoals : []);
       setLastUpdate(new Date());
@@ -357,112 +360,131 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* --- LINHA 3: FATURAMENTO HOJE --- */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-        <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
-          <DollarSign size={18} className="text-slate-400" />
-          <h2 className="font-bold text-slate-700">Faturamento Hoje</h2>
-        </div>
+      {/* --- FATURAMENTO: HOJE vs MÊS (LADO A LADO) --- */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {/* Card: Consolidado */}
-          <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100/30 border border-emerald-200 rounded-lg">
-            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Total Consolidado (Hoje)</p>
-            <p className="text-3xl font-black text-emerald-900">
-              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data?.finance?.totals?.total || 0)}
-            </p>
-            <p className="text-xs text-emerald-600 mt-2">Guias processadas: <strong>{data?.finance?.totals?.qtd || 0}</strong></p>
+        {/* COLUNA 1: FATURAMENTO HOJE */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
+            <DollarSign size={18} className="text-slate-400" />
+            <h2 className="font-bold text-slate-700">Faturamento Hoje</h2>
           </div>
           
-          {/* Card: Ticket Médio */}
-          <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100/30 border border-blue-200 rounded-lg">
-            <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Ticket Médio (Hoje)</p>
-            <p className="text-3xl font-black text-blue-900">
-              {data?.finance?.totals?.qtd && data?.finance?.totals?.qtd > 0
-                ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((data?.finance?.totals?.total || 0) / data?.finance?.totals?.qtd)
-                : 'R$ 0,00'
-              }
-            </p>
-            <p className="text-xs text-blue-600 mt-2">Valor médio por guia</p>
-          </div>
-        </div>
-      </div>
+          <div className="space-y-4">
+            {/* Consolidado */}
+            <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100/30 border border-emerald-200 rounded-lg">
+              <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Total Consolidado</p>
+              <p className="text-2xl font-black text-emerald-900">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data?.finance?.daily?.totals?.total || 0)}
+              </p>
+              <p className="text-xs text-emerald-600 mt-1">Guias: {data?.finance?.daily?.totals?.qtd || 0}</p>
+            </div>
 
-      {/* --- LINHA 4: FATURAMENTO POR UNIDADE (MÊS) --- */}
-      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-        <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
-          <DollarSign size={18} className="text-slate-400" />
-          <h2 className="font-bold text-slate-700">Faturamento Consolidado (Mês Atual)</h2>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          {/* Card: Consolidado */}
-          <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100/30 border border-emerald-200 rounded-lg">
-            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Total Consolidado (Mês)</p>
-            <p className="text-3xl font-black text-emerald-900">
-              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data?.finance?.totals?.total || 0)}
-            </p>
-            <p className="text-xs text-emerald-600 mt-2">Guias processadas: <strong>{data?.finance?.totals?.qtd || 0}</strong></p>
-          </div>
-          
-          {/* Card: Ticket Médio */}
-          <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100/30 border border-blue-200 rounded-lg">
-            <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Ticket Médio (Mês)</p>
-            <p className="text-3xl font-black text-blue-900">
-              {data?.finance?.totals?.qtd && data?.finance?.totals?.qtd > 0
-                ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((data?.finance?.totals?.total || 0) / data?.finance?.totals?.qtd)
-                : 'R$ 0,00'
-              }
-            </p>
-            <p className="text-xs text-blue-600 mt-2">Valor médio por guia</p>
-          </div>
-        </div>
-
-        {/* Tabela de Unidades - Faturamento do Mês */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/50">
-                <th className="px-3 py-2 font-bold text-slate-600">Unidade</th>
-                <th className="px-3 py-2 text-right font-bold text-slate-600">Faturado (Mês)</th>
-                <th className="px-3 py-2 text-right font-bold text-slate-600">Guias</th>
-                <th className="px-3 py-2 text-right font-bold text-slate-600">Ticket Médio</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {(() => {
-                const unitsBilling = data?.financeByUnit?.unitsBilling || [];
-                
-                if (unitsBilling && unitsBilling.length > 0) {
-                  return unitsBilling.map((unit: any, idx: number) => (
-                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-3 py-2.5 font-medium text-slate-700">{unit.name || 'N/A'}</td>
-                      <td className="px-3 py-2.5 text-right text-emerald-600 font-bold">
-                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(unit.total || 0)}
-                      </td>
-                      <td className="px-3 py-2.5 text-right text-slate-600 font-medium">{unit.qtd || 0}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-500 text-xs">
-                        {unit.qtd && unit.qtd > 0
-                          ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(unit.total / unit.qtd)
-                          : 'R$ 0,00'
-                        }
-                      </td>
-                    </tr>
-                  ));
-                } else {
-                  return (
-                    <tr>
-                      <td colSpan={4} className="px-3 py-6 text-center text-slate-400 text-sm">Sem dados de faturamento por unidade disponíveis</td>
-                    </tr>
-                  );
+            {/* Ticket Médio */}
+            <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100/30 border border-blue-200 rounded-lg">
+              <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Ticket Médio</p>
+              <p className="text-2xl font-black text-blue-900">
+                {data?.finance?.daily?.totals?.qtd && data?.finance?.daily?.totals?.qtd > 0
+                  ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((data?.finance?.daily?.totals?.total || 0) / data?.finance?.daily?.totals?.qtd)
+                  : 'R$ 0,00'
                 }
-              })()}
-            </tbody>
-          </table>
+              </p>
+            </div>
+
+            {/* Tabela por unidade - Hoje */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/50">
+                    <th className="px-2 py-1.5 font-bold text-slate-600">Unidade</th>
+                    <th className="px-2 py-1.5 text-right font-bold text-slate-600">Faturado</th>
+                    <th className="px-2 py-1.5 text-right font-bold text-slate-600">Guias</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(() => {
+                    const unitsBilling = data?.financeByUnit?.daily?.unitsBilling || [];
+                    if (unitsBilling && unitsBilling.length > 0) {
+                      return unitsBilling.map((unit: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="px-2 py-1.5 font-medium text-slate-700 text-xs">{unit.name?.substring(0, 12) || 'N/A'}</td>
+                          <td className="px-2 py-1.5 text-right text-emerald-600 font-bold text-xs">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(unit.total || 0)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right text-slate-600 text-xs">{unit.qtd || 0}</td>
+                        </tr>
+                      ));
+                    }
+                    return <tr><td colSpan={3} className="px-2 py-2 text-center text-slate-400 text-xs">Sem dados</td></tr>;
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* COLUNA 2: FATURAMENTO MÊS */}
+        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
+            <DollarSign size={18} className="text-slate-400" />
+            <h2 className="font-bold text-slate-700">Faturamento Mês Atual</h2>
+          </div>
+          
+          <div className="space-y-4">
+            {/* Consolidado */}
+            <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100/30 border border-emerald-200 rounded-lg">
+              <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Total Consolidado</p>
+              <p className="text-2xl font-black text-emerald-900">
+                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data?.finance?.monthly?.totals?.total || 0)}
+              </p>
+              <p className="text-xs text-emerald-600 mt-1">Guias: {data?.finance?.monthly?.totals?.qtd || 0}</p>
+            </div>
+
+            {/* Ticket Médio */}
+            <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100/30 border border-blue-200 rounded-lg">
+              <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Ticket Médio</p>
+              <p className="text-2xl font-black text-blue-900">
+                {data?.finance?.monthly?.totals?.qtd && data?.finance?.monthly?.totals?.qtd > 0
+                  ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((data?.finance?.monthly?.totals?.total || 0) / data?.finance?.monthly?.totals?.qtd)
+                  : 'R$ 0,00'
+                }
+              </p>
+            </div>
+
+            {/* Tabela por unidade - Mês */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100 bg-slate-50/50">
+                    <th className="px-2 py-1.5 font-bold text-slate-600">Unidade</th>
+                    <th className="px-2 py-1.5 text-right font-bold text-slate-600">Faturado</th>
+                    <th className="px-2 py-1.5 text-right font-bold text-slate-600">Guias</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {(() => {
+                    const unitsBilling = data?.financeByUnit?.monthly?.unitsBilling || [];
+                    if (unitsBilling && unitsBilling.length > 0) {
+                      return unitsBilling.map((unit: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="px-2 py-1.5 font-medium text-slate-700 text-xs">{unit.name?.substring(0, 12) || 'N/A'}</td>
+                          <td className="px-2 py-1.5 text-right text-emerald-600 font-bold text-xs">
+                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(unit.total || 0)}
+                          </td>
+                          <td className="px-2 py-1.5 text-right text-slate-600 text-xs">{unit.qtd || 0}</td>
+                        </tr>
+                      ));
+                    }
+                    return <tr><td colSpan={3} className="px-2 py-2 text-center text-slate-400 text-xs">Sem dados</td></tr>;
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* --- LINHA 4: MONITORAMENTO DE METAS --- */}
+      {/* --- MONITORAMENTO DE METAS --- */}
       {goalsData && goalsData.length > 0 && (
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">

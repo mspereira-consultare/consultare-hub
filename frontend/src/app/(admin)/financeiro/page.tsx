@@ -222,7 +222,7 @@ export default function FinancialPage() {
       {/* HEADER COM FILTROS */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm z-20 relative">
         
-        {/* LINHA 1: TÍTULO + HEARTBEAT + BOTÃO EXPANDIR */}
+        {/* LINHA 1: TÍTULO + HEARTBEAT + BOTÃO ATUALIZAR + BOTÃO EXPANDIR */}
         <div className="p-6 flex items-center justify-between border-b border-slate-100">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-blue-900 rounded-xl text-white shadow-md"><DollarSign size={24} /></div>
@@ -232,17 +232,31 @@ export default function FinancialPage() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            {/* HEARTBEAT STATUS */}
+          <div className="flex items-center gap-4">
+            {/* HEARTBEAT STATUS COM DATA */}
             {heartbeat && (
-              <div className="hidden sm:flex flex-col items-end text-xs">
-                <span className="font-bold uppercase text-slate-400 tracking-wider mb-0.5">Status</span>
+              <div className="hidden sm:flex flex-col items-end text-xs border-r border-slate-200 pr-4">
+                <span className="font-bold uppercase text-slate-400 tracking-wider mb-0.5">Última Sincronização</span>
                 <div className="flex items-center gap-1.5">
                   <div className={`w-2 h-2 rounded-full ${isUpdating ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
-                  <span className="font-medium text-slate-600">{isUpdating ? 'Sincronizando' : 'Atualizado'}</span>
+                  <span className="font-medium text-slate-600">{formatLastUpdate(heartbeat.last_run)}</span>
                 </div>
               </div>
             )}
+            
+            {/* BOTÃO ATUALIZAR */}
+            <button 
+              onClick={handleManualUpdate}
+              disabled={isUpdating}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all border whitespace-nowrap ${
+                isUpdating 
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-wait' 
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-blue-600'
+              }`}
+            >
+              {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+              {isUpdating ? 'Sincronizando...' : 'Atualizar'}
+            </button>
             
             {/* BOTÃO EXPANDIR/RECOLHER */}
             <button 
@@ -260,7 +274,7 @@ export default function FinancialPage() {
           <div className="p-6 space-y-4 border-t border-slate-100">
             
             {/* LINHA 2: PERÍODO + UNIDADE */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block flex items-center gap-2">
                   <Calendar size={14} />
@@ -294,21 +308,6 @@ export default function FinancialPage() {
                   onChange={setSelectedUnit} 
                   placeholder="Todas as Unidades"
                 />
-              </div>
-
-              <div className="flex flex-col justify-end gap-2">
-                <button 
-                  onClick={handleManualUpdate}
-                  disabled={isUpdating}
-                  className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all border ${
-                    isUpdating 
-                      ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-wait' 
-                      : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                  }`}
-                >
-                  {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
-                  {isUpdating ? 'Sincronizando...' : 'Atualizar'}
-                </button>
               </div>
             </div>
 
