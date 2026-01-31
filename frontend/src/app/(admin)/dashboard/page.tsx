@@ -47,14 +47,16 @@ export default function DashboardPage() {
     }
     
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Date();
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+      const monthEnd = new Date().toISOString().split('T')[0];
       
       const [resMedic, resRecep, resWhats, resFinance, resFinanceByUnit, resGoals] = await Promise.all([
         fetch('/api/queue/medic').then(r => r.json()),
         fetch('/api/queue/reception').then(r => r.json()),
         fetch('/api/queue/whatsapp').then(r => r.json()),
-        fetch(`/api/admin/financial/history?startDate=${today}&endDate=${today}`).then(r => r.json()),
-        fetch(`/api/admin/financial/history?startDate=${today}&endDate=${today}&unit=all`).then(r => r.json()),
+        fetch(`/api/admin/financial/history?startDate=${monthStart}&endDate=${monthEnd}`).then(r => r.json()),
+        fetch(`/api/admin/financial/history?startDate=${monthStart}&endDate=${monthEnd}&unit=all`).then(r => r.json()),
         fetch('/api/admin/goals/dashboard').then(r => r.json())
       ]);
 
@@ -359,54 +361,72 @@ export default function DashboardPage() {
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
           <DollarSign size={18} className="text-slate-400" />
-          <h2 className="font-bold text-slate-700">Faturamento Consolidado (Hoje)</h2>
+          <h2 className="font-bold text-slate-700">Faturamento Consolidado (Mês Atual)</h2>
         </div>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
           {/* Card: Consolidado */}
           <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100/30 border border-emerald-200 rounded-lg">
-            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Total Consolidado</p>
+            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Total Consolidado (Mês)</p>
             <p className="text-3xl font-black text-emerald-900">
               {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data?.finance?.totals?.total || 0)}
             </p>
             <p className="text-xs text-emerald-600 mt-2">Guias processadas: <strong>{data?.finance?.totals?.qtd || 0}</strong></p>
           </div>
           
-          {/* Card: Média por Unidade */}
+          {/* Card: Ticket Médio */}
           <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100/30 border border-blue-200 rounded-lg">
-            <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Unidades Ativas</p>
+            <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Ticket Médio (Mês)</p>
             <p className="text-3xl font-black text-blue-900">
-              {Object.keys(data?.reception?.por_unidade || {}).length}
+              {data?.finance?.totals?.qtd && data?.finance?.totals?.qtd > 0
+                ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((data?.finance?.totals?.total || 0) / data?.finance?.totals?.qtd)
+                : 'R$ 0,00'
+              }
             </p>
-            <p className="text-xs text-blue-600 mt-2">Faturando hoje</p>
+            <p className="text-xs text-blue-600 mt-2">Valor médio por guia</p>
           </div>
         </div>
 
-        {/* Tabela de Unidades */}
+        {/* Tabela de Unidades - Faturamento do Mês */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/50">
                 <th className="px-3 py-2 font-bold text-slate-600">Unidade</th>
-                <th className="px-3 py-2 text-right font-bold text-slate-600">Faturado</th>
+                <th className="px-3 py-2 text-right font-bold text-slate-600">Faturado (Mês)</th>
                 <th className="px-3 py-2 text-right font-bold text-slate-600">Guias</th>
                 <th className="px-3 py-2 text-right font-bold text-slate-600">Ticket Médio</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {Object.entries(data?.reception?.por_unidade || {}).map(([id, unit]: [string, any]) => (
-                <tr key={id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-3 py-2.5 font-medium text-slate-700">{unit.nome_unidade}</td>
-                  <td className="px-3 py-2.5 text-right text-emerald-600 font-bold">-</td>
-                  <td className="px-3 py-2.5 text-right text-slate-600">-</td>
-                  <td className="px-3 py-2.5 text-right text-slate-500 text-xs">-</td>
-                </tr>
-              ))}
-              {Object.keys(data?.reception?.por_unidade || {}).length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-6 text-center text-slate-400 text-sm">Sem dados disponíveis</td>
-                </tr>
-              )}
+              {(() => {
+                const unitsBilling = data?.financeByUnit?.unitsBilling || [];
+                
+                if (unitsBilling && unitsBilling.length > 0) {
+                  return unitsBilling.map((unit: any, idx: number) => (
+                    <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-3 py-2.5 font-medium text-slate-700">{unit.name || 'N/A'}</td>
+                      <td className="px-3 py-2.5 text-right text-emerald-600 font-bold">
+                        {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(unit.total || 0)}
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-slate-600 font-medium">{unit.qtd || 0}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-500 text-xs">
+                        {unit.qtd && unit.qtd > 0
+                          ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(unit.total / unit.qtd)
+                          : 'R$ 0,00'
+                        }
+                      </td>
+                    </tr>
+                  ));
+                } else {
+                  return (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-6 text-center text-slate-400 text-sm">Sem dados de faturamento por unidade disponíveis</td>
+                    </tr>
+                  );
+                }
+              })()}
+            </tbody>
             </tbody>
           </table>
         </div>

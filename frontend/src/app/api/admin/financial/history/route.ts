@@ -178,7 +178,31 @@ export async function GET(request: Request) {
         label: u.name
     }));
 
-    // 8. HEARTBEAT (Status)
+    // 8. QUERY: FATURAMENTO POR UNIDADE
+    let unitsBillingWhere = `WHERE ${dateCol} BETWEEN ? AND ? AND ${unitFilterExclude}`;
+    const unitsBillingParams: any[] = [startDate, endDate];
+
+    if (groupFilter && groupFilter !== 'all') {
+        unitsBillingWhere += ` AND UPPER(TRIM(grupo)) = UPPER(TRIM(?))`;
+        unitsBillingParams.push(groupFilter);
+    }
+    if (procedureFilter && procedureFilter !== 'all') {
+        unitsBillingWhere += ` AND UPPER(TRIM(procedimento)) = UPPER(TRIM(?))`;
+        unitsBillingParams.push(procedureFilter);
+    }
+
+    const unitsBillingRes = await db.query(`
+        SELECT 
+            TRIM(unidade) as name, 
+            SUM(${valueCol}) as total,
+            COUNT(*) as qtd
+        FROM faturamento_analitico
+        ${unitsBillingWhere}
+        GROUP BY name
+        ORDER BY total DESC
+    `, unitsBillingParams);
+
+    // 9. HEARTBEAT (Status)
     const statusRes = await db.query(`
         SELECT status, last_run, message 
         FROM system_status 
@@ -192,6 +216,7 @@ export async function GET(request: Request) {
         groups, 
         procedures,
         units,
+        unitsBilling: unitsBillingRes,
         totals,
         heartbeat 
     });

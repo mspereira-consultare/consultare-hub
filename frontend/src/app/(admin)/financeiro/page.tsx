@@ -218,9 +218,9 @@ export default function FinancialPage() {
   return (
     <div className="p-6 bg-slate-50 min-h-screen flex flex-col gap-6">
       
-      {/* HEADER E FILTROS */}
-      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 shadow-sm z-20 relative">
-        <div className="flex items-center gap-3">
+      {/* HEADER */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm z-20 relative">
+        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100">
             <div className="p-3 bg-blue-900 rounded-xl text-white shadow-md"><DollarSign size={24} /></div>
             <div>
                 <h1 className="text-xl font-bold text-slate-800">Faturamento & Produção</h1>
@@ -230,83 +230,103 @@ export default function FinancialPage() {
             </div>
         </div>
 
-        <div className="flex flex-col gap-3 w-full">
-            {/* LINHA 1: STATUS + BOTÕES */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-wrap">
-                {/* STATUS */}
-                {heartbeat && (
-                    <div className="hidden lg:flex flex-col items-start text-sm border-r border-slate-100 pr-3">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                            Última Sincronização
-                        </span>
-                        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-                            <Clock size={12} />
-                            {formatLastUpdate(heartbeat.last_run)}
-                        </div>
-                    </div>
-                )}
-
-                {/* BOTÃO ATUALIZAR */}
-                <button 
-                    onClick={handleManualUpdate}
-                    disabled={isUpdating}
-                    className={`
-                        flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border whitespace-nowrap
-                        ${isUpdating 
-                            ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-wait' 
-                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-blue-600'
-                        }
-                    `}
-                >
-                     {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
-                     {isUpdating ? 'Sincronizando...' : 'Atualizar'}
-                </button>
-                
-                {/* DATE PICKER */}
-                <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
-                    <Calendar size={16} className="text-slate-500" />
+        {/* FILTROS ESTRUTURADOS */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            {/* COLUNA 1: DATA E BOTÕES */}
+            <div className="space-y-3">
+                <div className="flex items-center gap-2 mb-3">
+                    <Calendar size={14} className="text-slate-500" />
+                    <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Período</label>
+                </div>
+                <div className="flex items-center gap-2 bg-slate-50 px-3 py-2.5 rounded-lg border border-slate-200">
                     <input 
                         type="date" 
                         value={dateRange.start}
                         onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                        className="bg-transparent text-sm text-slate-700 outline-none w-28"
+                        className="bg-transparent text-sm text-slate-700 outline-none flex-1"
                     />
-                    <span className="text-slate-400">-</span>
+                    <span className="text-slate-300">→</span>
                     <input 
                         type="date" 
                         value={dateRange.end}
                         onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                        className="bg-transparent text-sm text-slate-700 outline-none w-28"
+                        className="bg-transparent text-sm text-slate-700 outline-none flex-1"
                     />
                 </div>
-
-                {/* BOTÃO LIMPAR FILTROS */}
-                {(selectedUnit !== 'all' || selectedGroup !== 'all' || selectedProcedure !== 'all') && (
+                
+                <div className="flex gap-2 pt-2">
                     <button 
-                        onClick={() => { setSelectedUnit('all'); setSelectedGroup('all'); setSelectedProcedure('all'); }} 
-                        className="flex items-center gap-2 px-3 py-2 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition whitespace-nowrap"
+                        onClick={handleManualUpdate}
+                        disabled={isUpdating}
+                        className={`
+                            flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg font-medium text-sm transition-all border
+                            ${isUpdating 
+                                ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-wait' 
+                                : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                            }
+                        `}
                     >
-                        <FilterX size={14} />
+                        {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                        {isUpdating ? 'Sincronizando...' : 'Atualizar'}
                     </button>
-                )}
+                    
+                    {(selectedUnit !== 'all' || selectedGroup !== 'all' || selectedProcedure !== 'all') && (
+                        <button 
+                            onClick={() => { setSelectedUnit('all'); setSelectedGroup('all'); setSelectedProcedure('all'); }} 
+                            className="flex items-center justify-center px-3 py-2.5 bg-red-50 text-red-600 rounded-lg border border-red-200 hover:bg-red-100 transition"
+                            title="Limpar filtros"
+                        >
+                            <FilterX size={16} />
+                        </button>
+                    )}
+                </div>
             </div>
 
-            {/* LINHA 2: FILTROS DE SELEÇÃO */}
-            <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
+            {/* COLUNA 2: ÚLTIMA SINCRONIZAÇÃO */}
+            {heartbeat && (
+                <div className="space-y-3">
+                    <div className="flex items-center gap-2 mb-3">
+                        <Clock size={14} className="text-slate-500" />
+                        <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Última Sincronização</label>
+                    </div>
+                    <div className="bg-slate-50 px-3 py-2.5 rounded-lg border border-slate-200">
+                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                            <div className={`w-2 h-2 rounded-full ${isUpdating ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
+                            {isUpdating ? 'Sincronizando...' : formatLastUpdate(heartbeat.last_run)}
+                        </div>
+                        <p className="text-xs text-slate-500 mt-1">
+                            {isUpdating ? 'Aguardando atualização dos dados' : 'Dados atualizados'}
+                        </p>
+                    </div>
+                </div>
+            )}
+        </div>
+
+        {/* FILTROS DE SELEÇÃO */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6 pt-6 border-t border-slate-100">
+            <div>
+                <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Unidade</label>
                 <SearchableSelect 
                     options={units} 
                     value={selectedUnit} 
                     onChange={setSelectedUnit} 
                     placeholder="Todas as Unidades"
                 />
+            </div>
 
+            <div>
+                <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Grupo de Procedimento</label>
                 <SearchableSelect 
                     options={groups} 
                     value={selectedGroup} 
                     onChange={setSelectedGroup} 
                     placeholder="Todos os Grupos"
                 />
+            </div>
 
+            <div>
+                <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Procedimento</label>
                 <SearchableSelect 
                     options={procedures} 
                     value={selectedProcedure} 

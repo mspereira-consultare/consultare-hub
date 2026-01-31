@@ -221,7 +221,7 @@ function DashboardCard({ goal, formatValue }: { goal: DashboardGoal, formatValue
                 </span>
             </div>
 
-            <div className="flex items-end justify-between mb-2">
+            <div className="flex items-end justify-between mb-4">
                 <div>
                     <span className="text-sm text-slate-500">Realizado</span>
                     <div className="text-2xl font-bold text-slate-900">
@@ -237,12 +237,38 @@ function DashboardCard({ goal, formatValue }: { goal: DashboardGoal, formatValue
             </div>
 
             {/* Barra de Progresso */}
-            <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
+            <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden mb-3">
                 <div 
                     style={{ width: `${progressVisual}%` }} 
                     className={`h-full ${statusColors[goal.status]} transition-all duration-1000 ease-out`}
                 />
             </div>
+
+            {/* Projeção */}
+            {(() => {
+                const isDaily = goal.periodicity === 'daily';
+                let projLabel = 'Projeção';
+                let projValue = 0;
+                if (isDaily) {
+                    const now = new Date();
+                    const hoursPassed = now.getHours();
+                    const hoursInDay = 11;
+                    const hourlyRate = hoursPassed > 0 ? goal.current / hoursPassed : 0;
+                    projValue = hourlyRate * hoursInDay;
+                    projLabel = `Projeção (hoje - ${hoursInDay}h)`;
+                } else {
+                    const daysInMonth = 30;
+                    const daysPassed = Math.min(new Date().getDate(), daysInMonth);
+                    const dailyRate = daysPassed > 0 ? goal.current / daysPassed : 0;
+                    projValue = dailyRate * daysInMonth;
+                    projLabel = `Projeção (mês - ${daysInMonth}d)`;
+                }
+                return (
+                    <div className="text-xs text-slate-500 pt-2 border-t border-slate-100">
+                        <span className="font-medium">{projLabel}:</span> <span className="font-bold text-slate-700">{formatValue(projValue, goal.unit)}</span>
+                    </div>
+                );
+            })()}
             
             {goal.percentage >= 100 && (
                 <div className="absolute top-0 right-0 p-2">
