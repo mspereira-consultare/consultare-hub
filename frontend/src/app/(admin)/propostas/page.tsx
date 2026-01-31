@@ -57,7 +57,9 @@ export default function ProposalsPage() {
             const totalQtd = data.summary?.qtd || 0;
             const totalVal = data.summary?.valor || 0;
             const wonVal = data.summary?.wonValue || 0;
-            const lostVal = data.summary?.lostValue || 0;
+            // Se lostValue não existir, calcula a partir da diferença (fallback)
+            const rawLostVal = data.summary && typeof data.summary.lostValue !== 'undefined' ? data.summary.lostValue : (totalVal - wonVal);
+            const lostVal = Number(rawLostVal) || 0;
 
             setSummary({
                 qtd: totalQtd,

@@ -8,6 +8,7 @@ import {
   MessageCircle, 
   TrendingUp, 
   Activity,
+  Phone,
   RefreshCw,
   Building2,
   Star
@@ -186,14 +187,14 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* --- LINHA 1: CARDS DE KPI (Estilo Clean) --- */}
+      {/* --- LINHA 1: CARDS DE KPI (Filas primeiro) --- */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KpiCard 
-          title="Faturamento (Hoje)" 
-          value={new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data?.finance?.totals?.total || 0)}
-          icon={<DollarSign size={20} />}
-          trend={`${data?.finance?.totals?.qtd || 0} guias processadas`}
-          color="emerald"
+          title="Fila Médica" 
+          value={totalFilaMedica}
+          icon={<Activity size={20} />}
+          trend={`${totalAtendidosHoje} concluídos hoje`}
+          color="amber"
         />
         <KpiCard 
           title="Fila Recepção" 
@@ -203,18 +204,18 @@ export default function DashboardPage() {
           color="blue"
         />
         <KpiCard 
-          title="Fila Médica" 
-          value={totalFilaMedica}
-          icon={<Activity size={20} />}
-          trend={`${totalAtendidosHoje} concluídos hoje`}
-          color="amber"
-        />
-        <KpiCard 
           title="WhatsApp Digital" 
           value={data?.whatsapp?.global?.queue || 0}
           icon={<MessageCircle size={20} />}
           trend="Pacientes ativos no hub"
           color="cyan"
+        />
+        <KpiCard 
+          title="Fila Telefone" 
+          value={'-'}
+          icon={<Phone size={20} />}
+          trend="Placeholder: integrações telefônicas"
+          color="emerald"
         />
       </div>
 

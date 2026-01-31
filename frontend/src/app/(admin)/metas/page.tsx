@@ -257,6 +257,31 @@ export default function GoalsPage() {
                         }
                       </span>
                     </div>
+
+                    {/* Projeção (quando disponível) */}
+                    {goalData && (
+                      <div className="pt-2 mt-2 border-t border-slate-300/50 text-[10px]">
+                        <p className="text-slate-500 mb-1">Projeção (mês):</p>
+                        <p className="font-bold text-slate-700">
+                          {goal.unit === 'currency'
+                            ? (() => {
+                                const daysInMonth = 30;
+                                const daysPassed = Math.min(new Date().getDate(), daysInMonth);
+                                const dailyRate = daysPassed > 0 ? (goalData?.current || 0) / daysPassed : 0;
+                                const projectedValue = dailyRate * daysInMonth;
+                                return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(projectedValue);
+                              })()
+                            : (() => {
+                                const daysInMonth = 30;
+                                const daysPassed = Math.min(new Date().getDate(), daysInMonth);
+                                const dailyRate = daysPassed > 0 ? (goalData?.current || 0) / daysPassed : 0;
+                                const projectedValue = dailyRate * daysInMonth;
+                                return projectedValue.toFixed(0);
+                              })()
+                          }
+                        </p>
+                      </div>
+                    )}
                   </div>
                 );
               })}

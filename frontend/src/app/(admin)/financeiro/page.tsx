@@ -140,11 +140,23 @@ export default function FinancialPage() {
                 qtd: d.qtd || 0
             })) || []);
             
-            setMonthly(data.monthly?.map((m: any) => ({
-                label: m.m ? new Date(m.m + '-01').toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase() : '-',
-                total: m.total || 0,
-                qtd: m.qtd || 0
-            })) || []);
+            setMonthly(data.monthly?.map((m: any) => {
+                let label = '-';
+                if (m.m) {
+                    const parts = String(m.m).split('-').map((p: string) => Number(p));
+                    if (parts.length === 2 && !Number.isNaN(parts[0]) && !Number.isNaN(parts[1])) {
+                        const [year, month] = parts;
+                        const date = new Date(year, month - 1, 1);
+                        try { label = date.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }).toUpperCase(); } catch (e) { label = '-'; }
+                    }
+                }
+
+                return {
+                    label,
+                    total: m.total || 0,
+                    qtd: m.qtd || 0
+                };
+            }) || []);
             
             // Só atualiza listas se não estiver filtrando
             if (selectedUnit === 'all') {

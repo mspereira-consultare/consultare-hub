@@ -25,6 +25,16 @@ export default function ProductivityPage() {
     const [teamStats, setTeamStats] = useState<any>(null);
     const [goalsData, setGoalsData] = useState<any[]>([]);
     const [heartbeat, setHeartbeat] = useState<any>(null);
+
+    // Helpers: match goals by collaborator or name heuristics
+    const findGoalFor = (key: string) => {
+        if (!Array.isArray(goalsData)) return null;
+        const byCollaborator = goalsData.find((g: any) => g.collaborator && String(g.collaborator).toLowerCase() === String(key).toLowerCase());
+        if (byCollaborator) return byCollaborator;
+        const byName = goalsData.find((g: any) => g.name && String(g.name).toLowerCase().includes(String(key).toLowerCase()));
+        if (byName) return byName;
+        return goalsData[0] || null;
+    };
     
     // Controle UI
     const [isUpdating, setIsUpdating] = useState(false);
@@ -171,7 +181,7 @@ export default function ProductivityPage() {
                 {/* 1. CARD VISÃO GERAL */}
                 {globalStats && (
                     <div className="p-5 bg-white rounded-xl border border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 shadow-sm">
-                        <div className="flex items-center gap-4">
+                                <div className="flex items-center gap-4">
                             <div className="p-3 bg-slate-100 text-slate-600 rounded-lg"><Activity size={28} /></div>
                             <div>
                                 <h3 className="font-bold text-slate-800 text-lg">Visão Geral</h3>
@@ -189,6 +199,20 @@ export default function ProductivityPage() {
                                     {globalStats.total > 0 ? ((globalStats.confirmados / globalStats.total) * 100).toFixed(1) : '0.0'}%
                                 </p>
                             </div>
+                            {/* Meta Global (quando disponível) */}
+                            {(() => {
+                                const g = findGoalFor('global');
+                                if (!g) return null;
+                                const target = Number(g.target) || 0;
+                                const attainment = target > 0 ? ((globalStats.confirmados || 0) / target) * 100 : 0;
+                                return (
+                                    <div className="text-center">
+                                        <p className="text-xs font-bold text-slate-400 uppercase mb-1">Meta</p>
+                                        <p className="text-lg font-bold text-slate-700">{typeof target === 'number' && !Number.isNaN(target) ? target.toFixed(0) : target}</p>
+                                        <p className="text-[11px] text-slate-500">Ating.: {attainment.toFixed(1)}%</p>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 )}
@@ -225,6 +249,20 @@ export default function ProductivityPage() {
                                     {teamStats.total > 0 ? ((teamStats.confirmados / teamStats.total) * 100).toFixed(1) : '0.0'}%
                                 </p>
                             </div>
+                            {/* Meta de Equipe (quando disponível) */}
+                            {(() => {
+                                const g = findGoalFor(selectedTeam || 'team');
+                                if (!g) return null;
+                                const target = Number(g.target) || 0;
+                                const attainment = target > 0 ? ((teamStats.confirmados || 0) / target) * 100 : 0;
+                                return (
+                                    <div className="text-center">
+                                        <p className="text-xs font-bold text-indigo-400 uppercase mb-1">Meta</p>
+                                        <p className="text-lg font-bold text-indigo-900">{typeof target === 'number' && !Number.isNaN(target) ? target.toFixed(0) : target}</p>
+                                        <p className="text-[11px] text-slate-500">Ating.: {attainment.toFixed(1)}%</p>
+                                    </div>
+                                );
+                            })()}
                         </div>
                     </div>
                 )}
@@ -343,6 +381,11 @@ export default function ProductivityPage() {
                         const rate = u.total > 0 ? ((u.confirmados / u.total) * 100).toFixed(0) : 0;
                         const isTop3 = idx < 3 && !searchTerm;
                         const isInSelectedTeam = u.team_name === selectedTeam;
+
+                        // Goal lookup for this user (by collaborator or name)
+                        const userGoal = findGoalFor(u.user);
+                        const userTarget = Number(userGoal?.target) || 0;
+                        const userAttainment = userTarget > 0 ? ((u.confirmados || 0) / userTarget) * 100 : 0;
                         
                         let progressColor = 'bg-slate-400';
                         if (Number(rate) >= 80) progressColor = 'bg-emerald-500';
@@ -372,10 +415,31 @@ export default function ProductivityPage() {
 
                                 <h3 className="font-bold text-slate-700 text-sm mb-4 truncate" title={u.user}>{u.user}</h3>
                                 
-                                <div className="grid grid-cols-2 gap-2 mb-3">
-                                    <div><p className="text-[10px] text-slate-400 uppercase font-semibold">Agendados</p><p className="text-xl font-bold text-slate-700">{u.total}</p></div>
-                                    <div className="text-right"><p className="text-[10px] text-slate-400 uppercase font-semibold">Taxa Conf.</p><p className={`text-xl font-bold ${Number(rate) > 70 ? 'text-emerald-600' : 'text-slate-600'}`}>{rate}%</p></div>
+                                <div className="grid grid-cols-2 gap-2 mb-2">
+                                    <div>
+                                        <p className="text-[10px] text-slate-400 uppercase font-semibold">Agendados</p>
+                                        <p className="text-xl font-bold text-slate-700">{u.total}</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[10px] text-slate-400 uppercase font-semibold">Taxa Conf.</p>
+                                        <p className={`text-xl font-bold ${Number(rate) > 70 ? 'text-emerald-600' : 'text-slate-600'}`}>{rate}%</p>
+                                    </div>
                                 </div>
+
+                                {/* Meta do colaborador (se disponível) */}
+                                {userGoal && (
+                                    <div className="flex justify-between text-xs text-slate-500 mb-2">
+                                        <div>
+                                            <p className="text-[10px] uppercase">Meta</p>
+                                            <p className="font-bold text-slate-700">{typeof userTarget === 'number' && !Number.isNaN(userTarget) ? userTarget.toFixed(0) : userTarget}</p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-[10px] uppercase">Ating.</p>
+                                            <p className="font-bold">{userAttainment.toFixed(1)}%</p>
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden"><div className={`h-full ${progressColor}`} style={{ width: `${rate}%` }} /></div>
                             </div>
                         );
