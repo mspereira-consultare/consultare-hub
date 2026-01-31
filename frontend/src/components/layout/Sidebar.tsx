@@ -125,7 +125,12 @@
               )}
               <div className="space-y-1">
                 {authorizedItems.filter(item => item.group === group).map((item) => {
-                  const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+                  // Lógica precisa: verifica se é exatamente a rota ou um subrota específica
+                  const isExactMatch = pathname === item.href;
+                  const isSubRoute = pathname.startsWith(item.href + '/');
+                  // Para evitar conflitos com /metas e /metas/dashboard, verifica específico
+                  const isActive = item.href === '/metas' ? isExactMatch : (isExactMatch || isSubRoute);
+                  
                   return (
                     <Link
                       key={item.href}

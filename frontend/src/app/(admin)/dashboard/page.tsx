@@ -357,7 +357,38 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* --- LINHA 3: FATURAMENTO POR UNIDADE --- */}
+      {/* --- LINHA 3: FATURAMENTO HOJE --- */}
+      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
+          <DollarSign size={18} className="text-slate-400" />
+          <h2 className="font-bold text-slate-700">Faturamento Hoje</h2>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          {/* Card: Consolidado */}
+          <div className="p-4 bg-gradient-to-br from-emerald-50 to-emerald-100/30 border border-emerald-200 rounded-lg">
+            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider mb-1">Total Consolidado (Hoje)</p>
+            <p className="text-3xl font-black text-emerald-900">
+              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(data?.finance?.totals?.total || 0)}
+            </p>
+            <p className="text-xs text-emerald-600 mt-2">Guias processadas: <strong>{data?.finance?.totals?.qtd || 0}</strong></p>
+          </div>
+          
+          {/* Card: Ticket Médio */}
+          <div className="p-4 bg-gradient-to-br from-blue-50 to-blue-100/30 border border-blue-200 rounded-lg">
+            <p className="text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">Ticket Médio (Hoje)</p>
+            <p className="text-3xl font-black text-blue-900">
+              {data?.finance?.totals?.qtd && data?.finance?.totals?.qtd > 0
+                ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format((data?.finance?.totals?.total || 0) / data?.finance?.totals?.qtd)
+                : 'R$ 0,00'
+              }
+            </p>
+            <p className="text-xs text-blue-600 mt-2">Valor médio por guia</p>
+          </div>
+        </div>
+      </div>
+
+      {/* --- LINHA 4: FATURAMENTO POR UNIDADE (MÊS) --- */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
         <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
           <DollarSign size={18} className="text-slate-400" />

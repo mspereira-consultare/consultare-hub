@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { 
-    DollarSign, FilterX, Calendar, Stethoscope, ChevronDown, Search,
+    DollarSign, FilterX, Calendar, Stethoscope, ChevronDown, Search, ChevronRight, Building2,
     RefreshCw, Clock, Loader2 // Novos ícones
 } from 'lucide-react';
 import { FinancialKPIs } from './components/FinancialKPIs';
@@ -95,6 +95,7 @@ const SearchableSelect = ({ options, value, onChange, placeholder }: any) => {
 
 export default function FinancialPage() {
   const [loading, setLoading] = useState(true);
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
   
   // Filtros
   const [selectedGroup, setSelectedGroup] = useState('all');
@@ -218,123 +219,136 @@ export default function FinancialPage() {
   return (
     <div className="p-6 bg-slate-50 min-h-screen flex flex-col gap-6">
       
-      {/* HEADER */}
-      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm z-20 relative">
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-slate-100">
+      {/* HEADER COM FILTROS */}
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm z-20 relative">
+        
+        {/* LINHA 1: TÍTULO + HEARTBEAT + BOTÃO EXPANDIR */}
+        <div className="p-6 flex items-center justify-between border-b border-slate-100">
+          <div className="flex items-center gap-3">
             <div className="p-3 bg-blue-900 rounded-xl text-white shadow-md"><DollarSign size={24} /></div>
             <div>
-                <h1 className="text-xl font-bold text-slate-800">Faturamento & Produção</h1>
-                <p className="text-slate-500 text-xs">
-                    Visão analítica de procedimentos realizados e receita.
-                </p>
+              <h1 className="text-xl font-bold text-slate-800">Faturamento & Produção</h1>
+              <p className="text-slate-500 text-xs">Visão analítica de procedimentos realizados e receita.</p>
             </div>
-        </div>
+          </div>
 
-        {/* FILTROS ESTRUTURADOS */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* COLUNA 1: DATA E BOTÕES */}
-            <div className="space-y-3">
-                <div className="flex items-center gap-2 mb-3">
-                    <Calendar size={14} className="text-slate-500" />
-                    <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Período</label>
-                </div>
-                <div className="flex items-center gap-2 bg-slate-50 px-3 py-2.5 rounded-lg border border-slate-200">
-                    <input 
-                        type="date" 
-                        value={dateRange.start}
-                        onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
-                        className="bg-transparent text-sm text-slate-700 outline-none flex-1"
-                    />
-                    <span className="text-slate-300">→</span>
-                    <input 
-                        type="date" 
-                        value={dateRange.end}
-                        onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
-                        className="bg-transparent text-sm text-slate-700 outline-none flex-1"
-                    />
-                </div>
-                
-                <div className="flex gap-2 pt-2">
-                    <button 
-                        onClick={handleManualUpdate}
-                        disabled={isUpdating}
-                        className={`
-                            flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg font-medium text-sm transition-all border
-                            ${isUpdating 
-                                ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-wait' 
-                                : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
-                            }
-                        `}
-                    >
-                        {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
-                        {isUpdating ? 'Sincronizando...' : 'Atualizar'}
-                    </button>
-                    
-                    {(selectedUnit !== 'all' || selectedGroup !== 'all' || selectedProcedure !== 'all') && (
-                        <button 
-                            onClick={() => { setSelectedUnit('all'); setSelectedGroup('all'); setSelectedProcedure('all'); }} 
-                            className="flex items-center justify-center px-3 py-2.5 bg-red-50 text-red-600 rounded-lg border border-red-200 hover:bg-red-100 transition"
-                            title="Limpar filtros"
-                        >
-                            <FilterX size={16} />
-                        </button>
-                    )}
-                </div>
-            </div>
-
-            {/* COLUNA 2: ÚLTIMA SINCRONIZAÇÃO */}
+          <div className="flex items-center gap-3">
+            {/* HEARTBEAT STATUS */}
             {heartbeat && (
-                <div className="space-y-3">
-                    <div className="flex items-center gap-2 mb-3">
-                        <Clock size={14} className="text-slate-500" />
-                        <label className="text-xs font-bold uppercase text-slate-500 tracking-wider">Última Sincronização</label>
-                    </div>
-                    <div className="bg-slate-50 px-3 py-2.5 rounded-lg border border-slate-200">
-                        <div className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                            <div className={`w-2 h-2 rounded-full ${isUpdating ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
-                            {isUpdating ? 'Sincronizando...' : formatLastUpdate(heartbeat.last_run)}
-                        </div>
-                        <p className="text-xs text-slate-500 mt-1">
-                            {isUpdating ? 'Aguardando atualização dos dados' : 'Dados atualizados'}
-                        </p>
-                    </div>
+              <div className="hidden sm:flex flex-col items-end text-xs">
+                <span className="font-bold uppercase text-slate-400 tracking-wider mb-0.5">Status</span>
+                <div className="flex items-center gap-1.5">
+                  <div className={`w-2 h-2 rounded-full ${isUpdating ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
+                  <span className="font-medium text-slate-600">{isUpdating ? 'Sincronizando' : 'Atualizado'}</span>
                 </div>
+              </div>
             )}
+            
+            {/* BOTÃO EXPANDIR/RECOLHER */}
+            <button 
+              onClick={() => setFiltersExpanded(!filtersExpanded)}
+              className="p-2 hover:bg-slate-50 rounded-lg transition text-slate-600"
+              title={filtersExpanded ? "Recolher filtros" : "Expandir filtros"}
+            >
+              {filtersExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+            </button>
+          </div>
         </div>
 
-        {/* FILTROS DE SELEÇÃO */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-6 pt-6 border-t border-slate-100">
-            <div>
-                <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Unidade</label>
+        {/* FILTROS (Expansível) */}
+        {filtersExpanded && (
+          <div className="p-6 space-y-4 border-t border-slate-100">
+            
+            {/* LINHA 2: PERÍODO + UNIDADE */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block flex items-center gap-2">
+                  <Calendar size={14} />
+                  Período
+                </label>
+                <div className="flex items-center gap-2 bg-slate-50 px-3 py-2.5 rounded-lg border border-slate-200">
+                  <input 
+                    type="date" 
+                    value={dateRange.start}
+                    onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                    className="bg-transparent text-sm text-slate-700 outline-none flex-1"
+                  />
+                  <span className="text-slate-300">→</span>
+                  <input 
+                    type="date" 
+                    value={dateRange.end}
+                    onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                    className="bg-transparent text-sm text-slate-700 outline-none flex-1"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block flex items-center gap-2">
+                  <Building2 size={14} />
+                  Unidade
+                </label>
                 <SearchableSelect 
-                    options={units} 
-                    value={selectedUnit} 
-                    onChange={setSelectedUnit} 
-                    placeholder="Todas as Unidades"
+                  options={units} 
+                  value={selectedUnit} 
+                  onChange={setSelectedUnit} 
+                  placeholder="Todas as Unidades"
                 />
+              </div>
+
+              <div className="flex flex-col justify-end gap-2">
+                <button 
+                  onClick={handleManualUpdate}
+                  disabled={isUpdating}
+                  className={`flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg font-medium text-sm transition-all border ${
+                    isUpdating 
+                      ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-wait' 
+                      : 'bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100'
+                  }`}
+                >
+                  {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+                  {isUpdating ? 'Sincronizando...' : 'Atualizar'}
+                </button>
+              </div>
             </div>
 
-            <div>
+            {/* LINHA 3: GRUPO DE PROCEDIMENTO + PROCEDIMENTO */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div>
                 <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Grupo de Procedimento</label>
                 <SearchableSelect 
-                    options={groups} 
-                    value={selectedGroup} 
-                    onChange={setSelectedGroup} 
-                    placeholder="Todos os Grupos"
+                  options={groups} 
+                  value={selectedGroup} 
+                  onChange={setSelectedGroup} 
+                  placeholder="Todos os Grupos"
                 />
-            </div>
+              </div>
 
-            <div>
+              <div>
                 <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Procedimento</label>
                 <SearchableSelect 
-                    options={procedures} 
-                    value={selectedProcedure} 
-                    onChange={setSelectedProcedure} 
-                    placeholder="Todos Procedimentos"
+                  options={procedures} 
+                  value={selectedProcedure} 
+                  onChange={setSelectedProcedure} 
+                  placeholder="Todos Procedimentos"
                 />
+              </div>
+
+              <div>
+                {(selectedUnit !== 'all' || selectedGroup !== 'all' || selectedProcedure !== 'all') && (
+                  <button 
+                    onClick={() => { setSelectedUnit('all'); setSelectedGroup('all'); setSelectedProcedure('all'); }} 
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-lg border border-red-200 hover:bg-red-100 transition font-medium text-sm"
+                    title="Limpar todos os filtros"
+                  >
+                    <FilterX size={16} />
+                    Limpar Filtros
+                  </button>
+                )}
+              </div>
             </div>
-        </div>
+          </div>
+        )}
       </div>
 
       <FinancialKPIs data={totals} />
