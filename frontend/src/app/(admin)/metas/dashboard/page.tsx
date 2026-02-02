@@ -59,6 +59,12 @@ export default function GoalsDashboardPage() {
   const clinicGoals = goals.filter(g => g.scope !== 'CARD'); // Padrão ou CLINIC
   const cardGoals = goals.filter(g => g.scope === 'CARD');
 
+  // --- AGRUPAMENTO: METAS DE FATURAMENTO COM GRUPOS ---
+  const billingGroupGoals = clinicGoals.filter(g => 
+    g.name && (g.name.toLowerCase().includes('faturamento') || g.name.toLowerCase().includes('receita')) &&
+    (g as any).filter_group !== null && (g as any).filter_group !== '' && (g as any).filter_group !== 'all'
+  );
+
   // Helper de Formatação
   const formatValue = (val: number, unit: string) => {
     if (unit === 'currency') return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -145,6 +151,28 @@ export default function GoalsDashboardPage() {
          </div>
       ) : (
          <div className="space-y-12">
+            
+            {/* SEÇÃO: METAS DE FATURAMENTO COM GRUPOS (NOVO) */}
+            {billingGroupGoals.length > 0 && (
+                <section>
+                    <div className="flex items-center gap-3 mb-6 pb-2 border-b border-slate-200">
+                        <div className="p-2 bg-violet-100 text-violet-700 rounded-lg">
+                            <CreditCard size={20} />
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-800">Faturamento por Grupo de Procedimento</h2>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {billingGroupGoals.map(goal => (
+                            <div key={goal.goal_id}>
+                                <div className="text-xs text-slate-500 mb-2 font-semibold">
+                                    Grupo: <span className="text-violet-600 font-bold">{(goal as any).filter_group}</span>
+                                </div>
+                                <DashboardCard goal={goal} formatValue={formatValue} />
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
             
             {/* SEÇÃO CLÍNICA */}
             {clinicGoals.length > 0 && (

@@ -83,11 +83,40 @@ model GoalsConfig {
   target_value  Float
   unit          String
   linked_kpi_id String?
-  filter_group  String?
-  clinic_unit   String?
-  collaborator  String?
+  filter_group  String?   // Filtro avançado (Ex: Consultas, Exames)
+  clinic_unit   String?   // Unidade clínica (Ex: Matriz, Filial)
+  collaborator  String?   // Colaborador específico
+  team          String?   // Equipe/setor responsável pela meta
   created_at    String?
   updated_at    String?
 
   @@map("goals_config")
+}
+
+// TABELA DE EQUIPES (Teams Master)
+// Define as equipes/setores que podem ser alvo de metas
+// Criadas e gerenciadas pela página de metas
+model Team {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  
+  users     UserTeam[]
+  @@map("teams_master")
+}
+
+// TABELA DE RELACIONAMENTO USUÁRIO-EQUIPE (Many-to-Many)
+// Um usuário pode fazer parte de múltiplas equipes
+// Atualizado no modal 'Equipes' da página de produtividade
+model UserTeam {
+  id        String   @id @default(cuid())
+  user_name String
+  team_id   String
+  team      Team     @relation(fields: [team_id], references: [id], onDelete: Cascade)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  @@unique([user_name, team_id])
+  @@map("user_teams")
 }

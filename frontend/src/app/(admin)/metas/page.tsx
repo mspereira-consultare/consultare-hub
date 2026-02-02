@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Loader2, Filter, Building2 } from 'lucide-react';
+import { Loader2, Filter, Building2, Settings } from 'lucide-react';
 import { GoalHeader } from './components/GoalHeader';
 import { GoalModal } from './components/GoalModal';
 import { GoalTable } from './components/GoalTable';
 import { GoalTabs } from './components/GoalTabs';
 import { GoalDetailsModal } from './components/GoalDetailsModal';
+import { TeamsModal } from './components/TeamsModal';
 
 export default function GoalsPage() {
   const [goals, setGoals] = useState<any[]>([]);
@@ -22,6 +23,7 @@ export default function GoalsPage() {
   const [detailsGoal, setDetailsGoal] = useState<any>(null);
   const [selectedUnit, setSelectedUnit] = useState<string>('all');
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
+  const [isTeamsModalOpen, setIsTeamsModalOpen] = useState(false);
 
   const fetchData = async () => {
     setLoading(true);
@@ -129,11 +131,21 @@ export default function GoalsPage() {
     <div className="flex flex-col h-full bg-slate-50 min-h-screen">
       <div className="p-6 bg-white border-b border-slate-200 shadow-sm">
         <div className="flex flex-col gap-4">
-          <GoalHeader 
-            onNew={() => { setEditingGoal(undefined); setIsModalOpen(true); }} 
-            statusFilter={statusFilter} setStatusFilter={setStatusFilter}
-            sectorFilter={activeTab} setSectorFilter={setActiveTab} 
-          />
+          <div className="flex items-center justify-between">
+            <GoalHeader 
+              onNew={() => { setEditingGoal(undefined); setIsModalOpen(true); }} 
+              statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+              sectorFilter={activeTab} setSectorFilter={setActiveTab} 
+            />
+            <button
+              onClick={() => setIsTeamsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-medium hover:bg-slate-200 transition"
+              title="Gerenciar equipes/setores"
+            >
+              <Settings size={16} />
+              <span className="hidden sm:inline">Equipes</span>
+            </button>
+          </div>
           
           {/* Filtro de Unidade Clínica */}
           {availableUnits.length > 0 && (
@@ -311,6 +323,19 @@ export default function GoalsPage() {
       {detailsGoal && (
         <GoalDetailsModal 
             isOpen={!!detailsGoal}
+            onClose={() => setDetailsGoal(null)}
+            goal={detailsGoal}
+        />
+      )}
+
+      <TeamsModal
+        isOpen={isTeamsModalOpen}
+        onClose={() => setIsTeamsModalOpen(false)}
+        onTeamsUpdated={fetchData}
+      />
+    </div>
+  );
+}
             onClose={() => setDetailsGoal(null)}
             goal={detailsGoal}
             // Passa os dados calculados para o modal de detalhes também

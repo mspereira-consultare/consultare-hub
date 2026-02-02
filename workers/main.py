@@ -40,6 +40,65 @@ def is_working_hours():
     h = datetime.datetime.now().hour
     return START_HOUR <= h < END_HOUR
 
+# --- EXECUTOR SEGURO POR SERVIÇO (evita concorrência entre agendador e trigger manual) ---
+service_locks = {}
+
+def run_service(key: str, display_name: str = None):
+    """Executa um worker mapeado por `key` só se não estiver em execução.
+    Atualiza heartbeats e protege execução com lock não-bloqueante."""
+    svc = key.lower()
+    lock = service_locks.setdefault(svc, threading.Lock())
+    if not lock.acquire(blocking=False):
+        print(f"⏭️ Serviço já em execução: {svc} — pulando execução.")
+        return
+
+    db = DatabaseManager()
+    name = display_name or svc
+    try:
+        db.update_heartbeat(name, "RUNNING", "Agendado/executando...")
+        start = time.time()
+
+        if svc == 'financeiro':
+            update_financial_data()
+            # scraping também é parte do fluxo de faturamento
+            try:
+                run_scraper()
+            except Exception as e:
+                print(f"⚠️ Scraper falhou dentro do financeiro: {e}")
+
+        elif svc == 'comercial':
+            update_proposals()
+
+        elif svc == 'contratos':
+            run_worker_contracts()
+
+        elif svc == 'auth':
+            run_token_renewal()
+
+        else:
+            print(f"⚠️ Serviço desconhecido solicitado: {svc}")
+
+        elapsed = round(time.time() - start, 2)
+        db.update_heartbeat(name, "COMPLETED", f"Concluído em {elapsed}s")
+
+    except Exception as e:
+        print(f"❌ Erro ao rodar serviço {svc}: {e}")
+        db.update_heartbeat(name, "ERROR", str(e))
+    finally:
+        try:
+            lock.release()
+        except RuntimeError:
+            pass
+
+def run_hourly_workers():
+    """Executa todos os workers não real-time uma vez (usa run_service)."""
+    print("⏰ Executando jobs horários: iniciando workers não real-time...")
+    # Ordem: financeiro (inclui scraper), comercial, contratos, auth
+    run_service('financeiro', 'financeiro')
+    run_service('comercial', 'comercial')
+    run_service('contratos', 'contratos')
+    run_service('auth', 'auth')
+
 def run_token_renewal():
     """Roda o Playwright para renovar tokens e salvar no banco"""
     print("\n🔑 Iniciando Renovação de Tokens (Auth)...")
@@ -74,19 +133,8 @@ def run_on_demand_listener():
 
                 try:
                     start_time = time.time()
-                    
-                    if service == 'financeiro':
-                        update_financial_data()
-                        run_scraper()
-                    elif service == 'comercial':
-                        update_proposals()
-                    elif service == 'contratos':
-                        run_worker_contracts()
-                    elif service == 'auth':
-                        run_token_renewal()
-
-                    elapsed = round(time.time() - start_time, 2)
-                    db.update_heartbeat(service, "COMPLETED", f"Concluído em {elapsed}s")
+                    # Delegate to shared executor which uses locks and updates heartbeat
+                    run_service(service, service)
                     
                 except Exception as e:
                     print(f"❌ Erro {service}: {e}")
@@ -149,6 +197,8 @@ def run_scheduler():
     schedule.every().day.at("12:00").do(lambda: run_worker_contracts())
 
     schedule.every().day.at("12:00").do(run_token_renewal)
+    # JOB HORÁRIO: executa workers não real-time a cada hora
+    schedule.every().hour.do(run_hourly_workers)
 
     while True:
         schedule.run_pending()

@@ -14,6 +14,7 @@ export interface Goal {
     filter_group?: string; // Filtro avançado (Ex: Consultas, Exames)
     clinic_unit?: string; // Filtro de unidade clínica (Ex: Matriz, Filial)
     collaborator?: string; // Nome do colaborador (Ex: Profissional / Agendador)
+    team?: string; // Equipe/setor alvo da meta (Ex: CRC, Recepção)
 }
 
 export const GOAL_SCOPES = [

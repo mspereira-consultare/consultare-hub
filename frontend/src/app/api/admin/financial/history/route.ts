@@ -19,8 +19,8 @@ export async function GET(request: Request) {
     const dateCol = 'data_do_pagamento';
     const valueCol = 'total_pago';
     
-    // REGRA 1: Filtro de Unidade (Excluir RESOLVECARD)
-    const unitFilterExclude = `(unidade IS NULL OR (unidade NOT LIKE '%RESOLVECARD%' AND unidade NOT LIKE '%GESTÃO DE BENEFICOS%'))`;
+    // REGRA 1: Filtro de Unidade (Incluir todas as unidades, inclusive RESOLVECARD)
+    const unitFilterExclude = `unidade IS NOT NULL`;
 
     // Filtro de Data (Comparação de string ISO YYYY-MM-DD funciona no SQLite)
     let baseWhere = `WHERE ${dateCol} BETWEEN ? AND ? AND ${unitFilterExclude}`;

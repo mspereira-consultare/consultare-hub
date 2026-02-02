@@ -11,10 +11,10 @@ import {
   Phone,
   RefreshCw,
   Building2,
-  Star
+  Star,
+  Loader2
 } from 'lucide-react';
 
-// --- Interfaces ---
 interface DashboardData {
   medic: any[];
   reception: any;
@@ -28,6 +28,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [goalsData, setGoalsData] = useState<any[]>([]);
+  const [heartbeat, setHeartbeat] = useState<any>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const alertTriggeredRef = useRef<boolean>(false);
 
@@ -71,6 +73,18 @@ export default function DashboardPage() {
         financeByUnit: { daily: resFinanceByUnitDaily, monthly: resFinanceByUnitMonth }
       });
       setGoalsData(Array.isArray(resGoals) ? resGoals : []);
+      
+      // Extrai heartbeat dos dados de faturamento
+      if (resFinanceDaily && resFinanceDaily.heartbeat) {
+        setHeartbeat(resFinanceDaily.heartbeat);
+        if (resFinanceDaily.heartbeat.status === 'RUNNING' || resFinanceDaily.heartbeat.status === 'PENDING') {
+          setIsUpdating(true);
+          setTimeout(fetchDashboardData, 3000);
+        } else {
+          setIsUpdating(false);
+        }
+      }
+      
       setLastUpdate(new Date());
     } catch (error) {
       console.error("Erro ao carregar dashboard:", error);
@@ -84,6 +98,25 @@ export default function DashboardPage() {
     const interval = setInterval(() => fetchDashboardData(false), 60000); 
     return () => clearInterval(interval);
   }, [fetchDashboardData]);
+
+  // Função para atualizar faturamento analítico manualmente
+  const handleManualFinanceUpdate = async () => {
+    setIsUpdating(true);
+    try {
+      await fetch('/api/admin/financial/history', { method: 'POST' });
+      setTimeout(fetchDashboardData, 1000);
+    } catch (e) {
+      console.error(e);
+      setIsUpdating(false);
+    }
+  };
+
+  // Formatador de Data do Status
+  const formatLastUpdate = (dateString: string) => {
+    if (!dateString) return 'Nunca';
+    const isoString = dateString.replace(' ', 'T') + 'Z';
+    try { return new Date(isoString).toLocaleString('pt-BR'); } catch (e) { return dateString; }
+  };
 
   // --- EFEITO: VERIFICAR PACIENTES AGUARDANDO HÁ MAIS DE 30 MINUTOS ---
   useEffect(() => {
@@ -178,14 +211,32 @@ export default function DashboardPage() {
           <p className="text-sm text-slate-500">Acompanhamento operacional em tempo real</p>
         </div>
         <div className="flex items-center gap-4">
-          <div className="text-right hidden sm:block">
-            <p className="text-[10px] font-bold text-slate-400 uppercase leading-none">Última Atualização</p>
-            <p className="text-sm font-medium text-slate-600">{lastUpdate.toLocaleTimeString()}</p>
-          </div>
+          {/* HEARTBEAT STATUS COM DATA */}
+          {heartbeat && (
+            <div className="hidden sm:flex flex-col items-end text-xs border-r border-slate-200 pr-4">
+              <span className="font-bold uppercase text-slate-400 tracking-wider mb-0.5">Última Sincronização (Faturamento)</span>
+              <div className="flex items-center gap-1.5">
+                <div className={`w-2 h-2 rounded-full ${isUpdating ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
+                <span className="font-medium text-slate-600">{formatLastUpdate(heartbeat.last_run)}</span>
+              </div>
+            </div>
+          )}
+          
+          {/* BOTÃO ATUALIZAR FATURAMENTO */}
+          <button 
+            onClick={handleManualFinanceUpdate}
+            disabled={isUpdating}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border ${isUpdating ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+            title="Atualizar dados de faturamento analítico"
+          >
+            {isUpdating ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+            {isUpdating ? 'Atualizando...' : 'Atualizar Faturamento'}
+          </button>
+          
           <button 
             onClick={() => fetchDashboardData(true)}
             className="p-2.5 bg-white rounded-full border border-slate-200 shadow-sm hover:bg-slate-50 active:scale-95 transition-all group"
-            title="Atualizar Dashboard e ativar worker de faturamento analítico"
+            title="Atualizar Dashboard completo"
           >
             <RefreshCw size={20} className={`${loading ? 'animate-spin' : 'group-hover:rotate-180'} text-blue-600 transition-transform duration-500`} />
           </button>

@@ -60,6 +60,8 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
     const [loadingUnits, setLoadingUnits] = useState(false);
     const [professionals, setProfessionals] = useState<string[]>([]);
     const [loadingProfessionals, setLoadingProfessionals] = useState(false);
+    const [teams, setTeams] = useState<any[]>([]);
+    const [loadingTeams, setLoadingTeams] = useState(false);
 
     useEffect(() => {
         // Carrega grupos quando o modal abre e quando o KPI passa a suportar filtro
@@ -135,6 +137,32 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                 if (mounted) setProfessionals([]);
             } finally {
                 if (mounted) setLoadingProfessionals(false);
+            }
+        })();
+
+        return () => { mounted = false; };
+    }, [isOpen]);
+
+    // Carrega equipes quando o modal abre
+    useEffect(() => {
+        if (!isOpen) return;
+        let mounted = true;
+        (async () => {
+            setLoadingTeams(true);
+            try {
+                const res = await fetch('/api/admin/teams', { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    if (mounted && data.teams && Array.isArray(data.teams)) {
+                        setTeams(data.teams.map((t: any) => t.name || t).filter(Boolean));
+                    }
+                } else {
+                    if (mounted) setTeams([]);
+                }
+            } catch (e) {
+                if (mounted) setTeams([]);
+            } finally {
+                if (mounted) setLoadingTeams(false);
             }
         })();
 
@@ -325,6 +353,31 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                         value={(formData as any).collaborator || 'all'}
                                         onChange={e => setFormData({...formData, collaborator: e.target.value})}
                                     />
+                                )}
+                            </div>
+
+                            {/* Campo de Equipe/Setor (NOVO) */}
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
+                                    Equipe/Setor Alvo
+                                    <span title="Define a equipe ou setor responsável por esta meta. Opcional.">
+                                        <HelpCircle size={12} />
+                                    </span>
+                                </label>
+
+                                {loadingTeams ? (
+                                    <div className="text-sm text-slate-400">Carregando equipes...</div>
+                                ) : teams.length > 0 ? (
+                                    <select
+                                        className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={(formData as any).team ?? 'all'}
+                                        onChange={e => setFormData({...formData, team: e.target.value})}
+                                    >
+                                        <option value="all">Todas as Equipes (padrão)</option>
+                                        {teams.map((t: string) => <option key={t} value={t}>{t}</option>)}
+                                    </select>
+                                ) : (
+                                    <div className="text-sm text-slate-400 italic">Nenhuma equipe criada ainda. Crie equipes na página de produtividade.</div>
                                 )}
                             </div>
                         </div>

@@ -87,29 +87,50 @@ export default function ProductivityPage() {
     const fetchConfigUsers = async () => {
         setLoadingConfig(true);
         try {
-            const res = await fetch('/api/admin/produtividade/teams');
+            const res = await fetch('/api/admin/user-teams');
             const data = await res.json();
             setConfigUsers(data.users || []);
             
-            const teams = data.teams?.map((t: any) => t.team_name) || [];
+            const teams = data.teams?.map((t: any) => t.name || t) || [];
             if (!teams.includes('CRC')) teams.push('CRC'); 
             setAvailableTeams(teams);
 
         } catch (e) { console.error(e); } finally { setLoadingConfig(false); }
     };
 
-    const handleSaveTeam = async (userName: string, teamName: string) => {
-        setConfigUsers(prev => prev.map(u => u.user_name === userName ? { ...u, team_name: teamName } : u));
+    const handleToggleTeam = async (userName: string, teamId: string, teamName: string, isAdding: boolean) => {
         try {
-            await fetch('/api/admin/produtividade/teams', {
+            const res = await fetch('/api/admin/user-teams', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_name: userName, team_name: teamName })
+                body: JSON.stringify({ 
+                    user_name: userName, 
+                    team_id: teamId,
+                    action: isAdding ? 'add' : 'remove'
+                })
             });
-            if (!availableTeams.includes(teamName) && teamName !== 'none') {
-                setAvailableTeams(prev => [...prev, teamName].sort());
+
+            if (res.ok) {
+                // Atualiza estado local
+                setConfigUsers(prev => 
+                    prev.map(u => {
+                        if (u.user_name !== userName) return u;
+                        const updatedTeams = isAdding 
+                            ? [...(u.teams || []), { id: teamId, name: teamName }]
+                            : (u.teams || []).filter((t: any) => t.id !== teamId);
+                        return { ...u, teams: updatedTeams };
+                    })
+                );
+                
+                if (!availableTeams.includes(teamName)) {
+                    setAvailableTeams(prev => [...prev, teamName].sort());
+                }
+            } else {
+                console.error('Erro ao atualizar equipe');
             }
-        } catch (e) { console.error(e); }
+        } catch (e) { 
+            console.error(e); 
+        }
     };
 
     useEffect(() => { fetchData(); }, [dateRange, selectedTeam]);
@@ -447,12 +468,12 @@ export default function ProductivityPage() {
                 </div>
             </div>
 
-            {/* MODAL (Mantido igual) */}
+            {/* MODAL (Atualizado para multi-select de equipes) */}
             {isModalOpen && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
                     <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
                         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
-                            <div><h2 className="text-xl font-bold text-slate-800">Gerenciar Equipes</h2><p className="text-sm text-slate-500">Defina o setor de cada colaborador.</p></div>
+                            <div><h2 className="text-xl font-bold text-slate-800">Gerenciar Equipes</h2><p className="text-sm text-slate-500">Atribua colaboradores a múltiplas equipes.</p></div>
                             <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white rounded-full transition text-slate-400 hover:text-red-500"><X size={20} /></button>
                         </div>
                         <div className="p-4 bg-slate-50 border-b border-slate-100 flex gap-4">
@@ -460,7 +481,7 @@ export default function ProductivityPage() {
                                 <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                                 <input type="text" placeholder="Filtrar nome..." className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 text-sm outline-none" onChange={(e) => {
                                     const term = e.target.value.toLowerCase();
-                                    document.querySelectorAll('.user-row').forEach((row: any) => {
+                                    document.querySelectorAll('.user-row-multi').forEach((row: any) => {
                                         row.style.display = row.innerText.toLowerCase().includes(term) ? '' : 'none';
                                     });
                                 }} />
@@ -468,19 +489,42 @@ export default function ProductivityPage() {
                         </div>
                         <div className="overflow-y-auto flex-1 p-6 custom-scrollbar">
                             {loadingConfig ? <div className="text-center py-10"><Loader2 className="animate-spin mx-auto text-blue-500" /></div> : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-4">
                                     {configUsers.map((u) => (
-                                        <div key={u.user_name} className="user-row flex items-center justify-between p-3 rounded-lg border border-slate-100 hover:border-blue-200 bg-white transition-colors">
-                                            <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">{u.user_name.charAt(0)}</div>
-                                                <span className="text-sm font-medium text-slate-700 truncate" title={u.user_name}>{u.user_name}</span>
+                                        <div key={u.user_name} className="user-row-multi p-4 rounded-lg border border-slate-200 bg-slate-50 hover:bg-white transition-colors">
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-xs font-bold text-blue-600">{u.user_name.charAt(0)}</div>
+                                                <span className="text-sm font-bold text-slate-800">{u.user_name}</span>
                                             </div>
-                                            <input type="text" list="teams-list" placeholder="Sem equipe" className="w-32 text-xs border border-slate-200 rounded px-2 py-1 outline-none focus:border-blue-400 text-right text-slate-600 font-medium bg-slate-50 focus:bg-white transition-all" defaultValue={u.team_name || ''} onBlur={(e) => handleSaveTeam(u.user_name, e.target.value)} />
+                                            
+                                            {/* Checkboxes de equipes */}
+                                            <div className="ml-11 space-y-2">
+                                                {availableTeams.map((teamName: string) => {
+                                                    const userTeams = u.teams || [];
+                                                    const isInTeam = userTeams.some((t: any) => t.name === teamName);
+                                                    const teamId = userTeams.find((t: any) => t.name === teamName)?.id || teamName;
+                                                    
+                                                    return (
+                                                        <label key={teamName} className="flex items-center gap-2 cursor-pointer">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={isInTeam}
+                                                                onChange={(e) => {
+                                                                    handleToggleTeam(u.user_name, teamId, teamName, e.target.checked);
+                                                                }}
+                                                                className="rounded border-slate-300"
+                                                            />
+                                                            <span className={`text-sm font-medium ${isInTeam ? 'text-blue-600' : 'text-slate-600'}`}>
+                                                                {teamName}
+                                                            </span>
+                                                        </label>
+                                                    );
+                                                })}
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
                             )}
-                            <datalist id="teams-list"><option value="CRC" /><option value="Recepção" /><option value="Comercial" /><option value="Médico" /></datalist>
                         </div>
                     </div>
                 </div>
