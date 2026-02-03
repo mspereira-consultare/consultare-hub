@@ -325,6 +325,7 @@ export default function GoalsPage() {
             isOpen={!!detailsGoal}
             onClose={() => setDetailsGoal(null)}
             goal={detailsGoal}
+            currentData={dashboardData[detailsGoal.id]}
         />
       )}
 
