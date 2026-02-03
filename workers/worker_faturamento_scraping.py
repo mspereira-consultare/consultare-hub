@@ -4,6 +4,7 @@ import sys
 import pandas as pd
 import datetime
 import re
+import math
 from playwright.sync_api import sync_playwright
 from io import StringIO
 
@@ -88,7 +89,18 @@ def save_dataframe_to_db(db, df, table_name, delete_condition=None):
         for row in data:
             clean_row = []
             for item in row:
-                if hasattr(item, 'item'): item = item.item() # Numpy to Python
+                # Convert numpy scalars to Python types
+                if hasattr(item, 'item'):
+                    try:
+                        item = item.item()
+                    except Exception:
+                        item = None
+
+                # Replace non-finite floats (inf, -inf, nan) with None to avoid driver errors
+                if isinstance(item, float):
+                    if not math.isfinite(item):
+                        item = None
+
                 clean_row.append(item)
             clean_data.append(tuple(clean_row))
 

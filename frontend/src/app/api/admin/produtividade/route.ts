@@ -17,17 +17,19 @@ export async function GET(request: Request) {
 
     // 1. RANKING INDIVIDUAL
     // Agora traz também o time de cada usuário para exibir no card
+    // User ranking: join with new many-to-many tables and aggregate team names
     const userStats = await db.query(`
         SELECT 
             f.scheduled_by as user,
-            t.team_name,
+            GROUP_CONCAT(DISTINCT tm.name, ', ') as team_name,
             COUNT(*) as total,
             SUM(CASE WHEN f.status_id IN (3, 7) THEN 1 ELSE 0 END) as confirmados
         FROM feegow_appointments f
-        LEFT JOIN team_config t ON f.scheduled_by = t.user_name
+        LEFT JOIN user_teams ut ON ut.user_name = f.scheduled_by
+        LEFT JOIN teams_master tm ON tm.id = ut.team_id
         WHERE f.scheduled_at BETWEEN ? AND ?
         AND f.scheduled_by IS NOT NULL AND f.scheduled_by != '' AND f.scheduled_by != 'Sistema'
-        GROUP BY f.scheduled_by, t.team_name
+        GROUP BY f.scheduled_by
         ORDER BY total DESC
     `, [dbStart, dbEnd]);
 
@@ -42,15 +44,17 @@ export async function GET(request: Request) {
     const globalStats = globalStatsRes[0] || { total: 0, confirmados: 0 };
 
     // 3. ESTATÍSTICAS DA EQUIPE SELECIONADA (Dinâmico via banco)
+    // Team-specific stats using many-to-many relationship
     const teamStatsRes = await db.query(`
         SELECT 
             COUNT(*) as total,
             SUM(CASE WHEN f.status_id IN (3, 7) THEN 1 ELSE 0 END) as confirmados,
             COUNT(DISTINCT f.scheduled_by) as active_members
         FROM feegow_appointments f
-        JOIN team_config t ON f.scheduled_by = t.user_name
+        JOIN user_teams ut ON ut.user_name = f.scheduled_by
+        JOIN teams_master tm ON tm.id = ut.team_id
         WHERE f.scheduled_at BETWEEN ? AND ?
-        AND t.team_name = ?
+        AND tm.name = ?
     `, [dbStart, dbEnd, selectedTeam]);
     
     const teamStats = teamStatsRes[0] || { total: 0, confirmados: 0, active_members: 0 };
