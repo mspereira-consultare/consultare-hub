@@ -43,47 +43,76 @@ def is_working_hours():
 # --- EXECUTOR SEGURO POR SERVIÇO (evita concorrência entre agendador e trigger manual) ---
 service_locks = {}
 
-def run_service(key: str, display_name: str = None):
-    """Executa um worker mapeado por `key` só se não estiver em execução.
-    Atualiza heartbeats e protege execução com lock não-bloqueante."""
-    svc = key.lower()
-    lock = service_locks.setdefault(svc, threading.Lock())
+# Aliases associados às ações internas
+ALIAS_ACTION_MAP = {
+    'financeiro': 'financeiro',
+    'financeiro_api': 'financeiro',
+    'feegow_finance': 'financeiro',
+    'faturamento': 'faturamento',
+    'faturamento_scraping': 'faturamento',
+    'worker_faturamento_scraping': 'faturamento',
+    'comercial': 'comercial',
+    'propostas': 'comercial',
+    'contratos': 'contratos',
+    'auth': 'auth',
+    'auth_feegow': 'auth',
+    'worker_clinia': 'clinia',
+}
+
+# Mapeia ação para nome canônico no `system_status`
+CANONICAL_NAME = {
+    'financeiro': 'Financeiro (API)',
+    'faturamento': 'Faturamento (Scraping)',
+    'comercial': 'Propostas (API)',
+    'contratos': 'Cartão de Beneficios (API)',
+    'auth': 'Auth Feegow',
+    'clinia': 'Worker Clinia'
+}
+
+def canonicalize(service_raw: str):
+    if not service_raw: return service_raw
+    s = service_raw.lower().strip()
+    action = ALIAS_ACTION_MAP.get(s, s)
+    display = CANONICAL_NAME.get(action, action.capitalize())
+    return action, display
+
+
+def run_service(key: str):
+    """Executa um worker mapeado por `key` (ou seu alias), sem concorrência.
+    Resolve um nome canônico para heartbeat e usa locks por ação."""
+    action, display_name = canonicalize(key)
+    lock = service_locks.setdefault(action, threading.Lock())
     if not lock.acquire(blocking=False):
-        print(f"⏭️ Serviço já em execução: {svc} — pulando execução.")
+        print(f"⏭️ Serviço já em execução: {display_name} — pulando execução.")
         return
 
     db = DatabaseManager()
-    name = display_name or svc
     try:
-        db.update_heartbeat(name, "RUNNING", "Agendado/executando...")
+        db.update_heartbeat(display_name, "RUNNING", "Agendado/executando...")
         start = time.time()
 
-        if svc == 'financeiro':
+        if action == 'financeiro':
             update_financial_data()
-            # scraping também é parte do fluxo de faturamento
-            try:
-                run_scraper()
-            except Exception as e:
-                print(f"⚠️ Scraper falhou dentro do financeiro: {e}")
-
-        elif svc == 'comercial':
+        elif action == 'faturamento':
+            # Scraper específico
+            run_scraper()
+        elif action == 'comercial':
             update_proposals()
-
-        elif svc == 'contratos':
+        elif action == 'contratos':
             run_worker_contracts()
-
-        elif svc == 'auth':
+        elif action == 'auth':
             run_token_renewal()
-
+        elif action == 'clinia':
+            clinia_cycle()
         else:
-            print(f"⚠️ Serviço desconhecido solicitado: {svc}")
+            print(f"⚠️ Ação desconhecida solicitada: {action}")
 
         elapsed = round(time.time() - start, 2)
-        db.update_heartbeat(name, "COMPLETED", f"Concluído em {elapsed}s")
+        db.update_heartbeat(display_name, "COMPLETED", f"Concluído em {elapsed}s")
 
     except Exception as e:
-        print(f"❌ Erro ao rodar serviço {svc}: {e}")
-        db.update_heartbeat(name, "ERROR", str(e))
+        print(f"❌ Erro ao rodar serviço {display_name}: {e}")
+        db.update_heartbeat(display_name, "ERROR", str(e))
     finally:
         try:
             lock.release()
@@ -94,10 +123,10 @@ def run_hourly_workers():
     """Executa todos os workers não real-time uma vez (usa run_service)."""
     print("⏰ Executando jobs horários: iniciando workers não real-time...")
     # Ordem: financeiro (inclui scraper), comercial, contratos, auth
-    run_service('financeiro', 'financeiro')
-    run_service('comercial', 'comercial')
-    run_service('contratos', 'contratos')
-    run_service('auth', 'auth')
+    run_service('financeiro')
+    run_service('comercial')
+    run_service('contratos')
+    run_service('auth')
 
 def run_token_renewal():
     """Roda o Playwright para renovar tokens e salvar no banco"""
@@ -129,12 +158,11 @@ def run_on_demand_listener():
                 service = row[0] if isinstance(row, (tuple, list)) else row['service_name']
                 
                 print(f"\n⚡ GATILHO RECEBIDO: {service}")
-                db.update_heartbeat(service, "RUNNING", "Processando...")
 
                 try:
                     start_time = time.time()
-                    # Delegate to shared executor which uses locks and updates heartbeat
-                    run_service(service, service)
+                    # Delegate to shared executor which uses locks and writes canonical heartbeat
+                    run_service(service)
                     
                 except Exception as e:
                     print(f"❌ Erro {service}: {e}")
