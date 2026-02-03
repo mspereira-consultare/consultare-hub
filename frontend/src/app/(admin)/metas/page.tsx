@@ -336,12 +336,4 @@ export default function GoalsPage() {
     </div>
   );
 }
-            onClose={() => setDetailsGoal(null)}
-            goal={detailsGoal}
-            // Passa os dados calculados para o modal de detalhes também
-            currentData={dashboardData[detailsGoal.id]}
-        />
-      )}
-    </div>
-  );
-}
+
