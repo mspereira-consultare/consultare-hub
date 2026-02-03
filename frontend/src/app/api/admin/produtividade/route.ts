@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     const userStats = await db.query(`
         SELECT 
             f.scheduled_by as user,
-            GROUP_CONCAT(DISTINCT tm.name, ', ') as team_name,
+            GROUP_CONCAT(DISTINCT tm.name) as team_name,
             COUNT(*) as total,
             SUM(CASE WHEN f.status_id IN (3, 7) THEN 1 ELSE 0 END) as confirmados
         FROM feegow_appointments f
@@ -79,7 +79,7 @@ export async function GET(request: Request) {
 
   } catch (error: any) {
     console.error("Erro API Produtividade:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
   }
 }
 
@@ -97,6 +97,6 @@ export async function POST() {
         `);
         return NextResponse.json({ success: true, message: "Atualização solicitada" });
     } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
     }
 }

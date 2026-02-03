@@ -80,6 +80,6 @@ export async function GET() {
 
   } catch (error) {
     console.error('[RECEPTION ERROR]', error);
-    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro interno' }, { status: (error as any)?.status || 500 });
   }
 }

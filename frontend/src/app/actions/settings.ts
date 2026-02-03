@@ -9,6 +9,11 @@ export async function updateFeegowSettings(prevState: any, formData: FormData) {
   const token = formData.get("token") as string;
 
   try {
+    // Verifica se turso foi inicializado
+    if (!turso) {
+      return { success: false, message: "Banco de dados não disponível. Tente novamente." };
+    }
+
     // Salva na tabela que os Workers Python monitoram
     await turso.execute({
       sql: `
@@ -28,6 +33,11 @@ export async function updateFeegowSettings(prevState: any, formData: FormData) {
     
   } catch (error) {
     console.error("Erro ao salvar no Turso:", error);
+    const msg = String((error as any)?.message || error);
+    // If Turso is blocked, relay that information
+    if (msg.includes('reads are blocked') || msg.includes('BLOCKED')) {
+      return { success: false, message: "Turso read operations bloqueadas: upgrade seu plano ou contacte o suporte." };
+    }
     return { success: false, message: "Erro ao salvar no banco de dados." };
   }
 }

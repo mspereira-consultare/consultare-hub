@@ -23,11 +23,32 @@ export function getDbConnection(): DbInterface {
 
   return {
     query: async (sql: string, params: any[] = []) => {
-      const res = await client!.execute({ sql, args: params });
-      return (res.rows ?? []) as any[];
+      try {
+        const res = await client!.execute({ sql, args: params });
+        return (res.rows ?? []) as any[];
+      } catch (err: any) {
+        const msg = String(err?.message || err);
+        if (msg.includes('reads are blocked') || msg.includes('Operation was blocked') || msg.includes('BLOCKED')) {
+          const e = new Error('Turso read operations are blocked: upgrade your plan or contact support');
+          // attach status for API handlers
+          (e as any).status = 503;
+          throw e;
+        }
+        throw err;
+      }
     },
     execute: async (sql: string, params: any[] = []) => {
-      return client!.execute({ sql, args: params });
+      try {
+        return await client!.execute({ sql, args: params });
+      } catch (err: any) {
+        const msg = String(err?.message || err);
+        if (msg.includes('reads are blocked') || msg.includes('Operation was blocked') || msg.includes('BLOCKED')) {
+          const e = new Error('Turso read operations are blocked: upgrade your plan or contact support');
+          (e as any).status = 503;
+          throw e;
+        }
+        throw err;
+      }
     },
   };
 }

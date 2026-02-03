@@ -69,7 +69,7 @@ export async function GET() {
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error("Erro ao buscar usuários e equipes:", error);
-        return NextResponse.json({ error: errorMessage }, { status: 500 });
+        return NextResponse.json({ error: errorMessage }, { status: (error as any)?.status || 500 });
     }
 }
 
@@ -117,6 +117,6 @@ export async function POST(request: Request) {
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error("Erro ao atualizar usuário-equipe:", error);
-        return NextResponse.json({ error: errorMessage }, { status: 500 });
+        return NextResponse.json({ error: errorMessage }, { status: (error as any)?.status || 500 });
     }
 }

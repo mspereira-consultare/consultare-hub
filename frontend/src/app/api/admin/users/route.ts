@@ -20,7 +20,7 @@ export async function GET() {
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Erro GET Users:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
   }
 }
 
@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     if (error.message?.includes('UNIQUE constraint failed') || error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
       return NextResponse.json({ error: 'Este e-mail já está cadastrado.' }, { status: 409 });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
   }
 }
 
@@ -97,6 +97,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Erro DELETE User:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
   }
 }

@@ -95,7 +95,7 @@ export async function GET(request: Request) {
 
   } catch (error: any) {
     console.error("Erro API Propostas:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
   }
 }
 
@@ -112,6 +112,6 @@ export async function POST() {
         `);
         return NextResponse.json({ success: true, message: "Atualização solicitada" });
     } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
     }
 }

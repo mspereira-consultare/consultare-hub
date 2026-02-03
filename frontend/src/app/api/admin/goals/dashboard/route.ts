@@ -79,6 +79,6 @@ export async function GET() {
         return NextResponse.json([]);
     }
     
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
   }
 }

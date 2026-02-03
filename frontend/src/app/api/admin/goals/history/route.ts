@@ -49,6 +49,6 @@ export async function GET(request: Request) {
 
   } catch (error: any) {
     console.error("Erro History Route:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
   }
 }

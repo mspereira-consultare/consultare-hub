@@ -23,6 +23,17 @@ export default async function SettingsPage() {
   };
 
   try {
+    // Verifica se turso foi inicializado (pode ser null durante build sem env)
+    if (!turso) {
+      console.warn("⚠️ Cliente Turso não inicializado. Usando valores padrão.");
+      return (
+        <SettingsForm 
+          initialFeegow={initialFeegow}
+          initialClinia={initialClinia}
+        />
+      );
+    }
+
     const result = await turso.execute({
       sql: "SELECT * FROM integrations_config WHERE service IN ('feegow', 'clinia')",
       args: [],

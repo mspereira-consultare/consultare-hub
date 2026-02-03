@@ -14,6 +14,6 @@ export async function GET() {
     return NextResponse.json(services);
   } catch (error) {
     console.error('[STATUS] Erro:', error);
-    return NextResponse.json({ error: 'Erro ao buscar status.' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao buscar status.' }, { status: (error as any)?.status || 500 });
   }
 }

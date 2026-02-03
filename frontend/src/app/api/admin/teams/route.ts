@@ -29,7 +29,7 @@ export async function GET() {
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error("Erro ao buscar equipes:", error);
-        return NextResponse.json({ error: errorMessage }, { status: 500 });
+        return NextResponse.json({ error: errorMessage }, { status: (error as any)?.status || 500 });
     }
 }
 
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Esta equipe já existe' }, { status: 400 });
         }
         console.error("Erro ao criar equipe:", error);
-        return NextResponse.json({ error: errorMessage }, { status: 500 });
+        return NextResponse.json({ error: errorMessage }, { status: (error as any)?.status || 500 });
     }
 }
 
@@ -100,6 +100,6 @@ export async function DELETE(request: Request) {
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error("Erro ao deletar equipe:", error);
-        return NextResponse.json({ error: errorMessage }, { status: 500 });
+        return NextResponse.json({ error: errorMessage }, { status: (error as any)?.status || 500 });
     }
 }

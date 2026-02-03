@@ -37,7 +37,7 @@ export async function GET() {
     return NextResponse.json(safeConfigs);
   } catch (error: any) {
     console.error("Erro GET Settings:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
   }
 }
 
@@ -84,6 +84,6 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error("Erro POST Settings:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
   }
 }
