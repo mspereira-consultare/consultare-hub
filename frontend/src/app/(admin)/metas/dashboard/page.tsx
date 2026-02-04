@@ -70,6 +70,8 @@ export default function GoalsDashboardPage() {
   const [selectedGoal, setSelectedGoal] = useState<DashboardGoal | null>(null);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [filters, setFilters] = useState<GoalFilters>(DEFAULT_FILTERS);
+  const [groupsOptions, setGroupsOptions] = useState<string[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
 
   const fetchData = async (forceFresh = false) => {
     setLoading(true);
@@ -92,6 +94,26 @@ export default function GoalsDashboardPage() {
     fetchData();
     const interval = setInterval(fetchData, 1000 * 60 * 5);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoadingGroups(true);
+      try {
+        const res = await fetch('/api/admin/options/groups', { cache: 'no-store' });
+        if (!res.ok) throw new Error('failed');
+        const data = await res.json();
+        if (mounted && Array.isArray(data)) {
+          setGroupsOptions(data.map((g: any) => (g == null ? '' : String(g))).filter(Boolean));
+        }
+      } catch (e) {
+        if (mounted) setGroupsOptions([]);
+      } finally {
+        if (mounted) setLoadingGroups(false);
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   const normalizeKey = (value: string) => String(value || '')
@@ -319,17 +341,20 @@ export default function GoalsDashboardPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-[11px] font-bold uppercase text-slate-500">Grupo</label>
+              <label className="text-[11px] font-bold uppercase text-slate-500">Grupo de Procedimento</label>
               <select
                 value={filters.filter_group}
                 onChange={(e) => setFilters(prev => ({ ...prev, filter_group: e.target.value }))}
                 className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
               >
                 <option value="all">Todos</option>
-                {availableOptions.groups.map(g => (
+                {(loadingGroups ? [] : groupsOptions).map(g => (
                   <option key={g} value={g}>{g}</option>
                 ))}
               </select>
+              {loadingGroups && (
+                <span className="text-[10px] text-slate-400">Carregando grupos...</span>
+              )}
             </div>
 
             <div className="space-y-1">

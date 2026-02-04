@@ -24,6 +24,8 @@ export default function GoalsPage() {
   const [detailsGoal, setDetailsGoal] = useState<any>(null);
   const [isTeamsModalOpen, setIsTeamsModalOpen] = useState(false);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [groupsOptions, setGroupsOptions] = useState<string[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
 
   type GoalFilters = {
     name: string;
@@ -95,6 +97,26 @@ export default function GoalsPage() {
 
   useEffect(() => {
     fetchData();
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      setLoadingGroups(true);
+      try {
+        const res = await fetch('/api/admin/options/groups', { cache: 'no-store' });
+        if (!res.ok) throw new Error('failed');
+        const data = await res.json();
+        if (mounted && Array.isArray(data)) {
+          setGroupsOptions(data.map((g: any) => (g == null ? '' : String(g))).filter(Boolean));
+        }
+      } catch (e) {
+        if (mounted) setGroupsOptions([]);
+      } finally {
+        if (mounted) setLoadingGroups(false);
+      }
+    })();
+    return () => { mounted = false; };
   }, []);
 
   useEffect(() => {
@@ -356,17 +378,20 @@ export default function GoalsPage() {
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[11px] font-bold uppercase text-slate-500">Grupo</label>
+                  <label className="text-[11px] font-bold uppercase text-slate-500">Grupo de Procedimento</label>
                   <select
                     value={filters.filter_group}
                     onChange={(e) => setFilters(prev => ({ ...prev, filter_group: e.target.value }))}
                     className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
                   >
                     <option value="all">Todos</option>
-                    {availableOptions.groups.map(g => (
+                    {(loadingGroups ? [] : groupsOptions).map(g => (
                       <option key={g} value={g}>{g}</option>
                     ))}
                   </select>
+                  {loadingGroups && (
+                    <span className="text-[10px] text-slate-400">Carregando grupos...</span>
+                  )}
                 </div>
 
                 <div className="space-y-1">
