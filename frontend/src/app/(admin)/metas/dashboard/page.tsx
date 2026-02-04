@@ -223,7 +223,7 @@ export default function GoalsDashboardPage() {
 }
 
 // --- SUB-COMPONENTE: CARD COMPACTO DA META ---
-function DashboardCard({ goal, formatValue, compact = true }: { 
+function DashboardCard({ goal, formatValue, compact = true, onClick }: { 
   goal: DashboardGoal, 
   formatValue: (v: number, u: string) => string,
   compact?: boolean,
