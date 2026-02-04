@@ -176,7 +176,7 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
 
     const handleScopeChange = (scopeValue: string) => {
         const nextScope = scopeValue as Goal['scope'];
-        const allowed = getAllowedKpis(nextScope).map(k => k.id);
+        const allowed: string[] = getAllowedKpis(nextScope).map(k => k.id);
         setFormData(prev => {
             const kpiStillValid = allowed.includes(prev.linked_kpi_id);
             return {
