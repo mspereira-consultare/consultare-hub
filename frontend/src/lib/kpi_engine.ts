@@ -180,8 +180,8 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                 }
 
                 if (collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '') {
-                    whereSql += ` AND (UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?)) OR UPPER(TRIM(f.professional_name)) = UPPER(TRIM(?)))`;
-                    params.push(collaboratorVal, collaboratorVal);
+                    whereSql += ` AND UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?))`;
+                    params.push(collaboratorVal);
                 }
 
                 let joinSql = "";
@@ -219,8 +219,8 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                 }
 
                 if (collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '') {
-                    whereSql += ` AND (UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?)) OR UPPER(TRIM(f.professional_name)) = UPPER(TRIM(?)))`;
-                    params.push(collaboratorVal, collaboratorVal);
+                    whereSql += ` AND UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?))`;
+                    params.push(collaboratorVal);
                 }
 
                 let joinSql = "";

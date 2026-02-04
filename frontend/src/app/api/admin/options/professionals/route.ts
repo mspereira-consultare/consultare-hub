@@ -10,15 +10,35 @@ export async function GET(request: Request) {
     const cacheKey = buildCacheKey('admin', request.url);
     const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
       const db = getDbConnection();
-      // Busca nomes distintos de profissionais e agendadores
+      // Busca apenas colaboradores (scheduled_by), alinhado com a página de produtividade
       const rows = await db.query(`
-        SELECT DISTINCT TRIM(COALESCE(professional_name, scheduled_by)) as name
+        SELECT DISTINCT TRIM(scheduled_by) as name
         FROM feegow_appointments
-        WHERE (professional_name IS NOT NULL AND professional_name != '') OR (scheduled_by IS NOT NULL AND scheduled_by != '')
+        WHERE scheduled_by IS NOT NULL AND scheduled_by != '' AND scheduled_by != 'Sistema'
         ORDER BY name ASC
       `);
 
-      const list = rows.map((r: any) => ({ name: r.name }));
+      const normalizeKey = (value: string) => {
+        return value
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
+
+      const normalized = new Map<string, string>();
+      for (const r of rows) {
+        const raw = String(r?.name || '').replace(/\s+/g, ' ').trim();
+        if (!raw) continue;
+        const key = normalizeKey(raw);
+        if (!normalized.has(key)) normalized.set(key, raw);
+      }
+
+      const list = Array.from(normalized.values())
+        .sort((a, b) => a.localeCompare(b, 'pt-BR'))
+        .map((name) => ({ name }));
+
       return list;
     });
 
