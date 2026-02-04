@@ -81,6 +81,17 @@ export default function ProductivityPage() {
         return counts;
     }, [configUsers, rankingData]);
 
+    const teamsByUser = useMemo(() => {
+        const map = new Map<string, string[]>();
+        if (Array.isArray(configUsers) && configUsers.length > 0) {
+            configUsers.forEach((u: any) => {
+                const teams = (u.teams || []).map((t: any) => t.name).filter(Boolean);
+                if (teams.length > 0) map.set(normalizeKey(u.user_name), teams);
+            });
+        }
+        return map;
+    }, [configUsers]);
+
     const getTeamMemberCount = (teamName: string) => {
         return teamMemberCounts[normalizeKey(teamName)] || 0;
     };
