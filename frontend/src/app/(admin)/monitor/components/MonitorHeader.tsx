@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Clock, RefreshCw, WifiOff, MessageCircle, ChevronDown } from 'lucide-react';
+import { Clock, RefreshCw, WifiOff, MessageCircle, ChevronDown, Volume2 } from 'lucide-react';
 import { formatMinutesToHours } from '@/lib/utils';
 import { WhatsAppResponse } from '../types';
 
@@ -11,6 +11,9 @@ interface MonitorHeaderProps {
   loading: boolean;
   onRefresh: () => void;
   whatsAppData: WhatsAppResponse | null;
+  alertsEnabled: boolean;
+  audioUnlocked: boolean;
+  onToggleAlerts: () => void;
 }
 
 export const MonitorHeader = ({ 
@@ -18,7 +21,10 @@ export const MonitorHeader = ({
   lastUpdatedString, 
   loading, 
   onRefresh, 
-  whatsAppData 
+  whatsAppData,
+  alertsEnabled,
+  audioUnlocked,
+  onToggleAlerts
 }: MonitorHeaderProps) => {
   
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
@@ -136,6 +142,17 @@ export const MonitorHeader = ({
               {lastUpdatedString || '--:--:--'}
           </div>
           
+          <button 
+            onClick={onToggleAlerts}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold transition-all shadow-sm ${
+              !alertsEnabled ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+            }`}
+            title={alertsEnabled ? (audioUnlocked ? 'Desativar alerta sonoro' : 'Ativar som do alerta') : 'Ativar alerta sonoro'}
+          >
+            <Volume2 size={14} />
+            {!alertsEnabled ? 'Alerta Sonoro: Pausado' : (audioUnlocked ? 'Alerta Sonoro: Ativo' : 'Ativar Som')}
+          </button>
+
           <button onClick={onRefresh} disabled={loading} className="p-2 bg-white hover:bg-slate-50 rounded-lg border shadow-sm active:scale-95 transition-all">
               <RefreshCw size={14} className={loading ? "animate-spin text-slate-400" : "text-slate-700"} />
           </button>

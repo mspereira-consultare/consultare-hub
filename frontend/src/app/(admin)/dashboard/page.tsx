@@ -30,9 +30,6 @@ export default function DashboardPage() {
   const [goalsData, setGoalsData] = useState<any[]>([]);
   const [heartbeat, setHeartbeat] = useState<any>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [alertsEnabled, setAlertsEnabled] = useState(true);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const alertTriggeredRef = useRef<boolean>(false);
 
   const fetchDashboardData = useCallback(async (isManual = false, forceFresh = false) => {
     if (isManual) {
@@ -126,66 +123,6 @@ export default function DashboardPage() {
   };
 
   const WAIT_ALERT_MINUTES = 30;
-  // --- EFEITO: VERIFICAR PACIENTES AGUARDANDO HÁ MAIS DE 30 MINUTOS ---
-  useEffect(() => {
-    if (!data?.medic) return;
-    if (!alertsEnabled) {
-      alertTriggeredRef.current = false;
-      return;
-    }
-
-    // Verifica se há pacientes aguardando mais de 30 minutos
-    const hasLongWaiters = data.medic.some((unit: any) => {
-      const waitersOver30 = unit.patients?.filter((p: any) => {
-        if (p.status !== 'waiting') return false;
-        if (!p.checkInTime) return false;
-        
-        const now = new Date();
-        const checkInTime = new Date(p.checkInTime);
-        const waitTimeMinutes = (now.getTime() - checkInTime.getTime()) / (1000 * 60);
-        return waitTimeMinutes > WAIT_ALERT_MINUTES;
-      });
-      return (waitersOver30?.length || 0) > 0;
-    });
-
-    // Se há pacientes aguardando há mais de 30 minutos e alerta ainda não foi disparado
-    if (hasLongWaiters && !alertTriggeredRef.current) {
-      // Toca o som de alerta
-      try {
-        if (!audioRef.current) {
-          // Cria um AudioContext para gerar um beep sonoro se nenhum arquivo de áudio estiver disponível
-          const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
-          const oscillator = audioContext.createOscillator();
-          const gainNode = audioContext.createGain();
-          
-          oscillator.connect(gainNode);
-          gainNode.connect(audioContext.destination);
-          
-          oscillator.frequency.value = 800; // Frequência do som
-          oscillator.type = 'sine';
-          
-          gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
-          gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
-          
-          oscillator.start(audioContext.currentTime);
-          oscillator.stop(audioContext.currentTime + 0.5);
-        } else {
-          audioRef.current.play().catch(e => console.error("Erro ao tocar som:", e));
-        }
-        
-        alertTriggeredRef.current = true;
-        
-        // Reseta o alerta após 5 minutos para permitir novo alerta
-        setTimeout(() => {
-          alertTriggeredRef.current = false;
-        }, 5 * 60 * 1000);
-      } catch (error) {
-        console.error("Erro ao disparar alerta sonoro:", error);
-      }
-    } else if (!hasLongWaiters) {
-      alertTriggeredRef.current = false;
-    }
-  }, [data?.medic, alertsEnabled]);
 
   if (!data && loading) {
     return (
@@ -266,13 +203,6 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
-      {/* Audio element para alerta sonoro */}
-      <audio 
-        ref={audioRef} 
-        src="data:audio/wav;base64,UklGRiYAAABXQVZFZm10IBAAAAABAAEAQB8AAAB9AAACABAAZGF0YQIAAAAAAA=="
-        style={{ display: 'none' }}
-      />
-      
       {/* Header Clean */}
       <div className="flex justify-between items-center">
         <div>
@@ -302,18 +232,6 @@ export default function DashboardPage() {
             {isUpdating ? 'Atualizando...' : 'Atualizar Faturamento'}
           </button>
 
-          <button
-            onClick={() => setAlertsEnabled(prev => !prev)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border ${
-              alertsEnabled
-                ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
-                : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
-            }`}
-            title={alertsEnabled ? 'Desativar alerta sonoro' : 'Ativar alerta sonoro'}
-          >
-            {alertsEnabled ? 'Alerta Sonoro: Ativo' : 'Alerta Sonoro: Pausado'}
-          </button>
-          
           <button 
             onClick={() => fetchDashboardData(true)}
             className="p-2.5 bg-white rounded-full border border-slate-200 shadow-sm hover:bg-slate-50 active:scale-95 transition-all group"
@@ -387,7 +305,7 @@ export default function DashboardPage() {
             <Activity size={18} className="text-slate-400" />
             <h2 className="font-bold text-slate-700">Aguardando Médico</h2>
             {data?.medic?.some((unit: any) => {
-              const waitersOver10 = unit.patients?.filter((p: any) => {
+              const waitersOver = unit.patients?.filter((p: any) => {
                 if (p.status !== 'waiting') return false;
                 if (!p.checkInTime) return false;
                 const now = new Date();
@@ -395,8 +313,8 @@ export default function DashboardPage() {
                 const waitTimeMinutes = (now.getTime() - checkInTime.getTime()) / (1000 * 60);
                 return waitTimeMinutes > WAIT_ALERT_MINUTES;
               });
-              return (waitersOver10?.length || 0) > 0;
-            }) && alertsEnabled && (
+              return (waitersOver?.length || 0) > 0;
+            }) && (
               <span className="ml-auto px-2 py-1 text-[9px] font-bold bg-red-500 text-white rounded-full animate-pulse">
                 Alerta {WAIT_ALERT_MINUTES}+ min
               </span>
