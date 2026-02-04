@@ -23,6 +23,9 @@ except ImportError:
 
 load_dotenv()
 
+FINALIZE_INTERVAL_SEC = int(os.getenv("MEDICO_FINALIZE_INTERVAL_SEC", "300"))
+CLEANUP_INTERVAL_SEC = int(os.getenv("MEDICO_CLEANUP_INTERVAL_SEC", "600"))
+
 # IDs corretos das unidades
 UNIDADES = [
     ("Ouro Verde", 2),
@@ -36,6 +39,8 @@ def run_monitor_medico():
     sistema = FeegowSystem()
     db = DatabaseManager()
     sessao_ativa = False
+    last_finalize_ts = 0
+    last_cleanup_ts = 0
 
     while True:
         try:
@@ -50,7 +55,10 @@ def run_monitor_medico():
                     time.sleep(30)
                     continue
 
-            db.limpar_dias_anteriores()
+            now_ts = time.time()
+            if CLEANUP_INTERVAL_SEC <= 0 or (now_ts - last_cleanup_ts) >= CLEANUP_INTERVAL_SEC:
+                db.limpar_dias_anteriores()
+                last_cleanup_ts = now_ts
             hoje = datetime.now(tz).strftime('%Y-%m-%d')
             timestamp = datetime.now(tz).strftime('%H:%M:%S')
 
@@ -79,10 +87,14 @@ def run_monitor_medico():
                     # Salva e atualiza last_seen_at
                     db.salvar_dados_medicos(df)
 
-                # 🔥 NOVO MODELO: Finaliza apenas quem sumiu por tempo
-                db.finalizar_expirados_medicos(nome_unidade, minutos=120)
+                # 🔥 NOVO MODELO: Finaliza apenas quem sumiu por tempo (com throttle)
+                if FINALIZE_INTERVAL_SEC <= 0 or (time.time() - last_finalize_ts) >= FINALIZE_INTERVAL_SEC:
+                    db.finalizar_expirados_medicos(nome_unidade, minutos=120)
 
                 print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
+
+            if FINALIZE_INTERVAL_SEC <= 0 or (time.time() - last_finalize_ts) >= FINALIZE_INTERVAL_SEC:
+                last_finalize_ts = time.time()
 
             if sessao_ativa:
                 msg = f"Ciclo concluído. Total detectado: {total_detectado_ciclo}"

@@ -6,6 +6,8 @@ import pandas as pd
 import traceback
 import hashlib
 import pytz
+import time
+import threading
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
@@ -23,6 +25,108 @@ sys.path.append(BASE_DIR)
 load_dotenv()
 
 LOCAL_DB_PATH = os.path.join(BASE_DIR, 'data', 'dados_clinica.db')
+
+# ---- Cache/Ratelimit (in-memory) ----
+# Defaults can be overridden via env vars.
+HEARTBEAT_MIN_INTERVAL_SEC = max(0, int(os.getenv("HEARTBEAT_MIN_INTERVAL_SEC", "30")))
+ESPERA_UPSERT_MIN_INTERVAL_SEC = max(0, int(os.getenv("ESPERA_UPSERT_MIN_INTERVAL_SEC", "60")))
+RECEPCAO_UPSERT_MIN_INTERVAL_SEC = max(0, int(os.getenv("RECEPCAO_UPSERT_MIN_INTERVAL_SEC", "60")))
+
+_heartbeat_cache = {}
+_heartbeat_lock = threading.Lock()
+
+_espera_cache = {}
+_espera_lock = threading.Lock()
+
+_recepcao_cache = {}
+_recepcao_lock = threading.Lock()
+
+def _should_write_heartbeat(service_name, status, details):
+    if HEARTBEAT_MIN_INTERVAL_SEC <= 0:
+        return True
+    now = time.time()
+    details_str = "" if details is None else str(details)
+    with _heartbeat_lock:
+        prev = _heartbeat_cache.get(service_name)
+        if not prev:
+            _heartbeat_cache[service_name] = {
+                "status": status,
+                "details": details_str,
+                "last_write": now
+            }
+            return True
+        changed = (prev["status"] != status) or (prev["details"] != details_str)
+        stale = (now - prev["last_write"]) >= HEARTBEAT_MIN_INTERVAL_SEC
+        if changed or stale:
+            _heartbeat_cache[service_name] = {
+                "status": status,
+                "details": details_str,
+                "last_write": now
+            }
+            return True
+        return False
+
+def _should_upsert_espera(hash_id, status, espera_minutos, profissional):
+    if ESPERA_UPSERT_MIN_INTERVAL_SEC <= 0:
+        return True
+    now = time.time()
+    status_str = "" if status is None else str(status)
+    prof_str = "" if profissional is None else str(profissional)
+    espera_val = espera_minutos if espera_minutos is None else int(espera_minutos)
+    with _espera_lock:
+        prev = _espera_cache.get(hash_id)
+        if not prev:
+            _espera_cache[hash_id] = {
+                "status": status_str,
+                "espera": espera_val,
+                "prof": prof_str,
+                "last_write": now
+            }
+            return True
+        changed = (
+            prev["status"] != status_str or
+            prev["espera"] != espera_val or
+            prev["prof"] != prof_str
+        )
+        stale = (now - prev["last_write"]) >= ESPERA_UPSERT_MIN_INTERVAL_SEC
+        if changed or stale:
+            _espera_cache[hash_id] = {
+                "status": status_str,
+                "espera": espera_val,
+                "prof": prof_str,
+                "last_write": now
+            }
+            return True
+        return False
+
+def _should_upsert_recepcao(hash_id, status, dt_atendimento):
+    if RECEPCAO_UPSERT_MIN_INTERVAL_SEC <= 0:
+        return True
+    now = time.time()
+    status_str = "" if status is None else str(status)
+    dt_str = "" if dt_atendimento is None else str(dt_atendimento)
+    with _recepcao_lock:
+        prev = _recepcao_cache.get(hash_id)
+        if not prev:
+            _recepcao_cache[hash_id] = {
+                "status": status_str,
+                "dt_atendimento": dt_str,
+                "last_write": now
+            }
+            return True
+        changed = (
+            prev["status"] != status_str or
+            prev["dt_atendimento"] != dt_str
+        )
+        stale = (now - prev["last_write"]) >= RECEPCAO_UPSERT_MIN_INTERVAL_SEC
+        if changed or stale:
+            _recepcao_cache[hash_id] = {
+                "status": status_str,
+                "dt_atendimento": dt_str,
+                "last_write": now
+            }
+            return True
+        return False
 
 def gerar_hash(raw_id):
     return hashlib.md5(raw_id.encode()).hexdigest()
@@ -123,6 +227,8 @@ class DatabaseManager:
 
     # --- MÉTODO GENÉRICO PARA HEARTBEAT ---
     def update_heartbeat(self, service_name, status, details=""):
+        if not _should_write_heartbeat(service_name, status, details):
+            return
         conn = self.get_connection()
         try:
             agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
@@ -197,7 +303,13 @@ class DatabaseManager:
                     row.get('STATUS_DETECTADO'), row.get('PROFISSIONAL'), agora
                 )
 
-                conn.execute(sql, params)
+                if _should_upsert_espera(
+                    hash_id,
+                    row.get('STATUS_DETECTADO'),
+                    espera,
+                    row.get('PROFISSIONAL')
+                ):
+                    conn.execute(sql, params)
 
         except Exception as e:
             print(f"Erro salvar médicos: {e}")
@@ -268,7 +380,8 @@ class DatabaseManager:
                 
                 params = (hash_id, id_ext, uid, unidade_nome, paciente, dt_chegada, dt_atend, status, dia_ref, agora)
 
-                conn.execute(sql, params)
+                if _should_upsert_recepcao(hash_id, status, dt_atend):
+                    conn.execute(sql, params)
 
             if not self.use_turso: conn.commit()
         except Exception as e:

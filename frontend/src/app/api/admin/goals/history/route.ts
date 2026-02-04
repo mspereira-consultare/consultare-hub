@@ -2,11 +2,15 @@ import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
 // Importamos calculateHistory conforme definimos no kpi_engine.ts atualizado
 import { calculateHistory } from '@/lib/kpi_engine'; 
+import { withCache, buildCacheKey } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function GET(request: Request) {
   try {
+    const cacheKey = buildCacheKey('admin', request.url);
+    const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
     const { searchParams } = new URL(request.url);
     const goalId = searchParams.get('goal_id');
 
@@ -41,11 +45,15 @@ export async function GET(request: Request) {
         end,
         { 
             group_filter: goal.filter_group,
+            unit_filter: goal.clinic_unit,
             scope: goal.scope // 'CLINIC' ou 'CARD'
         }
     );
 
-    return NextResponse.json(history);
+    return history;
+    });
+
+    return NextResponse.json(cached);
 
   } catch (error: any) {
     console.error("Erro History Route:", error);

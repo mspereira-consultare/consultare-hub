@@ -1,31 +1,38 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
+import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 // GET: Lista todas as equipes criadas
-export async function GET() {
+export async function GET(request: Request) {
     try {
-        const db = getDbConnection();
+        const cacheKey = buildCacheKey('admin', request.url);
+        const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
+            const db = getDbConnection();
 
-        // Garante que a tabela de equipes existe
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS teams_master (
-                id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                name TEXT UNIQUE NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
+            // Garante que a tabela de equipes existe
+            await db.execute(`
+                CREATE TABLE IF NOT EXISTS teams_master (
+                    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+                    name TEXT UNIQUE NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
 
-        // Busca todas as equipes
-        const teams = await db.query(`
-            SELECT id, name, created_at, updated_at 
-            FROM teams_master 
-            ORDER BY name ASC
-        `);
+            // Busca todas as equipes
+            const teams = await db.query(`
+                SELECT id, name, created_at, updated_at 
+                FROM teams_master 
+                ORDER BY name ASC
+            `);
 
-        return NextResponse.json({ teams });
+            return { teams };
+        });
+
+        return NextResponse.json(cached);
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error("Erro ao buscar equipes:", error);
@@ -60,6 +67,7 @@ export async function POST(request: Request) {
             INSERT INTO teams_master (name) VALUES (?)
         `, [name.trim()]);
 
+        invalidateCache('admin:');
         return NextResponse.json({ 
             success: true, 
             team: { name: name.trim() }
@@ -96,6 +104,7 @@ export async function DELETE(request: Request) {
             DELETE FROM teams_master WHERE id = ?
         `, [teamId]);
 
+        invalidateCache('admin:');
         return NextResponse.json({ success: true });
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

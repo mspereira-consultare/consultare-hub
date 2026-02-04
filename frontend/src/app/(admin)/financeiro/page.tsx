@@ -110,6 +110,7 @@ export default function FinancialPage() {
   const [daily, setDaily] = useState<any[]>([]);
   const [monthly, setMonthly] = useState<any[]>([]);
   const [groups, setGroups] = useState<any[]>([]);
+  const [groupStats, setGroupStats] = useState<any[]>([]);
   const [procedures, setProcedures] = useState<any[]>([]);
   const [units, setUnits] = useState<any[]>([]);
   const [totals, setTotals] = useState({ total: 0, qtd: 0 });
@@ -172,6 +173,7 @@ export default function FinancialPage() {
                     label: g.procedure_group || g.label || g.name || 'Desconhecido'
                 })) || []);
             }
+            setGroupStats(data.groupStats || data.groups || []);
             if (selectedProcedure === 'all') {
                 setProcedures(data.procedures || []);
             }
@@ -357,7 +359,7 @@ export default function FinancialPage() {
           
           <div className="lg:col-span-1">
               <GroupList 
-                groups={groups} 
+                groups={groupStats} 
                 selected={selectedGroup} 
                 onSelect={(g) => { setSelectedGroup(g); setSelectedProcedure('all'); }} 
                 className="h-[350px]" 

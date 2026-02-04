@@ -1,5 +1,6 @@
 import { getDbConnection } from '@/lib/db';
 import { NextResponse } from 'next/server';
+import { invalidateCache } from '@/lib/api_cache';
 
 export async function POST(req: Request) {
   try {
@@ -19,6 +20,7 @@ export async function POST(req: Request) {
       [chave, valor ?? '']
     );
 
+    invalidateCache('admin:');
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('[TOKEN] Erro:', error);

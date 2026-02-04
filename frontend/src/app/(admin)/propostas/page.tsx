@@ -28,6 +28,7 @@ export default function ProposalsPage() {
     // Heartbeat (Controle de Atualização)
     const [heartbeat, setHeartbeat] = useState<any>(null);
     const [isUpdating, setIsUpdating] = useState(false);
+    const avgTicket = summary.qtd > 0 ? summary.valor / summary.qtd : 0;
 
     const fetchData = async () => {
         // Não ativa loading total se for apenas refresh de background
@@ -219,7 +220,7 @@ export default function ProposalsPage() {
             </div>
 
             {/* --- CARDS DE KPI --- */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
                     <div className="relative">
@@ -284,6 +285,20 @@ export default function ProposalsPage() {
                         <div className="mt-2 flex items-center gap-1 text-xs text-red-600 font-medium">
                             <AlertCircle size={12} />
                             <span>{summary.valor > 0 ? ((((summary.valor - summary.wonValue) / summary.valor) * 100).toFixed(1)) : '0'}% do total</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative">
+                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Ticket Médio</p>
+                        <h3 className="text-2xl font-bold text-slate-800">
+                            {avgTicket.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </h3>
+                        <div className="mt-2 flex items-center gap-1 text-xs text-slate-600 font-medium">
+                            <DollarSign size={12} />
+                            <span>Média por proposta</span>
                         </div>
                     </div>
                 </div>

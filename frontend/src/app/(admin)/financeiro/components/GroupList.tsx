@@ -19,6 +19,14 @@ export const GroupList = ({ groups, onSelect, selected, className }: { groups: a
             
             <div className="overflow-auto custom-scrollbar flex-1">
                 <table className="w-full text-xs text-left">
+                    <thead className="text-[10px] uppercase text-slate-400">
+                        <tr>
+                            <th className="px-2 py-1.5">Grupo</th>
+                            <th className="px-2 py-1.5 text-right">Qtd</th>
+                            <th className="px-2 py-1.5 text-right">Ticket</th>
+                            <th className="px-2 py-1.5 text-right">Total</th>
+                        </tr>
+                    </thead>
                     <tbody className="divide-y divide-slate-100">
                         <tr 
                             onClick={() => onSelect('all')}
@@ -26,9 +34,14 @@ export const GroupList = ({ groups, onSelect, selected, className }: { groups: a
                         >
                             <td className="px-2 py-2.5 font-bold text-blue-700">TODOS</td>
                             <td className="px-2 py-2.5"></td>
+                            <td className="px-2 py-2.5"></td>
+                            <td className="px-2 py-2.5"></td>
                         </tr>
                         {groups.map((item, idx) => {
                              const isSelected = selected === item.procedure_group;
+                             const qtd = Number(item.qtd || 0);
+                             const total = Number(item.total || 0);
+                             const ticket = qtd > 0 ? total / qtd : 0;
                              return (
                                 <tr 
                                     key={idx} 
@@ -38,8 +51,12 @@ export const GroupList = ({ groups, onSelect, selected, className }: { groups: a
                                     <td className="px-2 py-2 text-slate-700 truncate max-w-[120px]" title={item.procedure_group}>
                                         {item.procedure_group || 'Geral'}
                                     </td>
+                                    <td className="px-2 py-2 text-right text-slate-600">{qtd}</td>
+                                    <td className="px-2 py-2 text-right text-slate-700">
+                                        {fmtMoney(ticket)}
+                                    </td>
                                     <td className="px-2 py-2 text-right font-semibold text-slate-700">
-                                        {fmtMoney(item.total)}
+                                        {fmtMoney(total)}
                                     </td>
                                 </tr>
                              );

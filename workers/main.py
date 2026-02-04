@@ -4,11 +4,26 @@ import os
 import sys
 import datetime
 import schedule
+import builtins
 
 # --- CONFIGURAÇÃO: LOGS IMEDIATOS + SUPORTE A EMOJIS (WINDOWS) ---
 # O encoding='utf-8' impede o erro 'charmap codec can't encode character' no Windows
 sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
 sys.stderr.reconfigure(line_buffering=True, encoding='utf-8')
+
+# --- PADRÃO DE LOGS COM PREFIXO (THREAD + HORÁRIO) ---
+_original_print = builtins.print
+
+def _prefixed_print(*args, **kwargs):
+    ts = datetime.datetime.now().strftime('%H:%M:%S')
+    tname = threading.current_thread().name
+    prefix = f"[{ts}][{tname}]"
+    if args:
+        _original_print(prefix, *args, **kwargs)
+    else:
+        _original_print(prefix, **kwargs)
+
+builtins.print = _prefixed_print
 
 # Adiciona diretório atual ao path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -35,10 +50,13 @@ except ImportError as e:
 
 START_HOUR = 6
 END_HOUR = 23 # Estendido um pouco para garantir fechamento
+START_MINUTE = 30
 
 def is_working_hours():
-    h = datetime.datetime.now().hour
-    return START_HOUR <= h < END_HOUR
+    now = datetime.datetime.now()
+    start = now.replace(hour=START_HOUR, minute=START_MINUTE, second=0, microsecond=0)
+    end = now.replace(hour=20, minute=0, second=0, microsecond=0)
+    return start <= now < end
 
 # --- EXECUTOR SEGURO POR SERVIÇO (evita concorrência entre agendador e trigger manual) ---
 service_locks = {}
@@ -145,6 +163,7 @@ def run_token_renewal():
 def run_on_demand_listener():
     print("👂 Listener de Atualizações Manuais iniciado.")
     db = DatabaseManager()
+    poll_interval = int(os.getenv("ON_DEMAND_POLL_INTERVAL_SEC", "30"))
     
     while True:
         try:
@@ -170,9 +189,9 @@ def run_on_demand_listener():
 
         except Exception as e:
             print(f"⚠️ Erro Listener: {e}")
-            time.sleep(5)
+            time.sleep(poll_interval)
         
-        time.sleep(5)
+        time.sleep(poll_interval)
 
 # --- WRAPPERS DE SEGURANÇA ---
 def run_monitor_recepcao_safe():

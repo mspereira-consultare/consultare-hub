@@ -8,6 +8,7 @@ interface KpiResult {
 
 interface KpiOptions { 
     group_filter?: string; 
+    unit_filter?: string;
     scope?: 'CLINIC' | 'CARD'; 
 }
 
@@ -24,6 +25,8 @@ interface KpiHistoryItem {
 // Aceita duas formas de data: original 'DD/MM/YYYY' (com barras) OU já em ISO 'YYYY-MM-DD'
 // Se contém '/', converte para 'YYYY-MM-DD', caso contrário usa o valor diretamente.
 const SQL_DATE_ANALITICO = `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
+const SUMMARY_TABLE = 'faturamento_resumo_diario';
+const SUMMARY_DATE_COL = 'data_ref';
 
 /**
  * MOTOR DE CÁLCULO CONSOLIDADO
@@ -76,6 +79,7 @@ export async function calculateKpi(kpiId: string, startDate: string, endDate: st
 export async function calculateHistory(kpiId: string, startDate: string, endDate: string, options?: KpiOptions): Promise<KpiHistoryItem[]> {
     const db = getDbConnection();
     const filterVal = options?.group_filter?.trim();
+    const unitVal = options?.unit_filter?.trim();
     
     let query = '';
     let queryParams: any[] = [];
@@ -140,6 +144,7 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
         else {
             queryParams = [startDate, endDate];
             let groupSql = "";
+            let unitSql = "";
 
             // Filtro por Grupo do Feegow (Ex: Consultas, Exames, Procedimentos)
             if (filterVal && filterVal !== 'all' && filterVal !== '') {
@@ -147,42 +152,89 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                 queryParams.push(filterVal);
             }
 
-            switch (kpiId) {
-                case 'revenue': // Faturamento Total (Baseado na tabela analítica)
-                    query = `
-                        SELECT ${SQL_DATE_ANALITICO} as d, SUM(total_pago) as val 
-                        FROM faturamento_analitico 
-                        WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ? ${groupSql} ${clinicExclusion} 
-                        GROUP BY d ORDER BY d
-                    `;
-                    break;
-
-                case 'appointments': // Quantidade de atendimentos realizados
-                    query = `
-                        SELECT ${SQL_DATE_ANALITICO} as d, COUNT(*) as val 
-                        FROM faturamento_analitico 
-                        WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ? ${groupSql} ${clinicExclusion} 
-                        GROUP BY d ORDER BY d
-                    `;
-                    break;
-
-                case 'ticket_medio': // Faturamento total / Qtd de atendimentos
-                    query = `
-                        SELECT ${SQL_DATE_ANALITICO} as d, (SUM(total_pago) / COUNT(*)) as val 
-                        FROM faturamento_analitico 
-                        WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ? ${groupSql} ${clinicExclusion} 
-                        GROUP BY d ORDER BY d
-                    `;
-                    break;
-
-                default:
-                    console.warn(`[KPI_ENGINE] KPI de Clínica não implementado: ${kpiId}`);
-                    return [];
+            // Filtro por Unidade da Clínica
+            if (unitVal && unitVal !== 'all' && unitVal !== '') {
+                unitSql = `AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
+                queryParams.push(unitVal);
             }
+
+            const buildClinicQuery = (useSummary: boolean) => {
+                const table = useSummary ? SUMMARY_TABLE : 'faturamento_analitico';
+                const dateCol = useSummary ? SUMMARY_DATE_COL : SQL_DATE_ANALITICO;
+                const sumCol = useSummary ? 'total_pago' : 'total_pago';
+                const countCol = useSummary ? 'qtd' : '*';
+                const countExpr = useSummary ? `SUM(${countCol})` : `COUNT(${countCol})`;
+
+                switch (kpiId) {
+                    case 'revenue': // Faturamento Total (Baseado na tabela analítica)
+                        return `
+                            SELECT ${dateCol} as d, SUM(${sumCol}) as val 
+                            FROM ${table} 
+                            WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql} ${clinicExclusion} 
+                            GROUP BY d ORDER BY d
+                        `;
+
+                    case 'appointments': // Quantidade de atendimentos realizados
+                        return `
+                            SELECT ${dateCol} as d, ${countExpr} as val 
+                            FROM ${table} 
+                            WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql} ${clinicExclusion} 
+                            GROUP BY d ORDER BY d
+                        `;
+
+                    case 'ticket_medio': // Faturamento total / Qtd de atendimentos
+                        if (useSummary) {
+                            return `
+                                SELECT ${dateCol} as d, (SUM(${sumCol}) / NULLIF(SUM(${countCol}), 0)) as val 
+                                FROM ${table} 
+                                WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql} ${clinicExclusion} 
+                                GROUP BY d ORDER BY d
+                            `;
+                        }
+                        return `
+                            SELECT ${dateCol} as d, (SUM(${sumCol}) / COUNT(${countCol})) as val 
+                            FROM ${table} 
+                            WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql} ${clinicExclusion} 
+                            GROUP BY d ORDER BY d
+                        `;
+
+                    default:
+                        console.warn(`[KPI_ENGINE] KPI de Clínica não implementado: ${kpiId}`);
+                        return '';
+                }
+            };
+
+            // Primeiro tenta a tabela de resumo
+            query = buildClinicQuery(true);
+            if (!query) return [];
         }
 
         // 3. Execução da Query
-        const rows = await db.query(query, queryParams);
+        let rows: any[] = [];
+        try {
+            rows = await db.query(query, queryParams);
+        } catch (error: any) {
+            // Fallback automático se a tabela de resumo ainda não existir
+            if (error?.message?.includes('no such table') && query.includes(SUMMARY_TABLE)) {
+                const fallbackQuery = `
+                    SELECT ${SQL_DATE_ANALITICO} as d, ${
+                        kpiId === 'appointments' ? 'COUNT(*)' :
+                        kpiId === 'ticket_medio' ? '(SUM(total_pago) / COUNT(*))' :
+                        'SUM(total_pago)'
+                    } as val
+                    FROM faturamento_analitico
+                    WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ? ${
+                        (filterVal && filterVal !== 'all' && filterVal !== '') ? "AND UPPER(TRIM(grupo)) = UPPER(TRIM(?))" : ""
+                    } ${
+                        (unitVal && unitVal !== 'all' && unitVal !== '') ? "AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))" : ""
+                    } ${clinicExclusion}
+                    GROUP BY d ORDER BY d
+                `;
+                rows = await db.query(fallbackQuery, queryParams);
+            } else {
+                throw error;
+            }
+        }
         
         // Debug: quando não houver linhas, logamos a query e os params para diagnóstico
         if (!rows || rows.length === 0) {

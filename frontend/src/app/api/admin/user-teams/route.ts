@@ -1,71 +1,78 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
+import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 // GET: Lista usuários e suas equipes
-export async function GET() {
+export async function GET(request: Request) {
     try {
-        const db = getDbConnection();
+        const cacheKey = buildCacheKey('admin', request.url);
+        const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
+            const db = getDbConnection();
 
-        // Cria tabelas se não existirem
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS teams_master (
-                id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                name TEXT UNIQUE NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
+            // Cria tabelas se não existirem
+            await db.execute(`
+                CREATE TABLE IF NOT EXISTS teams_master (
+                    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+                    name TEXT UNIQUE NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            `);
 
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS user_teams (
-                id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                user_name TEXT NOT NULL,
-                team_id TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (team_id) REFERENCES teams_master(id) ON DELETE CASCADE,
-                UNIQUE(user_name, team_id)
-            )
-        `);
+            await db.execute(`
+                CREATE TABLE IF NOT EXISTS user_teams (
+                    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+                    user_name TEXT NOT NULL,
+                    team_id TEXT NOT NULL,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (team_id) REFERENCES teams_master(id) ON DELETE CASCADE,
+                    UNIQUE(user_name, team_id)
+                )
+            `);
 
-        // Busca todos os usuários únicos de agendamentos
-        const users = await db.query(`
-            SELECT DISTINCT f.scheduled_by as user_name
-            FROM feegow_appointments f
-            WHERE f.scheduled_by IS NOT NULL 
-              AND f.scheduled_by != '' 
-              AND f.scheduled_by != 'Sistema'
-            ORDER BY f.scheduled_by ASC
-        `);
+            // Busca todos os usuários únicos de agendamentos
+            const users = await db.query(`
+                SELECT DISTINCT f.scheduled_by as user_name
+                FROM feegow_appointments f
+                WHERE f.scheduled_by IS NOT NULL 
+                  AND f.scheduled_by != '' 
+                  AND f.scheduled_by != 'Sistema'
+                ORDER BY f.scheduled_by ASC
+            `);
 
-        // Para cada usuário, busca suas equipes
-        const usersWithTeams = await Promise.all(users.map(async (u: { user_name: string }) => {
-            const teamsRes = await db.query(`
-                SELECT tm.id, tm.name
-                FROM user_teams ut
-                INNER JOIN teams_master tm ON ut.team_id = tm.id
-                WHERE ut.user_name = ?
-                ORDER BY tm.name ASC
-            `, [u.user_name]);
-            
-            return {
-                user_name: u.user_name,
-                teams: teamsRes.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name }))
+            // Para cada usuário, busca suas equipes
+            const usersWithTeams = await Promise.all(users.map(async (u: { user_name: string }) => {
+                const teamsRes = await db.query(`
+                    SELECT tm.id, tm.name
+                    FROM user_teams ut
+                    INNER JOIN teams_master tm ON ut.team_id = tm.id
+                    WHERE ut.user_name = ?
+                    ORDER BY tm.name ASC
+                `, [u.user_name]);
+                
+                return {
+                    user_name: u.user_name,
+                    teams: teamsRes.map((t: { id: string; name: string }) => ({ id: t.id, name: t.name }))
+                };
+            }));
+
+            // Busca todas as equipes disponíveis
+            const allTeams = await db.query(`
+                SELECT id, name
+                FROM teams_master
+                ORDER BY name ASC
+            `);
+
+            return { 
+                users: usersWithTeams, 
+                teams: allTeams 
             };
-        }));
-
-        // Busca todas as equipes disponíveis
-        const allTeams = await db.query(`
-            SELECT id, name
-            FROM teams_master
-            ORDER BY name ASC
-        `);
-
-        return NextResponse.json({ 
-            users: usersWithTeams, 
-            teams: allTeams 
         });
+
+        return NextResponse.json(cached);
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error("Erro ao buscar usuários e equipes:", error);
@@ -113,6 +120,7 @@ export async function POST(request: Request) {
             `, [user_name, team_id]);
         }
 
+        invalidateCache('admin:');
         return NextResponse.json({ success: true });
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';

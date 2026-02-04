@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
+import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function GET(request: Request) {
     try {
+        const cacheKey = buildCacheKey('admin', request.url);
+        const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
         const { searchParams } = new URL(request.url);
         const startDateStr = searchParams.get('startDate') || '2026-01-01'; 
         const endDateStr = searchParams.get('endDate') || new Date().toISOString().split('T')[0];
@@ -13,7 +17,7 @@ export async function GET(request: Request) {
         const dbStart = `${startDateStr} 00:00:00`;
         const dbEnd = `${endDateStr} 23:59:59`;
 
-        // Datas para filtro de DATA TEXTO (Tabela faturamento_analitico usa YYYY-MM-DD)
+        // Datas para filtro de DATA TEXTO (Resumo diário usa YYYY-MM-DD)
         const simpleStart = startDateStr;
         const simpleEnd = endDateStr;
 
@@ -75,7 +79,7 @@ export async function GET(request: Request) {
         const periodCancelled = periodCancelledRes[0] || { qtd: 0 };
 
         // ---------------------------------------------------------
-        // 3. FATURAMENTO REALIZADO (faturamento_analitico)
+        // 3. FATURAMENTO REALIZADO (resumo diário)
         // ---------------------------------------------------------
         
         // REGRA DE NEGÓCIO: Apenas unidade 'RESOLVECARD...'
@@ -83,11 +87,11 @@ export async function GET(request: Request) {
 
         const billingRes = await db.query(`
             SELECT 
-                data_do_pagamento as date, 
+                data_ref as date, 
                 SUM(total_pago) as faturamento
-            FROM faturamento_analitico 
+            FROM faturamento_resumo_diario 
             WHERE unidade = ?
-            AND data_do_pagamento BETWEEN ? AND ?
+            AND data_ref BETWEEN ? AND ?
             GROUP BY date
             ORDER BY date ASC
         `, [unidadeResolve, simpleStart, simpleEnd]);
@@ -109,7 +113,7 @@ export async function GET(request: Request) {
         `);
         const heartbeat = statusResult[0] || { status: 'UNKNOWN', last_run: null, message: '' };
 
-        return NextResponse.json({ 
+        return { 
             totals: {
                 activeContractsCount: totalContracts.qtd_contratos || 0, // Contratos Únicos
                 activePatientsCount: totalContracts.qtd_pacientes || 0,   // Pacientes Únicos (Novo)
@@ -127,7 +131,10 @@ export async function GET(request: Request) {
                 dailyChart: dailyChart
             },
             heartbeat
+        };
         });
+
+        return NextResponse.json(cached);
 
     } catch (error: any) {
         console.error("Erro API Contratos:", error);
@@ -147,6 +154,7 @@ export async function POST() {
                 message = 'Solicitado via Painel',
                 last_run = datetime('now')
         `);
+        invalidateCache('admin:');
         return NextResponse.json({ success: true, message: "Atualização solicitada" });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: (error?.status || 500) });

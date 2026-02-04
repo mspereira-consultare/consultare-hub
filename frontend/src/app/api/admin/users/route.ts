@@ -1,23 +1,30 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
+import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 import bcrypt from 'bcryptjs';
 
 export const dynamic = 'force-dynamic';
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 // --- LISTAR USUÁRIOS (GET) ---
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const db = getDbConnection();
+    const cacheKey = buildCacheKey('admin', request.url);
+    const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
+      const db = getDbConnection();
     
-    // query(sql) -> retorna array de linhas
-    const result = await db.query(`
-        SELECT id, name, email, role, department, status, last_access 
-        FROM users 
-        ORDER BY name ASC
-    `);
+      // query(sql) -> retorna array de linhas
+      const result = await db.query(`
+          SELECT id, name, email, role, department, status, last_access 
+          FROM users 
+          ORDER BY name ASC
+      `);
 
-    // Seu db.ts já normaliza o retorno para array (res.rows no Turso ou .all() no Local)
-    return NextResponse.json(result);
+      // Seu db.ts já normaliza o retorno para array (res.rows no Turso ou .all() no Local)
+      return result;
+    });
+
+    return NextResponse.json(cached);
   } catch (error: any) {
     console.error("Erro GET Users:", error);
     return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
@@ -49,6 +56,7 @@ export async function POST(request: Request) {
         );
       }
       
+      invalidateCache('admin:');
       return NextResponse.json({ success: true, action: 'updated' });
 
     } else {
@@ -65,6 +73,7 @@ export async function POST(request: Request) {
         [newId, name, email, hash, role, department, status]
       );
       
+      invalidateCache('admin:');
       return NextResponse.json({ success: true, id: newId });
     }
 
@@ -94,6 +103,7 @@ export async function DELETE(request: Request) {
         [id]
     );
 
+    invalidateCache('admin:');
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error("Erro DELETE User:", error);

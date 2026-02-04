@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
+import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 // --- AUTO-CORREÇÃO DE SCHEMA ---
 async function ensureSettingsSchema(db: any) {
@@ -19,22 +21,27 @@ async function ensureSettingsSchema(db: any) {
 }
 
 // GET: Busca as configurações
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const db = getDbConnection();
-    await ensureSettingsSchema(db);
+    const cacheKey = buildCacheKey('admin', request.url);
+    const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
+      const db = getDbConnection();
+      await ensureSettingsSchema(db);
 
-    // Alterado: de .prepare().all() para .query()
-    const configs = await db.query('SELECT * FROM integrations_config');
-    
-    const safeConfigs = configs.map((c: any) => ({
-        ...c,
-        password: c.password ? '********' : '', 
-        token: c.token ? (c.token.substring(0, 10) + '...') : '',
-        is_configured: !!c.password || !!c.token
-    }));
+      // Alterado: de .prepare().all() para .query()
+      const configs = await db.query('SELECT * FROM integrations_config');
+      
+      const safeConfigs = configs.map((c: any) => ({
+          ...c,
+          password: c.password ? '********' : '', 
+          token: c.token ? (c.token.substring(0, 10) + '...') : '',
+          is_configured: !!c.password || !!c.token
+      }));
 
-    return NextResponse.json(safeConfigs);
+      return safeConfigs;
+    });
+
+    return NextResponse.json(cached);
   } catch (error: any) {
     console.error("Erro GET Settings:", error);
     return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
@@ -80,6 +87,7 @@ export async function POST(request: Request) {
         updated_at=datetime('now')
     `, [service, username, finalPassword, finalToken, unit_id]);
 
+    invalidateCache('admin:');
     return NextResponse.json({ success: true });
 
   } catch (error: any) {

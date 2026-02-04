@@ -1,21 +1,28 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
+import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 // --- LISTAR METAS (GET) ---
 export async function GET(request: Request) {
   try {
-    const db = getDbConnection();
-    
-    // Busca todas as configurações de metas
-    // Mantendo a compatibilidade com os campos do seu frontend
-    const goals = await db.query(`
-      SELECT * FROM goals_config 
-      ORDER BY created_at DESC
-    `);
+    const cacheKey = buildCacheKey('admin', request.url);
+    const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
+      const db = getDbConnection();
+      
+      // Busca todas as configurações de metas
+      // Mantendo a compatibilidade com os campos do seu frontend
+      const goals = await db.query(`
+        SELECT * FROM goals_config 
+        ORDER BY created_at DESC
+      `);
 
-    return NextResponse.json(goals);
+      return goals;
+    });
+
+    return NextResponse.json(cached);
 
   } catch (error: any) {
     console.error("Erro GET Goals Config:", error);
@@ -101,6 +108,7 @@ export async function POST(request: Request) {
         ]);
       }
 
+      invalidateCache('admin:');
       return NextResponse.json({ success: true, action: 'updated' });
 
     } else {
@@ -137,6 +145,7 @@ export async function POST(request: Request) {
       // O cliente Turso retorna o ID inserido no result
       // Nota: Dependendo da versão do driver, pode ser result.lastInsertRowid ou similar.
       // O nosso adaptador db.ts deve tratar isso, mas retornamos success true por garantia.
+      invalidateCache('admin:');
       return NextResponse.json({ success: true });
     }
 
@@ -161,6 +170,7 @@ export async function DELETE(request: Request) {
         [id]
     );
 
+    invalidateCache('admin:');
     return NextResponse.json({ success: true });
 
   } catch (error: any) {

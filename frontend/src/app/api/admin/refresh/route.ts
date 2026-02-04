@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
+import { invalidateCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
     // Agora é AWAIT para compatibilidade com Turso
     await db.execute(sql, [service]);
 
+    invalidateCache('admin:');
     return NextResponse.json({ 
         success: true, 
         message: "Atualização solicitada. O worker processará em breve." 

@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
+import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function GET(request: Request) {
   try {
+    const cacheKey = buildCacheKey('admin', request.url);
+    const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
     const { searchParams } = new URL(request.url);
     const groupFilter = searchParams.get('group');
     const procedureFilter = searchParams.get('procedure');
@@ -15,12 +19,16 @@ export async function GET(request: Request) {
 
     const db = getDbConnection();
 
-    // 1. DEFINIÇÃO DAS COLUNAS E FILTROS BASE
-    const dateCol = 'data_do_pagamento';
+    // 1. DEFINIÇÃO DAS COLUNAS E FILTROS BASE (usando resumo diário)
+    const tableName = 'faturamento_resumo_diario';
+    const monthlyTableName = 'faturamento_resumo_mensal';
+    const dateCol = 'data_ref';
+    const monthCol = 'month_ref';
     const valueCol = 'total_pago';
+    const countCol = 'qtd';
     
     // REGRA 1: Filtro de Unidade (Incluir todas as unidades, inclusive RESOLVECARD)
-    const unitFilterExclude = `unidade IS NOT NULL`;
+    const unitFilterExclude = `unidade IS NOT NULL AND unidade != ''`;
 
     // Filtro de Data (Comparação de string ISO YYYY-MM-DD funciona no SQLite)
     let baseWhere = `WHERE ${dateCol} BETWEEN ? AND ? AND ${unitFilterExclude}`;
@@ -45,31 +53,49 @@ export async function GET(request: Request) {
         SELECT 
             ${dateCol} as d, 
             SUM(${valueCol}) as total, 
-            COUNT(*) as qtd
-        FROM faturamento_analitico
+            SUM(${countCol}) as qtd
+        FROM ${tableName}
         ${baseWhere}
         GROUP BY d 
         ORDER BY d ASC
     `, baseParams);
 
     // 3. QUERY: DADOS MENSAIS (Agrupado por YYYY-MM)
-    const monthlyRes = await db.query(`
-        SELECT 
-            substr(${dateCol}, 1, 7) as m, 
-            SUM(${valueCol}) as total,
-            COUNT(*) as qtd
-        FROM faturamento_analitico
-        ${baseWhere}
-        GROUP BY m 
-        ORDER BY m ASC
-    `, baseParams);
+    const monthStart = startDate.slice(0, 7);
+    const monthEnd = endDate.slice(0, 7);
+    const monthlyParams: any[] = [monthStart, monthEnd, ...baseParams.slice(2)];
+    let monthlyRes = [];
+    try {
+        monthlyRes = await db.query(`
+            SELECT 
+                ${monthCol} as m, 
+                SUM(${valueCol}) as total,
+                SUM(${countCol}) as qtd
+            FROM ${monthlyTableName}
+            ${baseWhere.replace(dateCol, monthCol)}
+            GROUP BY m 
+            ORDER BY m ASC
+        `, monthlyParams);
+    } catch (e: any) {
+        // Fallback: se resumo mensal ainda não existir
+        monthlyRes = await db.query(`
+            SELECT 
+                substr(${dateCol}, 1, 7) as m, 
+                SUM(${valueCol}) as total,
+                SUM(${countCol}) as qtd
+            FROM ${tableName}
+            ${baseWhere}
+            GROUP BY m 
+            ORDER BY m ASC
+        `, baseParams);
+    }
 
     // 4. QUERY: TOTAIS GERAIS (KPIs)
     const totalsRes = await db.query(`
         SELECT 
             SUM(${valueCol}) as total, 
-            COUNT(*) as qtd
-        FROM faturamento_analitico
+            SUM(${countCol}) as qtd
+        FROM ${tableName}
         ${baseWhere}
     `, baseParams);
     const totals = totalsRes[0] || { total: 0, qtd: 0 };
@@ -83,8 +109,8 @@ export async function GET(request: Request) {
     let groupsQuery = `
         SELECT name, SUM(total) as total, SUM(qtd) as qtd FROM (
             -- Faturamento Realizado
-            SELECT TRIM(grupo) as name, SUM(${valueCol}) as total, COUNT(*) as qtd 
-            FROM faturamento_analitico 
+            SELECT TRIM(grupo) as name, SUM(${valueCol}) as total, SUM(${countCol}) as qtd 
+            FROM ${tableName} 
             WHERE ${dateCol} BETWEEN ? AND ? 
             AND ${unitFilterExclude}`;
     
@@ -119,8 +145,8 @@ export async function GET(request: Request) {
     } catch (e) {
         // Fallback: Tabela agenda não existe
         let simpleGroupsQuery = `
-            SELECT TRIM(grupo) as name, SUM(${valueCol}) as total, COUNT(*) as qtd
-            FROM faturamento_analitico
+            SELECT TRIM(grupo) as name, SUM(${valueCol}) as total, SUM(${countCol}) as qtd
+            FROM ${tableName}
             WHERE ${dateCol} BETWEEN ? AND ?
             AND ${unitFilterExclude}`;
         
@@ -144,6 +170,34 @@ export async function GET(request: Request) {
         procedure_group: g.name
     }));
 
+    // 5.1 QUERY: ESTATÍSTICAS POR GRUPO (ocorrências e ticket médio)
+    // Aplicamos filtros atuais (unidade, procedimento e grupo quando selecionado)
+    let groupStatsWhere = `WHERE ${dateCol} BETWEEN ? AND ? AND ${unitFilterExclude} AND grupo IS NOT NULL AND grupo != ''`;
+    const groupStatsParams: any[] = [startDate, endDate];
+    if (unitFilter && unitFilter !== 'all') {
+        groupStatsWhere += ` AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
+        groupStatsParams.push(unitFilter);
+    }
+    if (procedureFilter && procedureFilter !== 'all') {
+        groupStatsWhere += ` AND UPPER(TRIM(procedimento)) = UPPER(TRIM(?))`;
+        groupStatsParams.push(procedureFilter);
+    }
+    if (groupFilter && groupFilter !== 'all') {
+        groupStatsWhere += ` AND UPPER(TRIM(grupo)) = UPPER(TRIM(?))`;
+        groupStatsParams.push(groupFilter);
+    }
+
+    const groupStats = await db.query(`
+        SELECT 
+            TRIM(grupo) as procedure_group,
+            SUM(${valueCol}) as total,
+            SUM(${countCol}) as qtd
+        FROM ${tableName}
+        ${groupStatsWhere}
+        GROUP BY procedure_group
+        ORDER BY total DESC
+    `, groupStatsParams);
+
     // 6. QUERY: LISTA DE PROCEDIMENTOS (Combobox)
     let procWhere = `WHERE procedimento IS NOT NULL AND procedimento != '' AND ${unitFilterExclude}`;
     const procParams = [];
@@ -158,7 +212,7 @@ export async function GET(request: Request) {
 
     const procedures = await db.query(`
         SELECT DISTINCT procedimento as name
-        FROM faturamento_analitico
+        FROM ${tableName}
         ${procWhere}
         ORDER BY name ASC
     `, procParams);
@@ -166,7 +220,7 @@ export async function GET(request: Request) {
     // 7. QUERY: LISTA DE UNIDADES (Combobox - Novo)
     const unitsRes = await db.query(`
         SELECT DISTINCT TRIM(unidade) as name
-        FROM faturamento_analitico
+        FROM ${tableName}
         WHERE ${dateCol} BETWEEN ? AND ?
         AND ${unitFilterExclude}
         AND unidade IS NOT NULL AND unidade != ''
@@ -195,8 +249,8 @@ export async function GET(request: Request) {
         SELECT 
             TRIM(unidade) as name, 
             SUM(${valueCol}) as total,
-            COUNT(*) as qtd
-        FROM faturamento_analitico
+            SUM(${countCol}) as qtd
+        FROM ${tableName}
         ${unitsBillingWhere}
         GROUP BY name
         ORDER BY total DESC
@@ -210,16 +264,21 @@ export async function GET(request: Request) {
     `);
     const heartbeat = statusRes[0] || { status: 'UNKNOWN', last_run: null, message: '' };
 
-    return NextResponse.json({ 
+    return { 
         daily: dailyRes, 
         monthly: monthlyRes, 
         groups, 
+        groupStats,
         procedures,
         units,
         unitsBilling: unitsBillingRes,
         totals,
         heartbeat 
+    };
+
     });
+
+    return NextResponse.json(cached);
 
   } catch (error: any) {
     console.error("Erro API Financeiro:", error);
@@ -239,6 +298,7 @@ export async function POST() {
                 message = 'Solicitado via Painel',
                 last_run = datetime('now')
         `);
+        invalidateCache('admin:');
         return NextResponse.json({ success: true, message: "Atualização solicitada" });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });

@@ -1,10 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
+import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function GET(request: Request) {
   try {
+    const cacheKey = buildCacheKey('admin', request.url);
+    const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate') || new Date().toISOString().split('T')[0];
     const endDate = searchParams.get('endDate') || startDate;
@@ -67,7 +71,7 @@ export async function GET(request: Request) {
     `);
     const heartbeat = statusRes[0] || { status: 'UNKNOWN', last_run: null, message: '' };
 
-    return NextResponse.json({ 
+    return { 
         userStats, 
         globalStats,
         teamStats: {
@@ -75,7 +79,10 @@ export async function GET(request: Request) {
             name: selectedTeam
         },
         heartbeat
+    };
     });
+
+    return NextResponse.json(cached);
 
   } catch (error: any) {
     console.error("Erro API Produtividade:", error);
@@ -95,6 +102,7 @@ export async function POST() {
                 message = 'Solicitado via Painel',
                 last_run = datetime('now')
         `);
+        invalidateCache('admin:');
         return NextResponse.json({ success: true, message: "Atualização solicitada" });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
