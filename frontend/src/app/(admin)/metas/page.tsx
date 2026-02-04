@@ -275,8 +275,8 @@ export default function GoalsPage() {
                       const isDaily = goal.periodicity === 'daily';
                       let projLabel = 'Projeção';
                       let projValue = 0;
+                      const now = new Date();
                       if (isDaily) {
-                        const now = new Date();
                         const hoursNow = now.getHours() + now.getMinutes() / 60;
                         const workStart = 8;
                         const workEnd = 19;
