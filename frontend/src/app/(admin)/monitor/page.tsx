@@ -22,10 +22,15 @@ export default function MonitorPage() {
   const [isDataStale, setIsDataStale] = useState(false);
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [alertIntervalSeconds, setAlertIntervalSeconds] = useState(30);
+  const [isAlertConfigOpen, setIsAlertConfigOpen] = useState(false);
+  const [alertIntervalInput, setAlertIntervalInput] = useState('30');
   const audioContextRef = useRef<AudioContext | null>(null);
   const alertIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const alertIntervalMsRef = useRef<number | null>(null);
   const WAIT_ALERT_MINUTES = 30;
-  const ALERT_SOUND_INTERVAL_MS = 30000;
+  const ALERT_INTERVAL_MIN = 5;
+  const ALERT_INTERVAL_MAX = 300;
 
   const ensureAudioContext = () => {
     if (!audioContextRef.current && typeof window !== 'undefined') {
@@ -84,12 +89,26 @@ export default function MonitorPage() {
     }
   };
 
+  const getAlertIntervalMs = () => {
+    const seconds = Number(alertIntervalSeconds);
+    const safeSeconds = Number.isFinite(seconds)
+      ? Math.min(Math.max(seconds, ALERT_INTERVAL_MIN), ALERT_INTERVAL_MAX)
+      : 30;
+    return Math.round(safeSeconds * 1000);
+  };
+
   const startAlertLoop = () => {
-    if (alertIntervalRef.current) return;
+    const intervalMs = getAlertIntervalMs();
+    if (alertIntervalRef.current && alertIntervalMsRef.current === intervalMs) return;
+    if (alertIntervalRef.current) {
+      clearInterval(alertIntervalRef.current);
+      alertIntervalRef.current = null;
+    }
+    alertIntervalMsRef.current = intervalMs;
     playBeep();
     alertIntervalRef.current = setInterval(() => {
       playBeep();
-    }, ALERT_SOUND_INTERVAL_MS);
+    }, intervalMs);
   };
 
   const handleToggleAlerts = async () => {
@@ -110,6 +129,20 @@ export default function MonitorPage() {
     }
     setAlertsEnabled(false);
     stopAlertLoop();
+  };
+
+  const openAlertConfig = () => {
+    setAlertIntervalInput(String(alertIntervalSeconds));
+    setIsAlertConfigOpen(true);
+  };
+
+  const applyAlertInterval = () => {
+    const raw = Number(String(alertIntervalInput).replace(',', '.'));
+    const safeSeconds = Number.isFinite(raw)
+      ? Math.min(Math.max(raw, ALERT_INTERVAL_MIN), ALERT_INTERVAL_MAX)
+      : alertIntervalSeconds;
+    setAlertIntervalSeconds(safeSeconds);
+    setIsAlertConfigOpen(false);
   };
 
   const fetchData = useCallback(async () => {
@@ -191,7 +224,7 @@ export default function MonitorPage() {
     } else {
       stopAlertLoop();
     }
-  }, [medicData, alertsEnabled, audioUnlocked]);
+  }, [medicData, alertsEnabled, audioUnlocked, alertIntervalSeconds]);
 
   useEffect(() => {
     return () => {
@@ -201,6 +234,7 @@ export default function MonitorPage() {
 
 
   return (
+    <>
     <div className={`p-4 min-h-screen transition-colors duration-500 ${isDataStale ? 'bg-red-50' : 'bg-slate-100'}`}>
       
       <MonitorHeader 
@@ -212,6 +246,8 @@ export default function MonitorPage() {
         alertsEnabled={alertsEnabled}
         audioUnlocked={audioUnlocked}
         onToggleAlerts={handleToggleAlerts}
+        alertIntervalSeconds={alertIntervalSeconds}
+        onOpenAlertConfig={openAlertConfig}
       />
 
       {loading && medicData.length === 0 ? (
@@ -234,5 +270,53 @@ export default function MonitorPage() {
         </div>
       )}
     </div>
+    {isAlertConfigOpen && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-xl shadow-xl w-full max-w-sm border border-slate-200">
+          <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="text-sm font-bold text-slate-700">Intervalo do Alerta Sonoro</h3>
+            <button
+              onClick={() => setIsAlertConfigOpen(false)}
+              className="text-slate-400 hover:text-slate-600 text-sm"
+            >
+              Fechar
+            </button>
+          </div>
+          <div className="p-4 space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-500">
+                Intervalo (segundos)
+              </label>
+              <input
+                type="number"
+                min={ALERT_INTERVAL_MIN}
+                max={ALERT_INTERVAL_MAX}
+                value={alertIntervalInput}
+                onChange={(e) => setAlertIntervalInput(e.target.value)}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <p className="text-[11px] text-slate-400">
+                Mínimo {ALERT_INTERVAL_MIN}s • Máximo {ALERT_INTERVAL_MAX}s
+              </p>
+            </div>
+          </div>
+          <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-end gap-2 bg-slate-50">
+            <button
+              onClick={() => setIsAlertConfigOpen(false)}
+              className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={applyAlertInterval}
+              className="px-3 py-1.5 text-xs font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+            >
+              Salvar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

@@ -103,6 +103,7 @@ model Team {
   updated_at DateTime @updatedAt
   
   users     UserTeam[]
+
   @@map("teams_master")
 }
 

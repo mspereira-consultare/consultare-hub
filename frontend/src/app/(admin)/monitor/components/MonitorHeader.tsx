@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Clock, RefreshCw, WifiOff, MessageCircle, ChevronDown, Volume2 } from 'lucide-react';
+import { Clock, RefreshCw, WifiOff, MessageCircle, ChevronDown, Volume2, SlidersHorizontal } from 'lucide-react';
 import { formatMinutesToHours } from '@/lib/utils';
 import { WhatsAppResponse } from '../types';
 
@@ -14,6 +14,8 @@ interface MonitorHeaderProps {
   alertsEnabled: boolean;
   audioUnlocked: boolean;
   onToggleAlerts: () => void;
+  alertIntervalSeconds: number;
+  onOpenAlertConfig: () => void;
 }
 
 export const MonitorHeader = ({ 
@@ -24,7 +26,9 @@ export const MonitorHeader = ({
   whatsAppData,
   alertsEnabled,
   audioUnlocked,
-  onToggleAlerts
+  onToggleAlerts,
+  alertIntervalSeconds,
+  onOpenAlertConfig
 }: MonitorHeaderProps) => {
   
   const [selectedGroup, setSelectedGroup] = useState<string>('all');
@@ -151,6 +155,15 @@ export const MonitorHeader = ({
           >
             <Volume2 size={14} />
             {!alertsEnabled ? 'Alerta Sonoro: Pausado' : (audioUnlocked ? 'Alerta Sonoro: Ativo' : 'Ativar Som')}
+          </button>
+
+          <button
+            onClick={onOpenAlertConfig}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-semibold bg-white border-slate-200 text-slate-700 hover:bg-slate-50 transition-all shadow-sm"
+            title="Definir intervalo do alerta sonoro"
+          >
+            <SlidersHorizontal size={14} />
+            Intervalo: {alertIntervalSeconds}s
           </button>
 
           <button onClick={onRefresh} disabled={loading} className="p-2 bg-white hover:bg-slate-50 rounded-lg border shadow-sm active:scale-95 transition-all">
