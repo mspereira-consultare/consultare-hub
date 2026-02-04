@@ -20,11 +20,17 @@ export const HistoryChart = ({
     // "Curva Diária (30 dias)" vira "curvadiaria30dias"
     const gradientId = title.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
 
-    const chartData = [...data].reverse().map(item => ({
-        name: item.label,
-        Faturamento: item.total,
-        Atendimentos: item.qtd
-    }));
+    const chartData = [...data]
+        .sort((a: any, b: any) => {
+            const aKey = String(a.sortKey ?? a.label ?? '');
+            const bKey = String(b.sortKey ?? b.label ?? '');
+            return aKey.localeCompare(bKey);
+        })
+        .map(item => ({
+            name: item.label,
+            Faturamento: item.total,
+            Atendimentos: item.qtd
+        }));
 
     const fmtMoney = (v: number) => v.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 

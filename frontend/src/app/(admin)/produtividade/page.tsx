@@ -12,9 +12,10 @@ export default function ProductivityPage() {
     
     // Filtros
     const today = new Date();
+    const todayStr = new Date().toISOString().split('T')[0];
     const [dateRange, setDateRange] = useState({
-        start: new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0],
-        end: new Date().toISOString().split('T')[0]
+        start: todayStr,
+        end: todayStr
     });
     const [selectedTeam, setSelectedTeam] = useState('CRC');
     const [availableTeams, setAvailableTeams] = useState<string[]>(['CRC']);
@@ -26,19 +27,43 @@ export default function ProductivityPage() {
     const [goalsData, setGoalsData] = useState<any[]>([]);
     const [heartbeat, setHeartbeat] = useState<any>(null);
 
-    // Helpers: match goals by collaborator or name heuristics
-    const findGoalFor = (key: string) => {
+    const normalizeKey = (value: string) => {
+        return String(value || '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
+
+    const parseTeams = (raw: string | null | undefined) => {
+        if (!raw) return [] as string[];
+        return String(raw)
+            .split(',')
+            .map(t => t.trim())
+            .filter(Boolean);
+    };
+
+    const getTeamGoal = (teamName: string) => {
         if (!Array.isArray(goalsData)) return null;
-        const byCollaborator = goalsData.find((g: any) => g.collaborator && String(g.collaborator).toLowerCase() === String(key).toLowerCase());
-        if (byCollaborator) return byCollaborator;
-        const byName = goalsData.find((g: any) => g.name && String(g.name).toLowerCase().includes(String(key).toLowerCase()));
-        if (byName) return byName;
-        return goalsData[0] || null;
+        const teamKey = normalizeKey(teamName);
+        return goalsData.find((g: any) => g.team && normalizeKey(g.team) === teamKey && (!g.collaborator || g.collaborator === 'all')) || null;
+    };
+
+    const getUserGoal = (userName: string, userTeams: string[]) => {
+        if (!Array.isArray(goalsData)) return null;
+        const userKey = normalizeKey(userName);
+        const individual = goalsData.find((g: any) => g.collaborator && normalizeKey(g.collaborator) === userKey);
+        if (individual) return individual;
+        const teamGoal = goalsData.find((g: any) => g.team && userTeams.some(t => normalizeKey(t) === normalizeKey(g.team)));
+        if (teamGoal) return teamGoal;
+        return null;
     };
     
     // Controle UI
     const [isUpdating, setIsUpdating] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [showTeamGoals, setShowTeamGoals] = useState(true);
     
     // Dados do Modal
     const [configUsers, setConfigUsers] = useState<any[]>([]);
@@ -68,9 +93,12 @@ export default function ProductivityPage() {
             
             // Filtra apenas metas relacionadas a agendamentos/produtividade
             if (Array.isArray(goalsDataRes)) {
-                const filteredGoals = goalsDataRes.filter((g: any) => 
-                    g.name && (g.name.toLowerCase().includes('agendamento') || g.name.toLowerCase().includes('produtividade'))
-                );
+                const filteredGoals = goalsDataRes.filter((g: any) => {
+                    const kpi = String(g.linked_kpi_id || '').toLowerCase();
+                    if (kpi === 'agendamentos' || kpi === 'agendamentos_confirm_rate') return true;
+                    const name = String(g.name || '').toLowerCase();
+                    return name.includes('agendamento') || name.includes('produtividade');
+                });
                 setGoalsData(filteredGoals);
             }
 
@@ -221,11 +249,15 @@ export default function ProductivityPage() {
                                 </p>
                             </div>
                             {/* Meta Global (quando disponível) */}
-                            {(() => {
-                                const g = findGoalFor('global');
-                                if (!g) return null;
-                                const target = Number(g.target) || 0;
-                                const attainment = target > 0 ? ((globalStats.confirmados || 0) / target) * 100 : 0;
+                        {(() => {
+                                const globalGoal = goalsData.find((g: any) => {
+                                    const name = String(g.name || '').toLowerCase();
+                                    return name.includes('global');
+                                });
+                                if (!globalGoal) return null;
+                                const target = Number(globalGoal.target) || 0;
+                                const current = Number(globalGoal.current) || 0;
+                                const attainment = target > 0 ? (current / target) * 100 : 0;
                                 return (
                                     <div className="text-center">
                                         <p className="text-xs font-bold text-slate-400 uppercase mb-1">Meta</p>
@@ -271,11 +303,12 @@ export default function ProductivityPage() {
                                 </p>
                             </div>
                             {/* Meta de Equipe (quando disponível) */}
-                            {(() => {
-                                const g = findGoalFor(selectedTeam || 'team');
+                        {(() => {
+                                const g = getTeamGoal(selectedTeam || 'team');
                                 if (!g) return null;
                                 const target = Number(g.target) || 0;
-                                const attainment = target > 0 ? ((teamStats.confirmados || 0) / target) * 100 : 0;
+                                const current = Number(g.current) || 0;
+                                const attainment = target > 0 ? (current / target) * 100 : 0;
                                 return (
                                     <div className="text-center">
                                         <p className="text-xs font-bold text-indigo-400 uppercase mb-1">Meta</p>
@@ -292,13 +325,25 @@ export default function ProductivityPage() {
             {/* METAS DE AGENDAMENTOS */}
             {goalsData && goalsData.length > 0 && (
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-                    <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
-                        <Trophy size={18} className="text-slate-400" />
-                        <h2 className="font-bold text-slate-700">Metas de Agendamentos</h2>
+                    <div className="flex items-center justify-between gap-2 mb-4 border-b border-slate-50 pb-3">
+                        <div className="flex items-center gap-2">
+                            <Trophy size={18} className="text-slate-400" />
+                            <h2 className="font-bold text-slate-700">Metas de Agendamentos (Equipe)</h2>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setShowTeamGoals(prev => !prev)}
+                            className="text-xs font-semibold text-slate-500 hover:text-slate-700"
+                        >
+                            {showTeamGoals ? 'Ocultar' : 'Mostrar'}
+                        </button>
                     </div>
-                    
+
+                    {showTeamGoals && (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {goalsData.map((goal: any) => {
+                        {goalsData
+                          .filter((g: any) => g.team && g.team !== 'all' && (!g.collaborator || g.collaborator === 'all'))
+                          .map((goal: any) => {
                           // Calcula projeção baseada na percentagem
                           const daysInMonth = 30;
                           const daysPassed = Math.min(new Date().getDate(), daysInMonth);
@@ -360,7 +405,7 @@ export default function ProductivityPage() {
                                         / {typeof goal.target === 'number' ? goal.target.toFixed(0) : goal.target}
                                     </span>
                                 </div>
-
+                                
                                 {/* Projeção */}
                                 <div className="pt-2 border-t border-slate-300/50 text-[10px]">
                                     <p className="text-slate-500 mb-1">Projeção:</p>
@@ -372,6 +417,7 @@ export default function ProductivityPage() {
                           );
                         })}
                     </div>
+                    )}
                 </div>
             )}
 
@@ -401,10 +447,11 @@ export default function ProductivityPage() {
                     {filteredUsers.map((u, idx) => {
                         const rate = u.total > 0 ? ((u.confirmados / u.total) * 100).toFixed(0) : 0;
                         const isTop3 = idx < 3 && !searchTerm;
-                        const isInSelectedTeam = u.team_name === selectedTeam;
+                        const userTeams = parseTeams(u.team_name);
+                        const isInSelectedTeam = userTeams.some(t => normalizeKey(t) === normalizeKey(selectedTeam));
 
-                        // Goal lookup for this user (by collaborator or name)
-                        const userGoal = findGoalFor(u.user);
+                        // Goal lookup for this user (individual > team)
+                        const userGoal = getUserGoal(u.user, userTeams);
                         const userTarget = Number(userGoal?.target) || 0;
                         const userAttainment = userTarget > 0 ? ((u.confirmados || 0) / userTarget) * 100 : 0;
                         

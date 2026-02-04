@@ -12,15 +12,30 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get('startDate') || new Date().toISOString().split('T')[0];
     const endDate = searchParams.get('endDate') || startDate;
+    const unitFilter = searchParams.get('unit');
     
     const db = getDbConnection();
 
     // 1. TOTAIS GERAIS + CÁLCULO DE CONVERSÃO + VALOR PERDIDO
     // Adicionei 'executada' e 'aprovada pelo cliente' (tudo minúsculo para bater com lower(status))
+    let summaryWhere = "WHERE date BETWEEN ? AND ?";
+    const summaryParams: any[] = [startDate, endDate];
+    if (unitFilter && unitFilter !== 'all') {
+        summaryWhere += ` AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))`;
+        summaryParams.push(unitFilter);
+    }
+
     const summaryResult = await db.query(`
         SELECT 
             COUNT(*) as qtd,
             SUM(total_value) as valor,
+            SUM(
+                CASE 
+                    WHEN lower(status) IN ('executada', 'aprovada pelo cliente', 'ganho', 'realizado', 'concluido', 'pago') 
+                    THEN 1 
+                    ELSE 0 
+                END
+            ) as won_qtd,
             SUM(
                 CASE 
                     WHEN lower(status) IN ('executada', 'aprovada pelo cliente', 'ganho', 'realizado', 'concluido', 'pago') 
@@ -36,8 +51,8 @@ export async function GET(request: Request) {
                 END
             ) as lost_value
         FROM feegow_proposals
-        WHERE date BETWEEN ? AND ?
-    `, [startDate, endDate]);
+        ${summaryWhere}
+    `, summaryParams);
     
     const rawSummary = summaryResult[0] || {};
     
@@ -46,10 +61,18 @@ export async function GET(request: Request) {
         qtd: rawSummary.qtd || 0,
         valor: rawSummary.valor || 0,
         wonValue: rawSummary.won_value || 0,
+        wonQtd: rawSummary.won_qtd || 0,
         lostValue: rawSummary.lost_value || 0
     };
 
     // 2. POR UNIDADE
+    let unitWhere = "WHERE date BETWEEN ? AND ?";
+    const unitParams: any[] = [startDate, endDate];
+    if (unitFilter && unitFilter !== 'all') {
+        unitWhere += ` AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))`;
+        unitParams.push(unitFilter);
+    }
+
     const byUnit = await db.query(`
         SELECT 
             unit_name,
@@ -57,12 +80,19 @@ export async function GET(request: Request) {
             COUNT(*) as qtd,
             SUM(total_value) as valor
         FROM feegow_proposals
-        WHERE date BETWEEN ? AND ?
+        ${unitWhere}
         GROUP BY unit_name, status
         ORDER BY unit_name, valor DESC
-    `, [startDate, endDate]);
+    `, unitParams);
 
     // 3. RANKING DE VENDEDORES (COM SEPARAÇÃO DE STATUS)
+    let proposerWhere = "WHERE date BETWEEN ? AND ?";
+    const proposerParams: any[] = [startDate, endDate];
+    if (unitFilter && unitFilter !== 'all') {
+        proposerWhere += ` AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))`;
+        proposerParams.push(unitFilter);
+    }
+
     const byProposer = await db.query(`
         SELECT 
             professional_name,
@@ -71,16 +101,23 @@ export async function GET(request: Request) {
             SUM(
                 CASE 
                     WHEN lower(status) IN ('executada', 'aprovada pelo cliente', 'ganho', 'realizado', 'concluido', 'pago') 
+                    THEN 1 
+                    ELSE 0 
+                END
+            ) as qtd_executado,
+            SUM(
+                CASE 
+                    WHEN lower(status) IN ('executada', 'aprovada pelo cliente', 'ganho', 'realizado', 'concluido', 'pago') 
                     THEN total_value 
                     ELSE 0 
                 END
             ) as valor_executado
         FROM feegow_proposals
-        WHERE date BETWEEN ? AND ?
+        ${proposerWhere}
         GROUP BY professional_name
         ORDER BY valor DESC
         LIMIT 20
-    `, [startDate, endDate]);
+    `, proposerParams);
 
     // 4. HEARTBEAT
     const statusResult = await db.query(`

@@ -19,6 +19,64 @@ interface KpiHistoryItem {
     value: number; 
 }
 
+const buildAppointmentsFilter = (startDate: string, endDate: string, options?: KpiOptions) => {
+    const filterVal = options?.group_filter ? String(options.group_filter).trim() : undefined;
+    const unitVal = options?.unit_filter ? String(options.unit_filter).trim() : undefined;
+    const collaboratorVal = options?.collaborator ? String(options.collaborator).trim() : undefined;
+    const teamVal = options?.team ? String(options.team).trim() : undefined;
+
+    const dbStart = `${startDate} 00:00:00`;
+    const dbEnd = `${endDate} 23:59:59`;
+    const params: any[] = [dbStart, dbEnd];
+    let whereSql = "WHERE f.scheduled_at BETWEEN ? AND ?";
+
+    if (filterVal && filterVal !== 'all' && filterVal !== '') {
+        whereSql += ` AND UPPER(TRIM(f.procedure_group)) = UPPER(TRIM(?))`;
+        params.push(filterVal);
+    }
+
+    if (unitVal && unitVal !== 'all' && unitVal !== '') {
+        whereSql += ` AND UPPER(TRIM(f.unit_name)) = UPPER(TRIM(?))`;
+        params.push(unitVal);
+    }
+
+    if (collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '') {
+        whereSql += ` AND UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?))`;
+        params.push(collaboratorVal);
+    }
+
+    let joinSql = "";
+    if (teamVal && teamVal !== 'all' && teamVal !== '') {
+        joinSql = `
+            JOIN user_teams ut ON ut.user_name = f.scheduled_by
+            JOIN teams_master tm ON tm.id = ut.team_id
+        `;
+        whereSql += ` AND UPPER(TRIM(tm.name)) = UPPER(TRIM(?))`;
+        params.push(teamVal);
+    }
+
+    return { joinSql, whereSql, params };
+};
+
+const calculateConfirmRateAggregate = async (startDate: string, endDate: string, options?: KpiOptions) => {
+    const db = getDbConnection();
+    const { joinSql, whereSql, params } = buildAppointmentsFilter(startDate, endDate, options);
+
+    const rows = await db.query(`
+        SELECT 
+            COUNT(DISTINCT f.appointment_id) as total,
+            COUNT(DISTINCT CASE WHEN f.status_id IN (3, 7) THEN f.appointment_id END) as confirmados
+        FROM feegow_appointments f
+        ${joinSql}
+        ${whereSql}
+    `, params);
+
+    const total = Number(rows?.[0]?.total || 0);
+    const confirmed = Number(rows?.[0]?.confirmados || 0);
+    if (total <= 0) return 0;
+    return (confirmed * 100) / total;
+};
+
 /**
  * CONFIGURAÇÃO DE TRATAMENTO DE DATAS (SQLite/LibSQL)
  * * faturamento_analitico: data_do_pagamento vem como 'DD/MM/YYYY' (String)
@@ -40,6 +98,14 @@ export async function calculateKpi(kpiId: string, startDate: string, endDate: st
     try {
         console.log(`[KPI_ENGINE] Iniciando cálculo: ${kpiId} | Período: ${startDate} a ${endDate} | Escopo: ${options?.scope || 'CLINIC'}`);
 
+        if (kpiId === 'agendamentos_confirm_rate') {
+            const rate = await calculateConfirmRateAggregate(startDate, endDate, options);
+            return {
+                currentValue: Number(rate.toFixed(2)),
+                lastUpdated: timestamp
+            };
+        }
+
         // 1. Obtém o histórico dia a dia
         const history = await calculateHistory(kpiId, startDate, endDate, options);
         
@@ -52,7 +118,7 @@ export async function calculateKpi(kpiId: string, startDate: string, endDate: st
 
         // 2. Lógica de Agregação (Soma vs Média)
         // KPIs que representam taxas ou médias não podem ser somados
-        if (kpiId === 'ticket_medio' || kpiId === 'absenteeism' || kpiId === 'agendamentos_confirm_rate') {
+        if (kpiId === 'ticket_medio' || kpiId === 'absenteeism') {
             const sum = history.reduce((acc, item) => acc + item.value, 0);
             finalValue = sum / history.length;
             console.log(`[KPI_ENGINE] Agregação por MÉDIA: ${finalValue.toFixed(2)}`);
@@ -164,38 +230,9 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
 
             // --- KPI ESPECIAL: AGENDAMENTOS (por scheduled_by / equipe) ---
             if (kpiId === 'agendamentos') {
-                const dbStart = `${startDate} 00:00:00`;
-                const dbEnd = `${endDate} 23:59:59`;
-                const params: any[] = [dbStart, dbEnd];
-                let whereSql = "WHERE f.scheduled_at BETWEEN ? AND ?";
-
-                if (filterVal && filterVal !== 'all' && filterVal !== '') {
-                    whereSql += ` AND UPPER(TRIM(f.procedure_group)) = UPPER(TRIM(?))`;
-                    params.push(filterVal);
-                }
-
-                if (unitVal && unitVal !== 'all' && unitVal !== '') {
-                    whereSql += ` AND UPPER(TRIM(f.unit_name)) = UPPER(TRIM(?))`;
-                    params.push(unitVal);
-                }
-
-                if (collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '') {
-                    whereSql += ` AND UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?))`;
-                    params.push(collaboratorVal);
-                }
-
-                let joinSql = "";
-                if (teamVal && teamVal !== 'all' && teamVal !== '') {
-                    joinSql = `
-                        JOIN user_teams ut ON ut.user_name = f.scheduled_by
-                        JOIN teams_master tm ON tm.id = ut.team_id
-                    `;
-                    whereSql += ` AND tm.name = ?`;
-                    params.push(teamVal);
-                }
-
+                const { joinSql, whereSql, params } = buildAppointmentsFilter(startDate, endDate, options);
                 query = `
-                    SELECT substr(f.scheduled_at, 1, 10) as d, COUNT(*) as val
+                    SELECT substr(f.scheduled_at, 1, 10) as d, COUNT(DISTINCT f.appointment_id) as val
                     FROM feegow_appointments f
                     ${joinSql}
                     ${whereSql}
@@ -203,40 +240,11 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                 `;
                 queryParams = params;
             } else if (kpiId === 'agendamentos_confirm_rate') {
-                const dbStart = `${startDate} 00:00:00`;
-                const dbEnd = `${endDate} 23:59:59`;
-                const params: any[] = [dbStart, dbEnd];
-                let whereSql = "WHERE f.scheduled_at BETWEEN ? AND ?";
-
-                if (filterVal && filterVal !== 'all' && filterVal !== '') {
-                    whereSql += ` AND UPPER(TRIM(f.procedure_group)) = UPPER(TRIM(?))`;
-                    params.push(filterVal);
-                }
-
-                if (unitVal && unitVal !== 'all' && unitVal !== '') {
-                    whereSql += ` AND UPPER(TRIM(f.unit_name)) = UPPER(TRIM(?))`;
-                    params.push(unitVal);
-                }
-
-                if (collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '') {
-                    whereSql += ` AND UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?))`;
-                    params.push(collaboratorVal);
-                }
-
-                let joinSql = "";
-                if (teamVal && teamVal !== 'all' && teamVal !== '') {
-                    joinSql = `
-                        JOIN user_teams ut ON ut.user_name = f.scheduled_by
-                        JOIN teams_master tm ON tm.id = ut.team_id
-                    `;
-                    whereSql += ` AND tm.name = ?`;
-                    params.push(teamVal);
-                }
-
+                const { joinSql, whereSql, params } = buildAppointmentsFilter(startDate, endDate, options);
                 query = `
                     SELECT 
                         substr(f.scheduled_at, 1, 10) as d, 
-                        (SUM(CASE WHEN f.status_id IN (3, 7) THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as val
+                        (COUNT(DISTINCT CASE WHEN f.status_id IN (3, 7) THEN f.appointment_id END) * 100.0 / NULLIF(COUNT(DISTINCT f.appointment_id), 0)) as val
                     FROM feegow_appointments f
                     ${joinSql}
                     ${whereSql}

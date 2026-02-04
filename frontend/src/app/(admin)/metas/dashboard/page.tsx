@@ -6,6 +6,7 @@ import {
   Calendar, CheckCircle2, AlertTriangle, AlertCircle, Loader2,
   CreditCard, Building2
 } from 'lucide-react';
+import { GoalDetailsModal } from '../components/GoalDetailsModal';
 
 interface DashboardGoal {
   goal_id: number;
@@ -20,12 +21,15 @@ interface DashboardGoal {
   filter_group?: string;
   clinic_unit?: string;
   team?: string;
+  collaborator?: string;
+  linked_kpi_id?: string;
 }
 
 export default function GoalsDashboardPage() {
   const [goals, setGoals] = useState<DashboardGoal[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
+  const [selectedGoal, setSelectedGoal] = useState<DashboardGoal | null>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -60,7 +64,6 @@ export default function GoalsDashboardPage() {
   const cardGoals = goals.filter(g => g.scope === 'CARD');
 
   const billingGroupGoals = clinicGoals.filter(g => 
-    g.name && (g.name.toLowerCase().includes('faturamento') || g.name.toLowerCase().includes('receita')) &&
     g.filter_group !== null && g.filter_group !== '' && g.filter_group !== 'all'
   );
 
@@ -161,7 +164,7 @@ export default function GoalsDashboardPage() {
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-3">
                         {billingGroupGoals.map(goal => (
-                            <DashboardCard key={goal.goal_id} goal={goal} formatValue={formatValue} compact />
+                            <DashboardCard key={goal.goal_id} goal={goal} formatValue={formatValue} compact onClick={() => setSelectedGoal(goal)} />
                         ))}
                     </div>
                 </section>
@@ -178,7 +181,7 @@ export default function GoalsDashboardPage() {
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-3">
                         {clinicGoals.filter(g => !billingGroupGoals.includes(g)).map(goal => 
-                            <DashboardCard key={goal.goal_id} goal={goal} formatValue={formatValue} compact />
+                            <DashboardCard key={goal.goal_id} goal={goal} formatValue={formatValue} compact onClick={() => setSelectedGoal(goal)} />
                         )}
                     </div>
                 </section>
@@ -194,7 +197,7 @@ export default function GoalsDashboardPage() {
                         <h2 className="text-sm md:text-base font-bold text-slate-800">Cartão Resolve</h2>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2 md:gap-3">
-                        {cardGoals.map(goal => <DashboardCard key={goal.goal_id} goal={goal} formatValue={formatValue} compact />)}
+                        {cardGoals.map(goal => <DashboardCard key={goal.goal_id} goal={goal} formatValue={formatValue} compact onClick={() => setSelectedGoal(goal)} />)}
                     </div>
                 </section>
             )}
@@ -206,6 +209,15 @@ export default function GoalsDashboardPage() {
             )}
          </div>
       )}
+
+      {selectedGoal && (
+        <GoalDetailsModal
+          isOpen={!!selectedGoal}
+          onClose={() => setSelectedGoal(null)}
+          goal={selectedGoal}
+          currentData={{ current: selectedGoal.current, percentage: selectedGoal.percentage }}
+        />
+      )}
     </div>
   );
 }
@@ -214,7 +226,8 @@ export default function GoalsDashboardPage() {
 function DashboardCard({ goal, formatValue, compact = true }: { 
   goal: DashboardGoal, 
   formatValue: (v: number, u: string) => string,
-  compact?: boolean
+  compact?: boolean,
+  onClick?: () => void
 }) {
   const statusColors = {
     SUCCESS: 'bg-emerald-500',
@@ -229,8 +242,26 @@ function DashboardCard({ goal, formatValue, compact = true }: {
   
   const progressVisual = Math.min(goal.percentage, 100);
 
+  const projection = (() => {
+    if (!goal || typeof goal.current !== 'number') return null;
+    const now = new Date();
+    if (goal.periodicity === 'daily') {
+      const hoursPassed = now.getHours();
+      const hoursInDay = 11;
+      const hourlyRate = hoursPassed > 0 ? goal.current / hoursPassed : 0;
+      return hourlyRate * hoursInDay;
+    }
+    if (goal.periodicity === 'monthly') {
+      const daysInMonth = 30;
+      const daysPassed = Math.min(now.getDate(), daysInMonth);
+      const dailyRate = daysPassed > 0 ? goal.current / daysPassed : 0;
+      return dailyRate * daysInMonth;
+    }
+    return null;
+  })();
+
   return (
-    <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-2.5 md:p-3 relative overflow-hidden group hover:shadow-md hover:border-blue-300 transition-all cursor-pointer">
+    <div onClick={onClick} className="bg-white rounded-lg shadow-sm border border-slate-200 p-2.5 md:p-3 relative overflow-hidden group hover:shadow-md hover:border-blue-300 transition-all cursor-pointer">
       {/* Header */}
       <div className="flex justify-between items-start gap-1.5 mb-1.5">
         <h3 className="font-semibold text-slate-800 text-[10px] md:text-xs line-clamp-2 flex-1">{goal.name}</h3>
@@ -282,10 +313,17 @@ function DashboardCard({ goal, formatValue, compact = true }: {
         />
       </div>
 
-      {/* Periodicidade */}
-      <span className="text-[7px] md:text-[8px] text-slate-500 font-semibold uppercase inline-block">
-        {goal.periodicity === 'monthly' ? '📅 Mês' : goal.periodicity === 'daily' ? '📆 Dia' : '⏱️ Período'}
-      </span>
+      {/* Periodicidade e Projeção */}
+      <div className="flex justify-between items-center text-[7px] md:text-[8px] text-slate-500 font-semibold uppercase">
+        <span>
+          {goal.periodicity === 'monthly' ? '📅 Mês' : goal.periodicity === 'daily' ? '📆 Dia' : '⏱️ Período'}
+        </span>
+        {projection !== null && (
+          <span className="text-slate-600 font-bold normal-case">
+            Proj: {formatValue(projection, goal.unit)}
+          </span>
+        )}
+      </div>
 
       {goal.percentage >= 100 && (
         <div className="absolute top-1 right-1 p-1">

@@ -139,7 +139,8 @@ export default function FinancialPage() {
             setDaily(data.daily?.map((d: any) => ({
                 label: d.d?.split('-').reverse().slice(0, 2).join('/') || '?',
                 total: d.total || 0,
-                qtd: d.qtd || 0
+                qtd: d.qtd || 0,
+                sortKey: d.d || ''
             })) || []);
             
             setMonthly(data.monthly?.map((m: any) => {
@@ -156,7 +157,8 @@ export default function FinancialPage() {
                 return {
                     label,
                     total: m.total || 0,
-                    qtd: m.qtd || 0
+                    qtd: m.qtd || 0,
+                    sortKey: m.m || ''
                 };
             }) || []);
             

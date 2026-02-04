@@ -83,6 +83,11 @@ export async function GET(request: Request) {
               unit: goal.unit,
               periodicity: goal.periodicity,
               scope: goal.scope,
+              linked_kpi_id: goal.linked_kpi_id,
+              filter_group: goal.filter_group,
+              clinic_unit: goal.clinic_unit,
+              collaborator: goal.collaborator,
+              team: goal.team,
               // Status visual para o card
               status: percentage >= 100 ? 'SUCCESS' : percentage >= 70 ? 'WARNING' : 'DANGER'
           };

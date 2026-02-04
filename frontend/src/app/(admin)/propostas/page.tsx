@@ -20,7 +20,7 @@ export default function ProposalsPage() {
     });
     
     // Dados
-    const [summary, setSummary] = useState<any>({ qtd: 0, valor: 0, conversionRate: 0, wonValue: 0, lostValue: 0 });
+    const [summary, setSummary] = useState<any>({ qtd: 0, valor: 0, conversionRate: 0, wonValue: 0, wonQtd: 0, lostValue: 0 });
     const [unitData, setUnitData] = useState<any[]>([]);
     const [sellerData, setSellerData] = useState<any[]>([]);
     const [availableUnits, setAvailableUnits] = useState<string[]>([]);
@@ -29,6 +29,7 @@ export default function ProposalsPage() {
     const [heartbeat, setHeartbeat] = useState<any>(null);
     const [isUpdating, setIsUpdating] = useState(false);
     const avgTicket = summary.qtd > 0 ? summary.valor / summary.qtd : 0;
+    const avgTicketWon = summary.wonQtd > 0 ? summary.wonValue / summary.wonQtd : 0;
 
     const fetchData = async () => {
         // Não ativa loading total se for apenas refresh de background
@@ -58,6 +59,7 @@ export default function ProposalsPage() {
             const totalQtd = data.summary?.qtd || 0;
             const totalVal = data.summary?.valor || 0;
             const wonVal = data.summary?.wonValue || 0;
+            const wonQtd = data.summary?.wonQtd || 0;
             // Se lostValue não existir, calcula a partir da diferença (fallback)
             const rawLostVal = data.summary && typeof data.summary.lostValue !== 'undefined' ? data.summary.lostValue : (totalVal - wonVal);
             const lostVal = Number(rawLostVal) || 0;
@@ -66,6 +68,7 @@ export default function ProposalsPage() {
                 qtd: totalQtd,
                 valor: totalVal,
                 wonValue: wonVal,
+                wonQtd: wonQtd,
                 lostValue: lostVal,
                 conversionRate: totalVal > 0 ? (wonVal / totalVal) * 100 : 0,
                 lostRate: totalVal > 0 ? (lostVal / totalVal) * 100 : 0
@@ -220,7 +223,7 @@ export default function ProposalsPage() {
             </div>
 
             {/* --- CARDS DE KPI --- */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
                     <div className="relative">
@@ -257,6 +260,34 @@ export default function ProposalsPage() {
                         <div className="mt-2 flex items-center gap-1 text-xs text-purple-600 font-medium">
                             <TrendingUp size={12} />
                             <span>Executado</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative">
+                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Propostas Executadas</p>
+                        <h3 className="text-2xl font-bold text-slate-800">
+                            {summary.wonQtd}
+                        </h3>
+                        <div className="mt-2 flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                            <CheckCircle2 size={12} />
+                            <span>Ganho</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
+                    <div className="absolute top-0 right-0 w-24 h-24 bg-teal-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
+                    <div className="relative">
+                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Ticket Médio Executado</p>
+                        <h3 className="text-2xl font-bold text-slate-800">
+                            {avgTicketWon.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </h3>
+                        <div className="mt-2 flex items-center gap-1 text-xs text-teal-600 font-medium">
+                            <DollarSign size={12} />
+                            <span>Média (Ganho)</span>
                         </div>
                     </div>
                 </div>
@@ -382,14 +413,16 @@ export default function ProposalsPage() {
                                                     {(seller.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                                 </td>
                                                 <td className="px-4 py-3 text-right font-bold">
-                                                    <span className="text-emerald-600">
-                                                        {(seller.valor_executado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                                    </span>
-                                                    {seller.valor > 0 && (
-                                                        <div className="text-[9px] text-slate-500 mt-1">
-                                                            {(Number((seller.valor_executado || 0) / (seller.valor || 1) * 100) || 0).toFixed(0)}%
-                                                        </div>
-                                                    )}
+                                                    <div className="flex items-center justify-end gap-2">
+                                                        <span className="text-emerald-600">
+                                                            {(seller.valor_executado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                        </span>
+                                                        {seller.valor > 0 && (
+                                                            <span className="text-[10px] text-slate-500">
+                                                                {(Number((seller.valor_executado || 0) / (seller.valor || 1) * 100) || 0).toFixed(0)}%
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td className="px-4 py-3 text-center text-slate-400 text-xs">
                                                     {(seller.valor / (seller.qtd || 1)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
