@@ -223,15 +223,23 @@ export default function DashboardPage() {
   };
   const formatMoney = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
 
-  const billingGoals = (goalsData || []).filter((g: any) => {
+  const isBillingGoal = (g: any) => {
     const kpi = String(g.linked_kpi_id || '').toLowerCase();
     const name = String(g.name || '').toLowerCase();
     return kpi === 'revenue' || name.includes('faturamento') || name.includes('receita');
-  });
-  const dailyBillingGoals = billingGoals.filter((g: any) => g.periodicity === 'daily');
-  const monthlyBillingGoals = billingGoals.filter((g: any) => g.periodicity === 'monthly');
-  const dailyGlobalGoal = dailyBillingGoals.find((g: any) => !g.clinic_unit || g.clinic_unit === 'all');
-  const monthlyGlobalGoal = monthlyBillingGoals.find((g: any) => !g.clinic_unit || g.clinic_unit === 'all');
+  };
+  const hasNoGroupFilter = (g: any) => !g.filter_group || g.filter_group === 'all';
+  const isGlobalScope = (g: any) =>
+    (!g.clinic_unit || g.clinic_unit === 'all') &&
+    (!g.team || g.team === 'all') &&
+    (!g.collaborator || g.collaborator === 'all');
+
+  const billingGoals = (goalsData || []).filter(isBillingGoal);
+  const billingGoalsNoGroup = billingGoals.filter(hasNoGroupFilter);
+  const dailyBillingGoals = billingGoalsNoGroup.filter((g: any) => g.periodicity === 'daily');
+  const monthlyBillingGoals = billingGoalsNoGroup.filter((g: any) => g.periodicity === 'monthly');
+  const dailyGlobalGoal = dailyBillingGoals.find((g: any) => isGlobalScope(g));
+  const monthlyGlobalGoal = monthlyBillingGoals.find((g: any) => isGlobalScope(g));
   const dailyUnitGoals = new Map<string, any>();
   const monthlyUnitGoals = new Map<string, any>();
   dailyBillingGoals.forEach((g: any) => {

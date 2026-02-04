@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
-  Target, TrendingUp, TrendingDown, RefreshCw, 
-  Calendar, CheckCircle2, AlertTriangle, AlertCircle, Loader2,
+  Target, TrendingUp, RefreshCw, Filter,
+  CheckCircle2, AlertTriangle, Loader2,
   CreditCard, Building2
 } from 'lucide-react';
 import { GoalDetailsModal } from '../components/GoalDetailsModal';
+import { GOAL_SCOPES, KPIS_AVAILABLE, PERIODICITY_OPTIONS, UNITS, SECTORS } from '../constants';
 
 interface DashboardGoal {
   goal_id: number;
@@ -18,6 +19,9 @@ interface DashboardGoal {
   periodicity: string;
   scope: 'CLINIC' | 'CARD';
   status: 'SUCCESS' | 'WARNING' | 'DANGER';
+  sector?: string;
+  start_date?: string;
+  end_date?: string;
   filter_group?: string;
   clinic_unit?: string;
   team?: string;
@@ -25,11 +29,47 @@ interface DashboardGoal {
   linked_kpi_id?: string;
 }
 
+type GoalFilters = {
+  name: string;
+  scope: string;
+  sector: string;
+  periodicity: string;
+  unit: string;
+  linked_kpi_id: string;
+  filter_group: string;
+  clinic_unit: string;
+  collaborator: string;
+  team: string;
+  start_date: string;
+  end_date: string;
+  target_min: string;
+  target_max: string;
+};
+
+const DEFAULT_FILTERS: GoalFilters = {
+  name: '',
+  scope: 'all',
+  sector: 'all',
+  periodicity: 'all',
+  unit: 'all',
+  linked_kpi_id: 'all',
+  filter_group: 'all',
+  clinic_unit: 'all',
+  collaborator: 'all',
+  team: 'all',
+  start_date: '',
+  end_date: '',
+  target_min: '',
+  target_max: ''
+};
+
 export default function GoalsDashboardPage() {
   const [goals, setGoals] = useState<DashboardGoal[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [selectedGoal, setSelectedGoal] = useState<DashboardGoal | null>(null);
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
+  const [filters, setFilters] = useState<GoalFilters>(DEFAULT_FILTERS);
 
   const fetchData = async (forceFresh = false) => {
     setLoading(true);
@@ -54,15 +94,87 @@ export default function GoalsDashboardPage() {
     return () => clearInterval(interval);
   }, []);
 
-  const totalGoals = goals.length;
-  const successGoals = goals.filter(g => g.status === 'SUCCESS').length;
-  const warningGoals = goals.filter(g => g.status === 'WARNING').length;
+  const normalizeKey = (value: string) => String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+  const matchesExact = (value: string | undefined, filterValue: string) => {
+    if (!filterValue || filterValue === 'all') return true;
+    return normalizeKey(value || '') === normalizeKey(filterValue);
+  };
+
+  const uniqueSorted = (values: Array<string | undefined | null>) => {
+    const filtered = values
+      .map(v => (v == null ? '' : String(v)))
+      .filter(v => v && v !== 'all');
+    return Array.from(new Set(filtered)).sort((a, b) => a.localeCompare(b));
+  };
+
+  const availableOptions = useMemo(() => {
+    return {
+      scopes: uniqueSorted(goals.map(g => g.scope)),
+      sectors: uniqueSorted(goals.map(g => g.sector)),
+      periodicities: uniqueSorted(goals.map(g => g.periodicity)),
+      units: uniqueSorted(goals.map(g => g.unit)),
+      kpis: uniqueSorted(goals.map(g => g.linked_kpi_id)),
+      groups: uniqueSorted(goals.map(g => g.filter_group)),
+      clinicUnits: uniqueSorted(goals.map(g => g.clinic_unit)),
+      collaborators: uniqueSorted(goals.map(g => g.collaborator)),
+      teams: uniqueSorted(goals.map(g => g.team))
+    };
+  }, [goals]);
+
+  const filteredGoals = useMemo(() => {
+    const nameFilter = normalizeKey(filters.name);
+    const targetMin = filters.target_min ? Number(filters.target_min) : null;
+    const targetMax = filters.target_max ? Number(filters.target_max) : null;
+
+    return goals.filter(g => {
+      if (filters.name && !normalizeKey(g.name).includes(nameFilter)) return false;
+      if (!matchesExact(g.scope, filters.scope)) return false;
+      if (!matchesExact(g.sector, filters.sector)) return false;
+      if (!matchesExact(g.periodicity, filters.periodicity)) return false;
+      if (!matchesExact(g.unit, filters.unit)) return false;
+      if (!matchesExact(g.linked_kpi_id, filters.linked_kpi_id)) return false;
+      if (!matchesExact(g.filter_group, filters.filter_group)) return false;
+      if (!matchesExact(g.clinic_unit, filters.clinic_unit)) return false;
+      if (!matchesExact(g.collaborator, filters.collaborator)) return false;
+      if (!matchesExact(g.team, filters.team)) return false;
+
+      if (filters.start_date) {
+        if (!g.start_date || g.start_date < filters.start_date) return false;
+      }
+      if (filters.end_date) {
+        if (!g.end_date || g.end_date > filters.end_date) return false;
+      }
+
+      const targetValue = Number(g.target || 0);
+      if (targetMin !== null && targetValue < targetMin) return false;
+      if (targetMax !== null && targetValue > targetMax) return false;
+
+      return true;
+    });
+  }, [goals, filters]);
+
+  const hasActiveFilters = useMemo(() => {
+    return Object.values(filters).some((val) => {
+      if (typeof val !== 'string') return false;
+      if (val === 'all') return false;
+      return val.trim() !== '';
+    });
+  }, [filters]);
+
+  const totalGoals = filteredGoals.length;
+  const successGoals = filteredGoals.filter(g => g.status === 'SUCCESS').length;
+  const warningGoals = filteredGoals.filter(g => g.status === 'WARNING').length;
   const globalProgress = totalGoals > 0 
-    ? Math.round(goals.reduce((acc, g) => acc + Math.min(g.percentage, 100), 0) / totalGoals) 
+    ? Math.round(filteredGoals.reduce((acc, g) => acc + Math.min(g.percentage, 100), 0) / totalGoals) 
     : 0;
 
-  const clinicGoals = goals.filter(g => g.scope !== 'CARD');
-  const cardGoals = goals.filter(g => g.scope === 'CARD');
+  const clinicGoals = filteredGoals.filter(g => g.scope !== 'CARD');
+  const cardGoals = filteredGoals.filter(g => g.scope === 'CARD');
 
   const billingGroupGoals = clinicGoals.filter(g => 
     g.filter_group !== null && g.filter_group !== '' && g.filter_group !== 'all'
@@ -93,15 +205,225 @@ export default function GoalsDashboardPage() {
           </p>
         </div>
         
-        <button 
-            onClick={() => fetchData(true)} 
-            disabled={loading}
-            className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-600 text-sm hover:text-blue-600 hover:border-blue-300 transition-all shadow-sm active:scale-95 disabled:opacity-70"
-        >
-            {loading ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
-            Atualizar
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button 
+              onClick={() => fetchData(true)} 
+              disabled={loading}
+              className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-600 text-sm hover:text-blue-600 hover:border-blue-300 transition-all shadow-sm active:scale-95 disabled:opacity-70"
+          >
+              {loading ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+              Atualizar
+          </button>
+
+          <button
+            onClick={() => setFiltersExpanded(prev => !prev)}
+            className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-600 text-sm hover:text-blue-600 hover:border-blue-300 transition-all shadow-sm active:scale-95"
+          >
+            <Filter size={16} />
+            {filtersExpanded ? 'Recolher Filtros' : 'Filtros'}
+          </button>
+
+          <button
+            onClick={() => setFilters(DEFAULT_FILTERS)}
+            disabled={!hasActiveFilters}
+            className="flex items-center gap-2 px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-slate-500 text-sm hover:text-slate-700 hover:bg-slate-200 transition-all shadow-sm active:scale-95 disabled:opacity-60"
+            title="Limpar todos os filtros"
+          >
+            Limpar
+          </button>
+        </div>
       </div>
+
+      {filtersExpanded && (
+        <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 shadow-sm">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Nome</label>
+              <input
+                type="text"
+                value={filters.name}
+                onChange={(e) => setFilters(prev => ({ ...prev, name: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="Buscar meta..."
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Escopo</label>
+              <select
+                value={filters.scope}
+                onChange={(e) => setFilters(prev => ({ ...prev, scope: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              >
+                <option value="all">Todos</option>
+                {GOAL_SCOPES.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Setor</label>
+              <select
+                value={filters.sector}
+                onChange={(e) => setFilters(prev => ({ ...prev, sector: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              >
+                <option value="all">Todos</option>
+                {(SECTORS.length ? SECTORS : availableOptions.sectors).map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Periodicidade</label>
+              <select
+                value={filters.periodicity}
+                onChange={(e) => setFilters(prev => ({ ...prev, periodicity: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              >
+                <option value="all">Todas</option>
+                {PERIODICITY_OPTIONS.map(p => (
+                  <option key={p.value} value={p.value}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Unidade (Medida)</label>
+              <select
+                value={filters.unit}
+                onChange={(e) => setFilters(prev => ({ ...prev, unit: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              >
+                <option value="all">Todas</option>
+                {UNITS.map(u => (
+                  <option key={u.value} value={u.value}>{u.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Indicador (KPI)</label>
+              <select
+                value={filters.linked_kpi_id}
+                onChange={(e) => setFilters(prev => ({ ...prev, linked_kpi_id: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              >
+                <option value="all">Todos</option>
+                {KPIS_AVAILABLE.map(k => (
+                  <option key={k.id} value={k.id}>{k.label}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Grupo</label>
+              <select
+                value={filters.filter_group}
+                onChange={(e) => setFilters(prev => ({ ...prev, filter_group: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              >
+                <option value="all">Todos</option>
+                {availableOptions.groups.map(g => (
+                  <option key={g} value={g}>{g}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Unidade Clínica</label>
+              <select
+                value={filters.clinic_unit}
+                onChange={(e) => setFilters(prev => ({ ...prev, clinic_unit: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              >
+                <option value="all">Todas</option>
+                {availableOptions.clinicUnits.map(u => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Colaborador</label>
+              <select
+                value={filters.collaborator}
+                onChange={(e) => setFilters(prev => ({ ...prev, collaborator: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              >
+                <option value="all">Todos</option>
+                {availableOptions.collaborators.map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Equipe</label>
+              <select
+                value={filters.team}
+                onChange={(e) => setFilters(prev => ({ ...prev, team: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              >
+                <option value="all">Todas</option>
+                {availableOptions.teams.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Vigência Início</label>
+              <input
+                type="date"
+                value={filters.start_date}
+                onChange={(e) => setFilters(prev => ({ ...prev, start_date: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Vigência Fim</label>
+              <input
+                type="date"
+                value={filters.end_date}
+                onChange={(e) => setFilters(prev => ({ ...prev, end_date: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Meta Mínima</label>
+              <input
+                type="number"
+                value={filters.target_min}
+                onChange={(e) => setFilters(prev => ({ ...prev, target_min: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+                placeholder="0"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold uppercase text-slate-500">Meta Máxima</label>
+              <input
+                type="number"
+                value={filters.target_max}
+                onChange={(e) => setFilters(prev => ({ ...prev, target_max: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white"
+                placeholder="0"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hasActiveFilters && (
+        <div className="text-xs text-slate-500 mb-4">
+          Exibindo {filteredGoals.length} de {goals.length} metas com os filtros aplicados.
+        </div>
+      )}
 
       {/* KPI Summary - Compacto */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3 mb-6">
@@ -206,6 +528,11 @@ export default function GoalsDashboardPage() {
             {goals.length === 0 && (
                 <div className="text-center py-12 text-slate-500 bg-white rounded-lg border border-dashed border-slate-300 text-sm">
                     Nenhuma meta configurada para o período atual.
+                </div>
+            )}
+            {goals.length > 0 && filteredGoals.length === 0 && (
+                <div className="text-center py-12 text-slate-500 bg-white rounded-lg border border-dashed border-slate-300 text-sm">
+                    Nenhuma meta encontrada com os filtros aplicados.
                 </div>
             )}
          </div>
