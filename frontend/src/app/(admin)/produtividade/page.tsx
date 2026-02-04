@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { 
     UserCheck, Calendar, Trophy, Info, Headphones, Activity,
     RefreshCw, Clock, Loader2, Users, Search, Settings, X
@@ -26,6 +26,8 @@ export default function ProductivityPage() {
     const [teamStats, setTeamStats] = useState<any>(null);
     const [goalsData, setGoalsData] = useState<any[]>([]);
     const [heartbeat, setHeartbeat] = useState<any>(null);
+    const [configUsers, setConfigUsers] = useState<any[]>([]);
+    const [loadingConfig, setLoadingConfig] = useState(false);
 
     const normalizeKey = (value: string) => {
         return String(value || '')
@@ -44,30 +46,105 @@ export default function ProductivityPage() {
             .filter(Boolean);
     };
 
-    const getTeamGoal = (teamName: string) => {
-        if (!Array.isArray(goalsData)) return null;
-        const teamKey = normalizeKey(teamName);
-        return goalsData.find((g: any) => g.team && normalizeKey(g.team) === teamKey && (!g.collaborator || g.collaborator === 'all')) || null;
+    const getGoalKpiId = (goal: any) => {
+        const raw = String(goal?.linked_kpi_id || '').toLowerCase();
+        if (raw) return raw;
+        const name = String(goal?.name || '').toLowerCase();
+        if (name.includes('confirma')) return 'agendamentos_confirm_rate';
+        if (name.includes('agendamento') || name.includes('produtividade')) return 'agendamentos';
+        return '';
     };
 
-    const getUserGoal = (userName: string, userTeams: string[]) => {
+    const teamMemberCounts = useMemo(() => {
+        const map = new Map<string, Set<string>>();
+        const add = (teamName: string, userName: string) => {
+            const key = normalizeKey(teamName);
+            if (!key) return;
+            if (!map.has(key)) map.set(key, new Set<string>());
+            map.get(key)?.add(userName);
+        };
+
+        if (Array.isArray(configUsers) && configUsers.length > 0) {
+            configUsers.forEach((u: any) => {
+                (u.teams || []).forEach((t: any) => add(t.name, u.user_name));
+            });
+        } else {
+            rankingData.forEach((u: any) => {
+                parseTeams(u.team_name).forEach((t) => add(t, u.user));
+            });
+        }
+
+        const counts: Record<string, number> = {};
+        for (const [key, set] of map.entries()) {
+            counts[key] = set.size;
+        }
+        return counts;
+    }, [configUsers, rankingData]);
+
+    const getTeamMemberCount = (teamName: string) => {
+        return teamMemberCounts[normalizeKey(teamName)] || 0;
+    };
+
+    const getTeamGoalForKpi = (teamName: string, kpiId?: string) => {
+        if (!Array.isArray(goalsData)) return null;
+        const teamKey = normalizeKey(teamName);
+        const candidates = goalsData.filter((g: any) => g.team && normalizeKey(g.team) === teamKey && (!g.collaborator || g.collaborator === 'all'));
+        if (kpiId) return candidates.find((g: any) => getGoalKpiId(g) === kpiId) || null;
+        return candidates[0] || null;
+    };
+
+    const getUserGoalForKpi = (userName: string, userTeams: string[], kpiId: string) => {
         if (!Array.isArray(goalsData)) return null;
         const userKey = normalizeKey(userName);
-        const individual = goalsData.find((g: any) => g.collaborator && normalizeKey(g.collaborator) === userKey);
-        if (individual) return individual;
-        const teamGoal = goalsData.find((g: any) => g.team && userTeams.some(t => normalizeKey(t) === normalizeKey(g.team)));
-        if (teamGoal) return teamGoal;
-        return null;
+        const individual = goalsData.find((g: any) => getGoalKpiId(g) === kpiId && g.collaborator && normalizeKey(g.collaborator) === userKey);
+        if (individual) return { goal: individual, source: 'individual' as const };
+
+        const teamKeys = userTeams.map(t => normalizeKey(t));
+        const teamGoals = goalsData.filter((g: any) => {
+            if (!g.team || getGoalKpiId(g) !== kpiId) return false;
+            const gKey = normalizeKey(g.team);
+            return teamKeys.includes(gKey);
+        });
+
+        if (teamGoals.length === 0) return null;
+        if (teamKeys.includes(normalizeKey(selectedTeam))) {
+            const preferred = teamGoals.find((g: any) => normalizeKey(g.team) === normalizeKey(selectedTeam));
+            if (preferred) return { goal: preferred, source: 'team' as const };
+        }
+        return { goal: teamGoals[0], source: 'team' as const };
+    };
+
+    const WORK_START_HOUR = 8;
+    const WORK_END_HOUR = 19;
+    const WORK_HOURS = WORK_END_HOUR - WORK_START_HOUR;
+
+    const getWorkingHoursPassed = () => {
+        const now = new Date();
+        const hoursNow = now.getHours() + now.getMinutes() / 60;
+        if (hoursNow <= WORK_START_HOUR) return 0;
+        if (hoursNow >= WORK_END_HOUR) return WORK_HOURS;
+        return hoursNow - WORK_START_HOUR;
+    };
+
+    const projectDailyValue = (current: number) => {
+        const hoursPassed = getWorkingHoursPassed();
+        if (hoursPassed <= 0) return 0;
+        const hourlyRate = current / hoursPassed;
+        return hourlyRate * WORK_HOURS;
+    };
+
+    const projectMonthlyValue = (current: number) => {
+        const now = new Date();
+        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+        const daysPassed = Math.min(now.getDate(), daysInMonth);
+        const dailyRate = daysPassed > 0 ? current / daysPassed : 0;
+        return dailyRate * daysInMonth;
     };
     
     // Controle UI
     const [isUpdating, setIsUpdating] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showTeamGoals, setShowTeamGoals] = useState(true);
-    
-    // Dados do Modal
-    const [configUsers, setConfigUsers] = useState<any[]>([]);
-    const [loadingConfig, setLoadingConfig] = useState(false);
 
     // --- BUSCA DADOS PRINCIPAIS ---
     const fetchData = async () => {
@@ -304,16 +381,25 @@ export default function ProductivityPage() {
                             </div>
                             {/* Meta de Equipe (quando disponível) */}
                         {(() => {
-                                const g = getTeamGoal(selectedTeam || 'team');
+                                const g = getTeamGoalForKpi(selectedTeam || 'team', 'agendamentos') || getTeamGoalForKpi(selectedTeam || 'team', 'agendamentos_confirm_rate');
                                 if (!g) return null;
+                                const kpiId = getGoalKpiId(g);
+                                const isPercent = kpiId === 'agendamentos_confirm_rate';
                                 const target = Number(g.target) || 0;
                                 const current = Number(g.current) || 0;
                                 const attainment = target > 0 ? (current / target) * 100 : 0;
                                 return (
                                     <div className="text-center">
                                         <p className="text-xs font-bold text-indigo-400 uppercase mb-1">Meta</p>
-                                        <p className="text-lg font-bold text-indigo-900">{typeof target === 'number' && !Number.isNaN(target) ? target.toFixed(0) : target}</p>
-                                        <p className="text-[11px] text-slate-500">Ating.: {attainment.toFixed(1)}%</p>
+                                        <p className="text-lg font-bold text-indigo-900">
+                                            {isPercent
+                                                ? `${target.toFixed(1)}%`
+                                                : (typeof target === 'number' && !Number.isNaN(target) ? target.toFixed(0) : target)
+                                            }
+                                        </p>
+                                        <p className="text-[11px] text-slate-500">
+                                            Ating.: {attainment.toFixed(1)}%
+                                        </p>
                                     </div>
                                 );
                             })()}
@@ -344,11 +430,10 @@ export default function ProductivityPage() {
                         {goalsData
                           .filter((g: any) => g.team && g.team !== 'all' && (!g.collaborator || g.collaborator === 'all'))
                           .map((goal: any) => {
-                          // Calcula projeção baseada na percentagem
-                          const daysInMonth = 30;
-                          const daysPassed = Math.min(new Date().getDate(), daysInMonth);
-                          const dailyRate = daysPassed > 0 ? goal.current / daysPassed : 0;
-                          const projectedValue = dailyRate * daysInMonth;
+                          const currentValue = Number(goal.current) || 0;
+                          const projectedValue = goal.periodicity === 'daily'
+                            ? projectDailyValue(currentValue)
+                            : projectMonthlyValue(currentValue);
 
                           return (
                             <div 
@@ -447,18 +532,43 @@ export default function ProductivityPage() {
                     {filteredUsers.map((u, idx) => {
                         const rate = u.total > 0 ? ((u.confirmados / u.total) * 100).toFixed(0) : 0;
                         const isTop3 = idx < 3 && !searchTerm;
-                        const userTeams = parseTeams(u.team_name);
+                        const userTeams = teamsByUser.get(normalizeKey(u.user)) || parseTeams(u.team_name);
                         const isInSelectedTeam = userTeams.some(t => normalizeKey(t) === normalizeKey(selectedTeam));
 
-                        // Goal lookup for this user (individual > team)
-                        const userGoal = getUserGoal(u.user, userTeams);
-                        const userTarget = Number(userGoal?.target) || 0;
-                        const userAttainment = userTarget > 0 ? ((u.confirmados || 0) / userTarget) * 100 : 0;
-                        
-                        let progressColor = 'bg-slate-400';
-                        if (Number(rate) >= 80) progressColor = 'bg-emerald-500';
-                        else if (Number(rate) >= 50) progressColor = 'bg-blue-500';
-                        else progressColor = 'bg-amber-500';
+                        const userGoals = (['agendamentos', 'agendamentos_confirm_rate'] as const)
+                            .map((kpiId) => {
+                                const found = getUserGoalForKpi(u.user, userTeams, kpiId);
+                                if (!found) return null;
+
+                                const goal = found.goal;
+                                const source = found.source;
+                                const isConfirmRate = kpiId === 'agendamentos_confirm_rate';
+                                const current = isConfirmRate
+                                    ? (u.total > 0 ? (u.confirmados / u.total) * 100 : 0)
+                                    : Number(u.total || 0);
+
+                                let target = Number(goal?.target) || 0;
+                                const isTeamGoal = Boolean(goal?.team && normalizeKey(goal.team) !== 'all');
+                                const sourceLabel = isTeamGoal ? 'team' : source;
+                                if (!isConfirmRate && isTeamGoal && goal?.team) {
+                                    const members = getTeamMemberCount(goal.team);
+                                    if (members > 0) target = target / members;
+                                }
+
+                                const attainment = target > 0 ? (current / target) * 100 : 0;
+
+                                return {
+                                    kpiId,
+                                    label: isConfirmRate ? 'Meta Confirmação' : 'Meta Agendamentos',
+                                    current,
+                                    target,
+                                    attainment,
+                                    source: sourceLabel,
+                                    color: isConfirmRate ? 'bg-emerald-500' : 'bg-blue-500'
+                                };
+                            })
+                            .filter(Boolean)
+                            .slice(0, 2) as any[];
 
                         return (
                             <div key={u.user} className={`relative flex flex-col p-4 rounded-xl border transition-all hover:shadow-md ${isTop3 ? 'bg-amber-50/30 border-amber-100' : 'bg-white border-slate-100'} ${isInSelectedTeam ? 'ring-2 ring-indigo-100' : ''}`}>
@@ -494,21 +604,37 @@ export default function ProductivityPage() {
                                     </div>
                                 </div>
 
-                                {/* Meta do colaborador (se disponível) */}
-                                {userGoal && (
-                                    <div className="flex justify-between text-xs text-slate-500 mb-2">
-                                        <div>
-                                            <p className="text-[10px] uppercase">Meta</p>
-                                            <p className="font-bold text-slate-700">{typeof userTarget === 'number' && !Number.isNaN(userTarget) ? userTarget.toFixed(0) : userTarget}</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-[10px] uppercase">Ating.</p>
-                                            <p className="font-bold">{userAttainment.toFixed(1)}%</p>
-                                        </div>
+                                {/* Metas do colaborador (máx. 2) */}
+                                {userGoals.length > 0 && (
+                                    <div className="space-y-2">
+                                        {userGoals.map((g: any) => {
+                                            const currentLabel = g.kpiId === 'agendamentos_confirm_rate'
+                                                ? `${g.current.toFixed(1)}%`
+                                                : g.current.toFixed(0);
+                                            const targetLabel = g.kpiId === 'agendamentos_confirm_rate'
+                                                ? `${g.target.toFixed(1)}%`
+                                                : g.target.toFixed(0);
+                                            const progress = Math.min(g.attainment, 100);
+                                            return (
+                                                <div key={g.kpiId} className="space-y-1">
+                                                    <div className="flex justify-between text-[10px] text-slate-500">
+                                                        <span className="font-semibold text-slate-600">{g.label}</span>
+                                                        <span className="font-bold text-slate-700">
+                                                            {currentLabel} / {targetLabel}
+                                                        </span>
+                                                    </div>
+                                                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                                        <div className={`h-full ${g.color}`} style={{ width: `${progress}%` }} />
+                                                    </div>
+                                                    <div className="flex justify-between text-[9px] text-slate-400">
+                                                        <span>{g.source === 'team' ? 'Equipe (rateio)' : 'Individual'}</span>
+                                                        <span>{g.attainment.toFixed(1)}%</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
-
-                                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden"><div className={`h-full ${progressColor}`} style={{ width: `${rate}%` }} /></div>
                             </div>
                         );
                     })}

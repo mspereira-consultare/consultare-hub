@@ -186,6 +186,55 @@ export default function DashboardPage() {
     );
   }
 
+  const normalizeKey = (value: string) => String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+  const WORK_START_HOUR = 8;
+  const WORK_END_HOUR = 19;
+  const WORK_HOURS = WORK_END_HOUR - WORK_START_HOUR;
+  const getWorkingHoursPassed = () => {
+    const now = new Date();
+    const hoursNow = now.getHours() + now.getMinutes() / 60;
+    if (hoursNow <= WORK_START_HOUR) return 0;
+    if (hoursNow >= WORK_END_HOUR) return WORK_HOURS;
+    return hoursNow - WORK_START_HOUR;
+  };
+  const projectDaily = (current: number) => {
+    const hoursPassed = getWorkingHoursPassed();
+    if (hoursPassed <= 0) return 0;
+    const hourlyRate = current / hoursPassed;
+    return hourlyRate * WORK_HOURS;
+  };
+  const projectMonthly = (current: number) => {
+    const now = new Date();
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    const daysPassed = Math.min(now.getDate(), daysInMonth);
+    const dailyRate = daysPassed > 0 ? current / daysPassed : 0;
+    return dailyRate * daysInMonth;
+  };
+  const formatMoney = (value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value || 0);
+
+  const billingGoals = (goalsData || []).filter((g: any) => {
+    const kpi = String(g.linked_kpi_id || '').toLowerCase();
+    const name = String(g.name || '').toLowerCase();
+    return kpi === 'revenue' || name.includes('faturamento') || name.includes('receita');
+  });
+  const dailyBillingGoals = billingGoals.filter((g: any) => g.periodicity === 'daily');
+  const monthlyBillingGoals = billingGoals.filter((g: any) => g.periodicity === 'monthly');
+  const dailyGlobalGoal = dailyBillingGoals.find((g: any) => !g.clinic_unit || g.clinic_unit === 'all');
+  const monthlyGlobalGoal = monthlyBillingGoals.find((g: any) => !g.clinic_unit || g.clinic_unit === 'all');
+  const dailyUnitGoals = new Map<string, any>();
+  const monthlyUnitGoals = new Map<string, any>();
+  dailyBillingGoals.forEach((g: any) => {
+    if (g.clinic_unit && g.clinic_unit !== 'all') dailyUnitGoals.set(normalizeKey(g.clinic_unit), g);
+  });
+  monthlyBillingGoals.forEach((g: any) => {
+    if (g.clinic_unit && g.clinic_unit !== 'all') monthlyUnitGoals.set(normalizeKey(g.clinic_unit), g);
+  });
+
   // Consolidação de Dados
   const totalFilaMedica = data?.medic.reduce((acc, u) => acc + (u.patients?.filter((p:any) => p.status === 'waiting').length || 0), 0) || 0;
   const totalAtendidosHoje = data?.medic.reduce((acc, u) => acc + (u.totalAttended || 0), 0) || 0;
@@ -442,6 +491,25 @@ export default function DashboardPage() {
               </p>
             </div>
 
+            {/* Meta Diária de Faturamento */}
+            {dailyGlobalGoal && (() => {
+              const current = typeof dailyGlobalGoal.current === 'number' ? dailyGlobalGoal.current : (data?.finance?.daily?.totals?.total || 0);
+              const target = Number(dailyGlobalGoal.target) || 0;
+              const percent = target > 0 ? (current / target) * 100 : 0;
+              const projection = projectDaily(current);
+              return (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <p className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Meta Diária</p>
+                  <div className="flex items-center justify-between text-xs text-slate-600">
+                    <span>Real: <strong>{formatMoney(current)}</strong></span>
+                    <span>Meta: <strong>{formatMoney(target)}</strong></span>
+                    <span className="font-bold text-slate-700">{percent.toFixed(1)}%</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">Projeção: <strong>{formatMoney(projection)}</strong></p>
+                </div>
+              );
+            })()}
+
             {/* Tabela por unidade - Hoje */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
@@ -456,15 +524,31 @@ export default function DashboardPage() {
                   {(() => {
                     const unitsBilling = data?.financeByUnit?.daily?.unitsBilling || [];
                     if (unitsBilling && unitsBilling.length > 0) {
-                      return unitsBilling.map((unit: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="px-2 py-1.5 font-medium text-slate-700 text-xs">{unit.name?.substring(0, 12) || 'N/A'}</td>
-                          <td className="px-2 py-1.5 text-right text-emerald-600 font-bold text-xs">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(unit.total || 0)}
-                          </td>
-                          <td className="px-2 py-1.5 text-right text-slate-600 text-xs">{unit.qtd || 0}</td>
-                        </tr>
-                      ));
+                      return unitsBilling.map((unit: any, idx: number) => {
+                        const unitGoal = dailyUnitGoals.get(normalizeKey(unit.name));
+                        const unitCurrent = Number(unitGoal?.current || 0);
+                        const unitTarget = Number(unitGoal?.target || 0);
+                        const unitPercent = unitTarget > 0 ? (unitCurrent / unitTarget) * 100 : (Number(unitGoal?.percentage) || 0);
+                        const unitProjection = unitGoal ? projectDaily(unitCurrent) : 0;
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="px-2 py-1.5 font-medium text-slate-700 text-xs">
+                              <div className="flex flex-col">
+                                <span>{unit.name?.substring(0, 12) || 'N/A'}</span>
+                                {unitGoal && (
+                                  <span className="text-[9px] text-slate-400">
+                                    Meta: {formatMoney(unitTarget)} • {unitPercent.toFixed(0)}% • Proj: {formatMoney(unitProjection)}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-2 py-1.5 text-right text-emerald-600 font-bold text-xs">
+                              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(unit.total || 0)}
+                            </td>
+                            <td className="px-2 py-1.5 text-right text-slate-600 text-xs">{unit.qtd || 0}</td>
+                          </tr>
+                        );
+                      });
                     }
                     return <tr><td colSpan={3} className="px-2 py-2 text-center text-slate-400 text-xs">Sem dados</td></tr>;
                   })()}
@@ -502,6 +586,25 @@ export default function DashboardPage() {
               </p>
             </div>
 
+            {/* Meta Mensal de Faturamento */}
+            {monthlyGlobalGoal && (() => {
+              const current = typeof monthlyGlobalGoal.current === 'number' ? monthlyGlobalGoal.current : (data?.finance?.monthly?.totals?.total || 0);
+              const target = Number(monthlyGlobalGoal.target) || 0;
+              const percent = target > 0 ? (current / target) * 100 : 0;
+              const projection = projectMonthly(current);
+              return (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <p className="text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Meta Mensal</p>
+                  <div className="flex items-center justify-between text-xs text-slate-600">
+                    <span>Real: <strong>{formatMoney(current)}</strong></span>
+                    <span>Meta: <strong>{formatMoney(target)}</strong></span>
+                    <span className="font-bold text-slate-700">{percent.toFixed(1)}%</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-1">Projeção: <strong>{formatMoney(projection)}</strong></p>
+                </div>
+              );
+            })()}
+
             {/* Tabela por unidade - Mês */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
@@ -516,15 +619,31 @@ export default function DashboardPage() {
                   {(() => {
                     const unitsBilling = data?.financeByUnit?.monthly?.unitsBilling || [];
                     if (unitsBilling && unitsBilling.length > 0) {
-                      return unitsBilling.map((unit: any, idx: number) => (
-                        <tr key={idx} className="hover:bg-slate-50">
-                          <td className="px-2 py-1.5 font-medium text-slate-700 text-xs">{unit.name?.substring(0, 12) || 'N/A'}</td>
-                          <td className="px-2 py-1.5 text-right text-emerald-600 font-bold text-xs">
-                            {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(unit.total || 0)}
-                          </td>
-                          <td className="px-2 py-1.5 text-right text-slate-600 text-xs">{unit.qtd || 0}</td>
-                        </tr>
-                      ));
+                      return unitsBilling.map((unit: any, idx: number) => {
+                        const unitGoal = monthlyUnitGoals.get(normalizeKey(unit.name));
+                        const unitCurrent = Number(unitGoal?.current || 0);
+                        const unitTarget = Number(unitGoal?.target || 0);
+                        const unitPercent = unitTarget > 0 ? (unitCurrent / unitTarget) * 100 : (Number(unitGoal?.percentage) || 0);
+                        const unitProjection = unitGoal ? projectMonthly(unitCurrent) : 0;
+                        return (
+                          <tr key={idx} className="hover:bg-slate-50">
+                            <td className="px-2 py-1.5 font-medium text-slate-700 text-xs">
+                              <div className="flex flex-col">
+                                <span>{unit.name?.substring(0, 12) || 'N/A'}</span>
+                                {unitGoal && (
+                                  <span className="text-[9px] text-slate-400">
+                                    Meta: {formatMoney(unitTarget)} • {unitPercent.toFixed(0)}% • Proj: {formatMoney(unitProjection)}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-2 py-1.5 text-right text-emerald-600 font-bold text-xs">
+                              {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 }).format(unit.total || 0)}
+                            </td>
+                            <td className="px-2 py-1.5 text-right text-slate-600 text-xs">{unit.qtd || 0}</td>
+                          </tr>
+                        );
+                      });
                     }
                     return <tr><td colSpan={3} className="px-2 py-2 text-center text-slate-400 text-xs">Sem dados</td></tr>;
                   })()}
@@ -535,30 +654,33 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* --- MONITORAMENTO DE METAS --- */}
-      {goalsData && goalsData.length > 0 && (
+      {/* --- METAS DE FATURAMENTO --- */}
+      {billingGoals && billingGoals.length > 0 && (
         <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
           <div className="flex items-center gap-2 mb-4 border-b border-slate-50 pb-3">
             <TrendingUp size={18} className="text-slate-400" />
-            <h2 className="font-bold text-slate-700">Monitoramento de Metas</h2>
+            <h2 className="font-bold text-slate-700">Metas de Faturamento</h2>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {goalsData.map((goal: any) => {
+            {billingGoals.map((goal: any) => {
               // Calcula projeção considerando a periodicidade
               let projLabel = 'Projeção (mês):';
               let projectedValue = 0;
               
               if (goal.periodicity === 'daily') {
-                const now = new Date();
-                const hoursPassed = now.getHours();
-                const hoursInDay = 11;
+                const hoursNow = new Date().getHours() + new Date().getMinutes() / 60;
+                const workStart = 8;
+                const workEnd = 19;
+                const hoursInDay = workEnd - workStart;
+                const hoursPassed = Math.min(Math.max(hoursNow - workStart, 0), hoursInDay);
                 const hourlyRate = hoursPassed > 0 ? goal.current / hoursPassed : 0;
                 projectedValue = hourlyRate * hoursInDay;
                 projLabel = `Projeção (hoje - ${hoursInDay}h):`;
               } else {
-                const daysInMonth = 30;
-                const daysPassed = Math.min(new Date().getDate(), daysInMonth);
+                const now = new Date();
+                const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+                const daysPassed = Math.min(now.getDate(), daysInMonth);
                 const dailyRate = daysPassed > 0 ? goal.current / daysPassed : 0;
                 projectedValue = dailyRate * daysInMonth;
                 projLabel = `Projeção (mês - ${daysInMonth}d):`;

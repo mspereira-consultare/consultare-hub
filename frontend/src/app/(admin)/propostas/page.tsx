@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { 
     FileText, Calendar, DollarSign, PieChart, Briefcase, 
-    TrendingUp, Search, AlertCircle, CheckCircle2, XCircle,
+    TrendingUp, Search, AlertCircle, XCircle,
     RefreshCw, Clock, Loader2
 } from 'lucide-react';
 
@@ -29,7 +29,6 @@ export default function ProposalsPage() {
     const [heartbeat, setHeartbeat] = useState<any>(null);
     const [isUpdating, setIsUpdating] = useState(false);
     const avgTicket = summary.qtd > 0 ? summary.valor / summary.qtd : 0;
-    const avgTicketWon = summary.wonQtd > 0 ? summary.wonValue / summary.wonQtd : 0;
 
     const fetchData = async () => {
         // Não ativa loading total se for apenas refresh de background
@@ -265,34 +264,6 @@ export default function ProposalsPage() {
                 </div>
 
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
-                    <div className="relative">
-                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Propostas Executadas</p>
-                        <h3 className="text-2xl font-bold text-slate-800">
-                            {summary.wonQtd}
-                        </h3>
-                        <div className="mt-2 flex items-center gap-1 text-xs text-emerald-600 font-medium">
-                            <CheckCircle2 size={12} />
-                            <span>Ganho</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
-                    <div className="absolute top-0 right-0 w-24 h-24 bg-teal-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
-                    <div className="relative">
-                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Ticket Médio Executado</p>
-                        <h3 className="text-2xl font-bold text-slate-800">
-                            {avgTicketWon.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                        </h3>
-                        <div className="mt-2 flex items-center gap-1 text-xs text-teal-600 font-medium">
-                            <DollarSign size={12} />
-                            <span>Média (Ganho)</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-amber-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
                     <div className="relative">
                         <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Taxa Conversão</p>
@@ -396,9 +367,11 @@ export default function ProposalsPage() {
                                         <tr>
                                             <th className="px-4 py-3">Profissional</th>
                                             <th className="px-4 py-3 text-right">Qtd</th>
+                                            <th className="px-4 py-3 text-right">Exec. Qtd</th>
                                             <th className="px-4 py-3 text-right">Total Estimado</th>
                                             <th className="px-4 py-3 text-right">Total Executado</th>
                                             <th className="px-4 py-3 text-center">Ticket Médio</th>
+                                            <th className="px-4 py-3 text-center">Ticket Exec.</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 text-sm">
@@ -409,6 +382,7 @@ export default function ProposalsPage() {
                                                     {seller.professional_name || 'Sistema'}
                                                 </td>
                                                 <td className="px-4 py-3 text-right text-slate-600">{seller.qtd}</td>
+                                                <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{seller.qtd_executado || 0}</td>
                                                 <td className="px-4 py-3 text-right text-slate-700 font-semibold">
                                                     {(seller.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                                 </td>
@@ -426,6 +400,9 @@ export default function ProposalsPage() {
                                                 </td>
                                                 <td className="px-4 py-3 text-center text-slate-400 text-xs">
                                                     {(seller.valor / (seller.qtd || 1)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                </td>
+                                                <td className="px-4 py-3 text-center text-slate-400 text-xs">
+                                                    {((seller.valor_executado || 0) / (seller.qtd_executado || 1)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                                 </td>
                                             </tr>
                                         ))}

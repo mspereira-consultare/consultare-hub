@@ -246,8 +246,11 @@ function DashboardCard({ goal, formatValue, compact = true, onClick }: {
     if (!goal || typeof goal.current !== 'number') return null;
     const now = new Date();
     if (goal.periodicity === 'daily') {
-      const hoursPassed = now.getHours();
-      const hoursInDay = 11;
+      const hoursNow = now.getHours() + now.getMinutes() / 60;
+      const workStart = 8;
+      const workEnd = 19;
+      const hoursInDay = workEnd - workStart;
+      const hoursPassed = Math.min(Math.max(hoursNow - workStart, 0), hoursInDay);
       const hourlyRate = hoursPassed > 0 ? goal.current / hoursPassed : 0;
       return hourlyRate * hoursInDay;
     }
@@ -264,8 +267,8 @@ function DashboardCard({ goal, formatValue, compact = true, onClick }: {
     <div onClick={onClick} className="bg-white rounded-lg shadow-sm border border-slate-200 p-2.5 md:p-3 relative overflow-hidden group hover:shadow-md hover:border-blue-300 transition-all cursor-pointer">
       {/* Header */}
       <div className="flex justify-between items-start gap-1.5 mb-1.5">
-        <h3 className="font-semibold text-slate-800 text-[10px] md:text-xs line-clamp-2 flex-1">{goal.name}</h3>
-        <span className={`text-[8px] md:text-[9px] font-bold px-1.5 py-0.5 rounded-full border whitespace-nowrap flex-shrink-0 ${statusText[goal.status]}`}>
+        <h3 className="font-semibold text-slate-800 text-[11px] md:text-sm line-clamp-2 flex-1">{goal.name}</h3>
+        <span className={`text-[9px] md:text-[10px] font-bold px-1.5 py-0.5 rounded-full border whitespace-nowrap flex-shrink-0 ${statusText[goal.status]}`}>
           {goal.percentage}%
         </span>
       </div>
@@ -273,17 +276,17 @@ function DashboardCard({ goal, formatValue, compact = true, onClick }: {
       {/* Tags de Parâmetros */}
       <div className="flex flex-wrap gap-0.5 mb-1.5">
         {goal.filter_group && (
-          <span className="text-[7px] md:text-[8px] bg-violet-100 text-violet-700 px-1 py-0.5 rounded font-medium truncate max-w-full" title={goal.filter_group}>
+          <span className="text-[8px] md:text-[9px] bg-violet-100 text-violet-700 px-1 py-0.5 rounded font-medium truncate max-w-full" title={goal.filter_group}>
             📊 {goal.filter_group.substring(0, 10)}
           </span>
         )}
         {goal.clinic_unit && goal.clinic_unit !== 'all' && (
-          <span className="text-[7px] md:text-[8px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded font-medium truncate max-w-full" title={goal.clinic_unit}>
+          <span className="text-[8px] md:text-[9px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded font-medium truncate max-w-full" title={goal.clinic_unit}>
             🏥 {goal.clinic_unit.substring(0, 8)}
           </span>
         )}
         {goal.team && (
-          <span className="text-[7px] md:text-[8px] bg-purple-100 text-purple-700 px-1 py-0.5 rounded font-medium truncate max-w-full" title={goal.team}>
+          <span className="text-[8px] md:text-[9px] bg-purple-100 text-purple-700 px-1 py-0.5 rounded font-medium truncate max-w-full" title={goal.team}>
             👥 {goal.team.substring(0, 8)}
           </span>
         )}
@@ -292,14 +295,14 @@ function DashboardCard({ goal, formatValue, compact = true, onClick }: {
       {/* Valores */}
       <div className="space-y-0.5 mb-1.5">
         <div className="flex justify-between items-baseline gap-1">
-          <span className="text-[9px] md:text-[10px] text-slate-500 font-medium">Real:</span>
-          <span className="text-xs md:text-sm font-bold text-slate-900 truncate">
+          <span className="text-[10px] md:text-[11px] text-slate-500 font-medium">Real:</span>
+          <span className="text-sm md:text-base font-bold text-slate-900 truncate">
             {formatValue(goal.current, goal.unit)}
           </span>
         </div>
         <div className="flex justify-between items-baseline gap-1">
-          <span className="text-[9px] md:text-[10px] text-slate-500 font-medium">Meta:</span>
-          <span className="text-[9px] md:text-[10px] font-semibold text-slate-600 truncate">
+          <span className="text-[10px] md:text-[11px] text-slate-500 font-medium">Meta:</span>
+          <span className="text-[10px] md:text-[11px] font-semibold text-slate-600 truncate">
             {formatValue(goal.target, goal.unit)}
           </span>
         </div>
@@ -314,7 +317,7 @@ function DashboardCard({ goal, formatValue, compact = true, onClick }: {
       </div>
 
       {/* Periodicidade e Projeção */}
-      <div className="flex justify-between items-center text-[7px] md:text-[8px] text-slate-500 font-semibold uppercase">
+      <div className="flex justify-between items-center text-[8px] md:text-[9px] text-slate-500 font-semibold uppercase">
         <span>
           {goal.periodicity === 'monthly' ? '📅 Mês' : goal.periodicity === 'daily' ? '📆 Dia' : '⏱️ Período'}
         </span>

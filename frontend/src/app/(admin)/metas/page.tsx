@@ -277,13 +277,16 @@ export default function GoalsPage() {
                       let projValue = 0;
                       if (isDaily) {
                         const now = new Date();
-                        const hoursPassed = now.getHours();
-                        const hoursInDay = 11;
+                        const hoursNow = now.getHours() + now.getMinutes() / 60;
+                        const workStart = 8;
+                        const workEnd = 19;
+                        const hoursInDay = workEnd - workStart;
+                        const hoursPassed = Math.min(Math.max(hoursNow - workStart, 0), hoursInDay);
                         const hourlyRate = hoursPassed > 0 ? (goalData?.current || 0) / hoursPassed : 0;
                         projValue = hourlyRate * hoursInDay;
                         projLabel = `Projeção (hoje - ${hoursInDay}h)`;
                       } else {
-                        const daysInMonth = 30;
+                        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
                         const daysPassed = Math.min(new Date().getDate(), daysInMonth);
                         const dailyRate = daysPassed > 0 ? (goalData?.current || 0) / daysPassed : 0;
                         projValue = dailyRate * daysInMonth;
