@@ -29,7 +29,7 @@ export default function MonitorPage() {
   const alertIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const alertIntervalMsRef = useRef<number | null>(null);
   const WAIT_ALERT_MINUTES = 30;
-  const ALERT_INTERVAL_MIN = 5;
+  const ALERT_INTERVAL_MIN = 1;
   const ALERT_INTERVAL_MAX = 300;
 
   const ensureAudioContext = () => {

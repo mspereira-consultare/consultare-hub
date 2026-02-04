@@ -47,8 +47,12 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
         }
     }, [isOpen, initialData]);
 
+    const getAllowedKpis = (scope: Goal['scope']) => {
+        return KPIS_AVAILABLE.filter(k => k.scope === 'ALL' || k.scope === scope);
+    };
+
     // 1. Filtra KPIs pelo Escopo (Clínica ou Cartão)
-    const availableKpis = KPIS_AVAILABLE.filter(k => k.scope === 'ALL' || k.scope === formData.scope);
+    const availableKpis = getAllowedKpis(formData.scope);
     
     // 2. Verifica se o KPI selecionado suporta Filtro de Grupo
     const selectedKpiConfig = KPIS_AVAILABLE.find(k => k.id === formData.linked_kpi_id);
@@ -170,6 +174,20 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
         return () => { mounted = false; };
     }, [isOpen]);
 
+    const handleScopeChange = (scopeValue: string) => {
+        const nextScope = scopeValue as Goal['scope'];
+        const allowed = getAllowedKpis(nextScope).map(k => k.id);
+        setFormData(prev => {
+            const kpiStillValid = allowed.includes(prev.linked_kpi_id);
+            return {
+                ...prev,
+                scope: nextScope,
+                linked_kpi_id: kpiStillValid ? prev.linked_kpi_id : 'manual',
+                filter_group: kpiStillValid ? prev.filter_group : ''
+            };
+        });
+    };
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         onSave(formData);
@@ -210,23 +228,22 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                         </div>
 
                         <div className="space-y-1.5">
-                            <label className="text-sm font-semibold text-slate-700">Escopo (Empresa)</label>
-                            <div className="flex bg-slate-100 p-1 rounded-lg">
-                                {GOAL_SCOPES.map(scope => (
-                                    <button
-                                        key={scope.value}
-                                        type="button"
-                                        onClick={() => setFormData({...formData, scope: scope.value as any, linked_kpi_id: 'manual', filter_group: ''})}
-                                        className={`flex-1 text-xs font-bold py-2 px-2 rounded-md transition-all flex items-center justify-center gap-1.5 ${
-                                            formData.scope === scope.value 
-                                            ? 'bg-white text-blue-700 shadow-sm' 
-                                            : 'text-slate-500 hover:text-slate-700'
-                                        }`}
-                                    >
-                                        {scope.value === 'CLINIC' ? <Building2 size={14} /> : <CreditCard size={14} />}
-                                        {scope.label.split(' ')[0]}
-                                    </button>
-                                ))}
+                            <label className="text-sm font-semibold text-slate-700">Unidade (Empresa)</label>
+                            <div className="relative">
+                                <select 
+                                    className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                    value={formData.scope}
+                                    onChange={e => handleScopeChange(e.target.value)}
+                                >
+                                    {GOAL_SCOPES.map(scope => (
+                                        <option key={scope.value} value={scope.value}>
+                                            {scope.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                    {formData.scope === 'CLINIC' ? <Building2 size={14} /> : <CreditCard size={14} />}
+                                </div>
                             </div>
                         </div>
 
