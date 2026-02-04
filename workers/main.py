@@ -162,6 +162,7 @@ def normalize_system_status_rows():
 
         action, _ = canonicalize(service)
         if action not in KNOWN_ACTIONS:
+            to_delete.append(service)
             continue
 
         if service != action:

@@ -292,6 +292,18 @@ export default function ProductivityPage() {
                 </div>
 
                 <div className="flex flex-wrap items-center gap-3 w-full xl:w-auto justify-end">
+                    {heartbeat && (
+                        <div className="hidden md:flex flex-col items-end mr-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                                Última Atualização
+                            </span>
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                                <Clock size={12} />
+                                {formatLastUpdate(heartbeat.last_run)}
+                                {heartbeat.status === 'ERROR' && <span className="text-red-500 font-bold ml-1">Erro</span>}
+                            </div>
+                        </div>
+                    )}
                     
                     <button 
                         onClick={() => { setIsModalOpen(true); fetchConfigUsers(); }}
