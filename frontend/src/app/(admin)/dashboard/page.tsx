@@ -30,6 +30,7 @@ export default function DashboardPage() {
   const [goalsData, setGoalsData] = useState<any[]>([]);
   const [heartbeat, setHeartbeat] = useState<any>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [alertsEnabled, setAlertsEnabled] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const alertTriggeredRef = useRef<boolean>(false);
 
@@ -124,9 +125,14 @@ export default function DashboardPage() {
     try { return new Date(isoString).toLocaleString('pt-BR'); } catch (e) { return dateString; }
   };
 
+  const WAIT_ALERT_MINUTES = 30;
   // --- EFEITO: VERIFICAR PACIENTES AGUARDANDO HÁ MAIS DE 30 MINUTOS ---
   useEffect(() => {
     if (!data?.medic) return;
+    if (!alertsEnabled) {
+      alertTriggeredRef.current = false;
+      return;
+    }
 
     // Verifica se há pacientes aguardando mais de 30 minutos
     const hasLongWaiters = data.medic.some((unit: any) => {
@@ -137,7 +143,7 @@ export default function DashboardPage() {
         const now = new Date();
         const checkInTime = new Date(p.checkInTime);
         const waitTimeMinutes = (now.getTime() - checkInTime.getTime()) / (1000 * 60);
-        return waitTimeMinutes > 30;
+        return waitTimeMinutes > WAIT_ALERT_MINUTES;
       });
       return (waitersOver30?.length || 0) > 0;
     });
@@ -179,7 +185,7 @@ export default function DashboardPage() {
     } else if (!hasLongWaiters) {
       alertTriggeredRef.current = false;
     }
-  }, [data?.medic]);
+  }, [data?.medic, alertsEnabled]);
 
   if (!data && loading) {
     return (
@@ -295,6 +301,18 @@ export default function DashboardPage() {
             {isUpdating ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
             {isUpdating ? 'Atualizando...' : 'Atualizar Faturamento'}
           </button>
+
+          <button
+            onClick={() => setAlertsEnabled(prev => !prev)}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border ${
+              alertsEnabled
+                ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
+                : 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+            }`}
+            title={alertsEnabled ? 'Desativar alerta sonoro' : 'Ativar alerta sonoro'}
+          >
+            {alertsEnabled ? 'Alerta Sonoro: Ativo' : 'Alerta Sonoro: Pausado'}
+          </button>
           
           <button 
             onClick={() => fetchDashboardData(true)}
@@ -369,38 +387,38 @@ export default function DashboardPage() {
             <Activity size={18} className="text-slate-400" />
             <h2 className="font-bold text-slate-700">Aguardando Médico</h2>
             {data?.medic?.some((unit: any) => {
-              const waitersOver30 = unit.patients?.filter((p: any) => {
+              const waitersOver10 = unit.patients?.filter((p: any) => {
                 if (p.status !== 'waiting') return false;
                 if (!p.checkInTime) return false;
                 const now = new Date();
                 const checkInTime = new Date(p.checkInTime);
                 const waitTimeMinutes = (now.getTime() - checkInTime.getTime()) / (1000 * 60);
-                return waitTimeMinutes > 30;
+                return waitTimeMinutes > WAIT_ALERT_MINUTES;
               });
-              return (waitersOver30?.length || 0) > 0;
-            }) && (
+              return (waitersOver10?.length || 0) > 0;
+            }) && alertsEnabled && (
               <span className="ml-auto px-2 py-1 text-[9px] font-bold bg-red-500 text-white rounded-full animate-pulse">
-                ⚠️ ALERTA 30+min
+                Alerta {WAIT_ALERT_MINUTES}+ min
               </span>
             )}
           </div>
           <div className="space-y-3">
             {data?.medic.map((unit: any) => {
               const waiting = unit.patients?.filter((p:any) => p.status === 'waiting').length || 0;
-              const waitersOver30 = unit.patients?.filter((p: any) => {
+              const waitersOver10 = unit.patients?.filter((p: any) => {
                 if (p.status !== 'waiting') return false;
                 if (!p.checkInTime) return false;
                 const now = new Date();
                 const checkInTime = new Date(p.checkInTime);
                 const waitTimeMinutes = (now.getTime() - checkInTime.getTime()) / (1000 * 60);
-                return waitTimeMinutes > 30;
+                return waitTimeMinutes > WAIT_ALERT_MINUTES;
               }).length || 0;
               
               return (
                 <div 
                   key={unit.id} 
                   className={`flex justify-between items-center p-3 rounded-lg border ${
-                    waitersOver30 > 0
+                    waitersOver10 > 0
                       ? 'bg-red-50 border-red-200'
                       : 'bg-slate-50/50 border-slate-100'
                   }`}
@@ -411,13 +429,13 @@ export default function DashboardPage() {
                   </div>
                   <div className="text-right">
                     <p className={`text-xl font-black leading-none ${
-                      waitersOver30 > 0 ? 'text-red-600' : 'text-amber-600'
+                      waitersOver10 > 0 ? 'text-red-600' : 'text-amber-600'
                     }`}>
                       {waiting}
                     </p>
                     <p className="text-[9px] uppercase font-bold text-slate-400 mt-1">Pacientes</p>
-                    {waitersOver30 > 0 && (
-                      <p className="text-[8px] text-red-600 font-bold mt-1">{waitersOver30} 30+ min</p>
+                    {waitersOver10 > 0 && (
+                      <p className="text-[8px] text-red-600 font-bold mt-1">{waitersOver10} {WAIT_ALERT_MINUTES}+ min</p>
                     )}
                   </div>
                 </div>
