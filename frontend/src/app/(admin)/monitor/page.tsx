@@ -23,8 +23,9 @@ export default function MonitorPage() {
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const alertTriggeredRef = useRef(false);
+  const alertIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const WAIT_ALERT_MINUTES = 30;
+  const ALERT_SOUND_INTERVAL_MS = 30000;
 
   const ensureAudioContext = () => {
     if (!audioContextRef.current && typeof window !== 'undefined') {
@@ -76,25 +77,39 @@ export default function MonitorPage() {
     });
   };
 
+  const stopAlertLoop = () => {
+    if (alertIntervalRef.current) {
+      clearInterval(alertIntervalRef.current);
+      alertIntervalRef.current = null;
+    }
+  };
+
+  const startAlertLoop = () => {
+    if (alertIntervalRef.current) return;
+    playBeep();
+    alertIntervalRef.current = setInterval(() => {
+      playBeep();
+    }, ALERT_SOUND_INTERVAL_MS);
+  };
+
   const handleToggleAlerts = async () => {
     if (!alertsEnabled) {
       setAlertsEnabled(true);
       const unlocked = await unlockAudio();
       if (unlocked && hasLongWaiters(medicData)) {
-        playBeep();
-        alertTriggeredRef.current = true;
+        startAlertLoop();
       }
       return;
     }
     if (alertsEnabled && !audioUnlocked) {
       const unlocked = await unlockAudio();
       if (unlocked && hasLongWaiters(medicData)) {
-        playBeep();
-        alertTriggeredRef.current = true;
+        startAlertLoop();
       }
       return;
     }
     setAlertsEnabled(false);
+    stopAlertLoop();
   };
 
   const fetchData = useCallback(async () => {
@@ -160,24 +175,29 @@ export default function MonitorPage() {
   }, [fetchData]);
 
   useEffect(() => {
-    if (!alertsEnabled) {
-      alertTriggeredRef.current = false;
+    if (!alertsEnabled || !audioUnlocked) {
+      stopAlertLoop();
       return;
     }
-    if (medicData.length === 0) return;
+    if (medicData.length === 0) {
+      stopAlertLoop();
+      return;
+    }
 
     const longWait = hasLongWaiters(medicData);
 
-    if (longWait && !alertTriggeredRef.current) {
-      playBeep();
-      alertTriggeredRef.current = true;
-      setTimeout(() => {
-        alertTriggeredRef.current = false;
-      }, 5 * 60 * 1000);
-    } else if (!longWait) {
-      alertTriggeredRef.current = false;
+    if (longWait) {
+      startAlertLoop();
+    } else {
+      stopAlertLoop();
     }
   }, [medicData, alertsEnabled, audioUnlocked]);
+
+  useEffect(() => {
+    return () => {
+      stopAlertLoop();
+    };
+  }, []);
 
 
   return (
