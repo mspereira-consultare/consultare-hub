@@ -4,6 +4,23 @@ import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
 const CACHE_TTL_MS = 30 * 60 * 1000;
+const SUMMARY_TABLE = 'faturamento_resumo_diario';
+const MONTHLY_TABLE = 'faturamento_resumo_mensal';
+const ANALITICO_TABLE = 'faturamento_analitico';
+// data_do_pagamento pode vir como DD/MM/YYYY ou ISO
+const SQL_DATE_ANALITICO = `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
+
+const tableExists = async (db: any, tableName: string) => {
+  try {
+    const rows = await db.query(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+      [tableName]
+    );
+    return Array.isArray(rows) && rows.length > 0;
+  } catch {
+    return false;
+  }
+};
 
 export async function GET(request: Request) {
   try {
@@ -19,13 +36,37 @@ export async function GET(request: Request) {
 
     const db = getDbConnection();
 
-    // 1. DEFINIÇÃO DAS COLUNAS E FILTROS BASE (usando resumo diário)
-    const tableName = 'faturamento_resumo_diario';
-    const monthlyTableName = 'faturamento_resumo_mensal';
-    const dateCol = 'data_ref';
+    // 1. DEFINIÇÃO DAS COLUNAS E FILTROS BASE (resumo diário com fallback)
+    const hasSummary = await tableExists(db, SUMMARY_TABLE);
+    const hasAnalitico = await tableExists(db, ANALITICO_TABLE);
+    const hasMonthly = hasSummary && await tableExists(db, MONTHLY_TABLE);
+
+    if (!hasSummary && !hasAnalitico) {
+      const statusRes = await db.query(`
+          SELECT status, last_run, message 
+          FROM system_status 
+          WHERE service_name = 'financeiro'
+      `);
+      const heartbeat = statusRes[0] || { status: 'UNKNOWN', last_run: null, message: '' };
+      return { 
+        daily: [], 
+        monthly: [], 
+        groups: [], 
+        groupStats: [],
+        procedures: [],
+        units: [],
+        unitsBilling: [],
+        totals: { total: 0, qtd: 0 },
+        heartbeat
+      };
+    }
+
+    const tableName = hasSummary ? SUMMARY_TABLE : ANALITICO_TABLE;
+    const monthlyTableName = MONTHLY_TABLE;
+    const dateCol = hasSummary ? 'data_ref' : SQL_DATE_ANALITICO;
     const monthCol = 'month_ref';
     const valueCol = 'total_pago';
-    const countCol = 'qtd';
+    const countExpr = hasSummary ? 'SUM(qtd)' : 'COUNT(*)';
     
     // REGRA 1: Filtro de Unidade (Incluir todas as unidades, inclusive RESOLVECARD)
     const unitFilterExclude = `unidade IS NOT NULL AND unidade != ''`;
@@ -53,7 +94,7 @@ export async function GET(request: Request) {
         SELECT 
             ${dateCol} as d, 
             SUM(${valueCol}) as total, 
-            SUM(${countCol}) as qtd
+            ${countExpr} as qtd
         FROM ${tableName}
         ${baseWhere}
         GROUP BY d 
@@ -63,26 +104,26 @@ export async function GET(request: Request) {
     // 3. QUERY: DADOS MENSAIS (Agrupado por YYYY-MM)
     const monthStart = startDate.slice(0, 7);
     const monthEnd = endDate.slice(0, 7);
-    const monthlyParams: any[] = [monthStart, monthEnd, ...baseParams.slice(2)];
     let monthlyRes = [];
-    try {
+    if (hasSummary && hasMonthly) {
+        const monthlyParams: any[] = [monthStart, monthEnd, ...baseParams.slice(2)];
         monthlyRes = await db.query(`
             SELECT 
                 ${monthCol} as m, 
                 SUM(${valueCol}) as total,
-                SUM(${countCol}) as qtd
+                ${countExpr} as qtd
             FROM ${monthlyTableName}
             ${baseWhere.replace(dateCol, monthCol)}
             GROUP BY m 
             ORDER BY m ASC
         `, monthlyParams);
-    } catch (e: any) {
-        // Fallback: se resumo mensal ainda não existir
+    } else {
+        // Fallback: usa a tabela base (resumo diário ou analítico)
         monthlyRes = await db.query(`
             SELECT 
                 substr(${dateCol}, 1, 7) as m, 
                 SUM(${valueCol}) as total,
-                SUM(${countCol}) as qtd
+                ${countExpr} as qtd
             FROM ${tableName}
             ${baseWhere}
             GROUP BY m 
@@ -94,7 +135,7 @@ export async function GET(request: Request) {
     const totalsRes = await db.query(`
         SELECT 
             SUM(${valueCol}) as total, 
-            SUM(${countCol}) as qtd
+            ${countExpr} as qtd
         FROM ${tableName}
         ${baseWhere}
     `, baseParams);
@@ -109,7 +150,7 @@ export async function GET(request: Request) {
     let groupsQuery = `
         SELECT name, SUM(total) as total, SUM(qtd) as qtd FROM (
             -- Faturamento Realizado
-            SELECT TRIM(grupo) as name, SUM(${valueCol}) as total, SUM(${countCol}) as qtd 
+            SELECT TRIM(grupo) as name, SUM(${valueCol}) as total, ${countExpr} as qtd 
             FROM ${tableName} 
             WHERE ${dateCol} BETWEEN ? AND ? 
             AND ${unitFilterExclude}`;
@@ -145,7 +186,7 @@ export async function GET(request: Request) {
     } catch (e) {
         // Fallback: Tabela agenda não existe
         let simpleGroupsQuery = `
-            SELECT TRIM(grupo) as name, SUM(${valueCol}) as total, SUM(${countCol}) as qtd
+            SELECT TRIM(grupo) as name, SUM(${valueCol}) as total, ${countExpr} as qtd
             FROM ${tableName}
             WHERE ${dateCol} BETWEEN ? AND ?
             AND ${unitFilterExclude}`;
@@ -191,7 +232,7 @@ export async function GET(request: Request) {
         SELECT 
             TRIM(grupo) as procedure_group,
             SUM(${valueCol}) as total,
-            SUM(${countCol}) as qtd
+            ${countExpr} as qtd
         FROM ${tableName}
         ${groupStatsWhere}
         GROUP BY procedure_group
@@ -249,7 +290,7 @@ export async function GET(request: Request) {
         SELECT 
             TRIM(unidade) as name, 
             SUM(${valueCol}) as total,
-            SUM(${countCol}) as qtd
+            ${countExpr} as qtd
         FROM ${tableName}
         ${unitsBillingWhere}
         GROUP BY name

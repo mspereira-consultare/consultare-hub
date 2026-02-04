@@ -24,7 +24,7 @@ def run_monitor_recepcao():
     while True:
         try:
             sistema = FeegowRecepcaoSystem()
-            db.update_heartbeat("Monitor Recepcao", "RUNNING", "Buscando dados...")
+            db.update_heartbeat("monitor_recepcao", "RUNNING", "Buscando dados...")
             
             timestamp = datetime.now().strftime('%H:%M:%S')
 
@@ -33,11 +33,11 @@ def run_monitor_recepcao():
             if "Cookie Expirou" in msg_erro or "403" in msg_erro:
                 err_msg = "🚨 TOKEN EXPIROU."
                 print(f"\n[{timestamp}] {err_msg}")
-                db.update_heartbeat("Monitor Recepcao", "ERROR", err_msg)
+                db.update_heartbeat("monitor_recepcao", "ERROR", err_msg)
             
             elif msg_erro != "OK" and not dados_brutos:
                 print(f"[{timestamp}] Erro técnico: {msg_erro}")
-                db.update_heartbeat("Monitor Recepcao", "WARNING", f"Falha API: {msg_erro}")
+                db.update_heartbeat("monitor_recepcao", "WARNING", f"Falha API: {msg_erro}")
             
             else:
                 if dados_brutos:
@@ -60,14 +60,14 @@ def run_monitor_recepcao():
                 status_msg = f"Fila: {len(dados_brutos)} ({string_unidades})"
                 
                 print(f"[{timestamp}] ✅ {status_msg}")
-                db.update_heartbeat("Monitor Recepcao", "ONLINE", status_msg)
+                db.update_heartbeat("monitor_recepcao", "ONLINE", status_msg)
 
         except KeyboardInterrupt:
             print("\nMonitor encerrado.")
             break
         except Exception as e:
             print(f"\n[ERRO CRÍTICO RECEPÇÃO] {e}")
-            db.update_heartbeat("Monitor Recepcao", "ERROR", str(e))
+            db.update_heartbeat("monitor_recepcao", "ERROR", str(e))
 
         time.sleep(15)
 

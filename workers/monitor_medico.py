@@ -44,7 +44,7 @@ def run_monitor_medico():
 
     while True:
         try:
-            db.update_heartbeat("Monitor Medico", "RUNNING", "Iniciando ciclo...")
+            db.update_heartbeat("monitor_medico", "RUNNING", "Iniciando ciclo...")
 
             if not sessao_ativa:
                 print("   [AUTH] Realizando login...")
@@ -98,7 +98,7 @@ def run_monitor_medico():
 
             if sessao_ativa:
                 msg = f"Ciclo concluído. Total detectado: {total_detectado_ciclo}"
-                db.update_heartbeat("Monitor Médico", "online", msg)
+                db.update_heartbeat("monitor_medico", "ONLINE", msg)
 
                 if total_detectado_ciclo == 0:
                     print(".", end="", flush=True)
@@ -108,7 +108,7 @@ def run_monitor_medico():
         except Exception as e:
             print(f"\n[ERRO CRÍTICO] Monitor Médico: {e}")
             try:
-                db.update_heartbeat("Monitor Médico", "error", str(e))
+                db.update_heartbeat("monitor_medico", "ERROR", str(e))
             except:
                 pass
             sessao_ativa = False

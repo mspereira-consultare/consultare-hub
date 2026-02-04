@@ -87,7 +87,7 @@ def process_and_save():
     db = DatabaseManager()
     
     # Heartbeat: Avisa que começou
-    db.update_heartbeat("Worker Clinia", "RUNNING", "Iniciando ciclo...")
+    db.update_heartbeat("clinia", "RUNNING", "Iniciando ciclo...")
 
     # 2. Configura Cookie
     token_db = get_clinia_cookie_from_db(db)
@@ -99,7 +99,7 @@ def process_and_save():
         else:
             msg = "Sem Token/Cookie configurado"
             print(f" [AVISO] {msg}")
-            db.update_heartbeat("Worker Clinia", "WARNING", msg)
+            db.update_heartbeat("clinia", "WARNING", msg)
             return # Encerra se não tem token
 
     conn = db.get_connection()
@@ -233,12 +233,12 @@ def process_and_save():
         if not db.use_turso: conn.commit()
         
         # Heartbeat: Sucesso
-        db.update_heartbeat("Worker Clinia", "ONLINE", "Dados sincronizados")
+        db.update_heartbeat("clinia", "ONLINE", "Dados sincronizados")
 
     except Exception as e:
         err_msg = str(e)
         print(f"❌ Erro Clinia: {err_msg}")
-        db.update_heartbeat("Worker Clinia", "ERROR", err_msg)
+        db.update_heartbeat("clinia", "ERROR", err_msg)
     finally:
         conn.close()
 

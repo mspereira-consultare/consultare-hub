@@ -341,7 +341,7 @@ def run_scraper():
     iso_fim = hoje.strftime("%Y-%m-%d")
 
     print(f"📅 Janela: {inicio_vis} até {fim_vis}")
-    db.update_heartbeat("Faturamento (Scraping)", "RUNNING", f"Extraindo {inicio_vis}-{fim_vis}")
+    db.update_heartbeat("faturamento", "RUNNING", f"Extraindo {inicio_vis}-{fim_vis}")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -473,11 +473,11 @@ def run_scraper():
             update_faturamento_summary(db, iso_inicio, iso_fim)
             
             print(f"🚀 Finalizado com Sucesso.")
-            db.update_heartbeat("Faturamento (Scraping)", "ONLINE", f"{len(df)} registros")
+            db.update_heartbeat("faturamento", "ONLINE", f"{len(df)} registros")
 
         except Exception as e:
             print(f"❌ Erro Scraping: {e}")
-            db.update_heartbeat("Faturamento (Scraping)", "ERROR", str(e))
+            db.update_heartbeat("faturamento", "ERROR", str(e))
         finally:
             browser.close()
 

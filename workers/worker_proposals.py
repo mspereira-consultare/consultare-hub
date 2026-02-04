@@ -114,7 +114,7 @@ def update_proposals():
     print(f"--- Worker Propostas (Híbrido + Batch): {datetime.datetime.now().strftime('%H:%M:%S')} ---")
     
     db = DatabaseManager()
-    db.update_heartbeat("Propostas (API)", "RUNNING", "Iniciando Fatiamento...")
+    db.update_heartbeat("comercial", "RUNNING", "Iniciando Fatiamento...")
 
     # 1. Garante Tabelas
     conn = db.get_connection()
@@ -181,11 +181,11 @@ def update_proposals():
 
         msg_final = f"Total Processado: {total_saved}"
         print(f"\n🏁 {msg_final}")
-        db.update_heartbeat("Propostas (API)", "ONLINE", msg_final)
+        db.update_heartbeat("comercial", "ONLINE", msg_final)
 
     except Exception as e:
         print(f"\n❌ Erro Fatal Loop: {e}")
-        db.update_heartbeat("Propostas (API)", "ERROR", str(e))
+        db.update_heartbeat("comercial", "ERROR", str(e))
 
 if __name__ == "__main__":
     update_proposals()

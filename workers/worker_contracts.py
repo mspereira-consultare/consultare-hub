@@ -172,7 +172,7 @@ def run_worker_contracts():
     base_payload = { "perPage": 100 }
     
     print(f"📡 Modo: FULL SCAN")
-    db.update_heartbeat("Contratos (API)", "RUNNING", "Iniciando...")
+    db.update_heartbeat("contratos", "RUNNING", "Iniciando...")
 
     # Discovery
     first_page = fetch_page_data(URL_API, base_payload, headers, 1)
@@ -213,7 +213,7 @@ def run_worker_contracts():
     print()
     msg_final = f"Finalizado. Total Salvo: {total_saved}"
     print(f"🏁 {msg_final}")
-    db.update_heartbeat("Contratos (API)", "ONLINE", msg_final)
+    db.update_heartbeat("contratos", "ONLINE", msg_final)
 
 if __name__ == "__main__":
     run_worker_contracts()
