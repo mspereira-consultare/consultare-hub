@@ -210,14 +210,21 @@ export default function GoalsDashboardPage() {
          </div>
       )}
 
-      {selectedGoal && (
-        <GoalDetailsModal
-          isOpen={!!selectedGoal}
-          onClose={() => setSelectedGoal(null)}
-          goal={selectedGoal}
-          currentData={{ current: selectedGoal.current, percentage: selectedGoal.percentage }}
-        />
-      )}
+      {selectedGoal && (() => {
+        const modalGoal = {
+          ...selectedGoal,
+          id: (selectedGoal as any).id ?? selectedGoal.goal_id,
+          target_value: (selectedGoal as any).target_value ?? selectedGoal.target
+        };
+        return (
+          <GoalDetailsModal
+            isOpen={!!selectedGoal}
+            onClose={() => setSelectedGoal(null)}
+            goal={modalGoal}
+            currentData={{ current: selectedGoal.current, percentage: selectedGoal.percentage }}
+          />
+        );
+      })()}
     </div>
   );
 }

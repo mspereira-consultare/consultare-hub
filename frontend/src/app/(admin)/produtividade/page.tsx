@@ -18,7 +18,7 @@ export default function ProductivityPage() {
         end: todayStr
     });
     const [selectedTeam, setSelectedTeam] = useState('CRC');
-    const [availableTeams, setAvailableTeams] = useState<string[]>(['CRC']);
+    const [availableTeams, setAvailableTeams] = useState<Array<{ id: string; name: string }>>([]);
 
     // Dados
     const [rankingData, setRankingData] = useState<any[]>([]);
@@ -80,6 +80,12 @@ export default function ProductivityPage() {
         }
         return counts;
     }, [configUsers, rankingData]);
+
+    const teamNames = useMemo(() => {
+        const names = availableTeams.map(t => t.name);
+        if (!names.includes('CRC')) names.push('CRC');
+        return names;
+    }, [availableTeams]);
 
     const teamsByUser = useMemo(() => {
         const map = new Map<string, string[]>();
@@ -207,8 +213,8 @@ export default function ProductivityPage() {
             const data = await res.json();
             setConfigUsers(data.users || []);
             
-            const teams = data.teams?.map((t: any) => t.name || t) || [];
-            if (!teams.includes('CRC')) teams.push('CRC'); 
+            const teams = Array.isArray(data.teams) ? data.teams : [];
+            teams.sort((a: any, b: any) => String(a.name).localeCompare(String(b.name)));
             setAvailableTeams(teams);
 
         } catch (e) { console.error(e); } finally { setLoadingConfig(false); }
@@ -238,8 +244,8 @@ export default function ProductivityPage() {
                     })
                 );
                 
-                if (!availableTeams.includes(teamName)) {
-                    setAvailableTeams(prev => [...prev, teamName].sort());
+                if (!availableTeams.some((t) => t.id === teamId || t.name === teamName)) {
+                    setAvailableTeams(prev => [...prev, { id: teamId, name: teamName }].sort((a, b) => String(a.name).localeCompare(String(b.name))));
                 }
             } else {
                 console.error('Erro ao atualizar equipe');
@@ -371,7 +377,7 @@ export default function ProductivityPage() {
                                         onChange={(e) => setSelectedTeam(e.target.value)}
                                         className="bg-white border border-indigo-200 text-indigo-900 text-sm rounded px-2 py-0.5 outline-none font-bold cursor-pointer hover:border-indigo-400"
                                     >
-                                        {availableTeams.map(t => <option key={t} value={t}>{t}</option>)}
+                                        {teamNames.map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
                                 <p className="text-xs text-indigo-600">
@@ -683,13 +689,14 @@ export default function ProductivityPage() {
                                             
                                             {/* Checkboxes de equipes */}
                                             <div className="ml-11 space-y-2">
-                                                {availableTeams.map((teamName: string) => {
+                                                {availableTeams.map((team) => {
+                                                    const teamName = team.name;
+                                                    const teamId = team.id;
                                                     const userTeams = u.teams || [];
-                                                    const isInTeam = userTeams.some((t: any) => t.name === teamName);
-                                                    const teamId = userTeams.find((t: any) => t.name === teamName)?.id || teamName;
+                                                    const isInTeam = userTeams.some((t: any) => t.id === teamId);
                                                     
                                                     return (
-                                                        <label key={teamName} className="flex items-center gap-2 cursor-pointer">
+                                                        <label key={teamId} className="flex items-center gap-2 cursor-pointer">
                                                             <input
                                                                 type="checkbox"
                                                                 checked={isInTeam}

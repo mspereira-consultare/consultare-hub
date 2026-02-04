@@ -16,18 +16,20 @@ interface GoalDetailsModalProps {
 export function GoalDetailsModal({ isOpen, onClose, goal, currentData }: GoalDetailsModalProps) {
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const goalId = goal?.id ?? goal?.goal_id;
+  const targetValue = goal?.target_value ?? goal?.target ?? 0;
 
   useEffect(() => {
-    if (isOpen && goal?.id) {
-      fetchHistory();
+    if (isOpen && goalId) {
+      fetchHistory(goalId);
     }
-  }, [isOpen, goal]);
+  }, [isOpen, goalId]);
 
-  const fetchHistory = async () => {
+  const fetchHistory = async (id: any) => {
     setLoading(true);
     try {
       // Busca histórico da API (Async/Turso)
-      const res = await fetch(`/api/admin/goals/history?goal_id=${goal.id}`);
+      const res = await fetch(`/api/admin/goals/history?goal_id=${id}`);
       if (res.ok) {
         const data = await res.json();
         setHistory(Array.isArray(data) ? data : []);
@@ -43,9 +45,9 @@ export function GoalDetailsModal({ isOpen, onClose, goal, currentData }: GoalDet
 
   // Formatador
   const formatValue = (val: number) => {
-    if (goal.unit === 'currency') return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    if (goal.unit === 'percent') return `${val.toFixed(1)}%`;
-    if (goal.unit === 'minutes') return `${val} min`;
+    if (goal?.unit === 'currency') return val.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    if (goal?.unit === 'percent') return `${val.toFixed(1)}%`;
+    if (goal?.unit === 'minutes') return `${val} min`;
     return val.toLocaleString('pt-BR');
   };
 
@@ -83,7 +85,7 @@ export function GoalDetailsModal({ isOpen, onClose, goal, currentData }: GoalDet
                     <span className="text-xs font-bold uppercase">Meta (Alvo)</span>
                 </div>
                 <div className="text-2xl font-bold text-slate-800">
-                    {formatValue(goal.target_value)}
+                    {formatValue(targetValue)}
                 </div>
              </div>
 
