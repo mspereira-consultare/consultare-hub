@@ -69,11 +69,8 @@ export default function MonitorPage() {
     return units.some((unit) => {
       const waiters = unit.patients?.filter((p: any) => {
         if (p.status !== 'waiting') return false;
-        if (!p.checkInTime) return false;
-        const now = new Date();
-        const checkInTime = new Date(p.checkInTime);
-        const waitTimeMinutes = (now.getTime() - checkInTime.getTime()) / (1000 * 60);
-        return waitTimeMinutes > WAIT_ALERT_MINUTES;
+        const waitMinutes = Number(p?.waitTime ?? 0);
+        return waitMinutes > WAIT_ALERT_MINUTES;
       });
       return (waiters?.length || 0) > 0;
     });
