@@ -39,13 +39,26 @@ export async function GET(request: Request) {
 
     // 3. Chama o Engine (Async)
     // Passamos o objeto de opções com scope e filter_group
+    const normalizeUnitFilter = (goal: any) => {
+        const raw = goal?.clinic_unit;
+        if (raw && raw !== 'all') return raw;
+        const unitField = goal?.unit;
+        if (unitField && !['currency', 'qtd', 'percent', 'minutes'].includes(unitField)) {
+            return unitField;
+        }
+        return undefined;
+    };
+
+    const unitFilter = normalizeUnitFilter(goal);
     const history = await calculateHistory(
         goal.linked_kpi_id, 
         start, 
         end,
         { 
             group_filter: goal.filter_group,
-            unit_filter: goal.clinic_unit,
+            unit_filter: unitFilter,
+            collaborator: goal.collaborator,
+            team: goal.team,
             scope: goal.scope // 'CLINIC' ou 'CARD'
         }
     );

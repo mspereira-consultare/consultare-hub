@@ -45,6 +45,8 @@ export const KPIS_AVAILABLE = [
     
     // ESCOPO: CLÍNICA (Suportam Filtro de Grupo do Feegow)
     { id: 'revenue', label: 'Faturamento Total (Pago)', scope: 'CLINIC', supportsFilter: true },
+    { id: 'agendamentos', label: 'Agendamentos (Consultas)', scope: 'CLINIC', supportsFilter: true },
+    { id: 'agendamentos_confirm_rate', label: 'Taxa de Confirmação (Agendamentos)', scope: 'CLINIC', supportsFilter: true },
     { id: 'appointments', label: 'Qtd. Atendimentos', scope: 'CLINIC', supportsFilter: true },
     { id: 'ticket_medio', label: 'Ticket Médio', scope: 'CLINIC', supportsFilter: true },
     

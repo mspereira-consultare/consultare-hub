@@ -51,12 +51,18 @@ export async function POST(request: Request) {
         linked_kpi_id, 
         filter_group 
     } = body;
-  const clinic_unit = body.clinic_unit || null;
-  const collaborator = body.collaborator || null;
+    const clinic_unit = body.clinic_unit || null;
+    const collaborator = body.collaborator || null;
+    const team = body.team || null;
 
     const db = getDbConnection();
     const finalScope = scope || 'CLINIC';
     const finalFilterGroup = filter_group || null;
+
+    // Garante colunas novas (compatível com SQLite/Turso)
+    try { await db.execute("ALTER TABLE goals_config ADD COLUMN clinic_unit TEXT"); } catch (e) {}
+    try { await db.execute("ALTER TABLE goals_config ADD COLUMN collaborator TEXT"); } catch (e) {}
+    try { await db.execute("ALTER TABLE goals_config ADD COLUMN team TEXT"); } catch (e) {}
 
     if (id) {
       // --- EDIÇÃO (UPDATE) ---
@@ -77,12 +83,13 @@ export async function POST(request: Request) {
               filter_group = ?, 
               clinic_unit = ?,
               collaborator = ?,
+              team = ?,
               updated_at = datetime('now') 
           WHERE id = ?
         `, [
           name, finalScope, sector, start_date, end_date, 
           periodicity, target_value, unit, linked_kpi_id, 
-          finalFilterGroup, clinic_unit, collaborator, id
+          finalFilterGroup, clinic_unit, collaborator, team, id
         ]);
       } catch (e) {
         // Fallback para schema antigo sem novas colunas
@@ -118,13 +125,13 @@ export async function POST(request: Request) {
           INSERT INTO goals_config (
               name, scope, sector, start_date, end_date, 
               periodicity, target_value, unit, linked_kpi_id, 
-              filter_group, clinic_unit, collaborator, created_at, updated_at
+              filter_group, clinic_unit, collaborator, team, created_at, updated_at
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
         `, [
           name, finalScope, sector, start_date, end_date, 
           periodicity, target_value, unit, linked_kpi_id, 
-          finalFilterGroup, clinic_unit, collaborator
+          finalFilterGroup, clinic_unit, collaborator, team
         ]);
       } catch (e) {
         // Fallback: insert sem as novas colunas

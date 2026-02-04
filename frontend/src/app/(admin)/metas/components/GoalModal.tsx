@@ -25,7 +25,8 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
         linked_kpi_id: 'manual',
         filter_group: '',
         clinic_unit: 'all',
-        collaborator: 'all'
+        collaborator: 'all',
+        team: 'all'
     };
 
     const [formData, setFormData] = useState<Goal>(defaultGoal);

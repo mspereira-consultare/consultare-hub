@@ -12,6 +12,17 @@ export async function GET(request: Request) {
     const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
       const db = getDbConnection();
       
+      const normalizeUnitFilter = (goal: any) => {
+          const raw = goal?.clinic_unit;
+          if (raw && raw !== 'all') return raw;
+          // Fallback seguro: evita usar unidade de medida como filtro
+          const unitField = goal?.unit;
+          if (unitField && !['currency', 'qtd', 'percent', 'minutes'].includes(unitField)) {
+              return unitField;
+          }
+          return undefined;
+      };
+
       // 1. Busca metas ativas (vigentes hoje)
       // ASYNC: Substituído prepare().all() por await query()
       const goals = await db.query(`
@@ -42,13 +53,16 @@ export async function GET(request: Request) {
           
           // Se tiver um KPI vinculado (não for apenas manual)
           if (goal.linked_kpi_id && goal.linked_kpi_id !== 'manual') {
+              const unitFilter = normalizeUnitFilter(goal);
               const result = await calculateKpi(
                   goal.linked_kpi_id, 
                   calcStart, 
                   calcEnd, 
                   { 
                     group_filter: goal.filter_group,
-                    unit_filter: goal.clinic_unit,
+                    unit_filter: unitFilter,
+                    collaborator: goal.collaborator,
+                    team: goal.team,
                     scope: goal.scope // Importante: Passa se é CLINIC ou CARD
                 }
             );

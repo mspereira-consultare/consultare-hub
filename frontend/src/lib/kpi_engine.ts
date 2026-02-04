@@ -9,6 +9,8 @@ interface KpiResult {
 interface KpiOptions { 
     group_filter?: string; 
     unit_filter?: string;
+    collaborator?: string;
+    team?: string;
     scope?: 'CLINIC' | 'CARD'; 
 }
 
@@ -50,7 +52,7 @@ export async function calculateKpi(kpiId: string, startDate: string, endDate: st
 
         // 2. Lógica de Agregação (Soma vs Média)
         // KPIs que representam taxas ou médias não podem ser somados
-        if (kpiId === 'ticket_medio' || kpiId === 'absenteeism') {
+        if (kpiId === 'ticket_medio' || kpiId === 'absenteeism' || kpiId === 'agendamentos_confirm_rate') {
             const sum = history.reduce((acc, item) => acc + item.value, 0);
             finalValue = sum / history.length;
             console.log(`[KPI_ENGINE] Agregação por MÉDIA: ${finalValue.toFixed(2)}`);
@@ -78,8 +80,10 @@ export async function calculateKpi(kpiId: string, startDate: string, endDate: st
  */
 export async function calculateHistory(kpiId: string, startDate: string, endDate: string, options?: KpiOptions): Promise<KpiHistoryItem[]> {
     const db = getDbConnection();
-    const filterVal = options?.group_filter?.trim();
-    const unitVal = options?.unit_filter?.trim();
+    const filterVal = options?.group_filter ? String(options.group_filter).trim() : undefined;
+    const unitVal = options?.unit_filter ? String(options.unit_filter).trim() : undefined;
+    const collaboratorVal = options?.collaborator ? String(options.collaborator).trim() : undefined;
+    const teamVal = options?.team ? String(options.team).trim() : undefined;
     
     let query = '';
     let queryParams: any[] = [];
@@ -158,7 +162,89 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                 queryParams.push(unitVal);
             }
 
-            const buildClinicQuery = (useSummary: boolean) => {
+            // --- KPI ESPECIAL: AGENDAMENTOS (por scheduled_by / equipe) ---
+            if (kpiId === 'agendamentos') {
+                const dbStart = `${startDate} 00:00:00`;
+                const dbEnd = `${endDate} 23:59:59`;
+                const params: any[] = [dbStart, dbEnd];
+                let whereSql = "WHERE f.scheduled_at BETWEEN ? AND ?";
+
+                if (filterVal && filterVal !== 'all' && filterVal !== '') {
+                    whereSql += ` AND UPPER(TRIM(f.procedure_group)) = UPPER(TRIM(?))`;
+                    params.push(filterVal);
+                }
+
+                if (unitVal && unitVal !== 'all' && unitVal !== '') {
+                    whereSql += ` AND UPPER(TRIM(f.unit_name)) = UPPER(TRIM(?))`;
+                    params.push(unitVal);
+                }
+
+                if (collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '') {
+                    whereSql += ` AND (UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?)) OR UPPER(TRIM(f.professional_name)) = UPPER(TRIM(?)))`;
+                    params.push(collaboratorVal, collaboratorVal);
+                }
+
+                let joinSql = "";
+                if (teamVal && teamVal !== 'all' && teamVal !== '') {
+                    joinSql = `
+                        JOIN user_teams ut ON ut.user_name = f.scheduled_by
+                        JOIN teams_master tm ON tm.id = ut.team_id
+                    `;
+                    whereSql += ` AND tm.name = ?`;
+                    params.push(teamVal);
+                }
+
+                query = `
+                    SELECT substr(f.scheduled_at, 1, 10) as d, COUNT(*) as val
+                    FROM feegow_appointments f
+                    ${joinSql}
+                    ${whereSql}
+                    GROUP BY d ORDER BY d
+                `;
+                queryParams = params;
+            } else if (kpiId === 'agendamentos_confirm_rate') {
+                const dbStart = `${startDate} 00:00:00`;
+                const dbEnd = `${endDate} 23:59:59`;
+                const params: any[] = [dbStart, dbEnd];
+                let whereSql = "WHERE f.scheduled_at BETWEEN ? AND ?";
+
+                if (filterVal && filterVal !== 'all' && filterVal !== '') {
+                    whereSql += ` AND UPPER(TRIM(f.procedure_group)) = UPPER(TRIM(?))`;
+                    params.push(filterVal);
+                }
+
+                if (unitVal && unitVal !== 'all' && unitVal !== '') {
+                    whereSql += ` AND UPPER(TRIM(f.unit_name)) = UPPER(TRIM(?))`;
+                    params.push(unitVal);
+                }
+
+                if (collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '') {
+                    whereSql += ` AND (UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?)) OR UPPER(TRIM(f.professional_name)) = UPPER(TRIM(?)))`;
+                    params.push(collaboratorVal, collaboratorVal);
+                }
+
+                let joinSql = "";
+                if (teamVal && teamVal !== 'all' && teamVal !== '') {
+                    joinSql = `
+                        JOIN user_teams ut ON ut.user_name = f.scheduled_by
+                        JOIN teams_master tm ON tm.id = ut.team_id
+                    `;
+                    whereSql += ` AND tm.name = ?`;
+                    params.push(teamVal);
+                }
+
+                query = `
+                    SELECT 
+                        substr(f.scheduled_at, 1, 10) as d, 
+                        (SUM(CASE WHEN f.status_id IN (3, 7) THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as val
+                    FROM feegow_appointments f
+                    ${joinSql}
+                    ${whereSql}
+                    GROUP BY d ORDER BY d
+                `;
+                queryParams = params;
+            } else {
+                const buildClinicQuery = (useSummary: boolean) => {
                 const table = useSummary ? SUMMARY_TABLE : 'faturamento_analitico';
                 const dateCol = useSummary ? SUMMARY_DATE_COL : SQL_DATE_ANALITICO;
                 const sumCol = useSummary ? 'total_pago' : 'total_pago';
@@ -204,9 +290,10 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                 }
             };
 
-            // Primeiro tenta a tabela de resumo
-            query = buildClinicQuery(true);
-            if (!query) return [];
+                // Primeiro tenta a tabela de resumo
+                query = buildClinicQuery(true);
+                if (!query) return [];
+            }
         }
 
         // 3. Execução da Query
