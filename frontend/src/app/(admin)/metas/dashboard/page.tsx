@@ -31,10 +31,11 @@ export default function GoalsDashboardPage() {
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [selectedGoal, setSelectedGoal] = useState<DashboardGoal | null>(null);
 
-  const fetchData = async () => {
+  const fetchData = async (forceFresh = false) => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/goals/dashboard', { cache: 'no-store' });
+      const refreshParam = forceFresh ? `?refresh=${Date.now()}` : '';
+      const res = await fetch(`/api/admin/goals/dashboard${refreshParam}`, { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setGoals(Array.isArray(data) ? data : []);
@@ -93,7 +94,7 @@ export default function GoalsDashboardPage() {
         </div>
         
         <button 
-            onClick={fetchData} 
+            onClick={() => fetchData(true)} 
             disabled={loading}
             className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-600 text-sm hover:text-blue-600 hover:border-blue-300 transition-all shadow-sm active:scale-95 disabled:opacity-70"
         >

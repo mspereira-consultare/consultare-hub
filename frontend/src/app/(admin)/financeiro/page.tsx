@@ -119,7 +119,7 @@ export default function FinancialPage() {
   const [heartbeat, setHeartbeat] = useState<any>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = async (forceFresh = false) => {
     // Não ativa loading fullscreen se for apenas polling
     if (!heartbeat) setLoading(true);
 
@@ -131,6 +131,7 @@ export default function FinancialPage() {
             startDate: dateRange.start,
             endDate: dateRange.end
         });
+        if (forceFresh) params.set('refresh', Date.now().toString());
 
         const res = await fetch(`/api/admin/financial/history?${params.toString()}`);
         const data = await res.json();
@@ -187,7 +188,7 @@ export default function FinancialPage() {
                 setHeartbeat(data.heartbeat);
                 if (data.heartbeat.status === 'RUNNING' || data.heartbeat.status === 'PENDING') {
                     setIsUpdating(true);
-                    setTimeout(fetchData, 3000); // Polling
+                    setTimeout(() => fetchData(true), 3000); // Polling
                 } else {
                     setIsUpdating(false);
                 }
@@ -204,7 +205,7 @@ export default function FinancialPage() {
     setIsUpdating(true);
     try {
         await fetch('/api/admin/financial/history', { method: 'POST' });
-        setTimeout(fetchData, 1000);
+        setTimeout(() => fetchData(true), 1000);
     } catch (e) {
         console.error(e);
         setIsUpdating(false);

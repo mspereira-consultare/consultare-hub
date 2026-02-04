@@ -164,7 +164,7 @@ export default function ProductivityPage() {
     const [showTeamGoals, setShowTeamGoals] = useState(true);
 
     // --- BUSCA DADOS PRINCIPAIS ---
-    const fetchData = async () => {
+    const fetchData = async (forceFresh = false) => {
         if (!heartbeat) setLoading(true);
         try {
             const params = new URLSearchParams({ 
@@ -172,6 +172,9 @@ export default function ProductivityPage() {
                 endDate: dateRange.end,
                 team: selectedTeam 
             });
+            if (forceFresh) {
+                params.set('refresh', Date.now().toString());
+            }
             const [prodRes, goalsRes] = await Promise.all([
                 fetch(`/api/admin/produtividade?${params.toString()}`),
                 fetch('/api/admin/goals/dashboard')
@@ -198,7 +201,7 @@ export default function ProductivityPage() {
 
             if (prodData.heartbeat && (prodData.heartbeat.status === 'RUNNING' || prodData.heartbeat.status === 'PENDING')) {
                 setIsUpdating(true);
-                setTimeout(fetchData, 3000); 
+                setTimeout(() => fetchData(true), 3000); 
             } else {
                 setIsUpdating(false);
             }
@@ -261,7 +264,7 @@ export default function ProductivityPage() {
     const handleManualUpdate = async () => {
         setIsUpdating(true);
         await fetch('/api/admin/produtividade', { method: 'POST' });
-        setTimeout(fetchData, 1000);
+        setTimeout(() => fetchData(true), 1000);
     };
 
     const filteredUsers = rankingData.filter(u => u.user.toLowerCase().includes(searchTerm.toLowerCase()));

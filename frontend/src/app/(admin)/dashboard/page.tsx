@@ -33,7 +33,7 @@ export default function DashboardPage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const alertTriggeredRef = useRef<boolean>(false);
 
-  const fetchDashboardData = useCallback(async (isManual = false) => {
+  const fetchDashboardData = useCallback(async (isManual = false, forceFresh = false) => {
     if (isManual) {
       setLoading(true);
       // Ativa o worker de faturamento analítico quando refresh manual é clicado
@@ -49,20 +49,26 @@ export default function DashboardPage() {
     }
     
     try {
+      const shouldRefresh = forceFresh || isManual;
+      const withRefresh = (url: string) => {
+        if (!shouldRefresh) return url;
+        const joiner = url.includes('?') ? '&' : '?';
+        return `${url}${joiner}refresh=${Date.now()}`;
+      };
       const today = new Date();
       const todayStr = today.toISOString().split('T')[0];
       const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
       const monthEnd = todayStr;
       
       const [resMedic, resRecep, resWhats, resFinanceDaily, resFinanceMonth, resFinanceByUnitDaily, resFinanceByUnitMonth, resGoals] = await Promise.all([
-        fetch('/api/queue/medic').then(r => r.json()),
-        fetch('/api/queue/reception').then(r => r.json()),
-        fetch('/api/queue/whatsapp').then(r => r.json()),
-        fetch(`/api/admin/financial/history?startDate=${todayStr}&endDate=${todayStr}`).then(r => r.json()),
-        fetch(`/api/admin/financial/history?startDate=${monthStart}&endDate=${monthEnd}`).then(r => r.json()),
-        fetch(`/api/admin/financial/history?startDate=${todayStr}&endDate=${todayStr}&unit=all`).then(r => r.json()),
-        fetch(`/api/admin/financial/history?startDate=${monthStart}&endDate=${monthEnd}&unit=all`).then(r => r.json()),
-        fetch('/api/admin/goals/dashboard').then(r => r.json())
+        fetch(withRefresh('/api/queue/medic')).then(r => r.json()),
+        fetch(withRefresh('/api/queue/reception')).then(r => r.json()),
+        fetch(withRefresh('/api/queue/whatsapp')).then(r => r.json()),
+        fetch(withRefresh(`/api/admin/financial/history?startDate=${todayStr}&endDate=${todayStr}`)).then(r => r.json()),
+        fetch(withRefresh(`/api/admin/financial/history?startDate=${monthStart}&endDate=${monthEnd}`)).then(r => r.json()),
+        fetch(withRefresh(`/api/admin/financial/history?startDate=${todayStr}&endDate=${todayStr}&unit=all`)).then(r => r.json()),
+        fetch(withRefresh(`/api/admin/financial/history?startDate=${monthStart}&endDate=${monthEnd}&unit=all`)).then(r => r.json()),
+        fetch(withRefresh('/api/admin/goals/dashboard')).then(r => r.json())
       ]);
 
       setData({
@@ -79,7 +85,7 @@ export default function DashboardPage() {
         setHeartbeat(resFinanceDaily.heartbeat);
         if (resFinanceDaily.heartbeat.status === 'RUNNING' || resFinanceDaily.heartbeat.status === 'PENDING') {
           setIsUpdating(true);
-          setTimeout(fetchDashboardData, 3000);
+          setTimeout(() => fetchDashboardData(false, true), 3000);
         } else {
           setIsUpdating(false);
         }
@@ -104,7 +110,7 @@ export default function DashboardPage() {
     setIsUpdating(true);
     try {
       await fetch('/api/admin/financial/history', { method: 'POST' });
-      setTimeout(fetchDashboardData, 1000);
+      setTimeout(() => fetchDashboardData(false, true), 1000);
     } catch (e) {
       console.error(e);
       setIsUpdating(false);

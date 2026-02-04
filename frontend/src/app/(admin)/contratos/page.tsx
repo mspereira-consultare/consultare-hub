@@ -24,12 +24,13 @@ export default function ContratosDashboard() {
   const [heartbeat, setHeartbeat] = useState<any>(null);
   const [isUpdating, setIsUpdating] = useState(false);
 
-  async function fetchData() {
+  async function fetchData(forceFresh = false) {
     // Só mostra "Carregando..." na tela cheia se não tiver dados E não for um refresh de status
     if (!data && !heartbeat) setLoading(true);
 
     try {
-      const res = await fetch(`/api/admin/contratos?startDate=${dates.startDate}&endDate=${dates.endDate}`);
+      const refreshParam = forceFresh ? `&refresh=${Date.now()}` : '';
+      const res = await fetch(`/api/admin/contratos?startDate=${dates.startDate}&endDate=${dates.endDate}${refreshParam}`);
       const json = await res.json();
       setData(json);
 
@@ -38,7 +39,7 @@ export default function ContratosDashboard() {
           setHeartbeat(json.heartbeat);
           if (json.heartbeat.status === 'RUNNING' || json.heartbeat.status === 'PENDING') {
               setIsUpdating(true);
-              setTimeout(fetchData, 3000); // Polling
+              setTimeout(() => fetchData(true), 3000); // Polling
           } else {
               setIsUpdating(false);
           }
@@ -56,7 +57,7 @@ export default function ContratosDashboard() {
     setIsUpdating(true);
     try {
         await fetch('/api/admin/contratos', { method: 'POST' });
-        setTimeout(fetchData, 1000);
+        setTimeout(() => fetchData(true), 1000);
     } catch (e) {
         console.error(e);
         setIsUpdating(false);

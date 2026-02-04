@@ -121,11 +121,11 @@ export async function GET(request: Request) {
 
     // 4. HEARTBEAT
     const statusResult = await db.query(`
-        SELECT status, last_run, message 
+        SELECT status, last_run, details 
         FROM system_status 
         WHERE service_name = 'comercial'
     `);
-    const heartbeat = statusResult[0] || { status: 'UNKNOWN', last_run: null, message: '' };
+    const heartbeat = statusResult[0] || { status: 'UNKNOWN', last_run: null, details: '' };
 
     return {
         summary,
@@ -147,11 +147,11 @@ export async function POST() {
     try {
         const db = getDbConnection();
         await db.execute(`
-            INSERT INTO system_status (service_name, status, last_run, message)
+            INSERT INTO system_status (service_name, status, last_run, details)
             VALUES ('comercial', 'PENDING', datetime('now'), 'Solicitado via Painel')
             ON CONFLICT(service_name) DO UPDATE SET
                 status = 'PENDING',
-                message = 'Solicitado via Painel',
+                details = 'Solicitado via Painel',
                 last_run = datetime('now')
         `);
         invalidateCache('admin:');

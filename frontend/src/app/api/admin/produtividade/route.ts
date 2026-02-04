@@ -65,11 +65,11 @@ export async function GET(request: Request) {
 
     // 4. HEARTBEAT
     const statusRes = await db.query(`
-        SELECT status, last_run, message 
+        SELECT status, last_run, details 
         FROM system_status 
-        WHERE service_name = 'agendamentos'
+        WHERE service_name = 'financeiro'
     `);
-    const heartbeat = statusRes[0] || { status: 'UNKNOWN', last_run: null, message: '' };
+    const heartbeat = statusRes[0] || { status: 'UNKNOWN', last_run: null, details: '' };
 
     return { 
         userStats, 
@@ -95,11 +95,11 @@ export async function POST() {
     try {
         const db = getDbConnection();
         await db.execute(`
-            INSERT INTO system_status (service_name, status, last_run, message)
-            VALUES ('agendamentos', 'PENDING', datetime('now'), 'Solicitado via Painel')
+            INSERT INTO system_status (service_name, status, last_run, details)
+            VALUES ('financeiro', 'PENDING', datetime('now'), 'Solicitado via Painel')
             ON CONFLICT(service_name) DO UPDATE SET
                 status = 'PENDING',
-                message = 'Solicitado via Painel',
+                details = 'Solicitado via Painel',
                 last_run = datetime('now')
         `);
         invalidateCache('admin:');

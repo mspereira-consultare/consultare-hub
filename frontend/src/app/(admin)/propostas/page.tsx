@@ -30,7 +30,7 @@ export default function ProposalsPage() {
     const [isUpdating, setIsUpdating] = useState(false);
     const avgTicket = summary.qtd > 0 ? summary.valor / summary.qtd : 0;
 
-    const fetchData = async () => {
+    const fetchData = async (forceFresh = false) => {
         // Não ativa loading total se for apenas refresh de background
         if (!heartbeat) setLoading(true);
         
@@ -40,6 +40,7 @@ export default function ProposalsPage() {
                 endDate: dateRange.end,
                 unit: selectedUnit
             });
+            if (forceFresh) params.set('refresh', Date.now().toString());
             const res = await fetch(`/api/admin/propostas?${params.toString()}`);
             const data = await res.json();
             
@@ -78,7 +79,7 @@ export default function ProposalsPage() {
                 setHeartbeat(data.heartbeat);
                 // Se estiver rodando, continua sondando
                 if (data.heartbeat.status === 'RUNNING' || data.heartbeat.status === 'PENDING') {
-                    setTimeout(fetchData, 3000);
+                    setTimeout(() => fetchData(true), 3000);
                     setIsUpdating(true);
                 } else {
                     setIsUpdating(false);
@@ -116,7 +117,7 @@ export default function ProposalsPage() {
         try {
             await fetch('/api/admin/propostas', { method: 'POST' });
             // Inicia polling imediato
-            setTimeout(fetchData, 1000);
+            setTimeout(() => fetchData(true), 1000);
         } catch (e) {
             console.error(e);
             setIsUpdating(false);
