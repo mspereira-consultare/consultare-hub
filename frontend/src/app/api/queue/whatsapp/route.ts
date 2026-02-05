@@ -19,7 +19,9 @@ export async function GET() {
     `);
     
       // Garante tipagem numérica para evitar erros nos cálculos
-      const groups = groupsRaw.map((g: any) => ({
+      const globalRow = groupsRaw.find((g: any) => g.group_id === '__global__');
+      const filteredGroups = groupsRaw.filter((g: any) => g.group_id !== '__global__');
+      const groups = filteredGroups.map((g: any) => ({
           group_id: g.group_id,
           group_name: g.group_name,
           queue_size: Number(g.queue_size || 0),
@@ -27,7 +29,7 @@ export async function GET() {
       }));
 
       // Calcula totais globais
-      const totalQueue = groups.reduce((acc, g) => acc + g.queue_size, 0);
+      const totalQueue = globalRow ? Number(globalRow.queue_size || 0) : groups.reduce((acc, g) => acc + g.queue_size, 0);
       
       // Média apenas dos grupos com tempo > 0
       const activeGroups = groups.filter(g => g.avg_wait_seconds > 0);

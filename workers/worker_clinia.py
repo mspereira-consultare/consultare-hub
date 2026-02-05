@@ -20,6 +20,14 @@ API_URL_METADATA = "https://dashboard.clinia.io/api/users-group"
 API_URL_MONITOR = "https://dashboard.clinia.io/api/statistics/group/card"
 API_URL_REPORT = "https://dashboard.clinia.io/api/statistics/group/chart"
 API_URL_APPOINTMENTS = "https://dashboard.clinia.io/api/statistics/appointments"
+API_URL_WHATSAPP_COUNT = "https://dashboard.clinia.io/api/whatsapp/chat/count"
+
+# Mapeamento fixo de grupos para o monitor (IDs -> nomes)
+WHATSAPP_GROUP_NAMES = {
+    "27a55f28-fcc9-464a-b309-46eae46cac71": "Cancelados",
+    "da45d882-5702-439b-8133-3d896d6a8810": "Central de relacionamento",
+    "dbfa4605-60ec-4f17-92c5-05c7d90ebcb4": "Resolvesaude"
+}
 
 HEADERS = {
     "accept": "application/json",
@@ -145,23 +153,52 @@ def process_and_save():
         monitor_params = get_params(mode="monitor_current")
         monitor_data = safe_request(API_URL_MONITOR, params=monitor_params)
 
+        # 5.1 NOVO ENDPOINT DE CONTAGEM (tempo real)
+        count_data = safe_request(API_URL_WHATSAPP_COUNT, params={"filter": "mine", "state": "OPEN"})
+
+        # Mapas auxiliares
+        avg_wait_map = {}
         if monitor_data and 'groups' in monitor_data:
-            # Limpa tabela snapshot antes de inserir o estado atual
-            conn.execute("DELETE FROM clinia_group_snapshots")
-            
             for stat in monitor_data['groups']:
                 g_id = stat.get('group_id')
-                g_name = group_names_map.get(g_id, f"Grupo {str(g_id)[:4]}..." if g_id else "Desconhecido")
-                queue = int(stat.get('number_of_without_responses', 0))
-                wait_time = int(stat.get('avg_waiting_time') or 0)
-                
                 if g_id:
-                    conn.execute('''
-                        INSERT INTO clinia_group_snapshots (group_id, group_name, queue_size, avg_wait_seconds, updated_at)
-                        VALUES (?, ?, ?, ?, datetime('now'))
-                    ''', (g_id, g_name, queue, wait_time))
-            
-            print(" -> Monitor atualizado.")
+                    avg_wait_map[g_id] = int(stat.get('avg_waiting_time') or 0)
+
+        counts_map = {}
+        count_all = 0
+        if count_data and isinstance(count_data, dict):
+            count_root = count_data.get('count') or {}
+            count_all = int(count_root.get('all') or 0)
+            for g in count_root.get('groups') or []:
+                g_id = g.get('id')
+                if g_id:
+                    counts_map[g_id] = int(g.get('count') or 0)
+        if count_all <= 0 and counts_map:
+            count_all = sum(counts_map.values())
+
+        # Decide quais grupos inserir: mapping fixo + ids retornados
+        group_ids = set(WHATSAPP_GROUP_NAMES.keys()) | set(counts_map.keys()) | set(avg_wait_map.keys())
+
+        if group_ids:
+            # Limpa tabela snapshot antes de inserir o estado atual
+            conn.execute("DELETE FROM clinia_group_snapshots")
+
+            for g_id in group_ids:
+                g_name = WHATSAPP_GROUP_NAMES.get(g_id) or group_names_map.get(g_id) or f"Grupo {str(g_id)[:4]}..."
+                queue = int(counts_map.get(g_id, 0))
+                wait_time = int(avg_wait_map.get(g_id, 0))
+                conn.execute('''
+                    INSERT INTO clinia_group_snapshots (group_id, group_name, queue_size, avg_wait_seconds, updated_at)
+                    VALUES (?, ?, ?, ?, datetime('now'))
+                ''', (g_id, g_name, queue, wait_time))
+
+            # Linha global com o total "all" (usada pela API para o card)
+            conn.execute('''
+                INSERT INTO clinia_group_snapshots (group_id, group_name, queue_size, avg_wait_seconds, updated_at)
+                VALUES (?, ?, ?, ?, datetime('now'))
+            ''', ("__global__", "__GLOBAL__", int(count_all), 0))
+
+            print(" -> Monitor atualizado (contagem em tempo real).")
 
         # 6. RELATÓRIO DIÁRIO (Request Original Mantida)
         report_params = get_params(mode="report_history")
