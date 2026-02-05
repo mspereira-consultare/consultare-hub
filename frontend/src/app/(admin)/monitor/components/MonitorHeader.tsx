@@ -31,7 +31,8 @@ export const MonitorHeader = ({
   onOpenAlertConfig
 }: MonitorHeaderProps) => {
   
-  const [selectedGroup, setSelectedGroup] = useState<string>('all');
+  const CENTRAL_GROUP_ID = 'da45d882-5702-439b-8133-3d896d6a8810';
+  const [selectedGroup, setSelectedGroup] = useState<string>(CENTRAL_GROUP_ID);
 
   // Lógica de Filtragem
   const currentStats = useMemo(() => {
@@ -60,6 +61,18 @@ export const MonitorHeader = ({
   
   // Verifica se tem dados para habilitar o select
   const hasData = whatsAppData && whatsAppData.groups.length > 0;
+
+  useEffect(() => {
+    if (!whatsAppData || whatsAppData.groups.length === 0) return;
+    const hasCentral = whatsAppData.groups.some(g => g.group_id === CENTRAL_GROUP_ID);
+    if (!hasCentral) {
+      setSelectedGroup('all');
+      return;
+    }
+    if (!whatsAppData.groups.some(g => g.group_id === selectedGroup)) {
+      setSelectedGroup(CENTRAL_GROUP_ID);
+    }
+  }, [whatsAppData, selectedGroup]);
 
   return (
     <header className="mb-6 flex flex-col md:flex-row md:justify-between md:items-end gap-4">
@@ -108,12 +121,12 @@ export const MonitorHeader = ({
                               disabled={!hasData}
                               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
                            >
-                              <option value="all">TODOS</option>
                               {whatsAppData?.groups.map(g => (
                                   <option key={g.group_id} value={g.group_id}>
                                       {g.group_name.replace(/[^a-zA-Z0-9\s]/g, '')}
                                   </option>
                               ))}
+                              <option value="all">TODOS</option>
                            </select>
                       </div>
 
@@ -137,7 +150,7 @@ export const MonitorHeader = ({
                          <span className="text-xs text-slate-400">aguardando</span>
                       </div>
                       <div className="w-px h-3 bg-slate-200"></div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1" title="Estatística de ontem">
                          <Clock size={12} className="text-slate-400" />
                          <span className={`text-sm font-bold leading-none ${avgMinutes > 15 ? 'text-amber-600' : 'text-slate-600'}`}>
                            {formatMinutesToHours ? formatMinutesToHours(avgMinutes) : `${avgMinutes}m`}
