@@ -73,8 +73,13 @@ export default function ContratosDashboard() {
   // Formata data do status
   const formatLastUpdate = (dateString: string) => {
     if (!dateString) return 'Nunca';
-    const isoString = dateString.replace(' ', 'T') + 'Z';
-    try { return new Date(isoString).toLocaleString('pt-BR'); } catch (e) { return dateString; }
+    const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
+    try {
+      const parsed = new Date(isoString);
+      return Number.isNaN(parsed.getTime()) ? dateString : parsed.toLocaleString('pt-BR');
+    } catch (e) {
+      return dateString;
+    }
   };
 
   if (loading && !data) return (

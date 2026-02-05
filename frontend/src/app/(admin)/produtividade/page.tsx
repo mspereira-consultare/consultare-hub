@@ -268,7 +268,12 @@ export default function ProductivityPage() {
     };
 
     const filteredUsers = rankingData.filter(u => u.user.toLowerCase().includes(searchTerm.toLowerCase()));
-    const formatLastUpdate = (d: string) => d ? new Date(d.replace(' ', 'T') + 'Z').toLocaleString('pt-BR') : 'Nunca';
+    const formatLastUpdate = (dateString: string) => {
+        if (!dateString) return 'Nunca';
+        const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
+        const parsed = new Date(isoString);
+        return Number.isNaN(parsed.getTime()) ? dateString : parsed.toLocaleString('pt-BR');
+    };
 
     if (loading && !rankingData.length) return (
         <div className="flex flex-col items-center justify-center min-h-screen text-slate-400">

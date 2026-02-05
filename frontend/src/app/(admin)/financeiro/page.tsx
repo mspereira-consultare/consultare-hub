@@ -204,7 +204,11 @@ export default function FinancialPage() {
   const handleManualUpdate = async () => {
     setIsUpdating(true);
     try {
-        await fetch('/api/admin/financial/history', { method: 'POST' });
+        await fetch('/api/admin/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ service: 'worker_faturamento_scraping' })
+        });
         setTimeout(() => fetchData(true), 1000);
     } catch (e) {
         console.error(e);
@@ -217,8 +221,13 @@ export default function FinancialPage() {
   // Formatador de Data do Status
   const formatLastUpdate = (dateString: string) => {
     if (!dateString) return 'Nunca';
-    const isoString = dateString.replace(' ', 'T') + 'Z';
-    try { return new Date(isoString).toLocaleString('pt-BR'); } catch (e) { return dateString; }
+    const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
+    try {
+      const parsed = new Date(isoString);
+      return Number.isNaN(parsed.getTime()) ? dateString : parsed.toLocaleString('pt-BR');
+    } catch (e) {
+      return dateString;
+    }
   };
 
   return (

@@ -136,11 +136,10 @@ export default function ProposalsPage() {
     // Função auxiliar para formatar data UTC do banco para Local
     const formatLastUpdate = (dateString: string) => {
         if (!dateString) return 'Nunca';
-        // Adiciona 'Z' para indicar que a string é UTC, e substitui espaço por T para compatibilidade ISO
-        // Ex: "2026-01-22 18:41:32" -> "2026-01-22T18:41:32Z"
-        const isoString = dateString.replace(' ', 'T') + 'Z';
+        const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
         try {
-            return new Date(isoString).toLocaleString('pt-BR');
+            const parsed = new Date(isoString);
+            return Number.isNaN(parsed.getTime()) ? dateString : parsed.toLocaleString('pt-BR');
         } catch (e) {
             return dateString;
         }

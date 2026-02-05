@@ -362,14 +362,17 @@ def run_scheduler():
     # Agendamento
     schedule.every().day.at("05:00").do(run_token_renewal)
     schedule.every().day.at("06:00").do(daily_full_sync)
-    schedule.every().day.at("12:00").do(lambda: run_worker_contracts())
+    schedule.every().day.at("12:00").do(lambda: run_service('contratos'))
 
     schedule.every().day.at("12:00").do(run_token_renewal)
     # JOB HORÁRIO: executa workers não real-time a cada hora
     schedule.every().hour.do(run_hourly_workers)
 
     while True:
-        schedule.run_pending()
+        try:
+            schedule.run_pending()
+        except Exception as e:
+            print(f"⚠️ Scheduler error: {e}")
         time.sleep(60)
 
 def start_orchestrator():
