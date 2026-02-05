@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Save, HelpCircle, Filter, Building2, CreditCard, Database } from 'lucide-react';
-import { SECTORS, UNITS, PERIODICITY_OPTIONS, KPIS_AVAILABLE, GOAL_SCOPES, Goal } from '../constants';
+import { X, Save, HelpCircle, Filter, Database } from 'lucide-react';
+import { SECTORS, UNITS, PERIODICITY_OPTIONS, KPIS_AVAILABLE, Goal } from '../constants';
 
 interface GoalModalProps {
     isOpen: boolean;
@@ -13,6 +13,8 @@ interface GoalModalProps {
 
 export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalProps) => {
     
+    const RESOLVECARD_UNIT = 'RESOLVECARD GESTÃO DE BENEFICOS E MEIOS DE PAGAMENTOS';
+
     const defaultGoal: Goal = {
         name: '',
         scope: 'CLINIC',
@@ -34,13 +36,25 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
     useEffect(() => {
         if (isOpen) {
             if (initialData) {
-                setFormData({
+                const nextData = {
                     ...defaultGoal, // Garante campos padrão
                     ...initialData,
                     // Garante datas válidas
                     start_date: initialData.start_date?.split('T')[0] || defaultGoal.start_date,
                     end_date: initialData.end_date?.split('T')[0] || defaultGoal.end_date,
-                });
+                } as Goal;
+
+                if (nextData.scope === 'CARD' && (!nextData.clinic_unit || nextData.clinic_unit === 'all')) {
+                    nextData.clinic_unit = RESOLVECARD_UNIT;
+                }
+
+                if (nextData.clinic_unit === RESOLVECARD_UNIT) {
+                    nextData.scope = 'CARD';
+                } else {
+                    nextData.scope = 'CLINIC';
+                }
+
+                setFormData(nextData);
             } else {
                 setFormData(defaultGoal);
             }
@@ -51,8 +65,10 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
         return KPIS_AVAILABLE.filter(k => k.scope === 'ALL' || k.scope === scope);
     };
 
+    const effectiveScope: Goal['scope'] = formData.clinic_unit === RESOLVECARD_UNIT ? 'CARD' : 'CLINIC';
+
     // 1. Filtra KPIs pelo Escopo (Clínica ou Cartão)
-    const availableKpis = getAllowedKpis(formData.scope);
+    const availableKpis = getAllowedKpis(effectiveScope);
     
     // 2. Verifica se o KPI selecionado suporta Filtro de Grupo
     const selectedKpiConfig = KPIS_AVAILABLE.find(k => k.id === formData.linked_kpi_id);
@@ -67,6 +83,10 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
     const [loadingProfessionals, setLoadingProfessionals] = useState(false);
     const [teams, setTeams] = useState<any[]>([]);
     const [loadingTeams, setLoadingTeams] = useState(false);
+
+    const unitOptions = clinicUnits.includes(RESOLVECARD_UNIT)
+        ? clinicUnits
+        : [...clinicUnits, RESOLVECARD_UNIT];
 
     useEffect(() => {
         // Carrega grupos quando o modal abre e quando o KPI passa a suportar filtro
@@ -174,13 +194,14 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
         return () => { mounted = false; };
     }, [isOpen]);
 
-    const handleScopeChange = (scopeValue: string) => {
-        const nextScope = scopeValue as Goal['scope'];
+    const handleClinicUnitChange = (unitValue: string) => {
+        const nextScope: Goal['scope'] = unitValue === RESOLVECARD_UNIT ? 'CARD' : 'CLINIC';
         const allowed: string[] = getAllowedKpis(nextScope).map(k => k.id);
         setFormData(prev => {
             const kpiStillValid = allowed.includes(prev.linked_kpi_id);
             return {
                 ...prev,
+                clinic_unit: unitValue,
                 scope: nextScope,
                 linked_kpi_id: kpiStillValid ? prev.linked_kpi_id : 'manual',
                 filter_group: kpiStillValid ? prev.filter_group : ''
@@ -213,7 +234,7 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                 {/* Form Body */}
                 <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
                     
-                    {/* SEÇÃO 1: Identificação e Escopo */}
+                    {/* SEÇÃO 1: Identificação e Unidade */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="md:col-span-2 space-y-1.5">
                             <label className="text-sm font-semibold text-slate-700">Nome da Meta</label>
@@ -228,23 +249,23 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                         </div>
 
                         <div className="space-y-1.5">
-                            <label className="text-sm font-semibold text-slate-700">Unidade (Empresa)</label>
-                            <div className="relative">
+                            <label className="text-sm font-semibold text-slate-700">Unidade</label>
+                            {loadingUnits ? (
+                                <div className="text-sm text-slate-400">Carregando unidades...</div>
+                            ) : (
                                 <select 
                                     className="w-full p-2.5 border border-slate-300 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
-                                    value={formData.scope}
-                                    onChange={e => handleScopeChange(e.target.value)}
+                                    value={formData.clinic_unit ?? 'all'}
+                                    onChange={e => handleClinicUnitChange(e.target.value)}
                                 >
-                                    {GOAL_SCOPES.map(scope => (
-                                        <option key={scope.value} value={scope.value}>
-                                            {scope.label}
+                                    <option value="all">Todas as Unidades (padrão)</option>
+                                    {unitOptions.map(u => (
+                                        <option key={u} value={u}>
+                                            {u === RESOLVECARD_UNIT ? 'Resolve Card' : u}
                                         </option>
                                     ))}
                                 </select>
-                                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
-                                    {formData.scope === 'CLINIC' ? <Building2 size={14} /> : <CreditCard size={14} />}
-                                </div>
-                            </div>
+                            )}
                         </div>
 
                         <div className="space-y-1.5">
@@ -320,28 +341,7 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                 )}
                             </div>
 
-                            {/* Campo de Unidade Clínica - SEMPRE DROPDOWN */}
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
-                                    Unidade Clínica
-                                    <span title="Aplica esta meta apenas para uma unidade específica">
-                                        <HelpCircle size={12} />
-                                    </span>
-                                </label>
-
-                                {loadingUnits ? (
-                                    <div className="text-sm text-slate-400">Carregando unidades...</div>
-                                ) : (
-                                    <select
-                                        className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
-                                        value={formData.clinic_unit ?? 'all'}
-                                        onChange={e => setFormData({...formData, clinic_unit: e.target.value})}
-                                    >
-                                        <option value="all">Todas as Unidades (padrão)</option>
-                                        {clinicUnits.map(u => <option key={u} value={u}>{u}</option>)}
-                                    </select>
-                                )}
-                            </div>
+                            {/* Campo de Unidade movido para a Seção 1 */}
 
                             {/* Campo de Filtro de Colaborador (SEMPRE VISÍVEL) */}
                             <div className="space-y-1.5">
