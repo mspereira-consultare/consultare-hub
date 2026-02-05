@@ -224,6 +224,30 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                     break;
                 }
 
+                case 'sales_qty': { // Novas Adesões (Qtd.)
+                    query = `
+                        SELECT substr(created_at, 1, 10) as d, COUNT(*) as val
+                        FROM feegow_contracts
+                        WHERE status_contract = 'Aprovado'
+                        AND created_at BETWEEN ? AND ?
+                        GROUP BY d ORDER BY d
+                    `;
+                    queryParams = [`${startDate} 00:00:00`, `${endDate} 23:59:59`];
+                    break;
+                }
+
+                case 'churn_rate': { // Cancelados
+                    query = `
+                        SELECT substr(created_at, 1, 10) as d, COUNT(*) as val
+                        FROM feegow_contracts
+                        WHERE status_contract = 'Cancelado'
+                        AND created_at BETWEEN ? AND ?
+                        GROUP BY d ORDER BY d
+                    `;
+                    queryParams = [`${startDate} 00:00:00`, `${endDate} 23:59:59`];
+                    break;
+                }
+
                 default:
                     console.warn(`[KPI_ENGINE] KPI de Cartão não implementado: ${kpiId}`);
                     return [];

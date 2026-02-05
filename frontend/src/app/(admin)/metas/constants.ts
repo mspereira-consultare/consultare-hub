@@ -53,9 +53,9 @@ export const KPIS_AVAILABLE = [
     // ESCOPO: CARTÃO
     { id: 'proposals', label: 'Propostas Criadas (Qtd)', scope: 'CLINIC', supportsFilter: false },
     { id: 'contracts', label: 'Vendas Totais (R$)', scope: 'CARD', supportsFilter: false },
-    { id: 'sales', label: 'Novas Adesões (R$)', scope: 'CARD', supportsFilter: false },
-    { id: 'sales_qty', label: 'Qtd. Novas Adesões', scope: 'CARD', supportsFilter: false },
-    { id: 'churn_rate', label: 'Churn Rate (%)', scope: 'CARD', supportsFilter: false },
+    { id: 'sales', label: 'Vendas Totais (R$)', scope: 'CARD', supportsFilter: false },
+    { id: 'sales_qty', label: 'Novas Adesões (Qtd.)', scope: 'CARD', supportsFilter: false },
+    { id: 'churn_rate', label: 'Cancelados', scope: 'CARD', supportsFilter: false },
     
     // DIGITAIS
     { id: 'whatsapp_queue', label: 'Fila WhatsApp', scope: 'ALL', supportsFilter: false },
