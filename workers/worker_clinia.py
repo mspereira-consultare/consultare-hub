@@ -29,7 +29,9 @@ WHATSAPP_GROUP_NAMES = {
     "27a55f28-fcc9-464a-b309-46eae46cac71": "Cancelados",
     CENTRAL_GROUP_ID: CENTRAL_GROUP_NAME,
     "dbfa4605-60ec-4f17-92c5-05c7d90ebcb4": "Resolvesaude",
-    "e4f34a9b-6b42-4ab5-9cd8-70f248ef422d": "Verificar pagamentos"
+    "e4f34a9b-6b42-4ab5-9cd8-70f248ef422d": "Verificar pagamentos",
+    "4bb619b3-7c61-417a-b175-9ddbffa07e0e": "Aniversariantes",
+    "4e20ab85-5a52-454b-8e3a-742afea03e3a": "Aguardando Confirmação"
 }
 
 HEADERS = {
