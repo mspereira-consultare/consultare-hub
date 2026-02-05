@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Clock, RefreshCw, WifiOff, MessageCircle, ChevronDown, Volume2, SlidersHorizontal } from 'lucide-react';
 import { formatMinutesToHours } from '@/lib/utils';
 import { WhatsAppResponse } from '../types';
