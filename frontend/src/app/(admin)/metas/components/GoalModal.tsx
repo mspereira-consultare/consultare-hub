@@ -14,6 +14,7 @@ interface GoalModalProps {
 export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalProps) => {
     
     const RESOLVECARD_UNIT = 'RESOLVECARD GESTÃO DE BENEFICOS E MEIOS DE PAGAMENTOS';
+    const RESOLVECARD_LABEL = 'RESOLVESAUDE';
 
     const defaultGoal: Goal = {
         name: '',
@@ -261,7 +262,7 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                     <option value="all">Todas as Unidades (padrão)</option>
                                     {unitOptions.map(u => (
                                         <option key={u} value={u}>
-                                            {u === RESOLVECARD_UNIT ? 'Resolve Card' : u}
+                                            {u === RESOLVECARD_UNIT ? RESOLVECARD_LABEL : u}
                                         </option>
                                     ))}
                                 </select>

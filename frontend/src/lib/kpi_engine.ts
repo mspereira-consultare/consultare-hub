@@ -87,6 +87,9 @@ const calculateConfirmRateAggregate = async (startDate: string, endDate: string,
 const SQL_DATE_ANALITICO = `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
 const SUMMARY_TABLE = 'faturamento_resumo_diario';
 const SUMMARY_DATE_COL = 'data_ref';
+const SUMMARY_MONTHLY_TABLE = 'faturamento_resumo_mensal';
+const SUMMARY_MONTH_COL = 'month_ref';
+const RESOLVECARD_UNIT = 'RESOLVECARD GESTÃO DE BENEFICOS E MEIOS DE PAGAMENTOS';
 
 /**
  * MOTOR DE CÁLCULO CONSOLIDADO
@@ -153,6 +156,10 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
     
     let query = '';
     let queryParams: any[] = [];
+    let cardSalesFallbackQuery: string | null = null;
+    let cardSalesFallbackParams: any[] = [];
+    let cardSalesSecondFallbackQuery: string | null = null;
+    let cardSalesSecondFallbackParams: any[] = [];
 
     // Filtro de exclusão: Garante que dados de unidades do Cartão Resolve 
     // não apareçam nos KPIs de faturamento da Clínica.
@@ -162,48 +169,61 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
         // --- SEÇÃO 1: ESCOPO CARTÃO (CARD) ---
         if (options?.scope === 'CARD') {
             queryParams = [startDate, endDate];
-            
+
             switch (kpiId) {
-                case 'proposals': // Quantidade de propostas aceitas/ganhas
-                    query = `
-                        SELECT date as d, COUNT(*) as val 
-                        FROM feegow_proposals 
-                        WHERE date BETWEEN ? AND ? 
-                        AND lower(status) IN ('executada', 'aprovada pelo cliente', 'ganho') 
-                        GROUP BY d ORDER BY d
-                    `;
-                    break;
+                case 'sales': { // Vendas Totais (ResolveSaude) vindo do faturamento analítico
+                    const isFullMonthRange = (() => {
+                        try {
+                            const start = new Date(startDate + 'T00:00:00');
+                            const end = new Date(endDate + 'T00:00:00');
+                            if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+                            const isFirstDay = start.getDate() === 1;
+                            const lastDay = new Date(end.getFullYear(), end.getMonth() + 1, 0).getDate();
+                            const isLastDay = end.getDate() === lastDay;
+                            return isFirstDay && isLastDay;
+                        } catch {
+                            return false;
+                        }
+                    })();
 
-                case 'sales': // Valor das taxas de adesão (Membership)
-                    query = `
-                        SELECT start_date as d, SUM(membership_value) as val 
-                        FROM feegow_contracts 
-                        WHERE status_contract = 'Aprovado' 
-                        AND start_date BETWEEN ? AND ? 
+                    const summaryDailyQuery = `
+                        SELECT ${SUMMARY_DATE_COL} as d, SUM(total_pago) as val
+                        FROM ${SUMMARY_TABLE}
+                        WHERE ${SUMMARY_DATE_COL} BETWEEN ? AND ?
+                        AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))
                         GROUP BY d ORDER BY d
                     `;
-                    break;
+                    const summaryMonthlyQuery = `
+                        SELECT ${SUMMARY_MONTH_COL} as d, SUM(total_pago) as val
+                        FROM ${SUMMARY_MONTHLY_TABLE}
+                        WHERE ${SUMMARY_MONTH_COL} BETWEEN ? AND ?
+                        AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))
+                        GROUP BY d ORDER BY d
+                    `;
+                    const analyticQuery = `
+                        SELECT ${SQL_DATE_ANALITICO} as d, SUM(total_pago) as val 
+                        FROM faturamento_analitico 
+                        WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ?
+                        AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))
+                        GROUP BY d ORDER BY d
+                    `;
 
-                case 'contracts': // Valor total bruto dos contratos vendidos
-                    query = `
-                        SELECT start_date as d, SUM(total_value) as val 
-                        FROM feegow_contracts 
-                        WHERE status_contract = 'Aprovado' 
-                        AND start_date BETWEEN ? AND ? 
-                        GROUP BY d ORDER BY d
-                    `;
+                    if (isFullMonthRange) {
+                        query = summaryMonthlyQuery;
+                        queryParams = [startDate.slice(0, 7), endDate.slice(0, 7), RESOLVECARD_UNIT];
+                        cardSalesFallbackQuery = summaryDailyQuery;
+                        cardSalesFallbackParams = [startDate, endDate, RESOLVECARD_UNIT];
+                        cardSalesSecondFallbackQuery = analyticQuery;
+                        cardSalesSecondFallbackParams = [startDate, endDate, RESOLVECARD_UNIT];
+                    } else {
+                        query = summaryDailyQuery;
+                        queryParams = [startDate, endDate, RESOLVECARD_UNIT];
+                        cardSalesFallbackQuery = analyticQuery;
+                        cardSalesFallbackParams = [startDate, endDate, RESOLVECARD_UNIT];
+                    }
                     break;
+                }
 
-                case 'sales_qty': // Quantidade de novos contratos aprovados
-                    query = `
-                        SELECT start_date as d, COUNT(*) as val 
-                        FROM feegow_contracts 
-                        WHERE status_contract = 'Aprovado' 
-                        AND start_date BETWEEN ? AND ? 
-                        GROUP BY d ORDER BY d
-                    `;
-                    break;
-                
                 default:
                     console.warn(`[KPI_ENGINE] KPI de Cartão não implementado: ${kpiId}`);
                     return [];
@@ -228,6 +248,20 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                 queryParams.push(unitVal);
             }
 
+            // --- KPI ESPECIAL: PROPOSTAS (CLÍNICA) ---
+            if (kpiId === 'proposals') {
+                query = `
+                    SELECT date as d, COUNT(*) as val 
+                    FROM feegow_proposals 
+                    WHERE date BETWEEN ? AND ?
+                    ${unitVal && unitVal !== 'all' && unitVal !== '' ? "AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))" : ""}
+                    AND lower(status) IN ('executada', 'aprovada pelo cliente', 'ganho') 
+                    GROUP BY d ORDER BY d
+                `;
+                if (unitVal && unitVal !== 'all' && unitVal !== '') {
+                    queryParams.push(unitVal);
+                }
+            }
             // --- KPI ESPECIAL: AGENDAMENTOS (por scheduled_by / equipe) ---
             if (kpiId === 'agendamentos') {
                 const { joinSql, whereSql, params } = buildAppointmentsFilter(startDate, endDate, options);
@@ -251,7 +285,7 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                     GROUP BY d ORDER BY d
                 `;
                 queryParams = params;
-            } else {
+            } else if (!query) {
                 const buildClinicQuery = (useSummary: boolean) => {
                 const table = useSummary ? SUMMARY_TABLE : 'faturamento_analitico';
                 const dateCol = useSummary ? SUMMARY_DATE_COL : SQL_DATE_ANALITICO;
@@ -309,8 +343,15 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
         try {
             rows = await db.query(query, queryParams);
         } catch (error: any) {
+            // Fallback específico para vendas Resolve (tabelas de resumo ausentes)
+            if (error?.message?.includes('no such table') && cardSalesFallbackQuery) {
+                rows = await db.query(cardSalesFallbackQuery, cardSalesFallbackParams);
+                if ((!rows || rows.length === 0) && cardSalesSecondFallbackQuery) {
+                    rows = await db.query(cardSalesSecondFallbackQuery, cardSalesSecondFallbackParams);
+                }
+            }
             // Fallback automático se a tabela de resumo ainda não existir
-            if (error?.message?.includes('no such table') && query.includes(SUMMARY_TABLE)) {
+            else if (error?.message?.includes('no such table') && query.includes(SUMMARY_TABLE)) {
                 const fallbackQuery = `
                     SELECT ${SQL_DATE_ANALITICO} as d, ${
                         kpiId === 'appointments' ? 'COUNT(*)' :

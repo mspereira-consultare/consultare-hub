@@ -51,7 +51,7 @@ export const KPIS_AVAILABLE = [
     { id: 'ticket_medio', label: 'Ticket Médio', scope: 'CLINIC', supportsFilter: true },
     
     // ESCOPO: CARTÃO
-    { id: 'proposals', label: 'Propostas Criadas (Qtd)', scope: 'CARD', supportsFilter: false },
+    { id: 'proposals', label: 'Propostas Criadas (Qtd)', scope: 'CLINIC', supportsFilter: false },
     { id: 'contracts', label: 'Vendas Totais (R$)', scope: 'CARD', supportsFilter: false },
     { id: 'sales', label: 'Novas Adesões (R$)', scope: 'CARD', supportsFilter: false },
     { id: 'sales_qty', label: 'Qtd. Novas Adesões', scope: 'CARD', supportsFilter: false },
