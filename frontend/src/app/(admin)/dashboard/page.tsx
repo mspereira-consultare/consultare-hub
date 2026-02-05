@@ -181,15 +181,18 @@ export default function DashboardPage() {
     return kpi === 'revenue' || name.includes('faturamento') || name.includes('receita');
   };
   const hasNoGroupFilter = (g: any) => !g.filter_group || g.filter_group === 'all';
+  const hasNoTeamFilter = (g: any) => !g.team || g.team === 'all';
+  const hasNoCollaboratorFilter = (g: any) => !g.collaborator || g.collaborator === 'all';
+  const hasOnlyUnitFilter = (g: any) => hasNoGroupFilter(g) && hasNoTeamFilter(g) && hasNoCollaboratorFilter(g);
   const isGlobalScope = (g: any) =>
     (!g.clinic_unit || g.clinic_unit === 'all') &&
     (!g.team || g.team === 'all') &&
     (!g.collaborator || g.collaborator === 'all');
 
   const billingGoals = (goalsData || []).filter(isBillingGoal);
-  const billingGoalsNoGroup = billingGoals.filter(hasNoGroupFilter);
-  const dailyBillingGoals = billingGoalsNoGroup.filter((g: any) => g.periodicity === 'daily');
-  const monthlyBillingGoals = billingGoalsNoGroup.filter((g: any) => g.periodicity === 'monthly');
+  const billingGoalsOnlyUnit = billingGoals.filter(hasOnlyUnitFilter);
+  const dailyBillingGoals = billingGoalsOnlyUnit.filter((g: any) => g.periodicity === 'daily');
+  const monthlyBillingGoals = billingGoalsOnlyUnit.filter((g: any) => g.periodicity === 'monthly');
   const dailyGlobalGoal = dailyBillingGoals.find((g: any) => isGlobalScope(g));
   const monthlyGlobalGoal = monthlyBillingGoals.find((g: any) => isGlobalScope(g));
   const dailyUnitGoals = new Map<string, any>();

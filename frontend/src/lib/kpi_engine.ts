@@ -305,6 +305,9 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
             queryParams = [startDate, endDate];
             let groupSql = "";
             let unitSql = "";
+            let collaboratorSql = "";
+            const hasCollaboratorFilter = Boolean(collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '');
+            const useSummary = !hasCollaboratorFilter;
 
             // Filtro por Grupo do Feegow (Ex: Consultas, Exames, Procedimentos)
             if (filterVal && filterVal !== 'all' && filterVal !== '') {
@@ -316,6 +319,14 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
             if (unitVal && unitVal !== 'all' && unitVal !== '') {
                 unitSql = `AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
                 queryParams.push(unitVal);
+            }
+
+            // Filtro por Colaborador (somente na tabela analítica)
+            if (hasCollaboratorFilter) {
+                collaboratorSql = `AND UPPER(TRIM(usuario_que_agendou)) = UPPER(TRIM(?))`;
+                if (!useSummary) {
+                    queryParams.push(collaboratorVal);
+                }
             }
 
             // --- KPI ESPECIAL: PROPOSTAS (CLÍNICA) ---
@@ -401,13 +412,14 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                 const sumCol = useSummary ? 'total_pago' : 'total_pago';
                 const countCol = useSummary ? 'qtd' : '*';
                 const countExpr = useSummary ? `SUM(${countCol})` : `COUNT(${countCol})`;
+                const collaboratorClause = (!useSummary && collaboratorSql) ? ` ${collaboratorSql}` : '';
 
                 switch (kpiId) {
                     case 'revenue': // Faturamento Total (Baseado na tabela analítica)
                         return `
                             SELECT ${dateCol} as d, SUM(${sumCol}) as val 
                             FROM ${table} 
-                            WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql} ${clinicExclusion} 
+                            WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql}${collaboratorClause} ${clinicExclusion} 
                             GROUP BY d ORDER BY d
                         `;
 
@@ -415,7 +427,7 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                         return `
                             SELECT ${dateCol} as d, ${countExpr} as val 
                             FROM ${table} 
-                            WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql} ${clinicExclusion} 
+                            WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql}${collaboratorClause} ${clinicExclusion} 
                             GROUP BY d ORDER BY d
                         `;
 
@@ -424,14 +436,14 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                             return `
                                 SELECT ${dateCol} as d, (SUM(${sumCol}) / NULLIF(SUM(${countCol}), 0)) as val 
                                 FROM ${table} 
-                                WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql} ${clinicExclusion} 
+                                WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql}${collaboratorClause} ${clinicExclusion} 
                                 GROUP BY d ORDER BY d
                             `;
                         }
                         return `
                             SELECT ${dateCol} as d, (SUM(${sumCol}) / COUNT(${countCol})) as val 
                             FROM ${table} 
-                            WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql} ${clinicExclusion} 
+                            WHERE ${dateCol} BETWEEN ? AND ? ${groupSql} ${unitSql}${collaboratorClause} ${clinicExclusion} 
                             GROUP BY d ORDER BY d
                         `;
 
@@ -441,8 +453,8 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                 }
             };
 
-                // Primeiro tenta a tabela de resumo
-                query = buildClinicQuery(true);
+                // Usa resumo apenas quando nÃ£o hÃ¡ filtro por colaborador
+                query = buildClinicQuery(useSummary);
                 if (!query) return [];
             }
         }
