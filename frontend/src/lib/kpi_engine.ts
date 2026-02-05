@@ -171,6 +171,18 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
             queryParams = [startDate, endDate];
 
             switch (kpiId) {
+                case 'contracts': { // Novas Adesões (R$)
+                    query = `
+                        SELECT substr(created_at, 1, 10) as d, SUM(membership_value) as val
+                        FROM feegow_contracts
+                        WHERE status_contract = 'Aprovado'
+                        AND created_at BETWEEN ? AND ?
+                        GROUP BY d ORDER BY d
+                    `;
+                    queryParams = [`${startDate} 00:00:00`, `${endDate} 23:59:59`];
+                    break;
+                }
+
                 case 'sales': { // Vendas Totais (ResolveSaude) vindo do faturamento analítico
                     const isFullMonthRange = (() => {
                         try {
