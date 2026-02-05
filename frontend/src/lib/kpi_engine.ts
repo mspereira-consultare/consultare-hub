@@ -116,6 +116,39 @@ const SUMMARY_MONTHLY_TABLE = 'faturamento_resumo_mensal';
 const SUMMARY_MONTH_COL = 'month_ref';
 const RESOLVECARD_UNIT = 'RESOLVECARD GESTÃO DE BENEFICOS E MEIOS DE PAGAMENTOS';
 const PROPOSAL_EXEC_STATUSES = "('executada','aprovada pelo cliente','ganho','realizado','concluido','pago')";
+let cachedCollaboratorColumn: string | null | undefined;
+
+const normalizeIdentifier = (value: string) => String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+const quoteIdentifier = (value: string) => {
+    const safe = /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
+    if (safe) return value;
+    return `"${value.replace(/"/g, '""')}"`;
+};
+
+const getCollaboratorColumn = async (db: any) => {
+    if (cachedCollaboratorColumn !== undefined) return cachedCollaboratorColumn;
+    try {
+        const rows = await db.query("PRAGMA table_info(faturamento_analitico)");
+        const names = (rows || [])
+            .map((row: any) => row?.name ?? row?.[1] ?? row?.[0])
+            .filter((name: any) => typeof name === 'string' && name.trim().length > 0)
+            .map((name: string) => name.trim());
+
+        const target = normalizeIdentifier('usuario_que_agendou');
+        const found = names.find((name) => normalizeIdentifier(name) === target);
+        cachedCollaboratorColumn = found || null;
+        return cachedCollaboratorColumn;
+    } catch (error) {
+        console.warn('[KPI_ENGINE] Não foi possível detectar coluna de colaborador:', error);
+        cachedCollaboratorColumn = null;
+        return cachedCollaboratorColumn;
+    }
+};
 
 /**
  * MOTOR DE CÁLCULO CONSOLIDADO
@@ -323,7 +356,12 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
 
             // Filtro por Colaborador (somente na tabela analítica)
             if (hasCollaboratorFilter) {
-                collaboratorSql = `AND UPPER(TRIM(usuario_que_agendou)) = UPPER(TRIM(?))`;
+                const collaboratorColumn = await getCollaboratorColumn(db);
+                if (!collaboratorColumn) {
+                    console.warn('[KPI_ENGINE] Coluna de colaborador não encontrada em faturamento_analitico. Ignorando filtro.');
+                    return [];
+                }
+                collaboratorSql = `AND UPPER(TRIM(${quoteIdentifier(collaboratorColumn)})) = UPPER(TRIM(?))`;
                 if (!useSummary) {
                     queryParams.push(collaboratorVal);
                 }
