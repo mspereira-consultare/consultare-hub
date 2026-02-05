@@ -5,6 +5,8 @@ import pandas as pd
 import datetime
 import re
 import math
+import unicodedata
+import unicodedata
 from playwright.sync_api import sync_playwright
 from io import StringIO
 
@@ -22,6 +24,26 @@ def clean_column_name(name):
     name = name.replace(" ", "_").replace(".", "").replace("/", "_")
     name = re.sub(r'[^\w\s]', '', name)
     return name
+
+def _strip_accents(value: str) -> str:
+    if value is None:
+        return ''
+    return ''.join(
+        ch for ch in unicodedata.normalize('NFD', str(value))
+        if unicodedata.category(ch) != 'Mn'
+    )
+
+def _normalize_col_key(value: str) -> str:
+    return _strip_accents(str(value or '')).lower().replace(" ", "_").replace(".", "").replace("/", "_").strip()
+
+def _prefer_accented(a: str, b: str) -> str:
+    def has_accent(s: str) -> bool:
+        return any(ord(ch) > 127 for ch in s)
+    if has_accent(a) and not has_accent(b):
+        return a
+    if has_accent(b) and not has_accent(a):
+        return b
+    return a
 
 def clean_currency(value):
     """Lógica original de limpeza de moeda mantida"""
@@ -52,7 +74,44 @@ def save_dataframe_to_db(db, df, table_name, delete_condition=None):
     
     conn = db.get_connection()
     try:
-        # 1. Garante a tabela (Criação Dinâmica baseada no DF)
+        # 1. Tenta mapear colunas do DF para colunas já existentes (evita duplicar versões com/sem acento)
+        existing_cols = set()
+        try:
+            pragma = conn.execute(f"PRAGMA table_info({table_name})")
+            if hasattr(pragma, 'fetchall'):
+                rows = pragma.fetchall()
+            else:
+                rows = list(pragma)
+            for row in rows:
+                if isinstance(row, dict):
+                    col_name = row.get('name')
+                elif hasattr(row, '__getitem__'):
+                    col_name = row[1] if len(row) > 1 else row[0]
+                else:
+                    col_name = None
+                if col_name:
+                    existing_cols.add(col_name)
+        except Exception:
+            existing_cols = set()
+
+        if existing_cols:
+            canonical_by_key = {}
+            for col in existing_cols:
+                key = _normalize_col_key(col)
+                if key not in canonical_by_key:
+                    canonical_by_key[key] = col
+                else:
+                    canonical_by_key[key] = _prefer_accented(canonical_by_key[key], col)
+
+            rename_map = {}
+            for col in df.columns:
+                key = _normalize_col_key(col)
+                if key in canonical_by_key:
+                    rename_map[col] = canonical_by_key[key]
+            if rename_map:
+                df = df.rename(columns=rename_map)
+
+        # 2. Garante a tabela (Criação Dinâmica baseada no DF)
         # Mapeia tipos do Pandas para SQLite
         type_map = {
             'int64': 'INTEGER', 'float64': 'REAL', 'object': 'TEXT',
@@ -64,9 +123,32 @@ def save_dataframe_to_db(db, df, table_name, delete_condition=None):
             cols_def.append(f"{col} {sql_type}")
         
         create_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(cols_def)})"
-        
-        if db.use_turso: conn.execute(create_sql)
-        else: conn.execute(create_sql)
+        conn.execute(create_sql)
+
+        # 2.1 Garante que novas colunas sejam adicionadas (ALTER TABLE) quando a tabela já existe
+        try:
+            pragma = conn.execute(f"PRAGMA table_info({table_name})")
+            if hasattr(pragma, 'fetchall'):
+                rows = pragma.fetchall()
+            else:
+                rows = list(pragma)
+            existing_cols = set()
+            for row in rows:
+                if isinstance(row, dict):
+                    col_name = row.get('name')
+                elif hasattr(row, '__getitem__'):
+                    col_name = row[1] if len(row) > 1 else row[0]
+                else:
+                    col_name = None
+                if col_name:
+                    existing_cols.add(col_name)
+
+            for col, dtype in df.dtypes.items():
+                if col not in existing_cols:
+                    sql_type = type_map.get(str(dtype), 'TEXT')
+                    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {col} {sql_type}")
+        except Exception as e:
+            print(f"⚠️ Não foi possível ajustar colunas da tabela {table_name}: {e}")
 
         # 2. Limpeza (Delete prévio)
         if delete_condition:
@@ -344,7 +426,7 @@ def run_scraper():
     db.update_heartbeat("faturamento", "RUNNING", f"Extraindo {inicio_vis}-{fim_vis}")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(headless=False)
         context = browser.new_context()
         page = context.new_page()
 
@@ -401,11 +483,25 @@ def run_scraper():
             page.evaluate(script_datas)
             page.locator("body").click(force=True)
 
-            print("🔎 Pesquisando...")
-            page.locator("#btn-filtrar").click()
-
-            print("⏳ Baixando...")
-            page.wait_for_selector("#table-resultado tbody tr", timeout=30000)
+            print("🧩 Selecionando colunas...")
+            try:
+                page.wait_for_selector('[title="Definir colunas"]', state="visible", timeout=10000)
+                page.locator('[title="Definir colunas"]').first.click()
+                checkbox = page.locator("input[type='checkbox'][name='Colunas'][value='|162|']")
+                checkbox.wait_for(state="visible", timeout=10000)
+                if not checkbox.is_checked():
+                    checkbox.check(force=True)
+                # Botão Selecionar
+                page.locator(".btn.btn-primary.btn-block").filter(has_text="Selecionar").first.click()
+                # Após selecionar, o relatório é gerado automaticamente
+                print("⏳ Baixando...")
+                page.wait_for_selector("#table-resultado tbody tr", timeout=30000)
+            except Exception as e:
+                print(f"⚠️ Falha ao selecionar colunas: {e}. Tentando filtrar...")
+                print("🔎 Pesquisando...")
+                page.locator("#btn-filtrar").click()
+                print("⏳ Baixando...")
+                page.wait_for_selector("#table-resultado tbody tr", timeout=30000)
             
             last_count = 0
             no_change_count = 0

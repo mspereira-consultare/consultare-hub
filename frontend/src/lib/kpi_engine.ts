@@ -139,8 +139,26 @@ const getCollaboratorColumn = async (db: any) => {
             .filter((name: any) => typeof name === 'string' && name.trim().length > 0)
             .map((name: string) => name.trim());
 
-        const target = normalizeIdentifier('usuario_que_agendou');
-        const found = names.find((name: string) => normalizeIdentifier(name) === target);
+        const exactCandidates = [
+            'usuario_da_conta',
+            'usuário_da_conta',
+            'usuario_que_agendou',
+            'usuário_que_agendou'
+        ];
+        for (const candidate of exactCandidates) {
+            if (names.includes(candidate)) {
+                cachedCollaboratorColumn = candidate;
+                return cachedCollaboratorColumn;
+            }
+        }
+
+        const candidates = ['usuario_da_conta', 'usuario_que_agendou'];
+        const found = candidates
+            .map((candidate) => {
+                const target = normalizeIdentifier(candidate);
+                return names.find((name: string) => normalizeIdentifier(name) === target);
+            })
+            .find((value) => Boolean(value));
         cachedCollaboratorColumn = found || null;
         return cachedCollaboratorColumn;
     } catch (error) {
