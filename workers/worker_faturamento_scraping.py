@@ -6,6 +6,7 @@ import datetime
 import re
 import math
 import unicodedata
+import calendar
 import unicodedata
 from playwright.sync_api import sync_playwright
 from io import StringIO
@@ -206,7 +207,7 @@ def save_dataframe_to_db(db, df, table_name, delete_condition=None):
     finally:
         conn.close()
 
-def update_faturamento_summary(db, start_date_iso, end_date_iso):
+def update_faturamento_summary(db, start_date_iso, end_date_iso, update_monthly=True):
     """
     Atualiza a tabela de resumo diário baseada em faturamento_analitico.
     Mantém a granularidade necessária para filtros por unidade/grupo/procedimento.
@@ -298,9 +299,102 @@ def update_faturamento_summary(db, start_date_iso, end_date_iso):
             conn.commit()
         print(f"   ✅ Resumo diário atualizado: {start_date_iso} a {end_date_iso}")
 
-        # ---------------------------------------------------------
-        # Resumo mensal (baseado no diário para reduzir leituras)
-        # ---------------------------------------------------------
+        if update_monthly:
+            # ---------------------------------------------------------
+            # Resumo mensal (baseado no diário para reduzir leituras)
+            # ---------------------------------------------------------
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS faturamento_resumo_mensal (
+                    month_ref TEXT NOT NULL,
+                    unidade TEXT NOT NULL,
+                    grupo TEXT NOT NULL,
+                    procedimento TEXT NOT NULL,
+                    total_pago REAL,
+                    qtd INTEGER,
+                    updated_at TEXT,
+                    PRIMARY KEY (month_ref, unidade, grupo, procedimento)
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month ON faturamento_resumo_mensal(month_ref)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_unidade ON faturamento_resumo_mensal(unidade)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_grupo ON faturamento_resumo_mensal(grupo)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_proc ON faturamento_resumo_mensal(procedimento)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_unidade ON faturamento_resumo_mensal(month_ref, unidade)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_grupo ON faturamento_resumo_mensal(month_ref, grupo)")
+
+            monthly_start_date = start_date_iso
+            monthly_end_date = end_date_iso
+            start_month = monthly_start_date[:7]
+            end_month = monthly_end_date[:7]
+
+            # Se tabela mensal estiver vazia, faz backfill completo baseado no diário
+            try:
+                row_m = conn.execute("SELECT COUNT(*) as cnt FROM faturamento_resumo_mensal")
+                cnt_m = None
+                if hasattr(row_m, 'fetchone'):
+                    cnt_m = row_m.fetchone()[0]
+                else:
+                    rows_m = list(row_m)
+                    if rows_m:
+                        cnt_m = rows_m[0][0]
+                if cnt_m == 0:
+                    rng_m = conn.execute("""
+                        SELECT MIN(data_ref) as min_d, MAX(data_ref) as max_d
+                        FROM faturamento_resumo_diario
+                        WHERE data_ref IS NOT NULL
+                    """)
+                    min_m = max_m = None
+                    if hasattr(rng_m, 'fetchone'):
+                        r_m = rng_m.fetchone()
+                        if r_m:
+                            min_m, max_m = r_m[0], r_m[1]
+                    else:
+                        rows_m = list(rng_m)
+                        if rows_m:
+                            min_m, max_m = rows_m[0][0], rows_m[0][1]
+                    if min_m and max_m:
+                        print(f"   🔁 Backfill resumo mensal: {min_m[:7]} a {max_m[:7]}")
+                        monthly_start_date = min_m
+                        monthly_end_date = max_m
+                        start_month = monthly_start_date[:7]
+                        end_month = monthly_end_date[:7]
+            except Exception:
+                pass
+
+            conn.execute(
+                "DELETE FROM faturamento_resumo_mensal WHERE month_ref BETWEEN ? AND ?",
+                (start_month, end_month)
+            )
+
+            monthly_sql = """
+                INSERT INTO faturamento_resumo_mensal (
+                    month_ref, unidade, grupo, procedimento, total_pago, qtd, updated_at
+                )
+                SELECT
+                    substr(data_ref, 1, 7) as month_ref,
+                    unidade,
+                    grupo,
+                    procedimento,
+                    SUM(total_pago) as total_pago,
+                    SUM(qtd) as qtd,
+                    datetime('now') as updated_at
+                FROM faturamento_resumo_diario
+                WHERE data_ref BETWEEN ? AND ?
+                GROUP BY month_ref, unidade, grupo, procedimento
+            """
+            conn.execute(monthly_sql, (monthly_start_date, monthly_end_date))
+
+            if not db.use_turso:
+                conn.commit()
+            print(f"   ✅ Resumo mensal atualizado: {start_month} a {end_month}")
+    except Exception as e:
+        print(f"   ⚠️ Erro ao atualizar resumo diário: {e}")
+    finally:
+        conn.close()
+
+def update_faturamento_monthly_from_daily(db, month_ref):
+    conn = db.get_connection()
+    try:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS faturamento_resumo_mensal (
                 month_ref TEXT NOT NULL,
@@ -320,49 +414,12 @@ def update_faturamento_summary(db, start_date_iso, end_date_iso):
         conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_unidade ON faturamento_resumo_mensal(month_ref, unidade)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_grupo ON faturamento_resumo_mensal(month_ref, grupo)")
 
-        monthly_start_date = start_date_iso
-        monthly_end_date = end_date_iso
-        start_month = monthly_start_date[:7]
-        end_month = monthly_end_date[:7]
+        year, month = map(int, month_ref.split('-'))
+        last_day = calendar.monthrange(year, month)[1]
+        month_start = f"{year:04d}-{month:02d}-01"
+        month_end = f"{year:04d}-{month:02d}-{last_day:02d}"
 
-        # Se tabela mensal estiver vazia, faz backfill completo baseado no diário
-        try:
-            row_m = conn.execute("SELECT COUNT(*) as cnt FROM faturamento_resumo_mensal")
-            cnt_m = None
-            if hasattr(row_m, 'fetchone'):
-                cnt_m = row_m.fetchone()[0]
-            else:
-                rows_m = list(row_m)
-                if rows_m:
-                    cnt_m = rows_m[0][0]
-            if cnt_m == 0:
-                rng_m = conn.execute("""
-                    SELECT MIN(data_ref) as min_d, MAX(data_ref) as max_d
-                    FROM faturamento_resumo_diario
-                    WHERE data_ref IS NOT NULL
-                """)
-                min_m = max_m = None
-                if hasattr(rng_m, 'fetchone'):
-                    r_m = rng_m.fetchone()
-                    if r_m:
-                        min_m, max_m = r_m[0], r_m[1]
-                else:
-                    rows_m = list(rng_m)
-                    if rows_m:
-                        min_m, max_m = rows_m[0][0], rows_m[0][1]
-                if min_m and max_m:
-                    print(f"   🔁 Backfill resumo mensal: {min_m[:7]} a {max_m[:7]}")
-                    monthly_start_date = min_m
-                    monthly_end_date = max_m
-                    start_month = monthly_start_date[:7]
-                    end_month = monthly_end_date[:7]
-        except Exception:
-            pass
-
-        conn.execute(
-            "DELETE FROM faturamento_resumo_mensal WHERE month_ref BETWEEN ? AND ?",
-            (start_month, end_month)
-        )
+        conn.execute("DELETE FROM faturamento_resumo_mensal WHERE month_ref = ?", (month_ref,))
 
         monthly_sql = """
             INSERT INTO faturamento_resumo_mensal (
@@ -380,13 +437,11 @@ def update_faturamento_summary(db, start_date_iso, end_date_iso):
             WHERE data_ref BETWEEN ? AND ?
             GROUP BY month_ref, unidade, grupo, procedimento
         """
-        conn.execute(monthly_sql, (monthly_start_date, monthly_end_date))
+        conn.execute(monthly_sql, (month_start, month_end))
 
         if not db.use_turso:
             conn.commit()
-        print(f"   ✅ Resumo mensal atualizado: {start_month} a {end_month}")
-    except Exception as e:
-        print(f"   ⚠️ Erro ao atualizar resumo diário: {e}")
+        print(f"   ✅ Resumo mensal (Mês {month_ref}) atualizado via diário")
     finally:
         conn.close()
 
@@ -417,9 +472,9 @@ def run_scraper():
         return
 
     hoje = datetime.datetime.now()
-    inicio_vis = hoje.replace(day=1).strftime("%d/%m/%Y")
+    inicio_vis = hoje.strftime("%d/%m/%Y")
     fim_vis = hoje.strftime("%d/%m/%Y")
-    iso_inicio = hoje.replace(day=1).strftime("%Y-%m-%d")
+    iso_inicio = hoje.strftime("%Y-%m-%d")
     iso_fim = hoje.strftime("%Y-%m-%d")
 
     print(f"📅 Janela: {inicio_vis} até {fim_vis}")
@@ -566,7 +621,8 @@ def run_scraper():
             condition = f"{col_data} >= '{iso_inicio}' AND {col_data} <= '{iso_fim}'"
             
             save_dataframe_to_db(db, df, 'faturamento_analitico', delete_condition=condition)
-            update_faturamento_summary(db, iso_inicio, iso_fim)
+            update_faturamento_summary(db, iso_inicio, iso_fim, update_monthly=False)
+            update_faturamento_monthly_from_daily(db, iso_inicio[:7])
             
             print(f"🚀 Finalizado com Sucesso.")
             db.update_heartbeat("faturamento", "ONLINE", f"{len(df)} registros")
