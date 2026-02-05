@@ -140,7 +140,7 @@ const getCollaboratorColumn = async (db: any) => {
             .map((name: string) => name.trim());
 
         const target = normalizeIdentifier('usuario_que_agendou');
-        const found = names.find((name) => normalizeIdentifier(name) === target);
+        const found = names.find((name: string) => normalizeIdentifier(name) === target);
         cachedCollaboratorColumn = found || null;
         return cachedCollaboratorColumn;
     } catch (error) {
