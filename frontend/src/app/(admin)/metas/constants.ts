@@ -49,9 +49,12 @@ export const KPIS_AVAILABLE = [
     { id: 'agendamentos_confirm_rate', label: 'Taxa de Confirmação (Agendamentos)', scope: 'CLINIC', supportsFilter: true },
     { id: 'appointments', label: 'Qtd. Atendimentos', scope: 'CLINIC', supportsFilter: true },
     { id: 'ticket_medio', label: 'Ticket Médio', scope: 'CLINIC', supportsFilter: true },
+    { id: 'proposals', label: 'Propostas Criadas (Qtd)', scope: 'CLINIC', supportsFilter: false },
+    { id: 'proposals_exec_qty', label: 'Propostas Executadas (Qtd)', scope: 'CLINIC', supportsFilter: false },
+    { id: 'proposals_exec_value', label: 'Propostas Executadas (R$)', scope: 'CLINIC', supportsFilter: false },
+    { id: 'proposals_exec_rate', label: 'Conversão de Propostas (%)', scope: 'CLINIC', supportsFilter: false },
     
     // ESCOPO: CARTÃO
-    { id: 'proposals', label: 'Propostas Criadas (Qtd)', scope: 'CLINIC', supportsFilter: false },
     { id: 'contracts', label: 'Novas Adesões (R$)', scope: 'CARD', supportsFilter: false },
     { id: 'sales', label: 'Vendas Totais (R$)', scope: 'CARD', supportsFilter: false },
     { id: 'sales_qty', label: 'Novas Adesões (Qtd.)', scope: 'CARD', supportsFilter: false },

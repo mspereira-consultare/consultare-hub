@@ -77,6 +77,31 @@ const calculateConfirmRateAggregate = async (startDate: string, endDate: string,
     return (confirmed * 100) / total;
 };
 
+const calculateProposalConversionAggregate = async (startDate: string, endDate: string, options?: KpiOptions) => {
+    const db = getDbConnection();
+    const unitVal = options?.unit_filter ? String(options.unit_filter).trim() : undefined;
+    let whereSql = "WHERE date BETWEEN ? AND ?";
+    const params: any[] = [startDate, endDate];
+
+    if (unitVal && unitVal !== 'all' && unitVal !== '') {
+        whereSql += ` AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))`;
+        params.push(unitVal);
+    }
+
+    const rows = await db.query(`
+        SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN lower(status) IN ${PROPOSAL_EXEC_STATUSES} THEN 1 ELSE 0 END) as won
+        FROM feegow_proposals
+        ${whereSql}
+    `, params);
+
+    const total = Number(rows?.[0]?.total || 0);
+    const won = Number(rows?.[0]?.won || 0);
+    if (total <= 0) return 0;
+    return (won * 100) / total;
+};
+
 /**
  * CONFIGURAÇÃO DE TRATAMENTO DE DATAS (SQLite/LibSQL)
  * * faturamento_analitico: data_do_pagamento vem como 'DD/MM/YYYY' (String)
@@ -90,6 +115,7 @@ const SUMMARY_DATE_COL = 'data_ref';
 const SUMMARY_MONTHLY_TABLE = 'faturamento_resumo_mensal';
 const SUMMARY_MONTH_COL = 'month_ref';
 const RESOLVECARD_UNIT = 'RESOLVECARD GESTÃO DE BENEFICOS E MEIOS DE PAGAMENTOS';
+const PROPOSAL_EXEC_STATUSES = "('executada','aprovada pelo cliente','ganho','realizado','concluido','pago')";
 
 /**
  * MOTOR DE CÁLCULO CONSOLIDADO
@@ -103,6 +129,14 @@ export async function calculateKpi(kpiId: string, startDate: string, endDate: st
 
         if (kpiId === 'agendamentos_confirm_rate') {
             const rate = await calculateConfirmRateAggregate(startDate, endDate, options);
+            return {
+                currentValue: Number(rate.toFixed(2)),
+                lastUpdated: timestamp
+            };
+        }
+
+        if (kpiId === 'proposals_exec_rate') {
+            const rate = await calculateProposalConversionAggregate(startDate, endDate, options);
             return {
                 currentValue: Number(rate.toFixed(2)),
                 lastUpdated: timestamp
@@ -291,9 +325,48 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                     FROM feegow_proposals 
                     WHERE date BETWEEN ? AND ?
                     ${unitVal && unitVal !== 'all' && unitVal !== '' ? "AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))" : ""}
-                    AND lower(status) IN ('executada', 'aprovada pelo cliente', 'ganho') 
                     GROUP BY d ORDER BY d
                 `;
+                queryParams = [startDate, endDate];
+                if (unitVal && unitVal !== 'all' && unitVal !== '') {
+                    queryParams.push(unitVal);
+                }
+            } else if (kpiId === 'proposals_exec_qty') {
+                query = `
+                    SELECT date as d, COUNT(*) as val 
+                    FROM feegow_proposals 
+                    WHERE date BETWEEN ? AND ?
+                    ${unitVal && unitVal !== 'all' && unitVal !== '' ? "AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))" : ""}
+                    AND lower(status) IN ${PROPOSAL_EXEC_STATUSES}
+                    GROUP BY d ORDER BY d
+                `;
+                queryParams = [startDate, endDate];
+                if (unitVal && unitVal !== 'all' && unitVal !== '') {
+                    queryParams.push(unitVal);
+                }
+            } else if (kpiId === 'proposals_exec_value') {
+                query = `
+                    SELECT date as d, SUM(total_value) as val 
+                    FROM feegow_proposals 
+                    WHERE date BETWEEN ? AND ?
+                    ${unitVal && unitVal !== 'all' && unitVal !== '' ? "AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))" : ""}
+                    AND lower(status) IN ${PROPOSAL_EXEC_STATUSES}
+                    GROUP BY d ORDER BY d
+                `;
+                queryParams = [startDate, endDate];
+                if (unitVal && unitVal !== 'all' && unitVal !== '') {
+                    queryParams.push(unitVal);
+                }
+            } else if (kpiId === 'proposals_exec_rate') {
+                query = `
+                    SELECT date as d, 
+                        (SUM(CASE WHEN lower(status) IN ${PROPOSAL_EXEC_STATUSES} THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as val
+                    FROM feegow_proposals 
+                    WHERE date BETWEEN ? AND ?
+                    ${unitVal && unitVal !== 'all' && unitVal !== '' ? "AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))" : ""}
+                    GROUP BY d ORDER BY d
+                `;
+                queryParams = [startDate, endDate];
                 if (unitVal && unitVal !== 'all' && unitVal !== '') {
                     queryParams.push(unitVal);
                 }
