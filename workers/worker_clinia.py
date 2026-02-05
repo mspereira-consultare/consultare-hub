@@ -23,10 +23,13 @@ API_URL_APPOINTMENTS = "https://dashboard.clinia.io/api/statistics/appointments"
 API_URL_WHATSAPP_COUNT = "https://dashboard.clinia.io/api/whatsapp/chat/count"
 
 # Mapeamento fixo de grupos para o monitor (IDs -> nomes)
+CENTRAL_GROUP_ID = "da45d882-5702-439b-8133-3d896d6a8810"
+CENTRAL_GROUP_NAME = "Central de relacionamento"
 WHATSAPP_GROUP_NAMES = {
     "27a55f28-fcc9-464a-b309-46eae46cac71": "Cancelados",
-    "da45d882-5702-439b-8133-3d896d6a8810": "Central de relacionamento",
-    "dbfa4605-60ec-4f17-92c5-05c7d90ebcb4": "Resolvesaude"
+    CENTRAL_GROUP_ID: CENTRAL_GROUP_NAME,
+    "dbfa4605-60ec-4f17-92c5-05c7d90ebcb4": "Resolvesaude",
+    "e4f34a9b-6b42-4ab5-9cd8-70f248ef422d": "Verificar pagamentos"
 }
 
 HEADERS = {
@@ -177,14 +180,18 @@ def process_and_save():
             count_all = sum(counts_map.values())
 
         # Decide quais grupos inserir: mapping fixo + ids retornados
-        group_ids = set(WHATSAPP_GROUP_NAMES.keys()) | set(counts_map.keys()) | set(avg_wait_map.keys())
+        group_ids = set(WHATSAPP_GROUP_NAMES.keys()) | set(counts_map.keys())
+        group_ids.add(CENTRAL_GROUP_ID)
 
         if group_ids:
             # Limpa tabela snapshot antes de inserir o estado atual
             conn.execute("DELETE FROM clinia_group_snapshots")
 
             for g_id in group_ids:
-                g_name = WHATSAPP_GROUP_NAMES.get(g_id) or group_names_map.get(g_id) or f"Grupo {str(g_id)[:4]}..."
+                if g_id == CENTRAL_GROUP_ID:
+                    g_name = CENTRAL_GROUP_NAME
+                else:
+                    g_name = WHATSAPP_GROUP_NAMES.get(g_id) or "Não identificado"
                 queue = int(counts_map.get(g_id, 0))
                 wait_time = int(avg_wait_map.get(g_id, 0))
                 conn.execute('''

@@ -116,6 +116,16 @@ export const MonitorHeader = ({
                               ))}
                            </select>
                       </div>
+
+                      {/* Botão de Atualizar (apenas ícone) */}
+                      <button
+                        onClick={onRefresh}
+                        disabled={loading}
+                        className="p-1 rounded-md border border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:bg-slate-50 transition disabled:opacity-60 disabled:cursor-not-allowed"
+                        title="Atualizar fila digital"
+                      >
+                        <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+                      </button>
                   </div>
 
                   {/* Dados Numéricos */}

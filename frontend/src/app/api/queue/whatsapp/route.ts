@@ -28,6 +28,17 @@ export async function GET() {
           avg_wait_seconds: Number(g.avg_wait_seconds || 0)
       }));
 
+      const CENTRAL_GROUP_ID = 'da45d882-5702-439b-8133-3d896d6a8810';
+      const CENTRAL_GROUP_NAME = 'Central de relacionamento';
+      if (!groups.some(g => g.group_id === CENTRAL_GROUP_ID)) {
+        groups.push({
+          group_id: CENTRAL_GROUP_ID,
+          group_name: CENTRAL_GROUP_NAME,
+          queue_size: 0,
+          avg_wait_seconds: 0
+        });
+      }
+
       // Calcula totais globais
       const totalQueue = globalRow ? Number(globalRow.queue_size || 0) : groups.reduce((acc, g) => acc + g.queue_size, 0);
       
