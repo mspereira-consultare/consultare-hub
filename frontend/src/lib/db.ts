@@ -12,6 +12,7 @@ let mysqlPool: Pool | null = null;
 function resolveProvider(): 'turso' | 'mysql' {
   const raw = String(process.env.DB_PROVIDER || '').toLowerCase().trim();
   if (raw === 'mysql' || raw === 'turso') return raw;
+  if (process.env.MYSQL_URL) return 'mysql';
   return 'turso';
 }
 

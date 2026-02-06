@@ -9,34 +9,63 @@ export async function GET() {
   try {
     const cached = await withCache('queue:reception', CACHE_TTL_MS, async () => {
       const db = getDbConnection();
+      const isMysql = String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL;
 
-      const sql = `
-      SELECT 
-        unidade_id,
-        unidade_nome,
+      const sql = isMysql
+        ? `
+          SELECT 
+            unidade_id,
+            unidade_nome,
 
-        COUNT(CASE 
-          WHEN dt_atendimento IS NULL 
-               AND status NOT LIKE 'Finalizado%' 
-          THEN 1 END
-        ) AS fila,
+            COUNT(CASE 
+              WHEN dt_atendimento IS NULL 
+                   AND status NOT LIKE 'Finalizado%' 
+              THEN 1 END
+            ) AS fila,
 
-        CAST(ROUND(AVG(
-          CASE 
-            WHEN dt_atendimento IS NOT NULL 
-            THEN (julianday(dt_atendimento) - julianday(dt_chegada)) * 1440
-          END
-        )) AS INTEGER) AS tempo_medio,
+            CAST(ROUND(AVG(
+              CASE 
+                WHEN dt_atendimento IS NOT NULL 
+                THEN TIMESTAMPDIFF(MINUTE, dt_chegada, dt_atendimento)
+              END
+            )) AS SIGNED) AS tempo_medio,
 
-        COUNT(CASE 
-          WHEN dt_atendimento IS NOT NULL 
-          THEN 1 END
-        ) AS total_passaram
+            COUNT(CASE 
+              WHEN dt_atendimento IS NOT NULL 
+              THEN 1 END
+            ) AS total_passaram
 
-      FROM recepcao_historico
-      WHERE dia_referencia = date('now')
-      GROUP BY unidade_id, unidade_nome
-    `;
+          FROM recepcao_historico
+          WHERE dia_referencia = CURDATE()
+          GROUP BY unidade_id, unidade_nome
+        `
+        : `
+          SELECT 
+            unidade_id,
+            unidade_nome,
+
+            COUNT(CASE 
+              WHEN dt_atendimento IS NULL 
+                   AND status NOT LIKE 'Finalizado%' 
+              THEN 1 END
+            ) AS fila,
+
+            CAST(ROUND(AVG(
+              CASE 
+                WHEN dt_atendimento IS NOT NULL 
+                THEN (julianday(dt_atendimento) - julianday(dt_chegada)) * 1440
+              END
+            )) AS INTEGER) AS tempo_medio,
+
+            COUNT(CASE 
+              WHEN dt_atendimento IS NOT NULL 
+              THEN 1 END
+            ) AS total_passaram
+
+          FROM recepcao_historico
+          WHERE dia_referencia = date('now')
+          GROUP BY unidade_id, unidade_nome
+        `;
 
       const rows = await db.query(sql);
 

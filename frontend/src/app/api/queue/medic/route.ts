@@ -17,6 +17,7 @@ export async function GET() {
   try {
     const cached = await withCache('queue:medic', CACHE_TTL_MS, async () => {
       const db = getDbConnection();
+      const isMysql = String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL;
 
       // Inicializa unidades
       const unitsMap = new Map<string, any>();
@@ -31,15 +32,25 @@ export async function GET() {
       });
 
       // 1️⃣ FILA ATUAL (somente ativos recentes)
-      const filaSql = `
-      SELECT hash_id, unidade, paciente, chegada, espera_minutos, status, profissional, updated_at
-      FROM espera_medica
-      WHERE status NOT LIKE 'Finalizado%'
-        AND datetime(updated_at, '+3 hours') >= datetime('now', '-60 minutes')
-      ORDER BY
-        CASE WHEN status = 'Em Atendimento' THEN 0 ELSE 1 END,
-        datetime(updated_at, '+3 hours') DESC
-    `;
+      const filaSql = isMysql
+        ? `
+          SELECT hash_id, unidade, paciente, chegada, espera_minutos, status, profissional, updated_at
+          FROM espera_medica
+          WHERE status NOT LIKE 'Finalizado%'
+            AND DATE_ADD(updated_at, INTERVAL 3 HOUR) >= DATE_SUB(NOW(), INTERVAL 60 MINUTE)
+          ORDER BY
+            CASE WHEN status = 'Em Atendimento' THEN 0 ELSE 1 END,
+            DATE_ADD(updated_at, INTERVAL 3 HOUR) DESC
+        `
+        : `
+          SELECT hash_id, unidade, paciente, chegada, espera_minutos, status, profissional, updated_at
+          FROM espera_medica
+          WHERE status NOT LIKE 'Finalizado%'
+            AND datetime(updated_at, '+3 hours') >= datetime('now', '-60 minutes')
+          ORDER BY
+            CASE WHEN status = 'Em Atendimento' THEN 0 ELSE 1 END,
+            datetime(updated_at, '+3 hours') DESC
+        `;
       const filaRows = await db.query(filaSql);
 
       (filaRows as any[]).forEach(row => {
@@ -74,13 +85,21 @@ export async function GET() {
       });
 
       // 2️⃣ TOTAL ATENDIDOS HOJE
-      const attendedSql = `
-      SELECT unidade, COUNT(*) as total
-      FROM espera_medica
-      WHERE status LIKE 'Finalizado%'
-        AND updated_at >= datetime('now', '-1 day', '-3 hours')
-      GROUP BY unidade
-    `;
+      const attendedSql = isMysql
+        ? `
+          SELECT unidade, COUNT(*) as total
+          FROM espera_medica
+          WHERE status LIKE 'Finalizado%'
+            AND updated_at >= DATE_SUB(NOW(), INTERVAL 27 HOUR)
+          GROUP BY unidade
+        `
+        : `
+          SELECT unidade, COUNT(*) as total
+          FROM espera_medica
+          WHERE status LIKE 'Finalizado%'
+            AND updated_at >= datetime('now', '-1 day', '-3 hours')
+          GROUP BY unidade
+        `;
       const attendedRows = await db.query(attendedSql);
 
       (attendedRows as any[]).forEach(row => {
@@ -92,15 +111,25 @@ export async function GET() {
       });
 
       // 3️⃣ MÉDIA DE ESPERA DO DIA
-      const avgSql = `
-      SELECT unidade, ROUND(AVG(espera_minutos), 0) as media
-      FROM espera_medica
-      WHERE status LIKE 'Finalizado%'
-        AND updated_at >= datetime('now', '-1 day', '-3 hours')
-        AND espera_minutos IS NOT NULL
-        AND espera_minutos BETWEEN 0 AND 240
-      GROUP BY unidade
-    `;
+      const avgSql = isMysql
+        ? `
+          SELECT unidade, ROUND(AVG(espera_minutos), 0) as media
+          FROM espera_medica
+          WHERE status LIKE 'Finalizado%'
+            AND updated_at >= DATE_SUB(NOW(), INTERVAL 27 HOUR)
+            AND espera_minutos IS NOT NULL
+            AND espera_minutos BETWEEN 0 AND 240
+          GROUP BY unidade
+        `
+        : `
+          SELECT unidade, ROUND(AVG(espera_minutos), 0) as media
+          FROM espera_medica
+          WHERE status LIKE 'Finalizado%'
+            AND updated_at >= datetime('now', '-1 day', '-3 hours')
+            AND espera_minutos IS NOT NULL
+            AND espera_minutos BETWEEN 0 AND 240
+          GROUP BY unidade
+        `;
       const avgRows = await db.query(avgSql);
 
       (avgRows as any[]).forEach(row => {

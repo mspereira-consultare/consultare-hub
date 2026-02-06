@@ -1,0 +1,74 @@
+    "      WHERE status NOT LIKE 'Finalizado%'\n" +
+    "        AND datetime(updated_at, '+3 hours') >= datetime('now', '-60 minutes')\n" +
+    '      ORDER BY\n' +
+    "        CASE WHEN status = 'Em Atendimento' THEN 0 ELSE 1 END,\n" +
+    "        datetime(updated_at, '+3 hours') DESC\n" +
+    '    ',
+  sqlState: '42000',
+  sqlMessage: "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '(updated_at, '+3 hours') >= datetime('now', '-60 minutes')\n" +
+    '      ORDER BY\n' +
+    "      ' at line 4"
+}
+    '        COUNT(CASE \n' +
+    '          WHEN dt_atendimento IS NULL \n' +
+    "               AND status NOT LIKE 'Finalizado%' \n" +
+    '          THEN 1 END\n' +
+    '        ) AS fila,\n' +
+    '\n' +
+    '        CAST(ROUND(AVG(\n' +
+    '          CASE \n' +
+    '            WHEN dt_atendimento IS NOT NULL \n' +
+    '            THEN (julianday(dt_atendimento) - julianday(dt_chegada)) * 1440\n' +
+    '          END\n' +
+    '        )) AS INTEGER) AS tempo_medio,\n' +
+    '\n' +
+]
+    '        COUNT(CASE \n' +
+    '          WHEN dt_atendimento IS NOT NULL \n' +
+    '          THEN 1 END\n' +
+[KPI_ENGINE] Agregação por SOMA: 10392.36
+    '        ) AS total_passaram\n' +
+    '\n' +
+[KPI_ENGINE] Query retornou 1 linhas para kpi=sales. Amostra: [ { d: '2026-02', val: 9792.060000000009 } ]
+[KPI_ENGINE] Agregação por SOMA: 9792.06
+    '      FROM recepcao_historico\n' +
+  { d: '2026-02-05', val: 872.28 }
+    '      WHERE dia_referencia = CURDATE()\n' +
+[KPI_ENGINE] Query retornou 6 linhas para kpi=agendamentos. Amostra: [
+]
+    '      GROUP BY unidade_id, unidade_nome\n' +
+    '    ',
+  { d: '2026-02-01', val: 7 },
+  { d: '2026-02-02', val: 1831.55 },
+  sqlState: '42000',
+  sqlMessage: "You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'INTEGER) AS tempo_medio,\n" +
+  { d: '2026-02-02', val: 325 },
+  { d: '2026-02-03', val: 679.8 },
+]
+  { d: '2026-02-05', val: 1842.99 }
+  { d: '2026-02-03', val: 320 },
+[KPI_ENGINE] Agregação por SOMA: 13222.45
+]
+  { d: '2026-02-04', val: 337 }
+[KPI_ENGINE] Query retornou 5 linhas para kpi=revenue. Amostra: [
+]
+[KPI_ENGINE] Agregação por SOMA: 9104.03
+  { d: '2026-02-02', val: 1211.34 },
+[KPI_ENGINE] Agregação por SOMA: 1408.00
+[KPI_ENGINE] Query retornou 5 linhas para kpi=revenue. Amostra: [
+  { d: '2026-02-03', val: 3392.61 },
+  { d: '2026-02-03', val: 4538.010000000001 },
+[KPI_ENGINE] Query retornou 5 linhas para kpi=revenue. Amostra: [
+  { d: '2026-02-04', val: 2843.3 },
+  { d: '2026-02-02', val: 1293.2 },
+  { d: '2026-02-03', val: 2007.42 },
+  { d: '2026-02-04', val: 5347.25 }
+  { d: '2026-02-04', val: 2358.2 },
+    '\n' +
+    '        COUNT(CASE \n' +
+  { d: '2026-02-05', val: 4341.52 }
+    "          WHEN dt_atendimento IS N' at line 16"
+[KPI_ENGINE] Agregação por SOMA: 4354.34
+  { d: '2026-02-02', val: 2717.11 },
+]
+}
