@@ -41,11 +41,12 @@ export async function GET(request: Request) {
     const globalStatsRes = await db.query(`
         SELECT 
             COUNT(*) as total,
-            SUM(CASE WHEN status_id IN (3, 7) THEN 1 ELSE 0 END) as confirmados
+            SUM(CASE WHEN status_id IN (3, 7) THEN 1 ELSE 0 END) as confirmados,
+            SUM(CASE WHEN status_id = 6 THEN 1 ELSE 0 END) as nao_compareceu
         FROM feegow_appointments
         WHERE scheduled_at BETWEEN ? AND ?
     `, [dbStart, dbEnd]);
-    const globalStats = globalStatsRes[0] || { total: 0, confirmados: 0 };
+    const globalStats = globalStatsRes[0] || { total: 0, confirmados: 0, nao_compareceu: 0 };
 
     // 3. ESTATÍSTICAS DA EQUIPE SELECIONADA (Dinâmico via banco)
     // Team-specific stats using many-to-many relationship

@@ -362,6 +362,15 @@ export default function ProductivityPage() {
                                     {globalStats.total > 0 ? ((globalStats.confirmados / globalStats.total) * 100).toFixed(1) : '0.0'}%
                                 </p>
                             </div>
+                            <div className="text-center">
+                                <p className="text-xs font-bold text-slate-400 uppercase mb-1">Não Compareceu</p>
+                                <p className="text-2xl font-extrabold text-rose-600">
+                                    {globalStats.nao_compareceu || 0}
+                                </p>
+                                <p className="text-[11px] text-slate-500">
+                                    {globalStats.total > 0 ? ((Number(globalStats.nao_compareceu || 0) / globalStats.total) * 100).toFixed(1) : '0.0'}%
+                                </p>
+                            </div>
                             {/* Meta Global (quando disponível) */}
                         {(() => {
                                 const globalGoal = goalsData.find((g: any) => {
