@@ -1,4 +1,4 @@
-import { turso } from "@/lib/turso";
+import { getDbConnection } from "@/lib/db";
 import SettingsForm from "./settings-form";
 
 // Impede cache para garantir dados frescos
@@ -23,23 +23,12 @@ export default async function SettingsPage() {
   };
 
   try {
-    // Verifica se turso foi inicializado (pode ser null durante build sem env)
-    if (!turso) {
-      console.warn("⚠️ Cliente Turso não inicializado. Usando valores padrão.");
-      return (
-        <SettingsForm 
-          initialFeegow={initialFeegow}
-          initialClinia={initialClinia}
-        />
-      );
-    }
+    const db = getDbConnection();
+    const rows = await db.query(
+      "SELECT * FROM integrations_config WHERE service IN ('feegow', 'clinia')"
+    );
 
-    const result = await turso.execute({
-      sql: "SELECT * FROM integrations_config WHERE service IN ('feegow', 'clinia')",
-      args: [],
-    });
-
-    for (const row of result.rows) {
+    for (const row of rows) {
       // TRATAMENTO DE NULOS: (valor || '')
       // Isso corrige o erro "value prop on input should not be null"
       const config = {

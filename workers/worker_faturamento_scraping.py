@@ -1,4 +1,4 @@
-import time
+﻿import time
 import os
 import sys
 import pandas as pd
@@ -7,6 +7,8 @@ import re
 import math
 import unicodedata
 import calendar
+import hashlib
+import hashlib
 import unicodedata
 from playwright.sync_api import sync_playwright
 from io import StringIO
@@ -25,6 +27,135 @@ def clean_column_name(name):
     name = name.replace(" ", "_").replace(".", "").replace("/", "_")
     name = re.sub(r'[^\w\s]', '', name)
     return name
+
+def _fetch_scalar(result):
+    if result is None:
+        return None
+    if hasattr(result, "fetchone"):
+        row = result.fetchone()
+        if row is None:
+            return None
+        if isinstance(row, dict):
+            return next(iter(row.values()), None)
+        return row[0]
+    rows = list(result)
+    if not rows:
+        return None
+    row = rows[0]
+    if isinstance(row, dict):
+        return next(iter(row.values()), None)
+    return row[0]
+
+def _ensure_mysql_index(conn, table_name, index_name, columns_sql):
+    res = conn.execute(
+        """
+        SELECT COUNT(1)
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE()
+          AND table_name = ?
+          AND index_name = ?
+        """,
+        (table_name, index_name)
+    )
+    cnt = _fetch_scalar(res) or 0
+    if cnt == 0:
+        conn.execute(f"CREATE INDEX {index_name} ON {table_name} ({columns_sql})")
+
+def _mysql_pk_has_column(conn, table_name, column_name):
+    res = conn.execute(
+        """
+        SELECT COUNT(1)
+        FROM information_schema.key_column_usage
+        WHERE table_schema = DATABASE()
+          AND table_name = ?
+          AND constraint_name = 'PRIMARY'
+          AND column_name = ?
+        """,
+        (table_name, column_name)
+    )
+    cnt = _fetch_scalar(res) or 0
+    return cnt > 0
+
+def _ensure_mysql_procedure_key(conn, table_name, pk_cols):
+    try:
+        conn.execute(
+            f"ALTER TABLE {table_name} "
+            "ADD COLUMN procedimento_key VARCHAR(32) NOT NULL DEFAULT ''"
+        )
+    except Exception:
+        pass
+    try:
+        conn.execute(
+            f"UPDATE {table_name} "
+            "SET procedimento_key = MD5(COALESCE(TRIM(procedimento), '')) "
+            "WHERE procedimento_key IS NULL OR procedimento_key = ''"
+        )
+    except Exception:
+        pass
+    try:
+        if not _mysql_pk_has_column(conn, table_name, "procedimento_key"):
+            pk_cols_sql = ", ".join([*pk_cols, "procedimento_key"])
+            conn.execute(
+                f"ALTER TABLE {table_name} DROP PRIMARY KEY, "
+                f"ADD PRIMARY KEY ({pk_cols_sql})"
+            )
+    except Exception:
+        pass
+
+def _select_usuario_da_conta_column(page):
+    last_error = None
+    for _ in range(3):
+        try:
+            page.wait_for_selector('[title="Definir colunas"]', state="visible", timeout=10000)
+            page.locator('[title="Definir colunas"]').first.click()
+            time.sleep(0.5)
+            try:
+                checkbox = page.locator("input[type='checkbox'][name='Colunas'][value='|162|']")
+                if checkbox.count() > 0:
+                    checkbox.first.scroll_into_view_if_needed()
+                    if not checkbox.first.is_checked():
+                        checkbox.first.check(force=True)
+            except Exception:
+                pass
+            page.evaluate(
+                """
+                () => {
+                    const inputs = Array.from(document.querySelectorAll("input[type='checkbox'][name='Colunas']"));
+                    if (!inputs.length) return false;
+                    const normalize = (txt) => (txt || "")
+                        .toString()
+                        .normalize("NFD")
+                        .replace(/[\\u0300-\\u036f]/g, "")
+                        .toLowerCase();
+                    let target = inputs.find(i => i.value === "|162|");
+                    if (!target) {
+                        target = inputs.find(i => {
+                            const label = i.closest("label");
+                            const text = label ? label.innerText : (i.parentElement ? i.parentElement.innerText : "");
+                            const n = normalize(text);
+                            return n.includes("usuario da conta");
+                        });
+                    }
+                    if (!target) return false;
+                    target.checked = true;
+                    target.dispatchEvent(new Event("change", { bubbles: true }));
+                    return true;
+                }
+                """
+            )
+            page.locator(".btn.btn-primary.btn-block").filter(has_text="Selecionar").first.click()
+            page.wait_for_selector("#table-resultado tbody tr", timeout=30000)
+            return True
+        except Exception as e:
+            last_error = e
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+            time.sleep(1)
+    if last_error:
+        print(f"⚠️ Falha ao selecionar colunas: {last_error}")
+    return False
 
 def _strip_accents(value: str) -> str:
     if value is None:
@@ -215,28 +346,63 @@ def update_faturamento_summary(db, start_date_iso, end_date_iso, update_monthly=
     conn = db.get_connection()
     try:
         # Normaliza data_do_pagamento para ISO (YYYY-MM-DD) se necessário
-        date_expr = "(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)"
+        if db.use_mysql:
+            date_expr = (
+                "CASE WHEN INSTR(data_do_pagamento, '/') > 0 "
+                "THEN CONCAT(SUBSTR(data_do_pagamento, 7, 4), '-', SUBSTR(data_do_pagamento, 4, 2), '-', SUBSTR(data_do_pagamento, 1, 2)) "
+                "ELSE data_do_pagamento END"
+            )
+        else:
+            date_expr = (
+                "(CASE WHEN instr(data_do_pagamento, '/') > 0 "
+                "THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) "
+                "ELSE data_do_pagamento END)"
+            )
 
         # Cria tabela de resumo se não existir
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS faturamento_resumo_diario (
-                data_ref TEXT NOT NULL,
-                unidade TEXT NOT NULL,
-                grupo TEXT NOT NULL,
-                procedimento TEXT NOT NULL,
-                total_pago REAL,
-                qtd INTEGER,
-                updated_at TEXT,
-                PRIMARY KEY (data_ref, unidade, grupo, procedimento)
+        if db.use_mysql:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS faturamento_resumo_diario (
+                    data_ref VARCHAR(191) NOT NULL,
+                    unidade VARCHAR(191) NOT NULL,
+                    grupo VARCHAR(191) NOT NULL,
+                    procedimento VARCHAR(191) NOT NULL,
+                    procedimento_key VARCHAR(32) NOT NULL DEFAULT '',
+                    total_pago DOUBLE,
+                    qtd BIGINT,
+                    updated_at TEXT,
+                    PRIMARY KEY (data_ref, unidade, grupo, procedimento_key)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """
             )
-        """)
-        # Índices para acelerar filtros mais comuns
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_data ON faturamento_resumo_diario(data_ref)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_unidade ON faturamento_resumo_diario(unidade)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_grupo ON faturamento_resumo_diario(grupo)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_proc ON faturamento_resumo_diario(procedimento)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_data_unidade ON faturamento_resumo_diario(data_ref, unidade)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_data_grupo ON faturamento_resumo_diario(data_ref, grupo)")
+            _ensure_mysql_procedure_key(conn, "faturamento_resumo_diario", ["data_ref", "unidade", "grupo"])
+            _ensure_mysql_index(conn, "faturamento_resumo_diario", "idx_fat_resumo_diario_data", "data_ref")
+            _ensure_mysql_index(conn, "faturamento_resumo_diario", "idx_fat_resumo_diario_unidade", "unidade")
+            _ensure_mysql_index(conn, "faturamento_resumo_diario", "idx_fat_resumo_diario_grupo", "grupo")
+            _ensure_mysql_index(conn, "faturamento_resumo_diario", "idx_fat_resumo_diario_proc", "procedimento")
+            _ensure_mysql_index(conn, "faturamento_resumo_diario", "idx_fat_resumo_diario_data_unidade", "data_ref, unidade")
+            _ensure_mysql_index(conn, "faturamento_resumo_diario", "idx_fat_resumo_diario_data_grupo", "data_ref, grupo")
+        else:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS faturamento_resumo_diario (
+                    data_ref TEXT NOT NULL,
+                    unidade TEXT NOT NULL,
+                    grupo TEXT NOT NULL,
+                    procedimento TEXT NOT NULL,
+                    total_pago REAL,
+                    qtd INTEGER,
+                    updated_at TEXT,
+                    PRIMARY KEY (data_ref, unidade, grupo, procedimento)
+                )
+            """)
+            # Índices para acelerar filtros mais comuns
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_data ON faturamento_resumo_diario(data_ref)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_unidade ON faturamento_resumo_diario(unidade)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_grupo ON faturamento_resumo_diario(grupo)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_proc ON faturamento_resumo_diario(procedimento)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_data_unidade ON faturamento_resumo_diario(data_ref, unidade)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_diario_data_grupo ON faturamento_resumo_diario(data_ref, grupo)")
 
         # Se a tabela de resumo estiver vazia, faz backfill completo (1x)
         try:
@@ -277,22 +443,41 @@ def update_faturamento_summary(db, start_date_iso, end_date_iso, update_monthly=
         )
 
         # Recalcula o resumo do período
-        sql = f"""
-            INSERT INTO faturamento_resumo_diario (
-                data_ref, unidade, grupo, procedimento, total_pago, qtd, updated_at
-            )
-            SELECT
-                {date_expr} as data_ref,
-                COALESCE(TRIM(unidade), '') as unidade,
-                COALESCE(TRIM(grupo), '') as grupo,
-                COALESCE(TRIM(procedimento), '') as procedimento,
-                SUM(total_pago) as total_pago,
-                COUNT(*) as qtd,
-                datetime('now') as updated_at
-            FROM faturamento_analitico
-            WHERE {date_expr} BETWEEN ? AND ?
-            GROUP BY data_ref, unidade, grupo, procedimento
-        """
+        if db.use_mysql:
+            sql = f"""
+                INSERT INTO faturamento_resumo_diario (
+                    data_ref, unidade, grupo, procedimento, procedimento_key, total_pago, qtd, updated_at
+                )
+                SELECT
+                    {date_expr} as data_ref,
+                    COALESCE(TRIM(unidade), '') as unidade,
+                    COALESCE(TRIM(grupo), '') as grupo,
+                    COALESCE(TRIM(procedimento), '') as procedimento,
+                    MIN(MD5(COALESCE(TRIM(procedimento), ''))) as procedimento_key,
+                    SUM(total_pago) as total_pago,
+                    COUNT(*) as qtd,
+                    NOW() as updated_at
+                FROM faturamento_analitico
+                WHERE {date_expr} BETWEEN ? AND ?
+                GROUP BY data_ref, unidade, grupo, procedimento
+            """
+        else:
+            sql = f"""
+                INSERT INTO faturamento_resumo_diario (
+                    data_ref, unidade, grupo, procedimento, total_pago, qtd, updated_at
+                )
+                SELECT
+                    {date_expr} as data_ref,
+                    COALESCE(TRIM(unidade), '') as unidade,
+                    COALESCE(TRIM(grupo), '') as grupo,
+                    COALESCE(TRIM(procedimento), '') as procedimento,
+                    SUM(total_pago) as total_pago,
+                    COUNT(*) as qtd,
+                    datetime('now') as updated_at
+                FROM faturamento_analitico
+                WHERE {date_expr} BETWEEN ? AND ?
+                GROUP BY data_ref, unidade, grupo, procedimento
+            """
         conn.execute(sql, (start_date_iso, end_date_iso))
 
         if not db.use_turso:
@@ -303,24 +488,48 @@ def update_faturamento_summary(db, start_date_iso, end_date_iso, update_monthly=
             # ---------------------------------------------------------
             # Resumo mensal (baseado no diário para reduzir leituras)
             # ---------------------------------------------------------
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS faturamento_resumo_mensal (
-                    month_ref TEXT NOT NULL,
-                    unidade TEXT NOT NULL,
-                    grupo TEXT NOT NULL,
-                    procedimento TEXT NOT NULL,
-                    total_pago REAL,
-                    qtd INTEGER,
-                    updated_at TEXT,
-                    PRIMARY KEY (month_ref, unidade, grupo, procedimento)
+            if db.use_mysql:
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS faturamento_resumo_mensal (
+                        month_ref VARCHAR(191) NOT NULL,
+                        unidade VARCHAR(191) NOT NULL,
+                        grupo VARCHAR(191) NOT NULL,
+                        procedimento VARCHAR(191) NOT NULL,
+                        procedimento_key VARCHAR(32) NOT NULL DEFAULT '',
+                        total_pago DOUBLE,
+                        qtd BIGINT,
+                        updated_at TEXT,
+                        PRIMARY KEY (month_ref, unidade, grupo, procedimento_key)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    """
                 )
-            """)
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month ON faturamento_resumo_mensal(month_ref)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_unidade ON faturamento_resumo_mensal(unidade)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_grupo ON faturamento_resumo_mensal(grupo)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_proc ON faturamento_resumo_mensal(procedimento)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_unidade ON faturamento_resumo_mensal(month_ref, unidade)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_grupo ON faturamento_resumo_mensal(month_ref, grupo)")
+                _ensure_mysql_procedure_key(conn, "faturamento_resumo_mensal", ["month_ref", "unidade", "grupo"])
+                _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_month", "month_ref")
+                _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_unidade", "unidade")
+                _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_grupo", "grupo")
+                _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_proc", "procedimento")
+                _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_month_unidade", "month_ref, unidade")
+                _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_month_grupo", "month_ref, grupo")
+            else:
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS faturamento_resumo_mensal (
+                        month_ref TEXT NOT NULL,
+                        unidade TEXT NOT NULL,
+                        grupo TEXT NOT NULL,
+                        procedimento TEXT NOT NULL,
+                        total_pago REAL,
+                        qtd INTEGER,
+                        updated_at TEXT,
+                        PRIMARY KEY (month_ref, unidade, grupo, procedimento)
+                    )
+                """)
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month ON faturamento_resumo_mensal(month_ref)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_unidade ON faturamento_resumo_mensal(unidade)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_grupo ON faturamento_resumo_mensal(grupo)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_proc ON faturamento_resumo_mensal(procedimento)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_unidade ON faturamento_resumo_mensal(month_ref, unidade)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_grupo ON faturamento_resumo_mensal(month_ref, grupo)")
 
             monthly_start_date = start_date_iso
             monthly_end_date = end_date_iso
@@ -366,6 +575,123 @@ def update_faturamento_summary(db, start_date_iso, end_date_iso, update_monthly=
                 (start_month, end_month)
             )
 
+            if db.use_mysql:
+                monthly_sql = """
+                    INSERT INTO faturamento_resumo_mensal (
+                        month_ref, unidade, grupo, procedimento, procedimento_key, total_pago, qtd, updated_at
+                    )
+                    SELECT
+                        substr(data_ref, 1, 7) as month_ref,
+                        unidade,
+                        grupo,
+                        procedimento,
+                        MIN(procedimento_key) as procedimento_key,
+                        SUM(total_pago) as total_pago,
+                        SUM(qtd) as qtd,
+                        NOW() as updated_at
+                    FROM faturamento_resumo_diario
+                    WHERE data_ref BETWEEN ? AND ?
+                    GROUP BY month_ref, unidade, grupo, procedimento
+                """
+            else:
+                monthly_sql = """
+                    INSERT INTO faturamento_resumo_mensal (
+                        month_ref, unidade, grupo, procedimento, total_pago, qtd, updated_at
+                    )
+                    SELECT
+                        substr(data_ref, 1, 7) as month_ref,
+                        unidade,
+                        grupo,
+                        procedimento,
+                        SUM(total_pago) as total_pago,
+                        SUM(qtd) as qtd,
+                        datetime('now') as updated_at
+                    FROM faturamento_resumo_diario
+                    WHERE data_ref BETWEEN ? AND ?
+                    GROUP BY month_ref, unidade, grupo, procedimento
+                """
+            conn.execute(monthly_sql, (monthly_start_date, monthly_end_date))
+
+            if not db.use_turso:
+                conn.commit()
+            print(f"   ✅ Resumo mensal atualizado: {start_month} a {end_month}")
+    except Exception as e:
+        print(f"   ⚠️ Erro ao atualizar resumo diário: {e}")
+    finally:
+        conn.close()
+
+def update_faturamento_monthly_from_daily(db, month_ref):
+    conn = db.get_connection()
+    try:
+        if db.use_mysql:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS faturamento_resumo_mensal (
+                    month_ref VARCHAR(191) NOT NULL,
+                    unidade VARCHAR(191) NOT NULL,
+                    grupo VARCHAR(191) NOT NULL,
+                    procedimento VARCHAR(191) NOT NULL,
+                    procedimento_key VARCHAR(32) NOT NULL DEFAULT '',
+                    total_pago DOUBLE,
+                    qtd BIGINT,
+                    updated_at TEXT,
+                    PRIMARY KEY (month_ref, unidade, grupo, procedimento_key)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """
+            )
+            _ensure_mysql_procedure_key(conn, "faturamento_resumo_mensal", ["month_ref", "unidade", "grupo"])
+            _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_month", "month_ref")
+            _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_unidade", "unidade")
+            _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_grupo", "grupo")
+            _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_proc", "procedimento")
+            _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_month_unidade", "month_ref, unidade")
+            _ensure_mysql_index(conn, "faturamento_resumo_mensal", "idx_fat_resumo_mensal_month_grupo", "month_ref, grupo")
+        else:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS faturamento_resumo_mensal (
+                    month_ref TEXT NOT NULL,
+                    unidade TEXT NOT NULL,
+                    grupo TEXT NOT NULL,
+                    procedimento TEXT NOT NULL,
+                    total_pago REAL,
+                    qtd INTEGER,
+                    updated_at TEXT,
+                    PRIMARY KEY (month_ref, unidade, grupo, procedimento)
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month ON faturamento_resumo_mensal(month_ref)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_unidade ON faturamento_resumo_mensal(unidade)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_grupo ON faturamento_resumo_mensal(grupo)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_proc ON faturamento_resumo_mensal(procedimento)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_unidade ON faturamento_resumo_mensal(month_ref, unidade)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_grupo ON faturamento_resumo_mensal(month_ref, grupo)")
+
+        year, month = map(int, month_ref.split('-'))
+        last_day = calendar.monthrange(year, month)[1]
+        month_start = f"{year:04d}-{month:02d}-01"
+        month_end = f"{year:04d}-{month:02d}-{last_day:02d}"
+
+        conn.execute("DELETE FROM faturamento_resumo_mensal WHERE month_ref = ?", (month_ref,))
+
+        if db.use_mysql:
+            monthly_sql = """
+                INSERT INTO faturamento_resumo_mensal (
+                    month_ref, unidade, grupo, procedimento, procedimento_key, total_pago, qtd, updated_at
+                )
+                SELECT
+                    substr(data_ref, 1, 7) as month_ref,
+                    unidade,
+                    grupo,
+                    procedimento,
+                    MIN(procedimento_key) as procedimento_key,
+                    SUM(total_pago) as total_pago,
+                    SUM(qtd) as qtd,
+                    NOW() as updated_at
+                FROM faturamento_resumo_diario
+                WHERE data_ref BETWEEN ? AND ?
+                GROUP BY month_ref, unidade, grupo, procedimento
+            """
+        else:
             monthly_sql = """
                 INSERT INTO faturamento_resumo_mensal (
                     month_ref, unidade, grupo, procedimento, total_pago, qtd, updated_at
@@ -382,61 +708,6 @@ def update_faturamento_summary(db, start_date_iso, end_date_iso, update_monthly=
                 WHERE data_ref BETWEEN ? AND ?
                 GROUP BY month_ref, unidade, grupo, procedimento
             """
-            conn.execute(monthly_sql, (monthly_start_date, monthly_end_date))
-
-            if not db.use_turso:
-                conn.commit()
-            print(f"   ✅ Resumo mensal atualizado: {start_month} a {end_month}")
-    except Exception as e:
-        print(f"   ⚠️ Erro ao atualizar resumo diário: {e}")
-    finally:
-        conn.close()
-
-def update_faturamento_monthly_from_daily(db, month_ref):
-    conn = db.get_connection()
-    try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS faturamento_resumo_mensal (
-                month_ref TEXT NOT NULL,
-                unidade TEXT NOT NULL,
-                grupo TEXT NOT NULL,
-                procedimento TEXT NOT NULL,
-                total_pago REAL,
-                qtd INTEGER,
-                updated_at TEXT,
-                PRIMARY KEY (month_ref, unidade, grupo, procedimento)
-            )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month ON faturamento_resumo_mensal(month_ref)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_unidade ON faturamento_resumo_mensal(unidade)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_grupo ON faturamento_resumo_mensal(grupo)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_proc ON faturamento_resumo_mensal(procedimento)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_unidade ON faturamento_resumo_mensal(month_ref, unidade)")
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_fat_resumo_mensal_month_grupo ON faturamento_resumo_mensal(month_ref, grupo)")
-
-        year, month = map(int, month_ref.split('-'))
-        last_day = calendar.monthrange(year, month)[1]
-        month_start = f"{year:04d}-{month:02d}-01"
-        month_end = f"{year:04d}-{month:02d}-{last_day:02d}"
-
-        conn.execute("DELETE FROM faturamento_resumo_mensal WHERE month_ref = ?", (month_ref,))
-
-        monthly_sql = """
-            INSERT INTO faturamento_resumo_mensal (
-                month_ref, unidade, grupo, procedimento, total_pago, qtd, updated_at
-            )
-            SELECT
-                substr(data_ref, 1, 7) as month_ref,
-                unidade,
-                grupo,
-                procedimento,
-                SUM(total_pago) as total_pago,
-                SUM(qtd) as qtd,
-                datetime('now') as updated_at
-            FROM faturamento_resumo_diario
-            WHERE data_ref BETWEEN ? AND ?
-            GROUP BY month_ref, unidade, grupo, procedimento
-        """
         conn.execute(monthly_sql, (month_start, month_end))
 
         if not db.use_turso:
@@ -481,7 +752,7 @@ def run_scraper():
     db.update_heartbeat("faturamento", "RUNNING", f"Extraindo {inicio_vis}-{fim_vis}")
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=True)
         context = browser.new_context()
         page = context.new_page()
 
@@ -539,20 +810,11 @@ def run_scraper():
             page.locator("body").click(force=True)
 
             print("🧩 Selecionando colunas...")
-            try:
-                page.wait_for_selector('[title="Definir colunas"]', state="visible", timeout=10000)
-                page.locator('[title="Definir colunas"]').first.click()
-                checkbox = page.locator("input[type='checkbox'][name='Colunas'][value='|162|']")
-                checkbox.wait_for(state="visible", timeout=10000)
-                if not checkbox.is_checked():
-                    checkbox.check(force=True)
-                # Botão Selecionar
-                page.locator(".btn.btn-primary.btn-block").filter(has_text="Selecionar").first.click()
-                # Após selecionar, o relatório é gerado automaticamente
+            if _select_usuario_da_conta_column(page):
                 print("⏳ Baixando...")
                 page.wait_for_selector("#table-resultado tbody tr", timeout=30000)
-            except Exception as e:
-                print(f"⚠️ Falha ao selecionar colunas: {e}. Tentando filtrar...")
+            else:
+                print("⚠️ Falha ao selecionar colunas. Tentando filtrar...")
                 print("🔎 Pesquisando...")
                 page.locator("#btn-filtrar").click()
                 print("⏳ Baixando...")
@@ -635,3 +897,4 @@ def run_scraper():
 
 if __name__ == "__main__":
     run_scraper()
+

@@ -8,6 +8,8 @@ import hashlib
 import pytz
 import time
 import threading
+import re
+from urllib.parse import urlparse, parse_qs, unquote
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
 
@@ -20,11 +22,33 @@ try:
 except ImportError:
     HAS_TURSO_LIB = False
 
+try:
+    import pymysql
+    HAS_MYSQL_LIB = True
+except ImportError:
+    HAS_MYSQL_LIB = False
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(BASE_DIR)
 load_dotenv()
 
 LOCAL_DB_PATH = os.path.join(BASE_DIR, 'data', 'dados_clinica.db')
+
+# ---- Logging ----
+LOG_LEVEL = str(os.getenv("LOG_LEVEL", "info")).strip().lower()
+DB_DEBUG = str(os.getenv("DB_DEBUG", "")).strip().lower() in ("1", "true", "yes", "debug")
+_logged_messages = set()
+
+def _log_once(message, key):
+    if key in _logged_messages:
+        return
+    print(message)
+    _logged_messages.add(key)
+
+def _log_debug_once(message, key):
+    if not (DB_DEBUG or LOG_LEVEL == "debug"):
+        return
+    _log_once(message, key)
 
 # ---- Cache/Ratelimit (in-memory) ----
 # Defaults can be overridden via env vars.
@@ -40,6 +64,53 @@ _espera_lock = threading.Lock()
 
 _recepcao_cache = {}
 _recepcao_lock = threading.Lock()
+
+
+class MySQLResultAdapter:
+    def __init__(self, rows=None):
+        self._rows = rows or []
+
+    @property
+    def rows(self):
+        return self._rows
+
+    def fetchone(self):
+        return self._rows[0] if self._rows else None
+
+    def fetchall(self):
+        return self._rows
+
+    def __iter__(self):
+        return iter(self._rows)
+
+
+class MySQLConnectionAdapter:
+    def __init__(self, conn, translator):
+        self._conn = conn
+        self._translator = translator
+
+    def execute(self, sql, params=()):
+        translated, translated_params = self._translator(sql, params)
+        final_params = tuple(translated_params) if translated_params else ()
+        with self._conn.cursor() as cursor:
+            cursor.execute(translated, final_params)
+            rows = cursor.fetchall() if cursor.description else []
+        return MySQLResultAdapter(rows)
+
+    def executemany(self, sql, seq_of_params):
+        translated, _ = self._translator(sql, ())
+        with self._conn.cursor() as cursor:
+            cursor.executemany(translated, seq_of_params)
+        return None
+
+    def commit(self):
+        self._conn.commit()
+
+    def close(self):
+        self._conn.close()
+
+    def cursor(self):
+        return self._conn.cursor()
 
 def _should_write_heartbeat(service_name, status, details):
     if HEARTBEAT_MIN_INTERVAL_SEC <= 0:
@@ -133,12 +204,21 @@ def gerar_hash(raw_id):
 
 class DatabaseManager:
     def __init__(self):
+        self.db_provider = str(os.getenv("DB_PROVIDER", "")).strip().lower()
         self.turso_url = os.getenv("TURSO_URL")
         self.turso_token = os.getenv("TURSO_TOKEN")
+        self.mysql_url = os.getenv("MYSQL_URL")
+        self.use_mysql = False
+        self.mysql_config = None
 
-        print("DEBUG TURSO_URL:", os.getenv("TURSO_URL"))
-        print("DEBUG TURSO_TOKEN:", "SET" if os.getenv("TURSO_TOKEN") else "MISSING")
-        print("DEBUG HAS_TURSO_LIB:", HAS_TURSO_LIB)
+        debug_msg = (
+            f"DEBUG [DB] provider={self.db_provider or 'auto'} "
+            f"turso_url={'set' if os.getenv('TURSO_URL') else 'missing'} "
+            f"turso_token={'set' if os.getenv('TURSO_TOKEN') else 'missing'} "
+            f"turso_lib={HAS_TURSO_LIB} mysql_lib={HAS_MYSQL_LIB} "
+            f"mysql_url={'set' if self.mysql_url else 'missing'}"
+        )
+        _log_debug_once(debug_msg, "db_debug")
         
         # --- FIX PARA ERRO 505 ---
         # Força o uso de HTTPS em vez de libsql:// ou wss://
@@ -146,20 +226,124 @@ class DatabaseManager:
         if self.turso_url:
             self.turso_url = self.turso_url.replace("libsql://", "https://").replace("wss://", "https://")
 
-        # Usa Turso se tiver URL configurada E a lib instalada
-        self.use_turso = HAS_TURSO_LIB and self.turso_url and "https" in self.turso_url
+        if self.db_provider == "mysql":
+            if not HAS_MYSQL_LIB:
+                raise RuntimeError("DB_PROVIDER=mysql, mas pymysql nao esta instalado.")
+            self.mysql_url = self._resolve_mysql_url(self.mysql_url)
+            if not self.mysql_url:
+                raise RuntimeError("DB_PROVIDER=mysql, mas MYSQL_URL nao esta configurada.")
+            self.mysql_config = self._parse_mysql_url(self.mysql_url)
+            self.use_mysql = True
+            self.use_turso = False
+        elif self.db_provider == "turso":
+            self.use_turso = HAS_TURSO_LIB and self.turso_url and "https" in self.turso_url
+            self.use_mysql = False
+        else:
+            # Modo legado: Turso quando disponível; caso contrário local SQLite
+            self.use_turso = HAS_TURSO_LIB and self.turso_url and "https" in self.turso_url
+            self.use_mysql = False
+
         self.db_path = LOCAL_DB_PATH
         
-        if not self.use_turso:
+        if self.use_mysql:
+            _log_once(
+                f"🛢️ [DB] Usando MYSQL: {self.mysql_config.get('host')}:{self.mysql_config.get('port')}/{self.mysql_config.get('database')}",
+                "db_provider:mysql",
+            )
+        elif not self.use_turso:
             os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
-            print(f"🔌 [DB] Usando LOCAL (SQLite): {self.db_path}")
+            _log_once(f"🔌 [DB] Usando LOCAL (SQLite): {self.db_path}", "db_provider:local")
         else:
-            print(f"☁️ [DB] Usando NUVEM (Turso HTTPS)")
+            _log_once("☁️ [DB] Usando NUVEM (Turso HTTPS)", "db_provider:turso")
 
         self._init_db()
 
+    def _parse_mysql_url(self, raw_url):
+        parsed = urlparse(raw_url)
+        if not parsed.scheme.lower().startswith("mysql"):
+            raise RuntimeError("MYSQL_URL invalida: esquema deve ser mysql://")
+
+        qs = parse_qs(parsed.query or "")
+        ssl_mode = str((qs.get("sslmode", [""])[0] or "")).lower()
+        disable_ssl_by_url = ssl_mode in ("disable", "false")
+        disable_ssl_by_env = str(os.getenv("MYSQL_FORCE_SSL", "")).lower() in ("0", "false", "no")
+        use_ssl = not (disable_ssl_by_url or disable_ssl_by_env)
+
+        cfg = {
+            "host": parsed.hostname,
+            "port": int(parsed.port or 3306),
+            "user": unquote(parsed.username or ""),
+            "password": unquote(parsed.password or ""),
+            "database": unquote((parsed.path or "").lstrip("/")),
+            "charset": "utf8mb4",
+            "autocommit": False,
+            "connect_timeout": int(os.getenv("MYSQL_CONNECT_TIMEOUT_SEC", "10")),
+            "cursorclass": pymysql.cursors.Cursor
+        }
+        if use_ssl:
+            cfg["ssl"] = {}
+        return cfg
+
+    def _resolve_mysql_url(self, raw_url):
+        internal = raw_url or ""
+        public = os.getenv("MYSQL_PUBLIC_URL") or ""
+        if not internal and public:
+            return public
+        if not internal:
+            return internal
+
+        try:
+            parsed = urlparse(internal)
+            host = (parsed.hostname or "").lower()
+            is_internal = host.endswith(".railway.internal")
+            is_railway_runtime = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
+            if is_internal and not is_railway_runtime and public:
+                _log_once(
+                    "Host MySQL interno detectado fora do Railway. Usando MYSQL_PUBLIC_URL.",
+                    "mysql_public_fallback"
+                )
+                return public
+        except Exception:
+            pass
+
+        return internal
+
+    def _translate_sql_for_mysql(self, sql, params=()):
+        if not sql:
+            return sql, params
+        translated = str(sql)
+
+        pragma_match = re.match(r"^\s*PRAGMA\s+table_info\((.+)\)\s*;?\s*$", translated, flags=re.IGNORECASE)
+        if pragma_match:
+            raw_table = str(pragma_match.group(1) or "").strip()
+            table_name = raw_table.strip("`'\"")
+            translated = """
+                SELECT COLUMN_NAME as name
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE() AND table_name = %s
+                ORDER BY ORDINAL_POSITION
+            """
+            return translated, (table_name,)
+
+        translated = re.sub(r"datetime\('now'\)", "NOW()", translated, flags=re.IGNORECASE)
+        translated = re.sub(r"date\('now'\)", "CURDATE()", translated, flags=re.IGNORECASE)
+        translated = re.sub(r"INSERT\s+OR\s+REPLACE\s+INTO", "REPLACE INTO", translated, flags=re.IGNORECASE)
+        if re.search(r"ON\s+CONFLICT\s*\(", translated, flags=re.IGNORECASE):
+            translated = re.sub(
+                r"ON\s+CONFLICT\s*\([^)]+\)\s*DO\s+UPDATE\s+SET",
+                "ON DUPLICATE KEY UPDATE",
+                translated,
+                flags=re.IGNORECASE
+            )
+            translated = re.sub(r"\bexcluded\.([A-Za-z0-9_]+)", r"VALUES(\1)", translated, flags=re.IGNORECASE)
+        translated = translated.replace("?", "%s")
+        return translated, params
+
     def get_connection(self):
         """Retorna conexão apropriada (Objeto Turso ou SQLite Connection)"""
+        if self.use_mysql:
+            raw_conn = pymysql.connect(**self.mysql_config)
+            return MySQLConnectionAdapter(raw_conn, self._translate_sql_for_mysql)
         if self.use_turso:
             # Usa 'auth_token' (snake_case) para o Python
             return libsql_client.create_client_sync(url=self.turso_url, auth_token=self.turso_token)
@@ -214,6 +398,10 @@ class DatabaseManager:
 
             if self.use_turso:
                 for q in queries: conn.execute(q)
+            elif self.use_mysql:
+                for q in queries:
+                    conn.execute(q)
+                conn.commit()
             else:
                 cursor = conn.cursor()
                 cursor.execute("PRAGMA journal_mode=WAL;")
@@ -259,6 +447,11 @@ class DatabaseManager:
             if self.use_turso:
                 rs = conn.execute(sql, params)
                 return rs.rows
+            elif self.use_mysql:
+                rs = conn.execute(sql, params)
+                rows = rs.fetchall() if hasattr(rs, 'fetchall') else []
+                conn.commit()
+                return rows
             else:
                 cursor = conn.cursor()
                 rs = cursor.execute(sql, params).fetchall()
@@ -327,11 +520,11 @@ class DatabaseManager:
                 UPDATE espera_medica
                 SET status = 'Finalizado (Saiu)', updated_at = ?
                 WHERE unidade = ?
-                AND status NOT LIKE 'Finalizado%'
+                AND status NOT LIKE ?
                 AND updated_at < ?
             """
 
-            conn.execute(sql, (agora, nome_unidade, limite))
+            conn.execute(sql, (agora, nome_unidade, "Finalizado%", limite))
 
         except Exception as e:
             print(f"Erro finalizar expirados médicos: {e}")
@@ -409,11 +602,11 @@ class DatabaseManager:
                     updated_at = ?
                 WHERE unidade_id = ? 
                 AND dia_referencia = ?
-                AND status NOT LIKE 'Finalizado%'
+                AND status NOT LIKE ?
                 AND id_externo NOT IN ({placeholder})
             '''
             
-            params = [agora, agora, str(unidade_id), hoje] + ativos_str
+            params = [agora, agora, str(unidade_id), hoje, "Finalizado%"] + ativos_str
             
             if self.use_turso: conn.execute(sql, params)
             else: conn.execute(sql, params)

@@ -141,25 +141,42 @@ def run_worker_contracts():
         print("✅ Tabela antiga removida.")
     except Exception as e:
         print(f"⚠️ Aviso ao dropar: {e}")
-
     # Cria a NOVA tabela
     try:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS feegow_contracts (
-                registration_number TEXT PRIMARY KEY, 
-                contract_id TEXT, 
-                created_at TEXT, 
-                start_date TEXT,
-                patient_name TEXT, 
-                plan_name TEXT, 
-                status_contract TEXT,
-                status_financial TEXT, 
-                recurrence_value REAL, 
-                membership_value REAL,
-                updated_at TEXT
-            )
-        ''')
-        if not db.use_turso: conn.commit()
+        if db.use_mysql:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS feegow_contracts (
+                    registration_number VARCHAR(191) PRIMARY KEY,
+                    contract_id TEXT,
+                    created_at TEXT,
+                    start_date TEXT,
+                    patient_name TEXT,
+                    plan_name TEXT,
+                    status_contract TEXT,
+                    status_financial TEXT,
+                    recurrence_value DOUBLE,
+                    membership_value DOUBLE,
+                    updated_at TEXT
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ''')
+        else:
+            conn.execute('''
+                CREATE TABLE IF NOT EXISTS feegow_contracts (
+                    registration_number TEXT PRIMARY KEY, 
+                    contract_id TEXT, 
+                    created_at TEXT, 
+                    start_date TEXT,
+                    patient_name TEXT, 
+                    plan_name TEXT, 
+                    status_contract TEXT,
+                    status_financial TEXT, 
+                    recurrence_value REAL, 
+                    membership_value REAL,
+                    updated_at TEXT
+                )
+            ''')
+        if not db.use_turso:
+            conn.commit()
         print("✅ Nova tabela criada com sucesso.")
     except Exception as e:
         print(f"❌ Erro fatal criando tabela: {e}")
@@ -217,3 +234,4 @@ def run_worker_contracts():
 
 if __name__ == "__main__":
     run_worker_contracts()
+

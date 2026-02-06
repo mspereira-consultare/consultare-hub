@@ -132,8 +132,28 @@ def update_proposals():
             conn.execute('CREATE INDEX IF NOT EXISTS idx_prop_date ON feegow_proposals(date)')
             conn.execute('CREATE INDEX IF NOT EXISTS idx_prop_unit ON feegow_proposals(unit_name)')
         else:
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_prop_date ON feegow_proposals(date)')
-            conn.execute('CREATE INDEX IF NOT EXISTS idx_prop_unit ON feegow_proposals(unit_name)')
+            # MySQL < 8 nao suporta IF NOT EXISTS em CREATE INDEX
+            rs = conn.execute("""
+                SELECT COUNT(1)
+                FROM information_schema.statistics
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'feegow_proposals'
+                  AND index_name = 'idx_prop_date'
+            """)
+            row = rs.fetchone() if hasattr(rs, "fetchone") else None
+            if row and row[0] == 0:
+                conn.execute('CREATE INDEX idx_prop_date ON feegow_proposals(date)')
+
+            rs = conn.execute("""
+                SELECT COUNT(1)
+                FROM information_schema.statistics
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'feegow_proposals'
+                  AND index_name = 'idx_prop_unit'
+            """)
+            row = rs.fetchone() if hasattr(rs, "fetchone") else None
+            if row and row[0] == 0:
+                conn.execute('CREATE INDEX idx_prop_unit ON feegow_proposals(unit_name)')
             conn.commit()
     except Exception as e:
         print(f"Erro tabela: {e}")

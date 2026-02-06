@@ -9,7 +9,12 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:bootstrap:mysql-schema": "node scripts/bootstrap-mysql-schema.cjs",
+    "db:bootstrap:mysql-schema:dry": "node scripts/bootstrap-mysql-schema.cjs --dry-run",
+    "db:migrate:turso-to-mysql": "node scripts/migrate-turso-to-mysql.cjs",
+    "db:migrate:turso-to-mysql:dry": "node scripts/migrate-turso-to-mysql.cjs --dry-run",
+    "db:validate:turso-mysql": "node scripts/validate-turso-mysql.cjs"
   },
   "dependencies": {
     "@formkit/auto-animate": "^0.9.0",
@@ -22,6 +27,7 @@
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
     "lucide-react": "^0.562.0",
+    "mysql2": "^3.16.3",
     "next": "16.1.1",
     "next-auth": "^4.24.13",
     "react": "19.2.3",

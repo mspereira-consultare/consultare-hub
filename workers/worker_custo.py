@@ -115,7 +115,14 @@ def save_dataframe_to_db(db, df, table_name, delete_condition=None):
 def update_custo_summary(db, table_name, date_col, sum_col, start_date_iso, end_date_iso, dim_cols, where_extra=None, extra_params=None):
     conn = db.get_connection()
     try:
-        date_expr = f"(CASE WHEN instr({date_col}, '/') > 0 THEN substr({date_col}, 7, 4) || '-' || substr({date_col}, 4, 2) || '-' || substr({date_col}, 1, 2) ELSE {date_col} END)"
+        if db.use_mysql:
+            date_expr = (
+                f"(CASE WHEN INSTR({date_col}, '/') > 0 "
+                f"THEN CONCAT(SUBSTR({date_col}, 7, 4), '-', SUBSTR({date_col}, 4, 2), '-', SUBSTR({date_col}, 1, 2)) "
+                f"ELSE {date_col} END)"
+            )
+        else:
+            date_expr = f"(CASE WHEN instr({date_col}, '/') > 0 THEN substr({date_col}, 7, 4) || '-' || substr({date_col}, 4, 2) || '-' || substr({date_col}, 1, 2) ELSE {date_col} END)"
         dim_cols = [c for c in dim_cols if c and c != date_col]
         dim_select = ", ".join([f"COALESCE(TRIM({c}), '') as {c}" for c in dim_cols])
         dim_group = ", ".join(dim_cols)
@@ -125,18 +132,47 @@ def update_custo_summary(db, table_name, date_col, sum_col, start_date_iso, end_
         dim_cols_group = (", " + dim_group) if dim_group else ""
         dim_cols_pk = (", " + dim_cols_insert) if dim_cols_insert else ""
 
-        # Tabela resumo diário
-        conn.execute(f"""
-            CREATE TABLE IF NOT EXISTS custo_resumo_diario (
-                data_ref TEXT NOT NULL
-                {", " + dim_cols_def if dim_cols_def else ""},
-                total_valor REAL,
-                qtd INTEGER,
-                updated_at TEXT,
-                PRIMARY KEY (data_ref{dim_cols_pk})
+        def ensure_mysql_index(table_name, index_name, cols_sql):
+            rs = conn.execute(
+                """
+                SELECT COUNT(1)
+                FROM information_schema.statistics
+                WHERE table_schema = DATABASE()
+                  AND table_name = %s
+                  AND index_name = %s
+                """,
+                (table_name, index_name),
             )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_custo_resumo_diario_data ON custo_resumo_diario(data_ref)")
+            row = rs.fetchone() if hasattr(rs, "fetchone") else None
+            if row and row[0] == 0:
+                conn.execute(f"CREATE INDEX {index_name} ON {table_name} ({cols_sql})")
+
+        # Tabela resumo diário
+        if db.use_mysql:
+            dim_cols_def_mysql = ", ".join([f"{c} VARCHAR(191) NOT NULL" for c in dim_cols])
+            conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS custo_resumo_diario (
+                    data_ref VARCHAR(191) NOT NULL
+                    {", " + dim_cols_def_mysql if dim_cols_def_mysql else ""},
+                    total_valor DOUBLE,
+                    qtd BIGINT,
+                    updated_at TEXT,
+                    PRIMARY KEY (data_ref{dim_cols_pk})
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+            ensure_mysql_index("custo_resumo_diario", "idx_custo_resumo_diario_data", "data_ref")
+        else:
+            conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS custo_resumo_diario (
+                    data_ref TEXT NOT NULL
+                    {", " + dim_cols_def if dim_cols_def else ""},
+                    total_valor REAL,
+                    qtd INTEGER,
+                    updated_at TEXT,
+                    PRIMARY KEY (data_ref{dim_cols_pk})
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_custo_resumo_diario_data ON custo_resumo_diario(data_ref)")
 
         # Limpa período atual
         conn.execute(
@@ -171,17 +207,31 @@ def update_custo_summary(db, table_name, date_col, sum_col, start_date_iso, end_
         print(f"   ✅ Resumo diário atualizado: {start_date_iso} a {end_date_iso}")
 
         # Tabela resumo mensal
-        conn.execute(f"""
-            CREATE TABLE IF NOT EXISTS custo_resumo_mensal (
-                month_ref TEXT NOT NULL
-                {", " + dim_cols_def if dim_cols_def else ""},
-                total_valor REAL,
-                qtd INTEGER,
-                updated_at TEXT,
-                PRIMARY KEY (month_ref{dim_cols_pk})
-            )
-        """)
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_custo_resumo_mensal_month ON custo_resumo_mensal(month_ref)")
+        if db.use_mysql:
+            dim_cols_def_mysql = ", ".join([f"{c} VARCHAR(191) NOT NULL" for c in dim_cols])
+            conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS custo_resumo_mensal (
+                    month_ref VARCHAR(191) NOT NULL
+                    {", " + dim_cols_def_mysql if dim_cols_def_mysql else ""},
+                    total_valor DOUBLE,
+                    qtd BIGINT,
+                    updated_at TEXT,
+                    PRIMARY KEY (month_ref{dim_cols_pk})
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+            ensure_mysql_index("custo_resumo_mensal", "idx_custo_resumo_mensal_month", "month_ref")
+        else:
+            conn.execute(f"""
+                CREATE TABLE IF NOT EXISTS custo_resumo_mensal (
+                    month_ref TEXT NOT NULL
+                    {", " + dim_cols_def if dim_cols_def else ""},
+                    total_valor REAL,
+                    qtd INTEGER,
+                    updated_at TEXT,
+                    PRIMARY KEY (month_ref{dim_cols_pk})
+                )
+            """)
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_custo_resumo_mensal_month ON custo_resumo_mensal(month_ref)")
 
         start_month = start_date_iso[:7]
         end_month = end_date_iso[:7]
