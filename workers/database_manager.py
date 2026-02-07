@@ -337,6 +337,8 @@ class DatabaseManager:
             )
             translated = re.sub(r"\bexcluded\.([A-Za-z0-9_]+)", r"VALUES(\1)", translated, flags=re.IGNORECASE)
         translated = translated.replace("?", "%s")
+        # Escapa percentuais literais para evitar erro de formatting do PyMySQL
+        translated = re.sub(r"%(?!s|%)", "%%", translated)
         return translated, params
 
     def get_connection(self):
@@ -591,22 +593,33 @@ class DatabaseManager:
             
             # Converte IDs ativos para string
             ativos_str = [str(i) for i in ids_ativos]
-            placeholder = ','.join(['?'] * len(ativos_str)) if ativos_str else "NULL"
+            placeholder = ','.join(['?'] * len(ativos_str))
             
             # REMOVIDO: status = 'Aguardando' (substituído por NOT LIKE 'Finalizado')
             # Isso garante que mesmo que o status venha vazio do Feegow, ele seja atualizado
-            sql = f'''
-                UPDATE recepcao_historico 
-                SET status = 'Finalizado (Saiu)', 
-                    dt_atendimento = ?, 
-                    updated_at = ?
-                WHERE unidade_id = ? 
-                AND dia_referencia = ?
-                AND status NOT LIKE ?
-                AND id_externo NOT IN ({placeholder})
-            '''
-            
-            params = [agora, agora, str(unidade_id), hoje, "Finalizado%"] + ativos_str
+            if ativos_str:
+                sql = f'''
+                    UPDATE recepcao_historico 
+                    SET status = 'Finalizado (Saiu)', 
+                        dt_atendimento = ?, 
+                        updated_at = ?
+                    WHERE unidade_id = ? 
+                    AND dia_referencia = ?
+                    AND status NOT LIKE ?
+                    AND id_externo NOT IN ({placeholder})
+                '''
+                params = [agora, agora, str(unidade_id), hoje, "Finalizado%"] + ativos_str
+            else:
+                sql = '''
+                    UPDATE recepcao_historico 
+                    SET status = 'Finalizado (Saiu)', 
+                        dt_atendimento = ?, 
+                        updated_at = ?
+                    WHERE unidade_id = ? 
+                    AND dia_referencia = ?
+                    AND status NOT LIKE ?
+                '''
+                params = [agora, agora, str(unidade_id), hoje, "Finalizado%"]
             
             if self.use_turso: conn.execute(sql, params)
             else: conn.execute(sql, params)
