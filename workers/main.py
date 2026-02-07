@@ -263,6 +263,21 @@ def run_hourly_workers():
     run_service('contratos')
     run_service('auth')
 
+def run_heavy_workers():
+    """Executa os workers mais pesados em lote."""
+    print("⏰ Executando jobs pesados: faturamento, feegow, propostas, contratos...")
+    run_service('faturamento')
+    run_service('financeiro')  # Feegow (agendamentos)
+    run_service('comercial')
+    run_service('contratos')
+
+def run_feegow_hourly():
+    """Executa o Feegow (agendamentos) em janela de horário."""
+    if not is_working_hours():
+        return
+    print("⏱️ Executando Feegow (agendamentos) no horário de operação...")
+    run_service('financeiro')
+
 def run_token_renewal():
     """Roda o Playwright para renovar tokens e salvar no banco"""
     print("\n🔑 Iniciando Renovação de Tokens (Auth)...")
@@ -344,29 +359,25 @@ def run_scheduler():
     print("⏰ Scheduler Diário iniciado.")
     
     def daily_full_sync():
-        print("🌅 Job Diário: Sincronização Completa...")
+        print("🌅 Job Diário: Sincronização Auth...")
         try:
             run_token_renewal()
-            auto_financeiro = os.getenv("AUTO_FINANCEIRO", "0") == "1"
-            if auto_financeiro:
-                update_financial_data()
-            else:
-                print("⏭️ Auto-financeiro desativado (rodará apenas sob demanda).")
-            run_scraper()
-            update_proposals()
-            run_worker_contracts()
             print("✅ Job Diário Finalizado.")
         except Exception as e:
             print(f"❌ Falha no Job Diário: {e}")
         
     # Agendamento
     schedule.every().day.at("05:00").do(run_token_renewal)
-    schedule.every().day.at("06:00").do(daily_full_sync)
+
     schedule.every().day.at("12:00").do(lambda: run_service('contratos'))
 
     schedule.every().day.at("12:00").do(run_token_renewal)
-    # JOB HORÁRIO: executa workers não real-time a cada hora
-    schedule.every().hour.do(run_hourly_workers)
+    # Workers pesados: 14h, 17h, 19h
+    schedule.every().day.at("14:00").do(run_heavy_workers)
+    schedule.every().day.at("17:00").do(run_heavy_workers)
+    schedule.every().day.at("19:00").do(run_heavy_workers)
+    # Feegow (agendamentos) de hora em hora dentro do horário de operação
+    schedule.every().hour.at(":30").do(run_feegow_hourly)
 
     while True:
         try:
@@ -400,3 +411,4 @@ def start_orchestrator():
 
 if __name__ == "__main__":
     start_orchestrator()
+

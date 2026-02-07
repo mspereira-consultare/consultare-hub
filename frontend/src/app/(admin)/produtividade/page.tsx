@@ -13,8 +13,9 @@ export default function ProductivityPage() {
     // Filtros
     const today = new Date();
     const todayStr = new Date().toISOString().split('T')[0];
+    const monthStartStr = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
     const [dateRange, setDateRange] = useState({
-        start: todayStr,
+        start: monthStartStr,
         end: todayStr
     });
     const [selectedTeam, setSelectedTeam] = useState('CRC');
