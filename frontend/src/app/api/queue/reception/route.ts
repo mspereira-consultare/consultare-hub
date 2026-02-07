@@ -9,7 +9,9 @@ export async function GET() {
   try {
     const cached = await withCache('queue:reception', CACHE_TTL_MS, async () => {
       const db = getDbConnection();
-      const isMysql = String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL;
+      const isMysql = String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql'
+        || !!process.env.MYSQL_URL
+        || !!process.env.MYSQL_PUBLIC_URL;
 
       const sql = isMysql
         ? `

@@ -9,7 +9,7 @@ const MONTHLY_TABLE = 'faturamento_resumo_mensal';
 const ANALITICO_TABLE = 'faturamento_analitico';
 // data_do_pagamento pode vir como DD/MM/YYYY ou ISO
 const SQL_DATE_ANALITICO =
-  (String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql')
+  (String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL || !!process.env.MYSQL_PUBLIC_URL)
     ? `(CASE WHEN INSTR(data_do_pagamento, '/') > 0 THEN CONCAT(SUBSTR(data_do_pagamento, 7, 4), '-', SUBSTR(data_do_pagamento, 4, 2), '-', SUBSTR(data_do_pagamento, 1, 2)) ELSE data_do_pagamento END)`
     : `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
 
