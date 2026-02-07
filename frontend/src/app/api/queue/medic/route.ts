@@ -38,7 +38,7 @@ export async function GET() {
         ? `
           SELECT hash_id, unidade, paciente, chegada, espera_minutos, status, profissional, updated_at
           FROM espera_medica
-          WHERE status NOT LIKE 'Finalizado%'
+          WHERE (status IS NULL OR status NOT LIKE 'Finalizado%')
           ORDER BY
             CASE WHEN status = 'Em Atendimento' THEN 0 ELSE 1 END,
             DATE_ADD(updated_at, INTERVAL 3 HOUR) DESC
@@ -46,7 +46,7 @@ export async function GET() {
         : `
           SELECT hash_id, unidade, paciente, chegada, espera_minutos, status, profissional, updated_at
           FROM espera_medica
-          WHERE status NOT LIKE 'Finalizado%'
+          WHERE (status IS NULL OR status NOT LIKE 'Finalizado%')
           ORDER BY
             CASE WHEN status = 'Em Atendimento' THEN 0 ELSE 1 END,
             datetime(updated_at, '+3 hours') DESC
@@ -54,10 +54,6 @@ export async function GET() {
       const filaRows = await db.query(filaSql);
 
       (filaRows as any[]).forEach(row => {
-        if (!row.updated_at) return;
-        const updatedAt = new Date(row.updated_at.replace(' ', 'T'));
-        if (isNaN(updatedAt.getTime())) return;
-
         const normalizedId = normalizeUnitId(row.unidade);
         const targetUnit = unitsMap.get(normalizedId);
         if (!targetUnit) return;
