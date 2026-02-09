@@ -170,6 +170,10 @@ def _should_upsert_espera(hash_id, status, espera_minutos, profissional):
             return True
         return False
 
+def _clear_espera_cache():
+    with _espera_lock:
+        _espera_cache.clear()
+
 def _should_upsert_recepcao(hash_id, status, dt_atendimento):
     if RECEPCAO_UPSERT_MIN_INTERVAL_SEC <= 0:
         return True
@@ -506,6 +510,9 @@ class DatabaseManager:
                 ):
                     conn.execute(sql, params)
 
+            if not self.use_turso:
+                conn.commit()
+
         except Exception as e:
             print(f"Erro salvar médicos: {e}")
         finally:
@@ -517,22 +524,38 @@ class DatabaseManager:
         try:
             agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
             limite = (datetime.now(tz) - timedelta(minutes=minutos)).strftime('%Y-%m-%d %H:%M:%S')
+            limite_hard = (datetime.now(tz) - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+
+            # Remove registros ativos muito antigos (ruido de sessoes passadas).
+            sql_delete = """
+                DELETE FROM espera_medica
+                WHERE unidade = ?
+                AND (status IS NULL OR status NOT LIKE ?)
+                AND updated_at < ?
+            """
+            conn.execute(sql_delete, (nome_unidade, "Finalizado%", limite_hard))
 
             sql = """
                 UPDATE espera_medica
                 SET status = 'Finalizado (Saiu)', updated_at = ?
                 WHERE unidade = ?
-                AND status NOT LIKE ?
+                AND (status IS NULL OR status NOT LIKE ?)
                 AND updated_at < ?
+                AND updated_at >= ?
             """
 
-            conn.execute(sql, (agora, nome_unidade, "Finalizado%", limite))
+            conn.execute(sql, (agora, nome_unidade, "Finalizado%", limite, limite_hard))
+
+            if not self.use_turso:
+                conn.commit()
+
+            # Sem invalidar esse cache, pacientes podem ficar presos como finalizados.
+            _clear_espera_cache()
 
         except Exception as e:
-            print(f"Erro finalizar expirados médicos: {e}")
+            print(f"Erro finalizar expirados medicos: {e}")
         finally:
             conn.close()
-
 
     # --- LÓGICA RECEPÇÃO ---
     def salvar_dados_recepcao(self, dados_brutos):
