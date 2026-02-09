@@ -30,6 +30,18 @@ type GroupPoint = { procedure_group: string; total: number; qtd: number };
 type Totals = { total: number; qtd: number };
 type Heartbeat = { status: string; last_run: string; details: string };
 type ComparisonMode = 'previous' | 'yoy' | 'custom';
+type ComparisonRow = {
+  key: string;
+  label: string;
+  periodLabelA: string;
+  periodLabelB: string;
+  totalA: number;
+  totalB: number;
+  qtdA: number;
+  qtdB: number;
+  deltaTotal: number;
+  deltaPct: number | null;
+};
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -68,6 +80,48 @@ const formatMonthLabel = (value: string) => {
 };
 
 const formatPeriodLabel = (range: DateRange) => `${range.start.split('-').reverse().join('/')} - ${range.end.split('-').reverse().join('/')}`;
+
+const alignSeriesByPosition = (
+  base: ChartPoint[],
+  compare: ChartPoint[],
+  kind: 'daily' | 'monthly'
+): ComparisonRow[] => {
+  const baseSorted = [...base].sort((a, b) => String(a.sortKey).localeCompare(String(b.sortKey)));
+  const compareSorted = [...compare].sort((a, b) => String(a.sortKey).localeCompare(String(b.sortKey)));
+  const maxRows = Math.max(baseSorted.length, compareSorted.length);
+
+  return Array.from({ length: maxRows }).map((_, index) => {
+    const a = baseSorted[index];
+    const b = compareSorted[index];
+    const totalA = a?.total || 0;
+    const totalB = b?.total || 0;
+    const qtdA = a?.qtd || 0;
+    const qtdB = b?.qtd || 0;
+    const deltaTotal = totalA - totalB;
+    const deltaPct = totalB === 0 ? null : (deltaTotal / totalB) * 100;
+    const periodLabelA = a?.label || '-';
+    const periodLabelB = b?.label || '-';
+    const label =
+      periodLabelA === periodLabelB
+        ? periodLabelA
+        : kind === 'daily'
+          ? `Dia ${index + 1}`
+          : `Mes ${index + 1}`;
+
+    return {
+      key: `${kind}-${index + 1}`,
+      label,
+      periodLabelA,
+      periodLabelB,
+      totalA,
+      totalB,
+      qtdA,
+      qtdB,
+      deltaTotal,
+      deltaPct,
+    };
+  });
+};
 
 const SearchableSelect = ({
   options,
@@ -369,61 +423,15 @@ export default function FinancialPage() {
     }
   };
 
-  const monthlyComparisonRows = useMemo(() => {
-    const baseMap = new Map(monthly.map((item) => [item.sortKey, item]));
-    const compareMap = new Map(compareMonthly.map((item) => [item.sortKey, item]));
-    const keys = Array.from(new Set([...baseMap.keys(), ...compareMap.keys()])).sort((a, b) => a.localeCompare(b));
+  const monthlyComparisonRows = useMemo<ComparisonRow[]>(
+    () => alignSeriesByPosition(monthly, compareMonthly, 'monthly'),
+    [monthly, compareMonthly]
+  );
 
-    return keys.map((key) => {
-      const a = baseMap.get(key);
-      const b = compareMap.get(key);
-      const totalA = a?.total || 0;
-      const totalB = b?.total || 0;
-      const qtdA = a?.qtd || 0;
-      const qtdB = b?.qtd || 0;
-      const deltaTotal = totalA - totalB;
-      const deltaPct = totalB === 0 ? null : (deltaTotal / totalB) * 100;
-
-      return {
-        key,
-        label: a?.label || b?.label || key,
-        totalA,
-        totalB,
-        qtdA,
-        qtdB,
-        deltaTotal,
-        deltaPct,
-      };
-    });
-  }, [monthly, compareMonthly]);
-
-  const dailyComparisonRows = useMemo(() => {
-    const baseMap = new Map(daily.map((item) => [item.sortKey, item]));
-    const compareMap = new Map(compareDaily.map((item) => [item.sortKey, item]));
-    const keys = Array.from(new Set([...baseMap.keys(), ...compareMap.keys()])).sort((a, b) => a.localeCompare(b));
-
-    return keys.map((key) => {
-      const a = baseMap.get(key);
-      const b = compareMap.get(key);
-      const totalA = a?.total || 0;
-      const totalB = b?.total || 0;
-      const qtdA = a?.qtd || 0;
-      const qtdB = b?.qtd || 0;
-      const deltaTotal = totalA - totalB;
-      const deltaPct = totalB === 0 ? null : (deltaTotal / totalB) * 100;
-
-      return {
-        key,
-        label: a?.label || b?.label || key,
-        totalA,
-        totalB,
-        qtdA,
-        qtdB,
-        deltaTotal,
-        deltaPct,
-      };
-    });
-  }, [daily, compareDaily]);
+  const dailyComparisonRows = useMemo<ComparisonRow[]>(
+    () => alignSeriesByPosition(daily, compareDaily, 'daily'),
+    [daily, compareDaily]
+  );
 
   const groupComparisonRows = useMemo(() => {
     const baseMap = new Map(

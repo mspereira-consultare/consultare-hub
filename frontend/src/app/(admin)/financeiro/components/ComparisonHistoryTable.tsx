@@ -5,6 +5,8 @@ import React from 'react';
 type ComparisonRow = {
   key: string;
   label: string;
+  periodLabelA: string;
+  periodLabelB: string;
   totalA: number;
   totalB: number;
   qtdA: number;
@@ -45,7 +47,14 @@ export const ComparisonHistoryTable = ({ title, data, className = 'h-[300px]' }:
           <tbody className="divide-y divide-slate-100">
             {data.map((item) => (
               <tr key={item.key} className="hover:bg-slate-50 transition-colors">
-                <td className="px-2 py-2 text-slate-600 font-medium">{item.label}</td>
+                <td className="px-2 py-2 text-slate-600 font-medium">
+                  <div>{item.label}</div>
+                  {(item.periodLabelA !== item.periodLabelB || item.label.startsWith('Dia') || item.label.startsWith('Mes')) && (
+                    <div className="text-[10px] text-slate-400 mt-0.5">
+                      A: {item.periodLabelA} | B: {item.periodLabelB}
+                    </div>
+                  )}
+                </td>
                 <td className="px-2 py-2 text-right text-slate-700">{fmtMoney(item.totalA)}</td>
                 <td className="px-2 py-2 text-right text-slate-700">{fmtMoney(item.totalB)}</td>
                 <td className={`px-2 py-2 text-right font-semibold ${item.deltaTotal >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
