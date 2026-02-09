@@ -35,6 +35,7 @@ export const UNITS = [
 
 export const PERIODICITY_OPTIONS = [
     { value: 'daily', label: 'Diária (Reseta todo dia)' },
+    { value: 'weekly', label: 'Semanal (Reseta toda semana)' },
     { value: 'monthly', label: 'Mensal (Reseta dia 1)' },
     { value: 'total', label: 'Período Total (Acumulado)' },
 ] as const;

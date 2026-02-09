@@ -109,7 +109,7 @@ export function GoalDetailsModal({ isOpen, onClose, goal, currentData }: GoalDet
                     </div>
                 </div>
                 <div className="h-12 w-12 rounded-full border-4 border-slate-100 flex items-center justify-center text-xs font-bold text-slate-400">
-                    {goal.periodicity === 'monthly' ? 'MÊS' : 'DIA'}
+                    {goal.periodicity === 'monthly' ? 'MÊS' : goal.periodicity === 'weekly' ? 'SEM' : 'DIA'}
                 </div>
              </div>
           </div>

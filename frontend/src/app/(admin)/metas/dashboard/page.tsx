@@ -614,6 +614,13 @@ function DashboardCard({ goal, formatValue, compact = true, onClick }: {
       const hourlyRate = hoursPassed > 0 ? goal.current / hoursPassed : 0;
       return hourlyRate * hoursInDay;
     }
+    if (goal.periodicity === 'weekly') {
+      const day = now.getDay(); // 0=domingo ... 6=sabado
+      const daysInWeek = 7;
+      const daysPassed = day === 0 ? 7 : day;
+      const dailyRate = daysPassed > 0 ? goal.current / daysPassed : 0;
+      return dailyRate * daysInWeek;
+    }
     if (goal.periodicity === 'monthly') {
       const daysInMonth = 30;
       const daysPassed = Math.min(now.getDate(), daysInMonth);
@@ -679,7 +686,7 @@ function DashboardCard({ goal, formatValue, compact = true, onClick }: {
       {/* Periodicidade e Projeção */}
       <div className="flex justify-between items-center text-[8px] md:text-[9px] text-slate-500 font-semibold uppercase">
         <span>
-          {goal.periodicity === 'monthly' ? '📅 Mês' : goal.periodicity === 'daily' ? '📆 Dia' : '⏱️ Período'}
+          {goal.periodicity === 'monthly' ? '📅 Mês' : goal.periodicity === 'weekly' ? '🗓️ Semana' : goal.periodicity === 'daily' ? '📆 Dia' : '⏱️ Período'}
         </span>
         {projection !== null && (
           <span className="text-slate-600 font-bold normal-case">

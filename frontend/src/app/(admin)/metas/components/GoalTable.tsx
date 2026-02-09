@@ -118,6 +118,13 @@ export const GoalTable = ({ goals, dashboardData, onEdit, onDelete, onViewDetail
                                                     const hoursPassed = Math.min(Math.max(hoursNow - workStart, 0), hoursInDay);
                                                     const hourlyRate = hoursPassed > 0 ? (data?.current || 0) / hoursPassed : 0;
                                                     projValue = hourlyRate * hoursInDay;
+                                                } else if (goal.periodicity === 'weekly') {
+                                                    const now = new Date();
+                                                    const day = now.getDay(); // 0=domingo ... 6=sabado
+                                                    const daysInWeek = 7;
+                                                    const daysPassed = day === 0 ? 7 : day;
+                                                    const dailyRate = daysPassed > 0 ? (data?.current || 0) / daysPassed : 0;
+                                                    projValue = dailyRate * daysInWeek;
                                                 } else if (goal.periodicity === 'monthly') {
                                                     const now = new Date();
                                                     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();

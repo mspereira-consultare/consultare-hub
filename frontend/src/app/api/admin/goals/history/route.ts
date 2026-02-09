@@ -31,10 +31,20 @@ export async function GET(request: Request) {
     
     if (goal.periodicity === 'daily') {
         const now = new Date();
-        // Primeiro dia do mês atual
+        // Primeiro dia do mes atual
         start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-        // Último dia do mês atual
+        // Ultimo dia do mes atual
         end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+    } else if (goal.periodicity === 'weekly') {
+        const now = new Date();
+        const day = now.getDay(); // 0=domingo ... 6=sabado
+        const diffToMonday = day === 0 ? -6 : 1 - day;
+        const monday = new Date(now);
+        monday.setDate(now.getDate() + diffToMonday);
+        const sunday = new Date(monday);
+        sunday.setDate(monday.getDate() + 6);
+        start = monday.toISOString().split('T')[0];
+        end = sunday.toISOString().split('T')[0];
     }
 
     // 3. Chama o Engine (Async)

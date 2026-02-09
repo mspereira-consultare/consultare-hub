@@ -158,6 +158,21 @@ export default function ProductivityPage() {
         const dailyRate = daysPassed > 0 ? current / daysPassed : 0;
         return dailyRate * daysInMonth;
     };
+
+    const projectWeeklyValue = (current: number) => {
+        const now = new Date();
+        const day = now.getDay(); // 0=domingo ... 6=sabado
+        const daysInWeek = 7;
+        const daysPassed = day === 0 ? 7 : day;
+        const dailyRate = daysPassed > 0 ? current / daysPassed : 0;
+        return dailyRate * daysInWeek;
+    };
+
+    const projectByPeriodicity = (periodicity: string, current: number) => {
+        if (periodicity === 'daily') return projectDailyValue(current);
+        if (periodicity === 'weekly') return projectWeeklyValue(current);
+        return projectMonthlyValue(current);
+    };
     
     // Controle UI
     const [isUpdating, setIsUpdating] = useState(false);
@@ -478,9 +493,7 @@ export default function ProductivityPage() {
                           .filter((g: any) => g.team && g.team !== 'all' && (!g.collaborator || g.collaborator === 'all'))
                           .map((goal: any) => {
                           const currentValue = Number(goal.current) || 0;
-                          const projectedValue = goal.periodicity === 'daily'
-                            ? projectDailyValue(currentValue)
-                            : projectMonthlyValue(currentValue);
+                          const projectedValue = projectByPeriodicity(goal.periodicity, currentValue);
 
                           return (
                             <div 

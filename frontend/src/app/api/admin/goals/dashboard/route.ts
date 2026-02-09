@@ -42,6 +42,16 @@ export async function GET(request: Request) {
           if (goal.periodicity === 'daily') {
               const today = now.toISOString().split('T')[0];
               calcStart = today; calcEnd = today;
+          } else if (goal.periodicity === 'weekly') {
+              const current = new Date(now);
+              const day = current.getDay(); // 0=domingo ... 6=sabado
+              const diffToMonday = day === 0 ? -6 : 1 - day;
+              const monday = new Date(current);
+              monday.setDate(current.getDate() + diffToMonday);
+              const sunday = new Date(monday);
+              sunday.setDate(monday.getDate() + 6);
+              calcStart = monday.toISOString().split('T')[0];
+              calcEnd = sunday.toISOString().split('T')[0];
           } else if (goal.periodicity === 'monthly') {
               const y = now.getFullYear(), m = now.getMonth();
               calcStart = new Date(y, m, 1).toISOString().split('T')[0];

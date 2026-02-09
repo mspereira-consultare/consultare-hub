@@ -14,6 +14,8 @@
     "db:bootstrap:mysql-schema:dry": "node scripts/bootstrap-mysql-schema.cjs --dry-run",
     "db:migrate:turso-to-mysql": "node scripts/migrate-turso-to-mysql.cjs",
     "db:migrate:turso-to-mysql:dry": "node scripts/migrate-turso-to-mysql.cjs --dry-run",
+    "db:migrate:weekly-goals-35-50": "node scripts/migrate-weekly-goals-35-50.cjs",
+    "db:migrate:weekly-goals-35-50:dry": "node scripts/migrate-weekly-goals-35-50.cjs --dry-run",
     "db:validate:turso-mysql": "node scripts/validate-turso-mysql.cjs"
   },
   "dependencies": {
