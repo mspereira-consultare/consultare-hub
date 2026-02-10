@@ -89,39 +89,11 @@ const extractTime = (value: string) => {
   return m ? m[1] : raw;
 };
 
-const splitLongText = (value: string) => {
+const renderRawSection = (label: string, value: string, opts?: { suffix?: string }) => {
   const raw = String(value || '').replace(/\r/g, '\n').trim();
-  if (!raw) return [] as string[];
-
-  let items = raw
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  if (items.length <= 1) {
-    items = raw
-      .split(/(?<=[.;!?])\s+|\s*;\s*/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-
-  if (items.length === 0 && raw) items = [raw];
-  return items.map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
-};
-
-const renderLongSection = (label: string, value: string, opts?: { suffix?: string; maxItems?: number }) => {
-  const items = splitLongText(value);
-  const maxItems = Math.max(1, Number(opts?.maxItems || 6));
   const suffix = String(opts?.suffix || '').trim();
-  if (items.length === 0) return [`- ${label}: -`];
-
-  const shown = items.slice(0, maxItems);
-  const lines = [`- ${label} (${items.length} ${items.length === 1 ? 'item' : 'itens'})${suffix ? ` | ${suffix}` : ''}`];
-  shown.forEach((item, index) => lines.push(`  ${index + 1}) ${item}`));
-  if (items.length > shown.length) {
-    lines.push(`  ... +${items.length - shown.length} item(ns)`);
-  }
-  return lines;
+  if (!raw) return [`- ${label}: -`];
+  return [`- ${label}${suffix ? ` | ${suffix}` : ''}:`, raw];
 };
 
 const StatCard = ({ title, value, helper, icon }: { title: string; value: string | number; helper?: string; icon: React.ReactNode }) => (
@@ -289,9 +261,9 @@ export default function ChecklistRecepcaoPage() {
       ``,
       `*QUALIDADE E OPERACAO*`,
       `- Avaliacao Google: ${googleRating || '-'}${googleComentarios ? ` | ${googleComentarios}` : ''}`,
-      ...renderLongSection('Pendencias urgentes', pendenciasUrgentes),
-      ...renderLongSection('Situacoes criticas', situacoesCriticas, { suffix: situacaoSuffix }),
-      ...renderLongSection('Acoes realizadas', acoesRealizadas),
+      ...renderRawSection('Pendencias urgentes', pendenciasUrgentes),
+      ...renderRawSection('Situacoes criticas', situacoesCriticas, { suffix: situacaoSuffix }),
+      ...renderRawSection('Acoes realizadas', acoesRealizadas),
     ].join('\n');
   }, [
     data,
@@ -363,7 +335,7 @@ export default function ChecklistRecepcaoPage() {
       <div className="p-6 min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="flex items-center gap-2 text-slate-700">
           <Loader2 className="animate-spin" size={16} />
-          Carregando Checklist RecepÃ§Ã£o...
+          Carregando Checklist Recepcao...
         </div>
       </div>
     );
@@ -374,8 +346,8 @@ export default function ChecklistRecepcaoPage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-slate-800">Checklist RecepÃ§Ã£o</h1>
-            <p className="text-slate-500 text-sm mt-1">Checklist diÃ¡rio por unidade para compartilhamento rÃ¡pido.</p>
+            <h1 className="text-xl font-bold text-slate-800">Checklist Recepcao</h1>
+            <p className="text-slate-500 text-sm mt-1">Checklist diario por unidade para compartilhamento rapido.</p>
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -401,7 +373,7 @@ export default function ChecklistRecepcaoPage() {
               disabled={!data || copying}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60"
             >
-              {copying ? <Loader2 className="animate-spin" size={14} /> : <ClipboardCopy size={14} />} Copiar relatÃ³rio
+              {copying ? <Loader2 className="animate-spin" size={14} /> : <ClipboardCopy size={14} />} Copiar relatorio
             </button>
             <button
               onClick={handleOpenWhatsApp}
@@ -424,9 +396,9 @@ export default function ChecklistRecepcaoPage() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <StatCard title="Faturamento do Dia" value={formatCurrency(data.faturamentoDia)} icon={<DollarSign size={16} />} />
-            <StatCard title="Faturamento MÃªs (Acumulado)" value={formatCurrency(data.faturamentoMes)} icon={<DollarSign size={16} />} />
+            <StatCard title="Faturamento Mes (Acumulado)" value={formatCurrency(data.faturamentoMes)} icon={<DollarSign size={16} />} />
             <StatCard title="% Meta Atingida" value={formatPercent(data.percentualMetaAtingida)} helper={`Meta: ${formatCurrency(data.metaMensal)}`} icon={<Target size={16} />} />
-            <StatCard title="Ticket MÃ©dio (Dia)" value={formatCurrency(data.ticketMedioDia)} icon={<DollarSign size={16} />} />
+            <StatCard title="Ticket Medio (Dia)" value={formatCurrency(data.ticketMedioDia)} icon={<DollarSign size={16} />} />
           </div>
 
           <div className="text-xs text-slate-500 flex flex-wrap items-center gap-4">
@@ -459,9 +431,9 @@ export default function ChecklistRecepcaoPage() {
               />
               <p className="text-xs text-slate-500 mt-2">Realizado hoje: {data.metaCheckupRealizado}</p>
             </div>
-            <StatCard title="OrÃ§amentos em Aberto" value={formatCurrency(data.orcamentosEmAberto)} icon={<FileText size={16} />} />
+            <StatCard title="Orcamentos em Aberto" value={formatCurrency(data.orcamentosEmAberto)} icon={<FileText size={16} />} />
             <StatCard
-              title="ConfirmaÃ§Ã£o Agenda D+1"
+              title="Confirmacao Agenda D+1"
               value={formatPercent(data.confirmacoesAmanhaPct)}
               helper={`${data.confirmacoesAmanhaConfirmadas}/${data.confirmacoesAmanhaTotal} confirmados`}
               icon={<CalendarCheck size={16} />}
@@ -478,7 +450,7 @@ export default function ChecklistRecepcaoPage() {
               >
                 <option value="">Selecione</option>
                 <option value="Validado">Validado</option>
-                <option value="NÃ£o Validado">NÃ£o Validado</option>
+                <option value="Nao Validado">Nao Validado</option>
               </select>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
@@ -490,14 +462,14 @@ export default function ChecklistRecepcaoPage() {
               >
                 <option value="">Selecione</option>
                 <option value="Validado">Validado</option>
-                <option value="NÃ£o Validado">NÃ£o Validado</option>
+                <option value="Nao Validado">Nao Validado</option>
               </select>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">AvaliaÃ§Ã£o no Google (estrelas)</label>
+              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">Avaliacao no Google (estrelas)</label>
               <input
                 type="text"
                 value={googleRating}
@@ -505,7 +477,7 @@ export default function ChecklistRecepcaoPage() {
                 placeholder="Ex.: 4,3"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 mb-3"
               />
-              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">ComentÃ¡rios</label>
+              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">Comentarios</label>
               <textarea
                 value={googleComentarios}
                 onChange={(e) => setGoogleComentarios(e.target.value)}
@@ -514,7 +486,7 @@ export default function ChecklistRecepcaoPage() {
               />
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">PendÃªncias urgentes</label>
+              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">Pendencias urgentes</label>
               <textarea
                 value={pendenciasUrgentes}
                 onChange={(e) => setPendenciasUrgentes(e.target.value)}
@@ -526,7 +498,7 @@ export default function ChecklistRecepcaoPage() {
 
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
             <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-500 flex items-center gap-2">
-              <AlertTriangle size={14} /> SituaÃ§Ãµes crÃ­ticas a resolver
+              <AlertTriangle size={14} /> Situacoes criticas a resolver
             </h3>
             <textarea
               value={situacoesCriticas}
@@ -545,7 +517,7 @@ export default function ChecklistRecepcaoPage() {
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-500 block mb-1">ResponsÃ¡vel</label>
+                <label className="text-xs text-slate-500 block mb-1">Responsavel</label>
                 <input
                   type="text"
                   value={situacaoResponsavel}
@@ -558,7 +530,7 @@ export default function ChecklistRecepcaoPage() {
 
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
             <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-500 flex items-center gap-2 mb-2">
-              <CheckCircle2 size={14} /> AÃ§Ãµes realizadas
+              <CheckCircle2 size={14} /> Acoes realizadas
             </h3>
             <textarea
               value={acoesRealizadas}
@@ -570,7 +542,7 @@ export default function ChecklistRecepcaoPage() {
 
           <div className="grid grid-cols-1 gap-4">
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-              <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-500 mb-1">PrÃ©via do relatÃ³rio</h3>
+              <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-500 mb-1">Previa do relatorio</h3>
               <pre className="text-xs text-slate-700 whitespace-pre-wrap leading-5">{reportText}</pre>
             </div>
           </div>
@@ -590,3 +562,5 @@ export default function ChecklistRecepcaoPage() {
     </div>
   );
 }
+
+

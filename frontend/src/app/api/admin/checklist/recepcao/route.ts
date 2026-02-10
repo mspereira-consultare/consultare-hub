@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { createSign } from 'crypto';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 const CACHE_TTL_MS = 15000;
 const DEFAULT_SHEET_ID = '1YAIN9_OoqDyhMrJK27zZG8oHTaQ6e_3P-bYA-a4AxmI';
-const DEFAULT_SHEET_RANGE = 'Respostas ao formulário 1!A:F';
+const DEFAULT_SHEET_RANGE = 'Respostas ao formulario 1!A:F';
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const GOOGLE_SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
 const PROPOSAL_EXEC_STATUSES = "('executada','aprovada pelo cliente','ganho','realizado','concluido','pago')";
@@ -69,8 +69,8 @@ const UNITS: UnitConfig[] = [
   {
     key: 'centro_cambui',
     label: 'Centro Cambui',
-    dbCandidates: ['Centro Cambui', 'Centro Cambuí', 'Centro'],
-    sheetCandidates: ['Centro Cambui', 'Centro Cambuí', 'Centro'],
+    dbCandidates: ['Centro Cambui', 'Centro Cambui', 'Centro'],
+    sheetCandidates: ['Centro Cambui', 'Centro Cambui', 'Centro'],
   },
   {
     key: 'ouro_verde',
@@ -85,11 +85,11 @@ const UNITS: UnitConfig[] = [
       'Resolve',
       'Resolvesaude',
       'ResolveSaude',
-      'ResolveSaúde',
-      'Resolvecard Gestão De Beneficos E Meios De Pagamentos',
-      'RESOLVECARD GESTÃO DE BENEFICOS E MEIOS DE PAGAMENTOS',
+      'ResolveSaude',
+      'Resolvecard Gestao De Beneficos E Meios De Pagamentos',
+      'RESOLVECARD GESTAO DE BENEFICOS E MEIOS DE PAGAMENTOS',
     ],
-    sheetCandidates: ['Resolve', 'Resolvesaude', 'ResolveSaude', 'Resolve Saúde'],
+    sheetCandidates: ['Resolve', 'Resolvesaude', 'ResolveSaude', 'Resolve Saude'],
   },
 ];
 
@@ -195,39 +195,11 @@ const extractTime = (value: string) => {
   return m ? m[1] : raw;
 };
 
-const splitLongText = (value: string) => {
+const renderRawSection = (label: string, value: string, opts?: { suffix?: string }) => {
   const raw = String(value || '').replace(/\r/g, '\n').trim();
-  if (!raw) return [] as string[];
-
-  let items = raw
-    .split('\n')
-    .map((s) => s.trim())
-    .filter(Boolean);
-
-  if (items.length <= 1) {
-    items = raw
-      .split(/(?<=[.;!?])\s+|\s*;\s*/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-
-  if (items.length === 0 && raw) items = [raw];
-  return items.map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
-};
-
-const renderLongSection = (label: string, value: string, opts?: { suffix?: string; maxItems?: number }) => {
-  const items = splitLongText(value);
-  const maxItems = Math.max(1, Number(opts?.maxItems || 6));
   const suffix = String(opts?.suffix || '').trim();
-  if (items.length === 0) return [`- ${label}: -`];
-
-  const shown = items.slice(0, maxItems);
-  const lines = [`- ${label} (${items.length} ${items.length === 1 ? 'item' : 'itens'})${suffix ? ` | ${suffix}` : ''}`];
-  shown.forEach((item, index) => lines.push(`  ${index + 1}) ${item}`));
-  if (items.length > shown.length) {
-    lines.push(`  ... +${items.length - shown.length} item(ns)`);
-  }
-  return lines;
+  if (!raw) return [`- ${label}: -`];
+  return [`- ${label}${suffix ? ` | ${suffix}` : ''}:`, raw];
 };
 
 const buildInClause = (column: string, values: string[], params: any[]) => {
@@ -567,9 +539,9 @@ const buildReportText = (p: RecepcaoChecklistPayload) => {
     ``,
     `*QUALIDADE E OPERACAO*`,
     `- Avaliacao Google: ${p.googleRating || '-'}${p.googleComentarios ? ` | ${p.googleComentarios}` : ''}`,
-    ...renderLongSection('Pendencias urgentes', p.pendenciasUrgentes),
-    ...renderLongSection('Situacoes criticas', p.situacoesCriticas, { suffix: situacaoSuffix }),
-    ...renderLongSection('Acoes realizadas', p.acoesRealizadas),
+    ...renderRawSection('Pendencias urgentes', p.pendenciasUrgentes),
+    ...renderRawSection('Situacoes criticas', p.situacoesCriticas, { suffix: situacaoSuffix }),
+    ...renderRawSection('Acoes realizadas', p.acoesRealizadas),
   ].join('\n');
 };
 
@@ -828,3 +800,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 'error', error: error?.message || 'Erro interno' }, { status: 500 });
   }
 }
+
