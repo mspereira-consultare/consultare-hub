@@ -215,23 +215,30 @@ export default function ChecklistRecepcaoPage() {
     const resolveTarget = toInt(metaResolveTarget);
     const checkupTarget = toInt(metaCheckupTarget);
     return [
-      `CHECKLIST DIARIO - UNIDADE ${data.unitLabel.toUpperCase()} (${data.dateRef})`,
-      `Horario: ${data.reportTimestamp}`,
-      `Financeiro`,
-      `Faturamento do dia: ${formatCurrency(data.faturamentoDia)}`,
-      `Faturamento acumulado no mes: ${formatCurrency(data.faturamentoMes)}`,
-      `% da meta atingida: ${formatPercent(data.percentualMetaAtingida)}`,
-      `Meta Resolve: ${data.metaResolveRealizado}/${resolveTarget}`,
-      `Meta Check-up: ${data.metaCheckupRealizado}/${checkupTarget}`,
-      `Ticket medio: ${formatCurrency(data.ticketMedioDia)}`,
-      `Orcamentos em aberto: ${formatCurrency(data.orcamentosEmAberto)}`,
-      `Notas fiscais emitidas: ${notasFiscaisEmitidas || '-'}`,
-      `Contas em aberto: ${contasEmAbertoStatus || '-'}`,
-      `Confirmacao das agendas do dia seguinte: ${formatPercent(data.confirmacoesAmanhaPct)} (${data.confirmacoesAmanhaConfirmadas}/${data.confirmacoesAmanhaTotal})`,
-      `Avaliacao no Google e comentarios: ${googleRating || '-'}${googleComentarios ? ` | ${googleComentarios}` : ''}`,
-      `Pendencias Urgentes: ${pendenciasUrgentes || '-'}`,
-      `Situacoes criticas a resolver: ${situacoesCriticas || '-'}${situacaoPrazo ? ` | Prazo: ${situacaoPrazo}` : ''}${situacaoResponsavel ? ` | Responsavel: ${situacaoResponsavel}` : ''}`,
-      `Acoes realizadas: ${acoesRealizadas || '-'}`,
+      `*CHECKLIST DIARIO - ${data.unitLabel.toUpperCase()}*`,
+      `Data: ${data.dateRef} | Horario: ${data.reportTimestamp}`,
+      ``,
+      `*FINANCEIRO*`,
+      `- Faturamento do dia: ${formatCurrency(data.faturamentoDia)}`,
+      `- Faturamento acumulado no mes: ${formatCurrency(data.faturamentoMes)}`,
+      `- Meta mensal atingida: ${formatPercent(data.percentualMetaAtingida)}`,
+      `- Meta Resolve: ${data.metaResolveRealizado}/${resolveTarget}`,
+      `- Meta Check-up: ${data.metaCheckupRealizado}/${checkupTarget}`,
+      `- Ticket medio: ${formatCurrency(data.ticketMedioDia)}`,
+      ``,
+      `*ORCAMENTOS E CONTAS*`,
+      `- Orcamentos em aberto: ${formatCurrency(data.orcamentosEmAberto)}`,
+      `- Notas fiscais emitidas: ${notasFiscaisEmitidas || '-'}`,
+      `- Contas em aberto: ${contasEmAbertoStatus || '-'}`,
+      ``,
+      `*GESTAO DE AGENDAS*`,
+      `- Confirmacao D+1: ${formatPercent(data.confirmacoesAmanhaPct)} (${data.confirmacoesAmanhaConfirmadas}/${data.confirmacoesAmanhaTotal})`,
+      ``,
+      `*QUALIDADE E OPERACAO*`,
+      `- Avaliacao Google: ${googleRating || '-'}${googleComentarios ? ` | ${googleComentarios}` : ''}`,
+      `- Pendencias urgentes: ${pendenciasUrgentes || '-'}`,
+      `- Situacoes criticas: ${situacoesCriticas || '-'}${situacaoPrazo ? ` | Prazo: ${situacaoPrazo}` : ''}${situacaoResponsavel ? ` | Responsavel: ${situacaoResponsavel}` : ''}`,
+      `- Acoes realizadas: ${acoesRealizadas || '-'}`,
     ].join('\n');
   }, [
     data,
@@ -530,11 +537,10 @@ export default function ChecklistRecepcaoPage() {
             >
               {saving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Salvar campos manuais
             </button>
-            <span className="text-xs text-slate-500">Os valores salvos ficam visíveis para todos os usuários.</span>
+            <span className="text-xs text-slate-500">Os valores salvos ficam visiveis para todos os usuarios e unidades ate nova edicao.</span>
           </div>
         </>
       )}
     </div>
   );
 }
-

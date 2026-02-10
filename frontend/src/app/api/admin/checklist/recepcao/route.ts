@@ -212,6 +212,26 @@ const ensureChecklistTable = async (db: any) => {
   `);
 };
 
+const ensureManualTable = async (db: any) => {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS recepcao_checklist_manual (
+      scope_key VARCHAR(50) PRIMARY KEY,
+      meta_resolve_target INTEGER DEFAULT 0,
+      meta_checkup_target INTEGER DEFAULT 0,
+      nf_status VARCHAR(20) DEFAULT '',
+      contas_status VARCHAR(20) DEFAULT '',
+      google_rating VARCHAR(32) DEFAULT '',
+      google_comments TEXT,
+      pendencias_urgentes TEXT,
+      situacoes_criticas TEXT,
+      situacao_prazo VARCHAR(10),
+      situacao_responsavel VARCHAR(120),
+      acoes_realizadas TEXT,
+      updated_at TEXT
+    )
+  `);
+};
+
 const parseCsv = (csv: string): CsvRecord[] => {
   const rows: CsvRecord[] = [];
   let current = '';
@@ -258,14 +278,14 @@ const parseCsv = (csv: string): CsvRecord[] => {
 const normalizeSheetDate = (value: string) => {
   const raw = String(value || '').trim();
   if (!raw) return '';
-  const slash = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const slash = raw.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
   if (slash) {
     const dd = String(Number(slash[1])).padStart(2, '0');
     const mm = String(Number(slash[2])).padStart(2, '0');
     const yyyy = slash[3];
     return `${dd}/${mm}/${yyyy}`;
   }
-  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const iso = raw.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
   return raw;
 };
@@ -275,13 +295,26 @@ const findHeaderIndex = (header: string[], keywords: string[]) => {
   return idx >= 0 ? idx : -1;
 };
 
+const findDateColumnIndex = (header: string[]) => {
+  const exact = header.findIndex((h) => h === 'data' || h === 'date');
+  if (exact >= 0) return exact;
+  const startsWithData = header.findIndex((h) => h.startsWith('data') && !h.includes('hora'));
+  if (startsWithData >= 0) return startsWithData;
+  const containsDataWithoutHour = header.findIndex((h) => h.includes('data') && !h.includes('hora'));
+  if (containsDataWithoutHour >= 0) return containsDataWithoutHour;
+  const generic = findHeaderIndex(header, ['data']);
+  return generic >= 0 ? generic : 5;
+};
+
 const extractSheetCounts = (rows: CsvRecord[], todayBr: string, unit: UnitConfig) => {
   if (!rows || rows.length === 0) return { resolveCount: 0, checkupCount: 0 };
 
   const header = (rows[0] || []).map((h) => normalizeText(String(h || '')));
-  const idxUnit = findHeaderIndex(header, ['qual sua unidade', 'unidade']) >= 0 ? findHeaderIndex(header, ['qual sua unidade', 'unidade']) : 2;
-  const idxService = findHeaderIndex(header, ['qual servico', 'servico']) >= 0 ? findHeaderIndex(header, ['qual servico', 'servico']) : 3;
-  const idxDate = findHeaderIndex(header, ['data']) >= 0 ? findHeaderIndex(header, ['data']) : 5;
+  const idxUnitFound = findHeaderIndex(header, ['qual sua unidade', 'unidade']);
+  const idxServiceFound = findHeaderIndex(header, ['qual servico', 'servico']);
+  const idxUnit = idxUnitFound >= 0 ? idxUnitFound : 2;
+  const idxService = idxServiceFound >= 0 ? idxServiceFound : 3;
+  const idxDate = findDateColumnIndex(header);
 
   let resolveCount = 0;
   let checkupCount = 0;
@@ -399,10 +432,29 @@ const countFromPrivateSheet = async (sheetId: string, range: string, todayBr: st
   }
   try {
     const token = await getGoogleAccessToken(clientEmail, privateKey);
-    let values = await fetchSheetValues(sheetId, range, token);
-    if ((!values || values.length === 0) && !range.includes('!')) {
-      const firstTab = await getFirstSheetTitle(sheetId, token);
-      values = await fetchSheetValues(sheetId, `${firstTab}!${range}`, token);
+    const candidates: string[] = [];
+    const normalizedRange = String(range || '').trim();
+    const rangePart = normalizedRange.includes('!') ? normalizedRange.split('!').slice(1).join('!') : normalizedRange;
+    if (normalizedRange) candidates.push(normalizedRange);
+    if (rangePart && rangePart !== normalizedRange) candidates.push(rangePart);
+    if (!rangePart || rangePart === normalizedRange) candidates.push('A:F');
+
+    const firstTab = await getFirstSheetTitle(sheetId, token);
+    const withTab = [...new Set(candidates)].map((r) => (r.includes('!') ? r : `${firstTab}!${r}`));
+    const allCandidates = [...new Set([...candidates, ...withTab])];
+
+    let values: string[][] = [];
+    let lastError = '';
+    for (const candidate of allCandidates) {
+      try {
+        values = await fetchSheetValues(sheetId, candidate, token);
+        if (Array.isArray(values) && values.length > 0) break;
+      } catch (error: any) {
+        lastError = String(error?.message || error);
+      }
+    }
+    if (!values || values.length === 0) {
+      throw new Error(lastError || 'Planilha sem dados no range informado');
     }
     const result = extractSheetCounts(values, todayBr, unit);
     return { ...result, ok: true };
@@ -437,29 +489,37 @@ const countFromPublicCsv = async (sheetId: string, todayBr: string, unit: UnitCo
 
 const buildReportText = (p: RecepcaoChecklistPayload) => {
   return [
-    `CHECKLIST DIARIO - UNIDADE ${p.unitLabel.toUpperCase()} (${p.dateRef})`,
-    `Horario: ${p.reportTimestamp}`,
-    `Financeiro`,
-    `Faturamento do dia: ${formatCurrency(p.faturamentoDia)}`,
-    `Faturamento acumulado no mes: ${formatCurrency(p.faturamentoMes)}`,
-    `% da meta atingida: ${formatPercent(p.percentualMetaAtingida)}`,
-    `Meta Resolve: ${p.metaResolveRealizado}/${p.metaResolveTarget}`,
-    `Meta Check-up: ${p.metaCheckupRealizado}/${p.metaCheckupTarget}`,
-    `Ticket medio: ${formatCurrency(p.ticketMedioDia)}`,
-    `Orcamentos em aberto: ${formatCurrency(p.orcamentosEmAberto)}`,
-    `Notas fiscais emitidas: ${p.notasFiscaisEmitidas || '-'}`,
-    `Contas em aberto: ${p.contasEmAbertoStatus || '-'}`,
-    `Confirmacao das agendas do dia seguinte: ${formatPercent(p.confirmacoesAmanhaPct)} (${p.confirmacoesAmanhaConfirmadas}/${p.confirmacoesAmanhaTotal})`,
-    `Avaliacao no Google e comentarios: ${p.googleRating || '-'}${p.googleComentarios ? ` | ${p.googleComentarios}` : ''}`,
-    `Pendencias Urgentes: ${p.pendenciasUrgentes || '-'}`,
-    `Situacoes criticas a resolver: ${p.situacoesCriticas || '-'}${p.situacaoPrazo ? ` | Prazo: ${p.situacaoPrazo}` : ''}${p.situacaoResponsavel ? ` | Responsavel: ${p.situacaoResponsavel}` : ''}`,
-    `Acoes realizadas: ${p.acoesRealizadas || '-'}`,
+    `*CHECKLIST DIARIO - ${p.unitLabel.toUpperCase()}*`,
+    `Data: ${p.dateRef} | Horario: ${p.reportTimestamp}`,
+    ``,
+    `*FINANCEIRO*`,
+    `- Faturamento do dia: ${formatCurrency(p.faturamentoDia)}`,
+    `- Faturamento acumulado no mes: ${formatCurrency(p.faturamentoMes)}`,
+    `- Meta mensal atingida: ${formatPercent(p.percentualMetaAtingida)}`,
+    `- Meta Resolve: ${p.metaResolveRealizado}/${p.metaResolveTarget}`,
+    `- Meta Check-up: ${p.metaCheckupRealizado}/${p.metaCheckupTarget}`,
+    `- Ticket medio: ${formatCurrency(p.ticketMedioDia)}`,
+    ``,
+    `*ORCAMENTOS E CONTAS*`,
+    `- Orcamentos em aberto: ${formatCurrency(p.orcamentosEmAberto)}`,
+    `- Notas fiscais emitidas: ${p.notasFiscaisEmitidas || '-'}`,
+    `- Contas em aberto: ${p.contasEmAbertoStatus || '-'}`,
+    ``,
+    `*GESTAO DE AGENDAS*`,
+    `- Confirmacao D+1: ${formatPercent(p.confirmacoesAmanhaPct)} (${p.confirmacoesAmanhaConfirmadas}/${p.confirmacoesAmanhaTotal})`,
+    ``,
+    `*QUALIDADE E OPERACAO*`,
+    `- Avaliacao Google: ${p.googleRating || '-'}${p.googleComentarios ? ` | ${p.googleComentarios}` : ''}`,
+    `- Pendencias urgentes: ${p.pendenciasUrgentes || '-'}`,
+    `- Situacoes criticas: ${p.situacoesCriticas || '-'}${p.situacaoPrazo ? ` | Prazo: ${p.situacaoPrazo}` : ''}${p.situacaoResponsavel ? ` | Responsavel: ${p.situacaoResponsavel}` : ''}`,
+    `- Acoes realizadas: ${p.acoesRealizadas || '-'}`,
   ].join('\n');
 };
 
 const loadChecklist = async (requestUrl: string) => {
   const db = getDbConnection();
   await ensureChecklistTable(db);
+  await ensureManualTable(db);
 
   const url = new URL(requestUrl);
   const unit = unitByKey(url.searchParams.get('unit'));
@@ -473,12 +533,24 @@ const loadChecklist = async (requestUrl: string) => {
   const persistedRows = await db.query(
     `
     SELECT *
-    FROM recepcao_checklist_daily
-    WHERE date_ref = ? AND unit_key = ?
-    `,
-    [todayIso, unit.key]
+    FROM recepcao_checklist_manual
+    WHERE scope_key = 'global'
+    LIMIT 1
+    `
   );
-  const persisted = persistedRows[0] || {};
+  let persisted = persistedRows[0] || {};
+
+  if (!persisted || Object.keys(persisted).length === 0) {
+    const legacyRows = await db.query(
+      `
+      SELECT *
+      FROM recepcao_checklist_daily
+      ORDER BY COALESCE(updated_at, date_ref) DESC
+      LIMIT 1
+      `
+    );
+    persisted = legacyRows[0] || {};
+  }
 
   const revenueDayParams: any[] = [todayIso];
   const revenueDaySql = buildInClause('unidade', unit.dbCandidates, revenueDayParams);
@@ -642,23 +714,22 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
-    const unit = unitByKey(String(body?.unitKey || ''));
     const db = getDbConnection();
     await ensureChecklistTable(db);
+    await ensureManualTable(db);
 
-    const todayIso = getTodayIsoBr();
     const updatedAt = new Date().toISOString().replace('T', ' ').slice(0, 19);
 
     await db.execute(
       `
-      INSERT INTO recepcao_checklist_daily (
-        date_ref, unit_key, meta_resolve_target, meta_checkup_target,
+      INSERT INTO recepcao_checklist_manual (
+        scope_key, meta_resolve_target, meta_checkup_target,
         nf_status, contas_status, google_rating, google_comments,
         pendencias_urgentes, situacoes_criticas, situacao_prazo, situacao_responsavel,
         acoes_realizadas, updated_at
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(date_ref, unit_key) DO UPDATE SET
+      ON CONFLICT(scope_key) DO UPDATE SET
         meta_resolve_target = excluded.meta_resolve_target,
         meta_checkup_target = excluded.meta_checkup_target,
         nf_status = excluded.nf_status,
@@ -673,8 +744,7 @@ export async function POST(request: Request) {
         updated_at = excluded.updated_at
       `,
       [
-        todayIso,
-        unit.key,
+        'global',
         toInt(body?.metaResolveTarget),
         toInt(body?.metaCheckupTarget),
         String(body?.notasFiscaisEmitidas || '').trim(),
@@ -697,4 +767,3 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 'error', error: error?.message || 'Erro interno' }, { status: 500 });
   }
 }
-
