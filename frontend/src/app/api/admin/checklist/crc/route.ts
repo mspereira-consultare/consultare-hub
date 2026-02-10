@@ -76,9 +76,9 @@ const getNowBr = () => {
 const ensureChecklistTable = async (db: any) => {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS crc_checklist_daily (
-      date_ref TEXT PRIMARY KEY,
+      date_ref VARCHAR(10) PRIMARY KEY,
       calls_made INTEGER DEFAULT 0,
-      abandon_rate TEXT DEFAULT '',
+      abandon_rate VARCHAR(32) DEFAULT '',
       updated_at TEXT
     )
   `);
