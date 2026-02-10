@@ -397,21 +397,33 @@ const loadChecklist = async () => {
     AND periodicity = 'daily'
     AND start_date <= ?
     AND end_date >= ?
-    AND COALESCE(TRIM(scope), '') = 'CLINIC'
-    AND COALESCE(TRIM(collaborator), '') = ''
-    AND COALESCE(TRIM(team), '') = ''
-    AND COALESCE(TRIM(filter_group), '') = ''
+    AND UPPER(COALESCE(TRIM(scope), '')) = 'CLINIC'
+    AND (collaborator IS NULL OR TRIM(collaborator) = '' OR LOWER(TRIM(collaborator)) = 'all')
+    AND (team IS NULL OR TRIM(team) = '' OR LOWER(TRIM(team)) = 'all')
+    AND (filter_group IS NULL OR TRIM(filter_group) = '' OR LOWER(TRIM(filter_group)) = 'all')
   `;
 
   const metaUnitRows = await db.query(
-    `SELECT COALESCE(SUM(target_value), 0) as total FROM goals_config WHERE ${commonGoalFilter} AND COALESCE(TRIM(clinic_unit), '') != ''`,
+    `
+    SELECT COALESCE(SUM(target_value), 0) as total
+    FROM goals_config
+    WHERE ${commonGoalFilter}
+      AND clinic_unit IS NOT NULL
+      AND TRIM(clinic_unit) != ''
+      AND LOWER(TRIM(clinic_unit)) != 'all'
+    `,
     [todayIso, todayIso]
   );
 
   let metaDia = toNumber(metaUnitRows[0]?.total);
   if (metaDia <= 0) {
     const metaFallbackRows = await db.query(
-      `SELECT COALESCE(SUM(target_value), 0) as total FROM goals_config WHERE ${commonGoalFilter}`,
+      `
+      SELECT COALESCE(SUM(target_value), 0) as total
+      FROM goals_config
+      WHERE ${commonGoalFilter}
+        AND (clinic_unit IS NULL OR TRIM(clinic_unit) = '' OR LOWER(TRIM(clinic_unit)) = 'all')
+      `,
       [todayIso, todayIso]
     );
     metaDia = toNumber(metaFallbackRows[0]?.total);
