@@ -58,6 +58,43 @@ const buildAppointmentsFilter = (startDate: string, endDate: string, options?: K
     return { joinSql, whereSql, params };
 };
 
+const buildConsultasDateFilter = (startDate: string, endDate: string, options?: KpiOptions) => {
+    const filterVal = options?.group_filter ? String(options.group_filter).trim() : undefined;
+    const unitVal = options?.unit_filter ? String(options.unit_filter).trim() : undefined;
+    const collaboratorVal = options?.collaborator ? String(options.collaborator).trim() : undefined;
+    const teamVal = options?.team ? String(options.team).trim() : undefined;
+
+    const params: any[] = [startDate, endDate];
+    let whereSql = "WHERE substr(f.date, 1, 10) BETWEEN ? AND ?";
+
+    if (filterVal && filterVal !== 'all' && filterVal !== '') {
+        whereSql += ` AND UPPER(TRIM(f.procedure_group)) = UPPER(TRIM(?))`;
+        params.push(filterVal);
+    }
+
+    if (unitVal && unitVal !== 'all' && unitVal !== '') {
+        whereSql += ` AND UPPER(TRIM(f.unit_name)) = UPPER(TRIM(?))`;
+        params.push(unitVal);
+    }
+
+    if (collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '') {
+        whereSql += ` AND UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?))`;
+        params.push(collaboratorVal);
+    }
+
+    let joinSql = "";
+    if (teamVal && teamVal !== 'all' && teamVal !== '') {
+        joinSql = `
+            JOIN user_teams ut ON ut.user_name = f.scheduled_by
+            JOIN teams_master tm ON tm.id = ut.team_id
+        `;
+        whereSql += ` AND UPPER(TRIM(tm.name)) = UPPER(TRIM(?))`;
+        params.push(teamVal);
+    }
+
+    return { joinSql, whereSql, params };
+};
+
 const calculateConfirmRateAggregate = async (startDate: string, endDate: string, options?: KpiOptions) => {
     const db = getDbConnection();
     const { joinSql, whereSql, params } = buildAppointmentsFilter(startDate, endDate, options);
@@ -441,11 +478,21 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                     queryParams.push(unitVal);
                 }
             }
-            // --- KPI ESPECIAL: AGENDAMENTOS (por scheduled_by / equipe) ---
+            // --- KPI ESPECIAL: AGENDAMENTOS CRIADOS (scheduled_at) ---
             if (kpiId === 'agendamentos') {
                 const { joinSql, whereSql, params } = buildAppointmentsFilter(startDate, endDate, options);
                 query = `
                     SELECT substr(f.scheduled_at, 1, 10) as d, COUNT(DISTINCT f.appointment_id) as val
+                    FROM feegow_appointments f
+                    ${joinSql}
+                    ${whereSql}
+                    GROUP BY d ORDER BY d
+                `;
+                queryParams = params;
+            } else if (kpiId === 'consultas_dia') {
+                const { joinSql, whereSql, params } = buildConsultasDateFilter(startDate, endDate, options);
+                query = `
+                    SELECT substr(f.date, 1, 10) as d, COUNT(DISTINCT f.appointment_id) as val
                     FROM feegow_appointments f
                     ${joinSql}
                     ${whereSql}
