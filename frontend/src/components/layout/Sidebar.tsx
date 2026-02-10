@@ -18,7 +18,8 @@
     UserCheck,
     Briefcase,
     CreditCard,
-    MessageCircle
+    MessageCircle,
+    ClipboardList
   } from 'lucide-react';
 
   const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(' ');
@@ -42,6 +43,7 @@
     // Operações: Todos veem (ou restrinja se quiser)
     { href: '/monitor', label: 'Monitor de Atendimento', icon: PhoneCall, group: 'OPERAÇÕES', roles: ['ADMIN', 'GESTOR', 'OPERADOR'] },
     { href: '/checklist-crc', label: 'Checklist CRC', icon: MessageCircle, group: 'OPERAÇÕES', roles: ['ADMIN', 'GESTOR', 'OPERADOR'] },
+    { href: '/checklist-recepcao', label: 'Checklist Recepção', icon: ClipboardList, group: 'OPERAÇÕES', roles: ['ADMIN', 'GESTOR', 'OPERADOR'] },
     
     // Financeiro: Apenas Admin e Gestor
     { href: '/financeiro', label: 'Financeiro', icon: DollarSign, group: 'FINANCEIRO', roles: ['ADMIN', 'GESTOR'] },
