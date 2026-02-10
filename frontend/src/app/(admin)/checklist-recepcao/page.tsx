@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
 import {
@@ -11,7 +11,6 @@ import {
   Target,
   FileText,
   CalendarCheck,
-  ShieldCheck,
   AlertTriangle,
   CheckCircle2,
 } from 'lucide-react';
@@ -76,6 +75,54 @@ const formatCurrency = (value: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
 
 const formatPercent = (value: number) => `${Number(value || 0).toFixed(1).replace('.', ',')}%`;
+
+const formatIsoDateToBr = (value: string) => {
+  const raw = String(value || '').trim();
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return raw;
+};
+
+const extractTime = (value: string) => {
+  const raw = String(value || '').trim();
+  const m = raw.match(/(\d{2}:\d{2}:\d{2})$/);
+  return m ? m[1] : raw;
+};
+
+const splitLongText = (value: string) => {
+  const raw = String(value || '').replace(/\r/g, '\n').trim();
+  if (!raw) return [] as string[];
+
+  let items = raw
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (items.length <= 1) {
+    items = raw
+      .split(/(?<=[.;!?])\s+|\s*;\s*/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  if (items.length === 0 && raw) items = [raw];
+  return items.map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+};
+
+const renderLongSection = (label: string, value: string, opts?: { suffix?: string; maxItems?: number }) => {
+  const items = splitLongText(value);
+  const maxItems = Math.max(1, Number(opts?.maxItems || 6));
+  const suffix = String(opts?.suffix || '').trim();
+  if (items.length === 0) return [`- ${label}: -`];
+
+  const shown = items.slice(0, maxItems);
+  const lines = [`- ${label} (${items.length} ${items.length === 1 ? 'item' : 'itens'})${suffix ? ` | ${suffix}` : ''}`];
+  shown.forEach((item, index) => lines.push(`  ${index + 1}) ${item}`));
+  if (items.length > shown.length) {
+    lines.push(`  ... +${items.length - shown.length} item(ns)`);
+  }
+  return lines;
+};
 
 const StatCard = ({ title, value, helper, icon }: { title: string; value: string | number; helper?: string; icon: React.ReactNode }) => (
   <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
@@ -214,9 +261,15 @@ export default function ChecklistRecepcaoPage() {
     if (!data) return '';
     const resolveTarget = toInt(metaResolveTarget);
     const checkupTarget = toInt(metaCheckupTarget);
+    const reportDate = formatIsoDateToBr(data.dateRef);
+    const reportTime = extractTime(data.reportTimestamp);
+    const prazoBr = formatIsoDateToBr(situacaoPrazo);
+    const situacaoSuffix = [prazoBr ? `Prazo: ${prazoBr}` : '', situacaoResponsavel ? `Responsavel: ${situacaoResponsavel}` : '']
+      .filter(Boolean)
+      .join(' | ');
     return [
-      `*CHECKLIST DIARIO - ${data.unitLabel.toUpperCase()}*`,
-      `Data: ${data.dateRef} | Horario: ${data.reportTimestamp}`,
+      `*CHECKLIST DIARIO - ${data.unitLabel.toUpperCase()} (${reportDate})*`,
+      `Horario: ${reportTime}`,
       ``,
       `*FINANCEIRO*`,
       `- Faturamento do dia: ${formatCurrency(data.faturamentoDia)}`,
@@ -236,9 +289,9 @@ export default function ChecklistRecepcaoPage() {
       ``,
       `*QUALIDADE E OPERACAO*`,
       `- Avaliacao Google: ${googleRating || '-'}${googleComentarios ? ` | ${googleComentarios}` : ''}`,
-      `- Pendencias urgentes: ${pendenciasUrgentes || '-'}`,
-      `- Situacoes criticas: ${situacoesCriticas || '-'}${situacaoPrazo ? ` | Prazo: ${situacaoPrazo}` : ''}${situacaoResponsavel ? ` | Responsavel: ${situacaoResponsavel}` : ''}`,
-      `- Acoes realizadas: ${acoesRealizadas || '-'}`,
+      ...renderLongSection('Pendencias urgentes', pendenciasUrgentes),
+      ...renderLongSection('Situacoes criticas', situacoesCriticas, { suffix: situacaoSuffix }),
+      ...renderLongSection('Acoes realizadas', acoesRealizadas),
     ].join('\n');
   }, [
     data,
@@ -310,7 +363,7 @@ export default function ChecklistRecepcaoPage() {
       <div className="p-6 min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="flex items-center gap-2 text-slate-700">
           <Loader2 className="animate-spin" size={16} />
-          Carregando Checklist Recepção...
+          Carregando Checklist RecepÃ§Ã£o...
         </div>
       </div>
     );
@@ -321,8 +374,8 @@ export default function ChecklistRecepcaoPage() {
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-xl font-bold text-slate-800">Checklist Recepção</h1>
-            <p className="text-slate-500 text-sm mt-1">Checklist diário por unidade para compartilhamento rápido.</p>
+            <h1 className="text-xl font-bold text-slate-800">Checklist RecepÃ§Ã£o</h1>
+            <p className="text-slate-500 text-sm mt-1">Checklist diÃ¡rio por unidade para compartilhamento rÃ¡pido.</p>
           </div>
           <div className="flex items-center gap-2">
             <select
@@ -348,7 +401,7 @@ export default function ChecklistRecepcaoPage() {
               disabled={!data || copying}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60"
             >
-              {copying ? <Loader2 className="animate-spin" size={14} /> : <ClipboardCopy size={14} />} Copiar relatório
+              {copying ? <Loader2 className="animate-spin" size={14} /> : <ClipboardCopy size={14} />} Copiar relatÃ³rio
             </button>
             <button
               onClick={handleOpenWhatsApp}
@@ -371,15 +424,16 @@ export default function ChecklistRecepcaoPage() {
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <StatCard title="Faturamento do Dia" value={formatCurrency(data.faturamentoDia)} icon={<DollarSign size={16} />} />
-            <StatCard title="Faturamento Mês (Acumulado)" value={formatCurrency(data.faturamentoMes)} icon={<DollarSign size={16} />} />
+            <StatCard title="Faturamento MÃªs (Acumulado)" value={formatCurrency(data.faturamentoMes)} icon={<DollarSign size={16} />} />
             <StatCard title="% Meta Atingida" value={formatPercent(data.percentualMetaAtingida)} helper={`Meta: ${formatCurrency(data.metaMensal)}`} icon={<Target size={16} />} />
-            <StatCard title="Ticket Médio (Dia)" value={formatCurrency(data.ticketMedioDia)} icon={<DollarSign size={16} />} />
+            <StatCard title="Ticket MÃ©dio (Dia)" value={formatCurrency(data.ticketMedioDia)} icon={<DollarSign size={16} />} />
           </div>
 
           <div className="text-xs text-slate-500 flex flex-wrap items-center gap-4">
             <span>Worker Feegow: <strong>{statusInfo.financeiro?.status || 'N/A'}</strong>{statusInfo.financeiro?.last_run ? ` | ${String(statusInfo.financeiro.last_run)}` : ''}</span>
             <span>Worker Faturamento: <strong>{statusInfo.faturamento?.status || 'N/A'}</strong>{statusInfo.faturamento?.last_run ? ` | ${String(statusInfo.faturamento.last_run)}` : ''}</span>
             <span>Worker Propostas: <strong>{statusInfo.comercial?.status || 'N/A'}</strong>{statusInfo.comercial?.last_run ? ` | ${String(statusInfo.comercial.last_run)}` : ''}</span>
+            <span>Planilha Google: <strong>{data.sources.sheetOk ? 'OK' : 'ERRO'}</strong>{data.sources.sheetError ? ` | ${data.sources.sheetError}` : ''}</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
@@ -405,9 +459,9 @@ export default function ChecklistRecepcaoPage() {
               />
               <p className="text-xs text-slate-500 mt-2">Realizado hoje: {data.metaCheckupRealizado}</p>
             </div>
-            <StatCard title="Orçamentos em Aberto" value={formatCurrency(data.orcamentosEmAberto)} icon={<FileText size={16} />} />
+            <StatCard title="OrÃ§amentos em Aberto" value={formatCurrency(data.orcamentosEmAberto)} icon={<FileText size={16} />} />
             <StatCard
-              title="Confirmação Agenda D+1"
+              title="ConfirmaÃ§Ã£o Agenda D+1"
               value={formatPercent(data.confirmacoesAmanhaPct)}
               helper={`${data.confirmacoesAmanhaConfirmadas}/${data.confirmacoesAmanhaTotal} confirmados`}
               icon={<CalendarCheck size={16} />}
@@ -424,7 +478,7 @@ export default function ChecklistRecepcaoPage() {
               >
                 <option value="">Selecione</option>
                 <option value="Validado">Validado</option>
-                <option value="Não Validado">Não Validado</option>
+                <option value="NÃ£o Validado">NÃ£o Validado</option>
               </select>
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
@@ -436,14 +490,14 @@ export default function ChecklistRecepcaoPage() {
               >
                 <option value="">Selecione</option>
                 <option value="Validado">Validado</option>
-                <option value="Não Validado">Não Validado</option>
+                <option value="NÃ£o Validado">NÃ£o Validado</option>
               </select>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">Avaliação no Google (estrelas)</label>
+              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">AvaliaÃ§Ã£o no Google (estrelas)</label>
               <input
                 type="text"
                 value={googleRating}
@@ -451,7 +505,7 @@ export default function ChecklistRecepcaoPage() {
                 placeholder="Ex.: 4,3"
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800 mb-3"
               />
-              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">Comentários</label>
+              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">ComentÃ¡rios</label>
               <textarea
                 value={googleComentarios}
                 onChange={(e) => setGoogleComentarios(e.target.value)}
@@ -460,7 +514,7 @@ export default function ChecklistRecepcaoPage() {
               />
             </div>
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">Pendências urgentes</label>
+              <label className="text-xs uppercase tracking-wide font-semibold text-slate-500 block mb-2">PendÃªncias urgentes</label>
               <textarea
                 value={pendenciasUrgentes}
                 onChange={(e) => setPendenciasUrgentes(e.target.value)}
@@ -472,7 +526,7 @@ export default function ChecklistRecepcaoPage() {
 
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
             <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-500 flex items-center gap-2">
-              <AlertTriangle size={14} /> Situações críticas a resolver
+              <AlertTriangle size={14} /> SituaÃ§Ãµes crÃ­ticas a resolver
             </h3>
             <textarea
               value={situacoesCriticas}
@@ -491,7 +545,7 @@ export default function ChecklistRecepcaoPage() {
                 />
               </div>
               <div>
-                <label className="text-xs text-slate-500 block mb-1">Responsável</label>
+                <label className="text-xs text-slate-500 block mb-1">ResponsÃ¡vel</label>
                 <input
                   type="text"
                   value={situacaoResponsavel}
@@ -504,7 +558,7 @@ export default function ChecklistRecepcaoPage() {
 
           <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
             <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-500 flex items-center gap-2 mb-2">
-              <CheckCircle2 size={14} /> Ações realizadas
+              <CheckCircle2 size={14} /> AÃ§Ãµes realizadas
             </h3>
             <textarea
               value={acoesRealizadas}
@@ -514,18 +568,10 @@ export default function ChecklistRecepcaoPage() {
             />
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4">
             <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-              <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-500 mb-1">Prévia do relatório</h3>
+              <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-500 mb-1">PrÃ©via do relatÃ³rio</h3>
               <pre className="text-xs text-slate-700 whitespace-pre-wrap leading-5">{reportText}</pre>
-            </div>
-            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-              <h3 className="text-xs uppercase tracking-wide font-semibold text-slate-500 mb-2 flex items-center gap-2">
-                <ShieldCheck size={14} /> Fonte da planilha
-              </h3>
-              <p className="text-sm text-slate-700">
-                {data.sources.sheetOk ? 'Planilha Google lida com sucesso.' : `Falha ao ler planilha: ${data.sources.sheetError || 'erro'}`}
-              </p>
             </div>
           </div>
 
@@ -537,7 +583,7 @@ export default function ChecklistRecepcaoPage() {
             >
               {saving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Salvar campos manuais
             </button>
-            <span className="text-xs text-slate-500">Os valores salvos ficam visiveis para todos os usuarios e unidades ate nova edicao.</span>
+            <span className="text-xs text-slate-500">Os valores salvos ficam visiveis para todos os usuarios da unidade selecionada ate nova edicao.</span>
           </div>
         </>
       )}

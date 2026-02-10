@@ -180,6 +180,56 @@ const formatCurrency = (value: number) =>
 
 const formatPercent = (value: number) => `${toNumber(value).toFixed(1).replace('.', ',')}%`;
 
+const formatIsoDateToBr = (value: string) => {
+  const raw = String(value || '').trim();
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return raw;
+  return raw;
+};
+
+const extractTime = (value: string) => {
+  const raw = String(value || '').trim();
+  const m = raw.match(/(\d{2}:\d{2}:\d{2})$/);
+  return m ? m[1] : raw;
+};
+
+const splitLongText = (value: string) => {
+  const raw = String(value || '').replace(/\r/g, '\n').trim();
+  if (!raw) return [] as string[];
+
+  let items = raw
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  if (items.length <= 1) {
+    items = raw
+      .split(/(?<=[.;!?])\s+|\s*;\s*/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+
+  if (items.length === 0 && raw) items = [raw];
+  return items.map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+};
+
+const renderLongSection = (label: string, value: string, opts?: { suffix?: string; maxItems?: number }) => {
+  const items = splitLongText(value);
+  const maxItems = Math.max(1, Number(opts?.maxItems || 6));
+  const suffix = String(opts?.suffix || '').trim();
+  if (items.length === 0) return [`- ${label}: -`];
+
+  const shown = items.slice(0, maxItems);
+  const lines = [`- ${label} (${items.length} ${items.length === 1 ? 'item' : 'itens'})${suffix ? ` | ${suffix}` : ''}`];
+  shown.forEach((item, index) => lines.push(`  ${index + 1}) ${item}`));
+  if (items.length > shown.length) {
+    lines.push(`  ... +${items.length - shown.length} item(ns)`);
+  }
+  return lines;
+};
+
 const buildInClause = (column: string, values: string[], params: any[]) => {
   const clean = values
     .map((v) => String(v || '').trim())
@@ -488,9 +538,16 @@ const countFromPublicCsv = async (sheetId: string, todayBr: string, unit: UnitCo
 };
 
 const buildReportText = (p: RecepcaoChecklistPayload) => {
+  const reportDate = formatIsoDateToBr(p.dateRef);
+  const reportTime = extractTime(p.reportTimestamp);
+  const prazoBr = formatIsoDateToBr(p.situacaoPrazo || '');
+  const situacaoSuffix = [prazoBr ? `Prazo: ${prazoBr}` : '', p.situacaoResponsavel ? `Responsavel: ${p.situacaoResponsavel}` : '']
+    .filter(Boolean)
+    .join(' | ');
+
   return [
-    `*CHECKLIST DIARIO - ${p.unitLabel.toUpperCase()}*`,
-    `Data: ${p.dateRef} | Horario: ${p.reportTimestamp}`,
+    `*CHECKLIST DIARIO - ${p.unitLabel.toUpperCase()} (${reportDate})*`,
+    `Horario: ${reportTime}`,
     ``,
     `*FINANCEIRO*`,
     `- Faturamento do dia: ${formatCurrency(p.faturamentoDia)}`,
@@ -510,9 +567,9 @@ const buildReportText = (p: RecepcaoChecklistPayload) => {
     ``,
     `*QUALIDADE E OPERACAO*`,
     `- Avaliacao Google: ${p.googleRating || '-'}${p.googleComentarios ? ` | ${p.googleComentarios}` : ''}`,
-    `- Pendencias urgentes: ${p.pendenciasUrgentes || '-'}`,
-    `- Situacoes criticas: ${p.situacoesCriticas || '-'}${p.situacaoPrazo ? ` | Prazo: ${p.situacaoPrazo}` : ''}${p.situacaoResponsavel ? ` | Responsavel: ${p.situacaoResponsavel}` : ''}`,
-    `- Acoes realizadas: ${p.acoesRealizadas || '-'}`,
+    ...renderLongSection('Pendencias urgentes', p.pendenciasUrgentes),
+    ...renderLongSection('Situacoes criticas', p.situacoesCriticas, { suffix: situacaoSuffix }),
+    ...renderLongSection('Acoes realizadas', p.acoesRealizadas),
   ].join('\n');
 };
 
@@ -534,9 +591,10 @@ const loadChecklist = async (requestUrl: string) => {
     `
     SELECT *
     FROM recepcao_checklist_manual
-    WHERE scope_key = 'global'
+    WHERE scope_key = ?
     LIMIT 1
-    `
+    `,
+    [unit.key]
   );
   let persisted = persistedRows[0] || {};
 
@@ -545,9 +603,11 @@ const loadChecklist = async (requestUrl: string) => {
       `
       SELECT *
       FROM recepcao_checklist_daily
+      WHERE unit_key = ?
       ORDER BY COALESCE(updated_at, date_ref) DESC
       LIMIT 1
-      `
+      `,
+      [unit.key]
     );
     persisted = legacyRows[0] || {};
   }
@@ -714,6 +774,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
+    const unit = unitByKey(String(body?.unitKey || ''));
     const db = getDbConnection();
     await ensureChecklistTable(db);
     await ensureManualTable(db);
@@ -728,7 +789,7 @@ export async function POST(request: Request) {
         pendencias_urgentes, situacoes_criticas, situacao_prazo, situacao_responsavel,
         acoes_realizadas, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(scope_key) DO UPDATE SET
         meta_resolve_target = excluded.meta_resolve_target,
         meta_checkup_target = excluded.meta_checkup_target,
@@ -744,7 +805,7 @@ export async function POST(request: Request) {
         updated_at = excluded.updated_at
       `,
       [
-        'global',
+        unit.key,
         toInt(body?.metaResolveTarget),
         toInt(body?.metaCheckupTarget),
         String(body?.notasFiscaisEmitidas || '').trim(),
