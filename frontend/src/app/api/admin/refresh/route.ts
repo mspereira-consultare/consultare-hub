@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
 import { invalidateCache } from '@/lib/api_cache';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { hasAnyRefresh, hasPermission, type PageKey } from '@/lib/permissions';
 
 export const dynamic = 'force-dynamic';
 
@@ -39,8 +42,24 @@ const normalizeService = (serviceRaw: string) => {
   return SERVICE_ALIASES[key] || key;
 };
 
+const SERVICE_PAGE_MAP: Record<string, PageKey> = {
+  financeiro: 'produtividade',
+  faturamento: 'financeiro',
+  comercial: 'propostas',
+  contratos: 'contratos',
+  monitor_medico: 'monitor',
+  monitor_recepcao: 'monitor',
+  clinia: 'monitor',
+  auth: 'settings',
+};
+
 export async function POST(request: Request) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) {
+      return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
+    }
+
     const { service } = await request.json(); 
 
     if (!service) {
@@ -48,6 +67,18 @@ export async function POST(request: Request) {
     }
 
     const serviceName = normalizeService(service);
+    const permissions = (session.user as any).permissions;
+    const role = String((session.user as any).role || 'OPERADOR');
+    const pageForService = SERVICE_PAGE_MAP[serviceName];
+
+    const canRefresh = pageForService
+      ? hasPermission(permissions, pageForService, 'refresh', role)
+      : hasAnyRefresh(permissions, role);
+
+    if (!canRefresh) {
+      return NextResponse.json({ error: 'Sem permissao para atualizar este servico' }, { status: 403 });
+    }
+
     const db = getDbConnection();
 
     // Query unificada (Upsert)

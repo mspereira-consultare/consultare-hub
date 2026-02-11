@@ -2,6 +2,7 @@ import NextAuth, { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { getDbConnection } from "@/lib/db"; 
 import { compare } from "bcryptjs";
+import { getUserPermissions } from "@/lib/permissions_server";
 
 export const authOptions: NextAuthOptions = {
   // Debug apenas em desenvolvimento
@@ -61,6 +62,8 @@ export const authOptions: NextAuthOptions = {
             return null;
           }
 
+          const permissions = await getUserPermissions(String(user.id), String(user.role || 'OPERADOR'));
+
           // Atualiza último acesso (Fire and forget)
           try {
              // Formato ISO para compatibilidade universal
@@ -81,6 +84,7 @@ export const authOptions: NextAuthOptions = {
             email: user.email,
             role: user.role,
             department: user.department,
+            permissions,
           };
 
         } catch (error) {
@@ -96,6 +100,7 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
         token.department = user.department;
+        token.permissions = user.permissions;
       }
       return token;
     },
@@ -104,6 +109,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.id;
         session.user.role = token.role;
         session.user.department = token.department;
+        session.user.permissions = token.permissions;
       }
       return session;
     }

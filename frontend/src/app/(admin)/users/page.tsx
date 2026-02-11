@@ -5,8 +5,9 @@ import { useSession } from "next-auth/react";
 import { useRouter } from 'next/navigation';
 import { 
   Search, Plus, Filter, User as UserIcon,
-  Trash2, Edit, X, CheckCircle, Loader2, Lock, Shield
+  Trash2, Edit, X, CheckCircle, Loader2, Lock, Shield, ShieldCheck
 } from 'lucide-react';
+import { PAGE_DEFS, type PageKey, type PermissionAction, type PermissionMatrix, getDefaultMatrixByRole, sanitizeMatrix } from '@/lib/permissions';
 
 // Tipos atualizados para Turso (ID string)
 type UserRole = 'ADMIN' | 'GESTOR' | 'OPERADOR';
@@ -53,6 +54,13 @@ export default function UsersPage() {
     status: 'ATIVO'
   });
 
+  // Modal de permissões
+  const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
+  const [permissionsUser, setPermissionsUser] = useState<User | null>(null);
+  const [permissionsMatrix, setPermissionsMatrix] = useState<PermissionMatrix>(getDefaultMatrixByRole('OPERADOR'));
+  const [permissionsLoading, setPermissionsLoading] = useState(false);
+  const [permissionsSaving, setPermissionsSaving] = useState(false);
+
   // --- CARREGAR DADOS ---
   useEffect(() => {
     fetchUsers();
@@ -98,6 +106,61 @@ export default function UsersPage() {
       }
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleOpenPermissions = async (user: User) => {
+    setPermissionsUser(user);
+    setPermissionsLoading(true);
+    setIsPermissionsModalOpen(true);
+    try {
+      const res = await fetch(`/api/admin/users/permissions?userId=${encodeURIComponent(user.id)}`);
+      const data = await res.json();
+      if (!res.ok || data?.status !== 'success') {
+        throw new Error(data?.error || 'Falha ao carregar permissoes');
+      }
+      setPermissionsMatrix(sanitizeMatrix(data.permissions, user.role));
+    } catch (error: any) {
+      alert(error?.message || 'Falha ao carregar permissoes');
+      setIsPermissionsModalOpen(false);
+      setPermissionsUser(null);
+    } finally {
+      setPermissionsLoading(false);
+    }
+  };
+
+  const updatePermission = (page: PageKey, action: PermissionAction, value: boolean) => {
+    setPermissionsMatrix((prev) => ({
+      ...prev,
+      [page]: {
+        ...prev[page],
+        [action]: value,
+      },
+    }));
+  };
+
+  const handleSavePermissions = async () => {
+    if (!permissionsUser) return;
+    setPermissionsSaving(true);
+    try {
+      const res = await fetch('/api/admin/users/permissions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: permissionsUser.id,
+          permissions: permissionsMatrix,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.status !== 'success') {
+        throw new Error(data?.error || 'Falha ao salvar permissoes');
+      }
+      setIsPermissionsModalOpen(false);
+      setPermissionsUser(null);
+    } catch (error: any) {
+      alert(error?.message || 'Falha ao salvar permissoes');
+    } finally {
+      setPermissionsSaving(false);
     }
   };
 
@@ -263,6 +326,13 @@ export default function UsersPage() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                            onClick={() => handleOpenPermissions(user)}
+                            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                            title="Permissões"
+                        >
+                          <ShieldCheck size={18} />
+                        </button>
                         <button 
                             onClick={() => handleEditUser(user)}
                             className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
@@ -401,6 +471,98 @@ export default function UsersPage() {
               >
                 {isSaving ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
                 Salvar Usuário
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isPermissionsModalOpen && permissionsUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <ShieldCheck size={18} className="text-indigo-600" />
+                Permissões · {permissionsUser.name}
+              </h2>
+              <button
+                onClick={() => {
+                  setIsPermissionsModalOpen(false);
+                  setPermissionsUser(null);
+                }}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {permissionsLoading ? (
+                <div className="py-16 flex items-center justify-center text-slate-500 gap-2">
+                  <Loader2 className="animate-spin" size={18} />
+                  Carregando permissões...
+                </div>
+              ) : (
+                <div className="overflow-auto max-h-[60vh] border border-slate-200 rounded-lg">
+                  <table className="w-full text-sm border-collapse">
+                    <thead className="bg-slate-50 sticky top-0 z-10">
+                      <tr className="border-b border-slate-200">
+                        <th className="px-4 py-3 text-left font-semibold text-slate-600">Página</th>
+                        <th className="px-4 py-3 text-center font-semibold text-slate-600">View</th>
+                        <th className="px-4 py-3 text-center font-semibold text-slate-600">Edit</th>
+                        <th className="px-4 py-3 text-center font-semibold text-slate-600">Refresh</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {PAGE_DEFS.map((page) => (
+                        <tr key={page.key} className="border-b border-slate-100">
+                          <td className="px-4 py-3 text-slate-700">{page.label}</td>
+                          <td className="px-4 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(permissionsMatrix[page.key]?.view)}
+                              onChange={(e) => updatePermission(page.key, 'view', e.target.checked)}
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(permissionsMatrix[page.key]?.edit)}
+                              onChange={(e) => updatePermission(page.key, 'edit', e.target.checked)}
+                            />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(permissionsMatrix[page.key]?.refresh)}
+                              onChange={(e) => updatePermission(page.key, 'refresh', e.target.checked)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setIsPermissionsModalOpen(false);
+                  setPermissionsUser(null);
+                }}
+                className="px-4 py-2 text-slate-600 hover:bg-slate-200 rounded-lg text-sm font-medium transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSavePermissions}
+                disabled={permissionsSaving || permissionsLoading}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium shadow-md transition-colors flex items-center gap-2 disabled:opacity-50"
+              >
+                {permissionsSaving ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle size={16} />}
+                Salvar Permissões
               </button>
             </div>
           </div>
