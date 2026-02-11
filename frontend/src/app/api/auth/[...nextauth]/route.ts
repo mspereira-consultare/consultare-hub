@@ -4,6 +4,30 @@ import { getDbConnection } from "@/lib/db";
 import { compare } from "bcryptjs";
 import { getUserPermissions } from "@/lib/permissions_server";
 
+const normalizeAuthUrl = (raw?: string) => {
+  const input = String(raw || "").trim();
+  if (!input) return "";
+
+  let value = input.replace(/\s+/g, "");
+  value = value
+    .replace(/^https:\/\/https:\/\//i, "https://")
+    .replace(/^http:\/\/http:\/\//i, "http://")
+    .replace(/^https:\/\/http:\/\//i, "https://")
+    .replace(/^http:\/\/https:\/\//i, "https://");
+
+  try {
+    const parsed = new URL(value);
+    return parsed.origin;
+  } catch {
+    return "";
+  }
+};
+
+const normalizedAuthUrl = normalizeAuthUrl(process.env.NEXTAUTH_URL || process.env.AUTH_URL);
+if (normalizedAuthUrl) {
+  process.env.NEXTAUTH_URL = normalizedAuthUrl;
+}
+
 export const authOptions: NextAuthOptions = {
   // Debug apenas em desenvolvimento
   debug: process.env.NODE_ENV === 'development',
