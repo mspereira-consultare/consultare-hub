@@ -1,17 +1,34 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
-import { signIn } from 'next-auth/react'; 
+import { signIn, useSession } from 'next-auth/react'; 
+import { PAGE_DEFS, hasPermission } from '@/lib/permissions';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const getFirstAllowedPage = (permissions: unknown, roleRaw: string) => {
+    for (const page of PAGE_DEFS) {
+      if (hasPermission(permissions, page.key, 'view', roleRaw)) return page.path;
+    }
+    return '/dashboard';
+  };
+
+  useEffect(() => {
+    if (status !== 'authenticated') return;
+    const role = String((session?.user as any)?.role || 'OPERADOR');
+    const permissions = (session?.user as any)?.permissions;
+    const target = getFirstAllowedPage(permissions, role);
+    router.replace(target);
+  }, [status, session, router]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,8 +49,13 @@ export default function LoginPage() {
         return;
       }
 
-      // Sucesso: Redireciona para o dashboard
-      router.push('/dashboard');
+      // Sucesso: redireciona para a primeira pagina que o usuario pode visualizar
+      const sessionRes = await fetch('/api/auth/session', { cache: 'no-store' });
+      const session = await sessionRes.json();
+      const role = String(session?.user?.role || 'OPERADOR');
+      const permissions = session?.user?.permissions;
+      const target = getFirstAllowedPage(permissions, role);
+      router.push(target);
       router.refresh(); 
 
     } catch (err) {
@@ -41,6 +63,14 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4 sm:px-6 lg:px-8">
+        <div className="text-slate-600 text-sm">Validando sessão...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4 sm:px-6 lg:px-8">

@@ -4,7 +4,6 @@ import { getToken } from 'next-auth/jwt';
 import { PAGE_DEFS, getPageFromPath, hasAnyRefresh, hasPermission } from '@/lib/permissions';
 
 const isApiPath = (pathname: string) => pathname.startsWith('/api/');
-const isAdminApiPath = (pathname: string) => pathname.startsWith('/api/admin/');
 
 const getApiAction = (method: string) => {
   const m = String(method || 'GET').toUpperCase();
@@ -46,7 +45,8 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isLoginPage) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    const fallback = firstAllowedPage((token as any).permissions, String((token as any).role || 'OPERADOR'));
+    return NextResponse.redirect(new URL(fallback, request.url));
   }
 
   if (pathname === '/api/admin/refresh') {
@@ -80,4 +80,3 @@ export async function proxy(request: NextRequest) {
 export const config = {
   matcher: ['/((?!_next/static|_next/image|favicon.ico|logo-color.png).*)'],
 };
-
