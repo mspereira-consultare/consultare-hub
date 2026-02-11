@@ -57,10 +57,8 @@ export function Sidebar() {
   const { data: session } = useSession();
   const currentUserRole: UserRole = ((session?.user as any)?.role as UserRole) ?? "OPERADOR";
 
-  const authorizedItems = menuItems.filter(
-    (item) =>
-      item.roles.includes(currentUserRole) &&
-      hasPermission((session?.user as any)?.permissions, item.pageKey, "view", currentUserRole)
+  const authorizedItems = menuItems.filter((item) =>
+    hasPermission((session?.user as any)?.permissions, item.pageKey, "view", currentUserRole)
   );
 
   const groups = Array.from(new Set(authorizedItems.map((item) => item.group)));
@@ -161,4 +159,3 @@ export function Sidebar() {
     </aside>
   );
 }
-
