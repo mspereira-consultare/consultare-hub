@@ -49,13 +49,8 @@ export default function LoginPage() {
         return;
       }
 
-      // Sucesso: redireciona para a primeira pagina que o usuario pode visualizar
-      const sessionRes = await fetch('/api/auth/session', { cache: 'no-store' });
-      const session = await sessionRes.json();
-      const role = String(session?.user?.role || 'OPERADOR');
-      const permissions = session?.user?.permissions;
-      const target = getFirstAllowedPage(permissions, role);
-      router.push(target);
+      // Sucesso: vai para dashboard e o proxy redireciona se o usuario nao tiver view nessa rota
+      router.push('/dashboard');
       router.refresh(); 
 
     } catch (err) {

@@ -16,7 +16,10 @@ const toBool = (value: unknown) => {
   return String(value || '').trim() === '1';
 };
 
+let permissionsTableEnsured = false;
+
 export const ensurePermissionTable = async (db: DbInterface) => {
+  if (permissionsTableEnsured) return;
   await db.execute(`
     CREATE TABLE IF NOT EXISTS user_page_permissions (
       user_id VARCHAR(64) NOT NULL,
@@ -28,6 +31,7 @@ export const ensurePermissionTable = async (db: DbInterface) => {
       PRIMARY KEY (user_id, page_key)
     )
   `);
+  permissionsTableEnsured = true;
 };
 
 export const seedPermissionDefaults = async (db: DbInterface, userId: string, roleRaw: string) => {
@@ -51,7 +55,6 @@ export const loadUserPermissionMatrix = async (
   roleRaw: string
 ): Promise<PermissionMatrix> => {
   await ensurePermissionTable(db);
-  await seedPermissionDefaults(db, userId, roleRaw);
 
   const rows = await db.query(
     `
@@ -113,4 +116,3 @@ export const updateUserPermissions = async (userId: string, roleRaw: UserRole | 
   const db = getPermissionDb();
   await saveUserPermissionMatrix(db, userId, roleRaw, matrixRaw);
 };
-
