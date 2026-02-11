@@ -2,6 +2,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { ClipboardCopy, Loader2, MessageCircle, PhoneCall, RefreshCw, Save, Timer, Target, Users } from 'lucide-react';
+import { useSession } from 'next-auth/react';
+import { hasPermission } from '@/lib/permissions';
 
 type ChecklistData = {
   dateRef: string;
@@ -50,6 +52,7 @@ const StatCard = ({ title, value, helper, icon }: { title: string; value: string
 );
 
 export default function ChecklistCrcPage() {
+  const { data: session } = useSession();
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -60,6 +63,10 @@ export default function ChecklistCrcPage() {
 
   const [callsInput, setCallsInput] = useState('0');
   const [abandonInput, setAbandonInput] = useState('');
+  const role = String((session?.user as any)?.role || 'OPERADOR');
+  const permissions = (session?.user as any)?.permissions;
+  const canEdit = hasPermission(permissions, 'checklist_crc', 'edit', role);
+  const canRefresh = hasPermission(permissions, 'checklist_crc', 'refresh', role);
 
   const fetchData = async (forceFresh = false) => {
     if (!data) setLoading(true);
@@ -104,6 +111,10 @@ export default function ChecklistCrcPage() {
   };
 
   const triggerWorkerRefresh = async () => {
+    if (!canRefresh) {
+      setError('Sem permissao para atualizar dados desta pagina.');
+      return;
+    }
     setUpdating(true);
     setError(null);
     try {
@@ -162,6 +173,10 @@ export default function ChecklistCrcPage() {
   }, [data, callsInput, abandonInput]);
 
   const handleSave = async () => {
+    if (!canEdit) {
+      setError('Sem permissao de edicao para este checklist.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -223,7 +238,7 @@ export default function ChecklistCrcPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={triggerWorkerRefresh}
-              disabled={updating}
+              disabled={updating || !canRefresh}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-60"
             >
               {updating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />} {updating ? 'Atualizando...' : 'Atualizar'}
@@ -250,6 +265,11 @@ export default function ChecklistCrcPage() {
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm">
           {error}
+        </div>
+      )}
+      {!canEdit && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-amber-800 text-sm">
+          Voce possui acesso somente leitura nesta pagina. Edicao e salvamento estao desativados.
         </div>
       )}
 
@@ -283,6 +303,7 @@ export default function ChecklistCrcPage() {
                 min={0}
                 value={callsInput}
                 onChange={(e) => setCallsInput(e.target.value)}
+                disabled={!canEdit}
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800"
               />
             </div>
@@ -310,6 +331,7 @@ export default function ChecklistCrcPage() {
                 placeholder="Ex.: 5,3%"
                 value={abandonInput}
                 onChange={(e) => setAbandonInput(e.target.value)}
+                disabled={!canEdit}
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-800"
               />
             </div>
@@ -333,7 +355,7 @@ export default function ChecklistCrcPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !canEdit}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
             >
               {saving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Salvar campos manuais

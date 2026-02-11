@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { useSession } from 'next-auth/react';
 import {
   ClipboardCopy,
   Loader2,
@@ -14,6 +15,7 @@ import {
   AlertTriangle,
   CheckCircle2,
 } from 'lucide-react';
+import { hasPermission } from '@/lib/permissions';
 
 type UnitOption = { key: string; label: string };
 
@@ -108,6 +110,7 @@ const StatCard = ({ title, value, helper, icon }: { title: string; value: string
 );
 
 export default function ChecklistRecepcaoPage() {
+  const { data: session } = useSession();
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -129,6 +132,10 @@ export default function ChecklistRecepcaoPage() {
   const [situacaoPrazo, setSituacaoPrazo] = useState('');
   const [situacaoResponsavel, setSituacaoResponsavel] = useState('');
   const [acoesRealizadas, setAcoesRealizadas] = useState('');
+  const role = String((session?.user as any)?.role || 'OPERADOR');
+  const permissions = (session?.user as any)?.permissions;
+  const canEdit = hasPermission(permissions, 'checklist_recepcao', 'edit', role);
+  const canRefresh = hasPermission(permissions, 'checklist_recepcao', 'refresh', role);
 
   const fetchData = async (forceFresh = false, unitOverride?: string) => {
     if (!data) setLoading(true);
@@ -186,6 +193,10 @@ export default function ChecklistRecepcaoPage() {
   };
 
   const triggerWorkerRefresh = async () => {
+    if (!canRefresh) {
+      setError('Sem permissao para atualizar dados desta pagina.');
+      return;
+    }
     setUpdating(true);
     setError(null);
     try {
@@ -281,6 +292,10 @@ export default function ChecklistRecepcaoPage() {
   ]);
 
   const handleSave = async () => {
+    if (!canEdit) {
+      setError('Sem permissao de edicao para este checklist.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -363,7 +378,7 @@ export default function ChecklistRecepcaoPage() {
             </select>
             <button
               onClick={triggerWorkerRefresh}
-              disabled={updating}
+              disabled={updating || !canRefresh}
               className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-60"
             >
               {updating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />} {updating ? 'Atualizando...' : 'Atualizar'}
@@ -391,9 +406,15 @@ export default function ChecklistRecepcaoPage() {
           {error}
         </div>
       )}
+      {!canEdit && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-amber-800 text-sm">
+          Voce possui acesso somente leitura nesta pagina. Edicao e salvamento estao desativados.
+        </div>
+      )}
 
       {data && (
         <>
+          <fieldset disabled={!canEdit} className={`space-y-4 ${!canEdit ? 'opacity-70' : ''}`}>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
             <StatCard title="Faturamento do Dia" value={formatCurrency(data.faturamentoDia)} icon={<DollarSign size={16} />} />
             <StatCard title="Faturamento Mes (Acumulado)" value={formatCurrency(data.faturamentoMes)} icon={<DollarSign size={16} />} />
@@ -550,13 +571,14 @@ export default function ChecklistRecepcaoPage() {
           <div className="flex items-center gap-2">
             <button
               onClick={handleSave}
-              disabled={saving}
+              disabled={saving || !canEdit}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60"
             >
               {saving ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} Salvar campos manuais
             </button>
             <span className="text-xs text-slate-500">Os valores salvos ficam visiveis para todos os usuarios da unidade selecionada ate nova edicao.</span>
           </div>
+          </fieldset>
         </>
       )}
     </div>

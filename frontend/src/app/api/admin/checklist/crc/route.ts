@@ -2,6 +2,10 @@
 import { createSign } from 'crypto';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { hasPermission, type PermissionAction } from '@/lib/permissions';
+import { loadUserPermissionMatrix } from '@/lib/permissions_server';
 
 export const dynamic = 'force-dynamic';
 
@@ -341,6 +345,25 @@ const buildReportText = (p: ChecklistPayload) => {
   ].join('\n');
 };
 
+const ensureApiPermission = async (action: PermissionAction) => {
+  const session = await getServerSession(authOptions);
+  const user = session?.user as any;
+  if (!user?.id) {
+    return { allowed: false, status: 401, error: 'Nao autenticado' };
+  }
+
+  const role = String(user.role || 'OPERADOR');
+  const db = getDbConnection();
+  const livePermissions = await loadUserPermissionMatrix(db as any, String(user.id), role);
+  const allowed = hasPermission(livePermissions, 'checklist_crc', action, role);
+
+  if (!allowed) {
+    return { allowed: false, status: 403, error: 'Sem permissao' };
+  }
+
+  return { allowed: true as const };
+};
+
 const loadChecklist = async () => {
   const db = getDbConnection();
   await ensureChecklistTable(db);
@@ -493,6 +516,10 @@ const loadChecklist = async () => {
 
 export async function GET(request: Request) {
   try {
+    const access = await ensureApiPermission('view');
+    if (!access.allowed) {
+      return NextResponse.json({ status: 'error', error: access.error }, { status: access.status });
+    }
     const cacheKey = buildCacheKey('admin', request.url);
     const data = await withCache(cacheKey, CACHE_TTL_MS, loadChecklist);
     return NextResponse.json({ status: 'success', data });
@@ -504,6 +531,10 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const access = await ensureApiPermission('edit');
+    if (!access.allowed) {
+      return NextResponse.json({ status: 'error', error: access.error }, { status: access.status });
+    }
     const body = await request.json().catch(() => ({}));
     const callsMade = toNumber(body?.callsMade);
     const abandonRate = String(body?.abandonRate || '').trim();
@@ -534,3 +565,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 'error', error: error?.message || 'Erro interno' }, { status: 500 });
   }
 }
+
