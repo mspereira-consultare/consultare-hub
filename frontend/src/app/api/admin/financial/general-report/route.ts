@@ -347,6 +347,8 @@ const buildExcel = async (payload: ReportPayload) => {
   workbook.creator = 'Hub Consultare';
   workbook.created = new Date();
   const sheet = workbook.addWorksheet('Faturamento Geral');
+  const refLabel = `${MONTH_NAMES[payload.referenceMonth - 1]}/${payload.referenceYear}`;
+  const accumLabel = `acumulado de Janeiro ate ${refLabel}`;
 
   const monthColumns = MONTH_SHORT.map((m) => ({ header: m, key: m, width: 16 }));
   sheet.columns = [{ header: 'Ano', key: 'ano', width: 10 }, ...monthColumns, { header: 'Total', key: 'total', width: 18 }];
@@ -361,14 +363,14 @@ const buildExcel = async (payload: ReportPayload) => {
 
   sheet.mergeCells(2, 1, 2, 14);
   const meta = sheet.getCell(2, 1);
-  meta.value = `Gerado em: ${formatDateTimeBr(payload.generatedAt)} | Referencia: ${MONTH_NAMES[payload.referenceMonth - 1]}/${payload.referenceYear}`;
+  meta.value = `Gerado em: ${formatDateTimeBr(payload.generatedAt)} | Referencia: ${refLabel}`;
   meta.font = { size: 11, color: { argb: `FF${COLORS.black.replace('#', '')}` } };
   meta.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF2F7FD' } };
   meta.alignment = { vertical: 'middle', horizontal: 'left' };
 
   sheet.mergeCells(3, 1, 3, 14);
   const note = sheet.getCell(3, 1);
-  note.value = 'Destaque verde: maior faturamento historico do mes (comparacao entre anos).';
+  note.value = `Destaque verde: maior faturamento historico do mes (comparacao entre anos). Crescimento calculado no ${accumLabel}.`;
   note.font = { size: 10, color: { argb: `FF${COLORS.darkGreen.replace('#', '')}` } };
   note.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${COLORS.lightGreenBg.replace('#', '')}` } };
   note.alignment = { vertical: 'middle', horizontal: 'left' };
@@ -379,7 +381,7 @@ const buildExcel = async (payload: ReportPayload) => {
 
     sheet.mergeCells(cursor, 1, cursor, 14);
     const titleCell = sheet.getCell(cursor, 1);
-    titleCell.value = `${section.label} | Referencia: ${MONTH_NAMES[payload.referenceMonth - 1]}/${payload.referenceYear}`;
+    titleCell.value = `${section.label} | Referencia: ${refLabel}`;
     titleCell.font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
     titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${COLORS.navy.replace('#', '')}` } };
     titleCell.alignment = { vertical: 'middle', horizontal: 'left' };
@@ -421,12 +423,12 @@ const buildExcel = async (payload: ReportPayload) => {
     }
 
     cursor += 1;
-    sheet.getCell(cursor, 1).value = 'Crescimento vs melhor ano (acumulado Jan..mes ref)';
+    sheet.getCell(cursor, 1).value = `Crescimento vs melhor ano (${accumLabel})`;
     sheet.getCell(cursor, 2).value = toPercent(section.growthVsBest);
     sheet.getCell(cursor, 1).font = { bold: true, color: { argb: `FF${COLORS.navy.replace('#', '')}` } };
     sheet.getCell(cursor, 2).font = { bold: true, color: { argb: `FF${COLORS.darkGreen.replace('#', '')}` } };
     cursor += 1;
-    sheet.getCell(cursor, 1).value = 'Crescimento vs ano anterior (acumulado Jan..mes ref)';
+    sheet.getCell(cursor, 1).value = `Crescimento vs ano anterior (${accumLabel})`;
     sheet.getCell(cursor, 2).value = toPercent(section.growthVsPreviousYear);
     sheet.getCell(cursor, 1).font = { bold: true, color: { argb: `FF${COLORS.navy.replace('#', '')}` } };
     sheet.getCell(cursor, 2).font = { bold: true, color: { argb: `FF${COLORS.teal.replace('#', '')}` } };
@@ -527,84 +529,127 @@ const buildPdf = async (payload: ReportPayload) => {
 
   const pageWidth = 1190.55;
   const pageHeight = 841.89;
-  const usableWidth = pageWidth - 48;
-  const yearCol = 56;
-  const totalCol = 96;
+  const margin = 24;
+  const usableWidth = pageWidth - margin * 2;
+  const yearCol = 54;
+  const totalCol = 92;
   const monthCol = (usableWidth - yearCol - totalCol) / 12;
-  const rowHeight = 22;
+  const rowHeight = 18;
+  const sectionTitleHeight = 18;
+  const sectionSpacing = 10;
+  const growthCompactHeight = 24;
+  const tableHeaderHeight = rowHeight;
+  const contentBottomLimit = pageHeight - margin;
+  const refLabel = `${MONTH_NAMES[payload.referenceMonth - 1]}/${payload.referenceYear}`;
+  const accumLabel = `acumulado de Janeiro ate ${refLabel}`;
   const generatedLabel = formatDateTimeBr(payload.generatedAt);
-
-  for (let sectionIdx = 0; sectionIdx < payload.sections.length; sectionIdx += 1) {
-    const section = payload.sections[sectionIdx];
-    const page = pdfDoc.addPage([pageWidth, pageHeight]);
-
+  const drawPageHeader = (page: PDFPage) => {
     page.drawRectangle({
-      x: 24,
-      y: pageHeight - 24 - 44,
+      x: margin,
+      y: pageHeight - margin - 42,
       width: usableWidth,
-      height: 44,
+      height: 42,
       color: hexToPdfRgb(COLORS.navy),
     });
+
     page.drawText('Faturamento Geral', {
-      x: 34,
-      y: pageHeight - 34 - 18,
+      x: margin + 10,
+      y: pageHeight - 35 - 14,
       font: fontBold,
-      size: 18,
-      color: hexToPdfRgb('#FFFFFF'),
-    });
-    const subtitle = `Unidade: ${section.label} | Referencia: ${MONTH_NAMES[payload.referenceMonth - 1]}/${payload.referenceYear} | Gerado em: ${generatedLabel}`;
-    page.drawText(fitText(subtitle, fontRegular, 9, usableWidth - 20), {
-      x: 34,
-      y: pageHeight - 52 - 9,
-      font: fontRegular,
-      size: 9,
+      size: 14,
       color: hexToPdfRgb('#FFFFFF'),
     });
 
-    page.drawText('Celulas em verde indicam o maior faturamento historico no respectivo mes.', {
-      x: 24,
-      y: pageHeight - 74 - 9,
+    page.drawText(`Gerado em: ${generatedLabel} | Referencia: ${refLabel}`, {
+      x: margin + 10,
+      y: pageHeight - 49 - 8,
+      font: fontRegular,
+      size: 8,
+      color: hexToPdfRgb('#FFFFFF'),
+    });
+
+    page.drawText(`Criterio de crescimento: ${accumLabel}.`, {
+      x: margin + 10,
+      y: pageHeight - 60 - 8,
+      font: fontRegular,
+      size: 8,
+      color: hexToPdfRgb('#FFFFFF'),
+    });
+
+    page.drawText('Legenda: celulas verdes = maior faturamento historico daquele mes.', {
+      x: margin,
+      y: pageHeight - 76 - 8,
       font: fontBold,
-      size: 9,
+      size: 8,
       color: hexToPdfRgb(COLORS.darkGreen),
     });
+  };
 
-    let y = 90;
-    let x = 24;
+  const estimateSectionHeight = (section: SectionReport) =>
+    sectionTitleHeight + tableHeaderHeight + section.rows.length * rowHeight + growthCompactHeight + sectionSpacing;
 
-    drawPdfCell(page, pageHeight, x, y, yearCol, rowHeight, 'Ano', fontRegular, fontBold, {
+  let page = pdfDoc.addPage([pageWidth, pageHeight]);
+  drawPageHeader(page);
+  let cursorY = 90;
+
+  for (const section of payload.sections) {
+    const blockHeight = estimateSectionHeight(section);
+    if (cursorY + blockHeight > contentBottomLimit) {
+      page = pdfDoc.addPage([pageWidth, pageHeight]);
+      drawPageHeader(page);
+      cursorY = 90;
+    }
+
+    page.drawRectangle({
+      x: margin,
+      y: pageHeight - cursorY - sectionTitleHeight,
+      width: usableWidth,
+      height: sectionTitleHeight,
+      color: hexToPdfRgb(COLORS.navy),
+    });
+    page.drawText(section.label, {
+      x: margin + 6,
+      y: pageHeight - cursorY - 12,
+      font: fontBold,
+      size: 9,
+      color: hexToPdfRgb('#FFFFFF'),
+    });
+    cursorY += sectionTitleHeight;
+
+    let x = margin;
+    drawPdfCell(page, pageHeight, x, cursorY, yearCol, tableHeaderHeight, 'Ano', fontRegular, fontBold, {
       bg: COLORS.blue,
       color: '#FFFFFF',
       bold: true,
     });
     x += yearCol;
     for (let m = 0; m < 12; m += 1) {
-      drawPdfCell(page, pageHeight, x, y, monthCol, rowHeight, MONTH_NAMES[m], fontRegular, fontBold, {
+      drawPdfCell(page, pageHeight, x, cursorY, monthCol, tableHeaderHeight, MONTH_NAMES[m], fontRegular, fontBold, {
         bg: COLORS.blue,
         color: '#FFFFFF',
         bold: true,
       });
       x += monthCol;
     }
-    drawPdfCell(page, pageHeight, x, y, totalCol, rowHeight, 'Total', fontRegular, fontBold, {
+    drawPdfCell(page, pageHeight, x, cursorY, totalCol, tableHeaderHeight, 'Total', fontRegular, fontBold, {
       bg: COLORS.blue,
       color: '#FFFFFF',
       bold: true,
     });
-    y += rowHeight;
+    cursorY += tableHeaderHeight;
 
     for (let idxRow = 0; idxRow < section.rows.length; idxRow += 1) {
       const row = section.rows[idxRow];
       const zebra = idxRow % 2 === 1;
-      x = 24;
-      drawPdfCell(page, pageHeight, x, y, yearCol, rowHeight, String(row.year), fontRegular, fontBold, {
+      x = margin;
+      drawPdfCell(page, pageHeight, x, cursorY, yearCol, rowHeight, String(row.year), fontRegular, fontBold, {
         bold: true,
         color: COLORS.navy,
         bg: zebra ? '#F8FAFD' : undefined,
       });
       x += yearCol;
       for (let m = 0; m < 12; m += 1) {
-        drawPdfCell(page, pageHeight, x, y, monthCol, rowHeight, toMoney(row.months[m]), fontRegular, fontBold, {
+        drawPdfCell(page, pageHeight, x, cursorY, monthCol, rowHeight, toMoney(row.months[m]), fontRegular, fontBold, {
           align: 'right',
           bold: row.highlights[m],
           color: row.highlights[m] ? COLORS.darkGreen : COLORS.black,
@@ -612,61 +657,37 @@ const buildPdf = async (payload: ReportPayload) => {
         });
         x += monthCol;
       }
-      drawPdfCell(page, pageHeight, x, y, totalCol, rowHeight, toMoney(row.total), fontRegular, fontBold, {
+      drawPdfCell(page, pageHeight, x, cursorY, totalCol, rowHeight, toMoney(row.total), fontRegular, fontBold, {
         align: 'right',
         bold: true,
         color: COLORS.navy,
         bg: zebra ? '#EDF3FC' : COLORS.lightBlueBg,
       });
-      y += rowHeight;
+      cursorY += rowHeight;
     }
 
-    y += 18;
-    page.drawRectangle({
-      x: 24,
-      y: pageHeight - (y + 50),
-      width: 380,
-      height: 50,
-      color: hexToPdfRgb('#EAF7F2'),
-    });
-    page.drawRectangle({
-      x: 416,
-      y: pageHeight - (y + 50),
-      width: 380,
-      height: 50,
-      color: hexToPdfRgb('#EAF2FC'),
-    });
-
+    const growthY = cursorY + 6;
     page.drawText(
-      fitText(
-        `Crescimento vs melhor ano (Jan..${MONTH_SHORT[payload.referenceMonth - 1]}): ${toPercent(section.growthVsBest)}`,
-        fontBold,
-        10,
-        360
-      ),
+      fitText(`Crescimento vs melhor ano (${accumLabel}): ${toPercent(section.growthVsBest)}`, fontBold, 8, usableWidth),
       {
-        x: 36,
-        y: pageHeight - (y + 10) - 10,
+        x: margin + 2,
+        y: pageHeight - growthY - 8,
         font: fontBold,
-        size: 10,
+        size: 8,
         color: hexToPdfRgb(COLORS.darkGreen),
       }
     );
     page.drawText(
-      fitText(
-        `Crescimento vs ano anterior (Jan..${MONTH_SHORT[payload.referenceMonth - 1]}): ${toPercent(section.growthVsPreviousYear)}`,
-        fontBold,
-        10,
-        360
-      ),
+      fitText(`Crescimento vs ano anterior (${accumLabel}): ${toPercent(section.growthVsPreviousYear)}`, fontBold, 8, usableWidth),
       {
-        x: 428,
-        y: pageHeight - (y + 10) - 10,
+        x: margin + 2,
+        y: pageHeight - (growthY + 11) - 8,
         font: fontBold,
-        size: 10,
+        size: 8,
         color: hexToPdfRgb(COLORS.teal),
       }
     );
+    cursorY += growthCompactHeight + sectionSpacing;
   }
 
   const bytes = await pdfDoc.save();
