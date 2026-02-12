@@ -21,6 +21,7 @@ except ImportError:
 from worker_faturamento_scraping import (
     clean_column_name,
     clean_currency,
+    remove_total_pago_outliers,
     save_dataframe_to_db,
     update_faturamento_summary,
 )
@@ -603,6 +604,7 @@ def run_scraper_2025(start_date=None, end_date=None, use_checkpoint=True, sleep_
                     df_validas = df_validas.drop(columns=['data_contabil'])
 
                     df = df_validas
+                    df = remove_total_pago_outliers(df, abs_threshold=1_000_000.0, context=f"backfill {month:02d}/{year}")
                     df['updated_at'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                     condition = f"{col_data} >= '{iso_inicio}' AND {col_data} <= '{iso_fim}'"

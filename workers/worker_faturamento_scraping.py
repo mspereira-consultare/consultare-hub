@@ -197,6 +197,32 @@ def clean_currency(value):
         return -val_float if is_negative else val_float
     except: return 0.0
 
+def remove_total_pago_outliers(df, abs_threshold=1_000_000.0, context=""):
+    """
+    Remove lançamentos analíticos claramente inválidos (ex.: sentinelas como -99.999.999,99).
+    Em nível de linha analítica, valores com módulo >= 1 milhão são tratados como outlier.
+    """
+    if df is None or df.empty or 'total_pago' not in df.columns:
+        return df
+
+    vals = pd.to_numeric(df['total_pago'], errors='coerce').fillna(0)
+    mask = vals.abs() >= float(abs_threshold)
+    qtd = int(mask.sum())
+    if qtd <= 0:
+        return df
+
+    tag = f" ({context})" if context else ""
+    print(f"   ⚠️ Outlier detectado{tag}: removendo {qtd} linha(s) com |total_pago| >= {abs_threshold:,.0f}.")
+    try:
+        cols = [c for c in ['data_do_pagamento', 'paciente', 'total_pago', 'tipo', 'forma_de_pagamento', 'unidade'] if c in df.columns]
+        if cols:
+            sample = df.loc[mask, cols].head(3).to_dict('records')
+            print(f"   🔎 Exemplo outlier(s): {sample}")
+    except Exception:
+        pass
+
+    return df.loc[~mask].copy()
+
 def save_dataframe_to_db(db, df, table_name, delete_condition=None):
     """
     Função auxiliar para salvar DataFrame no Turso ou SQLite.
@@ -870,6 +896,7 @@ def run_scraper():
             df_validas = df_validas.drop(columns=['data_contabil'])
 
             df = df_validas
+            df = remove_total_pago_outliers(df, abs_threshold=1_000_000.0, context="worker diario")
             df['updated_at'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
             # --- AUDITORIA ---

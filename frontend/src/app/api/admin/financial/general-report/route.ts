@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import PDFDocument from 'pdfkit';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import ExcelJS from 'exceljs';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
@@ -448,34 +448,85 @@ const buildExcel = async (payload: ReportPayload) => {
   return Buffer.isBuffer(out) ? out : Buffer.from(out as ArrayBuffer);
 };
 
-const writePdfCell = (
-  doc: PDFKit.PDFDocument,
+const hexToPdfRgb = (hex: string) => {
+  const raw = hex.replace('#', '');
+  const value = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
+  const int = Number.parseInt(value, 16);
+  const r = ((int >> 16) & 255) / 255;
+  const g = ((int >> 8) & 255) / 255;
+  const b = (int & 255) / 255;
+  return rgb(r, g, b);
+};
+
+const fitText = (text: string, font: PDFFont, size: number, maxWidth: number) => {
+  const safe = String(text || '');
+  if (font.widthOfTextAtSize(safe, size) <= maxWidth) return safe;
+  let out = safe;
+  while (out.length > 1 && font.widthOfTextAtSize(`${out}...`, size) > maxWidth) {
+    out = out.slice(0, -1);
+  }
+  return `${out}...`;
+};
+
+const drawPdfCell = (
+  page: PDFPage,
+  pageHeight: number,
   x: number,
-  y: number,
+  yTop: number,
   width: number,
   height: number,
   text: string,
+  regularFont: PDFFont,
+  boldFont: PDFFont,
   opts: { bg?: string; color?: string; bold?: boolean; align?: 'left' | 'right' | 'center' } = {}
 ) => {
+  const y = pageHeight - yTop - height;
   if (opts.bg) {
-    doc.save();
-    doc.rect(x, y, width, height).fill(opts.bg);
-    doc.restore();
+    page.drawRectangle({
+      x,
+      y,
+      width,
+      height,
+      color: hexToPdfRgb(opts.bg),
+      borderColor: hexToPdfRgb('#D7DFEA'),
+      borderWidth: 0.4,
+    });
+  } else {
+    page.drawRectangle({
+      x,
+      y,
+      width,
+      height,
+      borderColor: hexToPdfRgb('#D7DFEA'),
+      borderWidth: 0.4,
+    });
   }
-  doc.rect(x, y, width, height).lineWidth(0.4).stroke('#D7DFEA');
-  doc
-    .fillColor(opts.color || COLORS.black)
-    .font(opts.bold ? 'Helvetica-Bold' : 'Helvetica')
-    .fontSize(8)
-    .text(text, x + 3, y + 4, { width: width - 6, align: opts.align || 'center', ellipsis: true });
+
+  const font = opts.bold ? boldFont : regularFont;
+  const size = 8;
+  const textSafe = fitText(String(text || ''), font, size, Math.max(width - 8, 2));
+  const textWidth = font.widthOfTextAtSize(textSafe, size);
+  const textColor = hexToPdfRgb(opts.color || COLORS.black);
+  let textX = x + 4;
+  if (opts.align === 'center') textX = x + (width - textWidth) / 2;
+  if (opts.align === 'right') textX = x + width - textWidth - 4;
+  const textY = y + (height - size) / 2 + 1;
+  page.drawText(textSafe, {
+    x: textX,
+    y: textY,
+    font,
+    size,
+    color: textColor,
+  });
 };
 
 const buildPdf = async (payload: ReportPayload) => {
-  const doc = new PDFDocument({ size: 'A3', layout: 'landscape', margin: 24 });
-  const chunks: Buffer[] = [];
-  doc.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+  const pdfDoc = await PDFDocument.create();
+  const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const pageWidth = doc.page.width;
+  const pageWidth = 1190.55;
+  const pageHeight = 841.89;
   const usableWidth = pageWidth - 48;
   const yearCol = 56;
   const totalCol = 96;
@@ -485,52 +536,75 @@ const buildPdf = async (payload: ReportPayload) => {
 
   for (let sectionIdx = 0; sectionIdx < payload.sections.length; sectionIdx += 1) {
     const section = payload.sections[sectionIdx];
-    if (sectionIdx > 0) doc.addPage({ size: 'A3', layout: 'landscape', margin: 24 });
+    const page = pdfDoc.addPage([pageWidth, pageHeight]);
 
-    doc.save();
-    doc.rect(24, 24, usableWidth, 44).fill(COLORS.navy);
-    doc.restore();
-    doc.fillColor('#FFFFFF').font('Helvetica-Bold').fontSize(18).text('Faturamento Geral', 34, 34);
-    doc
-      .fillColor('#FFFFFF')
-      .font('Helvetica')
-      .fontSize(9)
-      .text(
-        `Unidade: ${section.label} | Referencia: ${MONTH_NAMES[payload.referenceMonth - 1]}/${payload.referenceYear} | Gerado em: ${generatedLabel}`,
-        34,
-        52
-      );
+    page.drawRectangle({
+      x: 24,
+      y: pageHeight - 24 - 44,
+      width: usableWidth,
+      height: 44,
+      color: hexToPdfRgb(COLORS.navy),
+    });
+    page.drawText('Faturamento Geral', {
+      x: 34,
+      y: pageHeight - 34 - 18,
+      font: fontBold,
+      size: 18,
+      color: hexToPdfRgb('#FFFFFF'),
+    });
+    const subtitle = `Unidade: ${section.label} | Referencia: ${MONTH_NAMES[payload.referenceMonth - 1]}/${payload.referenceYear} | Gerado em: ${generatedLabel}`;
+    page.drawText(fitText(subtitle, fontRegular, 9, usableWidth - 20), {
+      x: 34,
+      y: pageHeight - 52 - 9,
+      font: fontRegular,
+      size: 9,
+      color: hexToPdfRgb('#FFFFFF'),
+    });
 
-    doc
-      .fillColor(COLORS.darkGreen)
-      .font('Helvetica-Bold')
-      .fontSize(9)
-      .text('Celulas em verde indicam o maior faturamento historico no respectivo mes.', 24, 74);
+    page.drawText('Celulas em verde indicam o maior faturamento historico no respectivo mes.', {
+      x: 24,
+      y: pageHeight - 74 - 9,
+      font: fontBold,
+      size: 9,
+      color: hexToPdfRgb(COLORS.darkGreen),
+    });
 
     let y = 90;
     let x = 24;
 
-    writePdfCell(doc, x, y, yearCol, rowHeight, 'Ano', { bg: COLORS.blue, color: '#FFFFFF', bold: true });
+    drawPdfCell(page, pageHeight, x, y, yearCol, rowHeight, 'Ano', fontRegular, fontBold, {
+      bg: COLORS.blue,
+      color: '#FFFFFF',
+      bold: true,
+    });
     x += yearCol;
     for (let m = 0; m < 12; m += 1) {
-      writePdfCell(doc, x, y, monthCol, rowHeight, MONTH_NAMES[m], { bg: COLORS.blue, color: '#FFFFFF', bold: true });
+      drawPdfCell(page, pageHeight, x, y, monthCol, rowHeight, MONTH_NAMES[m], fontRegular, fontBold, {
+        bg: COLORS.blue,
+        color: '#FFFFFF',
+        bold: true,
+      });
       x += monthCol;
     }
-    writePdfCell(doc, x, y, totalCol, rowHeight, 'Total', { bg: COLORS.blue, color: '#FFFFFF', bold: true });
+    drawPdfCell(page, pageHeight, x, y, totalCol, rowHeight, 'Total', fontRegular, fontBold, {
+      bg: COLORS.blue,
+      color: '#FFFFFF',
+      bold: true,
+    });
     y += rowHeight;
 
     for (let idxRow = 0; idxRow < section.rows.length; idxRow += 1) {
       const row = section.rows[idxRow];
       const zebra = idxRow % 2 === 1;
       x = 24;
-      writePdfCell(doc, x, y, yearCol, rowHeight, String(row.year), {
+      drawPdfCell(page, pageHeight, x, y, yearCol, rowHeight, String(row.year), fontRegular, fontBold, {
         bold: true,
         color: COLORS.navy,
         bg: zebra ? '#F8FAFD' : undefined,
       });
       x += yearCol;
       for (let m = 0; m < 12; m += 1) {
-        writePdfCell(doc, x, y, monthCol, rowHeight, toMoney(row.months[m]), {
+        drawPdfCell(page, pageHeight, x, y, monthCol, rowHeight, toMoney(row.months[m]), fontRegular, fontBold, {
           align: 'right',
           bold: row.highlights[m],
           color: row.highlights[m] ? COLORS.darkGreen : COLORS.black,
@@ -538,7 +612,7 @@ const buildPdf = async (payload: ReportPayload) => {
         });
         x += monthCol;
       }
-      writePdfCell(doc, x, y, totalCol, rowHeight, toMoney(row.total), {
+      drawPdfCell(page, pageHeight, x, y, totalCol, rowHeight, toMoney(row.total), fontRegular, fontBold, {
         align: 'right',
         bold: true,
         color: COLORS.navy,
@@ -548,37 +622,55 @@ const buildPdf = async (payload: ReportPayload) => {
     }
 
     y += 18;
-    doc.save();
-    doc.roundedRect(24, y, 380, 50, 6).fill('#EAF7F2');
-    doc.roundedRect(416, y, 380, 50, 6).fill('#EAF2FC');
-    doc.restore();
+    page.drawRectangle({
+      x: 24,
+      y: pageHeight - (y + 50),
+      width: 380,
+      height: 50,
+      color: hexToPdfRgb('#EAF7F2'),
+    });
+    page.drawRectangle({
+      x: 416,
+      y: pageHeight - (y + 50),
+      width: 380,
+      height: 50,
+      color: hexToPdfRgb('#EAF2FC'),
+    });
 
-    doc
-      .fillColor(COLORS.darkGreen)
-      .font('Helvetica-Bold')
-      .fontSize(10)
-      .text(
+    page.drawText(
+      fitText(
         `Crescimento vs melhor ano (Jan..${MONTH_SHORT[payload.referenceMonth - 1]}): ${toPercent(section.growthVsBest)}`,
-        36,
-        y + 10
-      );
-    doc
-      .fillColor(COLORS.teal)
-      .font('Helvetica-Bold')
-      .fontSize(10)
-      .text(
+        fontBold,
+        10,
+        360
+      ),
+      {
+        x: 36,
+        y: pageHeight - (y + 10) - 10,
+        font: fontBold,
+        size: 10,
+        color: hexToPdfRgb(COLORS.darkGreen),
+      }
+    );
+    page.drawText(
+      fitText(
         `Crescimento vs ano anterior (Jan..${MONTH_SHORT[payload.referenceMonth - 1]}): ${toPercent(section.growthVsPreviousYear)}`,
-        428,
-        y + 10
-      );
+        fontBold,
+        10,
+        360
+      ),
+      {
+        x: 428,
+        y: pageHeight - (y + 10) - 10,
+        font: fontBold,
+        size: 10,
+        color: hexToPdfRgb(COLORS.teal),
+      }
+    );
   }
 
-  doc.end();
-  await new Promise<void>((resolve, reject) => {
-    doc.on('end', () => resolve());
-    doc.on('error', (error) => reject(error));
-  });
-  return Buffer.concat(chunks);
+  const bytes = await pdfDoc.save();
+  return Buffer.from(bytes);
 };
 
 export async function GET(request: Request) {
