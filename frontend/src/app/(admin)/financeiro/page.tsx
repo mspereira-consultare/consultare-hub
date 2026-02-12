@@ -13,6 +13,7 @@ import {
   RefreshCw,
   Loader2,
   GitCompareArrows,
+  FileText,
 } from 'lucide-react';
 import { FinancialKPIs } from './components/FinancialKPIs';
 import { HistoryTable } from './components/HistoryTable';
@@ -22,6 +23,7 @@ import { FinancialComparisonKPIs } from './components/FinancialComparisonKPIs';
 import { ComparisonHistoryChart } from './components/ComparisonHistoryChart';
 import { ComparisonHistoryTable } from './components/ComparisonHistoryTable';
 import { GroupComparisonList } from './components/GroupComparisonList';
+import { GeneralReportModal } from './components/GeneralReportModal';
 
 type SelectOption = { name: string; label?: string };
 type DateRange = { start: string; end: string };
@@ -254,6 +256,7 @@ export default function FinancialPage() {
 
   const [heartbeat, setHeartbeat] = useState<Heartbeat | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const comparisonRange = useMemo<DateRange>(() => {
     const duration = daysBetweenInclusive(dateRange.start, dateRange.end);
@@ -505,6 +508,14 @@ export default function FinancialPage() {
             </button>
 
             <button
+              onClick={() => setReportModalOpen(true)}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all border whitespace-nowrap bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
+            >
+              <FileText size={14} />
+              Relatorio Geral
+            </button>
+
+            <button
               onClick={() => setFiltersExpanded(!filtersExpanded)}
               className="p-2 hover:bg-slate-50 rounded-lg transition text-slate-600"
               title={filtersExpanded ? 'Recolher filtros' : 'Expandir filtros'}
@@ -737,6 +748,8 @@ export default function FinancialPage() {
           </div>
         </div>
       )}
+
+      <GeneralReportModal open={reportModalOpen} onClose={() => setReportModalOpen(false)} />
     </div>
   );
 }

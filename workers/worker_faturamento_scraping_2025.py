@@ -4,6 +4,7 @@ import sys
 import datetime
 import calendar
 import hashlib
+import argparse
 from io import StringIO
 
 import pandas as pd
@@ -394,7 +395,17 @@ def build_summary_parts(df, col_data, use_mysql=False):
 
     return daily, monthly
 
-def run_scraper_2025():
+def _parse_cli_date(value):
+    s = str(value or "").strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.datetime.strptime(s, fmt).date()
+        except ValueError:
+            pass
+    raise ValueError(f"Data inválida: {value}. Use YYYY-MM-DD ou DD/MM/YYYY.")
+
+
+def run_scraper_2025(start_date=None, end_date=None, use_checkpoint=True, sleep_between_months=120):
     print(f"--- Scraping Financeiro (Backfill Historico): {datetime.datetime.now().strftime('%H:%M:%S')} ---")
 
     if DatabaseManager is None:
@@ -422,39 +433,52 @@ def run_scraper_2025():
         print("❌ Credenciais não encontradas (Banco ou .env).")
         return
 
-    processed_ranges = []
-    ensure_checkpoint_table(db)
-
     today = datetime.date.today()
-    end_date = today - datetime.timedelta(days=1)
-    start_year = 2025
+    if end_date is None:
+        end_date = today - datetime.timedelta(days=1)
+    if start_date is None:
+        start_date = datetime.date(2025, 1, 1)
+
+    if end_date < start_date:
+        print(f"❌ Intervalo inválido: {start_date} > {end_date}")
+        return
+
+    processed_ranges = []
+    if use_checkpoint:
+        ensure_checkpoint_table(db)
+
+    start_year = start_date.year
     end_year = end_date.year
-    end_month = end_date.month
-    end_day = end_date.day
-    print(f"📆 Backfill de {start_year}-01-01 até {end_date.strftime('%Y-%m-%d')}")
+    print(f"📆 Backfill de {start_date.strftime('%Y-%m-%d')} até {end_date.strftime('%Y-%m-%d')}")
+    print(f"📌 Checkpoint: {'ATIVO' if use_checkpoint else 'DESATIVADO'}")
+    print(f"⏳ Intervalo entre meses: {sleep_between_months}s")
 
     with sync_playwright() as p:
         for year in range(start_year, end_year + 1):
-            completed_months = get_completed_months(db, year)
-            if completed_months:
+            completed_months = get_completed_months(db, year) if use_checkpoint else set()
+            if use_checkpoint and completed_months:
                 completed_list = ", ".join([f"{m:02d}" for m in sorted(completed_months)])
                 print(f"✅ Checkpoint {year}. Meses concluídos: {completed_list}")
 
-            for month in range(1, 13):
-                if year == end_year and month > end_month:
-                    break
+            year_start_month = start_date.month if year == start_year else 1
+            year_end_month = end_date.month if year == end_year else 12
 
-                if month in completed_months and not (year == end_year and month == end_month):
+            for month in range(year_start_month, year_end_month + 1):
+                first_day = datetime.date(year, month, 1)
+                last_day = datetime.date(year, month, calendar.monthrange(year, month)[1])
+                range_start = max(first_day, start_date)
+                range_end = min(last_day, end_date)
+                full_month = (range_start == first_day and range_end == last_day)
+
+                if use_checkpoint and full_month and month in completed_months:
                     print(f"⏭️ Pulando mês {month:02d}/{year} (já concluído)")
                     continue
 
                 month_start_time = datetime.datetime.now()
-                last_day = calendar.monthrange(year, month)[1]
-                month_end_day = end_day if (year == end_year and month == end_month) else last_day
-                inicio_vis = f"01/{month:02d}/{year}"
-                fim_vis = f"{month_end_day:02d}/{month:02d}/{year}"
-                iso_inicio = f"{year}-{month:02d}-01"
-                iso_fim = f"{year}-{month:02d}-{month_end_day:02d}"
+                inicio_vis = range_start.strftime("%d/%m/%Y")
+                fim_vis = range_end.strftime("%d/%m/%Y")
+                iso_inicio = range_start.strftime("%Y-%m-%d")
+                iso_fim = range_end.strftime("%Y-%m-%d")
 
                 print(f"📆 Mês {month:02d}/{year}: {inicio_vis} até {fim_vis}")
                 db.update_heartbeat("faturamento", "RUNNING", f"Backfill {year}: {inicio_vis}-{fim_vis}")
@@ -586,9 +610,7 @@ def run_scraper_2025():
                     save_dataframe_to_db(db, df, 'faturamento_analitico', delete_condition=condition)
 
                     processed_ranges.append((iso_inicio, iso_fim))
-                    if (year < end_year) or (year == end_year and month < end_month):
-                        mark_month_completed(db, year, month)
-                    elif (year == end_year and month == end_month and month_end_day == last_day):
+                    if use_checkpoint and full_month:
                         mark_month_completed(db, year, month)
 
                 except Exception as e:
@@ -600,19 +622,51 @@ def run_scraper_2025():
                     elapsed = (month_end_time - month_start_time).total_seconds()
                     print(f"⏱️ Mês {month:02d}/{year} finalizado em {elapsed:.1f}s")
 
-                if not (year == end_year and month == end_month):
-                    print("⏸️ Aguardando 2 minutos antes do próximo mês...")
-                    time.sleep(120)
+                if sleep_between_months > 0 and not (year == end_year and month == year_end_month):
+                    print(f"⏸️ Aguardando {sleep_between_months}s antes do próximo mês...")
+                    time.sleep(sleep_between_months)
 
     if processed_ranges:
-        start_ref = f"{start_year}-01-01"
+        start_ref = start_date.strftime("%Y-%m-%d")
         end_ref = end_date.strftime("%Y-%m-%d")
         print(f"🧮 Recalculando resumos de {start_ref} até {end_ref} a partir do analítico...")
         update_faturamento_summary(db, start_ref, end_ref, update_monthly=True)
 
-    print("🚀 Backfill 2025 finalizado com sucesso.")
-    db.update_heartbeat("faturamento", "ONLINE", "Backfill 2025 finalizado")
+    print("🚀 Backfill histórico finalizado com sucesso.")
+    db.update_heartbeat("faturamento", "ONLINE", "Backfill histórico finalizado")
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Backfill histórico do faturamento analítico em janela personalizada."
+    )
+    parser.add_argument(
+        "--start-date",
+        default="2025-01-01",
+        help="Data inicial (YYYY-MM-DD ou DD/MM/YYYY). Ex.: 2022-01-01",
+    )
+    parser.add_argument(
+        "--end-date",
+        default="",
+        help="Data final (YYYY-MM-DD ou DD/MM/YYYY). Padrão: ontem.",
+    )
+    parser.add_argument(
+        "--ignore-checkpoint",
+        action="store_true",
+        help="Ignora checkpoint e reprocessa meses completos já marcados.",
+    )
+    parser.add_argument(
+        "--sleep-seconds",
+        type=int,
+        default=120,
+        help="Pausa entre meses em segundos (padrão: 120).",
+    )
+    args = parser.parse_args()
+    start_date = _parse_cli_date(args.start_date)
+    end_date = _parse_cli_date(args.end_date) if str(args.end_date).strip() else (datetime.date.today() - datetime.timedelta(days=1))
+    return start_date, end_date, (not args.ignore_checkpoint), max(0, int(args.sleep_seconds))
 
 
 if __name__ == "__main__":
-    run_scraper_2025()
+    s, e, use_cp, sleep_s = parse_args()
+    run_scraper_2025(start_date=s, end_date=e, use_checkpoint=use_cp, sleep_between_months=sleep_s)

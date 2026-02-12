@@ -1,9 +1,18 @@
 import { NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
 const CACHE_TTL_MS = 30 * 60 * 1000;
+const CREATE_TEAMS_MASTER_SQL = `
+    CREATE TABLE IF NOT EXISTS teams_master (
+        id TEXT PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+`;
 
 // GET: Lista todas as equipes criadas
 export async function GET(request: Request) {
@@ -13,14 +22,7 @@ export async function GET(request: Request) {
             const db = getDbConnection();
 
             // Garante que a tabela de equipes existe
-            await db.execute(`
-                CREATE TABLE IF NOT EXISTS teams_master (
-                    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                    name TEXT UNIQUE NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            `);
+            await db.execute(CREATE_TEAMS_MASTER_SQL);
 
             // Busca todas as equipes
             const teams = await db.query(`
@@ -53,19 +55,12 @@ export async function POST(request: Request) {
         const db = getDbConnection();
 
         // Garante que a tabela de equipes existe
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS teams_master (
-                id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                name TEXT UNIQUE NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
+        await db.execute(CREATE_TEAMS_MASTER_SQL);
 
         // Insere a nova equipe
         await db.execute(`
-            INSERT INTO teams_master (name) VALUES (?)
-        `, [name.trim()]);
+            INSERT INTO teams_master (id, name) VALUES (?, ?)
+        `, [randomUUID(), name.trim()]);
 
         invalidateCache('admin:');
         return NextResponse.json({ 

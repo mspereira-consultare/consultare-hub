@@ -1,9 +1,29 @@
 import { NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
 const CACHE_TTL_MS = 30 * 60 * 1000;
+const CREATE_TEAMS_MASTER_SQL = `
+    CREATE TABLE IF NOT EXISTS teams_master (
+        id TEXT PRIMARY KEY,
+        name TEXT UNIQUE NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+`;
+
+const CREATE_USER_TEAMS_SQL = `
+    CREATE TABLE IF NOT EXISTS user_teams (
+        id TEXT PRIMARY KEY,
+        user_name TEXT NOT NULL,
+        team_id TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (team_id) REFERENCES teams_master(id) ON DELETE CASCADE,
+        UNIQUE(user_name, team_id)
+    )
+`;
 
 // GET: Lista usuários e suas equipes
 export async function GET(request: Request) {
@@ -13,25 +33,9 @@ export async function GET(request: Request) {
             const db = getDbConnection();
 
             // Cria tabelas se não existirem
-            await db.execute(`
-                CREATE TABLE IF NOT EXISTS teams_master (
-                    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                    name TEXT UNIQUE NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            `);
+            await db.execute(CREATE_TEAMS_MASTER_SQL);
 
-            await db.execute(`
-                CREATE TABLE IF NOT EXISTS user_teams (
-                    id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                    user_name TEXT NOT NULL,
-                    team_id TEXT NOT NULL,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (team_id) REFERENCES teams_master(id) ON DELETE CASCADE,
-                    UNIQUE(user_name, team_id)
-                )
-            `);
+            await db.execute(CREATE_USER_TEAMS_SQL);
 
             // Busca todos os usuários únicos de agendamentos
             const users = await db.query(`
@@ -95,16 +99,7 @@ export async function POST(request: Request) {
         const db = getDbConnection();
 
         // Cria tabela se não existir
-        await db.execute(`
-            CREATE TABLE IF NOT EXISTS user_teams (
-                id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
-                user_name TEXT NOT NULL,
-                team_id TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (team_id) REFERENCES teams_master(id) ON DELETE CASCADE,
-                UNIQUE(user_name, team_id)
-            )
-        `);
+        await db.execute(CREATE_USER_TEAMS_SQL);
 
         if (action === 'remove') {
             // Remove usuário da equipe
@@ -115,9 +110,9 @@ export async function POST(request: Request) {
         } else {
             // Adiciona usuário à equipe (se não existir)
             await db.execute(`
-                INSERT OR IGNORE INTO user_teams (user_name, team_id)
-                VALUES (?, ?)
-            `, [user_name, team_id]);
+                INSERT OR IGNORE INTO user_teams (id, user_name, team_id)
+                VALUES (?, ?, ?)
+            `, [randomUUID(), user_name, team_id]);
         }
 
         invalidateCache('admin:');
