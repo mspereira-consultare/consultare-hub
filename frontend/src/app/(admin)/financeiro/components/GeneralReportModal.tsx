@@ -56,13 +56,6 @@ const MONTH_NAMES = [
   'Dezembro',
 ];
 
-const monthDefault = () => {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  return `${year}-${month}`;
-};
-
 const toMoney = (value: number) =>
   Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
 
@@ -75,7 +68,6 @@ const parseFilenameFromDisposition = (disposition: string | null, fallback: stri
 };
 
 export const GeneralReportModal = ({ open, onClose }: Props) => {
-  const [monthRef, setMonthRef] = useState<string>(monthDefault());
   const [unit, setUnit] = useState<UnitKey>('all');
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState<'pdf' | 'xlsx' | null>(null);
@@ -88,7 +80,6 @@ export const GeneralReportModal = ({ open, onClose }: Props) => {
     setError('');
     try {
       const params = new URLSearchParams({
-        monthRef,
         unit,
         format: 'json',
       });
@@ -110,7 +101,6 @@ export const GeneralReportModal = ({ open, onClose }: Props) => {
     setError('');
     try {
       const params = new URLSearchParams({
-        monthRef,
         unit,
         format,
       });
@@ -126,9 +116,10 @@ export const GeneralReportModal = ({ open, onClose }: Props) => {
         throw new Error(message);
       }
       const blob = await res.blob();
+      const reference = data?.referenceMonthRef || 'referencia-auto';
       const fileName = parseFilenameFromDisposition(
         res.headers.get('content-disposition'),
-        `faturamento-geral-${monthRef}-${unit}.${format}`
+        `faturamento-geral-${reference}-${unit}.${format}`
       );
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -149,7 +140,7 @@ export const GeneralReportModal = ({ open, onClose }: Props) => {
     if (!open) return;
     fetchReport();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, monthRef, unit]);
+  }, [open, unit]);
 
   const generatedLabel = useMemo(() => {
     if (!data?.generatedAt) return '-';
@@ -178,17 +169,7 @@ export const GeneralReportModal = ({ open, onClose }: Props) => {
         </div>
 
         <div className="px-5 py-4 border-b border-slate-100 bg-slate-50">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <label className="text-sm text-slate-700">
-              <span className="block text-xs uppercase tracking-wide font-semibold text-slate-500 mb-1">Mes de referencia</span>
-              <input
-                type="month"
-                value={monthRef}
-                onChange={(e) => setMonthRef(e.target.value)}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm"
-              />
-            </label>
-
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <label className="text-sm text-slate-700">
               <span className="block text-xs uppercase tracking-wide font-semibold text-slate-500 mb-1">Unidade</span>
               <select

@@ -91,10 +91,20 @@ const ALL_UNITS: SectionDef[] = [
   { key: 'resolve_saude', label: 'ResolveSaude' },
 ];
 
-const MYSQL_DATE_EXPR =
-  "(CASE WHEN INSTR(data_do_pagamento, '/') > 0 THEN STR_TO_DATE(data_do_pagamento, '%d/%m/%Y') ELSE DATE(data_do_pagamento) END)";
-const SQLITE_DATE_EXPR =
-  "(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)";
+const MYSQL_DATE_EXPR = `
+  (CASE
+    WHEN data_do_pagamento IS NULL OR TRIM(data_do_pagamento) = '' THEN NULL
+    WHEN INSTR(data_do_pagamento, '/') > 0 THEN STR_TO_DATE(data_do_pagamento, '%d/%m/%Y')
+    ELSE STR_TO_DATE(SUBSTR(data_do_pagamento, 1, 10), '%Y-%m-%d')
+  END)
+`;
+const SQLITE_DATE_EXPR = `
+  (CASE
+    WHEN data_do_pagamento IS NULL OR trim(data_do_pagamento) = '' THEN NULL
+    WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2)
+    ELSE substr(data_do_pagamento, 1, 10)
+  END)
+`;
 
 const normalizeText = (value: string) =>
   String(value || '')
@@ -135,27 +145,34 @@ const getNowMonthRef = () => {
   return `${byType.get('year')}-${byType.get('month')}`;
 };
 
-const parseMonthRef = (raw: string | null) => {
-  const fallback = getNowMonthRef();
-  const value = String(raw || fallback).trim();
+const parseOptionalMonthRef = (raw: string | null) => {
+  const value = String(raw || '').trim();
+  if (!value) return null;
   const match = value.match(/^(\d{4})-(\d{2})$/);
-  if (!match) {
-    const [yearS, monthS] = fallback.split('-');
-    return { monthRef: fallback, year: Number(yearS), month: Number(monthS) };
-  }
+  if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
-  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) {
-    const [yearS, monthS] = fallback.split('-');
-    return { monthRef: fallback, year: Number(yearS), month: Number(monthS) };
-  }
-  return { monthRef: `${year}-${String(month).padStart(2, '0')}`, year, month };
+  if (!Number.isFinite(year) || !Number.isFinite(month) || month < 1 || month > 12) return null;
+  return { year, month };
 };
 
 const parseUnitFilter = (raw: string | null): UnitKey => {
   const key = String(raw || 'all').trim();
   if (ALL_UNITS.some((u) => u.key === key)) return key as UnitKey;
   return 'all';
+};
+
+const detectReferencePeriod = (yearMap: Map<number, number[]>) => {
+  const yearsDesc = Array.from(yearMap.keys()).sort((a, b) => b - a);
+  for (const year of yearsDesc) {
+    const months = yearMap.get(year) || [];
+    for (let month = 12; month >= 1; month -= 1) {
+      if (Number(months[month - 1] || 0) > 0) return { year, month };
+    }
+  }
+  const fallback = getNowMonthRef();
+  const [yearS, monthS] = fallback.split('-');
+  return { year: Number(yearS), month: Number(monthS) };
 };
 
 const mapUnitKey = (unitRaw: string): Exclude<UnitKey, 'all'> | null => {
@@ -207,8 +224,8 @@ const loadMonthlyAgg = async () => {
         UPPER(TRIM(COALESCE(unidade, ''))) as unidade,
         SUM(COALESCE(total_pago, 0)) as total
       FROM faturamento_analitico
-      WHERE ${dateExpr} IS NOT NULL
-        AND ${dateExpr} != ''
+      WHERE COALESCE(TRIM(data_do_pagamento), '') <> ''
+        AND ${dateExpr} IS NOT NULL
       GROUP BY y, m, unidade
       HAVING y >= 2000 AND m >= 1 AND m <= 12
       ORDER BY y ASC, m ASC
@@ -285,7 +302,11 @@ const buildSectionReport = (
   };
 };
 
-const buildReportPayload = (rows: MonthlyAggRow[], unitFilter: UnitKey, referenceYear: number, referenceMonth: number): ReportPayload => {
+const buildReportPayload = (
+  rows: MonthlyAggRow[],
+  unitFilter: UnitKey,
+  monthOverride: { year: number; month: number } | null
+): ReportPayload => {
   const sectionMaps = new Map<UnitKey, Map<number, number[]>>();
   for (const def of ALL_UNITS) sectionMaps.set(def.key, new Map<number, number[]>());
 
@@ -297,6 +318,12 @@ const buildReportPayload = (rows: MonthlyAggRow[], unitFilter: UnitKey, referenc
       pushToYearMap(sectionMaps.get(mapped)!, row.year, row.month, row.total);
     }
   }
+
+  const referenceSourceKey: UnitKey = unitFilter === 'all' ? 'all' : unitFilter;
+  const referenceSourceMap = sectionMaps.get(referenceSourceKey) || new Map<number, number[]>();
+  const detectedReference = detectReferencePeriod(referenceSourceMap);
+  const referenceYear = monthOverride?.year || detectedReference.year;
+  const referenceMonth = monthOverride?.month || detectedReference.month;
 
   const defs = unitFilter === 'all' ? ALL_UNITS : ALL_UNITS.filter((d) => d.key === unitFilter);
   const sections = defs.map((def) =>
@@ -564,9 +591,9 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const format = String(searchParams.get('format') || 'json').toLowerCase();
     const unitFilter = parseUnitFilter(searchParams.get('unit'));
-    const { monthRef, year, month } = parseMonthRef(searchParams.get('monthRef'));
+    const monthOverride = parseOptionalMonthRef(searchParams.get('monthRef'));
     const rawRows = await loadMonthlyAgg();
-    const payload = buildReportPayload(rawRows, unitFilter, year, month);
+    const payload = buildReportPayload(rawRows, unitFilter, monthOverride);
 
     if (format === 'xlsx') {
       const bytes = await buildExcel(payload);
@@ -574,7 +601,7 @@ export async function GET(request: Request) {
         status: 200,
         headers: {
           'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          'Content-Disposition': `attachment; filename=\"faturamento-geral-${monthRef}-${unitFilter}.xlsx\"`,
+          'Content-Disposition': `attachment; filename=\"faturamento-geral-${payload.referenceMonthRef}-${unitFilter}.xlsx\"`,
           'Cache-Control': 'no-store',
         },
       });
@@ -586,7 +613,7 @@ export async function GET(request: Request) {
         status: 200,
         headers: {
           'Content-Type': 'application/pdf',
-          'Content-Disposition': `attachment; filename=\"faturamento-geral-${monthRef}-${unitFilter}.pdf\"`,
+          'Content-Disposition': `attachment; filename=\"faturamento-geral-${payload.referenceMonthRef}-${unitFilter}.pdf\"`,
           'Cache-Control': 'no-store',
         },
       });
