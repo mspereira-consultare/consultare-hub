@@ -116,7 +116,6 @@ export async function GET(request: Request) {
         ${proposerWhere}
         GROUP BY professional_name
         ORDER BY valor DESC
-        LIMIT 20
     `, proposerParams);
 
     // 4. HEARTBEAT

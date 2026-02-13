@@ -129,8 +129,8 @@ export default function ProposalsPage() {
     }, [dateRange, selectedUnit]);
 
     // Filtros visuais
-    const filteredSellers = sellerData.filter(s => 
-        s.professional_name.toLowerCase().includes(searchTerm.toLowerCase())
+    const filteredSellers = sellerData.filter((s) =>
+        String(s.professional_name || 'Sistema').toLowerCase().includes(searchTerm.toLowerCase())
     );
 
     // Função auxiliar para formatar data UTC do banco para Local

@@ -52,3 +52,5 @@ next-env.d.ts
 /node_modules
 /frontend/.next
 /consultare-color-palette.pdf
+/faturamento-geral-janeiro-2026.pdf
+/sql
