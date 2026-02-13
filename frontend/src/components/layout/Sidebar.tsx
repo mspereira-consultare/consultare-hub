@@ -20,6 +20,7 @@ import {
   CreditCard,
   MessageCircle,
   ClipboardList,
+  CircleHelp,
 } from "lucide-react";
 import { hasPermission, type PageKey } from "@/lib/permissions";
 
@@ -46,6 +47,7 @@ const menuItems: MenuItem[] = [
   { href: "/propostas", label: "Gestao de Propostas", icon: Briefcase, group: "FINANCEIRO", roles: ["ADMIN", "GESTOR"], pageKey: "propostas" },
   { href: "/metas/dashboard", label: "Painel de Metas", icon: Target, group: "INTELIGENCIA", roles: ["ADMIN", "GESTOR", "OPERADOR"], pageKey: "metas_dashboard" },
   { href: "/metas", label: "Gestao de Metas", icon: Settings2, group: "INTELIGENCIA", roles: ["ADMIN", "GESTOR"], pageKey: "metas" },
+  { href: "/ajuda", label: "Ajuda", icon: CircleHelp, group: "SISTEMA", roles: ["ADMIN", "GESTOR", "OPERADOR"], pageKey: "ajuda" },
   { href: "/users", label: "Gestao de Usuarios", icon: Users, group: "SISTEMA", roles: ["ADMIN"], pageKey: "users" },
   { href: "/settings", label: "Configuracoes", icon: Settings, group: "SISTEMA", roles: ["ADMIN"], pageKey: "settings" },
 ];

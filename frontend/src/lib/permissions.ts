@@ -12,6 +12,7 @@ export type PageKey =
   | 'produtividade'
   | 'checklist_crc'
   | 'checklist_recepcao'
+  | 'ajuda'
   | 'users'
   | 'settings';
 
@@ -34,6 +35,7 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'produtividade', label: 'Produtividade', path: '/produtividade' },
   { key: 'checklist_crc', label: 'Checklist CRC', path: '/checklist-crc' },
   { key: 'checklist_recepcao', label: 'Checklist Recepcao', path: '/checklist-recepcao' },
+  { key: 'ajuda', label: 'Ajuda', path: '/ajuda' },
   { key: 'users', label: 'Usuarios', path: '/users' },
   { key: 'settings', label: 'Configuracoes', path: '/settings' },
 ];
@@ -68,13 +70,13 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'metas_dashboard', 'metas', 'produtividade', 'checklist_crc', 'checklist_recepcao'], { view: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'metas_dashboard', 'metas', 'produtividade', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
     setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'checklist_crc', 'checklist_recepcao'], { edit: true });
     setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'produtividade', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
     return matrix;
   }
 
-  setMany(matrix, ['dashboard', 'monitor', 'metas_dashboard', 'produtividade', 'checklist_crc', 'checklist_recepcao'], { view: true });
+  setMany(matrix, ['dashboard', 'monitor', 'metas_dashboard', 'produtividade', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
   setMany(matrix, ['checklist_crc', 'checklist_recepcao'], { edit: true });
   setMany(matrix, ['monitor', 'produtividade', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
   return matrix;
@@ -133,6 +135,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/metas') return 'metas';
   if (path === '/checklist-crc') return 'checklist_crc';
   if (path === '/checklist-recepcao') return 'checklist_recepcao';
+  if (path === '/ajuda') return 'ajuda';
   if (path === '/users') return 'users';
   if (path === '/settings') return 'settings';
 
@@ -151,4 +154,3 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
 
   return null;
 };
-
