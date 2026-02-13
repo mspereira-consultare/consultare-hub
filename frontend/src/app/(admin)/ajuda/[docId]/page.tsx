@@ -9,15 +9,27 @@ import MarkdownRenderer from '../components/MarkdownRenderer';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export default async function AjudaDocPage({ params }: { params: { docId: string } }) {
+type PageProps =
+  | { params: { docId: string } }
+  | { params: Promise<{ docId: string }> };
+
+export default async function AjudaDocPage(props: PageProps) {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect('/login');
 
   const role = String((session.user as any)?.role || 'OPERADOR');
   const isAdmin = role === 'ADMIN';
 
-  // ✅ Segurança real: se não-admin tentar acessar doc técnico direto, volta 404
-  const doc = await loadHelpDocById(params.docId, isAdmin);
+  // ✅ compatível com Next 14 (object) e Next 15 (Promise)
+  const resolvedParams = await Promise.resolve((props as any).params);
+  const raw = resolvedParams?.docId ?? resolvedParams?.docid ?? resolvedParams?.slug;
+  const docId = Array.isArray(raw) ? raw[0] : String(raw || '').trim();
+
+  if (!docId) notFound();
+
+  const doc = await loadHelpDocById(decodeURIComponent(docId), isAdmin);
+
+  // ✅ se docId não existe na whitelist OU é técnico e usuário não é admin
   if (!doc) notFound();
 
   const linkMap = buildHelpDocLinkMap(getHelpDocsConfig(isAdmin));
