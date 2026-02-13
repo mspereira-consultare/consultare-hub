@@ -13,6 +13,7 @@ type SortKey =
     | 'qtd_executado'
     | 'valor'
     | 'valor_executado'
+    | 'conversion_rate'
     | 'ticket_medio'
     | 'ticket_exec';
 
@@ -147,6 +148,11 @@ export default function ProposalsPage() {
     );
     const getSortValue = (seller: any, key: SortKey) => {
         if (key === 'professional_name') return String(seller.professional_name || 'Sistema').toLowerCase();
+        if (key === 'conversion_rate') {
+            const total = Number(seller.valor || 0);
+            const executed = Number(seller.valor_executado || 0);
+            return total > 0 ? (executed / total) * 100 : 0;
+        }
         if (key === 'ticket_medio') return Number(seller.valor || 0) / Math.max(Number(seller.qtd || 0), 1);
         if (key === 'ticket_exec') return Number(seller.valor_executado || 0) / Math.max(Number(seller.qtd_executado || 0), 1);
         return Number(seller[key] || 0);
@@ -438,6 +444,11 @@ export default function ProposalsPage() {
                                                 </button>
                                             </th>
                                             <th className="px-4 py-3 text-center">
+                                                <button onClick={() => toggleSort('conversion_rate')} className="inline-flex items-center gap-1 hover:text-slate-700">
+                                                    Taxa Conversao <span>{sortIndicator('conversion_rate')}</span>
+                                                </button>
+                                            </th>
+                                            <th className="px-4 py-3 text-center">
                                                 <button onClick={() => toggleSort('ticket_medio')} className="inline-flex items-center gap-1 hover:text-slate-700">
                                                     Ticket Medio <span>{sortIndicator('ticket_medio')}</span>
                                                 </button>
@@ -461,16 +472,14 @@ export default function ProposalsPage() {
                                                     {(seller.valor || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                                                 </td>
                                                 <td className="px-4 py-3 text-right font-bold">
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <span className="text-emerald-600">
-                                                            {(seller.valor_executado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
-                                                        </span>
-                                                        {seller.valor > 0 && (
-                                                            <span className="text-[10px] text-slate-500">
-                                                                {(Number((seller.valor_executado || 0) / (seller.valor || 1) * 100) || 0).toFixed(0)}%
-                                                            </span>
-                                                        )}
-                                                    </div>
+                                                    <span className="text-emerald-600">
+                                                        {(seller.valor_executado || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                                                    </span>
+                                                </td>
+                                                <td className="px-4 py-3 text-center text-slate-600 text-xs font-semibold">
+                                                    {seller.valor > 0
+                                                        ? `${(((seller.valor_executado || 0) / seller.valor) * 100).toFixed(1)}%`
+                                                        : '0,0%'}
                                                 </td>
                                                 <td className="px-4 py-3 text-center text-slate-400 text-xs">
                                                     {(seller.valor / (seller.qtd || 1)).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
