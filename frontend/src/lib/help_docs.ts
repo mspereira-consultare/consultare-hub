@@ -81,11 +81,25 @@ const HELP_DOCS: HelpDocConfig[] = [
   },
 ];
 
-const DOCS_DIR_CANDIDATES = [
-  path.resolve(process.cwd(), 'docs'),
-  path.resolve(process.cwd(), '..', 'docs'),
-  path.resolve(process.cwd(), '..', '..', 'docs'),
-];
+const DOCS_DIR_CANDIDATES = Array.from(
+  new Set(
+    [
+      process.env.CONSULTARE_DOCS_DIR
+        ? path.resolve(process.cwd(), process.env.CONSULTARE_DOCS_DIR)
+        : null,
+
+      // cenários comuns
+      path.resolve(process.cwd(), 'docs'),
+      path.resolve(process.cwd(), 'frontend', 'docs'),
+
+      // fallback (quando cwd muda)
+      path.resolve(process.cwd(), '..', 'docs'),
+      path.resolve(process.cwd(), '..', 'frontend', 'docs'),
+      path.resolve(process.cwd(), '..', '..', 'docs'),
+      path.resolve(process.cwd(), '..', '..', 'frontend', 'docs'),
+    ].filter(Boolean) as string[]
+  )
+);
 
 const formatDateTime = (date: Date) =>
   new Intl.DateTimeFormat('pt-BR', {
@@ -100,9 +114,14 @@ const resolveDocsDir = async (): Promise<string | null> => {
       const stat = await fs.stat(candidate);
       if (stat.isDirectory()) return candidate;
     } catch {
-      // ignore and try next candidate
+      // ignore
     }
   }
+
+  // Ajuda a debugar pelo log do Railway sem expor para o usuário
+  console.warn('[help_docs] docs dir not found. cwd=', process.cwd());
+  console.warn('[help_docs] candidates=', DOCS_DIR_CANDIDATES);
+
   return null;
 };
 
