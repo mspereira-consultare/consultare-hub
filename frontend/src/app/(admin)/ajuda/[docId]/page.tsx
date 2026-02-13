@@ -36,7 +36,7 @@ export default async function AjudaDocPage(props: PageProps) {
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="px-6 py-6">
+      <div className="px-6 py-6 text-slate-900">
         <MarkdownRenderer content={doc.content} linkMap={linkMap} />
       </div>
     </div>

@@ -109,7 +109,6 @@ export default function MarkdownRenderer({ content, linkMap }: Props) {
       );
     },
 
-    // ✅ Aqui está o ponto do erro: agora o TS reconhece `inline`
     code({ inline, className, children, ...props }: any) {
       const raw = String(children ?? '');
 
@@ -118,7 +117,9 @@ export default function MarkdownRenderer({ content, linkMap }: Props) {
           <code
             {...props}
             className={cn(
-              'rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[0.85em] text-slate-900',
+              // ✅ força contraste e evita heranças ruins
+              'rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-mono text-[0.85em] text-slate-900',
+              'whitespace-nowrap',
               className
             )}
           >
@@ -128,7 +129,13 @@ export default function MarkdownRenderer({ content, linkMap }: Props) {
       }
 
       return (
-        <code {...props} className={cn('block whitespace-pre overflow-x-auto font-mono text-sm text-slate-100', className)}>
+        <code
+          {...props}
+          className={cn(
+            'block whitespace-pre overflow-x-auto font-mono text-sm text-slate-100',
+            className
+          )}
+        >
           {raw.replace(/\n$/, '')}
         </code>
       );
@@ -157,12 +164,24 @@ export default function MarkdownRenderer({ content, linkMap }: Props) {
     },
     th({ className, ...props }) {
       return (
-        <th {...props} className={cn('border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-900', className)} />
+        <th
+          {...props}
+          className={cn(
+            'border-b border-slate-200 px-3 py-2 text-left font-semibold text-slate-900',
+            className
+          )}
+        />
       );
     },
     td({ className, ...props }) {
       return (
-        <td {...props} className={cn('border-b border-slate-200 px-3 py-2 align-top text-slate-700', className)} />
+        <td
+          {...props}
+          className={cn(
+            'border-b border-slate-200 px-3 py-2 align-top text-slate-800',
+            className
+          )}
+        />
       );
     },
   };
