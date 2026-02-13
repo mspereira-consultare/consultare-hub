@@ -95,15 +95,15 @@ export default function MarkdownRenderer({ content, linkMap }: Props) {
         </a>
       );
     },
-    code({ inline, className, children, ...props }) {
+    code(props) {
+      const { inline, className, children, ...rest } = props as any;
       const raw = String(children ?? '');
 
       if (inline) {
         return (
           <code
-            {...props}
+            {...rest}
             className={cn(
-              // ✅ força contraste no inline code
               '!text-slate-950 rounded-md border border-slate-200 !bg-slate-50 px-1.5 py-0.5 font-mono text-[0.85em]',
               className
             )}
@@ -114,7 +114,10 @@ export default function MarkdownRenderer({ content, linkMap }: Props) {
       }
 
       return (
-        <code {...props} className={cn('block whitespace-pre overflow-x-auto font-mono text-sm !text-slate-100', className)}>
+        <code
+          {...rest}
+          className={cn('block whitespace-pre overflow-x-auto font-mono text-sm !text-slate-100', className)}
+        >
           {raw.replace(/\n$/, '')}
         </code>
       );
@@ -123,7 +126,7 @@ export default function MarkdownRenderer({ content, linkMap }: Props) {
       return (
         <pre
           {...props}
-          className={cn('mt-4 overflow-x-auto rounded-lg !bg-slate-950 p-4 !text-slate-100 shadow-inner', className)}
+          className={cn('mt-4 overflow-x-auto rounded-lg !bg-slate-950 p-4 shadow-inner', className)}
         >
           {children}
         </pre>
@@ -167,7 +170,7 @@ export default function MarkdownRenderer({ content, linkMap }: Props) {
         '[&_a]:!text-consultare-navy [&_a]:underline [&_a:hover]:!text-consultare-teal',
 
         // Inline code (inclui `YYYY-MM-DD`, `America/Sao_Paulo`, `system_status`, etc.)
-        '[&_code]:!text-slate-950 [&_code]:border [&_code]:border-slate-200 [&_code]:rounded-md [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:!bg-slate-50',
+        '[&_:not(pre)>code]:!text-slate-950 [&_:not(pre)>code]:border [&_:not(pre)>code]:border-slate-200 [&_:not(pre)>code]:rounded-md [&_:not(pre)>code]:px-1.5 [&_:not(pre)>code]:py-0.5 [&_:not(pre)>code]:!bg-slate-50',
 
         // Code dentro de PRE (não pode herdar bg/borda do inline)
         '[&_pre]:!bg-slate-950 [&_pre]:!text-slate-100 [&_pre_code]:!bg-transparent [&_pre_code]:border-0 [&_pre_code]:p-0 [&_pre_code]:!text-slate-100'
