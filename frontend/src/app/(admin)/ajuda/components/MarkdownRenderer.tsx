@@ -110,7 +110,7 @@ export default function MarkdownRenderer({ content, linkMap }: Props) {
     },
 
     // ✅ Aqui está o ponto do erro: agora o TS reconhece `inline`
-    code({ inline, className, children, ...props }) {
+    code({ inline, className, children, ...props }: any) {
       const raw = String(children ?? '');
 
       if (inline) {
