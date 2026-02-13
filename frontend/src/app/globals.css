@@ -58,3 +58,11 @@
     color: hsl(var(--foreground));
   }
 }
+
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE/Edge Legacy */
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
