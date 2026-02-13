@@ -52,6 +52,12 @@ type MonthlyAggRow = {
   total: number;
 };
 
+type AccumulatedAggRow = {
+  year: number;
+  unitRaw: string;
+  total: number;
+};
+
 type YearRow = {
   year: number;
   months: number[];
@@ -78,6 +84,8 @@ type ReportPayload = {
   referenceYear: number;
   referenceMonth: number;
   referenceMonthLabel: string;
+  accumulationCutoffBr: string;
+  accumulationRuleLabel: string;
   unitFilter: UnitKey;
   availableUnits: SectionDef[];
   sections: SectionReport[];
@@ -143,6 +151,29 @@ const getNowMonthRef = () => {
   }).formatToParts(new Date());
   const byType = new Map(parts.map((p) => [p.type, p.value]));
   return `${byType.get('year')}-${byType.get('month')}`;
+};
+
+const getYesterdayCutoffBr = () => {
+  const now = new Date();
+  const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(yesterday);
+  const byType = new Map(parts.map((p) => [p.type, p.value]));
+  const year = Number(byType.get('year') || '1970');
+  const month = Number(byType.get('month') || '1');
+  const day = Number(byType.get('day') || '1');
+  const dayBr = String(day).padStart(2, '0');
+  const monthBr = String(month).padStart(2, '0');
+  return {
+    year,
+    month,
+    day,
+    dayMonthBr: `${dayBr}/${monthBr}`,
+  };
 };
 
 const parseOptionalMonthRef = (raw: string | null) => {
@@ -240,6 +271,41 @@ const loadMonthlyAgg = async () => {
   })) as MonthlyAggRow[];
 };
 
+const loadAccumulatedAgg = async (cutoffMonth: number, cutoffDay: number) => {
+  const db = getDbConnection();
+  const isMySql =
+    String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' ||
+    Boolean(process.env.MYSQL_URL) ||
+    Boolean(process.env.MYSQL_PUBLIC_URL);
+  const dateExpr = isMySql ? MYSQL_DATE_EXPR : SQLITE_DATE_EXPR;
+  const yearExpr = isMySql ? `YEAR(${dateExpr})` : `CAST(substr(${dateExpr}, 1, 4) AS INTEGER)`;
+  const monthExpr = isMySql ? `MONTH(${dateExpr})` : `CAST(substr(${dateExpr}, 6, 2) AS INTEGER)`;
+  const dayExpr = isMySql ? `DAY(${dateExpr})` : `CAST(substr(${dateExpr}, 9, 2) AS INTEGER)`;
+
+  const rows = await db.query(
+    `
+      SELECT
+        ${yearExpr} as y,
+        UPPER(TRIM(COALESCE(unidade, ''))) as unidade,
+        SUM(COALESCE(total_pago, 0)) as total
+      FROM faturamento_analitico
+      WHERE COALESCE(TRIM(data_do_pagamento), '') <> ''
+        AND ${dateExpr} IS NOT NULL
+        AND ( ${monthExpr} < ? OR (${monthExpr} = ? AND ${dayExpr} <= ?) )
+      GROUP BY y, unidade
+      HAVING y >= 2000
+      ORDER BY y ASC
+    `,
+    [cutoffMonth, cutoffMonth, cutoffDay]
+  );
+
+  return (rows || []).map((row: any) => ({
+    year: Number(row.y),
+    unitRaw: String(row.unidade || ''),
+    total: Number(row.total || 0),
+  })) as AccumulatedAggRow[];
+};
+
 const pushToYearMap = (yearMap: Map<number, number[]>, year: number, month: number, value: number) => {
   if (!yearMap.has(year)) yearMap.set(year, Array.from({ length: 12 }, () => 0));
   const bucket = yearMap.get(year)!;
@@ -249,6 +315,7 @@ const pushToYearMap = (yearMap: Map<number, number[]>, year: number, month: numb
 const buildSectionReport = (
   def: SectionDef,
   yearMap: Map<number, number[]>,
+  accumulatedMap: Map<number, number>,
   referenceYear: number,
   referenceMonth: number
 ): SectionReport => {
@@ -282,12 +349,15 @@ const buildSectionReport = (
     referenceYearApplied = referenceRow ? referenceRow.year : null;
   }
 
-  const referenceAccumulated = referenceRow?.accumulatedRef || 0;
-  const previousRows = rows.filter((row) => row.year < (referenceYearApplied || 0));
+  const referenceAccumulated = Number(accumulatedMap.get(referenceYearApplied || 0) || 0);
+  const previousYears = rows
+    .map((row) => row.year)
+    .filter((year) => year < (referenceYearApplied || 0));
   const bestHistoricalAccumulated =
-    previousRows.length > 0 ? Math.max(...previousRows.map((row) => row.accumulatedRef)) : 0;
-  const previousYearAccumulated =
-    rows.find((row) => row.year === (referenceYearApplied || 0) - 1)?.accumulatedRef || 0;
+    previousYears.length > 0
+      ? Math.max(...previousYears.map((year) => Number(accumulatedMap.get(year) || 0)))
+      : 0;
+  const previousYearAccumulated = Number(accumulatedMap.get((referenceYearApplied || 0) - 1) || 0);
 
   return {
     key: def.key,
@@ -303,19 +373,36 @@ const buildSectionReport = (
 };
 
 const buildReportPayload = (
-  rows: MonthlyAggRow[],
+  monthlyRows: MonthlyAggRow[],
+  accumulatedRows: AccumulatedAggRow[],
   unitFilter: UnitKey,
-  monthOverride: { year: number; month: number } | null
+  monthOverride: { year: number; month: number } | null,
+  cutoffDayMonthBr: string
 ): ReportPayload => {
   const sectionMaps = new Map<UnitKey, Map<number, number[]>>();
-  for (const def of ALL_UNITS) sectionMaps.set(def.key, new Map<number, number[]>());
+  const accumulatedMaps = new Map<UnitKey, Map<number, number>>();
+  for (const def of ALL_UNITS) {
+    sectionMaps.set(def.key, new Map<number, number[]>());
+    accumulatedMaps.set(def.key, new Map<number, number>());
+  }
 
-  for (const row of rows) {
+  for (const row of monthlyRows) {
     if (!Number.isFinite(row.year) || !Number.isFinite(row.month) || row.month < 1 || row.month > 12) continue;
     pushToYearMap(sectionMaps.get('all')!, row.year, row.month, row.total);
     const mapped = mapUnitKey(row.unitRaw);
     if (mapped) {
       pushToYearMap(sectionMaps.get(mapped)!, row.year, row.month, row.total);
+    }
+  }
+
+  for (const row of accumulatedRows) {
+    if (!Number.isFinite(row.year)) continue;
+    const currentAll = Number(accumulatedMaps.get('all')!.get(row.year) || 0);
+    accumulatedMaps.get('all')!.set(row.year, currentAll + Number(row.total || 0));
+    const mapped = mapUnitKey(row.unitRaw);
+    if (mapped) {
+      const current = Number(accumulatedMaps.get(mapped)!.get(row.year) || 0);
+      accumulatedMaps.get(mapped)!.set(row.year, current + Number(row.total || 0));
     }
   }
 
@@ -327,7 +414,13 @@ const buildReportPayload = (
 
   const defs = unitFilter === 'all' ? ALL_UNITS : ALL_UNITS.filter((d) => d.key === unitFilter);
   const sections = defs.map((def) =>
-    buildSectionReport(def, sectionMaps.get(def.key) || new Map<number, number[]>(), referenceYear, referenceMonth)
+    buildSectionReport(
+      def,
+      sectionMaps.get(def.key) || new Map<number, number[]>(),
+      accumulatedMaps.get(def.key) || new Map<number, number>(),
+      referenceYear,
+      referenceMonth
+    )
   );
 
   return {
@@ -336,6 +429,8 @@ const buildReportPayload = (
     referenceYear,
     referenceMonth,
     referenceMonthLabel: MONTH_NAMES[referenceMonth - 1] || '-',
+    accumulationCutoffBr: cutoffDayMonthBr,
+    accumulationRuleLabel: `acumulado de 01/01 ate ${cutoffDayMonthBr} de cada ano`,
     unitFilter,
     availableUnits: ALL_UNITS,
     sections,
@@ -348,7 +443,7 @@ const buildExcel = async (payload: ReportPayload) => {
   workbook.created = new Date();
   const sheet = workbook.addWorksheet('Faturamento Geral');
   const refLabel = `${MONTH_NAMES[payload.referenceMonth - 1]}/${payload.referenceYear}`;
-  const accumLabel = `acumulado de Janeiro ate ${refLabel}`;
+  const accumLabel = payload.accumulationRuleLabel;
 
   const monthColumns = MONTH_SHORT.map((m) => ({ header: m, key: m, width: 16 }));
   sheet.columns = [{ header: 'Ano', key: 'ano', width: 10 }, ...monthColumns, { header: 'Total', key: 'total', width: 18 }];
@@ -370,7 +465,7 @@ const buildExcel = async (payload: ReportPayload) => {
 
   sheet.mergeCells(3, 1, 3, 14);
   const note = sheet.getCell(3, 1);
-  note.value = `Destaque verde: maior faturamento historico do mes (comparacao entre anos). Crescimento calculado no ${accumLabel}.`;
+  note.value = `Destaque verde: maior faturamento historico do mes (comparacao entre anos). Crescimento calculado no ${accumLabel} (ate ontem).`;
   note.font = { size: 10, color: { argb: `FF${COLORS.darkGreen.replace('#', '')}` } };
   note.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: `FF${COLORS.lightGreenBg.replace('#', '')}` } };
   note.alignment = { vertical: 'middle', horizontal: 'left' };
@@ -541,20 +636,21 @@ const buildPdf = async (payload: ReportPayload) => {
   const tableHeaderHeight = rowHeight;
   const contentBottomLimit = pageHeight - margin;
   const refLabel = `${MONTH_NAMES[payload.referenceMonth - 1]}/${payload.referenceYear}`;
-  const accumLabel = `acumulado de Janeiro ate ${refLabel}`;
+  const accumLabel = payload.accumulationRuleLabel;
   const generatedLabel = formatDateTimeBr(payload.generatedAt);
   const drawPageHeader = (page: PDFPage) => {
+    const headerHeight = 62;
     page.drawRectangle({
       x: margin,
-      y: pageHeight - margin - 42,
+      y: pageHeight - margin - headerHeight,
       width: usableWidth,
-      height: 42,
+      height: headerHeight,
       color: hexToPdfRgb(COLORS.navy),
     });
 
     page.drawText('Faturamento Geral', {
       x: margin + 10,
-      y: pageHeight - 35 - 14,
+      y: pageHeight - margin - 18,
       font: fontBold,
       size: 14,
       color: hexToPdfRgb('#FFFFFF'),
@@ -562,15 +658,15 @@ const buildPdf = async (payload: ReportPayload) => {
 
     page.drawText(`Gerado em: ${generatedLabel} | Referencia: ${refLabel}`, {
       x: margin + 10,
-      y: pageHeight - 49 - 8,
+      y: pageHeight - margin - 30,
       font: fontRegular,
       size: 8,
       color: hexToPdfRgb('#FFFFFF'),
     });
 
-    page.drawText(`Criterio de crescimento: ${accumLabel}.`, {
+    page.drawText(`Criterio de crescimento: ${accumLabel} (ate ontem).`, {
       x: margin + 10,
-      y: pageHeight - 60 - 8,
+      y: pageHeight - margin - 40,
       font: fontRegular,
       size: 8,
       color: hexToPdfRgb('#FFFFFF'),
@@ -578,7 +674,7 @@ const buildPdf = async (payload: ReportPayload) => {
 
     page.drawText('Legenda: celulas verdes = maior faturamento historico daquele mes.', {
       x: margin,
-      y: pageHeight - 76 - 8,
+      y: pageHeight - margin - headerHeight - 12,
       font: fontBold,
       size: 8,
       color: hexToPdfRgb(COLORS.darkGreen),
@@ -667,26 +763,14 @@ const buildPdf = async (payload: ReportPayload) => {
     }
 
     const growthY = cursorY + 6;
-    page.drawText(
-      fitText(`Crescimento vs melhor ano (${accumLabel}): ${toPercent(section.growthVsBest)}`, fontBold, 8, usableWidth),
-      {
-        x: margin + 2,
-        y: pageHeight - growthY - 8,
-        font: fontBold,
-        size: 8,
-        color: hexToPdfRgb(COLORS.darkGreen),
-      }
-    );
-    page.drawText(
-      fitText(`Crescimento vs ano anterior (${accumLabel}): ${toPercent(section.growthVsPreviousYear)}`, fontBold, 8, usableWidth),
-      {
-        x: margin + 2,
-        y: pageHeight - (growthY + 11) - 8,
-        font: fontBold,
-        size: 8,
-        color: hexToPdfRgb(COLORS.teal),
-      }
-    );
+    const growthLine = `Crescimento vs melhor ano (${accumLabel}): ${toPercent(section.growthVsBest)}  |  Crescimento vs ano anterior (${accumLabel}): ${toPercent(section.growthVsPreviousYear)}`;
+    page.drawText(fitText(growthLine, fontBold, 8, usableWidth), {
+      x: margin + 2,
+      y: pageHeight - growthY - 8,
+      font: fontBold,
+      size: 8,
+      color: hexToPdfRgb(COLORS.darkGreen),
+    });
     cursorY += growthCompactHeight + sectionSpacing;
   }
 
@@ -705,8 +789,10 @@ export async function GET(request: Request) {
     const format = String(searchParams.get('format') || 'json').toLowerCase();
     const unitFilter = parseUnitFilter(searchParams.get('unit'));
     const monthOverride = parseOptionalMonthRef(searchParams.get('monthRef'));
-    const rawRows = await loadMonthlyAgg();
-    const payload = buildReportPayload(rawRows, unitFilter, monthOverride);
+    const cutoff = getYesterdayCutoffBr();
+    const monthlyRows = await loadMonthlyAgg();
+    const accumulatedRows = await loadAccumulatedAgg(cutoff.month, cutoff.day);
+    const payload = buildReportPayload(monthlyRows, accumulatedRows, unitFilter, monthOverride, cutoff.dayMonthBr);
 
     if (format === 'xlsx') {
       const bytes = await buildExcel(payload);

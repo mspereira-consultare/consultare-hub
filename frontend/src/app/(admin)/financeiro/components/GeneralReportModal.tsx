@@ -31,6 +31,8 @@ type ReportPayload = {
   referenceYear: number;
   referenceMonth: number;
   referenceMonthLabel: string;
+  accumulationCutoffBr: string;
+  accumulationRuleLabel: string;
   unitFilter: UnitKey;
   availableUnits: Array<{ key: UnitKey; label: string }>;
   sections: SectionReport[];
@@ -275,7 +277,7 @@ export const GeneralReportModal = ({ open, onClose }: Props) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4 bg-slate-50 border-t border-slate-200">
                   <div className="rounded-lg border border-slate-200 bg-white p-3">
                     <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
-                      Crescimento vs melhor ano (acumulado de Janeiro ate {data?.referenceMonthLabel}/{section.referenceYearApplied ?? data?.referenceYear})
+                      Crescimento vs melhor ano ({data?.accumulationRuleLabel || 'acumulado ate ontem'})
                     </p>
                     <p className="text-lg font-bold text-emerald-700">{toPercent(section.growthVsBest)}</p>
                     <p className="text-xs text-slate-500">
@@ -284,7 +286,7 @@ export const GeneralReportModal = ({ open, onClose }: Props) => {
                   </div>
                   <div className="rounded-lg border border-slate-200 bg-white p-3">
                     <p className="text-xs uppercase tracking-wide text-slate-500 font-semibold">
-                      Crescimento vs ano anterior (acumulado de Janeiro ate {data?.referenceMonthLabel}/{section.referenceYearApplied ?? data?.referenceYear})
+                      Crescimento vs ano anterior ({data?.accumulationRuleLabel || 'acumulado ate ontem'})
                     </p>
                     <p className="text-lg font-bold text-teal-700">{toPercent(section.growthVsPreviousYear)}</p>
                     <p className="text-xs text-slate-500">

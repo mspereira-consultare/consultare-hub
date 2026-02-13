@@ -51,3 +51,4 @@ next-env.d.ts
 /frontend/node_modules
 /node_modules
 /frontend/.next
+/consultare-color-palette.pdf
