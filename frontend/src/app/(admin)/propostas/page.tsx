@@ -7,10 +7,23 @@ import {
     RefreshCw, Clock, Loader2
 } from 'lucide-react';
 
+type SortKey =
+    | 'professional_name'
+    | 'qtd'
+    | 'qtd_executado'
+    | 'valor'
+    | 'valor_executado'
+    | 'ticket_medio'
+    | 'ticket_exec';
+
 export default function ProposalsPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedUnit, setSelectedUnit] = useState('all');
+    const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
+        key: 'valor',
+        direction: 'desc'
+    });
     
     // Filtro de Data
     const today = new Date();
@@ -132,6 +145,40 @@ export default function ProposalsPage() {
     const filteredSellers = sellerData.filter((s) =>
         String(s.professional_name || 'Sistema').toLowerCase().includes(searchTerm.toLowerCase())
     );
+    const getSortValue = (seller: any, key: SortKey) => {
+        if (key === 'professional_name') return String(seller.professional_name || 'Sistema').toLowerCase();
+        if (key === 'ticket_medio') return Number(seller.valor || 0) / Math.max(Number(seller.qtd || 0), 1);
+        if (key === 'ticket_exec') return Number(seller.valor_executado || 0) / Math.max(Number(seller.qtd_executado || 0), 1);
+        return Number(seller[key] || 0);
+    };
+
+    const sortedSellers = [...filteredSellers].sort((a, b) => {
+        const aVal = getSortValue(a, sortConfig.key);
+        const bVal = getSortValue(b, sortConfig.key);
+        let comparison = 0;
+
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+            comparison = aVal.localeCompare(bVal, 'pt-BR');
+        } else {
+            comparison = Number(aVal) - Number(bVal);
+        }
+
+        return sortConfig.direction === 'asc' ? comparison : -comparison;
+    });
+
+    const toggleSort = (key: SortKey) => {
+        setSortConfig((prev) => {
+            if (prev.key === key) {
+                return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+            }
+            return { key, direction: key === 'professional_name' ? 'asc' : 'desc' };
+        });
+    };
+
+    const sortIndicator = (key: SortKey) => {
+        if (sortConfig.key !== key) return '<>';
+        return sortConfig.direction === 'asc' ? '^' : 'v';
+    };
 
     // Função auxiliar para formatar data UTC do banco para Local
     const formatLastUpdate = (dateString: string) => {
@@ -294,7 +341,7 @@ export default function ProposalsPage() {
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden group hover:shadow-md transition-all">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-slate-50 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110"></div>
                     <div className="relative">
-                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Ticket Médio</p>
+                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1">Ticket Medio</p>
                         <h3 className="text-2xl font-bold text-slate-800">
                             {avgTicket.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
                         </h3>
@@ -361,24 +408,51 @@ export default function ProposalsPage() {
                                 </div>
                             </div>
                             
-                            <div className="overflow-x-auto">
+                            <div className="overflow-auto max-h-[560px]">
                                 <table className="w-full text-left">
-                                    <thead className="bg-slate-50 text-xs uppercase text-slate-500 font-semibold">
+                                    <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase text-slate-500 font-semibold">
                                         <tr>
-                                            <th className="px-4 py-3">Profissional</th>
-                                            <th className="px-4 py-3 text-right">Qtd</th>
-                                            <th className="px-4 py-3 text-right">Exec. Qtd</th>
-                                            <th className="px-4 py-3 text-right">Total Estimado</th>
-                                            <th className="px-4 py-3 text-right">Total Executado</th>
-                                            <th className="px-4 py-3 text-center">Ticket Médio</th>
-                                            <th className="px-4 py-3 text-center">Ticket Exec.</th>
+                                            <th className="px-4 py-3">
+                                                <button onClick={() => toggleSort('professional_name')} className="inline-flex items-center gap-1 hover:text-slate-700">
+                                                    Profissional <span>{sortIndicator('professional_name')}</span>
+                                                </button>
+                                            </th>
+                                            <th className="px-4 py-3 text-right">
+                                                <button onClick={() => toggleSort('qtd')} className="inline-flex items-center gap-1 hover:text-slate-700">
+                                                    Qtd <span>{sortIndicator('qtd')}</span>
+                                                </button>
+                                            </th>
+                                            <th className="px-4 py-3 text-right">
+                                                <button onClick={() => toggleSort('qtd_executado')} className="inline-flex items-center gap-1 hover:text-slate-700">
+                                                    Exec. Qtd <span>{sortIndicator('qtd_executado')}</span>
+                                                </button>
+                                            </th>
+                                            <th className="px-4 py-3 text-right">
+                                                <button onClick={() => toggleSort('valor')} className="inline-flex items-center gap-1 hover:text-slate-700">
+                                                    Total Estimado <span>{sortIndicator('valor')}</span>
+                                                </button>
+                                            </th>
+                                            <th className="px-4 py-3 text-right">
+                                                <button onClick={() => toggleSort('valor_executado')} className="inline-flex items-center gap-1 hover:text-slate-700">
+                                                    Total Executado <span>{sortIndicator('valor_executado')}</span>
+                                                </button>
+                                            </th>
+                                            <th className="px-4 py-3 text-center">
+                                                <button onClick={() => toggleSort('ticket_medio')} className="inline-flex items-center gap-1 hover:text-slate-700">
+                                                    Ticket Medio <span>{sortIndicator('ticket_medio')}</span>
+                                                </button>
+                                            </th>
+                                            <th className="px-4 py-3 text-center">
+                                                <button onClick={() => toggleSort('ticket_exec')} className="inline-flex items-center gap-1 hover:text-slate-700">
+                                                    Ticket Exec. <span>{sortIndicator('ticket_exec')}</span>
+                                                </button>
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-slate-100 text-sm">
-                                        {filteredSellers.map((seller, idx) => (
+                                        {sortedSellers.map((seller, idx) => (
                                             <tr key={idx} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-4 py-3 font-medium text-slate-700 flex items-center gap-2">
-                                                    {idx < 3 && <span className="text-[10px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">#{idx+1}</span>}
+                                                <td className="px-4 py-3 font-medium text-slate-700">
                                                     {seller.professional_name || 'Sistema'}
                                                 </td>
                                                 <td className="px-4 py-3 text-right text-slate-600">{seller.qtd}</td>
@@ -408,7 +482,7 @@ export default function ProposalsPage() {
                                         ))}
                                     </tbody>
                                 </table>
-                                {filteredSellers.length === 0 && !loading && (
+                                {sortedSellers.length === 0 && !loading && (
                                     <p className="text-center text-slate-400 py-6 text-sm">Nenhum profissional encontrado.</p>
                                 )}
                             </div>
