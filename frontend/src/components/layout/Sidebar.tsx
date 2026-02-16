@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
@@ -22,6 +22,9 @@ import {
   MessageCircle,
   ClipboardList,
   CircleHelp,
+  ChevronDown,
+  ChevronRight,
+  Search,
 } from "lucide-react";
 import { hasPermission, type PageKey } from "@/lib/permissions";
 
@@ -153,24 +156,111 @@ const menuItems: MenuItem[] = [
   },
 ];
 
+const GROUP_ORDER = ["PRINCIPAL", "OPERACOES", "FINANCEIRO", "INTELIGENCIA", "SISTEMA"];
+const STORAGE_KEY = "consultare_sidebar_expanded_groups_v1";
+
 export function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
   const currentUserRole: UserRole =
     ((session?.user as any)?.role as UserRole) ?? "OPERADOR";
 
-  const authorizedItems = menuItems.filter((item) =>
-    hasPermission(
-      (session?.user as any)?.permissions,
-      item.pageKey,
-      "view",
-      currentUserRole
-    )
-  );
+  const authorizedItems = useMemo(() => {
+    return menuItems.filter((item) =>
+      hasPermission(
+        (session?.user as any)?.permissions,
+        item.pageKey,
+        "view",
+        currentUserRole
+      )
+    );
+  }, [session, currentUserRole]);
 
-  const groups = Array.from(new Set(authorizedItems.map((item) => item.group)));
+  const groupsOrdered = useMemo(() => {
+    const set = new Set(authorizedItems.map((item) => item.group));
+    const ordered = GROUP_ORDER.filter((g) => set.has(g));
+    const rest = Array.from(set)
+      .filter((g) => !GROUP_ORDER.includes(g))
+      .sort((a, b) => a.localeCompare(b));
+    return [...ordered, ...rest];
+  }, [authorizedItems]);
+
+  const isItemActive = (item: MenuItem) => {
+    const isExactMatch = pathname === item.href;
+    const isSubRoute = pathname.startsWith(item.href + "/");
+    return item.href === "/metas" ? isExactMatch : isExactMatch || isSubRoute;
+  };
+
+  const activeItem = useMemo(() => {
+    return authorizedItems.find((item) => isItemActive(item));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authorizedItems, pathname]);
+  const activeGroup = activeItem?.group;
+
+  // Carrega preferências de grupos expandidos
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        setExpandedGroups(parsed);
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Persiste preferências
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(expandedGroups));
+    } catch {
+      // ignore
+    }
+  }, [expandedGroups]);
+
+  // Grupo da rota ativa sempre expandido
+  useEffect(() => {
+    if (!activeGroup) return;
+    setExpandedGroups((prev) => (prev[activeGroup] ? prev : { ...prev, [activeGroup]: true }));
+  }, [activeGroup]);
+
+  // Ao recolher a sidebar, limpamos a busca para evitar estado "invisível"
+  useEffect(() => {
+    if (!isOpen) setSearchTerm("");
+  }, [isOpen]);
+
+  const searchResultsByGroup = useMemo(() => {
+    const q = searchTerm.trim().toLowerCase();
+    if (!q) return null;
+
+    const matches = authorizedItems.filter((item) => {
+      const hay = `${item.label} ${item.href} ${item.group}`.toLowerCase();
+      return hay.includes(q);
+    });
+
+    const map = new Map<string, MenuItem[]>();
+    for (const item of matches) {
+      const arr = map.get(item.group) ?? [];
+      arr.push(item);
+      map.set(item.group, arr);
+    }
+    return { matches, map };
+  }, [searchTerm, authorizedItems]);
+
+  const toggleGroup = (group: string) => {
+    // Mantém o grupo ativo sempre aberto
+    if (group === activeGroup) return;
+    setExpandedGroups((prev) => ({ ...prev, [group]: !prev[group] }));
+  };
+
+  const clearSearch = () => setSearchTerm("");
 
   const handleLogout = async () => {
     try {
@@ -211,69 +301,180 @@ export function Sidebar() {
         </button>
       </div>
 
-      {/* ✅ Ajustes necessários:
-          - esconder scrollbar vertical mantendo scroll: scrollbar-hide
-          - evitar barra horizontal quando recolhida: overflow-x-hidden
-      */}
-      <nav className="flex-1 px-3 space-y-6 overflow-y-auto overflow-x-hidden mt-6 scrollbar-hide">
-        {groups.map((group) => (
-          <div key={group}>
-            {isOpen && (
-              <h4 className="px-4 text-[10px] font-bold text-slate-400/70 uppercase tracking-wider mb-2">
-                {group}
-              </h4>
-            )}
-            <div className="space-y-1">
-              {authorizedItems
-                .filter((item) => item.group === group)
-                .map((item) => {
-                  const isExactMatch = pathname === item.href;
-                  const isSubRoute = pathname.startsWith(item.href + "/");
-                  const isActive =
-                    item.href === "/metas" ? isExactMatch : isExactMatch || isSubRoute;
-
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      className={cn(
-                        "group relative flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 mb-1",
-                        isActive
-                          ? "bg-[#17407E] text-white font-medium shadow-md"
-                          : "text-slate-300 hover:bg-white/5 hover:text-white"
-                      )}
-                    >
-                      {isActive && (
-                        <span className="absolute left-0 h-full w-1 bg-[#3FBD80] rounded-r-full top-0" />
-                      )}
-
-                      <item.icon
-                        size={20}
-                        className={cn(
-                          "flex-shrink-0 transition-colors",
-                          isActive
-                            ? "text-[#3FBD80]"
-                            : "text-slate-300 group-hover:text-white"
-                        )}
-                      />
-
-                      {isOpen && (
-                        <span className="ml-3 text-sm flex-1 truncate">
-                          {item.label}
-                        </span>
-                      )}
-
-                      {!isOpen && (
-                        <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-lg border border-slate-700">
-                          {item.label}
-                        </div>
-                      )}
-                    </Link>
-                  );
-                })}
+      <nav className="flex-1 px-3 overflow-y-auto overflow-x-hidden mt-6 scrollbar-hide">
+        {isOpen && (
+          <div className="px-1">
+            <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-lg border border-white/10">
+              <Search size={16} className="text-slate-300/70 flex-shrink-0" />
+              <input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") clearSearch();
+                }}
+                placeholder="Buscar páginas..."
+                className="w-full bg-transparent outline-none text-sm text-white placeholder:text-slate-400/70"
+              />
+              {searchTerm.trim() && (
+                <button
+                  onClick={clearSearch}
+                  className="p-1 rounded-md hover:bg-white/10 text-slate-300/80 hover:text-white transition-colors"
+                  aria-label="Limpar busca"
+                  type="button"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
           </div>
-        ))}
+        )}
+
+        <div className={cn("space-y-6", isOpen ? "mt-5" : "")}>
+          {/* Modo de busca (somente itens permitidos) */}
+          {isOpen && searchResultsByGroup ? (
+            searchResultsByGroup.matches.length === 0 ? (
+              <div className="px-4 py-3 text-xs text-slate-300/80 bg-white/5 border border-white/10 rounded-lg">
+                Nenhuma página encontrada.
+              </div>
+            ) : (
+              groupsOrdered
+                .filter((g) => searchResultsByGroup.map.has(g))
+                .map((group) => (
+                  <div key={group}>
+                    <h4 className="px-4 text-[10px] font-bold text-slate-400/70 uppercase tracking-wider mb-2">
+                      {group}
+                    </h4>
+                    <div className="space-y-1">
+                      {(searchResultsByGroup.map.get(group) ?? []).map((item) => {
+                        const isActive = isItemActive(item);
+
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => {
+                              setExpandedGroups((prev) => ({ ...prev, [item.group]: true }));
+                              clearSearch();
+                            }}
+                            className={cn(
+                              "group relative flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 mb-1",
+                              isActive
+                                ? "bg-[#17407E] text-white font-medium shadow-md"
+                                : "text-slate-300 hover:bg-white/5 hover:text-white"
+                            )}
+                          >
+                            {isActive && (
+                              <span className="absolute left-0 h-full w-1 bg-[#3FBD80] rounded-r-full top-0" />
+                            )}
+
+                            <item.icon
+                              size={20}
+                              className={cn(
+                                "flex-shrink-0 transition-colors",
+                                isActive
+                                  ? "text-[#3FBD80]"
+                                  : "text-slate-300 group-hover:text-white"
+                              )}
+                            />
+
+                            <span className="ml-3 text-sm flex-1 truncate">{item.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+            )
+          ) : (
+            /* Modo padrão: Accordion por grupo */
+            groupsOrdered.map((group) => {
+              const items = authorizedItems.filter((item) => item.group === group);
+              if (items.length === 0) return null;
+
+              const isExpanded = !isOpen
+                ? true
+                : group === activeGroup
+                ? true
+                : !!expandedGroups[group];
+
+              return (
+                <div key={group}>
+                  {isOpen && (
+                    <button
+                      type="button"
+                      onClick={() => toggleGroup(group)}
+                      className={cn(
+                        "w-full flex items-center justify-between px-4 text-[10px] font-bold uppercase tracking-wider mb-2 rounded-lg transition-colors",
+                        group === activeGroup
+                          ? "text-white"
+                          : "text-slate-400/70 hover:text-white hover:bg-white/5"
+                      )}
+                      title={
+                        group === activeGroup ? "Grupo atual" : isExpanded ? "Recolher" : "Expandir"
+                      }
+                    >
+                      <span>{group}</span>
+                      {isExpanded ? (
+                        <ChevronDown size={14} className="text-slate-300/80" />
+                      ) : (
+                        <ChevronRight size={14} className="text-slate-300/80" />
+                      )}
+                    </button>
+                  )}
+
+                  {isExpanded && (
+                    <div className="space-y-1">
+                      {items.map((item) => {
+                        const isActive = isItemActive(item);
+
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => {
+                              setExpandedGroups((prev) => ({ ...prev, [item.group]: true }));
+                              clearSearch();
+                            }}
+                            className={cn(
+                              "group relative flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 mb-1",
+                              isActive
+                                ? "bg-[#17407E] text-white font-medium shadow-md"
+                                : "text-slate-300 hover:bg-white/5 hover:text-white"
+                            )}
+                          >
+                            {isActive && (
+                              <span className="absolute left-0 h-full w-1 bg-[#3FBD80] rounded-r-full top-0" />
+                            )}
+
+                            <item.icon
+                              size={20}
+                              className={cn(
+                                "flex-shrink-0 transition-colors",
+                                isActive
+                                  ? "text-[#3FBD80]"
+                                  : "text-slate-300 group-hover:text-white"
+                              )}
+                            />
+
+                            {isOpen && (
+                              <span className="ml-3 text-sm flex-1 truncate">{item.label}</span>
+                            )}
+
+                            {!isOpen && (
+                              <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-lg border border-slate-700">
+                                {item.label}
+                              </div>
+                            )}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
       </nav>
 
       <div className="p-4 bg-[#043563] flex-shrink-0 border-t border-[#17407E]/30">

@@ -11,13 +11,13 @@ Persistência principal atual: **MySQL (Railway)**, com suporte legado para Turs
 
 ## 2) Componentes
 
-### Frontend (Next.js)
 
-- Rotas de página em `frontend/src/app/(admin)/*`.
-- Rotas API em `frontend/src/app/api/*`.
+- Rotas de página em `frontend/src/app/(admin)/*` (ex: `/agendamentos`).
+- Rotas API em `frontend/src/app/api/*` (ex: `/api/admin/agendamentos`).
 - Autenticação com `next-auth` em `frontend/src/app/api/auth/[...nextauth]/route.ts`.
 - Controle de acesso por matriz em `frontend/src/lib/permissions.ts`.
 - Persistência da matriz por usuário em `frontend/src/lib/permissions_server.ts`.
+
 
 ### Workers (Python)
 
@@ -27,7 +27,7 @@ Persistência principal atual: **MySQL (Railway)**, com suporte legado para Turs
   - médico: `workers/monitor_medico.py`
   - clinia: `workers/worker_clinia.py`
 - Carga transacional:
-  - agendamentos Feegow: `workers/worker_feegow.py`
+  - agendamentos Feegow: `workers/worker_feegow.py` (base do dashboard de agendamentos)
   - propostas: `workers/worker_proposals.py`
   - contratos: `workers/worker_contracts.py`
   - faturamento diário: `workers/worker_faturamento_scraping.py`
@@ -42,12 +42,13 @@ Persistência principal atual: **MySQL (Railway)**, com suporte legado para Turs
 
 ## 3) Fluxos de Dados
 
+
 ### Fluxo operacional online
 
 1. Worker coleta dado externo (Feegow/Clinia/scraper web).
-2. Worker grava tabelas de domínio (`feegow_*`, `faturamento_*`, `espera_*`, etc.).
+2. Worker grava tabelas de domínio (`feegow_*`, `faturamento_*`, `espera_*`, etc.). Exemplo: `worker_feegow.py` grava `feegow_appointments`.
 3. Worker atualiza `system_status` (heartbeat).
-4. Frontend consulta APIs (`/api/admin/*`, `/api/queue/*`).
+4. Frontend consulta APIs (`/api/admin/*`, `/api/queue/*`). Exemplo: `/api/admin/agendamentos`.
 5. APIs agregam e retornam payload para componentes da página.
 
 ### Fluxo de refresh manual

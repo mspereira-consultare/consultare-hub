@@ -103,6 +103,40 @@ Operação em tempo real das filas de recepção, médico e fila digital (Clinia
 
 ---
 
+
+## Agendamentos (`/agendamentos`)
+
+### Objetivo
+
+Visualizar o histórico e evolução dos agendamentos realizados, com análise de tendência, taxa de confirmação e filtros detalhados.
+
+### Filtros
+
+- Data inicial (`startDate`)
+- Data final (`endDate`)
+- Agrupamento: dia, mês, ano
+- Responsável pelo agendamento
+- Especialidade
+- Profissional
+- Status do agendamento
+
+### Fontes consumidas
+
+- `GET /api/admin/agendamentos` (dados agregados, filtros e heartbeat)
+- `POST /api/admin/agendamentos` (refresh manual)
+
+### Indicadores
+
+| Indicador | Fonte | Regra |
+|---|---|---|
+| Total de agendamentos no período | `/api/admin/agendamentos` | Soma total dos registros filtrados |
+| Taxa de confirmação | `/api/admin/agendamentos` | % de agendamentos com status "MARCADO - CONFIRMADO" sobre o total |
+| Evolução histórica | `/api/admin/agendamentos` | Série temporal agregada por período |
+| Filtros distintos | `/api/admin/agendamentos` | Listas únicas de responsáveis, especialidades, profissionais, status |
+| Heartbeat | `/api/admin/agendamentos` | Status e data/hora da última sincronização |
+
+---
+
 ## Financeiro (`/financeiro`)
 
 ### Objetivo

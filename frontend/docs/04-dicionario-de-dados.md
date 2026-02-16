@@ -76,7 +76,23 @@ Escrita: API de permissões de usuário.
 
 Escrita: API de equipes.
 
-### `user_teams`
+
+### `feegow_appointments`
+
+| Campo | Descrição |
+|---|---|
+| `id` (PK) | Identificador do agendamento |
+| `scheduled_at` | Data/hora do agendamento |
+| `scheduled_by` | Responsável pelo agendamento |
+| `specialty` | Especialidade |
+| `professional` | Profissional |
+| `status_id` | Status numérico (ver STATUS_MAP) |
+| `status` | Status textual |
+| `patient_name` | Nome do paciente |
+| `created_at` | Data/hora de criação |
+| `updated_at` | Última atualização |
+
+Escrita: worker_feegow.py
 
 | Campo | Descrição |
 |---|---|

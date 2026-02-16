@@ -15,6 +15,7 @@ Este documento descreve o controle de acesso atual do sistema:
 - `edit`: usuário pode salvar alterações (formularios, CRUD, campos manuais).
 - `refresh`: usuário pode solicitar atualização manual de workers.
 
+
 ### Páginas controladas (`PageKey`)
 
 | PageKey | Rota |
@@ -22,6 +23,7 @@ Este documento descreve o controle de acesso atual do sistema:
 | `dashboard` | `/dashboard` |
 | `monitor` | `/monitor` |
 | `financeiro` | `/financeiro` |
+| `agendamentos` | `/agendamentos` |
 | `contratos` | `/contratos` |
 | `propostas` | `/propostas` |
 | `metas_dashboard` | `/metas/dashboard` |
@@ -36,9 +38,11 @@ Fonte: `frontend/src/lib/permissions.ts`.
 
 ## Defaults por Perfil
 
+
 ### ADMIN
 
-- Todas as páginas com `view=true`, `edit=true`, `refresh=true`.
+- Todas as páginas com `view=true`, `edit=true`, `refresh=true` (incluindo `agendamentos`).
+
 
 ### GESTOR
 
@@ -47,6 +51,7 @@ Fonte: `frontend/src/lib/permissions.ts`.
 | dashboard | ✅ | ❌ | ❌ |
 | monitor | ✅ | ✅ | ✅ |
 | financeiro | ✅ | ✅ | ✅ |
+| agendamentos | ✅ | ✅ | ✅ |
 | contratos | ✅ | ✅ | ✅ |
 | propostas | ✅ | ✅ | ✅ |
 | metas_dashboard | ✅ | ❌ | ❌ |
@@ -57,7 +62,24 @@ Fonte: `frontend/src/lib/permissions.ts`.
 | users | ❌ | ❌ | ❌ |
 | settings | ❌ | ❌ | ❌ |
 
+
 ### OPERADOR
+
+| PageKey | View | Edit | Refresh |
+|---|---:|---:|---:|
+| dashboard | ✅ | ❌ | ❌ |
+| monitor | ✅ | ❌ | ✅ |
+| financeiro | ❌ | ❌ | ❌ |
+| agendamentos | ✅ | ❌ | ❌ |
+| contratos | ❌ | ❌ | ❌ |
+| propostas | ❌ | ❌ | ❌ |
+| metas_dashboard | ✅ | ❌ | ❌ |
+| metas | ❌ | ❌ | ❌ |
+| produtividade | ✅ | ❌ | ✅ |
+| checklist_crc | ✅ | ✅ | ✅ |
+| checklist_recepcao | ✅ | ✅ | ✅ |
+| users | ❌ | ❌ | ❌ |
+| settings | ❌ | ❌ | ❌ |
 
 | PageKey | View | Edit | Refresh |
 |---|---:|---:|---:|

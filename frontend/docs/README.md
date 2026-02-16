@@ -4,8 +4,10 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 
 ## Índice
 
+
 1. [`docs/01-visao-funcional-e-indicadores.md`](docs/01-visao-funcional-e-indicadores.md)
    Descreve cada página do painel, seus filtros, fontes de dados e fórmulas dos indicadores.
+   Inclui a página de Agendamentos, com visão histórica, filtros detalhados e taxa de confirmação.
 
 2. [`docs/02-matriz-de-permissoes.md`](docs/02-matriz-de-permissoes.md)
    Documenta o modelo de acesso por página (`view`, `edit`, `refresh`) e a regra por perfil.
