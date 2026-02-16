@@ -211,7 +211,6 @@ export function Sidebar() {
 
   const activeGroup = activeItem?.group;
 
-  // Carrega preferências de grupos expandidos
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -223,7 +222,6 @@ export function Sidebar() {
     }
   }, []);
 
-  // Persiste preferências
   useEffect(() => {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(expandedGroups));
@@ -232,13 +230,11 @@ export function Sidebar() {
     }
   }, [expandedGroups]);
 
-  // Grupo da rota ativa sempre expandido
   useEffect(() => {
     if (!activeGroup) return;
     setExpandedGroups((prev) => (prev[activeGroup] ? prev : { ...prev, [activeGroup]: true }));
   }, [activeGroup]);
 
-  // Ao recolher a sidebar, limpamos a busca para evitar estado "invisível"
   useEffect(() => {
     if (!isOpen) setSearchTerm("");
   }, [isOpen]);
@@ -263,7 +259,6 @@ export function Sidebar() {
   }, [searchTerm, authorizedItems]);
 
   const toggleGroup = (group: string) => {
-    // Mantém o grupo ativo sempre aberto
     if (group === activeGroup) return;
     setExpandedGroups((prev) => ({ ...prev, [group]: !prev[group] }));
   };
@@ -342,7 +337,7 @@ export function Sidebar() {
         )}
 
         <div className={cn("space-y-6", isOpen ? "mt-5" : "")}>
-          {/* Modo de busca (somente itens permitidos) */}
+          {/* Modo de busca: também em card por grupo */}
           {isOpen && searchResultsByGroup ? (
             searchResultsByGroup.matches.length === 0 ? (
               <div className="px-4 py-3 text-xs text-slate-300/80 bg-white/5 border border-white/10 rounded-lg">
@@ -351,59 +346,67 @@ export function Sidebar() {
             ) : (
               groupsOrdered
                 .filter((g) => searchResultsByGroup.map.has(g))
-                .map((group) => (
-                  <div key={group}>
-                    <div className="px-2 mb-2">
-                      <div className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+                .map((group) => {
+                  const items = searchResultsByGroup.map.get(group) ?? [];
+
+                  return (
+                    <div
+                      key={group}
+                      className="rounded-xl border border-white/10 bg-white/0 overflow-hidden"
+                    >
+                      <div className="px-4 py-3 bg-white/0">
                         <span className="text-xs font-bold text-slate-200/90 uppercase tracking-wider">
                           {group}
                         </span>
                       </div>
+
+                      <div className="border-t border-white/10 px-2 py-2">
+                        <div className="space-y-1">
+                          {items.map((item) => {
+                            const isActive = isItemActive(item);
+
+                            return (
+                              <Link
+                                key={item.href}
+                                href={item.href}
+                                onClick={() => {
+                                  setExpandedGroups((prev) => ({ ...prev, [item.group]: true }));
+                                  clearSearch();
+                                }}
+                                className={cn(
+                                  "group relative flex items-center rounded-lg transition-all duration-200",
+                                  "pl-4 pr-3 py-2.5",
+                                  isActive
+                                    ? "bg-[#17407E] text-white font-medium shadow-md"
+                                    : "text-slate-300 hover:bg-white/5 hover:text-white"
+                                )}
+                              >
+                                {isActive && (
+                                  <span className="absolute left-0 h-full w-1 bg-[#3FBD80] rounded-r-full top-0" />
+                                )}
+
+                                <item.icon
+                                  size={20}
+                                  className={cn(
+                                    "flex-shrink-0 transition-colors",
+                                    isActive
+                                      ? "text-[#3FBD80]"
+                                      : "text-slate-300 group-hover:text-white"
+                                  )}
+                                />
+
+                                <span className="ml-3 text-sm flex-1 truncate">{item.label}</span>
+                              </Link>
+                            );
+                          })}
+                        </div>
+                      </div>
                     </div>
-
-                    <div className="space-y-1">
-                      {(searchResultsByGroup.map.get(group) ?? []).map((item) => {
-                        const isActive = isItemActive(item);
-
-                        return (
-                          <Link
-                            key={item.href}
-                            href={item.href}
-                            onClick={() => {
-                              setExpandedGroups((prev) => ({ ...prev, [item.group]: true }));
-                              clearSearch();
-                            }}
-                            className={cn(
-                              "group relative flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 mb-1",
-                              isActive
-                                ? "bg-[#17407E] text-white font-medium shadow-md"
-                                : "text-slate-300 hover:bg-white/5 hover:text-white"
-                            )}
-                          >
-                            {isActive && (
-                              <span className="absolute left-0 h-full w-1 bg-[#3FBD80] rounded-r-full top-0" />
-                            )}
-
-                            <item.icon
-                              size={20}
-                              className={cn(
-                                "flex-shrink-0 transition-colors",
-                                isActive
-                                  ? "text-[#3FBD80]"
-                                  : "text-slate-300 group-hover:text-white"
-                              )}
-                            />
-
-                            <span className="ml-3 text-sm flex-1 truncate">{item.label}</span>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
             )
           ) : (
-            /* Modo padrão: Accordion por grupo */
+            /* Modo padrão: Accordion por grupo em card único (Opção 1) + animação */
             groupsOrdered.map((group) => {
               const items = authorizedItems.filter((item) => item.group === group);
               if (items.length === 0) return null;
@@ -414,80 +417,136 @@ export function Sidebar() {
                 ? true
                 : !!expandedGroups[group];
 
-              return (
-                <div key={group}>
-                  {isOpen && (
-                    <button
-                      type="button"
-                      onClick={() => toggleGroup(group)}
-                      className={cn(
-                        "w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors select-none",
-                        "border border-white/10 bg-white/0 hover:bg-white/5",
-                        group === activeGroup ? "text-white" : "text-slate-300"
-                      )}
-                      title={group === activeGroup ? "Grupo atual" : isExpanded ? "Recolher grupo" : "Expandir grupo"}
-                      aria-label={isExpanded ? `Recolher ${group}` : `Expandir ${group}`}
-                    >
-                      <span className="text-xs font-bold uppercase tracking-wider">
-                        {group}
-                      </span>
+              // Sidebar recolhida: mantém comportamento anterior
+              if (!isOpen) {
+                return (
+                  <div key={group} className="space-y-1">
+                    {items.map((item) => {
+                      const isActive = isItemActive(item);
 
-                      {isExpanded ? (
-                        <ChevronDown size={16} className="text-slate-200/80" />
-                      ) : (
-                        <ChevronRight size={16} className="text-slate-200/80" />
-                      )}
-                    </button>
-                  )}
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => {
+                            setExpandedGroups((prev) => ({ ...prev, [item.group]: true }));
+                            clearSearch();
+                          }}
+                          className={cn(
+                            "group relative flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 mb-1",
+                            isActive
+                              ? "bg-[#17407E] text-white font-medium shadow-md"
+                              : "text-slate-300 hover:bg-white/5 hover:text-white"
+                          )}
+                        >
+                          {isActive && (
+                            <span className="absolute left-0 h-full w-1 bg-[#3FBD80] rounded-r-full top-0" />
+                          )}
 
-                  {isExpanded && (
-                    <div className="space-y-1 mt-2">
-                      {items.map((item) => {
-                        const isActive = isItemActive(item);
-
-                        return (
-                          <Link
-                            key={item.href}
-                            href={item.href}
-                            onClick={() => {
-                              setExpandedGroups((prev) => ({ ...prev, [item.group]: true }));
-                              clearSearch();
-                            }}
+                          <item.icon
+                            size={20}
                             className={cn(
-                              "group relative flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 mb-1",
-                              isActive
-                                ? "bg-[#17407E] text-white font-medium shadow-md"
-                                : "text-slate-300 hover:bg-white/5 hover:text-white"
+                              "flex-shrink-0 transition-colors",
+                              isActive ? "text-[#3FBD80]" : "text-slate-300 group-hover:text-white"
                             )}
-                          >
-                            {isActive && (
-                              <span className="absolute left-0 h-full w-1 bg-[#3FBD80] rounded-r-full top-0" />
-                            )}
+                          />
 
-                            <item.icon
-                              size={20}
+                          <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-lg border border-slate-700">
+                            {item.label}
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={group}
+                  className="rounded-xl border border-white/10 bg-white/0 overflow-hidden"
+                >
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(group)}
+                    className={cn(
+                      "w-full flex items-center justify-between px-4 py-3 transition-colors select-none",
+                      "bg-white/0 hover:bg-white/5",
+                      group === activeGroup ? "text-white" : "text-slate-300"
+                    )}
+                    title={
+                      group === activeGroup
+                        ? "Grupo atual"
+                        : isExpanded
+                        ? "Recolher grupo"
+                        : "Expandir grupo"
+                    }
+                    aria-label={isExpanded ? `Recolher ${group}` : `Expandir ${group}`}
+                  >
+                    <span className="text-xs font-bold uppercase tracking-wider">{group}</span>
+
+                    {isExpanded ? (
+                      <ChevronDown size={16} className="text-slate-200/80" />
+                    ) : (
+                      <ChevronRight size={16} className="text-slate-200/80" />
+                    )}
+                  </button>
+
+                  {/* ✅ Corpo do card sempre no DOM para permitir animação suave */}
+                  <div
+                    className={cn(
+                      "overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out",
+                      isExpanded ? "max-h-[900px] opacity-100" : "max-h-0 opacity-0"
+                    )}
+                    aria-hidden={!isExpanded}
+                  >
+                    <div className="border-t border-white/10 px-2 py-2">
+                      <div
+                        className={cn(
+                          "space-y-1 transition-transform duration-300 ease-in-out",
+                          isExpanded ? "translate-y-0" : "-translate-y-1"
+                        )}
+                      >
+                        {items.map((item) => {
+                          const isActive = isItemActive(item);
+
+                          return (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              onClick={() => {
+                                setExpandedGroups((prev) => ({ ...prev, [item.group]: true }));
+                                clearSearch();
+                              }}
                               className={cn(
-                                "flex-shrink-0 transition-colors",
+                                "group relative flex items-center rounded-lg transition-all duration-200",
+                                "pl-4 pr-3 py-2.5",
                                 isActive
-                                  ? "text-[#3FBD80]"
-                                  : "text-slate-300 group-hover:text-white"
+                                  ? "bg-[#17407E] text-white font-medium shadow-md"
+                                  : "text-slate-300 hover:bg-white/5 hover:text-white"
                               )}
-                            />
+                            >
+                              {isActive && (
+                                <span className="absolute left-0 h-full w-1 bg-[#3FBD80] rounded-r-full top-0" />
+                              )}
 
-                            {isOpen && (
+                              <item.icon
+                                size={20}
+                                className={cn(
+                                  "flex-shrink-0 transition-colors",
+                                  isActive
+                                    ? "text-[#3FBD80]"
+                                    : "text-slate-300 group-hover:text-white"
+                                )}
+                              />
+
                               <span className="ml-3 text-sm flex-1 truncate">{item.label}</span>
-                            )}
-
-                            {!isOpen && (
-                              <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-lg border border-slate-700">
-                                {item.label}
-                              </div>
-                            )}
-                          </Link>
-                        );
-                      })}
+                            </Link>
+                          );
+                        })}
+                      </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               );
             })
@@ -508,9 +567,7 @@ export function Sidebar() {
               <p className="text-sm font-semibold text-white truncate">
                 {session?.user?.name || "Carregando..."}
               </p>
-              <p className="text-xs text-slate-400 truncate">
-                {ROLE_LABEL[currentUserRole]}
-              </p>
+              <p className="text-xs text-slate-400 truncate">{ROLE_LABEL[currentUserRole]}</p>
             </div>
           )}
 
