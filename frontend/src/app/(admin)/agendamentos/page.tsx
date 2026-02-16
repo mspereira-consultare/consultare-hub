@@ -271,32 +271,6 @@ export default function AgendamentosPage() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-        <div>
-          <label className="block text-sm text-slate-600 mb-1">Agrupar por</label>
-          <select value={aggregateBy} onChange={(e) => setAggregateBy(e.target.value as any)} className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
-            <option value="day">Dia</option>
-            <option value="month">Mês</option>
-            <option value="year">Ano</option>
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm text-slate-600 mb-1">Responsável</label>
-          <select value={filters.scheduled_by} onChange={(e) => setFilters(f => ({ ...f, scheduled_by: e.target.value }))} className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
-            <option value="all">Todos</option>
-            {distincts.scheduled_by.map((v: any) => <option key={v} value={v}>{v}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-sm text-slate-600 mb-1">Especialidade</label>
-          <select value={filters.specialty} onChange={(e) => setFilters(f => ({ ...f, specialty: e.target.value }))} className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
-            <option value="all">Todas</option>
-            {distincts.specialty.map((v: any) => <option key={v} value={v}>{v}</option>)}
-          </select>
-        </div>
-      </div>
-
-
       <AgendamentoKPIs total={stats?.totalPeriod || 0} confirmRate={stats?.confirmedRate || 0} />
 
       <div className="bg-white p-4 rounded shadow mb-6" style={{ height: 360 }}>
@@ -314,12 +288,6 @@ export default function AgendamentosPage() {
             </LineChart>
           </ResponsiveContainer>
         )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="p-4 bg-white rounded shadow">Total período: <strong>{stats?.totalPeriod ?? '-'}</strong></div>
-        <div className="p-4 bg-white rounded shadow">Taxa confirmação: <strong>{(stats?.confirmedRate*100 || 0).toFixed(2)}%</strong></div>
-        <div className="p-4 bg-white rounded shadow">Heartbeat: <strong>{heartbeat?.status || 'UNKNOWN'}</strong>{heartbeat?.last_run ? ` — ${heartbeat.last_run}` : ''}</div>
       </div>
     </div>
   );
