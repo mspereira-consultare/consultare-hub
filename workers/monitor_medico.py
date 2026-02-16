@@ -83,11 +83,33 @@ def run_monitor_medico():
                 if not df.empty:
                     qtd_unidade = len(df)
                     total_detectado_ciclo += qtd_unidade
-                    
                     # Salva e atualiza last_seen_at
                     db.salvar_dados_medicos(df)
 
-                # 🔥 NOVO MODELO: Finaliza apenas quem sumiu por tempo (com throttle)
+                # --- Sincronização: finaliza imediatamente quem saiu da fila ---
+                hash_ids_atuais = set(df['hash_id'].tolist()) if not df.empty and 'hash_id' in df.columns else set()
+                conn = db.get_connection()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT hash_id FROM espera_medica
+                        WHERE unidade = %s AND (status IS NULL OR status NOT LIKE 'Finalizado%%')
+                    """, (nome_unidade,))
+                    hash_ids_local = set(row[0] for row in cursor.fetchall())
+                    ids_para_finalizar = hash_ids_local - hash_ids_atuais
+                    if ids_para_finalizar:
+                        agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+                        for hash_id in ids_para_finalizar:
+                            cursor.execute("""
+                                UPDATE espera_medica SET status = 'Finalizado (Saiu)', updated_at = %s
+                                WHERE hash_id = %s AND unidade = %s AND (status IS NULL OR status NOT LIKE 'Finalizado%%')
+                            """, (agora, hash_id, nome_unidade))
+                        if not db.use_turso:
+                            conn.commit()
+                finally:
+                    conn.close()
+
+                # 🔥 Modelo antigo: Finaliza por tempo (mantido como fallback)
                 if FINALIZE_INTERVAL_SEC <= 0 or (time.time() - last_finalize_ts) >= FINALIZE_INTERVAL_SEC:
                     db.finalizar_expirados_medicos(nome_unidade, minutos=120)
 
