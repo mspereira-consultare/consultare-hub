@@ -21,6 +21,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
+  Legend,
 } from 'recharts';
 
 type SelectOption = { name: string; label?: string };
@@ -184,10 +185,13 @@ export default function AgendamentosPage() {
     status_ids: [],
   });
 
-  const [series, setSeries] = useState<Array<{ period: string; total: number; confirmados: number; nao_compareceu?: number }>>(
-    []
-  );
-  const [stats, setStats] = useState<{ totalPeriod: number; confirmedRate: number }>({ totalPeriod: 0, confirmedRate: 0 });
+  const [series, setSeries] = useState<
+    Array<{ period: string; total: number; confirmados: number; nao_compareceu?: number }>
+  >([]);
+  const [stats, setStats] = useState<{ totalPeriod: number; confirmedRate: number }>({
+    totalPeriod: 0,
+    confirmedRate: 0,
+  });
 
   const [heartbeat, setHeartbeat] = useState<Heartbeat | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -299,6 +303,13 @@ export default function AgendamentosPage() {
     }
 
     return v; // year
+  };
+
+  // Paleta coerente com o restante do layout (azul/verde/âmbar)
+  const CHART_COLORS = {
+    total: '#1D4ED8', // blue-700
+    confirmados: '#059669', // emerald-600
+    nao_compareceu: '#F59E0B', // amber-500
   };
 
   return (
@@ -507,10 +518,40 @@ export default function AgendamentosPage() {
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="period" tickFormatter={formatPeriodTick} />
               <YAxis />
-              <Tooltip labelFormatter={(label) => formatPeriodTick(label)} />
-              <Line type="monotone" dataKey="total" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="confirmados" strokeWidth={2} dot={false} />
-              <Line type="monotone" dataKey="nao_compareceu" strokeWidth={2} dot={false} />
+              <Tooltip
+                labelFormatter={(label) => formatPeriodTick(label)}
+                formatter={(value: any, name: any) => [Number(value || 0).toLocaleString('pt-BR'), name]}
+              />
+              <Legend verticalAlign="top" height={28} />
+
+              <Line
+                type="monotone"
+                dataKey="total"
+                name="Total"
+                stroke={CHART_COLORS.total}
+                strokeWidth={2.5}
+                dot={false}
+                activeDot={{ r: 4 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="confirmados"
+                name="Confirmados"
+                stroke={CHART_COLORS.confirmados}
+                strokeWidth={2.5}
+                dot={false}
+                activeDot={{ r: 4 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="nao_compareceu"
+                name="Não compareceu"
+                stroke={CHART_COLORS.nao_compareceu}
+                strokeWidth={2.5}
+                strokeDasharray="6 4"
+                dot={false}
+                activeDot={{ r: 4 }}
+              />
             </LineChart>
           </ResponsiveContainer>
         )}
