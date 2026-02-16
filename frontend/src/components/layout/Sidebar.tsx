@@ -232,7 +232,9 @@ export function Sidebar() {
 
   useEffect(() => {
     if (!activeGroup) return;
-    setExpandedGroups((prev) => (prev[activeGroup] ? prev : { ...prev, [activeGroup]: true }));
+    setExpandedGroups((prev) =>
+      prev[activeGroup] ? prev : { ...prev, [activeGroup]: true }
+    );
   }, [activeGroup]);
 
   useEffect(() => {
@@ -307,10 +309,10 @@ export function Sidebar() {
         </button>
       </div>
 
-      <nav className="flex-1 px-3 overflow-y-auto overflow-x-hidden mt-6 scrollbar-hide">
+      <nav className="flex-1 px-3 overflow-y-auto overflow-x-hidden mt-5 scrollbar-hide">
         {isOpen && (
           <div className="px-1">
-            <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-lg border border-white/10">
+            <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">
               <Search size={16} className="text-slate-300/70 flex-shrink-0" />
               <input
                 value={searchTerm}
@@ -336,7 +338,8 @@ export function Sidebar() {
           </div>
         )}
 
-        <div className={cn("space-y-6", isOpen ? "mt-5" : "")}>
+        {/* ↓ mais condensado: diminui o gap entre cards */}
+        <div className={cn("space-y-4", isOpen ? "mt-4" : "")}>
           {/* Modo de busca: também em card por grupo */}
           {isOpen && searchResultsByGroup ? (
             searchResultsByGroup.matches.length === 0 ? (
@@ -354,13 +357,15 @@ export function Sidebar() {
                       key={group}
                       className="rounded-xl border border-white/10 bg-white/0 overflow-hidden"
                     >
-                      <div className="px-4 py-3 bg-white/0">
+                      {/* ↓ header mais compacto */}
+                      <div className="px-3 py-2.5 bg-white/0">
                         <span className="text-xs font-bold text-slate-200/90 uppercase tracking-wider">
                           {group}
                         </span>
                       </div>
 
-                      <div className="border-t border-white/10 px-2 py-2">
+                      {/* ↓ body mais compacto */}
+                      <div className="border-t border-white/10 px-2 py-1.5">
                         <div className="space-y-1">
                           {items.map((item) => {
                             const isActive = isItemActive(item);
@@ -370,12 +375,16 @@ export function Sidebar() {
                                 key={item.href}
                                 href={item.href}
                                 onClick={() => {
-                                  setExpandedGroups((prev) => ({ ...prev, [item.group]: true }));
+                                  setExpandedGroups((prev) => ({
+                                    ...prev,
+                                    [item.group]: true,
+                                  }));
                                   clearSearch();
                                 }}
                                 className={cn(
                                   "group relative flex items-center rounded-lg transition-all duration-200",
-                                  "pl-4 pr-3 py-2.5",
+                                  // ↓ itens mais condensados
+                                  "pl-3 pr-2.5 py-2",
                                   isActive
                                     ? "bg-[#17407E] text-white font-medium shadow-md"
                                     : "text-slate-300 hover:bg-white/5 hover:text-white"
@@ -386,7 +395,7 @@ export function Sidebar() {
                                 )}
 
                                 <item.icon
-                                  size={20}
+                                  size={18}
                                   className={cn(
                                     "flex-shrink-0 transition-colors",
                                     isActive
@@ -395,7 +404,9 @@ export function Sidebar() {
                                   )}
                                 />
 
-                                <span className="ml-3 text-sm flex-1 truncate">{item.label}</span>
+                                <span className="ml-3 text-[13px] flex-1 truncate">
+                                  {item.label}
+                                </span>
                               </Link>
                             );
                           })}
@@ -417,7 +428,7 @@ export function Sidebar() {
                 ? true
                 : !!expandedGroups[group];
 
-              // Sidebar recolhida: mantém comportamento anterior
+              // Sidebar recolhida: mais condensado também
               if (!isOpen) {
                 return (
                   <div key={group} className="space-y-1">
@@ -433,7 +444,7 @@ export function Sidebar() {
                             clearSearch();
                           }}
                           className={cn(
-                            "group relative flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 mb-1",
+                            "group relative flex items-center px-3 py-2 rounded-lg transition-all duration-200 mb-1",
                             isActive
                               ? "bg-[#17407E] text-white font-medium shadow-md"
                               : "text-slate-300 hover:bg-white/5 hover:text-white"
@@ -444,10 +455,12 @@ export function Sidebar() {
                           )}
 
                           <item.icon
-                            size={20}
+                            size={18}
                             className={cn(
                               "flex-shrink-0 transition-colors",
-                              isActive ? "text-[#3FBD80]" : "text-slate-300 group-hover:text-white"
+                              isActive
+                                ? "text-[#3FBD80]"
+                                : "text-slate-300 group-hover:text-white"
                             )}
                           />
 
@@ -466,11 +479,12 @@ export function Sidebar() {
                   key={group}
                   className="rounded-xl border border-white/10 bg-white/0 overflow-hidden"
                 >
+                  {/* ↓ header mais compacto */}
                   <button
                     type="button"
                     onClick={() => toggleGroup(group)}
                     className={cn(
-                      "w-full flex items-center justify-between px-4 py-3 transition-colors select-none",
+                      "w-full flex items-center justify-between px-3 py-2.5 transition-colors select-none",
                       "bg-white/0 hover:bg-white/5",
                       group === activeGroup ? "text-white" : "text-slate-300"
                     )}
@@ -492,7 +506,6 @@ export function Sidebar() {
                     )}
                   </button>
 
-                  {/* ✅ Corpo do card sempre no DOM para permitir animação suave */}
                   <div
                     className={cn(
                       "overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out",
@@ -500,7 +513,8 @@ export function Sidebar() {
                     )}
                     aria-hidden={!isExpanded}
                   >
-                    <div className="border-t border-white/10 px-2 py-2">
+                    {/* ↓ body mais compacto */}
+                    <div className="border-t border-white/10 px-2 py-1.5">
                       <div
                         className={cn(
                           "space-y-1 transition-transform duration-300 ease-in-out",
@@ -520,7 +534,8 @@ export function Sidebar() {
                               }}
                               className={cn(
                                 "group relative flex items-center rounded-lg transition-all duration-200",
-                                "pl-4 pr-3 py-2.5",
+                                // ↓ itens mais condensados
+                                "pl-3 pr-2.5 py-2",
                                 isActive
                                   ? "bg-[#17407E] text-white font-medium shadow-md"
                                   : "text-slate-300 hover:bg-white/5 hover:text-white"
@@ -531,7 +546,7 @@ export function Sidebar() {
                               )}
 
                               <item.icon
-                                size={20}
+                                size={18}
                                 className={cn(
                                   "flex-shrink-0 transition-colors",
                                   isActive
@@ -540,7 +555,9 @@ export function Sidebar() {
                                 )}
                               />
 
-                              <span className="ml-3 text-sm flex-1 truncate">{item.label}</span>
+                              <span className="ml-3 text-[13px] flex-1 truncate">
+                                {item.label}
+                              </span>
                             </Link>
                           );
                         })}
