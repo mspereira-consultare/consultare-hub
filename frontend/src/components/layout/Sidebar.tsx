@@ -11,6 +11,7 @@ import {
   Users,
   Settings2,
   Settings,
+  Calendar,
   Menu,
   X,
   LogOut,
@@ -77,6 +78,14 @@ const menuItems: MenuItem[] = [
     group: "OPERACOES",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "produtividade",
+  },
+  {
+    href: "/agendamentos",
+    label: "Agendamentos",
+    icon: Calendar,
+    group: "OPERACOES",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "agendamentos",
   },
   {
     href: "/financeiro",
