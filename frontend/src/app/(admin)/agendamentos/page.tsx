@@ -183,93 +183,125 @@ export default function AgendamentosPage() {
   return (
     <div className="p-4">
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm z-20 relative mb-6">
-        <div className="p-6 flex items-center justify-between border-b border-slate-100">
-          <div className="flex items-center gap-3">
+        <div className="p-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-100">
+            <div className="flex items-center gap-3">
             <div className="p-3 bg-blue-900 rounded-xl text-white shadow-md">
-              <CalendarCheck size={24} />
+                <CalendarCheck size={24} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-800">Agendamentos</h1>
-              <p className="text-slate-500 text-xs">Histórico e evolução de agendamentos.</p>
+                <h1 className="text-xl font-bold text-slate-800">Agendamentos</h1>
+                <p className="text-slate-500 text-xs">Histórico e evolução de agendamentos.</p>
             </div>
-          </div>
-          <div className="flex items-center gap-4">
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             {heartbeat && (
-              <div className="hidden sm:flex flex-col items-end text-xs border-r border-slate-200 pr-4">
-                <span className="font-bold uppercase text-slate-400 tracking-wider mb-0.5">Última Sincronização</span>
+                <div className="hidden sm:flex flex-col items-end text-xs border-r border-slate-200 pr-4">
+                <span className="font-bold uppercase text-slate-400 tracking-wider mb-0.5">
+                    Última Sincronização
+                </span>
                 <div className="flex items-center gap-1.5">
-                  <div className={`w-2 h-2 rounded-full ${heartbeat.status === 'RUNNING' || heartbeat.status === 'PENDING' ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
-                  <span className="font-medium text-slate-600">{heartbeat?.last_run ?? 'Nunca'}</span>
+                    <div
+                    className={`w-2 h-2 rounded-full ${
+                        heartbeat.status === "RUNNING" || heartbeat.status === "PENDING"
+                        ? "bg-amber-500 animate-pulse"
+                        : "bg-emerald-500"
+                    }`}
+                    />
+                    <span className="font-medium text-slate-600">{heartbeat?.last_run ?? "Nunca"}</span>
                 </div>
-              </div>
+                </div>
             )}
-            <button
-              onClick={handleRefresh}
-              disabled={loading}
-              className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all border whitespace-nowrap ${loading ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
-            >
-              {loading ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
-              <span>{loading ? 'Atualizando...' : 'Atualizar'}</span>
-            </button>
-            <button
-              onClick={() => setFiltersExpanded((v) => !v)}
-              className="ml-2 px-3 py-2 rounded-lg border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-xs font-medium"
-            >
-              {filtersExpanded ? 'Recolher Filtros' : 'Expandir Filtros'}
-            </button>
-          </div>
+
+            <div className="flex items-center gap-3 sm:gap-4 justify-end">
+                <button
+                onClick={handleRefresh}
+                disabled={loading}
+                className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all border whitespace-nowrap ${
+                    loading
+                    ? "bg-blue-50 text-blue-600 border-blue-200"
+                    : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
+                }`}
+                >
+                {loading ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+                <span>{loading ? "Atualizando..." : "Atualizar"}</span>
+                </button>
+
+                <button
+                onClick={() => setFiltersExpanded((v) => !v)}
+                className="sm:ml-2 px-3 py-2 rounded-lg border border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 text-xs font-medium whitespace-nowrap"
+                >
+                {filtersExpanded ? "Recolher Filtros" : "Expandir Filtros"}
+                </button>
+            </div>
+            </div>
         </div>
+
         {filtersExpanded && (
-          <div className="p-6 pb-0">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
+            <div className="p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="flex flex-col">
                 <label className="block text-sm text-slate-600 mb-1">Agrupar por</label>
-                <select value={aggregateBy} onChange={(e) => setAggregateBy(e.target.value as any)} className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
-                  <option value="day">Dia</option>
-                  <option value="month">Mês</option>
-                  <option value="year">Ano</option>
+                <select
+                    value={aggregateBy}
+                    onChange={(e) => setAggregateBy(e.target.value as any)}
+                    className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200"
+                >
+                    <option value="day">Dia</option>
+                    <option value="month">Mês</option>
+                    <option value="year">Ano</option>
                 </select>
-              </div>
-              <div>
+                </div>
+
+                <div className="flex flex-col">
                 <label className="block text-sm text-slate-600 mb-1">Responsável</label>
                 <SearchableSelect
-                  options={[{ name: 'all', label: 'Todos' }, ...distincts.scheduled_by.map((v: any) => ({ name: v, label: v }))]}
-                  value={filters.scheduled_by}
-                  onChange={val => setFilters(f => ({ ...f, scheduled_by: val }))}
-                  placeholder="Todos"
+                    options={[{ name: "all", label: "Todos" }, ...distincts.scheduled_by.map((v: any) => ({ name: v, label: v }))]}
+                    value={filters.scheduled_by}
+                    onChange={(val) => setFilters((f) => ({ ...f, scheduled_by: val }))}
+                    placeholder="Todos"
                 />
-              </div>
-              <div>
+                </div>
+
+                <div className="flex flex-col">
                 <label className="block text-sm text-slate-600 mb-1">Especialidade</label>
                 <SearchableSelect
-                  options={[{ name: 'all', label: 'Todas' }, ...distincts.specialty.map((v: any) => ({ name: v, label: v }))]}
-                  value={filters.specialty}
-                  onChange={val => setFilters(f => ({ ...f, specialty: val }))}
-                  placeholder="Todas"
+                    options={[{ name: "all", label: "Todas" }, ...distincts.specialty.map((v: any) => ({ name: v, label: v }))]}
+                    value={filters.specialty}
+                    onChange={(val) => setFilters((f) => ({ ...f, specialty: val }))}
+                    placeholder="Todas"
                 />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
-              <div>
+                </div>
+
+                <div className="flex flex-col">
                 <label className="block text-sm text-slate-600 mb-1">Profissional</label>
                 <SearchableSelect
-                  options={[{ name: 'all', label: 'Todos' }, ...distincts.professional.map((v: any) => ({ name: v, label: v }))]}
-                  value={filters.professional}
-                  onChange={val => setFilters(f => ({ ...f, professional: val }))}
-                  placeholder="Todos"
+                    options={[{ name: "all", label: "Todos" }, ...distincts.professional.map((v: any) => ({ name: v, label: v }))]}
+                    value={filters.professional}
+                    onChange={(val) => setFilters((f) => ({ ...f, professional: val }))}
+                    placeholder="Todos"
                 />
-              </div>
-              <div>
+                </div>
+
+                <div className="flex flex-col">
                 <label className="block text-sm text-slate-600 mb-1">Status</label>
-                <select value={filters.status} onChange={(e) => setFilters(f => ({ ...f, status: e.target.value }))} className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
-                  <option value="all">Todos</option>
-                  {distincts.status_ids.map((v: any) => <option key={v} value={v}>{STATUS_MAP[v] ?? String(v)}</option>)}
+                <select
+                    value={filters.status}
+                    onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}
+                    className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200"
+                >
+                    <option value="all">Todos</option>
+                    {distincts.status_ids.map((v: any) => (
+                    <option key={v} value={v}>
+                        {STATUS_MAP[v] ?? String(v)}
+                    </option>
+                    ))}
                 </select>
-              </div>
+                </div>
             </div>
-          </div>
+            </div>
         )}
-      </div>
+        </div>
 
       <AgendamentoKPIs total={stats?.totalPeriod || 0} confirmRate={stats?.confirmedRate || 0} />
 
