@@ -30,6 +30,7 @@ import { hasPermission, type PageKey } from "@/lib/permissions";
 
 const cn = (...classes: (string | undefined | null | false)[]) =>
   classes.filter(Boolean).join(" ");
+
 type UserRole = "ADMIN" | "GESTOR" | "OPERADOR";
 
 interface MenuItem {
@@ -44,7 +45,7 @@ interface MenuItem {
 const menuItems: MenuItem[] = [
   {
     href: "/dashboard",
-    label: "Visao Geral",
+    label: "Visão Geral",
     icon: LayoutDashboard,
     group: "PRINCIPAL",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
@@ -54,7 +55,7 @@ const menuItems: MenuItem[] = [
     href: "/monitor",
     label: "Monitor de Atendimento",
     icon: PhoneCall,
-    group: "OPERACOES",
+    group: "OPERAÇÕES",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "monitor",
   },
@@ -62,15 +63,15 @@ const menuItems: MenuItem[] = [
     href: "/checklist-crc",
     label: "Checklist CRC",
     icon: MessageCircle,
-    group: "OPERACOES",
+    group: "OPERAÇÕES",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "checklist_crc",
   },
   {
     href: "/checklist-recepcao",
-    label: "Checklist Recepcao",
+    label: "Checklist Recepção",
     icon: ClipboardList,
-    group: "OPERACOES",
+    group: "OPERAÇÕES",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "checklist_recepcao",
   },
@@ -78,7 +79,7 @@ const menuItems: MenuItem[] = [
     href: "/produtividade",
     label: "Produtividade de Agendamento",
     icon: UserCheck,
-    group: "OPERACOES",
+    group: "OPERAÇÕES",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "produtividade",
   },
@@ -86,7 +87,7 @@ const menuItems: MenuItem[] = [
     href: "/agendamentos",
     label: "Dashboard de Agendamentos",
     icon: Calendar,
-    group: "OPERACOES",
+    group: "OPERAÇÕES",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "agendamentos",
   },
@@ -100,7 +101,7 @@ const menuItems: MenuItem[] = [
   },
   {
     href: "/contratos",
-    label: "ResolveSaude",
+    label: "Resolve Saúde",
     icon: CreditCard,
     group: "FINANCEIRO",
     roles: ["ADMIN", "GESTOR"],
@@ -108,7 +109,7 @@ const menuItems: MenuItem[] = [
   },
   {
     href: "/propostas",
-    label: "Gestao de Propostas",
+    label: "Gestão de Propostas",
     icon: Briefcase,
     group: "FINANCEIRO",
     roles: ["ADMIN", "GESTOR"],
@@ -118,21 +119,21 @@ const menuItems: MenuItem[] = [
     href: "/metas/dashboard",
     label: "Painel de Metas",
     icon: Target,
-    group: "INTELIGENCIA",
+    group: "INTELIGÊNCIA",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "metas_dashboard",
   },
   {
     href: "/metas",
-    label: "Gestao de Metas",
+    label: "Gestão de Metas",
     icon: Settings2,
-    group: "INTELIGENCIA",
+    group: "INTELIGÊNCIA",
     roles: ["ADMIN", "GESTOR"],
     pageKey: "metas",
   },
   {
     href: "/users",
-    label: "Gestao de Usuarios",
+    label: "Gestão de Usuários",
     icon: Users,
     group: "SISTEMA",
     roles: ["ADMIN"],
@@ -140,7 +141,7 @@ const menuItems: MenuItem[] = [
   },
   {
     href: "/settings",
-    label: "Configuracoes",
+    label: "Configurações",
     icon: Settings,
     group: "SISTEMA",
     roles: ["ADMIN"],
@@ -156,8 +157,14 @@ const menuItems: MenuItem[] = [
   },
 ];
 
-const GROUP_ORDER = ["PRINCIPAL", "OPERACOES", "FINANCEIRO", "INTELIGENCIA", "SISTEMA"];
+const GROUP_ORDER = ["PRINCIPAL", "OPERAÇÕES", "FINANCEIRO", "INTELIGÊNCIA", "SISTEMA"];
 const STORAGE_KEY = "consultare_sidebar_expanded_groups_v1";
+
+const ROLE_LABEL: Record<UserRole, string> = {
+  ADMIN: "Administrador",
+  GESTOR: "Gestor",
+  OPERADOR: "Operador",
+};
 
 export function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
@@ -167,6 +174,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
+
   const currentUserRole: UserRole =
     ((session?.user as any)?.role as UserRole) ?? "OPERADOR";
 
@@ -200,6 +208,7 @@ export function Sidebar() {
     return authorizedItems.find((item) => isItemActive(item));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authorizedItems, pathname]);
+
   const activeGroup = activeItem?.group;
 
   // Carrega preferências de grupos expandidos
@@ -208,9 +217,7 @@ export function Sidebar() {
       const raw = window.localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") {
-        setExpandedGroups(parsed);
-      }
+      if (parsed && typeof parsed === "object") setExpandedGroups(parsed);
     } catch {
       // ignore
     }
@@ -251,6 +258,7 @@ export function Sidebar() {
       arr.push(item);
       map.set(item.group, arr);
     }
+
     return { matches, map };
   }, [searchTerm, authorizedItems]);
 
@@ -289,13 +297,16 @@ export function Sidebar() {
         >
           <img
             src="https://www.consultare.com.br/wp-content/uploads/2025/09/consultare-logo-horizontal-branco.png"
-            alt="Consultare Logo"
+            alt="Logo Consultare"
             className="object-contain object-left"
           />
         </div>
+
         <button
           onClick={() => setIsOpen(!isOpen)}
           className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white"
+          aria-label={isOpen ? "Fechar sidebar" : "Abrir sidebar"}
+          title={isOpen ? "Fechar" : "Abrir"}
         >
           {isOpen ? <X size={20} /> : <Menu size={20} />}
         </button>
@@ -321,6 +332,7 @@ export function Sidebar() {
                   className="p-1 rounded-md hover:bg-white/10 text-slate-300/80 hover:text-white transition-colors"
                   aria-label="Limpar busca"
                   type="button"
+                  title="Limpar"
                 >
                   <X size={14} />
                 </button>
@@ -341,9 +353,14 @@ export function Sidebar() {
                 .filter((g) => searchResultsByGroup.map.has(g))
                 .map((group) => (
                   <div key={group}>
-                    <h4 className="px-4 text-[10px] font-bold text-slate-400/70 uppercase tracking-wider mb-2">
-                      {group}
-                    </h4>
+                    <div className="px-2 mb-2">
+                      <div className="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10">
+                        <span className="text-xs font-bold text-slate-200/90 uppercase tracking-wider">
+                          {group}
+                        </span>
+                      </div>
+                    </div>
+
                     <div className="space-y-1">
                       {(searchResultsByGroup.map.get(group) ?? []).map((item) => {
                         const isActive = isItemActive(item);
@@ -404,26 +421,27 @@ export function Sidebar() {
                       type="button"
                       onClick={() => toggleGroup(group)}
                       className={cn(
-                        "w-full flex items-center justify-between px-4 text-[10px] font-bold uppercase tracking-wider mb-2 rounded-lg transition-colors",
-                        group === activeGroup
-                          ? "text-white"
-                          : "text-slate-400/70 hover:text-white hover:bg-white/5"
+                        "w-full flex items-center justify-between px-4 py-3 rounded-lg transition-colors select-none",
+                        "border border-white/10 bg-white/0 hover:bg-white/5",
+                        group === activeGroup ? "text-white" : "text-slate-300"
                       )}
-                      title={
-                        group === activeGroup ? "Grupo atual" : isExpanded ? "Recolher" : "Expandir"
-                      }
+                      title={group === activeGroup ? "Grupo atual" : isExpanded ? "Recolher grupo" : "Expandir grupo"}
+                      aria-label={isExpanded ? `Recolher ${group}` : `Expandir ${group}`}
                     >
-                      <span>{group}</span>
+                      <span className="text-xs font-bold uppercase tracking-wider">
+                        {group}
+                      </span>
+
                       {isExpanded ? (
-                        <ChevronDown size={14} className="text-slate-300/80" />
+                        <ChevronDown size={16} className="text-slate-200/80" />
                       ) : (
-                        <ChevronRight size={14} className="text-slate-300/80" />
+                        <ChevronRight size={16} className="text-slate-200/80" />
                       )}
                     </button>
                   )}
 
                   {isExpanded && (
-                    <div className="space-y-1">
+                    <div className="space-y-1 mt-2">
                       {items.map((item) => {
                         const isActive = isItemActive(item);
 
@@ -490,7 +508,9 @@ export function Sidebar() {
               <p className="text-sm font-semibold text-white truncate">
                 {session?.user?.name || "Carregando..."}
               </p>
-              <p className="text-xs text-slate-400 truncate">{currentUserRole}</p>
+              <p className="text-xs text-slate-400 truncate">
+                {ROLE_LABEL[currentUserRole]}
+              </p>
             </div>
           )}
 
@@ -499,6 +519,7 @@ export function Sidebar() {
               onClick={handleLogout}
               className="text-slate-400 hover:text-red-400 transition-colors p-2 rounded-md hover:bg-slate-800"
               title="Sair do sistema"
+              aria-label="Sair do sistema"
             >
               <LogOut size={16} />
             </button>
