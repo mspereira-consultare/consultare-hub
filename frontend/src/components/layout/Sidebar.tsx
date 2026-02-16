@@ -81,7 +81,7 @@ const menuItems: MenuItem[] = [
   },
   {
     href: "/agendamentos",
-    label: "Agendamentos",
+    label: "Dashboard de Agendamentos",
     icon: Calendar,
     group: "OPERACOES",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],

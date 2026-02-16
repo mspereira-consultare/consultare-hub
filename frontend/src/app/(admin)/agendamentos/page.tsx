@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { RefreshCw, Loader2 } from 'lucide-react';
+import { RefreshCw, Loader2, Calendar, Clock } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -74,62 +74,107 @@ export default function AgendamentosPage() {
     return series.map((s: any) => ({ x: s.period, total: Number(s.total || 0), confirmados: Number(s.confirmados || 0) }));
   }, [series]);
 
+  const formatPeriodLabel = (period: string) => {
+    if (!period) return '-';
+    try {
+      if (aggregateBy === 'day') {
+        // period expected YYYY-MM-DD
+        const [y, m, d] = String(period).split('-');
+        if (y && m && d) return `${d}/${m}/${y}`;
+        return period;
+      }
+      if (aggregateBy === 'month') {
+        // period expected YYYY-MM
+        const [y, m] = String(period).split('-');
+        if (y && m) return `${m}/${y}`;
+        return period;
+      }
+      if (aggregateBy === 'year') {
+        return String(period);
+      }
+      return period;
+    } catch {
+      return period;
+    }
+  };
+
   return (
     <div className="p-4">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold">Agendamentos</h2>
-        <div className="flex items-center gap-2">
-          <button onClick={handleRefresh} disabled={loading} className="btn">
-            {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-            <span className="ml-2">Refresh</span>
+        <div>
+          <h2 className="text-xl font-semibold">Agendamentos</h2>
+          <p className="text-sm text-slate-500">Visão histórica e evolução de agendamentos</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
+            <Calendar size={16} className="text-slate-500" />
+            <input type="date" value={dateRange.start} onChange={(e) => setDateRange(d => ({ ...d, start: e.target.value }))} className="bg-transparent text-sm outline-none w-28 text-slate-700" />
+            <span className="text-slate-400">até</span>
+            <input type="date" value={dateRange.end} onChange={(e) => setDateRange(d => ({ ...d, end: e.target.value }))} className="bg-transparent text-sm outline-none w-28 text-slate-700" />
+          </div>
+
+          <button
+            onClick={handleRefresh}
+            disabled={loading}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border ${loading ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'}`}
+          >
+            {loading ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
+            <span>{loading ? 'Atualizando...' : 'Atualizar'}</span>
           </button>
+
+          <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200 text-sm text-slate-600">
+            <Clock size={14} />
+            <div>
+              <div className="text-xs">Heartbeat</div>
+              <div className="text-sm font-medium">{heartbeat?.status ?? 'UNKNOWN'}{heartbeat?.last_run ? ` — ${heartbeat.last_run}` : ''}</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
         <div>
-          <label>Inicio</label>
-          <input type="date" value={dateRange.start} onChange={(e) => setDateRange(d => ({ ...d, start: e.target.value }))} className="w-full" />
-        </div>
-        <div>
-          <label>Fim</label>
-          <input type="date" value={dateRange.end} onChange={(e) => setDateRange(d => ({ ...d, end: e.target.value }))} className="w-full" />
-        </div>
-        <div>
-          <label>Agrupar por</label>
-          <select value={aggregateBy} onChange={(e) => setAggregateBy(e.target.value as any)} className="w-full">
+          <label className="block text-sm text-slate-600 mb-1">Agrupar por</label>
+          <select value={aggregateBy} onChange={(e) => setAggregateBy(e.target.value as any)} className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
             <option value="day">Dia</option>
             <option value="month">Mês</option>
             <option value="year">Ano</option>
           </select>
         </div>
         <div>
-          <label>Responsável</label>
-          <select value={filters.scheduled_by} onChange={(e) => setFilters(f => ({ ...f, scheduled_by: e.target.value }))} className="w-full">
+          <label className="block text-sm text-slate-600 mb-1">Responsável</label>
+          <select value={filters.scheduled_by} onChange={(e) => setFilters(f => ({ ...f, scheduled_by: e.target.value }))} className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
             <option value="all">Todos</option>
             {distincts.scheduled_by.map((v: any) => <option key={v} value={v}>{v}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-sm text-slate-600 mb-1">Especialidade</label>
+          <select value={filters.specialty} onChange={(e) => setFilters(f => ({ ...f, specialty: e.target.value }))} className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
+            <option value="all">Todas</option>
+            {distincts.specialty.map((v: any) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         <div>
-          <label>Especialidade</label>
-          <select value={filters.specialty} onChange={(e) => setFilters(f => ({ ...f, specialty: e.target.value }))} className="w-full">
+          <label className="block text-sm text-slate-600 mb-1">Especialidade</label>
+          <select value={filters.specialty} onChange={(e) => setFilters(f => ({ ...f, specialty: e.target.value }))} className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
             <option value="all">Todas</option>
             {distincts.specialty.map((v: any) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
         <div>
-          <label>Profissional</label>
-          <select value={filters.professional} onChange={(e) => setFilters(f => ({ ...f, professional: e.target.value }))} className="w-full">
+          <label className="block text-sm text-slate-600 mb-1">Profissional</label>
+          <select value={filters.professional} onChange={(e) => setFilters(f => ({ ...f, professional: e.target.value }))} className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
             <option value="all">Todos</option>
             {distincts.professional.map((v: any) => <option key={v} value={v}>{v}</option>)}
           </select>
         </div>
         <div>
-          <label>Status</label>
-          <select value={filters.status} onChange={(e) => setFilters(f => ({ ...f, status: e.target.value }))} className="w-full">
+          <label className="block text-sm text-slate-600 mb-1">Status</label>
+          <select value={filters.status} onChange={(e) => setFilters(f => ({ ...f, status: e.target.value }))} className="w-full bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">
             <option value="all">Todos</option>
             {distincts.status_ids.map((v: any) => <option key={v} value={v}>{STATUS_MAP[v] ?? String(v)}</option>)}
           </select>
@@ -143,9 +188,9 @@ export default function AgendamentosPage() {
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="x" />
+              <XAxis dataKey="x" tickFormatter={(v) => formatPeriodLabel(String(v))} />
               <YAxis />
-              <Tooltip />
+              <Tooltip labelFormatter={(label) => formatPeriodLabel(String(label))} />
               <Line type="monotone" dataKey="total" stroke="#8884d8" strokeWidth={2} dot={false} />
               <Line type="monotone" dataKey="confirmados" stroke="#82ca9d" strokeWidth={2} dot={false} />
             </LineChart>
