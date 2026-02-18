@@ -1,0 +1,224 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
+import { AlertCircle, Edit3, Loader2, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { CONTRACT_TYPES, DOCUMENT_TYPES, PERSONAL_DOC_TYPES, type ContractPartyType } from '@/lib/profissionais/constants';
+import type { ProfessionalListItem } from '@/lib/profissionais/types';
+import { hasPermission } from '@/lib/permissions';
+
+type FormRegistration = { id?: string; councilType: string; councilNumber: string; councilUf: string; isPrimary: boolean };
+type FormChecklist = { docType: string; hasPhysicalCopy: boolean; hasDigitalCopy: boolean; expiresAt: string; notes: string };
+type FormState = {
+  name: string; contractPartyType: ContractPartyType; contractType: string; cpf: string; cnpj: string; legalName: string;
+  specialty: string; personalDocType: string; personalDocNumber: string; addressText: string; isActive: boolean;
+  hasPhysicalFolder: boolean; physicalFolderNote: string; registrations: FormRegistration[]; checklist: FormChecklist[];
+};
+
+const pageSize = 20;
+
+const newChecklist = () => DOCUMENT_TYPES.map((d) => ({ docType: d.code, hasPhysicalCopy: false, hasDigitalCopy: false, expiresAt: '', notes: '' }));
+const emptyForm = (): FormState => ({
+  name: '', contractPartyType: 'PF', contractType: CONTRACT_TYPES.find((c) => c.isActive)?.code || '', cpf: '', cnpj: '', legalName: '',
+  specialty: '', personalDocType: PERSONAL_DOC_TYPES[0], personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
+  physicalFolderNote: '', registrations: [{ councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
+});
+
+const toForm = (item: ProfessionalListItem): FormState => ({
+  name: item.name || '', contractPartyType: item.contractPartyType || 'PF', contractType: item.contractType || '', cpf: item.cpf || '',
+  cnpj: item.cnpj || '', legalName: item.legalName || '', specialty: item.specialty || '', personalDocType: item.personalDocType || 'RG',
+  personalDocNumber: item.personalDocNumber || '', addressText: item.addressText || '', isActive: Boolean(item.isActive),
+  hasPhysicalFolder: Boolean(item.hasPhysicalFolder), physicalFolderNote: item.physicalFolderNote || '',
+  registrations: (item.registrations || []).map((r) => ({ id: r.id, councilType: r.councilType, councilNumber: r.councilNumber, councilUf: r.councilUf, isPrimary: Boolean(r.isPrimary) })),
+  checklist: newChecklist().map((base) => {
+    const f = item.checklist?.find((x) => x.docType === base.docType);
+    return { ...base, hasPhysicalCopy: Boolean(f?.hasPhysicalCopy), hasDigitalCopy: Boolean(f?.hasDigitalCopy), expiresAt: f?.expiresAt || '', notes: f?.notes || '' };
+  }),
+});
+
+const maskCpf = (cpf: string | null) => {
+  const d = String(cpf || '').replace(/\D/g, '');
+  if (d.length !== 11) return cpf || '-';
+  return `${d.slice(0, 3)}.***.***-${d.slice(9)}`;
+};
+
+export default function ProfessionalsPage() {
+  const { data: session } = useSession();
+  const role = String((session?.user as any)?.role || 'OPERADOR').toUpperCase();
+  const canEdit = hasPermission((session?.user as any)?.permissions, 'profissionais', 'edit', role);
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [items, setItems] = useState<ProfessionalListItem[]>([]);
+  const [error, setError] = useState('');
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
+  const [certidaoStatus, setCertidaoStatus] = useState<'all' | 'OK' | 'VENCENDO' | 'VENCIDA' | 'PENDENTE'>('all');
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [form, setForm] = useState<FormState>(emptyForm());
+
+  const fetchList = async (forcePage?: number) => {
+    setLoading(true);
+    setError('');
+    try {
+      const params = new URLSearchParams({
+        page: String(forcePage || page),
+        pageSize: String(pageSize),
+        search: search.trim(),
+        status,
+        certidaoStatus,
+      });
+      const res = await fetch(`/api/admin/profissionais?${params.toString()}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao carregar profissionais.');
+      setItems(Array.isArray(data?.data) ? data.data : []);
+      setTotal(Number(data?.pagination?.total || 0));
+    } catch (e: any) {
+      setItems([]);
+      setTotal(0);
+      setError(e?.message || 'Erro ao carregar profissionais.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchList();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, status, certidaoStatus]);
+
+  const openCreate = () => { setEditingId(null); setForm(emptyForm()); setIsModalOpen(true); };
+
+  const openEdit = async (id: string) => {
+    setError('');
+    try {
+      const res = await fetch(`/api/admin/profissionais/${encodeURIComponent(id)}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao abrir profissional.');
+      setEditingId(id);
+      setForm(toForm(data.data));
+      setIsModalOpen(true);
+    } catch (e: any) {
+      setError(e?.message || 'Falha ao abrir profissional.');
+    }
+  };
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const payload = {
+        ...form,
+        cpf: form.cpf || null,
+        cnpj: form.cnpj || null,
+        legalName: form.legalName || null,
+        physicalFolderNote: form.physicalFolderNote || null,
+        checklist: form.checklist.map((c) => ({ ...c, expiresAt: c.expiresAt || null })),
+      };
+      const res = await fetch(editingId ? `/api/admin/profissionais/${encodeURIComponent(editingId)}` : '/api/admin/profissionais', {
+        method: editingId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao salvar profissional.');
+      setIsModalOpen(false);
+      setEditingId(null);
+      setForm(emptyForm());
+      await fetchList();
+    } catch (e: any) {
+      setError(e?.message || 'Falha ao salvar profissional.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  return (
+    <div className="p-8 max-w-[1700px] mx-auto">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-800">Gestao de Profissionais</h1>
+          <p className="text-slate-500">Cadastro de medicos, pendencias documentais e contratos.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={() => fetchList()} className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2"><RefreshCw size={14} />Atualizar</button>
+          {canEdit && <button onClick={openCreate} className="px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm flex items-center gap-2"><Plus size={14} />Novo profissional</button>}
+        </div>
+      </div>
+
+      {error && <div className="mb-4 px-3 py-2 border border-rose-200 bg-rose-50 rounded-lg text-rose-700 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
+
+      <div className="bg-white border rounded-xl p-4 mb-4 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+        <div className="md:col-span-5 relative"><Search size={15} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-8 pr-3 py-2 border rounded-lg" placeholder="Buscar por nome/especialidade/CPF/CNPJ" /></div>
+        <select value={status} onChange={(e) => { setStatus(e.target.value as any); setPage(1); }} className="md:col-span-2 px-3 py-2 border rounded-lg"><option value="all">Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option><option value="pending">Pendentes</option></select>
+        <select value={certidaoStatus} onChange={(e) => { setCertidaoStatus(e.target.value as any); setPage(1); }} className="md:col-span-3 px-3 py-2 border rounded-lg"><option value="all">Certidao: todos</option><option value="OK">OK</option><option value="VENCENDO">Vencendo</option><option value="VENCIDA">Vencida</option><option value="PENDENTE">Pendente</option></select>
+        <button onClick={() => { setPage(1); fetchList(1); }} className="md:col-span-2 px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm">Aplicar</button>
+      </div>
+
+      <div className="bg-white border rounded-xl overflow-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-600"><tr><th className="px-4 py-3">Profissional</th><th className="px-4 py-3">Registro principal</th><th className="px-4 py-3">Tipo contrato</th><th className="px-4 py-3">Documentos</th><th className="px-4 py-3">Certidao</th><th className="px-4 py-3">Acoes</th></tr></thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500"><span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" />Carregando...</span></td></tr>
+            ) : items.length === 0 ? (
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">Nenhum profissional encontrado.</td></tr>
+            ) : items.map((item) => (
+              <tr key={item.id} className="border-t">
+                <td className="px-4 py-3"><div className="font-semibold text-slate-800">{item.name}</div><div className="text-xs text-slate-500">{item.contractPartyType === 'PF' ? `CPF: ${maskCpf(item.cpf)}` : `CNPJ: ${item.cnpj || '-'}`}</div></td>
+                <td className="px-4 py-3">{item.primaryRegistration ? `${item.primaryRegistration.councilType}/${item.primaryRegistration.councilUf} ${item.primaryRegistration.councilNumber}` : '-'}</td>
+                <td className="px-4 py-3">{item.contractType}</td>
+                <td className="px-4 py-3">{item.requiredDocsDone}/{item.requiredDocsTotal} {item.pending && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Pendente</span>}</td>
+                <td className="px-4 py-3">{item.certidaoStatus} <span className="text-xs text-slate-500">{item.certidaoExpiresAt || '-'}</span></td>
+                <td className="px-4 py-3"><button onClick={() => openEdit(item.id)} className="px-2 py-1 text-xs border rounded-md hover:bg-slate-50 inline-flex items-center gap-1"><Edit3 size={12} />Editar</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between text-sm text-slate-600">
+        <span>Total: <strong>{total}</strong></span>
+        <div className="flex items-center gap-2"><button disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))} className="px-3 py-1.5 border rounded disabled:opacity-50">Anterior</button><span>{page}/{totalPages}</span><button disabled={page >= totalPages} onClick={() => setPage((p) => Math.min(totalPages, p + 1))} className="px-3 py-1.5 border rounded disabled:opacity-50">Proxima</button></div>
+      </div>
+
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 p-4 flex items-center justify-center">
+          <div className="w-full max-w-6xl bg-white border rounded-2xl max-h-[92vh] overflow-hidden">
+            <div className="px-5 py-3 border-b flex items-center justify-between"><h2 className="font-semibold text-slate-800">{editingId ? 'Editar profissional' : 'Novo profissional'}</h2><button onClick={() => setIsModalOpen(false)} className="p-1 rounded hover:bg-slate-100"><X size={16} /></button></div>
+            <div className="p-5 max-h-[78vh] overflow-auto space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="Nome" className="md:col-span-2 px-3 py-2 border rounded-lg" />
+                <input value={form.specialty} onChange={(e) => setForm((p) => ({ ...p, specialty: e.target.value }))} placeholder="Especialidade" className="px-3 py-2 border rounded-lg" />
+                <select value={form.contractType} onChange={(e) => setForm((p) => ({ ...p, contractType: e.target.value }))} className="px-3 py-2 border rounded-lg bg-white">{CONTRACT_TYPES.filter((t) => t.isActive).map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}</select>
+                <select value={form.contractPartyType} onChange={(e) => setForm((p) => ({ ...p, contractPartyType: e.target.value as ContractPartyType }))} className="px-3 py-2 border rounded-lg bg-white"><option value="PF">PF</option><option value="PJ">PJ</option></select>
+                <input value={form.contractPartyType === 'PF' ? form.cpf : form.cnpj} onChange={(e) => setForm((p) => p.contractPartyType === 'PF' ? { ...p, cpf: e.target.value } : { ...p, cnpj: e.target.value })} placeholder={form.contractPartyType === 'PF' ? 'CPF' : 'CNPJ'} className="px-3 py-2 border rounded-lg" />
+                {form.contractPartyType === 'PJ' && <input value={form.legalName} onChange={(e) => setForm((p) => ({ ...p, legalName: e.target.value }))} placeholder="Razao social" className="md:col-span-2 px-3 py-2 border rounded-lg" />}
+                <select value={form.personalDocType} onChange={(e) => setForm((p) => ({ ...p, personalDocType: e.target.value }))} className="px-3 py-2 border rounded-lg bg-white">{PERSONAL_DOC_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}</select>
+                <input value={form.personalDocNumber} onChange={(e) => setForm((p) => ({ ...p, personalDocNumber: e.target.value }))} placeholder="Numero doc pessoal" className="px-3 py-2 border rounded-lg" />
+                <textarea value={form.addressText} onChange={(e) => setForm((p) => ({ ...p, addressText: e.target.value }))} rows={2} placeholder="Endereco" className="md:col-span-4 px-3 py-2 border rounded-lg" />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-semibold text-slate-700">Registros regionais</h3><button type="button" className="text-xs px-2 py-1 border rounded-md" onClick={() => setForm((p) => ({ ...p, registrations: [...p.registrations, { councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: false }] }))}>+ Registro</button></div>
+                <div className="space-y-2">{form.registrations.map((r, i) => <div key={`${r.id || 'new'}-${i}`} className="grid grid-cols-12 gap-2 items-center"><input value={r.councilType} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilType: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })} className="col-span-3 px-2 py-1.5 border rounded" placeholder="Conselho" /><input value={r.councilNumber} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilNumber: e.target.value }; return { ...p, registrations: n }; })} className="col-span-4 px-2 py-1.5 border rounded" placeholder="Numero" /><input value={r.councilUf} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilUf: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })} className="col-span-2 px-2 py-1.5 border rounded" placeholder="UF" maxLength={2} /><label className="col-span-2 text-xs inline-flex items-center gap-1"><input type="radio" checked={r.isPrimary} onChange={() => setForm((p) => ({ ...p, registrations: p.registrations.map((x, xIdx) => ({ ...x, isPrimary: xIdx === i })) }))} />Principal</label><button type="button" onClick={() => setForm((p) => { if (p.registrations.length <= 1) return p; const n = p.registrations.filter((_, xIdx) => xIdx !== i); if (!n.some((x) => x.isPrimary)) n[0] = { ...n[0], isPrimary: true }; return { ...p, registrations: n }; })} className="col-span-1 text-slate-500 hover:text-rose-600">x</button></div>)}</div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Checklist manual de documentos (transicao)</h3>
+                <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="px-2 py-2 text-left">Documento</th><th className="px-2 py-2 text-left">Fisico</th><th className="px-2 py-2 text-left">Digital</th><th className="px-2 py-2 text-left">Expiracao</th><th className="px-2 py-2 text-left">Obs</th></tr></thead><tbody>{form.checklist.map((c, i) => { const d = DOCUMENT_TYPES.find((x) => x.code === c.docType); return <tr key={c.docType} className="border-t"><td className="px-2 py-2">{d?.label || c.docType}</td><td className="px-2 py-2"><input type="checkbox" checked={c.hasPhysicalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasPhysicalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2"><input type="checkbox" checked={c.hasDigitalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasDigitalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2">{d?.hasExpiration ? <input type="date" value={c.expiresAt} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], expiresAt: e.target.value }; return { ...p, checklist: n }; })} className="px-2 py-1 border rounded" /> : <span className="text-xs text-slate-400">-</span>}</td><td className="px-2 py-2"><input value={c.notes} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], notes: e.target.value }; return { ...p, checklist: n }; })} className="w-full px-2 py-1 border rounded" /></td></tr>; })}</tbody></table></div>
+              </div>
+            </div>
+            <div className="px-5 py-3 border-t flex justify-end gap-2"><button type="button" className="px-3 py-2 border rounded-lg" onClick={() => setIsModalOpen(false)}>Cancelar</button><button type="button" onClick={save} disabled={saving || !canEdit} className="px-3 py-2 rounded-lg bg-[#17407E] text-white disabled:opacity-60 inline-flex items-center gap-2">{saving && <Loader2 size={14} className="animate-spin" />}{saving ? 'Salvando...' : 'Salvar'}</button></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

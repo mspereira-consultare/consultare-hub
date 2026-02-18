@@ -157,3 +157,33 @@ Em `frontend/src/app/api/admin/refresh/route.ts`:
 - Há regra legada em `frontend/middleware.ts` baseada em `role` e path (`/usuarios`, `/metas`).
 - A regra principal de menu e de APIs já é a matriz por página.
 - Recomendação técnica: manter uma única fonte de autorização (matriz), reduzindo lógica legada de role no middleware.
+
+---
+
+## Atualizacao: pagina `profissionais`
+
+A pagina `profissionais` foi adicionada com `pageKey = profissionais`.
+
+### Rota
+
+- `/profissionais`
+- APIs relacionadas: `/api/admin/profissionais*`
+
+### Defaults atuais
+
+| Perfil | view | edit | refresh |
+|---|---:|---:|---:|
+| ADMIN | sim | sim | sim |
+| GESTOR | sim | sim | sim |
+| OPERADOR | sim | nao | nao |
+
+### Regra de autorizacao
+
+- Listagem e detalhe (`GET`): exige `view`.
+- Criacao/edicao (`POST`/`PUT`): exige `edit`.
+
+Implementacao:
+- `frontend/src/lib/permissions.ts`
+- `frontend/src/lib/profissionais/auth.ts`
+- `frontend/src/app/api/admin/profissionais/route.ts`
+- `frontend/src/app/api/admin/profissionais/[id]/route.ts`

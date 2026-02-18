@@ -11,6 +11,7 @@ export type PageKey =
   | 'metas'
   | 'produtividade'
   | 'agendamentos'
+  | 'profissionais'
   | 'checklist_crc'
   | 'checklist_recepcao'
   | 'ajuda'
@@ -35,6 +36,7 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'metas', label: 'Gestao de Metas', path: '/metas' },
   { key: 'produtividade', label: 'Produtividade', path: '/produtividade' },
   { key: 'agendamentos', label: 'Agendamentos', path: '/agendamentos' },
+  { key: 'profissionais', label: 'Profissionais', path: '/profissionais' },
   { key: 'checklist_crc', label: 'Checklist CRC', path: '/checklist-crc' },
   { key: 'checklist_recepcao', label: 'Checklist Recepcao', path: '/checklist-recepcao' },
   { key: 'ajuda', label: 'Ajuda', path: '/ajuda' },
@@ -72,13 +74,13 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'checklist_crc', 'checklist_recepcao'], { edit: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'produtividade', 'agendamentos', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'checklist_crc', 'checklist_recepcao'], { edit: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'produtividade', 'agendamentos', 'profissionais', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
     return matrix;
   }
 
-  setMany(matrix, ['dashboard', 'monitor', 'metas_dashboard', 'produtividade', 'agendamentos', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
+  setMany(matrix, ['dashboard', 'monitor', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
   setMany(matrix, ['checklist_crc', 'checklist_recepcao'], { edit: true });
   setMany(matrix, ['monitor', 'produtividade', 'agendamentos', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
   return matrix;
@@ -134,6 +136,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/propostas') return 'propostas';
   if (path === '/produtividade') return 'produtividade';
   if (path === '/agendamentos') return 'agendamentos';
+  if (path === '/profissionais') return 'profissionais';
   if (path === '/metas/dashboard') return 'metas_dashboard';
   if (path === '/metas') return 'metas';
   if (path === '/checklist-crc') return 'checklist_crc';
@@ -149,6 +152,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/user-teams')) return 'produtividade';
   if (path.startsWith('/api/admin/teams')) return 'produtividade';
   if (path.startsWith('/api/admin/agendamentos')) return 'agendamentos';
+  if (path.startsWith('/api/admin/profissionais')) return 'profissionais';
   if (path.startsWith('/api/admin/goals')) return 'metas';
   if (path.startsWith('/api/admin/options/')) return 'metas';
   if (path.startsWith('/api/admin/checklist/crc')) return 'checklist_crc';

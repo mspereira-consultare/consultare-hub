@@ -496,3 +496,45 @@ IDs disponíveis em `frontend/src/app/(admin)/metas/constants.ts`:
 | Produtividade | botão atualizar | `financeiro` |
 | Checklist CRC | botão atualizar | `financeiro` + `clinia` |
 | Checklist Recepção | botão atualizar | `financeiro` + `faturamento` + `comercial` |
+
+---
+
+## Profissionais (`/profissionais`)
+
+### Objetivo
+
+Centralizar o cadastro da carteira de profissionais, com foco em:
+- dados contratuais (PF/PJ e tipo de contrato);
+- registros regionais (CRM/CRO/CRP etc.) com registro principal;
+- controle documental em modo hibrido (manual + upload futuro);
+- status de pendencias e vencimento da certidao etica.
+
+### Filtros
+
+- Busca textual (`name`, `specialty`, `cpf`, `cnpj`)
+- Status (`all`, `active`, `inactive`, `pending`)
+- Status da certidao etica (`all`, `OK`, `VENCENDO`, `VENCIDA`, `PENDENTE`)
+- Paginacao (`page`, `pageSize`)
+
+### Fontes consumidas
+
+- `GET /api/admin/profissionais`
+- `GET /api/admin/profissionais/:id`
+- `POST /api/admin/profissionais`
+- `PUT /api/admin/profissionais/:id`
+
+### Indicadores/regras da tela
+
+| Indicador | Fonte | Regra |
+|---|---|---|
+| Documentos `X/Y` | `professional_document_checklist` + `professional_documents` | Conta documentos obrigatorios concluidos no modo `hybrid` |
+| Pendente | `missingFields` + `missingDocs` | Verdadeiro quando ha pendencia cadastral ou documental |
+| Certidao etica | checklist/documents | `OK`, `VENCENDO`, `VENCIDA`, `PENDENTE` por `expires_at` manual/ativo |
+| Registro principal | `professional_registrations` | Exibe `council_type/council_uf council_number` do item `is_primary=1` |
+| Tipo de contrato | `professionals.contract_type` | Define qual template de contrato sera usado na automacao |
+
+### Observacao operacional
+
+Na fase atual, o controle documental continua funcionando no modo de transicao:
+- o usuario pode marcar manualmente copia fisica/digital por tipo de documento;
+- upload em S3 entra depois sem quebrar o fluxo atual.

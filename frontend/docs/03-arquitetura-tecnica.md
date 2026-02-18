@@ -172,3 +172,40 @@ Checklists usam duas estratégias:
 - `frontend/middleware.ts` ainda possui regras legadas por `role` e pathname além da matriz.
 - Alguns workers ainda carregam compatibilidade Turso/SQLite; manter testes quando ajustar SQL.
 - `worker_contracts.py` recria tabela `feegow_contracts` no fluxo atual. Mudanças nesse worker exigem validação de impacto histórico.
+
+---
+
+## 13) Modulo de Profissionais
+
+### Componentes novos
+
+- Pagina: `frontend/src/app/(admin)/profissionais/page.tsx`
+- API list/create: `frontend/src/app/api/admin/profissionais/route.ts`
+- API detail/update: `frontend/src/app/api/admin/profissionais/[id]/route.ts`
+- Repositorio e schema: `frontend/src/lib/profissionais/repository.ts`
+- Autorizacao server-side: `frontend/src/lib/profissionais/auth.ts`
+- Constantes e regras: `frontend/src/lib/profissionais/constants.ts`, `frontend/src/lib/profissionais/status.ts`
+
+### Banco
+
+O modulo cria/garante as tabelas em runtime:
+- `professionals`
+- `professional_registrations`
+- `professional_documents`
+- `professional_document_checklist`
+- `professional_contracts`
+- `professional_audit_log`
+
+### Fluxo funcional atual
+
+1. Usuario abre `/profissionais`.
+2. Frontend consulta `GET /api/admin/profissionais`.
+3. API valida permissao (`view`) e monta pendencias/status.
+4. Em criacao/edicao, frontend envia payload para `POST` ou `PUT`.
+5. API valida regras de negocio (PF/PJ, contrato, registro principal, checklist) e persiste.
+6. API grava auditoria em `professional_audit_log`.
+
+### Observacao de storage
+
+A estrutura ja esta preparada para storage externo, mas a fase atual usa controle documental hibrido manual.
+A ativacao de upload em S3 sera adicionada em etapa posterior sem trocar o contrato de API base do modulo.

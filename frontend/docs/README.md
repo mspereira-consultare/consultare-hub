@@ -39,3 +39,9 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Gestão/Operação: `01` e `05`.
 - Produto/BI: `01` e `04`.
 - Engenharia/Manutenção: `02`, `03`, `04` e `05`.
+
+## Atualizacao recente
+
+- Modulo `/profissionais` iniciado com APIs e UI base para cadastro da carteira medica.
+- O dicionario e a arquitetura ja incluem as novas tabelas `professional_*`.
+- Fluxo documental em modo hibrido (manual) durante a transicao para upload em S3.

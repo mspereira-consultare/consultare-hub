@@ -343,3 +343,97 @@ Campos:
 - `chave`
 - `valor`
 - `dt_atualizacao`
+
+---
+
+## 7) Gestao de Profissionais
+
+### `professionals`
+
+Cadastro principal do profissional.
+
+Campos relevantes:
+- `id` (PK)
+- `name`
+- `contract_party_type` (`PF`/`PJ`)
+- `contract_type` (tipo de contrato para automacao)
+- `cpf`, `cnpj`, `legal_name`
+- `specialty`
+- `personal_doc_type`, `personal_doc_number`
+- `address_text`
+- `is_active`
+- `has_physical_folder`, `physical_folder_note`
+- `created_at`, `updated_at`
+
+Escrita: API `/api/admin/profissionais`.
+
+### `professional_registrations`
+
+Registros regionais (multiplo por profissional).
+
+Campos:
+- `id` (PK)
+- `professional_id`
+- `council_type` (CRM, CRO, CRP...)
+- `council_number`
+- `council_uf`
+- `is_primary`
+- `created_at`, `updated_at`
+
+Regra: cada profissional deve ter exatamente 1 registro principal.
+
+### `professional_document_checklist`
+
+Checklist manual de transicao (controle fisico/digital).
+
+Campos:
+- `id` (PK)
+- `professional_id`
+- `doc_type`
+- `has_physical_copy`, `has_digital_copy`
+- `expires_at` (principalmente `CERTIDAO_ETICA`)
+- `notes`
+- `verified_by`, `verified_at`, `updated_at`
+
+Uso: base para pendencias enquanto upload em S3 nao esta ativo.
+
+### `professional_documents`
+
+Tabela preparada para documentos com storage externo.
+
+Campos:
+- `id` (PK)
+- `professional_id`
+- `doc_type`
+- `storage_provider`, `storage_bucket`, `storage_key`
+- `original_name`, `mime_type`, `size_bytes`
+- `expires_at`
+- `is_active`
+- `uploaded_by`, `created_at`
+
+### `professional_contracts`
+
+Historico de geracao de contratos por profissional.
+
+Campos:
+- `id` (PK)
+- `professional_id`
+- `template_key`, `template_version`
+- `status`
+- `storage_provider`, `storage_bucket`, `storage_key`
+- `generated_by`, `generated_at`
+- `error_message`, `meta_json`, `created_at`
+
+### `professional_audit_log`
+
+Auditoria do modulo.
+
+Campos:
+- `id` (PK)
+- `professional_id`
+- `action`
+- `actor_user_id`
+- `payload_json`
+- `created_at`
+
+Escrita: APIs de criacao/edicao do modulo.

@@ -25,6 +25,7 @@ import {
   ChevronDown,
   ChevronRight,
   Search,
+  Stethoscope,
 } from "lucide-react";
 import { hasPermission, type PageKey } from "@/lib/permissions";
 
@@ -90,6 +91,14 @@ const menuItems: MenuItem[] = [
     group: "OPERAÇÕES",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "agendamentos",
+  },
+  {
+    href: "/profissionais",
+    label: "Gestão de Profissionais",
+    icon: Stethoscope,
+    group: "OPERAÇÕES",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "profissionais",
   },
   {
     href: "/financeiro",
