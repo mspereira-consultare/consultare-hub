@@ -2,9 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { AlertCircle, Edit3, Loader2, Plus, RefreshCw, Search, X } from 'lucide-react';
+import { AlertCircle, Download, Edit3, FileUp, Loader2, Plus, RefreshCw, Search, X } from 'lucide-react';
 import { CONTRACT_TYPES, DOCUMENT_TYPES, PERSONAL_DOC_TYPES, type ContractPartyType } from '@/lib/profissionais/constants';
-import type { ProfessionalListItem } from '@/lib/profissionais/types';
+import type { ProfessionalDocument, ProfessionalListItem } from '@/lib/profissionais/types';
 import { hasPermission } from '@/lib/permissions';
 
 type FormRegistration = { id?: string; councilType: string; councilNumber: string; councilUf: string; isPrimary: boolean };
@@ -59,6 +59,13 @@ export default function ProfessionalsPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [form, setForm] = useState<FormState>(emptyForm());
+  const [docsLoading, setDocsLoading] = useState(false);
+  const [uploadedDocs, setUploadedDocs] = useState<ProfessionalDocument[]>([]);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadDocType, setUploadDocType] = useState<string>(DOCUMENT_TYPES[0]?.code || 'RG');
+  const [uploadExpiresAt, setUploadExpiresAt] = useState('');
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [modalError, setModalError] = useState('');
 
   const fetchList = async (forcePage?: number) => {
     setLoading(true);
@@ -85,22 +92,86 @@ export default function ProfessionalsPage() {
     }
   };
 
+  const fetchDocuments = async (professionalId: string) => {
+    setDocsLoading(true);
+    setModalError('');
+    try {
+      const res = await fetch(`/api/admin/profissionais/${encodeURIComponent(professionalId)}/documentos`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao carregar documentos.');
+      setUploadedDocs(Array.isArray(data?.data) ? data.data : []);
+    } catch (e: any) {
+      setUploadedDocs([]);
+      setModalError(e?.message || 'Falha ao carregar documentos.');
+    } finally {
+      setDocsLoading(false);
+    }
+  };
+
+  const uploadDocument = async () => {
+    if (!editingId) {
+      setModalError('Salve o cadastro primeiro para habilitar upload.');
+      return;
+    }
+    if (!uploadFile) {
+      setModalError('Selecione um arquivo para upload.');
+      return;
+    }
+    setUploadingDoc(true);
+    setModalError('');
+    try {
+      const fd = new FormData();
+      fd.append('file', uploadFile);
+      fd.append('docType', uploadDocType);
+      if (uploadExpiresAt) fd.append('expiresAt', uploadExpiresAt);
+
+      const res = await fetch(`/api/admin/profissionais/${encodeURIComponent(editingId)}/documentos`, {
+        method: 'POST',
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha no upload.');
+
+      setUploadFile(null);
+      setUploadExpiresAt('');
+      await fetchDocuments(editingId);
+    } catch (e: any) {
+      setModalError(e?.message || 'Falha no upload.');
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
   useEffect(() => {
     fetchList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, status, certidaoStatus]);
 
-  const openCreate = () => { setEditingId(null); setForm(emptyForm()); setIsModalOpen(true); };
+  const openCreate = () => {
+    setEditingId(null);
+    setForm(emptyForm());
+    setUploadedDocs([]);
+    setUploadFile(null);
+    setUploadExpiresAt('');
+    setUploadDocType(DOCUMENT_TYPES[0]?.code || 'RG');
+    setModalError('');
+    setIsModalOpen(true);
+  };
 
   const openEdit = async (id: string) => {
     setError('');
+    setModalError('');
     try {
       const res = await fetch(`/api/admin/profissionais/${encodeURIComponent(id)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Falha ao abrir profissional.');
       setEditingId(id);
       setForm(toForm(data.data));
+      setUploadFile(null);
+      setUploadExpiresAt('');
+      setUploadDocType(DOCUMENT_TYPES[0]?.code || 'RG');
       setIsModalOpen(true);
+      await fetchDocuments(id);
     } catch (e: any) {
       setError(e?.message || 'Falha ao abrir profissional.');
     }
@@ -152,15 +223,6 @@ export default function ProfessionalsPage() {
       </div>
 
       {error && <div className="mb-4 px-3 py-2 border border-rose-200 bg-rose-50 rounded-lg text-rose-700 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
-
-      <div className="mb-4 px-3 py-2 border border-amber-200 bg-amber-50 rounded-lg text-amber-800 text-sm flex items-start gap-2">
-        <AlertCircle size={14} className="mt-0.5" />
-        <span>
-          Upload de documentos via S3 ainda está em implementação na interface desta página.
-          Nesta etapa, mantenha o controle manual (pasta física/digital) no checklist.
-        </span>
-      </div>
-
       <div className="bg-white border rounded-xl p-4 mb-4 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
         <div className="md:col-span-5 relative"><Search size={15} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-8 pr-3 py-2 border rounded-lg" placeholder="Buscar por nome/especialidade/CPF/CNPJ" /></div>
         <select value={status} onChange={(e) => { setStatus(e.target.value as any); setPage(1); }} className="md:col-span-2 px-3 py-2 border rounded-lg"><option value="all">Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option><option value="pending">Pendentes</option></select>
@@ -200,6 +262,21 @@ export default function ProfessionalsPage() {
           <div className="w-full max-w-6xl bg-white border rounded-2xl max-h-[92vh] overflow-hidden">
             <div className="px-5 py-3 border-b flex items-center justify-between"><h2 className="font-semibold text-slate-800">{editingId ? 'Editar profissional' : 'Novo profissional'}</h2><button onClick={() => setIsModalOpen(false)} className="p-1 rounded hover:bg-slate-100"><X size={16} /></button></div>
             <div className="p-5 max-h-[78vh] overflow-auto space-y-6">
+              <div className="px-3 py-2 border border-amber-200 bg-amber-50 rounded-lg text-amber-800 text-sm flex items-start gap-2">
+                <AlertCircle size={14} className="mt-0.5" />
+                <span>
+                  Upload via S3 ainda esta em implementacao assistida. O checklist manual continua ativo.
+                  O upload de arquivos e opcional para cadastro/edicao.
+                </span>
+              </div>
+
+              {modalError && (
+                <div className="px-3 py-2 border border-rose-200 bg-rose-50 rounded-lg text-rose-700 text-sm flex items-center gap-2">
+                  <AlertCircle size={14} />
+                  {modalError}
+                </div>
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                 <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="Nome" className="md:col-span-2 px-3 py-2 border rounded-lg" />
                 <input value={form.specialty} onChange={(e) => setForm((p) => ({ ...p, specialty: e.target.value }))} placeholder="Especialidade" className="px-3 py-2 border rounded-lg" />
@@ -215,6 +292,102 @@ export default function ProfessionalsPage() {
               <div>
                 <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-semibold text-slate-700">Registros regionais</h3><button type="button" className="text-xs px-2 py-1 border rounded-md" onClick={() => setForm((p) => ({ ...p, registrations: [...p.registrations, { councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: false }] }))}>+ Registro</button></div>
                 <div className="space-y-2">{form.registrations.map((r, i) => <div key={`${r.id || 'new'}-${i}`} className="grid grid-cols-12 gap-2 items-center"><input value={r.councilType} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilType: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })} className="col-span-3 px-2 py-1.5 border rounded" placeholder="Conselho" /><input value={r.councilNumber} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilNumber: e.target.value }; return { ...p, registrations: n }; })} className="col-span-4 px-2 py-1.5 border rounded" placeholder="Numero" /><input value={r.councilUf} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilUf: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })} className="col-span-2 px-2 py-1.5 border rounded" placeholder="UF" maxLength={2} /><label className="col-span-2 text-xs inline-flex items-center gap-1"><input type="radio" checked={r.isPrimary} onChange={() => setForm((p) => ({ ...p, registrations: p.registrations.map((x, xIdx) => ({ ...x, isPrimary: xIdx === i })) }))} />Principal</label><button type="button" onClick={() => setForm((p) => { if (p.registrations.length <= 1) return p; const n = p.registrations.filter((_, xIdx) => xIdx !== i); if (!n.some((x) => x.isPrimary)) n[0] = { ...n[0], isPrimary: true }; return { ...p, registrations: n }; })} className="col-span-1 text-slate-500 hover:text-rose-600">x</button></div>)}</div>
+              </div>
+
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-2">Upload de documentos (opcional)</h3>
+                {!editingId ? (
+                  <div className="text-xs px-3 py-2 rounded border bg-slate-50 text-slate-600">
+                    Salve o cadastro primeiro para habilitar upload e download de arquivos.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                      <select
+                        value={uploadDocType}
+                        onChange={(e) => setUploadDocType(e.target.value)}
+                        className="px-2 py-2 border rounded"
+                      >
+                        {DOCUMENT_TYPES.map((d) => (
+                          <option key={d.code} value={d.code}>
+                            {d.label}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="date"
+                        value={uploadExpiresAt}
+                        onChange={(e) => setUploadExpiresAt(e.target.value)}
+                        className="px-2 py-2 border rounded"
+                        placeholder="Expiracao (opcional)"
+                      />
+                      <input
+                        type="file"
+                        onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                        className="px-2 py-2 border rounded"
+                      />
+                      <button
+                        type="button"
+                        onClick={uploadDocument}
+                        disabled={!canEdit || uploadingDoc}
+                        className="px-3 py-2 rounded bg-[#17407E] text-white text-sm disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                      >
+                        {uploadingDoc ? <Loader2 size={14} className="animate-spin" /> : <FileUp size={14} />}
+                        {uploadingDoc ? 'Enviando...' : 'Enviar arquivo'}
+                      </button>
+                    </div>
+
+                    <div className="border rounded-lg overflow-auto">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 text-xs uppercase text-slate-600">
+                          <tr>
+                            <th className="px-2 py-2 text-left">Tipo</th>
+                            <th className="px-2 py-2 text-left">Arquivo</th>
+                            <th className="px-2 py-2 text-left">Expiracao</th>
+                            <th className="px-2 py-2 text-left">Upload</th>
+                            <th className="px-2 py-2 text-left">Acoes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {docsLoading ? (
+                            <tr>
+                              <td colSpan={5} className="px-2 py-4 text-center text-slate-500">
+                                <span className="inline-flex items-center gap-2">
+                                  <Loader2 size={14} className="animate-spin" />
+                                  Carregando arquivos...
+                                </span>
+                              </td>
+                            </tr>
+                          ) : uploadedDocs.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="px-2 py-4 text-center text-slate-500">
+                                Nenhum arquivo enviado.
+                              </td>
+                            </tr>
+                          ) : (
+                            uploadedDocs.map((doc) => (
+                              <tr key={doc.id} className="border-t">
+                                <td className="px-2 py-2">{DOCUMENT_TYPES.find((x) => x.code === doc.docType)?.label || doc.docType}</td>
+                                <td className="px-2 py-2">{doc.originalName}</td>
+                                <td className="px-2 py-2">{doc.expiresAt || '-'}</td>
+                                <td className="px-2 py-2">{doc.createdAt ? doc.createdAt.slice(0, 19).replace('T', ' ') : '-'}</td>
+                                <td className="px-2 py-2">
+                                  <a
+                                    href={`/api/admin/profissionais/documentos/${encodeURIComponent(doc.id)}/download`}
+                                    className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
+                                  >
+                                    <Download size={13} />
+                                    Baixar
+                                  </a>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div>
