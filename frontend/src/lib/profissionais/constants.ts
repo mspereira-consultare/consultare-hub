@@ -76,21 +76,21 @@ export const REQUIRED_DOCUMENT_TYPES = DOCUMENT_TYPES.filter((item) => item.requ
 export const CONTRACT_TYPES: ContractTypeDef[] = [
   {
     code: 'PADRAO_CLT',
-    label: 'Padrao CLT',
+    label: 'ESPECIALIDADES',
     templateKey: 'contrato_padrao_clt',
     templateVersion: 'v1',
     isActive: true,
   },
   {
     code: 'PJ_PADRAO',
-    label: 'PJ Padrao',
+    label: 'ODONTOLOGIA',
     templateKey: 'contrato_pj_padrao',
     templateVersion: 'v1',
     isActive: true,
   },
   {
     code: 'PLANTONISTA',
-    label: 'Plantonista',
+    label: 'ULTRASSOM',
     templateKey: 'contrato_plantonista',
     templateVersion: 'v1',
     isActive: true,
@@ -100,18 +100,52 @@ export const CONTRACT_TYPES: ContractTypeDef[] = [
 export const PERSONAL_DOC_TYPES = ['RG', 'CPF', 'CNH'] as const;
 
 export const COUNCIL_TYPES = [
+  'COREN',
   'CRM',
   'CRO',
-  'CRP',
+  'CRF',
+  'CRFIS',
   'CRN',
-  'CREFITO',
-  'COREN',
-  'CREF',
-  'OUTRO',
+  'CRP',
+  'CRBM',
+  'CRFONO',
+  'CRTR',
+  'CRFA',
+  'CRVV',
+  'CRQ',
+] as const;
+
+export const BRAZIL_UFS = [
+  'AC',
+  'AL',
+  'AP',
+  'AM',
+  'BA',
+  'CE',
+  'DF',
+  'ES',
+  'GO',
+  'MA',
+  'MT',
+  'MS',
+  'MG',
+  'PA',
+  'PB',
+  'PR',
+  'PE',
+  'PI',
+  'RJ',
+  'RN',
+  'RS',
+  'RO',
+  'RR',
+  'SC',
+  'SP',
+  'SE',
+  'TO',
 ] as const;
 
 export const CERTIDAO_DOC_TYPE: DocumentTypeCode = 'CERTIDAO_ETICA';
 
 export const DEFAULT_PAGE_SIZE = 20;
 export const MAX_PAGE_SIZE = 100;
-

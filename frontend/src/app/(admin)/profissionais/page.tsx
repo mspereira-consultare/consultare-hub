@@ -1,9 +1,16 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { AlertCircle, Download, Edit3, FileUp, Loader2, Plus, RefreshCw, Search, X } from 'lucide-react';
-import { CONTRACT_TYPES, DOCUMENT_TYPES, PERSONAL_DOC_TYPES, type ContractPartyType } from '@/lib/profissionais/constants';
+import { AlertCircle, Download, Edit3, FileUp, Loader2, Plus, RefreshCw, Search, User, X } from 'lucide-react';
+import {
+  BRAZIL_UFS,
+  CONTRACT_TYPES,
+  COUNCIL_TYPES,
+  DOCUMENT_TYPES,
+  PERSONAL_DOC_TYPES,
+  type ContractPartyType,
+} from '@/lib/profissionais/constants';
 import type { ProfessionalDocument, ProfessionalListItem } from '@/lib/profissionais/types';
 import { hasPermission } from '@/lib/permissions';
 
@@ -18,6 +25,26 @@ type FormState = {
 const pageSize = 20;
 
 const newChecklist = () => DOCUMENT_TYPES.map((d) => ({ docType: d.code, hasPhysicalCopy: false, hasDigitalCopy: false, expiresAt: '', notes: '' }));
+const stripDigits = (value: string | null | undefined) => String(value || '').replace(/\D/g, '');
+
+const formatCpf = (value: string | null | undefined) => {
+  const v = stripDigits(value).slice(0, 11);
+  if (!v) return '';
+  if (v.length <= 3) return v;
+  if (v.length <= 6) return `${v.slice(0, 3)}.${v.slice(3)}`;
+  if (v.length <= 9) return `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6)}`;
+  return `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6, 9)}-${v.slice(9, 11)}`;
+};
+
+const formatCnpj = (value: string | null | undefined) => {
+  const v = stripDigits(value).slice(0, 14);
+  if (!v) return '';
+  if (v.length <= 2) return v;
+  if (v.length <= 5) return `${v.slice(0, 2)}.${v.slice(2)}`;
+  if (v.length <= 8) return `${v.slice(0, 2)}.${v.slice(2, 5)}.${v.slice(5)}`;
+  if (v.length <= 12) return `${v.slice(0, 2)}.${v.slice(2, 5)}.${v.slice(5, 8)}/${v.slice(8)}`;
+  return `${v.slice(0, 2)}.${v.slice(2, 5)}.${v.slice(5, 8)}/${v.slice(8, 12)}-${v.slice(12, 14)}`;
+};
 const emptyForm = (): FormState => ({
   name: '', contractPartyType: 'PF', contractType: CONTRACT_TYPES.find((c) => c.isActive)?.code || '', cpf: '', cnpj: '', legalName: '',
   specialty: '', personalDocType: PERSONAL_DOC_TYPES[0], personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
@@ -25,8 +52,8 @@ const emptyForm = (): FormState => ({
 });
 
 const toForm = (item: ProfessionalListItem): FormState => ({
-  name: item.name || '', contractPartyType: item.contractPartyType || 'PF', contractType: item.contractType || '', cpf: item.cpf || '',
-  cnpj: item.cnpj || '', legalName: item.legalName || '', specialty: item.specialty || '', personalDocType: item.personalDocType || 'RG',
+  name: item.name || '', contractPartyType: item.contractPartyType || 'PF', contractType: item.contractType || '', cpf: formatCpf(item.cpf || ''),
+  cnpj: formatCnpj(item.cnpj || ''), legalName: item.legalName || '', specialty: item.specialty || '', personalDocType: item.personalDocType || 'RG',
   personalDocNumber: item.personalDocNumber || '', addressText: item.addressText || '', isActive: Boolean(item.isActive),
   hasPhysicalFolder: Boolean(item.hasPhysicalFolder), physicalFolderNote: item.physicalFolderNote || '',
   registrations: (item.registrations || []).map((r) => ({ id: r.id, councilType: r.councilType, councilNumber: r.councilNumber, councilUf: r.councilUf, isPrimary: Boolean(r.isPrimary) })),
@@ -37,7 +64,7 @@ const toForm = (item: ProfessionalListItem): FormState => ({
 });
 
 const maskCpf = (cpf: string | null) => {
-  const d = String(cpf || '').replace(/\D/g, '');
+  const d = stripDigits(cpf);
   if (d.length !== 11) return cpf || '-';
   return `${d.slice(0, 3)}.***.***-${d.slice(9)}`;
 };
@@ -66,6 +93,24 @@ export default function ProfessionalsPage() {
   const [uploadExpiresAt, setUploadExpiresAt] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [modalError, setModalError] = useState('');
+  const [photoLoadError, setPhotoLoadError] = useState(false);
+  const [specialties, setSpecialties] = useState<string[]>([]);
+  const [specialtiesSource, setSpecialtiesSource] = useState<'feegow_api' | 'database' | 'unknown'>('unknown');
+
+  const contractLabelByCode = useMemo(() => new Map(CONTRACT_TYPES.map((c) => [c.code, c.label])), []);
+  const specialtiesOptions = useMemo(() => {
+    const all = new Set((specialties || []).map((s) => String(s || '').trim()).filter(Boolean));
+    if (form.specialty && !all.has(form.specialty)) all.add(form.specialty);
+    return Array.from(all).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  }, [specialties, form.specialty]);
+  const photoDoc = useMemo(
+    () => uploadedDocs.find((doc) => doc.docType === 'FOTO' && doc.isActive),
+    [uploadedDocs]
+  );
+
+  useEffect(() => {
+    setPhotoLoadError(false);
+  }, [editingId, photoDoc?.id]);
 
   const fetchList = async (forcePage?: number) => {
     setLoading(true);
@@ -92,6 +137,23 @@ export default function ProfessionalsPage() {
     }
   };
 
+  const fetchSpecialties = async () => {
+    try {
+      const res = await fetch('/api/admin/profissionais/options', { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao carregar especialidades.');
+      setSpecialties(Array.isArray(data?.data?.specialties) ? data.data.specialties : []);
+      setSpecialtiesSource(
+        data?.data?.source === 'feegow_api' || data?.data?.source === 'database'
+          ? data.data.source
+          : 'unknown'
+      );
+    } catch {
+      setSpecialties([]);
+      setSpecialtiesSource('unknown');
+    }
+  };
+
   const fetchDocuments = async (professionalId: string) => {
     setDocsLoading(true);
     setModalError('');
@@ -115,6 +177,11 @@ export default function ProfessionalsPage() {
     }
     if (!uploadFile) {
       setModalError('Selecione um arquivo para upload.');
+      return;
+    }
+    const selectedType = DOCUMENT_TYPES.find((d) => d.code === uploadDocType);
+    if (selectedType?.hasExpiration && !uploadExpiresAt) {
+      setModalError('Este tipo de documento exige data de expiracao.');
       return;
     }
     setUploadingDoc(true);
@@ -146,6 +213,10 @@ export default function ProfessionalsPage() {
     fetchList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, status, certidaoStatus]);
+
+  useEffect(() => {
+    fetchSpecialties();
+  }, []);
 
   const openCreate = () => {
     setEditingId(null);
@@ -183,8 +254,8 @@ export default function ProfessionalsPage() {
     try {
       const payload = {
         ...form,
-        cpf: form.cpf || null,
-        cnpj: form.cnpj || null,
+        cpf: stripDigits(form.cpf) || null,
+        cnpj: stripDigits(form.cnpj) || null,
         legalName: form.legalName || null,
         physicalFolderNote: form.physicalFolderNote || null,
         checklist: form.checklist.map((c) => ({ ...c, expiresAt: c.expiresAt || null })),
@@ -242,7 +313,7 @@ export default function ProfessionalsPage() {
               <tr key={item.id} className="border-t">
                 <td className="px-4 py-3"><div className="font-semibold text-slate-800">{item.name}</div><div className="text-xs text-slate-500">{item.contractPartyType === 'PF' ? `CPF: ${maskCpf(item.cpf)}` : `CNPJ: ${item.cnpj || '-'}`}</div></td>
                 <td className="px-4 py-3">{item.primaryRegistration ? `${item.primaryRegistration.councilType}/${item.primaryRegistration.councilUf} ${item.primaryRegistration.councilNumber}` : '-'}</td>
-                <td className="px-4 py-3">{item.contractType}</td>
+                <td className="px-4 py-3">{contractLabelByCode.get(item.contractType) || item.contractType}</td>
                 <td className="px-4 py-3">{item.requiredDocsDone}/{item.requiredDocsTotal} {item.pending && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Pendente</span>}</td>
                 <td className="px-4 py-3">{item.certidaoStatus} <span className="text-xs text-slate-500">{item.certidaoExpiresAt || '-'}</span></td>
                 <td className="px-4 py-3"><button onClick={() => openEdit(item.id)} className="px-2 py-1 text-xs border rounded-md hover:bg-slate-50 inline-flex items-center gap-1"><Edit3 size={12} />Editar</button></td>
@@ -277,21 +348,140 @@ export default function ProfessionalsPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} placeholder="Nome" className="md:col-span-2 px-3 py-2 border rounded-lg" />
-                <input value={form.specialty} onChange={(e) => setForm((p) => ({ ...p, specialty: e.target.value }))} placeholder="Especialidade" className="px-3 py-2 border rounded-lg" />
-                <select value={form.contractType} onChange={(e) => setForm((p) => ({ ...p, contractType: e.target.value }))} className="px-3 py-2 border rounded-lg bg-white">{CONTRACT_TYPES.filter((t) => t.isActive).map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}</select>
-                <select value={form.contractPartyType} onChange={(e) => setForm((p) => ({ ...p, contractPartyType: e.target.value as ContractPartyType }))} className="px-3 py-2 border rounded-lg bg-white"><option value="PF">PF</option><option value="PJ">PJ</option></select>
-                <input value={form.contractPartyType === 'PF' ? form.cpf : form.cnpj} onChange={(e) => setForm((p) => p.contractPartyType === 'PF' ? { ...p, cpf: e.target.value } : { ...p, cnpj: e.target.value })} placeholder={form.contractPartyType === 'PF' ? 'CPF' : 'CNPJ'} className="px-3 py-2 border rounded-lg" />
-                {form.contractPartyType === 'PJ' && <input value={form.legalName} onChange={(e) => setForm((p) => ({ ...p, legalName: e.target.value }))} placeholder="Razao social" className="md:col-span-2 px-3 py-2 border rounded-lg" />}
-                <select value={form.personalDocType} onChange={(e) => setForm((p) => ({ ...p, personalDocType: e.target.value }))} className="px-3 py-2 border rounded-lg bg-white">{PERSONAL_DOC_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}</select>
-                <input value={form.personalDocNumber} onChange={(e) => setForm((p) => ({ ...p, personalDocNumber: e.target.value }))} placeholder="Numero doc pessoal" className="px-3 py-2 border rounded-lg" />
-                <textarea value={form.addressText} onChange={(e) => setForm((p) => ({ ...p, addressText: e.target.value }))} rows={2} placeholder="Endereco" className="md:col-span-4 px-3 py-2 border rounded-lg" />
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+                <div className="md:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Nome do profissional</label>
+                    <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Especialidade</label>
+                    <select value={form.specialty} onChange={(e) => setForm((p) => ({ ...p, specialty: e.target.value }))} className="w-full px-3 py-2 border rounded-lg bg-white">
+                      <option value="">Selecione</option>
+                      {specialtiesOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <p className="text-[11px] text-slate-500 mt-1">Fonte: {specialtiesSource === 'feegow_api' ? 'Feegow API' : specialtiesSource === 'database' ? 'Banco local' : 'Nao carregada'}</p>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de contrato</label>
+                    <select value={form.contractType} onChange={(e) => setForm((p) => ({ ...p, contractType: e.target.value }))} className="w-full px-3 py-2 border rounded-lg bg-white">
+                      {CONTRACT_TYPES.filter((t) => t.isActive).map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de contratante</label>
+                    <select value={form.contractPartyType} onChange={(e) => setForm((p) => ({ ...p, contractPartyType: e.target.value as ContractPartyType }))} className="w-full px-3 py-2 border rounded-lg bg-white">
+                      <option value="PF">PF</option>
+                      <option value="PJ">PJ</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">{form.contractPartyType === 'PF' ? 'CPF' : 'CNPJ'}</label>
+                    <input
+                      value={form.contractPartyType === 'PF' ? form.cpf : form.cnpj}
+                      onChange={(e) =>
+                        setForm((p) =>
+                          p.contractPartyType === 'PF'
+                            ? { ...p, cpf: formatCpf(e.target.value) }
+                            : { ...p, cnpj: formatCnpj(e.target.value) }
+                        )
+                      }
+                      placeholder={form.contractPartyType === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+
+                  {form.contractPartyType === 'PJ' && (
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Razao social</label>
+                      <input value={form.legalName} onChange={(e) => setForm((p) => ({ ...p, legalName: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de documento pessoal</label>
+                    <select value={form.personalDocType} onChange={(e) => setForm((p) => ({ ...p, personalDocType: e.target.value }))} className="w-full px-3 py-2 border rounded-lg bg-white">
+                      {PERSONAL_DOC_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Numero documento pessoal</label>
+                    <input value={form.personalDocNumber} onChange={(e) => setForm((p) => ({ ...p, personalDocNumber: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Endereco</label>
+                    <textarea value={form.addressText} onChange={(e) => setForm((p) => ({ ...p, addressText: e.target.value }))} rows={2} className="w-full px-3 py-2 border rounded-lg" />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Observacoes do profissional</label>
+                    <textarea value={form.physicalFolderNote} onChange={(e) => setForm((p) => ({ ...p, physicalFolderNote: e.target.value }))} rows={3} className="w-full px-3 py-2 border rounded-lg" />
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-700 mt-2">
+                      <input type="checkbox" checked={form.hasPhysicalFolder} onChange={(e) => setForm((p) => ({ ...p, hasPhysicalFolder: e.target.checked }))} />
+                      Possui pasta fisica
+                    </label>
+                  </div>
+                </div>
+
+                <div className="md:col-span-4">
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Foto do profissional</label>
+                  <div className="h-[280px] bg-slate-50 border rounded-lg overflow-hidden flex items-center justify-center">
+                    {editingId && photoDoc && !photoLoadError ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`/api/admin/profissionais/documentos/${encodeURIComponent(photoDoc.id)}/download?inline=1`}
+                        alt="Foto do profissional"
+                        className="w-full h-full object-cover"
+                        onError={() => setPhotoLoadError(true)}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                        <User size={52} />
+                        <span className="text-sm text-slate-500">Sem foto cadastrada</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-semibold text-slate-700">Registros regionais</h3><button type="button" className="text-xs px-2 py-1 border rounded-md" onClick={() => setForm((p) => ({ ...p, registrations: [...p.registrations, { councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: false }] }))}>+ Registro</button></div>
-                <div className="space-y-2">{form.registrations.map((r, i) => <div key={`${r.id || 'new'}-${i}`} className="grid grid-cols-12 gap-2 items-center"><input value={r.councilType} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilType: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })} className="col-span-3 px-2 py-1.5 border rounded" placeholder="Conselho" /><input value={r.councilNumber} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilNumber: e.target.value }; return { ...p, registrations: n }; })} className="col-span-4 px-2 py-1.5 border rounded" placeholder="Numero" /><input value={r.councilUf} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilUf: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })} className="col-span-2 px-2 py-1.5 border rounded" placeholder="UF" maxLength={2} /><label className="col-span-2 text-xs inline-flex items-center gap-1"><input type="radio" checked={r.isPrimary} onChange={() => setForm((p) => ({ ...p, registrations: p.registrations.map((x, xIdx) => ({ ...x, isPrimary: xIdx === i })) }))} />Principal</label><button type="button" onClick={() => setForm((p) => { if (p.registrations.length <= 1) return p; const n = p.registrations.filter((_, xIdx) => xIdx !== i); if (!n.some((x) => x.isPrimary)) n[0] = { ...n[0], isPrimary: true }; return { ...p, registrations: n }; })} className="col-span-1 text-slate-500 hover:text-rose-600">x</button></div>)}</div>
+                <div className="grid grid-cols-12 gap-2 text-xs font-semibold uppercase text-slate-500 mb-1 px-1">
+                  <div className="col-span-3">Conselho</div>
+                  <div className="col-span-4">Numero</div>
+                  <div className="col-span-2">UF</div>
+                  <div className="col-span-2">Principal</div>
+                  <div className="col-span-1">Remover</div>
+                </div>
+                <div className="space-y-2">
+                  {form.registrations.map((r, i) => (
+                    <div key={`${r.id || 'new'}-${i}`} className="grid grid-cols-12 gap-2 items-center">
+                      <select
+                        value={r.councilType}
+                        onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilType: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })}
+                        className="col-span-3 px-2 py-1.5 border rounded bg-white"
+                      >
+                        {COUNCIL_TYPES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                      <input value={r.councilNumber} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilNumber: e.target.value }; return { ...p, registrations: n }; })} className="col-span-4 px-2 py-1.5 border rounded" placeholder="Numero" />
+                      <select
+                        value={r.councilUf}
+                        onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilUf: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })}
+                        className="col-span-2 px-2 py-1.5 border rounded bg-white"
+                      >
+                        {BRAZIL_UFS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+                      </select>
+                      <label className="col-span-2 text-xs inline-flex items-center gap-1"><input type="radio" checked={r.isPrimary} onChange={() => setForm((p) => ({ ...p, registrations: p.registrations.map((x, xIdx) => ({ ...x, isPrimary: xIdx === i })) }))} />Principal</label>
+                      <button type="button" onClick={() => setForm((p) => { if (p.registrations.length <= 1) return p; const n = p.registrations.filter((_, xIdx) => xIdx !== i); if (!n.some((x) => x.isPrimary)) n[0] = { ...n[0], isPrimary: true }; return { ...p, registrations: n }; })} className="col-span-1 text-slate-500 hover:text-rose-600">x</button>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div>
@@ -303,29 +493,37 @@ export default function ProfessionalsPage() {
                 ) : (
                   <div className="space-y-3">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
-                      <select
-                        value={uploadDocType}
-                        onChange={(e) => setUploadDocType(e.target.value)}
-                        className="px-2 py-2 border rounded"
-                      >
-                        {DOCUMENT_TYPES.map((d) => (
-                          <option key={d.code} value={d.code}>
-                            {d.label}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="date"
-                        value={uploadExpiresAt}
-                        onChange={(e) => setUploadExpiresAt(e.target.value)}
-                        className="px-2 py-2 border rounded"
-                        placeholder="Expiracao (opcional)"
-                      />
-                      <input
-                        type="file"
-                        onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                        className="px-2 py-2 border rounded"
-                      />
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de documento</label>
+                        <select
+                          value={uploadDocType}
+                          onChange={(e) => { setUploadDocType(e.target.value); setUploadExpiresAt(''); }}
+                          className="w-full px-2 py-2 border rounded bg-white"
+                        >
+                          {DOCUMENT_TYPES.map((d) => (
+                            <option key={d.code} value={d.code}>
+                              {d.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Data de expiracao</label>
+                        <input
+                          type="date"
+                          value={uploadExpiresAt}
+                          onChange={(e) => setUploadExpiresAt(e.target.value)}
+                          className="w-full px-2 py-2 border rounded"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Arquivo</label>
+                        <input
+                          type="file"
+                          onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                          className="w-full px-2 py-2 border rounded"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={uploadDocument}

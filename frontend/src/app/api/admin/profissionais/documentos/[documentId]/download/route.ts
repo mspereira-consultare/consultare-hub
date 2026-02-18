@@ -14,7 +14,7 @@ type ParamsContext = {
   params: Promise<{ documentId: string }>;
 };
 
-export async function GET(_: Request, context: ParamsContext) {
+export async function GET(request: Request, context: ParamsContext) {
   try {
     const auth = await requireProfissionaisPermission('view');
     if (!auth.ok) {
@@ -22,6 +22,8 @@ export async function GET(_: Request, context: ParamsContext) {
     }
 
     const { documentId } = await context.params;
+    const { searchParams } = new URL(request.url);
+    const inline = searchParams.get('inline') === '1';
     const document = await getProfessionalDocumentById(auth.db, String(documentId || ''));
     if (!document) {
       return NextResponse.json({ error: 'Documento nao encontrado.' }, { status: 404 });
@@ -47,7 +49,7 @@ export async function GET(_: Request, context: ParamsContext) {
       status: 200,
       headers: {
         'Content-Type': document.mimeType || 'application/octet-stream',
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(fileName)}`,
         'Cache-Control': 'no-store',
       },
     });
@@ -58,4 +60,3 @@ export async function GET(_: Request, context: ParamsContext) {
     return NextResponse.json({ error: message }, { status });
   }
 }
-
