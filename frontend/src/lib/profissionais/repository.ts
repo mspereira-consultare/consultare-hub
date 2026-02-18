@@ -50,8 +50,16 @@ const allowedDocTypes = new Set(DOCUMENT_TYPES.map((item) => item.code));
 const allowedPersonalDocTypes = new Set(PERSONAL_DOC_TYPES);
 
 const parseDate = (value: any): string | null => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+
   const raw = clean(value);
   if (!raw) return null;
+
+  const isoWithTime = raw.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+  if (isoWithTime) return `${isoWithTime[1]}-${isoWithTime[2]}-${isoWithTime[3]}`;
+
   const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!iso) return null;
   return `${iso[1]}-${iso[2]}-${iso[3]}`;
