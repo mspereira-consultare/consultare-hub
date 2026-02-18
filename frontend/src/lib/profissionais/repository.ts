@@ -834,6 +834,31 @@ export const updateProfessional = async (
   return updated;
 };
 
+export const deleteProfessional = async (
+  db: DbInterface,
+  professionalId: string,
+  actorUserId: string
+) => {
+  await ensureProfessionalsTables(db);
+  const existing = await getProfessionalById(db, professionalId);
+  if (!existing) {
+    throw new ProfessionalValidationError('Profissional nao encontrado.', 404);
+  }
+
+  await insertAudit(db, 'PROFESSIONAL_DELETED', actorUserId, professionalId, {
+    name: existing.name,
+    contractType: existing.contractType,
+  });
+
+  await db.execute(`DELETE FROM professional_contracts WHERE professional_id = ?`, [professionalId]);
+  await db.execute(`DELETE FROM professional_documents WHERE professional_id = ?`, [professionalId]);
+  await db.execute(`DELETE FROM professional_document_checklist WHERE professional_id = ?`, [professionalId]);
+  await db.execute(`DELETE FROM professional_registrations WHERE professional_id = ?`, [professionalId]);
+  await db.execute(`DELETE FROM professionals WHERE id = ?`, [professionalId]);
+
+  return { id: professionalId, name: existing.name };
+};
+
 const ensureProfessionalExists = async (db: DbInterface, professionalId: string) => {
   const rows = await db.query(`SELECT id FROM professionals WHERE id = ? LIMIT 1`, [professionalId]);
   if (!rows[0]) {

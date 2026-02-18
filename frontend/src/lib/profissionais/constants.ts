@@ -5,6 +5,7 @@ export type DocumentTypeCode =
   | 'FOTO'
   | 'DIPLOMA'
   | 'DIPLOMA_ESPECIALIDADE'
+  | 'CURRICULO'
   | 'CERTIDAO_ETICA'
   | 'CONTRATO_ASSINADO';
 
@@ -52,6 +53,13 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
     code: 'DIPLOMA_ESPECIALIDADE',
     label: 'Diploma de Especialidade',
     required: true,
+    hasExpiration: false,
+    warningDays: 0,
+  },
+  {
+    code: 'CURRICULO',
+    label: 'Curriculo',
+    required: false,
     hasExpiration: false,
     warningDays: 0,
   },

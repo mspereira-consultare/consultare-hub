@@ -72,6 +72,13 @@ const maskCpf = (cpf: string | null) => {
   return `${d.slice(0, 3)}.***.***-${d.slice(9)}`;
 };
 
+const formatDateBr = (isoDate: string | null | undefined) => {
+  const raw = String(isoDate || '').trim();
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return '-';
+  return `${m[3]}/${m[2]}/${m[1]}`;
+};
+
 export default function ProfessionalsPage() {
   const { data: session } = useSession();
   const role = String((session?.user as any)?.role || 'OPERADOR').toUpperCase();
@@ -99,6 +106,8 @@ export default function ProfessionalsPage() {
   const [photoLoadError, setPhotoLoadError] = useState(false);
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [specialtiesSource, setSpecialtiesSource] = useState<'feegow_api' | 'database' | 'unknown'>('unknown');
+  const [deleteTarget, setDeleteTarget] = useState<ProfessionalListItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const contractLabelByCode = useMemo(() => new Map(CONTRACT_TYPES.map((c) => [c.code, c.label])), []);
   const specialtiesOptions = useMemo(() => {
@@ -283,6 +292,29 @@ export default function ProfessionalsPage() {
     }
   };
 
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/admin/profissionais/${encodeURIComponent(deleteTarget.id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao excluir profissional.');
+      setDeleteTarget(null);
+      if (editingId === deleteTarget.id) {
+        setIsModalOpen(false);
+        setEditingId(null);
+      }
+      await fetchList();
+    } catch (e: any) {
+      setError(e?.message || 'Falha ao excluir profissional.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
@@ -308,20 +340,51 @@ export default function ProfessionalsPage() {
 
       <div className="bg-white border rounded-xl overflow-auto">
         <table className="w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-600"><tr><th className="px-4 py-3">Profissional</th><th className="px-4 py-3">Registro principal</th><th className="px-4 py-3">Tipo contrato</th><th className="px-4 py-3">Documentos</th><th className="px-4 py-3">Certidao</th><th className="px-4 py-3">Acoes</th></tr></thead>
+          <thead className="bg-slate-50 text-left text-xs uppercase text-slate-600">
+            <tr>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Profissional</th>
+              <th className="px-4 py-3">Especialidade</th>
+              <th className="px-4 py-3">Expiracao Contrato</th>
+              <th className="px-4 py-3">Registro principal</th>
+              <th className="px-4 py-3">Tipo contrato</th>
+              <th className="px-4 py-3">Documentos</th>
+              <th className="px-4 py-3">Certidao</th>
+              <th className="px-4 py-3">Acoes</th>
+            </tr>
+          </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500"><span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" />Carregando...</span></td></tr>
+              <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500"><span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" />Carregando...</span></td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-slate-500">Nenhum profissional encontrado.</td></tr>
+              <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500">Nenhum profissional encontrado.</td></tr>
             ) : items.map((item) => (
               <tr key={item.id} className="border-t">
+                <td className="px-4 py-3">
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                    {item.isActive ? 'Ativo' : 'Inativo'}
+                  </span>
+                </td>
                 <td className="px-4 py-3"><div className="font-semibold text-slate-800">{item.name}</div><div className="text-xs text-slate-500">{item.contractPartyType === 'PF' ? `CPF: ${maskCpf(item.cpf)}` : `CNPJ: ${item.cnpj || '-'}`}</div></td>
+                <td className="px-4 py-3">{item.specialty || '-'}</td>
+                <td className="px-4 py-3">{formatDateBr(item.contractEndDate)}</td>
                 <td className="px-4 py-3">{item.primaryRegistration ? `${item.primaryRegistration.councilType}/${item.primaryRegistration.councilUf} ${item.primaryRegistration.councilNumber}` : '-'}</td>
                 <td className="px-4 py-3">{contractLabelByCode.get(item.contractType) || item.contractType}</td>
                 <td className="px-4 py-3">{item.requiredDocsDone}/{item.requiredDocsTotal} {item.pending && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Pendente</span>}</td>
                 <td className="px-4 py-3">{item.certidaoStatus} <span className="text-xs text-slate-500">{item.certidaoExpiresAt || '-'}</span></td>
-                <td className="px-4 py-3"><button onClick={() => openEdit(item.id)} className="px-2 py-1 text-xs border rounded-md hover:bg-slate-50 inline-flex items-center gap-1"><Edit3 size={12} />Editar</button></td>
+                <td className="px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => openEdit(item.id)} className="px-2 py-1 text-xs border rounded-md hover:bg-slate-50 inline-flex items-center gap-1"><Edit3 size={12} />Editar</button>
+                    {canEdit && (
+                      <button
+                        onClick={() => setDeleteTarget(item)}
+                        className="px-2 py-1 text-xs border border-rose-300 text-rose-700 rounded-md hover:bg-rose-50"
+                      >
+                        Excluir
+                      </button>
+                    )}
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -632,6 +695,37 @@ export default function ProfessionalsPage() {
               </div>
             </div>
             <div className="px-5 py-3 border-t flex justify-end gap-2"><button type="button" className="px-3 py-2 border rounded-lg" onClick={() => setIsModalOpen(false)}>Cancelar</button><button type="button" onClick={save} disabled={saving || !canEdit} className="px-3 py-2 rounded-lg bg-[#17407E] text-white disabled:opacity-60 inline-flex items-center gap-2">{saving && <Loader2 size={14} className="animate-spin" />}{saving ? 'Salvando...' : 'Salvar'}</button></div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[60] bg-black/40 p-4 flex items-center justify-center">
+          <div className="w-full max-w-md bg-white border rounded-2xl p-5">
+            <h3 className="text-lg font-semibold text-slate-800">Confirmar exclusao</h3>
+            <p className="text-sm text-slate-600 mt-2">
+              Deseja realmente excluir o profissional <strong>{deleteTarget.name}</strong>?
+              Esta acao remove cadastro, registros e checklist do sistema.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="px-3 py-2 border rounded-lg"
+                disabled={deleting}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                disabled={deleting}
+                className="px-3 py-2 rounded-lg bg-rose-600 text-white disabled:opacity-60 inline-flex items-center gap-2"
+              >
+                {deleting && <Loader2 size={14} className="animate-spin" />}
+                {deleting ? 'Excluindo...' : 'Excluir profissional'}
+              </button>
+            </div>
           </div>
         </div>
       )}
