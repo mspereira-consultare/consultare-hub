@@ -94,6 +94,18 @@ export type ProfessionalInput = {
   checklist: ProfessionalChecklistItem[];
 };
 
+export type ProfessionalDocumentUploadInput = {
+  docType: DocumentTypeCode;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  expiresAt: string | null;
+  storageProvider: string;
+  storageBucket: string | null;
+  storageKey: string;
+  uploadedBy: string;
+};
+
 export type ProfessionalFilters = {
   search: string;
   status: 'all' | 'active' | 'inactive' | 'pending';
@@ -101,4 +113,3 @@ export type ProfessionalFilters = {
   page: number;
   pageSize: number;
 };
-

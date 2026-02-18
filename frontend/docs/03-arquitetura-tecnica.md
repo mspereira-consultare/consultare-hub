@@ -209,3 +209,22 @@ O modulo cria/garante as tabelas em runtime:
 
 A estrutura ja esta preparada para storage externo, mas a fase atual usa controle documental hibrido manual.
 A ativacao de upload em S3 sera adicionada em etapa posterior sem trocar o contrato de API base do modulo.
+
+### Storage plug-and-play (S3)
+
+Nova camada server-only de storage:
+- `frontend/src/lib/storage/provider.ts`
+- `frontend/src/lib/storage/index.ts`
+- `frontend/src/lib/storage/providers/s3.ts`
+
+Uso atual:
+- upload via API (`POST /api/admin/profissionais/:id/documentos`)
+- download via API autenticada (`GET /api/admin/profissionais/documentos/:documentId/download`)
+
+Variáveis necessárias para ativar S3:
+- `STORAGE_PROVIDER=s3`
+- `AWS_REGION`
+- `AWS_S3_BUCKET`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_S3_PREFIX` (opcional)

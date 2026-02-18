@@ -538,3 +538,10 @@ Centralizar o cadastro da carteira de profissionais, com foco em:
 Na fase atual, o controle documental continua funcionando no modo de transicao:
 - o usuario pode marcar manualmente copia fisica/digital por tipo de documento;
 - upload em S3 entra depois sem quebrar o fluxo atual.
+
+### Evolução técnica (18/02/2026)
+
+- Endpoints de documentos para o módulo foram adicionados:
+  - `GET/POST /api/admin/profissionais/:id/documentos`
+  - `GET /api/admin/profissionais/documentos/:documentId/download`
+- A UI mantém aviso de transição e prioriza checklist manual até validação final do S3 em produção.

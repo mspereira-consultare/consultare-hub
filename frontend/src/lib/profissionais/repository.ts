@@ -19,6 +19,7 @@ import type {
   Professional,
   ProfessionalChecklistItem,
   ProfessionalDocument,
+  ProfessionalDocumentUploadInput,
   ProfessionalFilters,
   ProfessionalInput,
   ProfessionalListItem,
@@ -790,4 +791,228 @@ export const updateProfessional = async (
   const updated = await getProfessionalById(db, professionalId);
   if (!updated) throw new ProfessionalValidationError('Falha ao carregar profissional atualizado.', 500);
   return updated;
+};
+
+const ensureProfessionalExists = async (db: DbInterface, professionalId: string) => {
+  const rows = await db.query(`SELECT id FROM professionals WHERE id = ? LIMIT 1`, [professionalId]);
+  if (!rows[0]) {
+    throw new ProfessionalValidationError('Profissional nao encontrado.', 404);
+  }
+};
+
+export const getProfessionalRegistrations = async (
+  db: DbInterface,
+  professionalId: string
+): Promise<ProfessionalRegistration[]> => {
+  await ensureProfessionalsTables(db);
+  await ensureProfessionalExists(db, professionalId);
+
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM professional_registrations
+    WHERE professional_id = ?
+    ORDER BY is_primary DESC, council_type ASC, council_uf ASC, council_number ASC
+    `,
+    [professionalId]
+  );
+  return rows.map((row) => mapRegistration(row));
+};
+
+export const setProfessionalPrimaryRegistration = async (
+  db: DbInterface,
+  professionalId: string,
+  registrationId: string,
+  actorUserId: string
+) => {
+  await ensureProfessionalsTables(db);
+  await ensureProfessionalExists(db, professionalId);
+
+  const registrations = await getProfessionalRegistrations(db, professionalId);
+  const target = registrations.find((item) => item.id === registrationId);
+  if (!target) {
+    throw new ProfessionalValidationError('Registro regional nao encontrado para este profissional.', 404);
+  }
+
+  await db.execute(
+    `
+    UPDATE professional_registrations
+    SET is_primary = 0, updated_at = ?
+    WHERE professional_id = ?
+    `,
+    [NOW(), professionalId]
+  );
+  await db.execute(
+    `
+    UPDATE professional_registrations
+    SET is_primary = 1, updated_at = ?
+    WHERE id = ? AND professional_id = ?
+    `,
+    [NOW(), registrationId, professionalId]
+  );
+
+  await insertAudit(db, 'PROFESSIONAL_REGISTRATION_PRIMARY_UPDATED', actorUserId, professionalId, {
+    registrationId,
+  });
+
+  return getProfessionalRegistrations(db, professionalId);
+};
+
+export const getProfessionalChecklist = async (
+  db: DbInterface,
+  professionalId: string
+): Promise<ProfessionalChecklistItem[]> => {
+  await ensureProfessionalsTables(db);
+  await ensureProfessionalExists(db, professionalId);
+
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM professional_document_checklist
+    WHERE professional_id = ?
+    `,
+    [professionalId]
+  );
+  return withChecklistDefaults(rows.map((row) => mapChecklist(row)));
+};
+
+export const updateProfessionalChecklist = async (
+  db: DbInterface,
+  professionalId: string,
+  checklistRaw: unknown,
+  actorUserId: string
+) => {
+  await ensureProfessionalsTables(db);
+  await ensureProfessionalExists(db, professionalId);
+
+  if (!Array.isArray(checklistRaw)) {
+    throw new ProfessionalValidationError('Checklist deve ser um array.');
+  }
+
+  const checklist = withChecklistDefaults(
+    checklistRaw.map((row) => normalizeChecklistItem(row))
+  );
+  await upsertChecklist(db, professionalId, checklist, actorUserId, NOW());
+
+  await insertAudit(db, 'PROFESSIONAL_CHECKLIST_UPDATED', actorUserId, professionalId, {
+    checklistItems: checklist.length,
+  });
+
+  return getProfessionalChecklist(db, professionalId);
+};
+
+export const listProfessionalDocuments = async (
+  db: DbInterface,
+  professionalId: string
+): Promise<ProfessionalDocument[]> => {
+  await ensureProfessionalsTables(db);
+  await ensureProfessionalExists(db, professionalId);
+
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM professional_documents
+    WHERE professional_id = ?
+    ORDER BY is_active DESC, created_at DESC
+    `,
+    [professionalId]
+  );
+
+  return rows.map((row) => mapDocument(row));
+};
+
+export const getProfessionalDocumentById = async (
+  db: DbInterface,
+  documentId: string
+): Promise<ProfessionalDocument | null> => {
+  await ensureProfessionalsTables(db);
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM professional_documents
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [documentId]
+  );
+  if (!rows[0]) return null;
+  return mapDocument(rows[0]);
+};
+
+export const createProfessionalDocumentRecord = async (
+  db: DbInterface,
+  professionalId: string,
+  input: ProfessionalDocumentUploadInput,
+  actorUserId: string
+) => {
+  await ensureProfessionalsTables(db);
+  await ensureProfessionalExists(db, professionalId);
+
+  const docType = upper(input.docType) as DocumentTypeCode;
+  if (!allowedDocTypes.has(docType)) {
+    throw new ProfessionalValidationError('Tipo de documento invalido.');
+  }
+
+  const expiresAt = parseDate(input.expiresAt);
+  if (docType === CERTIDAO_DOC_TYPE && !expiresAt) {
+    throw new ProfessionalValidationError(
+      'A data de expiracao da certidao etica deve ser informada manualmente.'
+    );
+  }
+
+  const now = NOW();
+
+  await db.execute(
+    `
+    UPDATE professional_documents
+    SET is_active = 0
+    WHERE professional_id = ? AND doc_type = ? AND is_active = 1
+    `,
+    [professionalId, docType]
+  );
+
+  const id = randomUUID();
+  await db.execute(
+    `
+    INSERT INTO professional_documents (
+      id, professional_id, doc_type, storage_provider, storage_bucket, storage_key,
+      original_name, mime_type, size_bytes, expires_at, is_active, notes, uploaded_by, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)
+    `,
+    [
+      id,
+      professionalId,
+      docType,
+      clean(input.storageProvider),
+      clean(input.storageBucket) || null,
+      clean(input.storageKey),
+      clean(input.originalName),
+      clean(input.mimeType),
+      Number(input.sizeBytes || 0),
+      expiresAt,
+      clean(input.uploadedBy),
+      now,
+    ]
+  );
+
+  await insertAudit(db, 'DOCUMENT_UPLOADED', actorUserId, professionalId, {
+    documentId: id,
+    docType,
+    storageProvider: input.storageProvider,
+  });
+
+  const created = await getProfessionalDocumentById(db, id);
+  if (!created) {
+    throw new ProfessionalValidationError('Falha ao carregar documento criado.', 500);
+  }
+  return created;
+};
+
+export const registerDocumentDownloadAudit = async (
+  db: DbInterface,
+  professionalId: string,
+  documentId: string,
+  actorUserId: string
+) => {
+  await insertAudit(db, 'DOCUMENT_DOWNLOADED', actorUserId, professionalId, { documentId });
 };

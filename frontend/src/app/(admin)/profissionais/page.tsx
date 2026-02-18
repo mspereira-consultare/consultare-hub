@@ -153,6 +153,14 @@ export default function ProfessionalsPage() {
 
       {error && <div className="mb-4 px-3 py-2 border border-rose-200 bg-rose-50 rounded-lg text-rose-700 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
 
+      <div className="mb-4 px-3 py-2 border border-amber-200 bg-amber-50 rounded-lg text-amber-800 text-sm flex items-start gap-2">
+        <AlertCircle size={14} className="mt-0.5" />
+        <span>
+          Upload de documentos via S3 ainda está em implementação na interface desta página.
+          Nesta etapa, mantenha o controle manual (pasta física/digital) no checklist.
+        </span>
+      </div>
+
       <div className="bg-white border rounded-xl p-4 mb-4 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
         <div className="md:col-span-5 relative"><Search size={15} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-8 pr-3 py-2 border rounded-lg" placeholder="Buscar por nome/especialidade/CPF/CNPJ" /></div>
         <select value={status} onChange={(e) => { setStatus(e.target.value as any); setPage(1); }} className="md:col-span-2 px-3 py-2 border rounded-lg"><option value="all">Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option><option value="pending">Pendentes</option></select>
@@ -221,4 +229,3 @@ export default function ProfessionalsPage() {
     </div>
   );
 }
-

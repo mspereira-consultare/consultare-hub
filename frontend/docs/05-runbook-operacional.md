@@ -210,3 +210,28 @@ WHERE scheduled_at BETWEEN CONCAT(CURDATE(),' 00:00:00') AND CONCAT(CURDATE(),' 
   - `/monitor`
   - `/financeiro`
   - `/propostas`
+
+---
+
+## 8) Modulo Profissionais - ativação S3
+
+### Variáveis obrigatórias (frontend)
+
+- `STORAGE_PROVIDER=s3`
+- `AWS_REGION`
+- `AWS_S3_BUCKET`
+- `AWS_ACCESS_KEY_ID`
+- `AWS_SECRET_ACCESS_KEY`
+- `AWS_S3_PREFIX` (opcional, ex.: `profissionais/`)
+
+### Smoke test recomendado
+
+1. Criar/editar um profissional em `/profissionais`.
+2. Enviar arquivo por endpoint `POST /api/admin/profissionais/:id/documentos` (manual/API client).
+3. Validar registro em `professional_documents`.
+4. Baixar o mesmo arquivo em `GET /api/admin/profissionais/documentos/:documentId/download`.
+5. Validar auditoria em `professional_audit_log` (`DOCUMENT_UPLOADED` e `DOCUMENT_DOWNLOADED`).
+
+### Observação de rollout
+
+A interface da página `/profissionais` mantém aviso de transição até validação final do fluxo S3 em produção.

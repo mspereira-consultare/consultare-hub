@@ -437,3 +437,8 @@ Campos:
 - `created_at`
 
 Escrita: APIs de criacao/edicao do modulo.
+
+### Nota de escrita
+
+No estado atual, `professional_documents` é alimentada por `POST /api/admin/profissionais/:id/documentos` com storage S3.
+A tela continua em transição com checklist manual até conclusão da validação funcional do upload no fluxo de operação.
