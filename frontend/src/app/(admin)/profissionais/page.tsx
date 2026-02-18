@@ -9,7 +9,6 @@ import {
   COUNCIL_TYPES,
   DOCUMENT_TYPES,
   PERSONAL_DOC_TYPES,
-  PROFESSIONAL_AGE_RANGES,
   PROFESSIONAL_SERVICE_UNITS,
   type ContractPartyType,
 } from '@/lib/profissionais/constants';
@@ -18,9 +17,10 @@ import { hasPermission } from '@/lib/permissions';
 
 type FormRegistration = { id?: string; councilType: string; councilNumber: string; councilUf: string; isPrimary: boolean };
 type FormChecklist = { docType: string; hasPhysicalCopy: boolean; hasDigitalCopy: boolean; expiresAt: string; notes: string };
+type FormSpecialty = { name: string; isPrimary: boolean };
 type FormState = {
   name: string; contractPartyType: ContractPartyType; contractType: string; cpf: string; cnpj: string; legalName: string;
-  specialty: string; phone: string; email: string; ageRange: string; serviceUnits: string[];
+  specialties: FormSpecialty[]; phone: string; email: string; ageMin: number; ageMax: number; serviceUnits: string[];
   hasFeegowPermissions: boolean;
   personalDocType: string; personalDocNumber: string; addressText: string; isActive: boolean;
   hasPhysicalFolder: boolean; physicalFolderNote: string; contractStartDate: string; contractEndDate: string;
@@ -59,18 +59,43 @@ const formatPhone = (value: string | null | undefined) => {
   if (v.length <= 10) return `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`;
   return `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
 };
+
+const parseAgeRange = (value: string | null | undefined) => {
+  const raw = String(value || '').trim();
+  const m = raw.match(/^(\d{1,3})-(\d{1,3})$/);
+  if (!m) return { min: 0, max: 120 };
+  const min = Number(m[1]);
+  const max = Number(m[2]);
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max > 120 || min > max) {
+    return { min: 0, max: 120 };
+  }
+  return { min, max };
+};
 const emptyForm = (): FormState => ({
   name: '', contractPartyType: 'PF', contractType: CONTRACT_TYPES.find((c) => c.isActive)?.code || '', cpf: '', cnpj: '', legalName: '',
-  specialty: '', phone: '', email: '', ageRange: '', serviceUnits: [], hasFeegowPermissions: false,
+  specialties: [{ name: '', isPrimary: true }], phone: '', email: '', ageMin: 0, ageMax: 120, serviceUnits: [], hasFeegowPermissions: false,
   personalDocType: PERSONAL_DOC_TYPES[0], personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
   physicalFolderNote: '', contractStartDate: '', contractEndDate: '',
   registrations: [{ councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
 });
 
-const toForm = (item: ProfessionalListItem): FormState => ({
+const toForm = (item: ProfessionalListItem): FormState => {
+  const age = parseAgeRange(item.ageRange);
+  const rawSpecialties = Array.isArray(item.specialties) && item.specialties.length > 0
+    ? item.specialties
+    : (item.specialty ? [item.specialty] : []);
+  const primary = item.primarySpecialty || item.specialty || rawSpecialties[0] || '';
+  const specialties = rawSpecialties.map((name, idx) => ({
+    name,
+    isPrimary: name === primary || (idx === 0 && !rawSpecialties.includes(primary)),
+  }));
+  if (specialties.length === 0) specialties.push({ name: '', isPrimary: true });
+  if (!specialties.some((s) => s.isPrimary)) specialties[0] = { ...specialties[0], isPrimary: true };
+
+  return ({
   name: item.name || '', contractPartyType: item.contractPartyType || 'PF', contractType: item.contractType || '', cpf: formatCpf(item.cpf || ''),
-  cnpj: formatCnpj(item.cnpj || ''), legalName: item.legalName || '', specialty: item.specialty || '',
-  phone: formatPhone(item.phone || ''), email: item.email || '', ageRange: item.ageRange || '', serviceUnits: item.serviceUnits || [],
+  cnpj: formatCnpj(item.cnpj || ''), legalName: item.legalName || '', specialties,
+  phone: formatPhone(item.phone || ''), email: item.email || '', ageMin: age.min, ageMax: age.max, serviceUnits: item.serviceUnits || [],
   hasFeegowPermissions: Boolean(item.hasFeegowPermissions),
   personalDocType: item.personalDocType || 'RG',
   personalDocNumber: item.personalDocNumber || '', addressText: item.addressText || '', isActive: Boolean(item.isActive),
@@ -81,7 +106,7 @@ const toForm = (item: ProfessionalListItem): FormState => ({
     const f = item.checklist?.find((x) => x.docType === base.docType);
     return { ...base, hasPhysicalCopy: Boolean(f?.hasPhysicalCopy), hasDigitalCopy: Boolean(f?.hasDigitalCopy), expiresAt: f?.expiresAt || '', notes: f?.notes || '' };
   }),
-});
+}); };
 
 const maskCpf = (cpf: string | null) => {
   const d = stripDigits(cpf);
@@ -133,9 +158,11 @@ export default function ProfessionalsPage() {
   const contractLabelByCode = useMemo(() => new Map(CONTRACT_TYPES.map((c) => [c.code, c.label])), []);
   const specialtiesOptions = useMemo(() => {
     const all = new Set((specialties || []).map((s) => String(s || '').trim()).filter(Boolean));
-    if (form.specialty && !all.has(form.specialty)) all.add(form.specialty);
+    for (const sp of form.specialties) {
+      if (sp.name && !all.has(sp.name)) all.add(sp.name);
+    }
     return Array.from(all).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-  }, [specialties, form.specialty]);
+  }, [specialties, form.specialties]);
   const photoDoc = useMemo(
     () => uploadedDocs.find((doc) => doc.docType === 'FOTO' && doc.isActive),
     [uploadedDocs]
@@ -250,8 +277,8 @@ export default function ProfessionalsPage() {
   const sortIndicator = (
     field: 'status' | 'name' | 'specialty' | 'contractEndDate' | 'registration' | 'contractType' | 'documents' | 'certidao'
   ) => {
-    if (sortBy !== field) return '↕';
-    return sortDir === 'asc' ? '↑' : '↓';
+    if (sortBy !== field) return '<>';
+    return sortDir === 'asc' ? '^' : 'v';
   };
 
   const fetchDocuments = async (professionalId: string) => {
@@ -361,9 +388,17 @@ export default function ProfessionalsPage() {
         cpf: stripDigits(form.cpf) || null,
         cnpj: stripDigits(form.cnpj) || null,
         legalName: form.legalName || null,
+        specialty: form.specialties.find((s) => s.isPrimary)?.name || form.specialties[0]?.name || null,
+        specialties: form.specialties
+          .map((s) => ({ name: s.name.trim(), isPrimary: s.isPrimary }))
+          .filter((s) => Boolean(s.name)),
+        primarySpecialty:
+          form.specialties.find((s) => s.isPrimary && s.name.trim())?.name ||
+          form.specialties.find((s) => s.name.trim())?.name ||
+          null,
         phone: stripDigits(form.phone) || null,
         email: form.email || null,
-        ageRange: form.ageRange || null,
+        ageRange: `${form.ageMin}-${form.ageMax}`,
         serviceUnits: form.serviceUnits || [],
         hasFeegowPermissions: form.hasFeegowPermissions,
         physicalFolderNote: form.physicalFolderNote || null,
@@ -520,13 +555,80 @@ export default function ProfessionalsPage() {
                     <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Especialidade</label>
-                    <select value={form.specialty} onChange={(e) => setForm((p) => ({ ...p, specialty: e.target.value }))} className="w-full px-3 py-2 border rounded-lg bg-white">
-                      <option value="">Selecione</option>
-                      {specialtiesOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                    <p className="text-[11px] text-slate-500 mt-1">Fonte: {specialtiesSource === 'feegow_api' ? 'Feegow API' : specialtiesSource === 'database' ? 'Banco local' : 'Nao carregada'}</p>
+                  <div className="md:col-span-2">
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Especialidades</label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((p) => ({
+                            ...p,
+                            specialties: [...p.specialties, { name: '', isPrimary: p.specialties.length === 0 }],
+                          }))
+                        }
+                        className="text-xs px-2 py-1 border rounded-md"
+                      >
+                        + Especialidade
+                      </button>
+                    </div>
+                    <div className="space-y-2">
+                      {form.specialties.map((sp, idx) => (
+                        <div key={`sp-${idx}`} className="grid grid-cols-12 gap-2 items-center">
+                          <select
+                            value={sp.name}
+                            onChange={(e) =>
+                              setForm((p) => {
+                                const next = [...p.specialties];
+                                next[idx] = { ...next[idx], name: e.target.value };
+                                return { ...p, specialties: next };
+                              })
+                            }
+                            className="col-span-8 px-3 py-2 border rounded-lg bg-white"
+                          >
+                            <option value="">Selecione</option>
+                            {specialtiesOptions.map((s) => (
+                              <option key={s} value={s}>
+                                {s}
+                              </option>
+                            ))}
+                          </select>
+
+                          <label className="col-span-3 text-xs inline-flex items-center gap-1 text-slate-700">
+                            <input
+                              type="radio"
+                              name="primary-specialty"
+                              checked={sp.isPrimary}
+                              onChange={() =>
+                                setForm((p) => ({
+                                  ...p,
+                                  specialties: p.specialties.map((x, xIdx) => ({ ...x, isPrimary: xIdx === idx })),
+                                }))
+                              }
+                            />
+                            Principal
+                          </label>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setForm((p) => {
+                                if (p.specialties.length <= 1) return p;
+                                const next = p.specialties.filter((_, xIdx) => xIdx !== idx);
+                                if (!next.some((x) => x.isPrimary)) next[0] = { ...next[0], isPrimary: true };
+                                return { ...p, specialties: next };
+                              })
+                            }
+                            className="col-span-1 text-slate-500 hover:text-rose-600"
+                            title="Remover especialidade"
+                          >
+                            x
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Fonte: {specialtiesSource === 'feegow_api' ? 'Feegow API' : specialtiesSource === 'database' ? 'Banco local' : 'Nao carregada'}
+                    </p>
                   </div>
 
                   <div>
@@ -540,11 +642,76 @@ export default function ProfessionalsPage() {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Faixa etaria de atendimento</label>
-                    <select value={form.ageRange} onChange={(e) => setForm((p) => ({ ...p, ageRange: e.target.value }))} className="w-full px-3 py-2 border rounded-lg bg-white">
-                      <option value="">Selecione</option>
-                      {PROFESSIONAL_AGE_RANGES.map((range) => <option key={range} value={range}>{range}</option>)}
-                    </select>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Faixa etaria de atendimento (anos)</label>
+                    <div className="rounded-lg border bg-slate-50 p-3 space-y-3">
+                      <div className="relative h-8">
+                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 rounded bg-slate-200" />
+                        <div
+                          className="absolute top-1/2 -translate-y-1/2 h-1 rounded bg-[#17407E]"
+                          style={{
+                            left: `${(form.ageMin / 120) * 100}%`,
+                            width: `${((form.ageMax - form.ageMin) / 120) * 100}%`,
+                          }}
+                        />
+                        <input
+                          type="range"
+                          min={0}
+                          max={120}
+                          value={form.ageMin}
+                          onChange={(e) => {
+                            const nextMin = Number(e.target.value);
+                            setForm((p) => ({ ...p, ageMin: Math.min(nextMin, p.ageMax) }));
+                          }}
+                          className="dual-range-input absolute inset-0 w-full h-8"
+                          aria-label="Idade minima"
+                        />
+                        <input
+                          type="range"
+                          min={0}
+                          max={120}
+                          value={form.ageMax}
+                          onChange={(e) => {
+                            const nextMax = Number(e.target.value);
+                            setForm((p) => ({ ...p, ageMax: Math.max(nextMax, p.ageMin) }));
+                          }}
+                          className="dual-range-input absolute inset-0 w-full h-8"
+                          aria-label="Idade maxima"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] text-slate-500 mb-1">Min</label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={120}
+                            value={form.ageMin}
+                            onChange={(e) => {
+                              const raw = Number(e.target.value);
+                              const nextMin = Number.isFinite(raw) ? Math.max(0, Math.min(120, raw)) : 0;
+                              setForm((p) => ({ ...p, ageMin: Math.min(nextMin, p.ageMax) }));
+                            }}
+                            className="w-full px-3 py-2 border rounded-lg bg-white"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-slate-500 mb-1">Max</label>
+                          <input
+                            type="number"
+                            min={0}
+                            max={120}
+                            value={form.ageMax}
+                            onChange={(e) => {
+                              const raw = Number(e.target.value);
+                              const nextMax = Number.isFinite(raw) ? Math.max(0, Math.min(120, raw)) : 120;
+                              setForm((p) => ({ ...p, ageMax: Math.max(nextMax, p.ageMin) }));
+                            }}
+                            className="w-full px-3 py-2 border rounded-lg bg-white"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   <div>
@@ -902,6 +1069,47 @@ export default function ProfessionalsPage() {
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        .dual-range-input {
+          appearance: none;
+          -webkit-appearance: none;
+          background: transparent;
+          pointer-events: none;
+        }
+        .dual-range-input::-webkit-slider-runnable-track {
+          height: 0;
+          background: transparent;
+        }
+        .dual-range-input::-moz-range-track {
+          height: 0;
+          background: transparent;
+          border: 0;
+        }
+        .dual-range-input::-webkit-slider-thumb {
+          -webkit-appearance: none;
+          appearance: none;
+          pointer-events: auto;
+          height: 16px;
+          width: 16px;
+          border-radius: 9999px;
+          border: 2px solid #17407e;
+          background: #ffffff;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+          cursor: pointer;
+          margin-top: -8px;
+        }
+        .dual-range-input::-moz-range-thumb {
+          pointer-events: auto;
+          height: 16px;
+          width: 16px;
+          border-radius: 9999px;
+          border: 2px solid #17407e;
+          background: #ffffff;
+          box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+          cursor: pointer;
+        }
+      `}</style>
     </div>
   );
 }

@@ -4,7 +4,6 @@ import {
   CERTIDAO_DOC_TYPE,
   CONTRACT_TYPES,
   DOCUMENT_TYPES,
-  PROFESSIONAL_AGE_RANGES,
   PROFESSIONAL_SERVICE_UNITS,
   PERSONAL_DOC_TYPES,
   type ContractPartyType,
@@ -51,7 +50,6 @@ const allowedContractTypes = new Set(
 const allowedDocTypes = new Set(DOCUMENT_TYPES.map((item) => item.code));
 const allowedPersonalDocTypes = new Set(PERSONAL_DOC_TYPES);
 const allowedServiceUnits = new Set(PROFESSIONAL_SERVICE_UNITS);
-const allowedAgeRanges = new Set(PROFESSIONAL_AGE_RANGES);
 
 const parseDate = (value: any): string | null => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -103,6 +101,62 @@ const normalizeServiceUnits = (value: any): string[] => {
     )
   );
   return normalized;
+};
+
+const normalizeAgeRange = (value: any): string | null => {
+  const raw = clean(value);
+  if (!raw) return null;
+  const match = raw.match(/^(\d{1,3})\s*-\s*(\d{1,3})$/);
+  if (!match) {
+    throw new ProfessionalValidationError('Faixa etaria invalida. Use formato min-max (ex: 0-120).');
+  }
+  const min = Number(match[1]);
+  const max = Number(match[2]);
+  if (!Number.isInteger(min) || !Number.isInteger(max) || min < 0 || max > 120 || min > max) {
+    throw new ProfessionalValidationError('Faixa etaria invalida. Intervalo permitido: 0-120.');
+  }
+  return `${min}-${max}`;
+};
+
+const normalizeSpecialties = (
+  rawSpecialties: any,
+  rawPrimary: any,
+  legacySpecialty: any
+): { specialties: string[]; primarySpecialty: string } => {
+  const list: { name: string; isPrimary: boolean }[] = [];
+
+  if (Array.isArray(rawSpecialties)) {
+    for (const item of rawSpecialties) {
+      const name = clean(item?.name ?? item?.specialty ?? item);
+      if (!name) continue;
+      const isPrimary = bool(item?.isPrimary);
+      if (list.some((x) => upper(x.name) === upper(name))) continue;
+      list.push({ name, isPrimary });
+    }
+  }
+
+  const legacy = clean(legacySpecialty);
+  if (legacy && !list.some((x) => upper(x.name) === upper(legacy))) {
+    list.push({ name: legacy, isPrimary: list.length === 0 });
+  }
+
+  if (list.length === 0) {
+    throw new ProfessionalValidationError('Especialidade e obrigatoria.');
+  }
+
+  const explicitPrimary = list.find((item) => item.isPrimary)?.name || null;
+  const requestedPrimary = clean(rawPrimary);
+  let primary = explicitPrimary;
+  if (!primary && requestedPrimary) {
+    const found = list.find((item) => upper(item.name) === upper(requestedPrimary));
+    primary = found?.name || null;
+  }
+  if (!primary) primary = list[0].name;
+
+  return {
+    specialties: list.map((item) => item.name),
+    primarySpecialty: primary,
+  };
 };
 
 const normalizePhone = (value: any): string | null => {
@@ -184,16 +238,19 @@ const withChecklistDefaults = (
 
 const normalizeInput = (payload: any): ProfessionalInput => {
   const name = clean(payload?.name);
-  const specialty = clean(payload?.specialty);
   const phone = normalizePhone(payload?.phone);
   const email = clean(payload?.email) || null;
-  const ageRange = clean(payload?.ageRange) || null;
+  const ageRange = normalizeAgeRange(payload?.ageRange);
   const serviceUnits = normalizeServiceUnits(payload?.serviceUnits);
+  const normalizedSpecialties = normalizeSpecialties(
+    payload?.specialties,
+    payload?.primarySpecialty,
+    payload?.specialty
+  );
   const personalDocNumber = clean(payload?.personalDocNumber);
   const addressText = clean(payload?.addressText);
 
   if (!name) throw new ProfessionalValidationError('Nome do profissional e obrigatorio.');
-  if (!specialty) throw new ProfessionalValidationError('Especialidade e obrigatoria.');
   if (!personalDocNumber) {
     throw new ProfessionalValidationError('Numero do documento pessoal e obrigatorio.');
   }
@@ -206,9 +263,6 @@ const normalizeInput = (payload: any): ProfessionalInput => {
 
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new ProfessionalValidationError('Email invalido.');
-  }
-  if (ageRange && !allowedAgeRanges.has(ageRange as any)) {
-    throw new ProfessionalValidationError('Faixa etaria invalida.');
   }
   const contractStartDate = parseDate(payload?.contractStartDate);
   const contractEndDate = parseDate(payload?.contractEndDate);
@@ -257,7 +311,9 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     cpf,
     cnpj,
     legalName,
-    specialty,
+    specialty: normalizedSpecialties.primarySpecialty,
+    specialties: normalizedSpecialties.specialties,
+    primarySpecialty: normalizedSpecialties.primarySpecialty,
     phone,
     email,
     ageRange,
@@ -294,6 +350,19 @@ const mapProfessional = (row: any): Professional => ({
   cnpj: clean(row.cnpj) || null,
   legalName: clean(row.legal_name) || null,
   specialty: clean(row.specialty),
+  specialties: (() => {
+    const raw = clean(row.specialties_json);
+    if (!raw) return clean(row.specialty) ? [clean(row.specialty)] : [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return clean(row.specialty) ? [clean(row.specialty)] : [];
+      const normalized = parsed.map((x) => String(x || '').trim()).filter(Boolean);
+      return normalized.length > 0 ? normalized : clean(row.specialty) ? [clean(row.specialty)] : [];
+    } catch {
+      return clean(row.specialty) ? [clean(row.specialty)] : [];
+    }
+  })(),
+  primarySpecialty: clean(row.primary_specialty) || clean(row.specialty) || null,
   phone: clean(row.phone) || null,
   email: clean(row.email) || null,
   ageRange: clean(row.age_range) || null,
@@ -553,6 +622,8 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
       cnpj VARCHAR(18) UNIQUE,
       legal_name VARCHAR(180),
       specialty VARCHAR(120) NOT NULL,
+      primary_specialty VARCHAR(120),
+      specialties_json LONGTEXT,
       phone VARCHAR(40),
       email VARCHAR(180),
       age_range VARCHAR(60),
@@ -594,6 +665,14 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   await safeAddColumn(
     db,
     `ALTER TABLE professionals ADD COLUMN service_units_json LONGTEXT NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN primary_specialty VARCHAR(120) NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN specialties_json LONGTEXT NULL`
   );
   await safeAddColumn(
     db,
@@ -813,11 +892,11 @@ export const createProfessional = async (
     `
     INSERT INTO professionals (
       id, name, contract_party_type, contract_type, cpf, cnpj, legal_name,
-      specialty, phone, email, age_range, service_units_json,
+      specialty, primary_specialty, specialties_json, phone, email, age_range, service_units_json,
       has_feegow_permissions, personal_doc_type, personal_doc_number, address_text, is_active,
       has_physical_folder, physical_folder_note, contract_start_date, contract_end_date,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -828,6 +907,8 @@ export const createProfessional = async (
       input.cnpj,
       input.legalName,
       input.specialty,
+      input.primarySpecialty || input.specialty,
+      JSON.stringify(input.specialties || [input.specialty]),
       input.phone || null,
       input.email || null,
       input.ageRange || null,
@@ -885,6 +966,8 @@ export const updateProfessional = async (
       cnpj = ?,
       legal_name = ?,
       specialty = ?,
+      primary_specialty = ?,
+      specialties_json = ?,
       phone = ?,
       email = ?,
       age_range = ?,
@@ -909,6 +992,8 @@ export const updateProfessional = async (
       input.cnpj,
       input.legalName,
       input.specialty,
+      input.primarySpecialty || input.specialty,
+      JSON.stringify(input.specialties || [input.specialty]),
       input.phone || null,
       input.email || null,
       input.ageRange || null,

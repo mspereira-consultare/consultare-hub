@@ -53,6 +53,8 @@ export type Professional = {
   cnpj: string | null;
   legalName: string | null;
   specialty: string;
+  specialties: string[];
+  primarySpecialty: string | null;
   phone: string | null;
   email: string | null;
   ageRange: string | null;
@@ -91,6 +93,8 @@ export type ProfessionalInput = {
   cnpj?: string | null;
   legalName?: string | null;
   specialty: string;
+  specialties?: string[];
+  primarySpecialty?: string | null;
   phone?: string | null;
   email?: string | null;
   ageRange?: string | null;
