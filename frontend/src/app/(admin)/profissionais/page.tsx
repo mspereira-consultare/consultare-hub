@@ -9,6 +9,8 @@ import {
   COUNCIL_TYPES,
   DOCUMENT_TYPES,
   PERSONAL_DOC_TYPES,
+  PROFESSIONAL_AGE_RANGES,
+  PROFESSIONAL_SERVICE_UNITS,
   type ContractPartyType,
 } from '@/lib/profissionais/constants';
 import type { ProfessionalDocument, ProfessionalListItem } from '@/lib/profissionais/types';
@@ -18,7 +20,8 @@ type FormRegistration = { id?: string; councilType: string; councilNumber: strin
 type FormChecklist = { docType: string; hasPhysicalCopy: boolean; hasDigitalCopy: boolean; expiresAt: string; notes: string };
 type FormState = {
   name: string; contractPartyType: ContractPartyType; contractType: string; cpf: string; cnpj: string; legalName: string;
-  specialty: string; personalDocType: string; personalDocNumber: string; addressText: string; isActive: boolean;
+  specialty: string; phone: string; email: string; ageRange: string; serviceUnits: string[];
+  personalDocType: string; personalDocNumber: string; addressText: string; isActive: boolean;
   hasPhysicalFolder: boolean; physicalFolderNote: string; contractStartDate: string; contractEndDate: string;
   registrations: FormRegistration[]; checklist: FormChecklist[];
 };
@@ -48,14 +51,17 @@ const formatCnpj = (value: string | null | undefined) => {
 };
 const emptyForm = (): FormState => ({
   name: '', contractPartyType: 'PF', contractType: CONTRACT_TYPES.find((c) => c.isActive)?.code || '', cpf: '', cnpj: '', legalName: '',
-  specialty: '', personalDocType: PERSONAL_DOC_TYPES[0], personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
+  specialty: '', phone: '', email: '', ageRange: '', serviceUnits: [],
+  personalDocType: PERSONAL_DOC_TYPES[0], personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
   physicalFolderNote: '', contractStartDate: '', contractEndDate: '',
   registrations: [{ councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
 });
 
 const toForm = (item: ProfessionalListItem): FormState => ({
   name: item.name || '', contractPartyType: item.contractPartyType || 'PF', contractType: item.contractType || '', cpf: formatCpf(item.cpf || ''),
-  cnpj: formatCnpj(item.cnpj || ''), legalName: item.legalName || '', specialty: item.specialty || '', personalDocType: item.personalDocType || 'RG',
+  cnpj: formatCnpj(item.cnpj || ''), legalName: item.legalName || '', specialty: item.specialty || '',
+  phone: item.phone || '', email: item.email || '', ageRange: item.ageRange || '', serviceUnits: item.serviceUnits || [],
+  personalDocType: item.personalDocType || 'RG',
   personalDocNumber: item.personalDocNumber || '', addressText: item.addressText || '', isActive: Boolean(item.isActive),
   hasPhysicalFolder: Boolean(item.hasPhysicalFolder), physicalFolderNote: item.physicalFolderNote || '',
   contractStartDate: item.contractStartDate || '', contractEndDate: item.contractEndDate || '',
@@ -269,6 +275,10 @@ export default function ProfessionalsPage() {
         cpf: stripDigits(form.cpf) || null,
         cnpj: stripDigits(form.cnpj) || null,
         legalName: form.legalName || null,
+        phone: form.phone || null,
+        email: form.email || null,
+        ageRange: form.ageRange || null,
+        serviceUnits: form.serviceUnits || [],
         physicalFolderNote: form.physicalFolderNote || null,
         contractStartDate: form.contractStartDate || null,
         contractEndDate: form.contractEndDate || null,
@@ -433,6 +443,24 @@ export default function ProfessionalsPage() {
                   </div>
 
                   <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Telefone</label>
+                    <input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Email</label>
+                    <input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Faixa etaria de atendimento</label>
+                    <select value={form.ageRange} onChange={(e) => setForm((p) => ({ ...p, ageRange: e.target.value }))} className="w-full px-3 py-2 border rounded-lg bg-white">
+                      <option value="">Selecione</option>
+                      {PROFESSIONAL_AGE_RANGES.map((range) => <option key={range} value={range}>{range}</option>)}
+                    </select>
+                  </div>
+
+                  <div>
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de contrato</label>
                     <select value={form.contractType} onChange={(e) => setForm((p) => ({ ...p, contractType: e.target.value }))} className="w-full px-3 py-2 border rounded-lg bg-white">
                       {CONTRACT_TYPES.filter((t) => t.isActive).map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
@@ -518,6 +546,32 @@ export default function ProfessionalsPage() {
                       onChange={(e) => setForm((p) => ({ ...p, contractEndDate: e.target.value }))}
                       className="w-full px-3 py-2 border rounded-lg"
                     />
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Unidades de atendimento</label>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 border rounded-lg p-3 bg-slate-50">
+                      {PROFESSIONAL_SERVICE_UNITS.map((unit) => {
+                        const checked = form.serviceUnits.includes(unit);
+                        return (
+                          <label key={unit} className="inline-flex items-center gap-2 text-sm text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) =>
+                                setForm((p) => ({
+                                  ...p,
+                                  serviceUnits: e.target.checked
+                                    ? Array.from(new Set([...p.serviceUnits, unit]))
+                                    : p.serviceUnits.filter((u) => u !== unit),
+                                }))
+                              }
+                            />
+                            {unit}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div className="md:col-span-2">

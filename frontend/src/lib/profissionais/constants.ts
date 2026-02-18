@@ -3,8 +3,11 @@ export type DocumentValidationMode = 'hybrid' | 'upload_required';
 
 export type DocumentTypeCode =
   | 'FOTO'
+  | 'CARTEIRA_IDENTIDADE_PROFISSIONAL'
   | 'DIPLOMA'
   | 'DIPLOMA_ESPECIALIDADE'
+  | 'COMPROVANTE_ENDERECO'
+  | 'RG_CPF_CNH'
   | 'CURRICULO'
   | 'CERTIDAO_ETICA'
   | 'CONTRATO_ASSINADO';
@@ -43,6 +46,13 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
     warningDays: 0,
   },
   {
+    code: 'CARTEIRA_IDENTIDADE_PROFISSIONAL',
+    label: 'Carteira de Identidade Profissional',
+    required: false,
+    hasExpiration: false,
+    warningDays: 0,
+  },
+  {
     code: 'DIPLOMA',
     label: 'Diploma',
     required: true,
@@ -57,6 +67,20 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
     warningDays: 0,
   },
   {
+    code: 'COMPROVANTE_ENDERECO',
+    label: 'Comprovante de Endereco',
+    required: false,
+    hasExpiration: false,
+    warningDays: 0,
+  },
+  {
+    code: 'RG_CPF_CNH',
+    label: 'RG/CPF/CNH',
+    required: false,
+    hasExpiration: false,
+    warningDays: 0,
+  },
+  {
     code: 'CURRICULO',
     label: 'Curriculo',
     required: false,
@@ -65,7 +89,7 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
   },
   {
     code: 'CERTIDAO_ETICA',
-    label: 'Certidao Etica Profissional',
+    label: 'CERTIDAO DE ETICO PROFISSIONAL',
     required: true,
     hasExpiration: true,
     warningDays: 30,
@@ -151,6 +175,19 @@ export const BRAZIL_UFS = [
   'SP',
   'SE',
   'TO',
+] as const;
+
+export const PROFESSIONAL_SERVICE_UNITS = [
+  'OURO VERDE',
+  'CENTRO CAMBUI',
+  'SHOPPING CAMPINAS',
+] as const;
+
+export const PROFESSIONAL_AGE_RANGES = [
+  'Pediatrico',
+  'Adulto',
+  'Idoso',
+  'Todas as idades',
 ] as const;
 
 export const CERTIDAO_DOC_TYPE: DocumentTypeCode = 'CERTIDAO_ETICA';

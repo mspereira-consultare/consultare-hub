@@ -4,6 +4,8 @@ import {
   CERTIDAO_DOC_TYPE,
   CONTRACT_TYPES,
   DOCUMENT_TYPES,
+  PROFESSIONAL_AGE_RANGES,
+  PROFESSIONAL_SERVICE_UNITS,
   PERSONAL_DOC_TYPES,
   type ContractPartyType,
   type ContractTypeCode,
@@ -48,6 +50,8 @@ const allowedContractTypes = new Set(
 );
 const allowedDocTypes = new Set(DOCUMENT_TYPES.map((item) => item.code));
 const allowedPersonalDocTypes = new Set(PERSONAL_DOC_TYPES);
+const allowedServiceUnits = new Set(PROFESSIONAL_SERVICE_UNITS);
+const allowedAgeRanges = new Set(PROFESSIONAL_AGE_RANGES);
 
 const parseDate = (value: any): string | null => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -86,6 +90,18 @@ const normalizePersonalDocType = (value: any): string => {
   if (!allowedPersonalDocTypes.has(normalized as any)) {
     throw new ProfessionalValidationError('Tipo de documento pessoal invalido.');
   }
+  return normalized;
+};
+
+const normalizeServiceUnits = (value: any): string[] => {
+  const source = Array.isArray(value) ? value : [];
+  const normalized = Array.from(
+    new Set(
+      source
+        .map((item) => upper(item))
+        .filter((item) => allowedServiceUnits.has(item as any))
+    )
+  );
   return normalized;
 };
 
@@ -160,6 +176,10 @@ const withChecklistDefaults = (
 const normalizeInput = (payload: any): ProfessionalInput => {
   const name = clean(payload?.name);
   const specialty = clean(payload?.specialty);
+  const phone = clean(payload?.phone) || null;
+  const email = clean(payload?.email) || null;
+  const ageRange = clean(payload?.ageRange) || null;
+  const serviceUnits = normalizeServiceUnits(payload?.serviceUnits);
   const personalDocNumber = clean(payload?.personalDocNumber);
   const addressText = clean(payload?.addressText);
 
@@ -173,6 +193,13 @@ const normalizeInput = (payload: any): ProfessionalInput => {
   const contractPartyType = normalizeContractPartyType(payload?.contractPartyType);
   const contractType = normalizeContractType(payload?.contractType);
   const personalDocType = normalizePersonalDocType(payload?.personalDocType);
+
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new ProfessionalValidationError('Email invalido.');
+  }
+  if (ageRange && !allowedAgeRanges.has(ageRange as any)) {
+    throw new ProfessionalValidationError('Faixa etaria invalida.');
+  }
   const contractStartDate = parseDate(payload?.contractStartDate);
   const contractEndDate = parseDate(payload?.contractEndDate);
 
@@ -221,6 +248,10 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     cnpj,
     legalName,
     specialty,
+    phone,
+    email,
+    ageRange,
+    serviceUnits,
     personalDocType,
     personalDocNumber,
     addressText,
@@ -252,6 +283,20 @@ const mapProfessional = (row: any): Professional => ({
   cnpj: clean(row.cnpj) || null,
   legalName: clean(row.legal_name) || null,
   specialty: clean(row.specialty),
+  phone: clean(row.phone) || null,
+  email: clean(row.email) || null,
+  ageRange: clean(row.age_range) || null,
+  serviceUnits: (() => {
+    const raw = clean(row.service_units_json);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((x) => String(x || '').trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  })(),
   personalDocType: clean(row.personal_doc_type),
   personalDocNumber: clean(row.personal_doc_number),
   addressText: clean(row.address_text),
@@ -496,6 +541,10 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
       cnpj VARCHAR(18) UNIQUE,
       legal_name VARCHAR(180),
       specialty VARCHAR(120) NOT NULL,
+      phone VARCHAR(40),
+      email VARCHAR(180),
+      age_range VARCHAR(60),
+      service_units_json LONGTEXT,
       personal_doc_type VARCHAR(10) NOT NULL,
       personal_doc_number VARCHAR(40) NOT NULL,
       address_text TEXT NOT NULL,
@@ -516,6 +565,22 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   await safeAddColumn(
     db,
     `ALTER TABLE professionals ADD COLUMN contract_end_date DATE NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN phone VARCHAR(40) NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN email VARCHAR(180) NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN age_range VARCHAR(60) NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN service_units_json LONGTEXT NULL`
   );
 
   await db.execute(`
@@ -731,10 +796,11 @@ export const createProfessional = async (
     `
     INSERT INTO professionals (
       id, name, contract_party_type, contract_type, cpf, cnpj, legal_name,
-      specialty, personal_doc_type, personal_doc_number, address_text, is_active,
+      specialty, phone, email, age_range, service_units_json,
+      personal_doc_type, personal_doc_number, address_text, is_active,
       has_physical_folder, physical_folder_note, contract_start_date, contract_end_date,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -745,6 +811,10 @@ export const createProfessional = async (
       input.cnpj,
       input.legalName,
       input.specialty,
+      input.phone || null,
+      input.email || null,
+      input.ageRange || null,
+      JSON.stringify(input.serviceUnits || []),
       input.personalDocType,
       input.personalDocNumber,
       input.addressText,
@@ -797,6 +867,10 @@ export const updateProfessional = async (
       cnpj = ?,
       legal_name = ?,
       specialty = ?,
+      phone = ?,
+      email = ?,
+      age_range = ?,
+      service_units_json = ?,
       personal_doc_type = ?,
       personal_doc_number = ?,
       address_text = ?,
@@ -816,6 +890,10 @@ export const updateProfessional = async (
       input.cnpj,
       input.legalName,
       input.specialty,
+      input.phone || null,
+      input.email || null,
+      input.ageRange || null,
+      JSON.stringify(input.serviceUnits || []),
       input.personalDocType,
       input.personalDocNumber,
       input.addressText,
