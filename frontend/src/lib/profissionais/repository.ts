@@ -105,6 +105,15 @@ const normalizeServiceUnits = (value: any): string[] => {
   return normalized;
 };
 
+const normalizePhone = (value: any): string | null => {
+  const digits = clean(value).replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.length !== 10 && digits.length !== 11) {
+    throw new ProfessionalValidationError('Telefone invalido. Use DDD + numero (10 ou 11 digitos).');
+  }
+  return digits;
+};
+
 const normalizeRegistration = (registration: any): ProfessionalRegistration => {
   const councilType = upper(registration?.councilType);
   const councilNumber = clean(registration?.councilNumber);
@@ -176,7 +185,7 @@ const withChecklistDefaults = (
 const normalizeInput = (payload: any): ProfessionalInput => {
   const name = clean(payload?.name);
   const specialty = clean(payload?.specialty);
-  const phone = clean(payload?.phone) || null;
+  const phone = normalizePhone(payload?.phone);
   const email = clean(payload?.email) || null;
   const ageRange = clean(payload?.ageRange) || null;
   const serviceUnits = normalizeServiceUnits(payload?.serviceUnits);
@@ -193,6 +202,7 @@ const normalizeInput = (payload: any): ProfessionalInput => {
   const contractPartyType = normalizeContractPartyType(payload?.contractPartyType);
   const contractType = normalizeContractType(payload?.contractType);
   const personalDocType = normalizePersonalDocType(payload?.personalDocType);
+  const hasFeegowPermissions = bool(payload?.hasFeegowPermissions);
 
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new ProfessionalValidationError('Email invalido.');
@@ -252,6 +262,7 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     email,
     ageRange,
     serviceUnits,
+    hasFeegowPermissions,
     personalDocType,
     personalDocNumber,
     addressText,
@@ -297,6 +308,7 @@ const mapProfessional = (row: any): Professional => ({
       return [];
     }
   })(),
+  hasFeegowPermissions: bool(row.has_feegow_permissions),
   personalDocType: clean(row.personal_doc_type),
   personalDocNumber: clean(row.personal_doc_number),
   addressText: clean(row.address_text),
@@ -545,6 +557,7 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
       email VARCHAR(180),
       age_range VARCHAR(60),
       service_units_json LONGTEXT,
+      has_feegow_permissions INTEGER NOT NULL DEFAULT 0,
       personal_doc_type VARCHAR(10) NOT NULL,
       personal_doc_number VARCHAR(40) NOT NULL,
       address_text TEXT NOT NULL,
@@ -581,6 +594,10 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   await safeAddColumn(
     db,
     `ALTER TABLE professionals ADD COLUMN service_units_json LONGTEXT NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN has_feegow_permissions INTEGER NOT NULL DEFAULT 0`
   );
 
   await db.execute(`
@@ -797,10 +814,10 @@ export const createProfessional = async (
     INSERT INTO professionals (
       id, name, contract_party_type, contract_type, cpf, cnpj, legal_name,
       specialty, phone, email, age_range, service_units_json,
-      personal_doc_type, personal_doc_number, address_text, is_active,
+      has_feegow_permissions, personal_doc_type, personal_doc_number, address_text, is_active,
       has_physical_folder, physical_folder_note, contract_start_date, contract_end_date,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -815,6 +832,7 @@ export const createProfessional = async (
       input.email || null,
       input.ageRange || null,
       JSON.stringify(input.serviceUnits || []),
+      input.hasFeegowPermissions ? 1 : 0,
       input.personalDocType,
       input.personalDocNumber,
       input.addressText,
@@ -871,6 +889,7 @@ export const updateProfessional = async (
       email = ?,
       age_range = ?,
       service_units_json = ?,
+      has_feegow_permissions = ?,
       personal_doc_type = ?,
       personal_doc_number = ?,
       address_text = ?,
@@ -894,6 +913,7 @@ export const updateProfessional = async (
       input.email || null,
       input.ageRange || null,
       JSON.stringify(input.serviceUnits || []),
+      input.hasFeegowPermissions ? 1 : 0,
       input.personalDocType,
       input.personalDocNumber,
       input.addressText,

@@ -57,6 +57,7 @@ export type Professional = {
   email: string | null;
   ageRange: string | null;
   serviceUnits: string[];
+  hasFeegowPermissions: boolean;
   personalDocType: string;
   personalDocNumber: string;
   addressText: string;
@@ -94,6 +95,7 @@ export type ProfessionalInput = {
   email?: string | null;
   ageRange?: string | null;
   serviceUnits?: string[];
+  hasFeegowPermissions?: boolean;
   personalDocType: string;
   personalDocNumber: string;
   addressText: string;

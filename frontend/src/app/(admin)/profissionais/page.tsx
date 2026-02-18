@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { AlertCircle, Download, Edit3, FileUp, Loader2, Plus, RefreshCw, Search, User, X } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronRight, Download, Edit3, FileUp, Loader2, Plus, RefreshCw, Search, User, X } from 'lucide-react';
 import {
   BRAZIL_UFS,
   CONTRACT_TYPES,
@@ -21,6 +21,7 @@ type FormChecklist = { docType: string; hasPhysicalCopy: boolean; hasDigitalCopy
 type FormState = {
   name: string; contractPartyType: ContractPartyType; contractType: string; cpf: string; cnpj: string; legalName: string;
   specialty: string; phone: string; email: string; ageRange: string; serviceUnits: string[];
+  hasFeegowPermissions: boolean;
   personalDocType: string; personalDocNumber: string; addressText: string; isActive: boolean;
   hasPhysicalFolder: boolean; physicalFolderNote: string; contractStartDate: string; contractEndDate: string;
   registrations: FormRegistration[]; checklist: FormChecklist[];
@@ -49,9 +50,18 @@ const formatCnpj = (value: string | null | undefined) => {
   if (v.length <= 12) return `${v.slice(0, 2)}.${v.slice(2, 5)}.${v.slice(5, 8)}/${v.slice(8)}`;
   return `${v.slice(0, 2)}.${v.slice(2, 5)}.${v.slice(5, 8)}/${v.slice(8, 12)}-${v.slice(12, 14)}`;
 };
+
+const formatPhone = (value: string | null | undefined) => {
+  const v = stripDigits(value).slice(0, 11);
+  if (!v) return '';
+  if (v.length <= 2) return `(${v}`;
+  if (v.length <= 6) return `(${v.slice(0, 2)}) ${v.slice(2)}`;
+  if (v.length <= 10) return `(${v.slice(0, 2)}) ${v.slice(2, 6)}-${v.slice(6)}`;
+  return `(${v.slice(0, 2)}) ${v.slice(2, 7)}-${v.slice(7)}`;
+};
 const emptyForm = (): FormState => ({
   name: '', contractPartyType: 'PF', contractType: CONTRACT_TYPES.find((c) => c.isActive)?.code || '', cpf: '', cnpj: '', legalName: '',
-  specialty: '', phone: '', email: '', ageRange: '', serviceUnits: [],
+  specialty: '', phone: '', email: '', ageRange: '', serviceUnits: [], hasFeegowPermissions: false,
   personalDocType: PERSONAL_DOC_TYPES[0], personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
   physicalFolderNote: '', contractStartDate: '', contractEndDate: '',
   registrations: [{ councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
@@ -60,7 +70,8 @@ const emptyForm = (): FormState => ({
 const toForm = (item: ProfessionalListItem): FormState => ({
   name: item.name || '', contractPartyType: item.contractPartyType || 'PF', contractType: item.contractType || '', cpf: formatCpf(item.cpf || ''),
   cnpj: formatCnpj(item.cnpj || ''), legalName: item.legalName || '', specialty: item.specialty || '',
-  phone: item.phone || '', email: item.email || '', ageRange: item.ageRange || '', serviceUnits: item.serviceUnits || [],
+  phone: formatPhone(item.phone || ''), email: item.email || '', ageRange: item.ageRange || '', serviceUnits: item.serviceUnits || [],
+  hasFeegowPermissions: Boolean(item.hasFeegowPermissions),
   personalDocType: item.personalDocType || 'RG',
   personalDocNumber: item.personalDocNumber || '', addressText: item.addressText || '', isActive: Boolean(item.isActive),
   hasPhysicalFolder: Boolean(item.hasPhysicalFolder), physicalFolderNote: item.physicalFolderNote || '',
@@ -114,6 +125,10 @@ export default function ProfessionalsPage() {
   const [specialtiesSource, setSpecialtiesSource] = useState<'feegow_api' | 'database' | 'unknown'>('unknown');
   const [deleteTarget, setDeleteTarget] = useState<ProfessionalListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [isUploadExpanded, setIsUploadExpanded] = useState(false);
+  const [isChecklistExpanded, setIsChecklistExpanded] = useState(false);
+  const [sortBy, setSortBy] = useState<'status' | 'name' | 'specialty' | 'contractEndDate' | 'registration' | 'contractType' | 'documents' | 'certidao'>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   const contractLabelByCode = useMemo(() => new Map(CONTRACT_TYPES.map((c) => [c.code, c.label])), []);
   const specialtiesOptions = useMemo(() => {
@@ -125,6 +140,53 @@ export default function ProfessionalsPage() {
     () => uploadedDocs.find((doc) => doc.docType === 'FOTO' && doc.isActive),
     [uploadedDocs]
   );
+  const sortedItems = useMemo(() => {
+    const arr = [...items];
+    const factor = sortDir === 'asc' ? 1 : -1;
+    arr.sort((a, b) => {
+      let av: string | number = '';
+      let bv: string | number = '';
+
+      switch (sortBy) {
+        case 'status':
+          av = a.isActive ? 1 : 0;
+          bv = b.isActive ? 1 : 0;
+          break;
+        case 'name':
+          av = a.name || '';
+          bv = b.name || '';
+          break;
+        case 'specialty':
+          av = a.specialty || '';
+          bv = b.specialty || '';
+          break;
+        case 'contractEndDate':
+          av = a.contractEndDate || '';
+          bv = b.contractEndDate || '';
+          break;
+        case 'registration':
+          av = a.primaryRegistration ? `${a.primaryRegistration.councilType}-${a.primaryRegistration.councilUf}-${a.primaryRegistration.councilNumber}` : '';
+          bv = b.primaryRegistration ? `${b.primaryRegistration.councilType}-${b.primaryRegistration.councilUf}-${b.primaryRegistration.councilNumber}` : '';
+          break;
+        case 'contractType':
+          av = contractLabelByCode.get(a.contractType) || a.contractType || '';
+          bv = contractLabelByCode.get(b.contractType) || b.contractType || '';
+          break;
+        case 'documents':
+          av = a.requiredDocsDone / Math.max(1, a.requiredDocsTotal);
+          bv = b.requiredDocsDone / Math.max(1, b.requiredDocsTotal);
+          break;
+        case 'certidao':
+          av = a.certidaoStatus || '';
+          bv = b.certidaoStatus || '';
+          break;
+      }
+
+      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * factor;
+      return String(av).localeCompare(String(bv), 'pt-BR') * factor;
+    });
+    return arr;
+  }, [items, sortBy, sortDir, contractLabelByCode]);
 
   useEffect(() => {
     setPhotoLoadError(false);
@@ -170,6 +232,26 @@ export default function ProfessionalsPage() {
       setSpecialties([]);
       setSpecialtiesSource('unknown');
     }
+  };
+
+  const onSort = (
+    field: 'status' | 'name' | 'specialty' | 'contractEndDate' | 'registration' | 'contractType' | 'documents' | 'certidao'
+  ) => {
+    setSortBy((current) => {
+      if (current === field) {
+        setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'));
+        return current;
+      }
+      setSortDir('asc');
+      return field;
+    });
+  };
+
+  const sortIndicator = (
+    field: 'status' | 'name' | 'specialty' | 'contractEndDate' | 'registration' | 'contractType' | 'documents' | 'certidao'
+  ) => {
+    if (sortBy !== field) return '↕';
+    return sortDir === 'asc' ? '↑' : '↓';
   };
 
   const fetchDocuments = async (professionalId: string) => {
@@ -244,6 +326,8 @@ export default function ProfessionalsPage() {
     setUploadExpiresAt('');
     setUploadDocType(DOCUMENT_TYPES[0]?.code || 'RG');
     setModalError('');
+    setIsUploadExpanded(false);
+    setIsChecklistExpanded(false);
     setIsModalOpen(true);
   };
 
@@ -259,6 +343,8 @@ export default function ProfessionalsPage() {
       setUploadFile(null);
       setUploadExpiresAt('');
       setUploadDocType(DOCUMENT_TYPES[0]?.code || 'RG');
+      setIsUploadExpanded(false);
+      setIsChecklistExpanded(false);
       setIsModalOpen(true);
       await fetchDocuments(id);
     } catch (e: any) {
@@ -275,10 +361,11 @@ export default function ProfessionalsPage() {
         cpf: stripDigits(form.cpf) || null,
         cnpj: stripDigits(form.cnpj) || null,
         legalName: form.legalName || null,
-        phone: form.phone || null,
+        phone: stripDigits(form.phone) || null,
         email: form.email || null,
         ageRange: form.ageRange || null,
         serviceUnits: form.serviceUnits || [],
+        hasFeegowPermissions: form.hasFeegowPermissions,
         physicalFolderNote: form.physicalFolderNote || null,
         contractStartDate: form.contractStartDate || null,
         contractEndDate: form.contractEndDate || null,
@@ -352,23 +439,23 @@ export default function ProfessionalsPage() {
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-600">
             <tr>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Profissional</th>
-              <th className="px-4 py-3">Especialidade</th>
-              <th className="px-4 py-3">Expiracao Contrato</th>
-              <th className="px-4 py-3">Registro principal</th>
-              <th className="px-4 py-3">Tipo contrato</th>
-              <th className="px-4 py-3">Documentos</th>
-              <th className="px-4 py-3">Certidao</th>
+              <th className="px-4 py-3"><button type="button" onClick={() => onSort('status')} className="inline-flex items-center gap-1">Status <span>{sortIndicator('status')}</span></button></th>
+              <th className="px-4 py-3"><button type="button" onClick={() => onSort('name')} className="inline-flex items-center gap-1">Profissional <span>{sortIndicator('name')}</span></button></th>
+              <th className="px-4 py-3"><button type="button" onClick={() => onSort('specialty')} className="inline-flex items-center gap-1">Especialidade <span>{sortIndicator('specialty')}</span></button></th>
+              <th className="px-4 py-3"><button type="button" onClick={() => onSort('contractEndDate')} className="inline-flex items-center gap-1">Expiracao Contrato <span>{sortIndicator('contractEndDate')}</span></button></th>
+              <th className="px-4 py-3"><button type="button" onClick={() => onSort('registration')} className="inline-flex items-center gap-1">Registro principal <span>{sortIndicator('registration')}</span></button></th>
+              <th className="px-4 py-3"><button type="button" onClick={() => onSort('contractType')} className="inline-flex items-center gap-1">Tipo contrato <span>{sortIndicator('contractType')}</span></button></th>
+              <th className="px-4 py-3"><button type="button" onClick={() => onSort('documents')} className="inline-flex items-center gap-1">Documentos <span>{sortIndicator('documents')}</span></button></th>
+              <th className="px-4 py-3"><button type="button" onClick={() => onSort('certidao')} className="inline-flex items-center gap-1">Certidao <span>{sortIndicator('certidao')}</span></button></th>
               <th className="px-4 py-3">Acoes</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500"><span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" />Carregando...</span></td></tr>
-            ) : items.length === 0 ? (
+            ) : sortedItems.length === 0 ? (
               <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500">Nenhum profissional encontrado.</td></tr>
-            ) : items.map((item) => (
+            ) : sortedItems.map((item) => (
               <tr key={item.id} className="border-t">
                 <td className="px-4 py-3">
                   <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${item.isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
@@ -444,7 +531,7 @@ export default function ProfessionalsPage() {
 
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Telefone</label>
-                    <input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+                    <input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: formatPhone(e.target.value) }))} placeholder="(11) 99999-9999" className="w-full px-3 py-2 border rounded-lg" />
                   </div>
 
                   <div>
@@ -464,18 +551,6 @@ export default function ProfessionalsPage() {
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de contrato</label>
                     <select value={form.contractType} onChange={(e) => setForm((p) => ({ ...p, contractType: e.target.value }))} className="w-full px-3 py-2 border rounded-lg bg-white">
                       {CONTRACT_TYPES.filter((t) => t.isActive).map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Status do profissional</label>
-                    <select
-                      value={form.isActive ? 'active' : 'inactive'}
-                      onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.value === 'active' }))}
-                      className="w-full px-3 py-2 border rounded-lg bg-white"
-                    >
-                      <option value="active">Ativo</option>
-                      <option value="inactive">Inativo</option>
                     </select>
                   </div>
 
@@ -525,27 +600,6 @@ export default function ProfessionalsPage() {
                   <div className="md:col-span-2">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Endereco</label>
                     <textarea value={form.addressText} onChange={(e) => setForm((p) => ({ ...p, addressText: e.target.value }))} rows={2} className="w-full px-3 py-2 border rounded-lg" />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Inicio do contrato</label>
-                    <input
-                      type="date"
-                      value={form.contractStartDate}
-                      onChange={(e) => setForm((p) => ({ ...p, contractStartDate: e.target.value }))}
-                      className="w-full px-3 py-2 border rounded-lg"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Fim do contrato</label>
-                    <input
-                      type="date"
-                      value={form.contractEndDate}
-                      min={form.contractStartDate || undefined}
-                      onChange={(e) => setForm((p) => ({ ...p, contractEndDate: e.target.value }))}
-                      className="w-full px-3 py-2 border rounded-lg"
-                    />
                   </div>
 
                   <div className="md:col-span-2">
@@ -602,6 +656,51 @@ export default function ProfessionalsPage() {
                       </div>
                     )}
                   </div>
+
+                  <div className="mt-3 grid grid-cols-1 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Status do profissional</label>
+                      <select
+                        value={form.isActive ? 'active' : 'inactive'}
+                        onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.value === 'active' }))}
+                        className="w-full px-3 py-2 border rounded-lg bg-white"
+                      >
+                        <option value="active">Ativo</option>
+                        <option value="inactive">Inativo</option>
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Inicio contrato</label>
+                        <input
+                          type="date"
+                          value={form.contractStartDate}
+                          onChange={(e) => setForm((p) => ({ ...p, contractStartDate: e.target.value }))}
+                          className="w-full px-3 py-2 border rounded-lg"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Fim contrato</label>
+                        <input
+                          type="date"
+                          value={form.contractEndDate}
+                          min={form.contractStartDate || undefined}
+                          onChange={(e) => setForm((p) => ({ ...p, contractEndDate: e.target.value }))}
+                          className="w-full px-3 py-2 border rounded-lg"
+                        />
+                      </div>
+                    </div>
+
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={form.hasFeegowPermissions}
+                        onChange={(e) => setForm((p) => ({ ...p, hasFeegowPermissions: e.target.checked }))}
+                      />
+                      Permissoes do Feegow
+                    </label>
+                  </div>
                 </div>
               </div>
 
@@ -640,13 +739,22 @@ export default function ProfessionalsPage() {
               </div>
 
               <div>
-                <h3 className="text-sm font-semibold text-slate-700 mb-2">Upload de documentos (opcional)</h3>
-                {!editingId ? (
-                  <div className="text-xs px-3 py-2 rounded border bg-slate-50 text-slate-600">
-                    Salve o cadastro primeiro para habilitar upload e download de arquivos.
-                  </div>
-                ) : (
-                  <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setIsUploadExpanded((v) => !v)}
+                  className="w-full flex items-center justify-between py-2 text-sm font-semibold text-slate-700"
+                >
+                  <span>Upload de documentos (opcional)</span>
+                  {isUploadExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+                {isUploadExpanded && (
+                  <>
+                    {!editingId ? (
+                      <div className="text-xs px-3 py-2 rounded border bg-slate-50 text-slate-600">
+                        Salve o cadastro primeiro para habilitar upload e download de arquivos.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
                     <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
                       <div>
                         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de documento</label>
@@ -740,12 +848,23 @@ export default function ProfessionalsPage() {
                       </table>
                     </div>
                   </div>
+                    )}
+                  </>
                 )}
               </div>
 
               <div>
-                <h3 className="text-sm font-semibold text-slate-700 mb-2">Checklist manual de documentos (transicao)</h3>
-                <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="px-2 py-2 text-left">Documento</th><th className="px-2 py-2 text-left">Fisico</th><th className="px-2 py-2 text-left">Digital</th><th className="px-2 py-2 text-left">Expiracao</th><th className="px-2 py-2 text-left">Obs</th></tr></thead><tbody>{form.checklist.map((c, i) => { const d = DOCUMENT_TYPES.find((x) => x.code === c.docType); return <tr key={c.docType} className="border-t"><td className="px-2 py-2">{d?.label || c.docType}</td><td className="px-2 py-2"><input type="checkbox" checked={c.hasPhysicalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasPhysicalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2"><input type="checkbox" checked={c.hasDigitalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasDigitalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2">{d?.hasExpiration ? <input type="date" value={c.expiresAt} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], expiresAt: e.target.value }; return { ...p, checklist: n }; })} className="px-2 py-1 border rounded" /> : <span className="text-xs text-slate-400">-</span>}</td><td className="px-2 py-2"><input value={c.notes} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], notes: e.target.value }; return { ...p, checklist: n }; })} className="w-full px-2 py-1 border rounded" /></td></tr>; })}</tbody></table></div>
+                <button
+                  type="button"
+                  onClick={() => setIsChecklistExpanded((v) => !v)}
+                  className="w-full flex items-center justify-between py-2 text-sm font-semibold text-slate-700"
+                >
+                  <span>Checklist manual de documentos (transicao)</span>
+                  {isChecklistExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                </button>
+                {isChecklistExpanded && (
+                  <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="px-2 py-2 text-left">Documento</th><th className="px-2 py-2 text-left">Fisico</th><th className="px-2 py-2 text-left">Digital</th><th className="px-2 py-2 text-left">Expiracao</th><th className="px-2 py-2 text-left">Obs</th></tr></thead><tbody>{form.checklist.map((c, i) => { const d = DOCUMENT_TYPES.find((x) => x.code === c.docType); return <tr key={c.docType} className="border-t"><td className="px-2 py-2">{d?.label || c.docType}</td><td className="px-2 py-2"><input type="checkbox" checked={c.hasPhysicalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasPhysicalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2"><input type="checkbox" checked={c.hasDigitalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasDigitalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2">{d?.hasExpiration ? <input type="date" value={c.expiresAt} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], expiresAt: e.target.value }; return { ...p, checklist: n }; })} className="px-2 py-1 border rounded" /> : <span className="text-xs text-slate-400">-</span>}</td><td className="px-2 py-2"><input value={c.notes} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], notes: e.target.value }; return { ...p, checklist: n }; })} className="w-full px-2 py-1 border rounded" /></td></tr>; })}</tbody></table></div>
+                )}
               </div>
             </div>
             <div className="px-5 py-3 border-t flex justify-end gap-2"><button type="button" className="px-3 py-2 border rounded-lg" onClick={() => setIsModalOpen(false)}>Cancelar</button><button type="button" onClick={save} disabled={saving || !canEdit} className="px-3 py-2 rounded-lg bg-[#17407E] text-white disabled:opacity-60 inline-flex items-center gap-2">{saving && <Loader2 size={14} className="animate-spin" />}{saving ? 'Salvando...' : 'Salvar'}</button></div>
