@@ -165,6 +165,14 @@ const normalizeInput = (payload: any): ProfessionalInput => {
   const contractPartyType = normalizeContractPartyType(payload?.contractPartyType);
   const contractType = normalizeContractType(payload?.contractType);
   const personalDocType = normalizePersonalDocType(payload?.personalDocType);
+  const contractStartDate = parseDate(payload?.contractStartDate);
+  const contractEndDate = parseDate(payload?.contractEndDate);
+
+  if (contractStartDate && contractEndDate && contractEndDate < contractStartDate) {
+    throw new ProfessionalValidationError(
+      'Data de fim do contrato nao pode ser menor que a data de inicio.'
+    );
+  }
 
   const cpf = clean(payload?.cpf) || null;
   const cnpj = clean(payload?.cnpj) || null;
@@ -211,6 +219,8 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     isActive: bool(payload?.isActive ?? true),
     hasPhysicalFolder: bool(payload?.hasPhysicalFolder),
     physicalFolderNote: clean(payload?.physicalFolderNote) || null,
+    contractStartDate,
+    contractEndDate,
     registrations,
     checklist,
   };
@@ -240,6 +250,8 @@ const mapProfessional = (row: any): Professional => ({
   isActive: bool(row.is_active),
   hasPhysicalFolder: bool(row.has_physical_folder),
   physicalFolderNote: clean(row.physical_folder_note) || null,
+  contractStartDate: parseDate(row.contract_start_date),
+  contractEndDate: parseDate(row.contract_end_date),
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
@@ -382,6 +394,17 @@ const insertAudit = async (
   );
 };
 
+const safeAddColumn = async (db: DbInterface, sql: string) => {
+  try {
+    await db.execute(sql);
+  } catch (error: any) {
+    const msg = String(error?.message || '');
+    const code = String(error?.code || '');
+    if (code === 'ER_DUP_FIELDNAME' || /Duplicate column name/i.test(msg)) return;
+    throw error;
+  }
+};
+
 const loadRelations = async (
   db: DbInterface,
   professionalIds: string[]
@@ -471,10 +494,21 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
       is_active INTEGER NOT NULL DEFAULT 1,
       has_physical_folder INTEGER NOT NULL DEFAULT 0,
       physical_folder_note TEXT,
+      contract_start_date DATE NULL,
+      contract_end_date DATE NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   `);
+
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN contract_start_date DATE NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN contract_end_date DATE NULL`
+  );
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS professional_registrations (
@@ -690,8 +724,9 @@ export const createProfessional = async (
     INSERT INTO professionals (
       id, name, contract_party_type, contract_type, cpf, cnpj, legal_name,
       specialty, personal_doc_type, personal_doc_number, address_text, is_active,
-      has_physical_folder, physical_folder_note, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      has_physical_folder, physical_folder_note, contract_start_date, contract_end_date,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -708,6 +743,8 @@ export const createProfessional = async (
       input.isActive ? 1 : 0,
       input.hasPhysicalFolder ? 1 : 0,
       input.physicalFolderNote,
+      input.contractStartDate,
+      input.contractEndDate,
       now,
       now,
     ]
@@ -758,6 +795,8 @@ export const updateProfessional = async (
       is_active = ?,
       has_physical_folder = ?,
       physical_folder_note = ?,
+      contract_start_date = ?,
+      contract_end_date = ?,
       updated_at = ?
     WHERE id = ?
     `,
@@ -775,6 +814,8 @@ export const updateProfessional = async (
       input.isActive ? 1 : 0,
       input.hasPhysicalFolder ? 1 : 0,
       input.physicalFolderNote,
+      input.contractStartDate,
+      input.contractEndDate,
       now,
       professionalId,
     ]

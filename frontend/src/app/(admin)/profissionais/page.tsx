@@ -19,7 +19,8 @@ type FormChecklist = { docType: string; hasPhysicalCopy: boolean; hasDigitalCopy
 type FormState = {
   name: string; contractPartyType: ContractPartyType; contractType: string; cpf: string; cnpj: string; legalName: string;
   specialty: string; personalDocType: string; personalDocNumber: string; addressText: string; isActive: boolean;
-  hasPhysicalFolder: boolean; physicalFolderNote: string; registrations: FormRegistration[]; checklist: FormChecklist[];
+  hasPhysicalFolder: boolean; physicalFolderNote: string; contractStartDate: string; contractEndDate: string;
+  registrations: FormRegistration[]; checklist: FormChecklist[];
 };
 
 const pageSize = 20;
@@ -48,7 +49,8 @@ const formatCnpj = (value: string | null | undefined) => {
 const emptyForm = (): FormState => ({
   name: '', contractPartyType: 'PF', contractType: CONTRACT_TYPES.find((c) => c.isActive)?.code || '', cpf: '', cnpj: '', legalName: '',
   specialty: '', personalDocType: PERSONAL_DOC_TYPES[0], personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
-  physicalFolderNote: '', registrations: [{ councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
+  physicalFolderNote: '', contractStartDate: '', contractEndDate: '',
+  registrations: [{ councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
 });
 
 const toForm = (item: ProfessionalListItem): FormState => ({
@@ -56,6 +58,7 @@ const toForm = (item: ProfessionalListItem): FormState => ({
   cnpj: formatCnpj(item.cnpj || ''), legalName: item.legalName || '', specialty: item.specialty || '', personalDocType: item.personalDocType || 'RG',
   personalDocNumber: item.personalDocNumber || '', addressText: item.addressText || '', isActive: Boolean(item.isActive),
   hasPhysicalFolder: Boolean(item.hasPhysicalFolder), physicalFolderNote: item.physicalFolderNote || '',
+  contractStartDate: item.contractStartDate || '', contractEndDate: item.contractEndDate || '',
   registrations: (item.registrations || []).map((r) => ({ id: r.id, councilType: r.councilType, councilNumber: r.councilNumber, councilUf: r.councilUf, isPrimary: Boolean(r.isPrimary) })),
   checklist: newChecklist().map((base) => {
     const f = item.checklist?.find((x) => x.docType === base.docType);
@@ -258,6 +261,8 @@ export default function ProfessionalsPage() {
         cnpj: stripDigits(form.cnpj) || null,
         legalName: form.legalName || null,
         physicalFolderNote: form.physicalFolderNote || null,
+        contractStartDate: form.contractStartDate || null,
+        contractEndDate: form.contractEndDate || null,
         checklist: form.checklist.map((c) => ({ ...c, expiresAt: c.expiresAt || null })),
       };
       const res = await fetch(editingId ? `/api/admin/profissionais/${encodeURIComponent(editingId)}` : '/api/admin/profissionais', {
@@ -372,6 +377,18 @@ export default function ProfessionalsPage() {
                   </div>
 
                   <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Status do profissional</label>
+                    <select
+                      value={form.isActive ? 'active' : 'inactive'}
+                      onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.value === 'active' }))}
+                      className="w-full px-3 py-2 border rounded-lg bg-white"
+                    >
+                      <option value="active">Ativo</option>
+                      <option value="inactive">Inativo</option>
+                    </select>
+                  </div>
+
+                  <div>
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de contratante</label>
                     <select value={form.contractPartyType} onChange={(e) => setForm((p) => ({ ...p, contractPartyType: e.target.value as ContractPartyType }))} className="w-full px-3 py-2 border rounded-lg bg-white">
                       <option value="PF">PF</option>
@@ -417,6 +434,27 @@ export default function ProfessionalsPage() {
                   <div className="md:col-span-2">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Endereco</label>
                     <textarea value={form.addressText} onChange={(e) => setForm((p) => ({ ...p, addressText: e.target.value }))} rows={2} className="w-full px-3 py-2 border rounded-lg" />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Inicio do contrato</label>
+                    <input
+                      type="date"
+                      value={form.contractStartDate}
+                      onChange={(e) => setForm((p) => ({ ...p, contractStartDate: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Fim do contrato</label>
+                    <input
+                      type="date"
+                      value={form.contractEndDate}
+                      min={form.contractStartDate || undefined}
+                      onChange={(e) => setForm((p) => ({ ...p, contractEndDate: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
                   </div>
 
                   <div className="md:col-span-2">
