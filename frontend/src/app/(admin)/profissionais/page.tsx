@@ -687,8 +687,9 @@ export default function ProfessionalsPage() {
                             min={0}
                             max={120}
                             value={form.ageMin}
+                            onFocus={(e) => e.currentTarget.select()}
                             onChange={(e) => {
-                              const raw = Number(e.target.value);
+                              const raw = Number.parseInt(e.target.value, 10);
                               const nextMin = Number.isFinite(raw) ? Math.max(0, Math.min(120, raw)) : 0;
                               setForm((p) => ({ ...p, ageMin: Math.min(nextMin, p.ageMax) }));
                             }}
@@ -702,8 +703,9 @@ export default function ProfessionalsPage() {
                             min={0}
                             max={120}
                             value={form.ageMax}
+                            onFocus={(e) => e.currentTarget.select()}
                             onChange={(e) => {
-                              const raw = Number(e.target.value);
+                              const raw = Number.parseInt(e.target.value, 10);
                               const nextMax = Number.isFinite(raw) ? Math.max(0, Math.min(120, raw)) : 120;
                               setForm((p) => ({ ...p, ageMax: Math.max(nextMax, p.ageMin) }));
                             }}
