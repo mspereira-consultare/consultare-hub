@@ -28,6 +28,13 @@ type SelectOption = { name: string; label?: string };
 type DateRange = { start: string; end: string };
 type Heartbeat = { status: string; last_run: string; details: string };
 
+const UNIT_OPTIONS = [
+  { id: 'all', label: 'Todas as Unidades' },
+  { id: '2', label: 'Ouro Verde' },
+  { id: '3', label: 'Centro Cambui' },
+  { id: '12', label: 'Shopping Campinas' },
+];
+
 const toDateInput = (date: Date) => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -167,6 +174,7 @@ export default function AgendamentosPage() {
   const [aggregateBy, setAggregateBy] = useState<'day' | 'month' | 'year'>('day');
 
   const [filters, setFilters] = useState({
+    unit: 'all',
     scheduled_by: 'all',
     specialty: 'all',
     professional: 'all',
@@ -198,6 +206,7 @@ export default function AgendamentosPage() {
 
   const hasAnyFilter =
     aggregateBy !== 'day' ||
+    filters.unit !== 'all' ||
     filters.scheduled_by !== 'all' ||
     filters.specialty !== 'all' ||
     filters.professional !== 'all' ||
@@ -211,6 +220,7 @@ export default function AgendamentosPage() {
         startDate: dateRange.start,
         endDate: dateRange.end,
         aggregateBy,
+        unit: filters.unit,
         scheduled_by: filters.scheduled_by,
         specialty: filters.specialty,
         professional: filters.professional,
@@ -273,6 +283,7 @@ export default function AgendamentosPage() {
     filters.specialty,
     filters.professional,
     filters.status,
+    filters.unit,
   ]);
 
   const chartData = useMemo(() => {
@@ -406,7 +417,7 @@ export default function AgendamentosPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
                   <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">
                     Agrupar por
@@ -419,6 +430,23 @@ export default function AgendamentosPage() {
                     <option value="day">Dia</option>
                     <option value="month">Mes</option>
                     <option value="year">Ano</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">
+                    Unidade
+                  </label>
+                  <select
+                    value={filters.unit}
+                    onChange={(e) => setFilters((f) => ({ ...f, unit: e.target.value }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-700"
+                  >
+                    {UNIT_OPTIONS.map((unit) => (
+                      <option key={unit.id} value={unit.id}>
+                        {unit.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
@@ -490,7 +518,13 @@ export default function AgendamentosPage() {
                   <button
                     onClick={() => {
                       setAggregateBy('day');
-                      setFilters({ scheduled_by: 'all', specialty: 'all', professional: 'all', status: 'all' });
+                      setFilters({
+                        unit: 'all',
+                        scheduled_by: 'all',
+                        specialty: 'all',
+                        professional: 'all',
+                        status: 'all',
+                      });
                     }}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-lg border border-red-200 hover:bg-red-100 transition font-medium text-sm"
                     title="Limpar todos os filtros"

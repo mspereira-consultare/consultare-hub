@@ -5,6 +5,12 @@ import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 export const dynamic = 'force-dynamic';
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
+const UNIT_PATTERNS_BY_ID: Record<string, string[]> = {
+  '2': ['OURO VERDE'],
+  '3': ['CENTRO CAMBUI', 'CENTRO CAMBUÍ'],
+  '12': ['CAMPINAS SHOPPING', 'SHOPPING CAMPINAS'],
+};
+
 export async function GET(request: Request) {
   try {
     const cacheKey = buildCacheKey('admin', request.url);
@@ -13,6 +19,7 @@ export async function GET(request: Request) {
       const startDate = searchParams.get('startDate') || new Date().toISOString().split('T')[0];
       const endDate = searchParams.get('endDate') || startDate;
       const aggregateBy = (searchParams.get('aggregateBy') || 'day').toLowerCase(); // day|month|year
+      const unit = searchParams.get('unit') || 'all';
       const scheduledBy = searchParams.get('scheduled_by') || '';
       const specialty = searchParams.get('specialty') || '';
       const professional = searchParams.get('professional') || '';
@@ -31,6 +38,13 @@ export async function GET(request: Request) {
 
       let whereSql = 'WHERE f.scheduled_at BETWEEN ? AND ?';
       const params: any[] = [dbStart, dbEnd];
+
+      if (unit && unit !== 'all') {
+        const patterns = UNIT_PATTERNS_BY_ID[String(unit)] || [String(unit).toUpperCase()];
+        const unitClauses = patterns.map(() => 'UPPER(TRIM(f.unit_name)) LIKE ?');
+        whereSql += ` AND (${unitClauses.join(' OR ')})`;
+        params.push(...patterns.map((p) => `%${p}%`));
+      }
 
       if (scheduledBy && scheduledBy !== 'all') {
         whereSql += ' AND UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?))';
