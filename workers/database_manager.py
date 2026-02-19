@@ -477,8 +477,10 @@ class DatabaseManager:
             agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
 
             for _, row in df.iterrows():
-                raw_id = f"{row.get('UNIDADE')}-{row.get('PACIENTE')}-{row.get('CHEGADA')}"
-                hash_id = gerar_hash(raw_id)
+                hash_id = str(row.get('hash_id') or '').strip()
+                if not hash_id:
+                    raw_id = f"{row.get('UNIDADE')}-{row.get('PACIENTE')}-{row.get('CHEGADA')}"
+                    hash_id = gerar_hash(raw_id)
 
                 espera_raw = row.get('ESPERA_MINUTOS')
                 try:
@@ -574,14 +576,45 @@ class DatabaseManager:
                 elif uid == 3: unidade_nome = "Centro Cambui"
                 elif uid == 12: unidade_nome = "Campinas Shopping"
 
-                paciente = item.get('PacienteNome', 'Desconhecido')
-                
-                # ALTERAÇÃO: Concatena a Data do Feegow com o Horário da detecção
-                dt_chegada_raw = item.get('DataChegada') or dia_ref
-                dt_chegada = f"{dt_chegada_raw} {horario_atual}"
-                
-                dt_atend = item.get('DataAtendimento') 
-                status = item.get('StatusNome', 'Indefinido')
+                paciente = (
+                    item.get('PacienteNome')
+                    or item.get('Paciente')
+                    or item.get('NomePaciente')
+                    or item.get('patient_name')
+                    or item.get('name')
+                    or 'Desconhecido'
+                )
+
+                dt_chegada_raw = (
+                    item.get('DataChegada')
+                    or item.get('Chegada')
+                    or item.get('DataEntrada')
+                    or item.get('arrived_at')
+                    or dia_ref
+                )
+                dt_chegada_raw = str(dt_chegada_raw).strip()
+                # Se veio apenas data (YYYY-MM-DD), anexa hora atual para manter datetime.
+                if len(dt_chegada_raw) <= 10 and ' ' not in dt_chegada_raw and 'T' not in dt_chegada_raw:
+                    dt_chegada = f"{dt_chegada_raw} {horario_atual}"
+                else:
+                    dt_chegada = dt_chegada_raw.replace('T', ' ')
+
+                dt_atend = (
+                    item.get('DataAtendimento')
+                    or item.get('Atendimento')
+                    or item.get('DataFinalizacao')
+                    or item.get('finished_at')
+                )
+                if dt_atend is not None:
+                    dt_atend = str(dt_atend).strip().replace('T', ' ')
+
+                status = (
+                    item.get('StatusNome')
+                    or item.get('Status')
+                    or item.get('status')
+                    or 'Indefinido'
+                )
+
 
                 hash_id = f"REC_{id_ext}_{uid}"
 

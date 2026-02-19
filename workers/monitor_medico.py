@@ -87,7 +87,23 @@ def run_monitor_medico():
                     db.salvar_dados_medicos(df)
 
                 # --- Sincronização: finaliza imediatamente quem saiu da fila ---
-                hash_ids_atuais = set(df['hash_id'].tolist()) if not df.empty and 'hash_id' in df.columns else set()
+                if not df.empty and 'hash_id' in df.columns:
+                    hash_ids_atuais = set(str(x) for x in df['hash_id'].tolist() if str(x).strip())
+                elif not df.empty:
+                    # Fallback defensivo para nunca zerar a fila por falta de hash_id.
+                    hash_ids_atuais = set(
+                        hashlib.md5(
+                            f"{nome_unidade}-{str(r.get('PACIENTE', '')).strip()}-{str(r.get('CHEGADA', '')).strip()}".encode()
+                        ).hexdigest()
+                        for _, r in df.iterrows()
+                    )
+                else:
+                    hash_ids_atuais = set()
+
+                if not df.empty and not hash_ids_atuais:
+                    print(f"[{timestamp}] [WARN] {nome_unidade}: sem hash_ids_atuais; pulando finalizacao por seguranca.")
+                    print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
+                    continue
                 conn = db.get_connection()
                 try:
                     cursor = conn.cursor()

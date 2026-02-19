@@ -7,6 +7,7 @@ import html
 import re
 import sys
 import pytz
+import hashlib
 from io import StringIO
 from datetime import datetime
 from bs4 import BeautifulSoup
@@ -163,6 +164,9 @@ class FeegowSystem:
             dfs = pd.read_html(StringIO(html_content))
             df = dfs[0].iloc[:, :7].copy()
             df.columns = ['HORA', 'CHEGADA', 'PACIENTE', 'IDADE', 'PROFISSIONAL', 'COMPROMISSO', 'TEMPO_TEXTO']
+            df['PACIENTE'] = df['PACIENTE'].astype(str).str.strip()
+            df['CHEGADA'] = df['CHEGADA'].astype(str).str.strip().str[:5]
+            df['PROFISSIONAL'] = df['PROFISSIONAL'].astype(str).str.strip()
 
             tz = pytz.timezone("America/Sao_Paulo")
             agora = datetime.now(tz)
@@ -192,6 +196,12 @@ class FeegowSystem:
 
             df[['STATUS_DETECTADO', 'ESPERA_MINUTOS']] = df.apply(processar_linha, axis=1)
             df['UNIDADE'] = nome_unidade
+            df['hash_id'] = df.apply(
+                lambda r: hashlib.md5(
+                    f"{nome_unidade}-{str(r.get('PACIENTE', '')).strip()}-{str(r.get('CHEGADA', '')).strip()}".encode()
+                ).hexdigest(),
+                axis=1
+            )
 
             # Opcional: remover TEMPO_TEXTO
             # df = df.drop(columns=['TEMPO_TEXTO'])

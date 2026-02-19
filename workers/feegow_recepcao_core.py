@@ -36,6 +36,7 @@ class FeegowRecepcaoSystem:
 
     def obter_dados_brutos(self, unidades=[3, 2, 12]):
         todos_pacientes = []
+        erros = []
         url_base = "https://core.feegow.com/totem-queue/admin/get-queue-by-filter?filter="
         
         # 🟢 RECARREGA DO BANCO (com cache): Garante tokens novos sem ler a cada ciclo
@@ -43,7 +44,9 @@ class FeegowRecepcaoSystem:
 
         for unidade_id in unidades:
             sessao = self.SESSOES.get(str(unidade_id))
-            if not sessao: continue
+            if not sessao:
+                erros.append(f"unidade {unidade_id}: sem sessao")
+                continue
 
             # 🟢 HEADER LIMPO: Sem herança de sessões anteriores
             headers = {
@@ -58,21 +61,34 @@ class FeegowRecepcaoSystem:
                 
                 # Usamos requests.get direto (sem usar self.session global)
                 response = requests.get(url_final, headers=headers, timeout=10)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    # 🟢 FILTRO DE SEGURANÇA: Só aceita se a UnidadeID no JSON for a correta
-                    dados_filtrados = [
-                        item for item in data 
-                        if str(item.get('UnidadeID')) == str(unidade_id)
-                    ]
-                    
-                    for item in dados_filtrados:
-                        item['UnidadeID_Coleta'] = unidade_id
-                    
-                    todos_pacientes.extend(dados_filtrados)
-                    print(f"   Unidade {unidade_id}: {len(dados_filtrados)} registros.")
+                if response.status_code != 200:
+                    erros.append(f"unidade {unidade_id}: HTTP {response.status_code}")
+                    continue
+
+                ctype = str(response.headers.get("content-type") or "").lower()
+                if "json" not in ctype:
+                    erros.append(f"unidade {unidade_id}: resposta nao-json")
+                    continue
+
+                data = response.json()
+                if not isinstance(data, list):
+                    erros.append(f"unidade {unidade_id}: payload invalido")
+                    continue
+
+                # 🟢 FILTRO DE SEGURANÇA: Só aceita se a UnidadeID no JSON for a correta
+                dados_filtrados = [
+                    item for item in data
+                    if str(item.get('UnidadeID')) == str(unidade_id)
+                ]
+
+                for item in dados_filtrados:
+                    item['UnidadeID_Coleta'] = unidade_id
+
+                todos_pacientes.extend(dados_filtrados)
+                print(f"   Unidade {unidade_id}: {len(dados_filtrados)} registros.")
             except Exception as e:
                 print(f"   Erro Unidade {unidade_id}: {e}")
-
+                erros.append(f"unidade {unidade_id}: {e}")
+        if erros:
+            return todos_pacientes, " | ".join(erros)
         return todos_pacientes, "OK"
