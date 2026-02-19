@@ -2,7 +2,7 @@ import { getDbConnection } from '@/lib/db';
 import { NextResponse } from 'next/server';
 import { withCache, buildCacheKey } from '@/lib/api_cache';
 
-const CACHE_TTL_MS = 30 * 60 * 1000;
+const CACHE_TTL_MS = 15 * 1000;
 
 export async function GET(request: Request) {
   try {

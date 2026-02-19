@@ -59,6 +59,18 @@ const SERVICE_PAGE_MAP: Record<string, PageKey> = {
   auth_clinia: 'settings',
 };
 
+const SERVICE_REFRESH_PAGES: Record<string, PageKey[]> = {
+  appointments: ['produtividade', 'agendamentos', 'checklist_crc', 'checklist_recepcao'],
+  faturamento: ['financeiro', 'dashboard', 'checklist_recepcao'],
+  comercial: ['propostas', 'checklist_recepcao'],
+  contratos: ['contratos'],
+  clinia: ['monitor', 'checklist_crc'],
+  monitor_medico: ['monitor'],
+  monitor_recepcao: ['monitor'],
+  auth: ['settings'],
+  auth_clinia: ['settings'],
+};
+
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -77,13 +89,9 @@ export async function POST(request: Request) {
     const role = String((session.user as any).role || 'OPERADOR');
     const pageForService = SERVICE_PAGE_MAP[serviceName];
 
-    const canRefresh = serviceName === 'appointments'
-      ? (
-        hasPermission(permissions, 'produtividade', 'refresh', role)
-        || hasPermission(permissions, 'agendamentos', 'refresh', role)
-        || hasPermission(permissions, 'checklist_crc', 'refresh', role)
-        || hasPermission(permissions, 'checklist_recepcao', 'refresh', role)
-      )
+    const allowedPages = SERVICE_REFRESH_PAGES[serviceName];
+    const canRefresh = Array.isArray(allowedPages) && allowedPages.length > 0
+      ? allowedPages.some((page) => hasPermission(permissions, page, 'refresh', role))
       : pageForService
         ? hasPermission(permissions, pageForService, 'refresh', role)
         : hasAnyRefresh(permissions, role);
