@@ -27,6 +27,8 @@ const SERVICE_ALIASES: Record<string, string> = {
   cartao_de_beneficios_api: 'contratos',
   auth: 'auth',
   auth_feegow: 'auth',
+  auth_clinia: 'auth_clinia',
+  clinia_auth: 'auth_clinia',
   clinia: 'clinia',
   worker_clinia: 'clinia',
   monitor_medico: 'monitor_medico',
@@ -54,6 +56,7 @@ const SERVICE_PAGE_MAP: Record<string, PageKey> = {
   monitor_recepcao: 'monitor',
   clinia: 'monitor',
   auth: 'settings',
+  auth_clinia: 'settings',
 };
 
 export async function POST(request: Request) {

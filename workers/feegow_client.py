@@ -12,7 +12,7 @@ load_dotenv(env_path)
 # --- CONFIGURAÇÃO ---
 BASE_URL = "https://api.feegow.com/v1/api"
 
-def get_api_headers():
+def get_api_headers_env():
     token = os.getenv("FEEGOW_ACCESS_TOKEN")
     if not token:
         raise Exception("FEEGOW_ACCESS_TOKEN não encontrado no .env")
@@ -22,26 +22,47 @@ def get_api_headers():
     }
 
 def get_headers():
+    # APIs v1 da Feegow usam token de API (env), não o token unitário capturado no totem.
+    try:
+        return get_api_headers_env()
+    except Exception:
+        pass
+
+    # Fallback defensivo: tenta tokens unitários caso exista algum ambiente legado.
     db = DatabaseManager()
-    # Usamos a unidade 2 (Ouro Verde) como padrão para consultas financeiras/listas
-    sessao = db.obter_token_unidade_feegow(12) 
-    print(sessao.get("x-access-token"))
-    
-    if not sessao or not sessao.get("x-access-token"):
-        print("!!! ERRO: Token não encontrado no DB. Verifique se o worker_auth rodou. !!!")
-        return {}
-        
-    return {
-        "Content-Type": "application/json",
-        "x-access-token": sessao["x-access-token"]
-    }
+    preferred = os.getenv("FEEGOW_DEFAULT_UNIT_ID", "12").strip()
+    unidades = [preferred, "12", "2", "3"]
+    vistos = set()
+    for unidade_id in unidades:
+        if not unidade_id or unidade_id in vistos:
+            continue
+        vistos.add(unidade_id)
+        sessao = db.obter_token_unidade_feegow(unidade_id)
+        if sessao and sessao.get("x-access-token"):
+            return {
+                "Content-Type": "application/json",
+                "x-access-token": sessao["x-access-token"]
+            }
+
+    print("!!! ERRO: Token Feegow não encontrado. Configure FEEGOW_ACCESS_TOKEN no ambiente. !!!")
+    return {}
 
 def request_endpoint(endpoint, method="GET", json_body=None):
     url = f"{BASE_URL}/{endpoint}"
-    headers = get_api_headers()
+    headers = get_headers()
+    if not headers:
+        return {}
 
     try:
-        response = requests.request(method=method, url=url, headers=headers, json=json_body, timeout=60)
+        is_get = str(method).strip().upper() == "GET"
+        response = requests.request(
+            method=method,
+            url=url,
+            headers=headers,
+            params=(json_body if is_get else None),
+            json=(None if is_get else json_body),
+            timeout=60
+        )
         response.raise_for_status()
         return response.json()
     except Exception as e:
