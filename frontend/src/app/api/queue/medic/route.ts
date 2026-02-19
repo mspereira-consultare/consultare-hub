@@ -86,14 +86,14 @@ export async function GET() {
           SELECT unidade, COUNT(*) as total
           FROM espera_medica
           WHERE status LIKE 'Finalizado%'
-            AND updated_at >= DATE_SUB(NOW(), INTERVAL 27 HOUR)
+            AND DATE(updated_at) = CURDATE()
           GROUP BY unidade
         `
         : `
           SELECT unidade, COUNT(*) as total
           FROM espera_medica
           WHERE status LIKE 'Finalizado%'
-            AND updated_at >= datetime('now', '-1 day', '-3 hours')
+            AND date(updated_at) = date('now')
           GROUP BY unidade
         `;
       const attendedRows = await db.query(attendedSql);
@@ -112,7 +112,7 @@ export async function GET() {
           SELECT unidade, ROUND(AVG(espera_minutos), 0) as media
           FROM espera_medica
           WHERE status LIKE 'Finalizado%'
-            AND updated_at >= DATE_SUB(NOW(), INTERVAL 27 HOUR)
+            AND DATE(updated_at) = CURDATE()
             AND espera_minutos IS NOT NULL
             AND espera_minutos BETWEEN 0 AND 240
           GROUP BY unidade
@@ -121,7 +121,7 @@ export async function GET() {
           SELECT unidade, ROUND(AVG(espera_minutos), 0) as media
           FROM espera_medica
           WHERE status LIKE 'Finalizado%'
-            AND updated_at >= datetime('now', '-1 day', '-3 hours')
+            AND date(updated_at) = date('now')
             AND espera_minutos IS NOT NULL
             AND espera_minutos BETWEEN 0 AND 240
           GROUP BY unidade
