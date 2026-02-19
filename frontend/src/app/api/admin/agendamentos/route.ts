@@ -76,7 +76,14 @@ export async function GET(request: Request) {
       const statusRes = await db.query(`
         SELECT status, last_run, details
         FROM system_status
-        WHERE service_name = 'agendamentos'
+        WHERE service_name IN ('appointments', 'agendamentos', 'financeiro')
+        ORDER BY CASE
+          WHEN service_name = 'appointments' THEN 1
+          WHEN service_name = 'agendamentos' THEN 2
+          WHEN service_name = 'financeiro' THEN 3
+          ELSE 99
+        END
+        LIMIT 1
       `);
       const heartbeat = statusRes[0] || { status: 'UNKNOWN', last_run: null, details: '' };
 
@@ -120,7 +127,7 @@ export async function POST() {
     const db = getDbConnection();
     await db.execute(`
       INSERT INTO system_status (service_name, status, last_run, details)
-      VALUES ('agendamentos', 'PENDING', datetime('now'), 'Solicitado via Painel')
+      VALUES ('appointments', 'PENDING', datetime('now'), 'Solicitado via Painel')
       ON CONFLICT(service_name) DO UPDATE SET
         status = 'PENDING',
         details = 'Solicitado via Painel',

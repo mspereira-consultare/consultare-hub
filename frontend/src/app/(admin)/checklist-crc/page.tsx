@@ -100,7 +100,7 @@ export default function ChecklistCrcPage() {
 
     const normalize = (v: string) => String(v || '').trim().toLowerCase();
     const list = json as ServiceStatus[];
-    const finance = list.find((s) => normalize(s.service_name) === 'financeiro');
+    const finance = list.find((s) => ['appointments', 'financeiro', 'agendamentos'].includes(normalize(s.service_name)));
     const clinia = list.find((s) => normalize(s.service_name) === 'clinia');
     setStatusInfo({ finance, clinia });
 
@@ -122,7 +122,7 @@ export default function ChecklistCrcPage() {
         fetch('/api/admin/refresh', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ service: 'financeiro' }),
+          body: JSON.stringify({ service: 'appointments' }),
         }),
         fetch('/api/admin/refresh', {
           method: 'POST',

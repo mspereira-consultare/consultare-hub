@@ -56,7 +56,7 @@ model FaturamentoAnalitico {
   @@map("faturamento_analitico")
 }
 
-// TABELA DE AGENDAMENTOS (Origem: API - worker_feegow.py)
+// TABELA DE AGENDAMENTOS (Origem: API - worker_feegow_appointments.py)
 // Contém status futuros e não faturados.
 model FeegowAppointment {
   appointment_id    Int      @id

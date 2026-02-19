@@ -23,10 +23,10 @@ def clean_currency(value_str):
         return float(s)
     except: return 0.0
 
-def update_financial_data():
-    print(f"--- Worker Feegow (Batch Optimized): {datetime.datetime.now().strftime('%H:%M:%S')} ---")
+def update_appointments_data():
+    print(f"--- Worker Feegow Appointments (Batch Optimized): {datetime.datetime.now().strftime('%H:%M:%S')} ---")
     db = DatabaseManager()
-    db.update_heartbeat("financeiro", "RUNNING", "Baixando dados (Full)...")
+    db.update_heartbeat("appointments", "RUNNING", "Baixando dados (Full)...")
 
     # 1. DOWNLOAD (Mantendo o método rápido de 60 dias)
     now = datetime.datetime.now()
@@ -38,11 +38,11 @@ def update_financial_data():
     except Exception as e:
         msg = f"Erro API: {e}"
         print(msg)
-        db.update_heartbeat("financeiro", "ERROR", msg)
+        db.update_heartbeat("appointments", "ERROR", msg)
         return
 
     if df.empty:
-        db.update_heartbeat("financeiro", "WARNING", "API retornou vazio")
+        db.update_heartbeat("appointments", "WARNING", "API retornou vazio")
         return
 
     # 2. PREPARAÇÃO DOS DADOS
@@ -150,13 +150,13 @@ def update_financial_data():
         duration = round(time.time() - start_save, 2)
         msg = f"Sucesso: {len(data_params)} registros em {duration}s"
         print(f"\n✅ {msg}")
-        db.update_heartbeat("financeiro", "ONLINE", msg)
+        db.update_heartbeat("appointments", "ONLINE", msg)
 
     except Exception as e:
         print(f"\n❌ Erro Salvando: {e}")
-        db.update_heartbeat("financeiro", "ERROR", str(e))
+        db.update_heartbeat("appointments", "ERROR", str(e))
     finally:
         conn.close()
 
 if __name__ == "__main__":
-    update_financial_data()
+    update_appointments_data()

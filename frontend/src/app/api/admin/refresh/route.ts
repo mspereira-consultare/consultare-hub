@@ -8,10 +8,13 @@ import { hasAnyRefresh, hasPermission, type PageKey } from '@/lib/permissions';
 export const dynamic = 'force-dynamic';
 
 const SERVICE_ALIASES: Record<string, string> = {
-  financeiro: 'financeiro',
-  financeiro_api: 'financeiro',
-  feegow_finance: 'financeiro',
-  worker_feegow: 'financeiro',
+  appointments: 'appointments',
+  agendamentos: 'appointments',
+  financeiro: 'appointments',
+  financeiro_api: 'appointments',
+  feegow_finance: 'appointments',
+  worker_feegow: 'appointments',
+  worker_feegow_appointments: 'appointments',
   faturamento: 'faturamento',
   faturamento_scraping: 'faturamento',
   faturamento_scraper: 'faturamento',
@@ -43,7 +46,7 @@ const normalizeService = (serviceRaw: string) => {
 };
 
 const SERVICE_PAGE_MAP: Record<string, PageKey> = {
-  financeiro: 'produtividade',
+  appointments: 'produtividade',
   faturamento: 'financeiro',
   comercial: 'propostas',
   contratos: 'contratos',
@@ -71,9 +74,16 @@ export async function POST(request: Request) {
     const role = String((session.user as any).role || 'OPERADOR');
     const pageForService = SERVICE_PAGE_MAP[serviceName];
 
-    const canRefresh = pageForService
-      ? hasPermission(permissions, pageForService, 'refresh', role)
-      : hasAnyRefresh(permissions, role);
+    const canRefresh = serviceName === 'appointments'
+      ? (
+        hasPermission(permissions, 'produtividade', 'refresh', role)
+        || hasPermission(permissions, 'agendamentos', 'refresh', role)
+        || hasPermission(permissions, 'checklist_crc', 'refresh', role)
+        || hasPermission(permissions, 'checklist_recepcao', 'refresh', role)
+      )
+      : pageForService
+        ? hasPermission(permissions, pageForService, 'refresh', role)
+        : hasAnyRefresh(permissions, role);
 
     if (!canRefresh) {
       return NextResponse.json({ error: 'Sem permissao para atualizar este servico' }, { status: 403 });

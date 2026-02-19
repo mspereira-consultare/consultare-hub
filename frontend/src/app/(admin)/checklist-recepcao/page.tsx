@@ -182,7 +182,7 @@ export default function ChecklistRecepcaoPage() {
 
     const normalize = (v: string) => String(v || '').trim().toLowerCase();
     const list = json as ServiceStatus[];
-    const financeiro = list.find((s) => normalize(s.service_name) === 'financeiro');
+    const financeiro = list.find((s) => ['appointments', 'financeiro', 'agendamentos'].includes(normalize(s.service_name)));
     const faturamento = list.find((s) => normalize(s.service_name) === 'faturamento');
     const comercial = list.find((s) => normalize(s.service_name) === 'comercial');
     setStatusInfo({ financeiro, faturamento, comercial });
@@ -204,7 +204,7 @@ export default function ChecklistRecepcaoPage() {
         fetch('/api/admin/refresh', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ service: 'financeiro' }),
+          body: JSON.stringify({ service: 'appointments' }),
         }),
         fetch('/api/admin/refresh', {
           method: 'POST',

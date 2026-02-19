@@ -33,7 +33,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 try:
     from database_manager import DatabaseManager
     # Workers (Execução única)
-    from worker_feegow import update_financial_data
+    from worker_feegow_appointments import update_appointments_data
     from worker_proposals import update_proposals
     from worker_faturamento_scraping import run_scraper
     from worker_contracts import run_worker_contracts
@@ -64,7 +64,7 @@ def is_working_hours():
 service_locks = {}
 
 KNOWN_ACTIONS = {
-    'financeiro', 
+    'appointments',
     'faturamento', # Receita bruta analítica
     'comercial', # Propostas (API)
     'contratos', # Cartão de Benefícios (API)
@@ -86,9 +86,13 @@ def _normalize_service_key(service_raw: str) -> str:
 
 # Aliases associados às ações internas
 ALIAS_ACTION_MAP = {
-    'financeiro': 'financeiro',
-    'financeiro_api': 'financeiro',
-    'feegow_finance': 'financeiro',
+    'appointments': 'appointments',
+    'agendamentos': 'appointments',
+    'financeiro': 'appointments',
+    'financeiro_api': 'appointments',
+    'feegow_finance': 'appointments',
+    'worker_feegow': 'appointments',
+    'worker_feegow_appointments': 'appointments',
     'faturamento': 'faturamento',
     'faturamento_scraping': 'faturamento',
     'faturamento_scraper': 'faturamento',
@@ -109,7 +113,7 @@ ALIAS_ACTION_MAP = {
 
 # Mapeia ação para nome canônico no `system_status`
 CANONICAL_NAME = {
-    'financeiro': 'Financeiro (API)',
+    'appointments': 'Appointments (Feegow API)',
     'faturamento': 'Faturamento (Scraping)',
     'comercial': 'Propostas (API)',
     'contratos': 'Cartão de Beneficios (API)',
@@ -222,8 +226,8 @@ def run_service(key: str):
         _update_status("RUNNING", "Agendado/executando...")
         start = time.time()
 
-        if action == 'financeiro':
-            update_financial_data()
+        if action == 'appointments':
+            update_appointments_data()
         elif action == 'faturamento':
             # Scraper específico
             run_scraper()
@@ -253,12 +257,12 @@ def run_service(key: str):
 def run_hourly_workers():
     """Executa todos os workers não real-time uma vez (usa run_service)."""
     print("⏰ Executando jobs horários: iniciando workers não real-time...")
-    # Ordem: financeiro (apenas se habilitado), comercial, contratos, auth
-    auto_financeiro = os.getenv("AUTO_FINANCEIRO", "0") == "1"
-    if auto_financeiro:
-        run_service('financeiro')
+    # Ordem: appointments (apenas se habilitado), comercial, contratos, auth
+    auto_appointments = os.getenv("AUTO_APPOINTMENTS", os.getenv("AUTO_FINANCEIRO", "0")) == "1"
+    if auto_appointments:
+        run_service('appointments')
     else:
-        print("⏭️ Auto-financeiro desativado (rodará apenas sob demanda).")
+        print("⏭️ Auto-appointments desativado (rodará apenas sob demanda).")
     run_service('comercial')
     run_service('contratos')
     run_service('auth')
@@ -267,7 +271,7 @@ def run_heavy_workers():
     """Executa os workers mais pesados em lote."""
     print("⏰ Executando jobs pesados: faturamento, feegow, propostas, contratos...")
     run_service('faturamento')
-    run_service('financeiro')  # Feegow (agendamentos)
+    run_service('appointments')  # Feegow (agendamentos)
     run_service('comercial')
     run_service('contratos')
 
@@ -276,7 +280,7 @@ def run_feegow_hourly():
     if not is_working_hours():
         return
     print("⏱️ Executando Feegow (agendamentos) no horário de operação...")
-    run_service('financeiro')
+    run_service('appointments')
 
 def run_token_renewal():
     """Roda o Playwright para renovar tokens e salvar no banco"""

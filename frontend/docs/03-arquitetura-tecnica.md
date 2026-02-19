@@ -27,7 +27,7 @@ Persistência principal atual: **MySQL (Railway)**, com suporte legado para Turs
   - médico: `workers/monitor_medico.py`
   - clinia: `workers/worker_clinia.py`
 - Carga transacional:
-  - agendamentos Feegow: `workers/worker_feegow.py` (base do dashboard de agendamentos)
+  - agendamentos Feegow: `workers/worker_feegow_appointments.py` (base do dashboard de agendamentos)
   - propostas: `workers/worker_proposals.py`
   - contratos: `workers/worker_contracts.py`
   - faturamento diário: `workers/worker_faturamento_scraping.py`
@@ -46,7 +46,7 @@ Persistência principal atual: **MySQL (Railway)**, com suporte legado para Turs
 ### Fluxo operacional online
 
 1. Worker coleta dado externo (Feegow/Clinia/scraper web).
-2. Worker grava tabelas de domínio (`feegow_*`, `faturamento_*`, `espera_*`, etc.). Exemplo: `worker_feegow.py` grava `feegow_appointments`.
+2. Worker grava tabelas de domínio (`feegow_*`, `faturamento_*`, `espera_*`, etc.). Exemplo: `worker_feegow_appointments.py` grava `feegow_appointments`.
 3. Worker atualiza `system_status` (heartbeat).
 4. Frontend consulta APIs (`/api/admin/*`, `/api/queue/*`). Exemplo: `/api/admin/agendamentos`.
 5. APIs agregam e retornam payload para componentes da página.
@@ -123,13 +123,13 @@ Arquivo: `workers/main.py`.
 - `auth`: 05:00 e 12:00.
 - `contratos`: 12:00.
 - Lote pesado (`faturamento`, `financeiro`, `comercial`, `contratos`): 14:00, 17:00, 19:00.
-- `financeiro` (Feegow agendamentos): de hora em hora no minuto `:30`, dentro da janela operacional.
+- `appointments` (Feegow agendamentos): de hora em hora no minuto `:30`, dentro da janela operacional.
 
 ## 9) Integrações Externas
 
 ### Feegow
 
-- API de agendamentos (`worker_feegow.py`).
+- API de agendamentos (`worker_feegow_appointments.py`).
 - API de propostas (`worker_proposals.py`).
 - API de contratos (`worker_contracts.py`).
 - Fluxos de monitor via páginas internas (recepção/médico).

@@ -92,7 +92,7 @@ Escrita: API de equipes.
 | `created_at` | Data/hora de criação |
 | `updated_at` | Última atualização |
 
-Escrita: worker_feegow.py
+Escrita: worker_feegow_appointments.py
 
 | Campo | Descrição |
 |---|---|
@@ -177,7 +177,7 @@ Métricas diárias de agendamentos da Clinia (total, bot, CRC).
 | `scheduled_at` | Data/hora de criação do agendamento |
 | `updated_at` | Atualização |
 
-Escrita: worker Feegow (financeiro/agendamentos) e backfills.
+Escrita: worker Feegow de agendamentos (`appointments`) e backfills.
 
 ### `feegow_proposals`
 
