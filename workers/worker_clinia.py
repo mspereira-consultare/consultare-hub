@@ -11,8 +11,10 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from database_manager import DatabaseManager
+    from worker_auth_clinia import CliniaCookieRenewer
 except ImportError:
     from .database_manager import DatabaseManager
+    from .worker_auth_clinia import CliniaCookieRenewer
 
 load_dotenv()
 
@@ -165,25 +167,72 @@ def process_and_save():
         today_json_fmt = datetime.datetime.now().strftime("%d/%m")
         warnings = []
 
-        groups_meta = safe_request(API_URL_METADATA)
-        group_names_map = {}
-        if isinstance(groups_meta, dict) and isinstance(groups_meta.get("groups"), list):
-            for group in groups_meta["groups"]:
-                gid = group.get("id")
-                gname = group.get("name")
-                if gid and gname:
-                    group_names_map[gid] = gname
-        else:
-            warnings.append("metadata")
+        def collect_runtime():
+            local_warnings = []
+            local_group_names_map = {}
 
-        monitor_params = get_params(mode="monitor_current")
-        monitor_data = safe_request(API_URL_MONITOR, params=monitor_params)
-        monitor_ok = bool(isinstance(monitor_data, dict) and isinstance(monitor_data.get("groups"), list))
-        if not monitor_ok:
-            warnings.append("monitor")
+            local_groups_meta = safe_request(API_URL_METADATA)
+            if isinstance(local_groups_meta, dict) and isinstance(local_groups_meta.get("groups"), list):
+                for group in local_groups_meta["groups"]:
+                    gid = group.get("id")
+                    gname = group.get("name")
+                    if gid and gname:
+                        local_group_names_map[gid] = gname
+            else:
+                local_warnings.append("metadata")
 
-        count_data = safe_request(API_URL_WHATSAPP_COUNT, params={"filter": "mine", "state": "OPEN"})
-        count_ok = bool(isinstance(count_data, dict) and isinstance((count_data.get("count") or {}), dict))
+            local_monitor_params = get_params(mode="monitor_current")
+            local_monitor_data = safe_request(API_URL_MONITOR, params=local_monitor_params)
+            local_monitor_ok = bool(
+                isinstance(local_monitor_data, dict) and isinstance(local_monitor_data.get("groups"), list)
+            )
+            if not local_monitor_ok:
+                local_warnings.append("monitor")
+
+            local_count_data = safe_request(API_URL_WHATSAPP_COUNT, params={"filter": "mine", "state": "OPEN"})
+            local_count_ok = bool(
+                isinstance(local_count_data, dict) and isinstance((local_count_data.get("count") or {}), dict)
+            )
+            if not local_count_ok:
+                local_warnings.append("count")
+
+            return (
+                local_monitor_params,
+                local_monitor_data,
+                local_monitor_ok,
+                local_count_data,
+                local_count_ok,
+                local_group_names_map,
+                local_warnings,
+            )
+
+        (
+            monitor_params,
+            monitor_data,
+            monitor_ok,
+            count_data,
+            count_ok,
+            group_names_map,
+            runtime_warnings,
+        ) = collect_runtime()
+        warnings.extend(runtime_warnings)
+
+        if not count_ok:
+            print("[AVISO] Cookie Clinia possivelmente expirado. Tentando renovar automaticamente...")
+            renewed_cookie = CliniaCookieRenewer(db=db).renew_cookie()
+            if renewed_cookie:
+                HEADERS["cookie"] = renewed_cookie
+                (
+                    monitor_params,
+                    monitor_data,
+                    monitor_ok,
+                    count_data,
+                    count_ok,
+                    group_names_map,
+                    runtime_warnings,
+                ) = collect_runtime()
+                warnings = runtime_warnings[:]  # Recalcula warnings apos renovar.
+
         if not count_ok:
             msg = "Falha endpoint de contagem do Clinia (token/cookie invalido ou expirado)."
             print(f"[AVISO] {msg}")

@@ -38,6 +38,7 @@ try:
     from worker_faturamento_scraping import run_scraper
     from worker_contracts import run_worker_contracts
     from worker_auth import FeegowTokenRenewer
+    from worker_auth_clinia import CliniaCookieRenewer
     
     # Monitores (Loops infinitos)
     from monitor_recepcao import run_monitor_recepcao
@@ -69,6 +70,7 @@ KNOWN_ACTIONS = {
     'comercial', # Propostas (API)
     'contratos', # Cartão de Benefícios (API)
     'auth', # Obtém cookies e x-access-token Feegow
+    'auth_clinia', # Obtém cookie Clinia
     'clinia', # Fila de atendimento WhatsApp
     'monitor_medico', # Espera para atendimento médico
     'monitor_recepcao', # Espera para atendimento recepção
@@ -105,6 +107,8 @@ ALIAS_ACTION_MAP = {
     'cartao_de_beneficios_api': 'contratos',
     'auth': 'auth',
     'auth_feegow': 'auth',
+    'auth_clinia': 'auth_clinia',
+    'clinia_auth': 'auth_clinia',
     'worker_clinia': 'clinia',
     'clinia': 'clinia',
     'monitor_medico': 'monitor_medico',
@@ -118,6 +122,7 @@ CANONICAL_NAME = {
     'comercial': 'Propostas (API)',
     'contratos': 'Cartão de Beneficios (API)',
     'auth': 'Auth Feegow',
+    'auth_clinia': 'Auth Clinia',
     'clinia': 'Worker Clinia',
     'monitor_medico': 'Monitor Médico',
     'monitor_recepcao': 'Monitor Recepção',
@@ -237,6 +242,8 @@ def run_service(key: str):
             run_worker_contracts()
         elif action == 'auth':
             run_token_renewal()
+        elif action == 'auth_clinia':
+            run_clinia_token_renewal()
         elif action == 'clinia':
             clinia_cycle()
         else:
@@ -295,6 +302,22 @@ def run_token_renewal():
     except Exception as e:
         print(f"❌ Falha na renovação de tokens: {e}")
         db.update_heartbeat("auth", "ERROR", str(e))
+
+def run_clinia_token_renewal():
+    """Renova cookie do Clinia e salva no banco"""
+    print("\n🔐 Iniciando Renovação de Cookie Clinia (Auth)...")
+    db = DatabaseManager()
+    try:
+        db.update_heartbeat("auth_clinia", "RUNNING", "Renovando cookie Clinia...")
+        renewer = CliniaCookieRenewer(db=db)
+        cookie = renewer.renew_cookie()
+        if not cookie:
+            raise RuntimeError("Falha ao obter cookie Clinia")
+        print("✅ Cookie Clinia renovado com sucesso.")
+        db.update_heartbeat("auth_clinia", "COMPLETED", "Cookie atualizado")
+    except Exception as e:
+        print(f"❌ Falha na renovação de cookie Clinia: {e}")
+        db.update_heartbeat("auth_clinia", "ERROR", str(e))
 
 def run_on_demand_listener():
     print("👂 Listener de Atualizações Manuais iniciado.")
@@ -372,10 +395,12 @@ def run_scheduler():
         
     # Agendamento
     schedule.every().day.at("05:00").do(run_token_renewal)
+    schedule.every().day.at("05:10").do(run_clinia_token_renewal)
 
     schedule.every().day.at("12:00").do(lambda: run_service('contratos'))
 
     schedule.every().day.at("12:00").do(run_token_renewal)
+    schedule.every().day.at("12:10").do(run_clinia_token_renewal)
     # Workers pesados: 14h, 17h, 19h
     schedule.every().day.at("14:00").do(run_heavy_workers)
     schedule.every().day.at("17:00").do(run_heavy_workers)
