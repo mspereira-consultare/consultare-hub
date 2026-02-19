@@ -66,6 +66,7 @@ export type Professional = {
   isActive: boolean;
   hasPhysicalFolder: boolean;
   physicalFolderNote: string | null;
+  contractTemplateId: string | null;
   contractStartDate: string | null;
   contractEndDate: string | null;
   createdAt: string;
@@ -106,6 +107,7 @@ export type ProfessionalInput = {
   isActive: boolean;
   hasPhysicalFolder: boolean;
   physicalFolderNote?: string | null;
+  contractTemplateId?: string | null;
   contractStartDate?: string | null;
   contractEndDate?: string | null;
   registrations: ProfessionalRegistration[];

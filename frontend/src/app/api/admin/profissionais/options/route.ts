@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireProfissionaisPermission } from '@/lib/profissionais/auth';
+import { listActiveContractTemplateOptions } from '@/lib/contract_templates/repository';
+import type { ContractTypeCode } from '@/lib/profissionais/constants';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -56,20 +58,25 @@ const loadSpecialtiesFromDatabase = async (db: any): Promise<string[]> => {
   return normalizeNames(rows.map((row: any) => String(row?.specialty || '')));
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const auth = await requireProfissionaisPermission('view');
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
+    const { searchParams } = new URL(request.url);
+    const contractType = String(searchParams.get('contractType') || '').toUpperCase() as ContractTypeCode;
+
     const fromFeegow = await tryLoadSpecialtiesFromFeegow();
+    const activeTemplates = await listActiveContractTemplateOptions(auth.db, contractType || '');
     if (fromFeegow.length > 0) {
       return NextResponse.json({
         status: 'success',
         data: {
           specialties: fromFeegow,
           source: 'feegow_api',
+          activeContractTemplates: activeTemplates,
         },
       });
     }
@@ -80,6 +87,7 @@ export async function GET() {
       data: {
         specialties: fromDb,
         source: 'database',
+        activeContractTemplates: activeTemplates,
       },
     });
   } catch (error: any) {

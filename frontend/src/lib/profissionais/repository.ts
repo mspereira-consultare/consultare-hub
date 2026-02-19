@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
+import { ensureContractTemplatesTables } from '@/lib/contract_templates/repository';
 import {
   CERTIDAO_DOC_TYPE,
   CONTRACT_TYPES,
@@ -266,6 +267,7 @@ const normalizeInput = (payload: any): ProfessionalInput => {
   }
   const contractStartDate = parseDate(payload?.contractStartDate);
   const contractEndDate = parseDate(payload?.contractEndDate);
+  const contractTemplateId = clean(payload?.contractTemplateId) || null;
 
   if (contractStartDate && contractEndDate && contractEndDate < contractStartDate) {
     throw new ProfessionalValidationError(
@@ -325,6 +327,7 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     isActive: bool(payload?.isActive ?? true),
     hasPhysicalFolder: bool(payload?.hasPhysicalFolder),
     physicalFolderNote: clean(payload?.physicalFolderNote) || null,
+    contractTemplateId,
     contractStartDate,
     contractEndDate,
     registrations,
@@ -384,11 +387,40 @@ const mapProfessional = (row: any): Professional => ({
   isActive: bool(row.is_active),
   hasPhysicalFolder: bool(row.has_physical_folder),
   physicalFolderNote: clean(row.physical_folder_note) || null,
+  contractTemplateId: clean(row.contract_template_id) || null,
   contractStartDate: parseDate(row.contract_start_date),
   contractEndDate: parseDate(row.contract_end_date),
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
+
+const validateContractTemplateLink = async (
+  db: DbInterface,
+  contractType: ContractTypeCode,
+  contractTemplateId: string | null
+) => {
+  if (!contractTemplateId) return;
+  const rows = await db.query(
+    `
+    SELECT id, contract_type, status
+    FROM contract_templates
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [contractTemplateId]
+  );
+  const row = rows[0];
+  if (!row) {
+    throw new ProfessionalValidationError('Modelo de contrato selecionado nao encontrado.');
+  }
+  if (String(row.status || '').toLowerCase() !== 'active') {
+    throw new ProfessionalValidationError('Selecione um modelo de contrato ativo.');
+  }
+  const tplType = String(row.contract_type || '').toUpperCase();
+  if (tplType !== String(contractType || '').toUpperCase()) {
+    throw new ProfessionalValidationError('O modelo de contrato nao pertence ao tipo selecionado.');
+  }
+};
 
 const mapRegistration = (row: any): ProfessionalRegistration => ({
   id: clean(row.id),
@@ -635,6 +667,7 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
       is_active INTEGER NOT NULL DEFAULT 1,
       has_physical_folder INTEGER NOT NULL DEFAULT 0,
       physical_folder_note TEXT,
+      contract_template_id VARCHAR(64) NULL,
       contract_start_date DATE NULL,
       contract_end_date DATE NULL,
       created_at TEXT NOT NULL,
@@ -677,6 +710,10 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   await safeAddColumn(
     db,
     `ALTER TABLE professionals ADD COLUMN has_feegow_permissions INTEGER NOT NULL DEFAULT 0`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN contract_template_id VARCHAR(64) NULL`
   );
 
   await db.execute(`
@@ -884,7 +921,9 @@ export const createProfessional = async (
   actorUserId: string
 ) => {
   await ensureProfessionalsTables(db);
+  await ensureContractTemplatesTables(db);
   const input = normalizeInput(payload);
+  await validateContractTemplateLink(db, input.contractType, input.contractTemplateId || null);
   const now = NOW();
   const id = randomUUID();
 
@@ -894,9 +933,9 @@ export const createProfessional = async (
       id, name, contract_party_type, contract_type, cpf, cnpj, legal_name,
       specialty, primary_specialty, specialties_json, phone, email, age_range, service_units_json,
       has_feegow_permissions, personal_doc_type, personal_doc_number, address_text, is_active,
-      has_physical_folder, physical_folder_note, contract_start_date, contract_end_date,
+      has_physical_folder, physical_folder_note, contract_template_id, contract_start_date, contract_end_date,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -920,6 +959,7 @@ export const createProfessional = async (
       input.isActive ? 1 : 0,
       input.hasPhysicalFolder ? 1 : 0,
       input.physicalFolderNote,
+      input.contractTemplateId || null,
       input.contractStartDate,
       input.contractEndDate,
       now,
@@ -947,12 +987,14 @@ export const updateProfessional = async (
   actorUserId: string
 ) => {
   await ensureProfessionalsTables(db);
+  await ensureContractTemplatesTables(db);
   const existing = await getProfessionalById(db, professionalId);
   if (!existing) {
     throw new ProfessionalValidationError('Profissional nao encontrado.', 404);
   }
 
   const input = normalizeInput(payload);
+  await validateContractTemplateLink(db, input.contractType, input.contractTemplateId || null);
   const now = NOW();
 
   await db.execute(
@@ -979,6 +1021,7 @@ export const updateProfessional = async (
       is_active = ?,
       has_physical_folder = ?,
       physical_folder_note = ?,
+      contract_template_id = ?,
       contract_start_date = ?,
       contract_end_date = ?,
       updated_at = ?
@@ -1005,6 +1048,7 @@ export const updateProfessional = async (
       input.isActive ? 1 : 0,
       input.hasPhysicalFolder ? 1 : 0,
       input.physicalFolderNote,
+      input.contractTemplateId || null,
       input.contractStartDate,
       input.contractEndDate,
       now,

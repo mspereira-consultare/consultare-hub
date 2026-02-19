@@ -228,3 +228,42 @@ Variáveis necessárias para ativar S3:
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
 - `AWS_S3_PREFIX` (opcional)
+
+## 14) Automacao de Contratos (Modelos)
+
+### Componentes novos
+
+- UI em `frontend/src/app/(admin)/settings/contract-templates-tab.tsx` (aba em `/settings`)
+- APIs:
+  - `GET/POST /api/admin/contract-templates`
+  - `PUT /api/admin/contract-templates/:id/mapping`
+  - `POST /api/admin/contract-templates/:id/activate`
+  - `POST /api/admin/contract-templates/:id/archive`
+- Dominio:
+  - `frontend/src/lib/contract_templates/repository.ts`
+  - `frontend/src/lib/contract_templates/placeholders.ts`
+  - `frontend/src/lib/contract_templates/auth.ts`
+
+### Fluxo tecnico
+
+1. Upload do `.docx` (settings/edit) com persistencia em storage (S3 provider).
+2. Extracao automatica de placeholders no padrao `{{token}}`.
+3. Persistencia do modelo em `contract_templates` com status inicial `draft`.
+4. Mapeamento de placeholders para fontes de dados do profissional.
+5. Ativacao do modelo somente apos mapeamento obrigatorio completo.
+6. Cadastro de profissional passa a vincular `contract_template_id` (modelo ativo).
+
+### Tabelas envolvidas
+
+- `contract_templates`
+- `contract_template_audit_log`
+- `professionals` (nova coluna `contract_template_id`)
+
+### Integracao com cadastro de profissionais
+
+- Endpoint `GET /api/admin/profissionais/options` agora retorna `activeContractTemplates`.
+- O modal de profissional filtra modelos ativos por `contract_type`.
+- Backend valida:
+  - modelo existe;
+  - modelo esta `active`;
+  - `contract_type` do modelo bate com `contract_type` do profissional.

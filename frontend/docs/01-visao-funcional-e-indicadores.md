@@ -440,27 +440,41 @@ Gerenciar usuários (CRUD) e matriz de permissões por página.
 
 ---
 
-## Configurações (`/settings`)
+## Configuracoes (`/settings`)
 
 ### Objetivo
 
-Gerenciar credenciais de integração (Feegow e Clinia).
+Gerenciar credenciais de integracao (Feegow e Clinia) e modelos de contrato (.docx).
 
 ### Fonte consumida
 
 - `GET/POST /api/admin/settings`
 - Server action: `frontend/src/app/actions/settings.ts`
+- `GET/POST /api/admin/contract-templates`
+- `PUT /api/admin/contract-templates/:id/mapping`
+- `POST /api/admin/contract-templates/:id/activate`
+- `POST /api/admin/contract-templates/:id/archive`
 
-### Campos de integração
+### Campos de integracao
 
-| Serviço | Campos |
+| Servico | Campos |
 |---|---|
 | Feegow | `username`, `password`, `token/cookie` |
 | Clinia | `token/cookie` |
 
+### Modelos de contrato
+
+| Item | Regra |
+|---|---|
+| Upload | Aceita somente `.docx` |
+| Placeholders | Extraidos automaticamente no padrao `{{token}}` |
+| Mapeamento | Placeholder deve ser associado a fonte de dados |
+| Ativacao | Exige mapeamento obrigatorio completo |
+| Arquivamento | Remove da lista de ativos sem perda de historico |
+
 ---
 
-## Catálogo de KPIs de Metas
+## Catalogo de KPIs de Metasálogo de KPIs de Metas
 
 IDs disponíveis em `frontend/src/app/(admin)/metas/constants.ts`:
 
@@ -532,6 +546,7 @@ Centralizar o cadastro da carteira de profissionais, com foco em:
 | Certidao etica | checklist/documents | `OK`, `VENCENDO`, `VENCIDA`, `PENDENTE` por `expires_at` manual/ativo |
 | Registro principal | `professional_registrations` | Exibe `council_type/council_uf council_number` do item `is_primary=1` |
 | Tipo de contrato | `professionals.contract_type` | Define qual template de contrato sera usado na automacao |
+| Modelo de contrato | `professionals.contract_template_id` + `contract_templates` | Lista apenas modelos ativos do mesmo tipo de contrato |
 
 ### Observacao operacional
 

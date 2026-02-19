@@ -357,12 +357,20 @@ Campos relevantes:
 - `name`
 - `contract_party_type` (`PF`/`PJ`)
 - `contract_type` (tipo de contrato para automacao)
+- `contract_template_id` (modelo ativo vinculado ao profissional)
 - `cpf`, `cnpj`, `legal_name`
-- `specialty`
+- `specialty` (especialidade principal)
+- `primary_specialty`
+- `specialties_json` (lista de especialidades)
+- `phone`, `email`
+- `age_range` (`min-max`, ex.: `18-65`)
+- `service_units_json`
+- `has_feegow_permissions`
 - `personal_doc_type`, `personal_doc_number`
 - `address_text`
 - `is_active`
 - `has_physical_folder`, `physical_folder_note`
+- `contract_start_date`, `contract_end_date`
 - `created_at`, `updated_at`
 
 Escrita: API `/api/admin/profissionais`.
@@ -423,6 +431,41 @@ Campos:
 - `storage_provider`, `storage_bucket`, `storage_key`
 - `generated_by`, `generated_at`
 - `error_message`, `meta_json`, `created_at`
+
+### `contract_templates`
+
+Catalogo versionado dos modelos de contrato em `.docx`.
+
+Campos:
+- `id` (PK)
+- `name`
+- `contract_type`
+- `version`
+- `status` (`draft`, `active`, `archived`)
+- `storage_provider`, `storage_bucket`, `storage_key`
+- `original_name`, `mime_type`, `size_bytes`
+- `placeholders_json` (placeholders detectados no upload)
+- `mapping_json` (mapeamento placeholder -> fonte de dados)
+- `notes`
+- `uploaded_by`, `uploaded_at`
+- `activated_by`, `activated_at`
+- `archived_at`
+
+Regra:
+- somente modelos `active` aparecem no cadastro de profissional;
+- ativacao exige placeholders obrigatorios mapeados.
+
+### `contract_template_audit_log`
+
+Auditoria do ciclo de vida dos modelos de contrato.
+
+Campos:
+- `id` (PK)
+- `template_id`
+- `action` (`TEMPLATE_UPLOADED`, `TEMPLATE_MAPPING_UPDATED`, `TEMPLATE_ACTIVATED`, `TEMPLATE_ARCHIVED`)
+- `actor_user_id`
+- `payload_json`
+- `created_at`
 
 ### `professional_audit_log`
 

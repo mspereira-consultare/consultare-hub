@@ -18,12 +18,13 @@ import { hasPermission } from '@/lib/permissions';
 type FormRegistration = { id?: string; councilType: string; councilNumber: string; councilUf: string; isPrimary: boolean };
 type FormChecklist = { docType: string; hasPhysicalCopy: boolean; hasDigitalCopy: boolean; expiresAt: string; notes: string };
 type FormSpecialty = { name: string; isPrimary: boolean };
+type ContractTemplateOption = { id: string; name: string; contractType: string; version: number };
 type FormState = {
   name: string; contractPartyType: ContractPartyType; contractType: string; cpf: string; cnpj: string; legalName: string;
   specialties: FormSpecialty[]; phone: string; email: string; ageMin: number; ageMax: number; serviceUnits: string[];
   hasFeegowPermissions: boolean;
   personalDocType: string; personalDocNumber: string; addressText: string; isActive: boolean;
-  hasPhysicalFolder: boolean; physicalFolderNote: string; contractStartDate: string; contractEndDate: string;
+  hasPhysicalFolder: boolean; physicalFolderNote: string; contractTemplateId: string; contractStartDate: string; contractEndDate: string;
   registrations: FormRegistration[]; checklist: FormChecklist[];
 };
 
@@ -75,7 +76,7 @@ const emptyForm = (): FormState => ({
   name: '', contractPartyType: 'PF', contractType: CONTRACT_TYPES.find((c) => c.isActive)?.code || '', cpf: '', cnpj: '', legalName: '',
   specialties: [{ name: '', isPrimary: true }], phone: '', email: '', ageMin: 0, ageMax: 120, serviceUnits: [], hasFeegowPermissions: false,
   personalDocType: PERSONAL_DOC_TYPES[0], personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
-  physicalFolderNote: '', contractStartDate: '', contractEndDate: '',
+  physicalFolderNote: '', contractTemplateId: '', contractStartDate: '', contractEndDate: '',
   registrations: [{ councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
 });
 
@@ -100,6 +101,7 @@ const toForm = (item: ProfessionalListItem): FormState => {
   personalDocType: item.personalDocType || 'RG',
   personalDocNumber: item.personalDocNumber || '', addressText: item.addressText || '', isActive: Boolean(item.isActive),
   hasPhysicalFolder: Boolean(item.hasPhysicalFolder), physicalFolderNote: item.physicalFolderNote || '',
+  contractTemplateId: item.contractTemplateId || '',
   contractStartDate: item.contractStartDate || '', contractEndDate: item.contractEndDate || '',
   registrations: (item.registrations || []).map((r) => ({ id: r.id, councilType: r.councilType, councilNumber: r.councilNumber, councilUf: r.councilUf, isPrimary: Boolean(r.isPrimary) })),
   checklist: newChecklist().map((base) => {
@@ -147,6 +149,7 @@ export default function ProfessionalsPage() {
   const [modalError, setModalError] = useState('');
   const [photoLoadError, setPhotoLoadError] = useState(false);
   const [specialties, setSpecialties] = useState<string[]>([]);
+  const [activeContractTemplates, setActiveContractTemplates] = useState<ContractTemplateOption[]>([]);
   const [specialtiesSource, setSpecialtiesSource] = useState<'feegow_api' | 'database' | 'unknown'>('unknown');
   const [deleteTarget, setDeleteTarget] = useState<ProfessionalListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -163,6 +166,10 @@ export default function ProfessionalsPage() {
     }
     return Array.from(all).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [specialties, form.specialties]);
+  const contractTemplateOptions = useMemo(
+    () => activeContractTemplates.filter((tpl) => String(tpl.contractType || '').toUpperCase() === String(form.contractType || '').toUpperCase()),
+    [activeContractTemplates, form.contractType]
+  );
   const photoDoc = useMemo(
     () => uploadedDocs.find((doc) => doc.docType === 'FOTO' && doc.isActive),
     [uploadedDocs]
@@ -250,6 +257,9 @@ export default function ProfessionalsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Falha ao carregar especialidades.');
       setSpecialties(Array.isArray(data?.data?.specialties) ? data.data.specialties : []);
+      setActiveContractTemplates(
+        Array.isArray(data?.data?.activeContractTemplates) ? data.data.activeContractTemplates : []
+      );
       setSpecialtiesSource(
         data?.data?.source === 'feegow_api' || data?.data?.source === 'database'
           ? data.data.source
@@ -257,6 +267,7 @@ export default function ProfessionalsPage() {
       );
     } catch {
       setSpecialties([]);
+      setActiveContractTemplates([]);
       setSpecialtiesSource('unknown');
     }
   };
@@ -402,6 +413,7 @@ export default function ProfessionalsPage() {
         serviceUnits: form.serviceUnits || [],
         hasFeegowPermissions: form.hasFeegowPermissions,
         physicalFolderNote: form.physicalFolderNote || null,
+        contractTemplateId: form.contractTemplateId || null,
         contractStartDate: form.contractStartDate || null,
         contractEndDate: form.contractEndDate || null,
         checklist: form.checklist.map((c) => ({ ...c, expiresAt: c.expiresAt || null })),
@@ -718,9 +730,45 @@ export default function ProfessionalsPage() {
 
                   <div>
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de contrato</label>
-                    <select value={form.contractType} onChange={(e) => setForm((p) => ({ ...p, contractType: e.target.value }))} className="w-full px-3 py-2 border rounded-lg bg-white">
+                    <select
+                      value={form.contractType}
+                      onChange={(e) =>
+                        setForm((p) => {
+                          const nextType = e.target.value;
+                          const matches = activeContractTemplates.filter(
+                            (tpl) => String(tpl.contractType || '').toUpperCase() === String(nextType || '').toUpperCase()
+                          );
+                          const keepCurrent = matches.some((tpl) => tpl.id === p.contractTemplateId);
+                          return {
+                            ...p,
+                            contractType: nextType,
+                            contractTemplateId: keepCurrent ? p.contractTemplateId : (matches[0]?.id || ''),
+                          };
+                        })
+                      }
+                      className="w-full px-3 py-2 border rounded-lg bg-white"
+                    >
                       {CONTRACT_TYPES.filter((t) => t.isActive).map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
                     </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Modelo de contrato (ativo)</label>
+                    <select
+                      value={form.contractTemplateId}
+                      onChange={(e) => setForm((p) => ({ ...p, contractTemplateId: e.target.value }))}
+                      className="w-full px-3 py-2 border rounded-lg bg-white"
+                    >
+                      <option value="">Selecione</option>
+                      {contractTemplateOptions.map((tpl) => (
+                        <option key={tpl.id} value={tpl.id}>
+                          {tpl.name} (v{tpl.version})
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      Opcoes vindas da aba de modelos de contrato em Configuracoes.
+                    </p>
                   </div>
 
                   <div>

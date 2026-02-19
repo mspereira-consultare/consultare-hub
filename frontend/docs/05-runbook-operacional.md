@@ -235,3 +235,27 @@ WHERE scheduled_at BETWEEN CONCAT(CURDATE(),' 00:00:00') AND CONCAT(CURDATE(),' 
 ### Observação de rollout
 
 A interface da página `/profissionais` mantém aviso de transição até validação final do fluxo S3 em produção.
+
+
+## 9) Modelos de Contrato (Settings)
+
+### Variaveis recomendadas
+
+- `CONTRACT_TEMPLATES_S3_PREFIX` (opcional, ex.: `contratos/modelos/`)
+- mesmas variaveis S3 do modulo de profissionais (`STORAGE_PROVIDER`, `AWS_*`)
+
+### Fluxo de operacao
+
+1. Abrir `/settings` -> aba `Modelos de Contrato`.
+2. Upload de arquivo `.docx` com tipo de contrato.
+3. Conferir placeholders detectados.
+4. Mapear placeholders obrigatorios.
+5. Ativar modelo.
+6. Validar no cadastro de profissional se o modelo ativo aparece para o tipo selecionado.
+
+### Checklist rapido de validacao
+
+- API `GET /api/admin/contract-templates?mode=all` responde com modelos.
+- API `GET /api/admin/profissionais/options` retorna `activeContractTemplates`.
+- `POST /api/admin/profissionais` aceita `contractTemplateId` valido/ativo.
+- Vinculo invalido (modelo inativo ou tipo divergente) retorna erro 400.
