@@ -30,6 +30,7 @@ Variáveis mínimas:
 - `DB_PROVIDER=mysql`
 - `MYSQL_URL` (ou `MYSQL_PUBLIC_URL`)
 - credenciais Feegow/Clinia em `integrations_config` ou `.env` quando aplicável
+- `MEDICO_ABSENCE_CONFIRM_MINUTES` (opcional, padrão `10`)
 
 ## 2) Sequência de Deploy Recomendada
 
@@ -165,6 +166,13 @@ Checklist:
 - confirmar que frontend e workers apontam para o mesmo banco.
 - validar `DB_PROVIDER=mysql` em ambos.
 - checar cache e heartbeat.
+
+Checklist extra para fila médica:
+
+- verificar se o `monitor_medico` está em `ONLINE` no `system_status`;
+- confirmar se a coleta HTML da fila médica não está vindo vazia/intermitente no ambiente de execução;
+- validar valor de `MEDICO_ABSENCE_CONFIRM_MINUTES` (recomendado `10`);
+- validar se houve finalização em massa indevida e, se necessário, executar refresh da fila após ajuste.
 
 ## Erros de SQL em MySQL (`CREATE INDEX IF NOT EXISTS`)
 

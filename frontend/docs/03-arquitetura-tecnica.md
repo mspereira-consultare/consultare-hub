@@ -34,6 +34,12 @@ Persistência principal atual: **MySQL (Railway)**, com suporte legado para Turs
   - backfill faturamento: `workers/worker_faturamento_scraping_2025.py`
   - renovação de token/cookie: `workers/worker_auth.py`
 
+Notas operacionais do monitor médico:
+
+- Fechamento por ausência usa confirmação temporal (`MEDICO_ABSENCE_CONFIRM_MINUTES`, padrão: `10`).
+- Se uma unidade vier com coleta vazia no ciclo, o monitor **não** finaliza pacientes por ausência naquele ciclo.
+- Após finalizar por ausência, o cache de upsert da fila médica é invalidado para permitir reabertura correta caso o paciente reapareça.
+
 ### Banco e abstração
 
 - Classe principal: `workers/database_manager.py`.

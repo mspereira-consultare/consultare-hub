@@ -2,10 +2,9 @@ import time
 import sys
 import os
 import hashlib
-import re
-import pytz
-import pandas as pd
 from datetime import datetime
+
+import pytz
 from dotenv import load_dotenv
 
 tz = pytz.timezone("America/Sao_Paulo")
@@ -13,7 +12,6 @@ tz = pytz.timezone("America/Sao_Paulo")
 # Ajuste para rodar tanto da raiz quanto da pasta workers
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-# Imports com fallback
 try:
     from feegow_core import FeegowSystem
     from database_manager import DatabaseManager
@@ -25,17 +23,42 @@ load_dotenv()
 
 FINALIZE_INTERVAL_SEC = int(os.getenv("MEDICO_FINALIZE_INTERVAL_SEC", "300"))
 CLEANUP_INTERVAL_SEC = int(os.getenv("MEDICO_CLEANUP_INTERVAL_SEC", "600"))
+ABSENCE_CONFIRM_MINUTES = max(1, int(os.getenv("MEDICO_ABSENCE_CONFIRM_MINUTES", "10")))
 
-# IDs corretos das unidades
 UNIDADES = [
     ("Ouro Verde", 2),
     ("Centro Cambui", 3),
-    ("Campinas Shopping", 12)
+    ("Campinas Shopping", 12),
 ]
 
+
+def _parse_db_datetime(raw_value):
+    if raw_value is None:
+        return None
+
+    if isinstance(raw_value, datetime):
+        dt = raw_value
+    else:
+        raw = str(raw_value).strip()
+        if not raw:
+            return None
+        raw = raw.replace("T", " ").split(".")[0]
+        try:
+            dt = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            try:
+                dt = datetime.fromisoformat(str(raw_value))
+            except Exception:
+                return None
+
+    if dt.tzinfo is None:
+        return tz.localize(dt)
+    return dt.astimezone(tz)
+
+
 def run_monitor_medico():
-    print("=== MONITOR MÉDICO (COM HISTÓRICO) INICIADO ===")
-    
+    print("=== MONITOR MEDICO (COM HISTORICO) INICIADO ===")
+
     sistema = FeegowSystem()
     db = DatabaseManager()
     sessao_ativa = False
@@ -59,38 +82,34 @@ def run_monitor_medico():
             if CLEANUP_INTERVAL_SEC <= 0 or (now_ts - last_cleanup_ts) >= CLEANUP_INTERVAL_SEC:
                 db.limpar_dias_anteriores()
                 last_cleanup_ts = now_ts
-            hoje = datetime.now(tz).strftime('%Y-%m-%d')
-            timestamp = datetime.now(tz).strftime('%H:%M:%S')
 
+            timestamp = datetime.now(tz).strftime("%H:%M:%S")
             total_detectado_ciclo = 0
 
             for nome_unidade, uid in UNIDADES:
                 if not sistema.trocar_unidade(uid):
                     print(f"[{timestamp}] Falha ao trocar para {nome_unidade} ({uid})")
                     continue
-                
+
                 time.sleep(1.0)
                 html = sistema.obter_fila_raw()
-
                 if html is None:
-                    print(f"[{timestamp}] Sessão expirou ao consultar {nome_unidade}.")
+                    print(f"[{timestamp}] Sessao expirou ao consultar {nome_unidade}.")
                     sessao_ativa = False
-                    break 
+                    break
 
                 df = sistema.parse_html(html, nome_unidade)
                 qtd_unidade = 0
-                
+                coleta_vazia = df.empty
+
                 if not df.empty:
                     qtd_unidade = len(df)
                     total_detectado_ciclo += qtd_unidade
-                    # Salva e atualiza last_seen_at
                     db.salvar_dados_medicos(df)
 
-                # --- Sincronização: finaliza imediatamente quem saiu da fila ---
-                if not df.empty and 'hash_id' in df.columns:
-                    hash_ids_atuais = set(str(x) for x in df['hash_id'].tolist() if str(x).strip())
+                if not df.empty and "hash_id" in df.columns:
+                    hash_ids_atuais = set(str(x) for x in df["hash_id"].tolist() if str(x).strip())
                 elif not df.empty:
-                    # Fallback defensivo para nunca zerar a fila por falta de hash_id.
                     hash_ids_atuais = set(
                         hashlib.md5(
                             f"{nome_unidade}-{str(r.get('PACIENTE', '')).strip()}-{str(r.get('CHEGADA', '')).strip()}".encode()
@@ -104,28 +123,67 @@ def run_monitor_medico():
                     print(f"[{timestamp}] [WARN] {nome_unidade}: sem hash_ids_atuais; pulando finalizacao por seguranca.")
                     print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
                     continue
-                conn = db.get_connection()
-                try:
-                    cursor = conn.cursor()
-                    cursor.execute("""
-                        SELECT hash_id FROM espera_medica
-                        WHERE unidade = %s AND (status IS NULL OR status NOT LIKE 'Finalizado%%')
-                    """, (nome_unidade,))
-                    hash_ids_local = set(row[0] for row in cursor.fetchall())
-                    ids_para_finalizar = hash_ids_local - hash_ids_atuais
-                    if ids_para_finalizar:
-                        agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
-                        for hash_id in ids_para_finalizar:
-                            cursor.execute("""
-                                UPDATE espera_medica SET status = 'Finalizado (Saiu)', updated_at = %s
-                                WHERE hash_id = %s AND unidade = %s AND (status IS NULL OR status NOT LIKE 'Finalizado%%')
-                            """, (agora, hash_id, nome_unidade))
-                        if not db.use_turso:
-                            conn.commit()
-                finally:
-                    conn.close()
 
-                # 🔥 Modelo antigo: Finaliza por tempo (mantido como fallback)
+                if coleta_vazia:
+                    # Evita finalizar em massa quando o scrape vier vazio por oscilacao/intermitencia.
+                    print(
+                        f"[{timestamp}] [WARN] {nome_unidade}: coleta vazia; "
+                        f"finalizacao por ausencia pausada neste ciclo."
+                    )
+                else:
+                    conn = db.get_connection()
+                    try:
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            """
+                            SELECT hash_id, updated_at
+                            FROM espera_medica
+                            WHERE unidade = %s AND (status IS NULL OR status NOT LIKE 'Finalizado%%')
+                            """,
+                            (nome_unidade,),
+                        )
+                        rows_ativos_local = cursor.fetchall()
+
+                        agora_dt = datetime.now(tz)
+                        ids_para_finalizar = []
+
+                        for row in rows_ativos_local:
+                            hash_id = row[0]
+                            updated_at = row[1]
+
+                            if hash_id in hash_ids_atuais:
+                                continue
+
+                            last_seen_dt = _parse_db_datetime(updated_at)
+                            if last_seen_dt is None:
+                                ids_para_finalizar.append(hash_id)
+                                continue
+
+                            mins_absente = (agora_dt - last_seen_dt).total_seconds() / 60.0
+                            if mins_absente >= ABSENCE_CONFIRM_MINUTES:
+                                ids_para_finalizar.append(hash_id)
+
+                        if ids_para_finalizar:
+                            agora = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
+                            for hash_id in ids_para_finalizar:
+                                cursor.execute(
+                                    """
+                                    UPDATE espera_medica
+                                    SET status = 'Finalizado (Saiu)', updated_at = %s
+                                    WHERE hash_id = %s
+                                      AND unidade = %s
+                                      AND (status IS NULL OR status NOT LIKE 'Finalizado%%')
+                                    """,
+                                    (agora, hash_id, nome_unidade),
+                                )
+                            if not db.use_turso:
+                                conn.commit()
+                            # Evita cache stale bloquear reabertura se paciente reaparecer.
+                            db.clear_espera_cache(ids_para_finalizar)
+                    finally:
+                        conn.close()
+
+                # Fallback legado de limpeza por tempo (casos presos)
                 if FINALIZE_INTERVAL_SEC <= 0 or (time.time() - last_finalize_ts) >= FINALIZE_INTERVAL_SEC:
                     db.finalizar_expirados_medicos(nome_unidade, minutos=120)
 
@@ -135,7 +193,7 @@ def run_monitor_medico():
                 last_finalize_ts = time.time()
 
             if sessao_ativa:
-                msg = f"Ciclo concluído. Total detectado: {total_detectado_ciclo}"
+                msg = f"Ciclo concluido. Total detectado: {total_detectado_ciclo}"
                 db.update_heartbeat("monitor_medico", "ONLINE", msg)
 
                 if total_detectado_ciclo == 0:
@@ -144,10 +202,10 @@ def run_monitor_medico():
                     print(f"[{timestamp}] {msg}")
 
         except Exception as e:
-            print(f"\n[ERRO CRÍTICO] Monitor Médico: {e}")
+            print(f"\n[ERRO CRITICO] Monitor Medico: {e}")
             try:
                 db.update_heartbeat("monitor_medico", "ERROR", str(e))
-            except:
+            except Exception:
                 pass
             sessao_ativa = False
 

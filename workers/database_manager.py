@@ -174,6 +174,13 @@ def _clear_espera_cache():
     with _espera_lock:
         _espera_cache.clear()
 
+def _clear_espera_cache_hashes(hash_ids):
+    if not hash_ids:
+        return
+    with _espera_lock:
+        for h in hash_ids:
+            _espera_cache.pop(str(h), None)
+
 def _should_upsert_recepcao(hash_id, status, dt_atendimento):
     if RECEPCAO_UPSERT_MIN_INTERVAL_SEC <= 0:
         return True
@@ -698,6 +705,16 @@ class DatabaseManager:
         except: pass
         finally:
             conn.close()
+
+    def clear_espera_cache(self, hash_ids=None):
+        """Invalida cache de upsert da fila médica.
+        - Sem `hash_ids`: limpa todo cache.
+        - Com `hash_ids`: limpa apenas os hashes informados.
+        """
+        if hash_ids:
+            _clear_espera_cache_hashes(hash_ids)
+        else:
+            _clear_espera_cache()
 
     def obter_credenciais_feegow(self):
         """Retorna (username, password) da tabela integrations_config"""
