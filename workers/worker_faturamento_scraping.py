@@ -768,10 +768,18 @@ def run_scraper():
         print("❌ Credenciais não encontradas (Banco ou .env).")
         return
 
-    hoje = datetime.datetime.now()
-    inicio_vis = hoje.strftime("%d/%m/%Y")
+    # Por padrão, sempre busca o período dos últimos 7 dias (inclui hoje).
+    # Ex.: hoje=24/02 -> 17/02 a 24/02 (today - 7 days)
+    lookback_days = int(os.getenv("FATURAMENTO_LOOKBACK_DAYS", "7"))
+    if lookback_days < 0:
+        lookback_days = 7
+
+    hoje = datetime.date.today()
+    inicio = hoje - datetime.timedelta(days=lookback_days)
+
+    inicio_vis = inicio.strftime("%d/%m/%Y")
     fim_vis = hoje.strftime("%d/%m/%Y")
-    iso_inicio = hoje.strftime("%Y-%m-%d")
+    iso_inicio = inicio.strftime("%Y-%m-%d")
     iso_fim = hoje.strftime("%Y-%m-%d")
 
     print(f"📅 Janela: {inicio_vis} até {fim_vis}")
@@ -911,7 +919,12 @@ def run_scraper():
             
             save_dataframe_to_db(db, df, 'faturamento_analitico', delete_condition=condition)
             update_faturamento_summary(db, iso_inicio, iso_fim, update_monthly=False)
-            update_faturamento_monthly_from_daily(db, iso_inicio[:7])
+            # Atualiza o(s) mês(es) impactado(s) pela janela (para evitar inconsistência em virada de mês)
+            month_ref_start = iso_inicio[:7]
+            month_ref_end = iso_fim[:7]
+            update_faturamento_monthly_from_daily(db, month_ref_start)
+            if month_ref_end != month_ref_start:
+                update_faturamento_monthly_from_daily(db, month_ref_end)
             
             print(f"🚀 Finalizado com Sucesso.")
             db.update_heartbeat("faturamento", "ONLINE", f"{len(df)} registros")

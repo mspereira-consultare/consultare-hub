@@ -248,7 +248,7 @@ Campos típicos usados no sistema:
 - `usuario_da_conta` (quando disponível)
 - `updated_at`
 
-Escrita: worker de faturamento diário e worker de backfill histórico.
+Escrita: worker de faturamento (janela móvel dos últimos 7 dias, por padrão) e worker de backfill histórico.
 
 ### `faturamento_resumo_diario`
 

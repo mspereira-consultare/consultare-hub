@@ -30,7 +30,7 @@ Persistência principal atual: **MySQL (Railway)**, com suporte legado para Turs
   - agendamentos Feegow: `workers/worker_feegow_appointments.py` (base do dashboard de agendamentos)
   - propostas: `workers/worker_proposals.py`
   - contratos: `workers/worker_contracts.py`
-  - faturamento diário: `workers/worker_faturamento_scraping.py`
+  - faturamento (scraping com janela móvel): `workers/worker_faturamento_scraping.py` (padrão: últimos 7 dias)
   - backfill faturamento: `workers/worker_faturamento_scraping_2025.py`
   - renovação de token/cookie: `workers/worker_auth.py`
 

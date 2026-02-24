@@ -38,6 +38,7 @@ Variáveis mínimas:
 - `WATCHDOG_SERVICES` (opcional, padrão `monitor_medico`)
 - `WATCHDOG_STALE_SEC` (opcional, padrão `600`)
 - `WATCHDOG_INTERVAL_SEC` (opcional, padrão `60`)
+- `FATURAMENTO_LOOKBACK_DAYS` (opcional, padrão `7`)
 
 ## 2) Sequência de Deploy Recomendada
 
