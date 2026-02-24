@@ -122,10 +122,15 @@ Arquivo: `workers/main.py`.
 - `MonRec`: monitor recepção contínuo em horário operacional.
 - `MonMed`: monitor médico contínuo em horário operacional.
 - `Clinia`: ciclo contínuo em horário operacional.
+- `Watchdog`: monitora heartbeat de serviços críticos e reinicia o processo em caso de travamento.
 
 ### Horários configurados
 
 - Janela operacional de monitores: **06:30 até 20:00**.
+- Fuso e janela são configuráveis por env vars no `workers/main.py`:
+  - `WORK_TZ` (padrão: `America/Sao_Paulo`)
+  - `WORK_START` (padrão: `06:30`)
+  - `WORK_END` (padrão: `20:00`)
 - `auth`: 05:00 e 12:00.
 - `contratos`: 12:00.
 - Lote pesado (`faturamento`, `financeiro`, `comercial`, `contratos`): 14:00, 17:00, 19:00.

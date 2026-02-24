@@ -31,6 +31,13 @@ Variáveis mínimas:
 - `MYSQL_URL` (ou `MYSQL_PUBLIC_URL`)
 - credenciais Feegow/Clinia em `integrations_config` ou `.env` quando aplicável
 - `MEDICO_ABSENCE_CONFIRM_MINUTES` (opcional, padrão `10`)
+- `WORK_TZ` (opcional, padrão `America/Sao_Paulo`)
+- `WORK_START` (opcional, padrão `06:30`)
+- `WORK_END` (opcional, padrão `20:00`)
+- `WATCHDOG_ENABLED` (opcional, padrão `1`)
+- `WATCHDOG_SERVICES` (opcional, padrão `monitor_medico`)
+- `WATCHDOG_STALE_SEC` (opcional, padrão `600`)
+- `WATCHDOG_INTERVAL_SEC` (opcional, padrão `60`)
 
 ## 2) Sequência de Deploy Recomendada
 
@@ -173,6 +180,7 @@ Checklist extra para fila médica:
 - confirmar se a coleta HTML da fila médica não está vindo vazia/intermitente no ambiente de execução;
 - validar valor de `MEDICO_ABSENCE_CONFIRM_MINUTES` (recomendado `10`);
 - validar se houve finalização em massa indevida e, se necessário, executar refresh da fila após ajuste.
+- se `monitor_medico` ficar preso em `RUNNING` por muito tempo (sem atualizar `last_run`), o `Watchdog` reinicia automaticamente o serviço de `workers` (ver logs com `[WATCHDOG]`).
 
 ## Erros de SQL em MySQL (`CREATE INDEX IF NOT EXISTS`)
 

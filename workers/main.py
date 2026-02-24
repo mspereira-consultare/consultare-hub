@@ -8,6 +8,26 @@ import builtins
 import re
 import unicodedata
 
+# --- TIMEZONE (Railway normalmente roda em UTC) ---
+WORK_TZ_NAME = os.getenv("WORK_TZ", "America/Sao_Paulo")
+try:
+    from zoneinfo import ZoneInfo  # py>=3.9
+    WORK_TZ = ZoneInfo(WORK_TZ_NAME)
+except Exception:
+    try:
+        import pytz
+        WORK_TZ = pytz.timezone(WORK_TZ_NAME)
+    except Exception:
+        WORK_TZ = None
+
+# Para bibliotecas que usam datetime.now() sem tz (ex: schedule), tenta aplicar TZ do processo (Linux).
+if hasattr(time, "tzset"):
+    try:
+        os.environ["TZ"] = WORK_TZ_NAME
+        time.tzset()
+    except Exception as e:
+        print(f"⚠️ Falha ao aplicar TZ='{WORK_TZ_NAME}': {e}")
+
 # --- CONFIGURAÇÃO: LOGS IMEDIATOS + SUPORTE A EMOJIS (WINDOWS) ---
 # O encoding='utf-8' impede o erro 'charmap codec can't encode character' no Windows
 sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
@@ -51,14 +71,40 @@ except ImportError as e:
     print(f"❌ Erro de Importação no Main: {e}")
     sys.exit(1)
 
-START_HOUR = 6
-END_HOUR = 23 # Estendido um pouco para garantir fechamento
-START_MINUTE = 30
+def _parse_hhmm(raw_value: str, default_h: int, default_m: int):
+    try:
+        raw = str(raw_value or "").strip()
+        if not raw:
+            return default_h, default_m
+        parts = raw.split(":")
+        if len(parts) != 2:
+            return default_h, default_m
+        h = int(parts[0])
+        m = int(parts[1])
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            return default_h, default_m
+        return h, m
+    except Exception:
+        return default_h, default_m
+
+WORK_START_HHMM = os.getenv("WORK_START", "06:30")
+WORK_END_HHMM = os.getenv("WORK_END", "20:00")
+START_HOUR, START_MINUTE = _parse_hhmm(WORK_START_HHMM, 6, 30)
+END_HOUR, END_MINUTE = _parse_hhmm(WORK_END_HHMM, 20, 0)
+
+def _now_work_tz():
+    if WORK_TZ is not None:
+        return datetime.datetime.now(WORK_TZ)
+    return datetime.datetime.now()
 
 def is_working_hours():
-    now = datetime.datetime.now()
+    now = _now_work_tz()
     start = now.replace(hour=START_HOUR, minute=START_MINUTE, second=0, microsecond=0)
-    end = now.replace(hour=20, minute=0, second=0, microsecond=0)
+    end = now.replace(hour=END_HOUR, minute=END_MINUTE, second=0, microsecond=0)
+
+    # Janela "overnight" (ex.: 22:00 -> 06:00)
+    if end <= start:
+        return now >= start or now < end
     return start <= now < end
 
 # --- EXECUTOR SEGURO POR SERVIÇO (evita concorrência entre agendador e trigger manual) ---
@@ -415,6 +461,118 @@ def run_scheduler():
             print(f"⚠️ Scheduler error: {e}")
         time.sleep(60)
 
+def _parse_db_datetime(raw_value):
+    if raw_value is None:
+        return None
+
+    if isinstance(raw_value, datetime.datetime):
+        dt = raw_value
+    else:
+        raw = str(raw_value).strip()
+        if not raw:
+            return None
+        raw = raw.replace("T", " ").split(".")[0]
+        try:
+            dt = datetime.datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+        except Exception:
+            return None
+
+    if WORK_TZ is None:
+        return dt
+
+    if dt.tzinfo is None:
+        # pytz exige localize(); zoneinfo aceita replace(tzinfo=...)
+        if hasattr(WORK_TZ, "localize"):
+            return WORK_TZ.localize(dt)
+        return dt.replace(tzinfo=WORK_TZ)
+
+    return dt.astimezone(WORK_TZ)
+
+WATCHDOG_ENABLED = str(os.getenv("WATCHDOG_ENABLED", "1")).strip().lower() in ("1", "true", "yes", "on")
+WATCHDOG_INTERVAL_SEC = max(10, int(os.getenv("WATCHDOG_INTERVAL_SEC", "60")))
+WATCHDOG_STALE_SEC = max(60, int(os.getenv("WATCHDOG_STALE_SEC", "600")))
+WATCHDOG_GRACE_SEC = max(0, int(os.getenv("WATCHDOG_GRACE_SEC", "180")))
+WATCHDOG_SERVICES = [
+    s.strip()
+    for s in str(os.getenv("WATCHDOG_SERVICES", "monitor_medico")).split(",")
+    if s.strip()
+]
+
+def run_watchdog():
+    if not WATCHDOG_ENABLED:
+        print("🛡️ Watchdog desativado.")
+        return
+
+    print(
+        f"🛡️ Watchdog ativo: services={','.join(WATCHDOG_SERVICES)} "
+        f"stale={WATCHDOG_STALE_SEC}s interval={WATCHDOG_INTERVAL_SEC}s "
+        f"tz={WORK_TZ_NAME} window={WORK_START_HHMM}-{WORK_END_HHMM}"
+    )
+
+    db = DatabaseManager()
+    started_at = _now_work_tz()
+
+    while True:
+        time.sleep(WATCHDOG_INTERVAL_SEC)
+        try:
+            # Fora do horário: não reinicia por staleness, pois é esperado parar/pausar.
+            if not is_working_hours():
+                continue
+
+            now = _now_work_tz()
+            if WATCHDOG_GRACE_SEC and (now - started_at).total_seconds() < WATCHDOG_GRACE_SEC:
+                continue
+
+            if not WATCHDOG_SERVICES:
+                continue
+
+            placeholders = ",".join(["?"] * len(WATCHDOG_SERVICES))
+            rows = db.execute_query(
+                f"""
+                SELECT service_name, status, last_run, details
+                FROM system_status
+                WHERE service_name IN ({placeholders})
+                """,
+                tuple(WATCHDOG_SERVICES),
+            ) or []
+
+            by_name = {r[0]: r for r in rows if isinstance(r, (tuple, list)) and len(r) >= 4}
+
+            for service_name in WATCHDOG_SERVICES:
+                row = by_name.get(service_name)
+                if not row:
+                    continue
+
+                _, status, last_run, details = row
+                last_dt = _parse_db_datetime(last_run)
+                if last_dt is None:
+                    continue
+
+                age_sec = (now - last_dt).total_seconds()
+                if age_sec <= WATCHDOG_STALE_SEC:
+                    continue
+
+                print(
+                    f"🛑 [WATCHDOG] {service_name} stale há {int(age_sec)}s "
+                    f"(status={status}, details={details}). Reiniciando processo..."
+                )
+
+                try:
+                    db.update_heartbeat(
+                        service_name,
+                        "ERROR",
+                        f"Watchdog: travado há {int(age_sec)}s (status={status}). Reiniciando...",
+                    )
+                except Exception:
+                    pass
+
+                # Reinicia o processo para o Railway subir novamente.
+                os._exit(1)
+
+        except Exception as e:
+            print(f"⚠️ [WATCHDOG] erro: {e}")
+            continue
+
 def start_orchestrator():
     # Os emojis abaixo causavam erro no Windows sem o encoding='utf-8'
     print("\n🎹 ORQUESTRADOR HÍBRIDO INICIADO 🎹")
@@ -429,6 +587,7 @@ def start_orchestrator():
         threading.Thread(target=run_monitor_recepcao_safe, name="MonRec", daemon=True),
         threading.Thread(target=run_monitor_medico_safe, name="MonMed", daemon=True),
         threading.Thread(target=run_clinia_safe, name="Clinia", daemon=True),
+        threading.Thread(target=run_watchdog, name="Watchdog", daemon=True),
     ]
 
     for t in threads: t.start()
