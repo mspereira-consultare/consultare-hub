@@ -55,6 +55,7 @@ export default function ContractTemplatesTab() {
   const [error, setError] = useState('');
   const [okMessage, setOkMessage] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const [formName, setFormName] = useState('');
   const [formContractType, setFormContractType] = useState<ContractTypeCode>(CONTRACT_TYPES[0]?.code || 'PADRAO_CLT');
@@ -71,6 +72,16 @@ export default function ContractTemplatesTab() {
     }
     return groups;
   }, [sourceOptions]);
+
+  const archivedCount = useMemo(
+    () => items.filter((item) => item.status === 'archived').length,
+    [items]
+  );
+
+  const visibleItems = useMemo(
+    () => (showArchived ? items : items.filter((item) => item.status !== 'archived')),
+    [items, showArchived]
+  );
 
   const loadData = async () => {
     setLoading(true);
@@ -287,6 +298,29 @@ export default function ContractTemplatesTab() {
       )}
 
       <div className="border rounded-xl overflow-auto">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b bg-slate-50/60">
+          <span className="text-xs text-slate-600">
+            {showArchived
+              ? `Exibindo todos os modelos (${items.length})`
+              : `Exibindo modelos ativos/rascunho (${visibleItems.length})`}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setShowArchived((current) => {
+                const next = !current;
+                if (!next && expandedId) {
+                  const expandedItem = items.find((item) => item.id === expandedId);
+                  if (expandedItem?.status === 'archived') setExpandedId(null);
+                }
+                return next;
+              });
+            }}
+            className="px-2 py-1 border rounded text-xs"
+          >
+            {showArchived ? 'Ocultar arquivados' : `Mostrar arquivados (${archivedCount})`}
+          </button>
+        </div>
         <table className="w-full text-sm min-w-[980px]">
           <thead className="bg-slate-50 text-xs uppercase text-slate-600">
             <tr>
@@ -310,14 +344,14 @@ export default function ContractTemplatesTab() {
                   </span>
                 </td>
               </tr>
-            ) : items.length === 0 ? (
+            ) : visibleItems.length === 0 ? (
               <tr>
                 <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
-                  Nenhum modelo cadastrado.
+                  Nenhum modelo encontrado para o filtro atual.
                 </td>
               </tr>
             ) : (
-              items.map((item) => (
+              visibleItems.map((item) => (
                 <React.Fragment key={item.id}>
                   <tr className="border-t">
                     <td className="px-3 py-2 font-medium text-slate-800">{item.name}</td>
