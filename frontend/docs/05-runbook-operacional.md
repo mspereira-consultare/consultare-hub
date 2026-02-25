@@ -281,6 +281,7 @@ A interface da página `/profissionais` opera em modo hibrido sem bloqueio:
 - API `GET /api/admin/contract-templates?mode=all` responde com modelos.
 - API `GET /api/admin/contract-templates/:id/download?inline=1` abre o modelo para visualizacao.
 - API `GET /api/admin/contract-templates/:id/download` baixa o `.docx`.
+- API `DELETE /api/admin/contract-templates/:id` exclui modelo sem vinculo/uso historico.
 - API `GET /api/admin/profissionais/options` retorna `activeContractTemplates`.
 - `POST /api/admin/profissionais` aceita `contractTemplateId` valido/ativo.
 - Vinculo invalido (modelo inativo ou tipo divergente) retorna erro 400.

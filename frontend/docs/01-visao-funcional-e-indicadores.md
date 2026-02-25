@@ -472,6 +472,7 @@ Gerenciar upload, mapeamento e ciclo de vida dos modelos de contrato (`.docx`) s
 - `PUT /api/admin/contract-templates/:id/mapping`
 - `POST /api/admin/contract-templates/:id/activate`
 - `POST /api/admin/contract-templates/:id/archive`
+- `DELETE /api/admin/contract-templates/:id`
 - `GET /api/admin/contract-templates/:id/download` (com `?inline=1` para visualizacao)
 
 ### Regras de negocio
@@ -483,6 +484,7 @@ Gerenciar upload, mapeamento e ciclo de vida dos modelos de contrato (`.docx`) s
 | Mapeamento | Placeholder deve ser associado a fonte de dados; secao inicia recolhida e abre em `Mapear` |
 | Ativacao | Exige mapeamento obrigatorio completo |
 | Arquivamento | Remove da lista de ativos sem perda de historico |
+| Exclusao | Permitida apenas quando modelo nao esta vinculado a profissional e sem contratos gerados |
 | Arquivo do modelo | A tabela permite `Visualizar` e `Baixar` o `.docx` armazenado |
 
 ---

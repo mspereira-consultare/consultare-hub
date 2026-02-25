@@ -475,6 +475,64 @@ export const archiveContractTemplate = async (
   return updated;
 };
 
+export const deleteContractTemplate = async (
+  db: DbInterface,
+  templateId: string,
+  actorUserId: string
+): Promise<ContractTemplate> => {
+  await ensureContractTemplatesTables(db);
+  const existing = await getContractTemplateById(db, templateId);
+  if (!existing) throw new ContractTemplateValidationError('Modelo nao encontrado.', 404);
+
+  const linkedProfessionalsRows = await db.query(
+    `
+    SELECT COUNT(*) AS qty
+    FROM professionals
+    WHERE contract_template_id = ?
+    `,
+    [templateId]
+  );
+  const linkedProfessionals = Number(linkedProfessionalsRows?.[0]?.qty || 0);
+  if (linkedProfessionals > 0) {
+    throw new ContractTemplateValidationError(
+      'Modelo em uso por profissionais. Remova o vinculo antes de excluir.',
+      409
+    );
+  }
+
+  const generatedContractsRows = await db.query(
+    `
+    SELECT COUNT(*) AS qty
+    FROM professional_contracts
+    WHERE template_key = ?
+    `,
+    [templateId]
+  );
+  const generatedContracts = Number(generatedContractsRows?.[0]?.qty || 0);
+  if (generatedContracts > 0) {
+    throw new ContractTemplateValidationError(
+      'Modelo possui contratos gerados no historico. Use Arquivar em vez de Excluir.',
+      409
+    );
+  }
+
+  await insertAudit(db, templateId, 'TEMPLATE_DELETED', actorUserId, {
+    contractType: existing.contractType,
+    version: existing.version,
+    name: existing.name,
+  });
+
+  await db.execute(
+    `
+    DELETE FROM contract_templates
+    WHERE id = ?
+    `,
+    [templateId]
+  );
+
+  return existing;
+};
+
 export const listActiveContractTemplateOptions = async (
   db: DbInterface,
   contractType?: ContractTypeCode | ''

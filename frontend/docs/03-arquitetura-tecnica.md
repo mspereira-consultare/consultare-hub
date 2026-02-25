@@ -255,6 +255,7 @@ Variáveis necessárias para ativar S3:
 - UI em `frontend/src/app/(admin)/modelos-contrato/page.tsx` usando `frontend/src/app/(admin)/settings/contract-templates-tab.tsx`
 - APIs:
   - `GET/POST /api/admin/contract-templates`
+  - `DELETE /api/admin/contract-templates/:id`
   - `PUT /api/admin/contract-templates/:id/mapping`
   - `POST /api/admin/contract-templates/:id/activate`
   - `POST /api/admin/contract-templates/:id/archive`

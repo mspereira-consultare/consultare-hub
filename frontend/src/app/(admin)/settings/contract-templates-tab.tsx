@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { CheckCircle, Download, Eye, Loader2, RefreshCw, UploadCloud } from 'lucide-react';
+import { CheckCircle, Download, Eye, Loader2, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
 import { CONTRACT_TYPES, type ContractTypeCode } from '@/lib/profissionais/constants';
 
 type PlaceholderSourceOption = {
@@ -51,6 +51,7 @@ export default function ContractTemplatesTab() {
   const [uploading, setUploading] = useState(false);
   const [savingMapping, setSavingMapping] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [okMessage, setOkMessage] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -177,10 +178,42 @@ export default function ContractTemplatesTab() {
     }
   };
 
+  const removeTemplate = async (templateId: string) => {
+    const target = items.find((item) => item.id === templateId);
+    const targetLabel = target ? `${target.name} (v${target.version})` : templateId;
+    const confirmDelete = window.confirm(
+      `Deseja excluir o modelo ${targetLabel}?\n\nA exclusao e definitiva e so funciona quando o modelo nao esta vinculado a profissionais nem possui contratos gerados.`
+    );
+    if (!confirmDelete) return;
+
+    setDeletingTemplateId(templateId);
+    setError('');
+    setOkMessage('');
+    try {
+      const res = await fetch(`/api/admin/contract-templates/${encodeURIComponent(templateId)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao excluir modelo.');
+      setOkMessage('Modelo excluido com sucesso.');
+      if (expandedId === templateId) setExpandedId(null);
+      await loadData();
+    } catch (e: any) {
+      setError(e?.message || 'Falha ao excluir modelo.');
+    } finally {
+      setDeletingTemplateId(null);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="border rounded-xl p-4 bg-slate-50/70">
         <h3 className="font-semibold text-slate-800 mb-3">Upload de modelo (.docx)</h3>
+        <div className="mb-3 text-xs text-slate-600 bg-white border rounded-lg px-3 py-2">
+          Use placeholders no padrao <code>{'{{nome_variavel}}'}</code> no arquivo DOCX.
+          Depois do upload, clique em <strong>Mapear</strong>, selecione a fonte de cada placeholder e salve.
+          Somente modelos com placeholders obrigatorios mapeados podem ser ativados.
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Nome do modelo</label>
@@ -347,6 +380,19 @@ export default function ContractTemplatesTab() {
                             Arquivar
                           </button>
                         )}
+                        <button
+                          type="button"
+                          onClick={() => removeTemplate(item.id)}
+                          disabled={deletingTemplateId === item.id || updatingStatus === item.id}
+                          className="px-2 py-1 rounded text-xs border border-rose-200 text-rose-700 disabled:opacity-60 inline-flex items-center gap-1"
+                        >
+                          {deletingTemplateId === item.id ? (
+                            <Loader2 size={12} className="animate-spin" />
+                          ) : (
+                            <Trash2 size={12} />
+                          )}
+                          Excluir
+                        </button>
                       </div>
                     </td>
                   </tr>
