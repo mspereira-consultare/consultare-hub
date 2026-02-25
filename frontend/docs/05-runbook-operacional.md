@@ -39,6 +39,9 @@ Variáveis mínimas:
 - `WATCHDOG_STALE_SEC` (opcional, padrão `600`)
 - `WATCHDOG_INTERVAL_SEC` (opcional, padrão `60`)
 - `FATURAMENTO_LOOKBACK_DAYS` (opcional, padrão `7`)
+- `MYSQL_READ_TIMEOUT_SEC` (opcional, padrão `20`)
+- `MYSQL_WRITE_TIMEOUT_SEC` (opcional, padrão `20`)
+- `MEDICO_PARSE_TIMEOUT_SEC` (opcional, padrão `25`)
 
 ## 2) Sequência de Deploy Recomendada
 

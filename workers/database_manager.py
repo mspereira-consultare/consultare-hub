@@ -289,6 +289,9 @@ class DatabaseManager:
             "charset": "utf8mb4",
             "autocommit": False,
             "connect_timeout": int(os.getenv("MYSQL_CONNECT_TIMEOUT_SEC", "10")),
+            # Evita travamento indefinido em oscilacao de rede/DB.
+            "read_timeout": int(os.getenv("MYSQL_READ_TIMEOUT_SEC", "20")),
+            "write_timeout": int(os.getenv("MYSQL_WRITE_TIMEOUT_SEC", "20")),
             "cursorclass": pymysql.cursors.Cursor
         }
         if use_ssl:

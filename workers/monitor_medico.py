@@ -3,6 +3,7 @@ import sys
 import os
 import hashlib
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 import pytz
 from dotenv import load_dotenv
@@ -24,6 +25,7 @@ load_dotenv()
 FINALIZE_INTERVAL_SEC = int(os.getenv("MEDICO_FINALIZE_INTERVAL_SEC", "300"))
 CLEANUP_INTERVAL_SEC = int(os.getenv("MEDICO_CLEANUP_INTERVAL_SEC", "600"))
 ABSENCE_CONFIRM_MINUTES = max(1, int(os.getenv("MEDICO_ABSENCE_CONFIRM_MINUTES", "10")))
+PARSE_TIMEOUT_SEC = max(5, int(os.getenv("MEDICO_PARSE_TIMEOUT_SEC", "25")))
 
 UNIDADES = [
     ("Ouro Verde", 2),
@@ -54,6 +56,12 @@ def _parse_db_datetime(raw_value):
     if dt.tzinfo is None:
         return tz.localize(dt)
     return dt.astimezone(tz)
+
+
+def _parse_html_with_timeout(sistema, html, nome_unidade, timeout_sec):
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        future = pool.submit(sistema.parse_html, html, nome_unidade)
+        return future.result(timeout=timeout_sec)
 
 
 def run_monitor_medico():
@@ -87,6 +95,8 @@ def run_monitor_medico():
             total_detectado_ciclo = 0
 
             for nome_unidade, uid in UNIDADES:
+                db.update_heartbeat("monitor_medico", "RUNNING", f"Coletando {nome_unidade}...")
+
                 if not sistema.trocar_unidade(uid):
                     print(f"[{timestamp}] Falha ao trocar para {nome_unidade} ({uid})")
                     continue
@@ -98,7 +108,24 @@ def run_monitor_medico():
                     sessao_ativa = False
                     break
 
-                df = sistema.parse_html(html, nome_unidade)
+                try:
+                    df = _parse_html_with_timeout(sistema, html, nome_unidade, PARSE_TIMEOUT_SEC)
+                except FutureTimeoutError:
+                    print(
+                        f"[{timestamp}] [WARN] {nome_unidade}: parse_html excedeu "
+                        f"{PARSE_TIMEOUT_SEC}s; pulando unidade neste ciclo."
+                    )
+                    db.update_heartbeat(
+                        "monitor_medico",
+                        "WARNING",
+                        f"Timeout parse {nome_unidade} ({PARSE_TIMEOUT_SEC}s)",
+                    )
+                    continue
+                except Exception as parse_err:
+                    print(f"[{timestamp}] [WARN] {nome_unidade}: erro no parse_html: {parse_err}")
+                    db.update_heartbeat("monitor_medico", "WARNING", f"Erro parse {nome_unidade}")
+                    continue
+
                 qtd_unidade = 0
                 coleta_vazia = df.empty
 
