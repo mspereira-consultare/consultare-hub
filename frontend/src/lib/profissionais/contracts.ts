@@ -6,6 +6,7 @@ import { renderContractPdfFromDocxBuffer } from '@/lib/contract_templates/pdf';
 import {
   ensureProfessionalsTables,
   getProfessionalById,
+  getProfessionalProcedureRates,
   getProfessionalDocumentById,
   ProfessionalValidationError,
 } from '@/lib/profissionais/repository';
@@ -42,6 +43,14 @@ const formatCnpj = (value: string | null | undefined) => {
   if (digits.length !== 14) return clean(value);
   return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`;
 };
+
+const formatCurrencyBr = (value: number) =>
+  Number(value || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
 const joinWithAndPtBr = (values: string[]) => {
   const items = Array.from(
@@ -150,6 +159,7 @@ const resolveSourceValue = (
   source: string,
   ctx: {
     professional: Awaited<ReturnType<typeof getProfessionalById>>;
+    proceduresBlock: string;
   }
 ): string => {
   const professional = ctx.professional;
@@ -193,6 +203,8 @@ const resolveSourceValue = (
       return professional.primarySpecialty || professional.specialty || '';
     case 'professional.specialties':
       return joinWithAndPtBr(Array.isArray(professional.specialties) ? professional.specialties : []);
+    case 'professional.procedures_block':
+      return ctx.proceduresBlock;
     case 'registration.primary.council_type':
       return registration?.councilType || '';
     case 'registration.primary.council_number':
@@ -398,6 +410,16 @@ export const generateProfessionalContract = async (
   if (!professional) {
     throw new ProfessionalValidationError('Profissional nao encontrado.', 404);
   }
+  const procedures = await getProfessionalProcedureRates(db, professionalId);
+  const proceduresBlock =
+    procedures.length > 0
+      ? [
+          'PROCEDIMENTO | VALOR',
+          ...procedures.map(
+            (item) => `${clean(item.procedimentoNome)} | ${formatCurrencyBr(Number(item.valorProfissional || 0))}`
+          ),
+        ].join('\n')
+      : 'Sem procedimentos vinculados.';
 
   const templateId = clean(options?.templateId || professional.contractTemplateId);
   if (!templateId) {
@@ -436,7 +458,7 @@ export const generateProfessionalContract = async (
       resolvedValues[token] = '';
       continue;
     }
-    const value = resolveSourceValue(source, { professional });
+    const value = resolveSourceValue(source, { professional, proceduresBlock });
     if (mapItem.required && !clean(value)) {
       missingRequired.push(token);
     }

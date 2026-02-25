@@ -31,6 +31,7 @@ export const PLACEHOLDER_SOURCE_OPTIONS: PlaceholderSourceOption[] = [
   { value: 'professional.service_units', label: 'Profissional - Unidades', group: 'profissional' },
   { value: 'professional.primary_specialty', label: 'Profissional - Especialidade Principal', group: 'profissional' },
   { value: 'professional.specialties', label: 'Profissional - Todas Especialidades', group: 'profissional' },
+  { value: 'professional.procedures_block', label: 'Profissional - Bloco Procedimentos x Valores', group: 'profissional' },
 
   { value: 'registration.primary.council_type', label: 'Registro Principal - Conselho', group: 'registro' },
   { value: 'registration.primary.council_number', label: 'Registro Principal - Numero', group: 'registro' },
