@@ -3,6 +3,7 @@ import type { DbInterface } from '@/lib/db';
 import { getContractTemplateById } from '@/lib/contract_templates/repository';
 import { renderDocxTemplate } from '@/lib/contract_templates/render';
 import { renderContractPdfFromDocxBuffer } from '@/lib/contract_templates/pdf';
+import { normalizeContractTypeCode } from '@/lib/profissionais/constants';
 import {
   ensureProfessionalsTables,
   getProfessionalById,
@@ -440,7 +441,9 @@ export const generateProfessionalContract = async (
       'Mapeie os placeholders obrigatorios antes de gerar o contrato.'
     );
   }
-  if (String(template.contractType).toUpperCase() !== String(professional.contractType).toUpperCase()) {
+  const templateType = normalizeContractTypeCode(template.contractType);
+  const professionalType = normalizeContractTypeCode(professional.contractType);
+  if (!templateType || !professionalType || templateType !== professionalType) {
     throw new ProfessionalValidationError(
       'O modelo selecionado nao pertence ao tipo de contrato deste profissional.'
     );

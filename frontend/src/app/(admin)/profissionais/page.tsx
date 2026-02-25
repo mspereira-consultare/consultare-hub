@@ -253,16 +253,12 @@ export default function ProfessionalsPage() {
     return Array.from(all).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [specialties, form.specialties]);
   const contractTemplateOptions = useMemo(
-    () => {
-      if (activeContractTemplates.length === 0) return [];
-      const filtered = activeContractTemplates.filter((tpl) => {
+    () =>
+      activeContractTemplates.filter((tpl) => {
         const tplType = normalizeContractTypeCode(tpl.contractType);
         const formType = normalizeContractTypeCode(form.contractType);
         return Boolean(tplType && formType && tplType === formType);
-      });
-      // Fallback para cadastros legados com tipo de contrato fora do padrao.
-      return filtered.length > 0 ? filtered : activeContractTemplates;
-    },
+      }),
     [activeContractTemplates, form.contractType]
   );
   const photoDoc = useMemo(
@@ -694,6 +690,19 @@ export default function ProfessionalsPage() {
     fetchSpecialties();
     fetchProcedureOptions();
   }, []);
+
+  useEffect(() => {
+    if (!form.contractTemplateId) return;
+    const allowed = contractTemplateOptions.some((tpl) => tpl.id === form.contractTemplateId);
+    if (allowed) return;
+    setForm((prev) => {
+      if (prev.contractTemplateId !== form.contractTemplateId) return prev;
+      return {
+        ...prev,
+        contractTemplateId: contractTemplateOptions[0]?.id || '',
+      };
+    });
+  }, [contractTemplateOptions, form.contractTemplateId]);
 
   useEffect(() => {
     if (!isModalOpen || modalTab !== 'procedimentos') return;
