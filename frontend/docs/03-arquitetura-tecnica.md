@@ -193,9 +193,13 @@ Checklists usam duas estratégias:
 - Pagina: `frontend/src/app/(admin)/profissionais/page.tsx`
 - API list/create: `frontend/src/app/api/admin/profissionais/route.ts`
 - API detail/update: `frontend/src/app/api/admin/profissionais/[id]/route.ts`
+- API contratos: `frontend/src/app/api/admin/profissionais/[id]/contratos/route.ts`
+- API reprocesso: `frontend/src/app/api/admin/profissionais/[id]/contratos/[contractId]/reprocess/route.ts`
 - Repositorio e schema: `frontend/src/lib/profissionais/repository.ts`
+- Servico de contratos: `frontend/src/lib/profissionais/contracts.ts`
 - Autorizacao server-side: `frontend/src/lib/profissionais/auth.ts`
 - Constantes e regras: `frontend/src/lib/profissionais/constants.ts`, `frontend/src/lib/profissionais/status.ts`
+- Render de placeholders DOCX: `frontend/src/lib/contract_templates/render.ts`
 
 ### Banco
 
@@ -215,6 +219,7 @@ O modulo cria/garante as tabelas em runtime:
 4. Em criacao/edicao, frontend envia payload para `POST` ou `PUT`.
 5. API valida regras de negocio (PF/PJ, contrato, registro principal, checklist) e persiste.
 6. API grava auditoria em `professional_audit_log`.
+7. Na aba `Contratos`, usuario pode gerar/reprocessar e consultar historico.
 
 ### Observacao de storage
 
@@ -254,6 +259,8 @@ Variáveis necessárias para ativar S3:
   - `POST /api/admin/contract-templates/:id/activate`
   - `POST /api/admin/contract-templates/:id/archive`
   - `GET /api/admin/contract-templates/:id/download` (inline/attachment)
+  - `GET/POST /api/admin/profissionais/:id/contratos`
+  - `POST /api/admin/profissionais/:id/contratos/:contractId/reprocess`
 - Dominio:
   - `frontend/src/lib/contract_templates/repository.ts`
   - `frontend/src/lib/contract_templates/placeholders.ts`
@@ -267,6 +274,8 @@ Variáveis necessárias para ativar S3:
 4. Mapeamento de placeholders para fontes de dados do profissional.
 5. Ativacao do modelo somente apos mapeamento obrigatorio completo.
 6. Cadastro de profissional passa a vincular `contract_template_id` (modelo ativo).
+7. Geracao manual do contrato na aba `Contratos` do modal do profissional.
+8. Contrato gerado e salvo no S3, registrado em `professional_contracts` e exposto em `professional_documents` com tipo `CONTRATO_GERADO`.
 
 ### Tabelas envolvidas
 

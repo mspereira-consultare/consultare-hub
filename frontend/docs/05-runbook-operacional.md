@@ -284,3 +284,21 @@ A interface da página `/profissionais` opera em modo hibrido sem bloqueio:
 - API `GET /api/admin/profissionais/options` retorna `activeContractTemplates`.
 - `POST /api/admin/profissionais` aceita `contractTemplateId` valido/ativo.
 - Vinculo invalido (modelo inativo ou tipo divergente) retorna erro 400.
+
+## 10) Geracao de Contratos no Modal de Profissional
+
+### Fluxo de validacao
+
+1. Abrir `/profissionais` e editar um profissional com `contractTemplateId` preenchido.
+2. Acessar aba `Contratos`.
+3. Clicar `Gerar contrato`.
+4. Validar novo registro em `professional_contracts` com status `GERADO`.
+5. Validar documento em `professional_documents` com `doc_type = CONTRATO_GERADO`.
+6. Validar botoes `Visualizar` e `Baixar` no historico.
+7. Em caso de erro, validar status `ERRO` e botao `Reprocessar`.
+
+### Endpoints envolvidos
+
+- `GET /api/admin/profissionais/:id/contratos`
+- `POST /api/admin/profissionais/:id/contratos`
+- `POST /api/admin/profissionais/:id/contratos/:contractId/reprocess`

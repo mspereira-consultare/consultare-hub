@@ -47,3 +47,4 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Fluxo documental em modo hibrido (checklist manual + upload S3 ativo).
 - Modulo `/profissionais`: APIs de documentos com `download` e `visualizacao inline` documentadas.
 - Settings/modelos: `download` e `visualizacao` de templates adicionados ao fluxo tecnico.
+- Modal de profissional: nova aba `Contratos` com `Gerar novo`, `Reprocessar`, `Visualizar` e `Baixar`.

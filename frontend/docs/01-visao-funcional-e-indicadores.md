@@ -538,6 +538,9 @@ Centralizar o cadastro da carteira de profissionais, com foco em:
 - `GET /api/admin/profissionais/:id`
 - `POST /api/admin/profissionais`
 - `PUT /api/admin/profissionais/:id`
+- `GET /api/admin/profissionais/:id/contratos`
+- `POST /api/admin/profissionais/:id/contratos`
+- `POST /api/admin/profissionais/:id/contratos/:contractId/reprocess`
 
 ### Indicadores/regras da tela
 
@@ -556,6 +559,7 @@ No fluxo atual:
 - o usuario pode marcar manualmente copia fisica/digital por tipo de documento;
 - tambem pode fazer upload real de arquivos via S3 no mesmo modal;
 - o tipo `OUTRO` aparece apenas no upload (nao entra no checklist manual e nao altera o indicador `X/Y` de documentos).
+- a aba `Contratos` do modal permite: `Visualizar`, `Baixar`, `Gerar novo` e `Reprocessar` (somente status `ERRO`).
 
 ### Evolução técnica (18/02/2026)
 
@@ -563,4 +567,5 @@ No fluxo atual:
   - `GET/POST /api/admin/profissionais/:id/documentos`
   - `GET /api/admin/profissionais/documentos/:documentId/download`
 - A tabela de documentos do modal permite `Visualizar` (`?inline=1`) e `Baixar`.
-- O modal foi ampliado para reduzir scroll e manter mais campos visiveis.
+- A geração de contrato foi incorporada na aba `Contratos` do modal, com histórico por profissional.
+- O modal foi ampliado e reorganizado para reduzir scroll e condensar campos.

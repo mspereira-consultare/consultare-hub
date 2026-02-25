@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { AlertCircle, ChevronDown, ChevronRight, Download, Edit3, Eye, FileUp, Loader2, Plus, RefreshCw, Search, User, X } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronRight, Download, Edit3, Eye, FileUp, Loader2, Plus, RefreshCw, RotateCcw, Search, User, X } from 'lucide-react';
 import {
   BRAZIL_UFS,
   CHECKLIST_DOCUMENT_TYPES,
@@ -13,7 +13,7 @@ import {
   PROFESSIONAL_SERVICE_UNITS,
   type ContractPartyType,
 } from '@/lib/profissionais/constants';
-import type { ProfessionalDocument, ProfessionalListItem } from '@/lib/profissionais/types';
+import type { ProfessionalContract, ProfessionalDocument, ProfessionalListItem } from '@/lib/profissionais/types';
 import { hasPermission } from '@/lib/permissions';
 
 type FormRegistration = { id?: string; councilType: string; councilNumber: string; councilUf: string; isPrimary: boolean };
@@ -28,6 +28,7 @@ type FormState = {
   hasPhysicalFolder: boolean; physicalFolderNote: string; contractTemplateId: string; contractStartDate: string; contractEndDate: string;
   registrations: FormRegistration[]; checklist: FormChecklist[];
 };
+type ModalTab = 'cadastro' | 'contratos';
 
 const pageSize = 20;
 
@@ -148,6 +149,7 @@ export default function ProfessionalsPage() {
   const [uploadExpiresAt, setUploadExpiresAt] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [modalError, setModalError] = useState('');
+  const [modalNotice, setModalNotice] = useState('');
   const [photoLoadError, setPhotoLoadError] = useState(false);
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [activeContractTemplates, setActiveContractTemplates] = useState<ContractTemplateOption[]>([]);
@@ -158,6 +160,11 @@ export default function ProfessionalsPage() {
   const [isChecklistExpanded, setIsChecklistExpanded] = useState(false);
   const [sortBy, setSortBy] = useState<'status' | 'name' | 'specialty' | 'contractEndDate' | 'registration' | 'contractType' | 'documents' | 'certidao'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [modalTab, setModalTab] = useState<ModalTab>('cadastro');
+  const [contractsLoading, setContractsLoading] = useState(false);
+  const [contracts, setContracts] = useState<ProfessionalContract[]>([]);
+  const [generatingContract, setGeneratingContract] = useState(false);
+  const [reprocessingContractId, setReprocessingContractId] = useState<string | null>(null);
 
   const contractLabelByCode = useMemo(() => new Map(CONTRACT_TYPES.map((c) => [c.code, c.label])), []);
   const specialtiesOptions = useMemo(() => {
@@ -309,6 +316,70 @@ export default function ProfessionalsPage() {
     }
   };
 
+  const fetchContracts = async (professionalId: string) => {
+    setContractsLoading(true);
+    setModalError('');
+    try {
+      const res = await fetch(`/api/admin/profissionais/${encodeURIComponent(professionalId)}/contratos`, { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao carregar contratos.');
+      setContracts(Array.isArray(data?.data) ? data.data : []);
+    } catch (e: any) {
+      setContracts([]);
+      setModalError(e?.message || 'Falha ao carregar contratos.');
+    } finally {
+      setContractsLoading(false);
+    }
+  };
+
+  const generateContractNow = async () => {
+    if (!editingId) {
+      setModalError('Salve o cadastro do profissional antes de gerar contrato.');
+      return;
+    }
+    setGeneratingContract(true);
+    setModalError('');
+    setModalNotice('');
+    try {
+      const res = await fetch(`/api/admin/profissionais/${encodeURIComponent(editingId)}/contratos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          templateId: form.contractTemplateId || null,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao gerar contrato.');
+      setModalNotice('Contrato gerado com sucesso.');
+      await Promise.all([fetchContracts(editingId), fetchDocuments(editingId)]);
+    } catch (e: any) {
+      setModalError(e?.message || 'Falha ao gerar contrato.');
+    } finally {
+      setGeneratingContract(false);
+    }
+  };
+
+  const reprocessContract = async (contractId: string) => {
+    if (!editingId) return;
+    setReprocessingContractId(contractId);
+    setModalError('');
+    setModalNotice('');
+    try {
+      const res = await fetch(
+        `/api/admin/profissionais/${encodeURIComponent(editingId)}/contratos/${encodeURIComponent(contractId)}/reprocess`,
+        { method: 'POST' }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao reprocessar contrato.');
+      setModalNotice('Contrato reprocessado com sucesso.');
+      await Promise.all([fetchContracts(editingId), fetchDocuments(editingId)]);
+    } catch (e: any) {
+      setModalError(e?.message || 'Falha ao reprocessar contrato.');
+    } finally {
+      setReprocessingContractId(null);
+    }
+  };
+
   const uploadDocument = async () => {
     if (!editingId) {
       setModalError('Salve o cadastro primeiro para habilitar upload.');
@@ -361,12 +432,15 @@ export default function ProfessionalsPage() {
     setEditingId(null);
     setForm(emptyForm());
     setUploadedDocs([]);
+    setContracts([]);
     setUploadFile(null);
     setUploadExpiresAt('');
     setUploadDocType(DOCUMENT_TYPES[0]?.code || 'RG');
     setModalError('');
+    setModalNotice('');
     setIsUploadExpanded(false);
     setIsChecklistExpanded(false);
+    setModalTab('cadastro');
     setIsModalOpen(true);
   };
 
@@ -384,8 +458,10 @@ export default function ProfessionalsPage() {
       setUploadDocType(DOCUMENT_TYPES[0]?.code || 'RG');
       setIsUploadExpanded(false);
       setIsChecklistExpanded(false);
+      setModalTab('cadastro');
+      setModalNotice('');
       setIsModalOpen(true);
-      await fetchDocuments(id);
+      await Promise.all([fetchDocuments(id), fetchContracts(id)]);
     } catch (e: any) {
       setError(e?.message || 'Falha ao abrir profissional.');
     }
@@ -553,14 +629,39 @@ export default function ProfessionalsPage() {
                 </div>
               )}
 
+              {modalNotice && (
+                <div className="px-3 py-2 border border-emerald-200 bg-emerald-50 rounded-lg text-emerald-700 text-sm">
+                  {modalNotice}
+                </div>
+              )}
+
+              <div className="inline-flex rounded-lg border bg-slate-50 p-1">
+                <button
+                  type="button"
+                  onClick={() => setModalTab('cadastro')}
+                  className={`px-3 py-1.5 rounded text-sm ${modalTab === 'cadastro' ? 'bg-white border text-slate-900' : 'text-slate-600'}`}
+                >
+                  Cadastro
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalTab('contratos')}
+                  className={`px-3 py-1.5 rounded text-sm ${modalTab === 'contratos' ? 'bg-white border text-slate-900' : 'text-slate-600'}`}
+                >
+                  Contratos
+                </button>
+              </div>
+
+              {modalTab === 'cadastro' && (
+              <>
               <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                <div className="md:col-span-8 grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="md:col-span-2">
+                <div className="md:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-2">
+                  <div className="md:col-span-3">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Nome do profissional</label>
                     <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
                   </div>
 
-                  <div className="md:col-span-2">
+                  <div className="md:col-span-3">
                     <div className="flex items-center justify-between mb-1">
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Especialidades</label>
                       <button
@@ -646,7 +747,7 @@ export default function ProfessionalsPage() {
                     <input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
                   </div>
 
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Faixa etaria de atendimento (anos)</label>
                     <div className="rounded-lg border bg-slate-50 p-3 space-y-3">
                       <div className="relative h-8">
@@ -745,7 +846,7 @@ export default function ProfessionalsPage() {
                     </select>
                   </div>
 
-                  <div>
+                  <div className="md:col-span-2">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Modelo de contrato (ativo)</label>
                     <select
                       value={form.contractTemplateId}
@@ -807,12 +908,12 @@ export default function ProfessionalsPage() {
                     <input value={form.personalDocNumber} onChange={(e) => setForm((p) => ({ ...p, personalDocNumber: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
                   </div>
 
-                  <div className="md:col-span-2">
+                  <div className="md:col-span-3">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Endereco</label>
                     <textarea value={form.addressText} onChange={(e) => setForm((p) => ({ ...p, addressText: e.target.value }))} rows={2} className="w-full px-3 py-2 border rounded-lg" />
                   </div>
 
-                  <div className="md:col-span-2">
+                  <div className="md:col-span-3">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Unidades de atendimento</label>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-2 border rounded-lg p-3 bg-slate-50">
                       {PROFESSIONAL_SERVICE_UNITS.map((unit) => {
@@ -838,9 +939,9 @@ export default function ProfessionalsPage() {
                     </div>
                   </div>
 
-                  <div className="md:col-span-2">
+                  <div className="md:col-span-3">
                     <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Observacoes do profissional</label>
-                    <textarea value={form.physicalFolderNote} onChange={(e) => setForm((p) => ({ ...p, physicalFolderNote: e.target.value }))} rows={3} className="w-full px-3 py-2 border rounded-lg" />
+                    <textarea value={form.physicalFolderNote} onChange={(e) => setForm((p) => ({ ...p, physicalFolderNote: e.target.value }))} rows={2} className="w-full px-3 py-2 border rounded-lg" />
                     <label className="inline-flex items-center gap-2 text-sm text-slate-700 mt-2">
                       <input type="checkbox" checked={form.hasPhysicalFolder} onChange={(e) => setForm((p) => ({ ...p, hasPhysicalFolder: e.target.checked }))} />
                       Possui pasta fisica
@@ -850,7 +951,7 @@ export default function ProfessionalsPage() {
 
                 <div className="md:col-span-4">
                   <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Foto do profissional</label>
-                  <div className="h-[280px] bg-slate-50 border rounded-lg overflow-hidden flex items-center justify-center">
+                  <div className="h-[220px] bg-slate-50 border rounded-lg overflow-hidden flex items-center justify-center">
                     {editingId && photoDoc && !photoLoadError ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -867,8 +968,8 @@ export default function ProfessionalsPage() {
                     )}
                   </div>
 
-                  <div className="mt-3 grid grid-cols-1 gap-3">
-                    <div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <div className="col-span-2">
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Status do profissional</label>
                       <select
                         value={form.isActive ? 'active' : 'inactive'}
@@ -880,8 +981,7 @@ export default function ProfessionalsPage() {
                       </select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
+                    <div>
                         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Inicio contrato</label>
                         <input
                           type="date"
@@ -900,9 +1000,8 @@ export default function ProfessionalsPage() {
                           className="w-full px-3 py-2 border rounded-lg"
                         />
                       </div>
-                    </div>
 
-                    <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                    <label className="inline-flex items-center gap-2 text-sm text-slate-700 col-span-2">
                       <input
                         type="checkbox"
                         checked={form.hasFeegowPermissions}
@@ -973,7 +1072,7 @@ export default function ProfessionalsPage() {
                           onChange={(e) => { setUploadDocType(e.target.value); setUploadExpiresAt(''); }}
                           className="w-full px-2 py-2 border rounded bg-white"
                         >
-                          {DOCUMENT_TYPES.map((d) => (
+                          {DOCUMENT_TYPES.filter((d) => d.code !== 'CONTRATO_GERADO').map((d) => (
                             <option key={d.code} value={d.code}>
                               {d.label}
                             </option>
@@ -1087,8 +1186,186 @@ export default function ProfessionalsPage() {
                   <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="px-2 py-2 text-left">Documento</th><th className="px-2 py-2 text-left">Fisico</th><th className="px-2 py-2 text-left">Digital</th><th className="px-2 py-2 text-left">Expiracao</th><th className="px-2 py-2 text-left">Obs</th></tr></thead><tbody>{form.checklist.map((c, i) => { const d = DOCUMENT_TYPES.find((x) => x.code === c.docType); return <tr key={c.docType} className="border-t"><td className="px-2 py-2">{d?.label || c.docType}</td><td className="px-2 py-2"><input type="checkbox" checked={c.hasPhysicalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasPhysicalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2"><input type="checkbox" checked={c.hasDigitalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasDigitalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2">{d?.hasExpiration ? <input type="date" value={c.expiresAt} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], expiresAt: e.target.value }; return { ...p, checklist: n }; })} className="px-2 py-1 border rounded" /> : <span className="text-xs text-slate-400">-</span>}</td><td className="px-2 py-2"><input value={c.notes} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], notes: e.target.value }; return { ...p, checklist: n }; })} className="w-full px-2 py-1 border rounded" /></td></tr>; })}</tbody></table></div>
                 )}
               </div>
+              </>
+              )}
+
+              {modalTab === 'contratos' && (
+                <div className="space-y-4">
+                  {!editingId ? (
+                    <div className="text-sm px-3 py-2 rounded border bg-slate-50 text-slate-600">
+                      Salve o profissional primeiro para habilitar a geração de contratos.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="border rounded-xl p-4 bg-slate-50/70 space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                          <div className="md:col-span-2">
+                            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+                              Modelo selecionado
+                            </label>
+                            <select
+                              value={form.contractTemplateId}
+                              onChange={(e) => setForm((p) => ({ ...p, contractTemplateId: e.target.value }))}
+                              className="w-full px-3 py-2 border rounded-lg bg-white"
+                            >
+                              <option value="">Selecione</option>
+                              {contractTemplateOptions.map((tpl) => (
+                                <option key={tpl.id} value={tpl.id}>
+                                  {tpl.name} (v{tpl.version})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={generateContractNow}
+                              disabled={!canEdit || generatingContract}
+                              className="px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm disabled:opacity-60 inline-flex items-center gap-2"
+                            >
+                              {generatingContract && <Loader2 size={14} className="animate-spin" />}
+                              {generatingContract ? 'Gerando...' : 'Gerar contrato'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => editingId && fetchContracts(editingId)}
+                              className="px-3 py-2 border rounded-lg text-sm inline-flex items-center gap-2"
+                            >
+                              <RefreshCw size={14} />
+                              Atualizar
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="border rounded-xl overflow-auto">
+                        <table className="w-full text-sm min-w-[980px]">
+                          <thead className="bg-slate-50 text-xs uppercase text-slate-600">
+                            <tr>
+                              <th className="px-3 py-2 text-left">Data</th>
+                              <th className="px-3 py-2 text-left">Modelo</th>
+                              <th className="px-3 py-2 text-left">Versao</th>
+                              <th className="px-3 py-2 text-left">Status</th>
+                              <th className="px-3 py-2 text-left">Gerado por</th>
+                              <th className="px-3 py-2 text-left">Erro</th>
+                              <th className="px-3 py-2 text-left">Acoes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {contractsLoading ? (
+                              <tr>
+                                <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+                                  <span className="inline-flex items-center gap-2">
+                                    <Loader2 size={14} className="animate-spin" />
+                                    Carregando contratos...
+                                  </span>
+                                </td>
+                              </tr>
+                            ) : contracts.length === 0 ? (
+                              <tr>
+                                <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+                                  Nenhum contrato gerado para este profissional.
+                                </td>
+                              </tr>
+                            ) : (
+                              contracts.map((contract) => {
+                                const canOpen = Boolean(contract.documentId);
+                                return (
+                                  <tr key={contract.id} className="border-t">
+                                    <td className="px-3 py-2">
+                                      {contract.createdAt ? contract.createdAt.slice(0, 19).replace('T', ' ') : '-'}
+                                    </td>
+                                    <td className="px-3 py-2">{contract.templateName || '-'}</td>
+                                    <td className="px-3 py-2">{contract.templateVersion || '-'}</td>
+                                    <td className="px-3 py-2">
+                                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                                        contract.status === 'GERADO'
+                                          ? 'bg-emerald-100 text-emerald-700'
+                                          : contract.status === 'ERRO'
+                                            ? 'bg-rose-100 text-rose-700'
+                                            : 'bg-slate-100 text-slate-700'
+                                      }`}>
+                                        {contract.status}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2">{contract.generatedBy || '-'}</td>
+                                    <td className="px-3 py-2 text-rose-700">{contract.errorMessage || '-'}</td>
+                                    <td className="px-3 py-2">
+                                      <div className="flex items-center gap-3">
+                                        {canOpen ? (
+                                          <>
+                                            <a
+                                              href={`/api/admin/profissionais/documentos/${encodeURIComponent(contract.documentId as string)}/download?inline=1`}
+                                              target="_blank"
+                                              rel="noreferrer"
+                                              className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
+                                            >
+                                              <Eye size={13} />
+                                              Visualizar
+                                            </a>
+                                            <a
+                                              href={`/api/admin/profissionais/documentos/${encodeURIComponent(contract.documentId as string)}/download`}
+                                              className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
+                                            >
+                                              <Download size={13} />
+                                              Baixar
+                                            </a>
+                                          </>
+                                        ) : (
+                                          <span className="text-xs text-slate-400">Sem arquivo</span>
+                                        )}
+                                        <button
+                                          type="button"
+                                          onClick={generateContractNow}
+                                          disabled={!canEdit || generatingContract}
+                                          className="text-xs px-2 py-1 border rounded-md"
+                                        >
+                                          Gerar novo
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => reprocessContract(contract.id)}
+                                          disabled={!canEdit || contract.status !== 'ERRO' || reprocessingContractId === contract.id}
+                                          className="text-xs px-2 py-1 border rounded-md disabled:opacity-50 inline-flex items-center gap-1"
+                                        >
+                                          {reprocessingContractId === contract.id && <Loader2 size={12} className="animate-spin" />}
+                                          {reprocessingContractId === contract.id ? 'Reprocessando...' : (
+                                            <>
+                                              <RotateCcw size={12} />
+                                              Reprocessar
+                                            </>
+                                          )}
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="px-5 py-3 border-t flex justify-end gap-2"><button type="button" className="px-3 py-2 border rounded-lg" onClick={() => setIsModalOpen(false)}>Cancelar</button><button type="button" onClick={save} disabled={saving || !canEdit} className="px-3 py-2 rounded-lg bg-[#17407E] text-white disabled:opacity-60 inline-flex items-center gap-2">{saving && <Loader2 size={14} className="animate-spin" />}{saving ? 'Salvando...' : 'Salvar'}</button></div>
+            <div className="px-5 py-3 border-t flex justify-end gap-2">
+              <button type="button" className="px-3 py-2 border rounded-lg" onClick={() => setIsModalOpen(false)}>
+                {modalTab === 'contratos' ? 'Fechar' : 'Cancelar'}
+              </button>
+              {modalTab === 'cadastro' && (
+                <button
+                  type="button"
+                  onClick={save}
+                  disabled={saving || !canEdit}
+                  className="px-3 py-2 rounded-lg bg-[#17407E] text-white disabled:opacity-60 inline-flex items-center gap-2"
+                >
+                  {saving && <Loader2 size={14} className="animate-spin" />}
+                  {saving ? 'Salvando...' : 'Salvar'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

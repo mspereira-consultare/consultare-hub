@@ -10,6 +10,7 @@ export type DocumentTypeCode =
   | 'RG_CPF_CNH'
   | 'CURRICULO'
   | 'CERTIDAO_ETICA'
+  | 'CONTRATO_GERADO'
   | 'CONTRATO_ASSINADO'
   | 'OUTRO';
 
@@ -96,6 +97,13 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
     warningDays: 30,
   },
   {
+    code: 'CONTRATO_GERADO',
+    label: 'Contrato Gerado',
+    required: false,
+    hasExpiration: false,
+    warningDays: 0,
+  },
+  {
     code: 'CONTRATO_ASSINADO',
     label: 'Contrato Assinado',
     required: false,
@@ -111,7 +119,7 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
   },
 ];
 
-export const UPLOAD_ONLY_DOCUMENT_TYPES: DocumentTypeCode[] = ['OUTRO'];
+export const UPLOAD_ONLY_DOCUMENT_TYPES: DocumentTypeCode[] = ['OUTRO', 'CONTRATO_GERADO'];
 
 export const CHECKLIST_DOCUMENT_TYPES = DOCUMENT_TYPES.filter(
   (item) => !UPLOAD_ONLY_DOCUMENT_TYPES.includes(item.code)

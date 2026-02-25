@@ -422,6 +422,7 @@ Campos:
 
 Observacao de tipos:
 - aceita os tipos documentais oficiais do modulo e tambem `OUTRO` para anexos livres.
+- contratos gerados automaticamente sao gravados com `doc_type = CONTRATO_GERADO`.
 
 ### `professional_contracts`
 
@@ -435,6 +436,12 @@ Campos:
 - `storage_provider`, `storage_bucket`, `storage_key`
 - `generated_by`, `generated_at`
 - `error_message`, `meta_json`, `created_at`
+
+Status utilizados:
+- `PROCESSANDO`
+- `GERADO`
+- `ERRO`
+- `ASSINADO` (reservado para fluxo de assinatura)
 
 ### `contract_templates`
 

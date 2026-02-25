@@ -137,6 +137,8 @@ Operações implementadas em `frontend/src/lib/permissions_server.ts`:
 | `/api/admin/financial/general-report` | `financeiro` | `view` |
 | `/api/admin/profissionais/:id/documentos` | `profissionais` | `view`/`edit` |
 | `/api/admin/profissionais/documentos/:documentId/download` | `profissionais` | `view` |
+| `/api/admin/profissionais/:id/contratos` | `profissionais` | `view`/`edit` |
+| `/api/admin/profissionais/:id/contratos/:contractId/reprocess` | `profissionais` | `edit` |
 | `/api/admin/contract-templates/:id/download` | `settings` | `view` |
 | `/api/admin/refresh` | mapeado por serviço | `refresh` da página correspondente |
 

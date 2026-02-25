@@ -44,6 +44,27 @@ export type ProfessionalDocument = {
   createdAt: string;
 };
 
+export type ProfessionalContractStatus = 'PROCESSANDO' | 'GERADO' | 'ERRO' | 'ASSINADO';
+
+export type ProfessionalContract = {
+  id: string;
+  professionalId: string;
+  templateId: string | null;
+  templateName: string | null;
+  templateVersion: string;
+  status: ProfessionalContractStatus;
+  storageProvider: string | null;
+  storageBucket: string | null;
+  storageKey: string | null;
+  generatedBy: string;
+  generatedAt: string | null;
+  errorMessage: string | null;
+  documentId: string | null;
+  originalName: string | null;
+  createdAt: string;
+  meta: Record<string, unknown>;
+};
+
 export type Professional = {
   id: string;
   name: string;
