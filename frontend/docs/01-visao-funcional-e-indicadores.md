@@ -444,17 +444,12 @@ Gerenciar usuários (CRUD) e matriz de permissões por página.
 
 ### Objetivo
 
-Gerenciar credenciais de integracao (Feegow e Clinia) e modelos de contrato (.docx).
+Gerenciar credenciais de integracao (Feegow e Clinia).
 
 ### Fonte consumida
 
 - `GET/POST /api/admin/settings`
 - Server action: `frontend/src/app/actions/settings.ts`
-- `GET/POST /api/admin/contract-templates`
-- `PUT /api/admin/contract-templates/:id/mapping`
-- `POST /api/admin/contract-templates/:id/activate`
-- `POST /api/admin/contract-templates/:id/archive`
-- `GET /api/admin/contract-templates/:id/download` (com `?inline=1` para visualizacao)
 
 ### Campos de integracao
 
@@ -463,7 +458,23 @@ Gerenciar credenciais de integracao (Feegow e Clinia) e modelos de contrato (.do
 | Feegow | `username`, `password`, `token/cookie` |
 | Clinia | `token/cookie` |
 
-### Modelos de contrato
+---
+
+## Modelos de Contrato (`/modelos-contrato`)
+
+### Objetivo
+
+Gerenciar upload, mapeamento e ciclo de vida dos modelos de contrato (`.docx`) sem expor credenciais de integracao.
+
+### Fonte consumida
+
+- `GET/POST /api/admin/contract-templates`
+- `PUT /api/admin/contract-templates/:id/mapping`
+- `POST /api/admin/contract-templates/:id/activate`
+- `POST /api/admin/contract-templates/:id/archive`
+- `GET /api/admin/contract-templates/:id/download` (com `?inline=1` para visualizacao)
+
+### Regras de negocio
 
 | Item | Regra |
 |---|---|

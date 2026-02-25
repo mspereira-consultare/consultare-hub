@@ -26,6 +26,7 @@ import {
   ChevronRight,
   Search,
   Stethoscope,
+  FileText,
 } from "lucide-react";
 import { hasPermission, type PageKey } from "@/lib/permissions";
 
@@ -149,6 +150,14 @@ const menuItems: MenuItem[] = [
     pageKey: "users",
   },
   {
+    href: "/modelos-contrato",
+    label: "Modelos de Contrato",
+    icon: FileText,
+    group: "SISTEMA",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "contract_templates",
+  },
+  {
     href: "/settings",
     label: "Configurações",
     icon: Settings,
@@ -183,20 +192,21 @@ export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session } = useSession();
+  const sessionUser = (session?.user as { role?: UserRole; permissions?: unknown } | undefined);
 
   const currentUserRole: UserRole =
-    ((session?.user as any)?.role as UserRole) ?? "OPERADOR";
+    sessionUser?.role ?? "OPERADOR";
 
   const authorizedItems = useMemo(() => {
     return menuItems.filter((item) =>
       hasPermission(
-        (session?.user as any)?.permissions,
+        sessionUser?.permissions,
         item.pageKey,
         "view",
         currentUserRole
       )
     );
-  }, [session, currentUserRole]);
+  }, [sessionUser, currentUserRole]);
 
   const groupsOrdered = useMemo(() => {
     const set = new Set(authorizedItems.map((item) => item.group));

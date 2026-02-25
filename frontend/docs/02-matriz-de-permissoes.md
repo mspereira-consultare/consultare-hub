@@ -32,6 +32,7 @@ Este documento descreve o controle de acesso atual do sistema:
 | `checklist_crc` | `/checklist-crc` |
 | `checklist_recepcao` | `/checklist-recepcao` |
 | `users` | `/users` |
+| `contract_templates` | `/modelos-contrato` |
 | `settings` | `/settings` |
 
 Fonte: `frontend/src/lib/permissions.ts`.
@@ -60,6 +61,7 @@ Fonte: `frontend/src/lib/permissions.ts`.
 | checklist_crc | ✅ | ✅ | ✅ |
 | checklist_recepcao | ✅ | ✅ | ✅ |
 | users | ❌ | ❌ | ❌ |
+| contract_templates | nao | nao | nao |
 | settings | ❌ | ❌ | ❌ |
 
 
@@ -79,6 +81,7 @@ Fonte: `frontend/src/lib/permissions.ts`.
 | checklist_crc | ✅ | ✅ | ✅ |
 | checklist_recepcao | ✅ | ✅ | ✅ |
 | users | ❌ | ❌ | ❌ |
+| contract_templates | nao | nao | nao |
 | settings | ❌ | ❌ | ❌ |
 
 | PageKey | View | Edit | Refresh |
@@ -94,6 +97,7 @@ Fonte: `frontend/src/lib/permissions.ts`.
 | checklist_crc | ✅ | ✅ | ✅ |
 | checklist_recepcao | ✅ | ✅ | ✅ |
 | users | ❌ | ❌ | ❌ |
+| contract_templates | nao | nao | nao |
 | settings | ❌ | ❌ | ❌ |
 
 ## Persistência no Banco
@@ -139,7 +143,7 @@ Operações implementadas em `frontend/src/lib/permissions_server.ts`:
 | `/api/admin/profissionais/documentos/:documentId/download` | `profissionais` | `view` |
 | `/api/admin/profissionais/:id/contratos` | `profissionais` | `view`/`edit` |
 | `/api/admin/profissionais/:id/contratos/:contractId/reprocess` | `profissionais` | `edit` |
-| `/api/admin/contract-templates/:id/download` | `settings` | `view` |
+| `/api/admin/contract-templates/:id/download` | `contract_templates` | `view` |
 | `/api/admin/refresh` | mapeado por serviço | `refresh` da página correspondente |
 
 ## Mapeamento serviço -> permissão de refresh

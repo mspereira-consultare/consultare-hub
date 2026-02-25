@@ -252,7 +252,7 @@ Variáveis necessárias para ativar S3:
 
 ### Componentes novos
 
-- UI em `frontend/src/app/(admin)/settings/contract-templates-tab.tsx` (aba em `/settings`)
+- UI em `frontend/src/app/(admin)/modelos-contrato/page.tsx` usando `frontend/src/app/(admin)/settings/contract-templates-tab.tsx`
 - APIs:
   - `GET/POST /api/admin/contract-templates`
   - `PUT /api/admin/contract-templates/:id/mapping`
@@ -268,7 +268,7 @@ Variáveis necessárias para ativar S3:
 
 ### Fluxo tecnico
 
-1. Upload do `.docx` (settings/edit) com persistencia em storage (S3 provider).
+1. Upload do `.docx` (contract_templates/edit) com persistencia em storage (S3 provider).
 2. Extracao automatica de placeholders no padrao `{{token}}`.
 3. Persistencia do modelo em `contract_templates` com status inicial `draft`.
 4. Mapeamento de placeholders para fontes de dados do profissional.

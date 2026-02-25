@@ -260,7 +260,7 @@ A interface da página `/profissionais` opera em modo hibrido sem bloqueio:
 - upload S3 ativo (incluindo `Visualizar`/`Baixar` por documento).
 
 
-## 9) Modelos de Contrato (Settings)
+## 9) Modelos de Contrato (`/modelos-contrato`)
 
 ### Variaveis recomendadas
 
@@ -269,7 +269,7 @@ A interface da página `/profissionais` opera em modo hibrido sem bloqueio:
 
 ### Fluxo de operacao
 
-1. Abrir `/settings` -> aba `Modelos de Contrato`.
+1. Abrir `/modelos-contrato`.
 2. Upload de arquivo `.docx` com tipo de contrato.
 3. Conferir placeholders detectados.
 4. Mapear placeholders obrigatorios.

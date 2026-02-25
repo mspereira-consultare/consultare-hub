@@ -6,7 +6,6 @@ import {
   CheckCircle, Key, Loader2, Info, AlertTriangle, Cookie
 } from 'lucide-react';
 import { updateFeegowSettings } from "@/app/actions/settings"; 
-import ContractTemplatesTab from './contract-templates-tab';
 
 interface IntegrationConfig {
     service: string;
@@ -28,7 +27,7 @@ export default function SettingsForm({ initialFeegow, initialClinia }: SettingsF
   const [clinia, setClinia] = useState<IntegrationConfig>(initialClinia);
   
   const [showPassFeegow, setShowPassFeegow] = useState(false);
-  const [activeTab, setActiveTab] = useState<'feegow' | 'clinia' | 'templates'>('feegow');
+  const [activeTab, setActiveTab] = useState<'feegow' | 'clinia'>('feegow');
 
   const handleSave = async () => {
     setSaving(true);
@@ -79,25 +78,23 @@ export default function SettingsForm({ initialFeegow, initialClinia }: SettingsF
             Gerencie as credenciais dos serviços externos.
           </p>
         </div>
-        {activeTab !== 'templates' && (
-          <button 
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-              {saving ? (
-                  <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Salvando...
-                  </>
-              ) : (
-                  <>
-                      <Save className="w-4 h-4" />
-                      Salvar Alteracoes
-                  </>
-              )}
-          </button>
-        )}
+        <button 
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+            {saving ? (
+                <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Salvando...
+                </>
+            ) : (
+                <>
+                    <Save className="w-4 h-4" />
+                    Salvar Alteracoes
+                </>
+            )}
+        </button>
       </div>
 
       {/* Tabs */}
@@ -124,16 +121,6 @@ export default function SettingsForm({ initialFeegow, initialClinia }: SettingsF
             >
                 Clinia (CRM)
                 {clinia.is_configured && <CheckCircle className="w-3 h-3 text-emerald-500" />}
-            </button>
-            <button
-                onClick={() => setActiveTab('templates')}
-                className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors border-b-2 ${
-                    activeTab === 'templates' 
-                    ? 'border-blue-600 text-blue-600 bg-blue-50/50' 
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                }`}
-            >
-                Modelos de Contrato
             </button>
         </div>
 
@@ -298,11 +285,6 @@ export default function SettingsForm({ initialFeegow, initialClinia }: SettingsF
                     </div>
                 </div>
             </div>
-
-            <div className={activeTab === 'templates' ? 'block' : 'hidden'}>
-                <ContractTemplatesTab />
-            </div>
-
         </div>
       </div>
     </div>

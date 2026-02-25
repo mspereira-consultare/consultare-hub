@@ -16,6 +16,7 @@ export type PageKey =
   | 'checklist_recepcao'
   | 'ajuda'
   | 'users'
+  | 'contract_templates'
   | 'settings';
 
 export type PagePermission = {
@@ -41,6 +42,7 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'checklist_recepcao', label: 'Checklist Recepcao', path: '/checklist-recepcao' },
   { key: 'ajuda', label: 'Ajuda', path: '/ajuda' },
   { key: 'users', label: 'Usuarios', path: '/users' },
+  { key: 'contract_templates', label: 'Modelos de Contrato', path: '/modelos-contrato' },
   { key: 'settings', label: 'Configuracoes', path: '/settings' },
 ];
 
@@ -96,15 +98,16 @@ const toBool = (value: unknown): boolean => {
 export const sanitizeMatrix = (input: unknown, roleRaw = 'OPERADOR'): PermissionMatrix => {
   const base = getDefaultMatrixByRole(roleRaw);
   if (!input || typeof input !== 'object') return base;
-  const src = input as Record<string, any>;
+  const src = input as Record<string, unknown>;
 
   for (const key of PAGE_KEYS) {
     const raw = src[key];
     if (!raw || typeof raw !== 'object') continue;
+    const item = raw as Record<string, unknown>;
     base[key] = {
-      view: toBool(raw.view),
-      edit: toBool(raw.edit),
-      refresh: toBool(raw.refresh),
+      view: toBool(item.view),
+      edit: toBool(item.edit),
+      refresh: toBool(item.refresh),
     };
   }
 
@@ -143,6 +146,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/checklist-recepcao') return 'checklist_recepcao';
   if (path === '/ajuda') return 'ajuda';
   if (path === '/users') return 'users';
+  if (path === '/modelos-contrato') return 'contract_templates';
   if (path === '/settings') return 'settings';
 
   if (path.startsWith('/api/admin/financial/')) return 'financeiro';
@@ -158,6 +162,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/checklist/crc')) return 'checklist_crc';
   if (path.startsWith('/api/admin/checklist/recepcao')) return 'checklist_recepcao';
   if (path.startsWith('/api/admin/users')) return 'users';
+  if (path.startsWith('/api/admin/contract-templates')) return 'contract_templates';
   if (path.startsWith('/api/admin/settings')) return 'settings';
 
   return null;

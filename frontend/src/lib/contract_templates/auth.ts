@@ -11,13 +11,13 @@ export const requireContractTemplatesPermission = async (action: PermissionActio
   }
 
   const userId = String(session.user.id);
-  const role = String((session.user as any).role || 'OPERADOR').toUpperCase();
+  const role = String((session.user as { role?: string }).role || 'OPERADOR').toUpperCase();
   const db = getDbConnection();
   const permissions = await loadUserPermissionMatrix(db, userId, role);
-  const allowed = hasPermission(permissions, 'settings', action, role);
+  const allowed = hasPermission(permissions, 'contract_templates', action, role);
 
   if (!allowed) {
-    return { ok: false as const, status: 403, error: 'Sem permissao para configuracoes.' };
+    return { ok: false as const, status: 403, error: 'Sem permissao para modelos de contrato.' };
   }
 
   return {
@@ -27,4 +27,3 @@ export const requireContractTemplatesPermission = async (action: PermissionActio
     role,
   };
 };
-
