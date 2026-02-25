@@ -26,10 +26,15 @@ const locateBoundary = (parts: string[], position: number): NodeBoundary => {
   let acc = 0;
   for (let idx = 0; idx < parts.length; idx += 1) {
     const len = parts[idx].length;
-    if (position <= acc + len) {
+    const nextAcc = acc + len;
+    // Regra importante:
+    // quando position cai exatamente na fronteira entre dois nós de texto,
+    // devemos escolher o próximo nó (início), não o anterior (fim),
+    // para evitar "puxar" o placeholder para o parágrafo/run anterior.
+    if (position < nextAcc || (position === nextAcc && idx === parts.length - 1)) {
       return { node: idx, offset: position - acc };
     }
-    acc += len;
+    acc = nextAcc;
   }
   const last = Math.max(0, parts.length - 1);
   return { node: last, offset: parts[last]?.length || 0 };
