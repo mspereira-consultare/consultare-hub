@@ -2,10 +2,11 @@ import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import { getContractTemplateById } from '@/lib/contract_templates/repository';
 import { renderDocxTemplate } from '@/lib/contract_templates/render';
+import { renderContractPdfFromDocxBuffer } from '@/lib/contract_templates/pdf';
 import {
-  createProfessionalDocumentRecord,
   ensureProfessionalsTables,
   getProfessionalById,
+  getProfessionalDocumentById,
   ProfessionalValidationError,
 } from '@/lib/profissionais/repository';
 import type { ProfessionalContract } from '@/lib/profissionais/types';
@@ -19,6 +20,7 @@ type GenerateContractOptions = {
 
 const DOCX_MIME =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const PDF_MIME = 'application/pdf';
 
 const clean = (value: unknown) => String(value ?? '').trim();
 
@@ -71,14 +73,15 @@ const sanitizePart = (value: string) =>
 
 const buildGeneratedContractStorageKey = (
   professionalId: string,
-  professionalName: string
+  professionalName: string,
+  extension: 'docx' | 'pdf'
 ) => {
   const prefix = String(
     process.env.PROFESSIONAL_CONTRACTS_S3_PREFIX || 'profissionais/contratos-gerados/'
   ).replace(/^\/+|\/+$/g, '');
   const safeName = sanitizePart(professionalName) || 'profissional';
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  return `${prefix}/${professionalId}/${stamp}-${safeName}.docx`;
+  return `${prefix}/${professionalId}/${stamp}-${safeName}.${extension}`;
 };
 
 const parseMetaJson = (raw: unknown): Record<string, unknown> => {
@@ -251,6 +254,92 @@ const getProfessionalContractRow = async (
   return mapProfessionalContract(rows[0]);
 };
 
+export const getProfessionalContractById = async (
+  db: DbInterface,
+  professionalId: string,
+  contractId: string
+): Promise<ProfessionalContract | null> => {
+  await ensureProfessionalsTables(db);
+  return getProfessionalContractRow(db, professionalId, contractId);
+};
+
+type ContractFilePayload = {
+  storageProvider: string;
+  storageBucket: string | null;
+  storageKey: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+};
+
+const parseFileFromMeta = (
+  contract: ProfessionalContract,
+  format: 'pdf' | 'docx'
+): ContractFilePayload | null => {
+  const files = contract.meta?.files;
+  if (!files || typeof files !== 'object' || Array.isArray(files)) return null;
+  const maybe = (files as Record<string, unknown>)[format];
+  if (!maybe || typeof maybe !== 'object' || Array.isArray(maybe)) return null;
+  const item = maybe as Record<string, unknown>;
+  const storageProvider = clean(item.storageProvider);
+  const storageKey = clean(item.storageKey);
+  if (!storageProvider || !storageKey) return null;
+  return {
+    storageProvider,
+    storageBucket: clean(item.storageBucket) || null,
+    storageKey,
+    originalName: clean(item.originalName),
+    mimeType: clean(item.mimeType),
+    sizeBytes: Number(item.sizeBytes || 0),
+  };
+};
+
+const fallbackDocxFileFromLegacyContract = async (
+  db: DbInterface,
+  contract: ProfessionalContract
+): Promise<ContractFilePayload | null> => {
+  if (contract.storageProvider && contract.storageKey) {
+    return {
+      storageProvider: contract.storageProvider,
+      storageBucket: contract.storageBucket || null,
+      storageKey: contract.storageKey,
+      originalName:
+        contract.originalName || `contrato-${sanitizePart(contract.professionalId)}.docx`,
+      mimeType: DOCX_MIME,
+      sizeBytes: 0,
+    };
+  }
+
+  if (contract.documentId) {
+    const linked = await getProfessionalDocumentById(db, contract.documentId);
+    if (linked) {
+      return {
+        storageProvider: linked.storageProvider,
+        storageBucket: linked.storageBucket || null,
+        storageKey: linked.storageKey,
+        originalName: linked.originalName,
+        mimeType: linked.mimeType || DOCX_MIME,
+        sizeBytes: Number(linked.sizeBytes || 0),
+      };
+    }
+  }
+
+  return null;
+};
+
+export const resolveProfessionalContractFile = async (
+  db: DbInterface,
+  contract: ProfessionalContract,
+  format: 'pdf' | 'docx'
+): Promise<ContractFilePayload | null> => {
+  const fromMeta = parseFileFromMeta(contract, format);
+  if (fromMeta) return fromMeta;
+  if (format === 'docx') {
+    return fallbackDocxFileFromLegacyContract(db, contract);
+  }
+  return null;
+};
+
 export const listProfessionalContractHistory = async (
   db: DbInterface,
   professionalId: string
@@ -369,6 +458,7 @@ export const generateProfessionalContract = async (
   });
 
   let uploadedKey: { bucket: string | null; key: string } | null = null;
+  let uploadedPdfKey: { bucket: string | null; key: string } | null = null;
   try {
     const templateProvider = getStorageProviderByName(template.storageProvider);
     const templateStream = await templateProvider.getFileStream({
@@ -376,46 +466,48 @@ export const generateProfessionalContract = async (
       key: template.storageKey,
     });
     const templateBuffer = await streamToBuffer(templateStream);
-    const outputBuffer = await renderDocxTemplate(templateBuffer, resolvedValues);
+    const outputDocxBuffer = await renderDocxTemplate(templateBuffer, resolvedValues);
+    const outputPdfBuffer = await renderContractPdfFromDocxBuffer(outputDocxBuffer);
 
     const uploadProvider = getStorageProvider();
-    const storageKey = buildGeneratedContractStorageKey(professionalId, professional.name);
-    const uploaded = await uploadProvider.uploadFile({
-      key: storageKey,
-      body: outputBuffer,
+    const docxStorageKey = buildGeneratedContractStorageKey(professionalId, professional.name, 'docx');
+    const pdfStorageKey = buildGeneratedContractStorageKey(professionalId, professional.name, 'pdf');
+    const uploadedDocx = await uploadProvider.uploadFile({
+      key: docxStorageKey,
+      body: outputDocxBuffer,
       contentType: DOCX_MIME,
       metadata: {
         professionalId,
         contractId,
         templateId: template.id,
+        fileFormat: 'docx',
       },
     });
-    uploadedKey = { bucket: uploaded.bucket, key: uploaded.key };
+    uploadedKey = { bucket: uploadedDocx.bucket, key: uploadedDocx.key };
 
-    const originalName = `contrato-${sanitizePart(professional.name) || professionalId}-v${template.version}.docx`;
-    const document = await createProfessionalDocumentRecord(
-      db,
-      professionalId,
-      {
-        docType: 'CONTRATO_GERADO',
-        originalName,
-        mimeType: DOCX_MIME,
-        sizeBytes: outputBuffer.length,
-        expiresAt: null,
-        storageProvider: uploaded.provider,
-        storageBucket: uploaded.bucket,
-        storageKey: uploaded.key,
-        uploadedBy: actorUserId,
+    const uploadedPdf = await uploadProvider.uploadFile({
+      key: pdfStorageKey,
+      body: outputPdfBuffer,
+      contentType: PDF_MIME,
+      metadata: {
+        professionalId,
+        contractId,
+        templateId: template.id,
+        fileFormat: 'pdf',
       },
-      actorUserId
-    );
+    });
+    uploadedPdfKey = { bucket: uploadedPdf.bucket, key: uploadedPdf.key };
+
+    const baseName = `contrato-${sanitizePart(professional.name) || professionalId}-v${template.version}`;
+    const docxName = `${baseName}.docx`;
+    const pdfName = `${baseName}.pdf`;
 
     const generatedAt = new Date().toISOString();
     await updateContractRow(db, contractId, {
       status: 'GERADO',
-      storageProvider: uploaded.provider,
-      storageBucket: uploaded.bucket,
-      storageKey: uploaded.key,
+      storageProvider: uploadedDocx.provider,
+      storageBucket: uploadedDocx.bucket,
+      storageKey: uploadedDocx.key,
       generatedAt,
       errorMessage: null,
       metaJson: {
@@ -424,8 +516,26 @@ export const generateProfessionalContract = async (
         templateId: template.id,
         templateName: template.name,
         templateVersion: template.version,
-        documentId: document.id,
-        originalName,
+        documentId: null,
+        originalName: docxName,
+        files: {
+          docx: {
+            storageProvider: uploadedDocx.provider,
+            storageBucket: uploadedDocx.bucket,
+            storageKey: uploadedDocx.key,
+            originalName: docxName,
+            mimeType: DOCX_MIME,
+            sizeBytes: outputDocxBuffer.length,
+          },
+          pdf: {
+            storageProvider: uploadedPdf.provider,
+            storageBucket: uploadedPdf.bucket,
+            storageKey: uploadedPdf.key,
+            originalName: pdfName,
+            mimeType: PDF_MIME,
+            sizeBytes: outputPdfBuffer.length,
+          },
+        },
       },
     });
 
@@ -433,8 +543,9 @@ export const generateProfessionalContract = async (
       contractId,
       templateId: template.id,
       templateVersion: template.version,
-      documentId: document.id,
-      storageKey: uploaded.key,
+      storageDocxKey: uploadedDocx.key,
+      storagePdfKey: uploadedPdf.key,
+      generatedFormats: ['docx', 'pdf'],
     });
 
     const finalRow = await getProfessionalContractRow(db, professionalId, contractId);
@@ -444,6 +555,14 @@ export const generateProfessionalContract = async (
     return finalRow;
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : String(error);
+    if (uploadedPdfKey?.key) {
+      try {
+        const provider = getStorageProvider();
+        await provider.deleteFile({ bucket: uploadedPdfKey.bucket, key: uploadedPdfKey.key });
+      } catch (cleanupError) {
+        console.error('Falha ao remover PDF gerado apos erro:', cleanupError);
+      }
+    }
     if (uploadedKey?.key) {
       try {
         const provider = getStorageProvider();

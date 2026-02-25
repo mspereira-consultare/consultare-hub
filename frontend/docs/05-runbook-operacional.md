@@ -293,8 +293,8 @@ A interface da página `/profissionais` opera em modo hibrido sem bloqueio:
 2. Acessar aba `Contratos`.
 3. Clicar `Gerar contrato`.
 4. Validar novo registro em `professional_contracts` com status `GERADO`.
-5. Validar documento em `professional_documents` com `doc_type = CONTRATO_GERADO`.
-6. Validar botoes `Visualizar` e `Baixar` no historico.
+5. Validar no `meta_json` do contrato os dois formatos gerados (`files.pdf` e `files.docx`).
+6. Validar botoes `Visualizar PDF`, `Baixar PDF` e `Baixar Word` no historico.
 7. Em caso de erro, validar status `ERRO` e botao `Reprocessar`.
 
 ### Endpoints envolvidos
@@ -302,3 +302,4 @@ A interface da página `/profissionais` opera em modo hibrido sem bloqueio:
 - `GET /api/admin/profissionais/:id/contratos`
 - `POST /api/admin/profissionais/:id/contratos`
 - `POST /api/admin/profissionais/:id/contratos/:contractId/reprocess`
+- `GET /api/admin/profissionais/:id/contratos/:contractId/download?format=pdf|docx`

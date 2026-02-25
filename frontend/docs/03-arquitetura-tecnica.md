@@ -261,6 +261,7 @@ Variáveis necessárias para ativar S3:
   - `GET /api/admin/contract-templates/:id/download` (inline/attachment)
   - `GET/POST /api/admin/profissionais/:id/contratos`
   - `POST /api/admin/profissionais/:id/contratos/:contractId/reprocess`
+  - `GET /api/admin/profissionais/:id/contratos/:contractId/download?format=pdf|docx`
 - Dominio:
   - `frontend/src/lib/contract_templates/repository.ts`
   - `frontend/src/lib/contract_templates/placeholders.ts`
@@ -275,7 +276,8 @@ Variáveis necessárias para ativar S3:
 5. Ativacao do modelo somente apos mapeamento obrigatorio completo.
 6. Cadastro de profissional passa a vincular `contract_template_id` (modelo ativo).
 7. Geracao manual do contrato na aba `Contratos` do modal do profissional.
-8. Contrato gerado e salvo no S3, registrado em `professional_contracts` e exposto em `professional_documents` com tipo `CONTRATO_GERADO`.
+8. Contrato gerado e salvo no S3 em dois formatos (`DOCX` e `PDF`), registrado em `professional_contracts` (metadados em `meta_json`).
+9. A tabela `professional_documents` passa a receber apenas uploads manuais (ex.: `CONTRATO_ASSINADO`), sem insercao automatica de contrato gerado.
 
 ### Tabelas envolvidas
 

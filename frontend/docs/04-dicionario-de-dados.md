@@ -422,7 +422,8 @@ Campos:
 
 Observacao de tipos:
 - aceita os tipos documentais oficiais do modulo e tambem `OUTRO` para anexos livres.
-- contratos gerados automaticamente sao gravados com `doc_type = CONTRATO_GERADO`.
+- contratos gerados automaticamente nao sao mais gravados nesta tabela.
+- para contrato final assinado, usar upload manual com `doc_type = CONTRATO_ASSINADO`.
 
 ### `professional_contracts`
 
@@ -433,9 +434,14 @@ Campos:
 - `professional_id`
 - `template_key`, `template_version`
 - `status`
-- `storage_provider`, `storage_bucket`, `storage_key`
+- `storage_provider`, `storage_bucket`, `storage_key` (referencia principal, legado DOCX)
 - `generated_by`, `generated_at`
 - `error_message`, `meta_json`, `created_at`
+
+Uso atual do `meta_json`:
+- metadados do template;
+- origem da geracao (`manual`/`reprocess`);
+- arquivos gerados por formato (`files.docx` e `files.pdf`), com provider/bucket/key/nome/mime/size.
 
 Status utilizados:
 - `PROCESSANDO`
@@ -495,4 +501,5 @@ Escrita: APIs de criacao/edicao do modulo.
 ### Nota de escrita
 
 No estado atual, `professional_documents` é alimentada por `POST /api/admin/profissionais/:id/documentos` com storage S3.
+Contratos gerados automaticamente ficam em `professional_contracts` e sao baixados por endpoint proprio.
 O modulo opera em modo hibrido: checklist manual + upload em S3 no mesmo fluxo.

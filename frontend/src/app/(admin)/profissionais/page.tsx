@@ -125,6 +125,23 @@ const formatDateBr = (isoDate: string | null | undefined) => {
   return `${m[3]}/${m[2]}/${m[1]}`;
 };
 
+const hasGeneratedFileInMeta = (contract: ProfessionalContract, format: 'pdf' | 'docx') => {
+  const filesRaw = contract.meta?.files;
+  if (!filesRaw || typeof filesRaw !== 'object' || Array.isArray(filesRaw)) return false;
+  const byFormat = (filesRaw as Record<string, unknown>)[format];
+  if (!byFormat || typeof byFormat !== 'object' || Array.isArray(byFormat)) return false;
+  const file = byFormat as Record<string, unknown>;
+  return Boolean(String(file.storageProvider || '').trim() && String(file.storageKey || '').trim());
+};
+
+const hasGeneratedDocx = (contract: ProfessionalContract) => {
+  if (hasGeneratedFileInMeta(contract, 'docx')) return true;
+  return Boolean(contract.documentId || contract.storageKey);
+};
+
+const hasGeneratedPdf = (contract: ProfessionalContract) =>
+  hasGeneratedFileInMeta(contract, 'pdf');
+
 export default function ProfessionalsPage() {
   const { data: session } = useSession();
   const role = String((session?.user as any)?.role || 'OPERADOR').toUpperCase();
@@ -307,7 +324,10 @@ export default function ProfessionalsPage() {
       const res = await fetch(`/api/admin/profissionais/${encodeURIComponent(professionalId)}/documentos`);
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Falha ao carregar documentos.');
-      setUploadedDocs(Array.isArray(data?.data) ? data.data : []);
+      const docs = Array.isArray(data?.data) ? data.data : [];
+      setUploadedDocs(
+        docs.filter((doc: ProfessionalDocument) => String(doc?.docType || '').toUpperCase() !== 'CONTRATO_GERADO')
+      );
     } catch (e: any) {
       setUploadedDocs([]);
       setModalError(e?.message || 'Falha ao carregar documentos.');
@@ -350,8 +370,8 @@ export default function ProfessionalsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Falha ao gerar contrato.');
-      setModalNotice('Contrato gerado com sucesso.');
-      await Promise.all([fetchContracts(editingId), fetchDocuments(editingId)]);
+      setModalNotice('Contrato gerado com sucesso (PDF + Word).');
+      await fetchContracts(editingId);
     } catch (e: any) {
       setModalError(e?.message || 'Falha ao gerar contrato.');
     } finally {
@@ -371,8 +391,8 @@ export default function ProfessionalsPage() {
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Falha ao reprocessar contrato.');
-      setModalNotice('Contrato reprocessado com sucesso.');
-      await Promise.all([fetchContracts(editingId), fetchDocuments(editingId)]);
+      setModalNotice('Contrato reprocessado com sucesso (PDF + Word).');
+      await fetchContracts(editingId);
     } catch (e: any) {
       setModalError(e?.message || 'Falha ao reprocessar contrato.');
     } finally {
@@ -1269,7 +1289,9 @@ export default function ProfessionalsPage() {
                               </tr>
                             ) : (
                               contracts.map((contract) => {
-                                const canOpen = Boolean(contract.documentId);
+                                const hasPdf = hasGeneratedPdf(contract);
+                                const hasDocx = hasGeneratedDocx(contract);
+                                const downloadBaseHref = `/api/admin/profissionais/${encodeURIComponent(contract.professionalId)}/contratos/${encodeURIComponent(contract.id)}/download`;
                                 return (
                                   <tr key={contract.id} className="border-t">
                                     <td className="px-3 py-2">
@@ -1292,27 +1314,40 @@ export default function ProfessionalsPage() {
                                     <td className="px-3 py-2 text-rose-700">{contract.errorMessage || '-'}</td>
                                     <td className="px-3 py-2">
                                       <div className="flex items-center gap-3">
-                                        {canOpen ? (
-                                          <>
-                                            <a
-                                              href={`/api/admin/profissionais/documentos/${encodeURIComponent(contract.documentId as string)}/download?inline=1`}
-                                              target="_blank"
-                                              rel="noreferrer"
-                                              className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
-                                            >
-                                              <Eye size={13} />
-                                              Visualizar
-                                            </a>
-                                            <a
-                                              href={`/api/admin/profissionais/documentos/${encodeURIComponent(contract.documentId as string)}/download`}
-                                              className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
-                                            >
-                                              <Download size={13} />
-                                              Baixar
-                                            </a>
-                                          </>
-                                        ) : (
+                                        {!hasPdf && !hasDocx ? (
                                           <span className="text-xs text-slate-400">Sem arquivo</span>
+                                        ) : (
+                                          <>
+                                            {hasPdf && (
+                                              <a
+                                                href={`${downloadBaseHref}?format=pdf&inline=1`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
+                                              >
+                                                <Eye size={13} />
+                                                Visualizar PDF
+                                              </a>
+                                            )}
+                                            {hasPdf && (
+                                              <a
+                                                href={`${downloadBaseHref}?format=pdf`}
+                                                className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
+                                              >
+                                                <Download size={13} />
+                                                Baixar PDF
+                                              </a>
+                                            )}
+                                            {hasDocx && (
+                                              <a
+                                                href={`${downloadBaseHref}?format=docx`}
+                                                className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
+                                              >
+                                                <Download size={13} />
+                                                Baixar Word
+                                              </a>
+                                            )}
+                                          </>
                                         )}
                                         <button
                                           type="button"
