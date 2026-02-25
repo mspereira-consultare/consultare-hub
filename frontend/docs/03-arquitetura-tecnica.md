@@ -218,8 +218,10 @@ O modulo cria/garante as tabelas em runtime:
 
 ### Observacao de storage
 
-A estrutura ja esta preparada para storage externo, mas a fase atual usa controle documental hibrido manual.
-A ativacao de upload em S3 sera adicionada em etapa posterior sem trocar o contrato de API base do modulo.
+A estrutura usa controle documental hibrido:
+- checklist manual (transicao operacional);
+- upload/download real via S3.
+O contrato de API permanece estavel para os dois modos.
 
 ### Storage plug-and-play (S3)
 
@@ -231,6 +233,7 @@ Nova camada server-only de storage:
 Uso atual:
 - upload via API (`POST /api/admin/profissionais/:id/documentos`)
 - download via API autenticada (`GET /api/admin/profissionais/documentos/:documentId/download`)
+- visualizacao inline (`GET /api/admin/profissionais/documentos/:documentId/download?inline=1`)
 
 Variáveis necessárias para ativar S3:
 - `STORAGE_PROVIDER=s3`
@@ -250,6 +253,7 @@ Variáveis necessárias para ativar S3:
   - `PUT /api/admin/contract-templates/:id/mapping`
   - `POST /api/admin/contract-templates/:id/activate`
   - `POST /api/admin/contract-templates/:id/archive`
+  - `GET /api/admin/contract-templates/:id/download` (inline/attachment)
 - Dominio:
   - `frontend/src/lib/contract_templates/repository.ts`
   - `frontend/src/lib/contract_templates/placeholders.ts`

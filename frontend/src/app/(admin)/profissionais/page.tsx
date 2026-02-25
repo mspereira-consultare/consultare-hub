@@ -2,9 +2,10 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { AlertCircle, ChevronDown, ChevronRight, Download, Edit3, FileUp, Loader2, Plus, RefreshCw, Search, User, X } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronRight, Download, Edit3, Eye, FileUp, Loader2, Plus, RefreshCw, Search, User, X } from 'lucide-react';
 import {
   BRAZIL_UFS,
+  CHECKLIST_DOCUMENT_TYPES,
   CONTRACT_TYPES,
   COUNCIL_TYPES,
   DOCUMENT_TYPES,
@@ -30,7 +31,7 @@ type FormState = {
 
 const pageSize = 20;
 
-const newChecklist = () => DOCUMENT_TYPES.map((d) => ({ docType: d.code, hasPhysicalCopy: false, hasDigitalCopy: false, expiresAt: '', notes: '' }));
+const newChecklist = () => CHECKLIST_DOCUMENT_TYPES.map((d) => ({ docType: d.code, hasPhysicalCopy: false, hasDigitalCopy: false, expiresAt: '', notes: '' }));
 const stripDigits = (value: string | null | undefined) => String(value || '').replace(/\D/g, '');
 
 const formatCpf = (value: string | null | undefined) => {
@@ -542,17 +543,9 @@ export default function ProfessionalsPage() {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 p-4 flex items-center justify-center">
-          <div className="w-full max-w-6xl bg-white border rounded-2xl max-h-[92vh] overflow-hidden">
+          <div className="w-full max-w-[95vw] xl:max-w-[1500px] bg-white border rounded-2xl max-h-[95vh] overflow-hidden">
             <div className="px-5 py-3 border-b flex items-center justify-between"><h2 className="font-semibold text-slate-800">{editingId ? 'Editar profissional' : 'Novo profissional'}</h2><button onClick={() => setIsModalOpen(false)} className="p-1 rounded hover:bg-slate-100"><X size={16} /></button></div>
-            <div className="p-5 max-h-[78vh] overflow-auto space-y-6">
-              <div className="px-3 py-2 border border-amber-200 bg-amber-50 rounded-lg text-amber-800 text-sm flex items-start gap-2">
-                <AlertCircle size={14} className="mt-0.5" />
-                <span>
-                  Upload via S3 ainda esta em implementacao assistida. O checklist manual continua ativo.
-                  O upload de arquivos e opcional para cadastro/edicao.
-                </span>
-              </div>
-
+            <div className="p-5 max-h-[84vh] overflow-auto space-y-6">
               {modalError && (
                 <div className="px-3 py-2 border border-rose-200 bg-rose-50 rounded-lg text-rose-700 text-sm flex items-center gap-2">
                   <AlertCircle size={14} />
@@ -1050,13 +1043,24 @@ export default function ProfessionalsPage() {
                                 <td className="px-2 py-2">{doc.expiresAt || '-'}</td>
                                 <td className="px-2 py-2">{doc.createdAt ? doc.createdAt.slice(0, 19).replace('T', ' ') : '-'}</td>
                                 <td className="px-2 py-2">
-                                  <a
-                                    href={`/api/admin/profissionais/documentos/${encodeURIComponent(doc.id)}/download`}
-                                    className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
-                                  >
-                                    <Download size={13} />
-                                    Baixar
-                                  </a>
+                                  <div className="flex items-center gap-3">
+                                    <a
+                                      href={`/api/admin/profissionais/documentos/${encodeURIComponent(doc.id)}/download?inline=1`}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
+                                    >
+                                      <Eye size={13} />
+                                      Visualizar
+                                    </a>
+                                    <a
+                                      href={`/api/admin/profissionais/documentos/${encodeURIComponent(doc.id)}/download`}
+                                      className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
+                                    >
+                                      <Download size={13} />
+                                      Baixar
+                                    </a>
+                                  </div>
                                 </td>
                               </tr>
                             ))

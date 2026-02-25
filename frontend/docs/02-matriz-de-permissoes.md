@@ -135,6 +135,9 @@ Operações implementadas em `frontend/src/lib/permissions_server.ts`:
 | `/api/admin/checklist/crc` | `checklist_crc` | `view`/`edit` |
 | `/api/admin/checklist/recepcao` | `checklist_recepcao` | `view`/`edit` |
 | `/api/admin/financial/general-report` | `financeiro` | `view` |
+| `/api/admin/profissionais/:id/documentos` | `profissionais` | `view`/`edit` |
+| `/api/admin/profissionais/documentos/:documentId/download` | `profissionais` | `view` |
+| `/api/admin/contract-templates/:id/download` | `settings` | `view` |
 | `/api/admin/refresh` | mapeado por serviço | `refresh` da página correspondente |
 
 ## Mapeamento serviço -> permissão de refresh

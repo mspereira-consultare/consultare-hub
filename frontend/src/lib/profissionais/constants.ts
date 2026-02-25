@@ -10,7 +10,8 @@ export type DocumentTypeCode =
   | 'RG_CPF_CNH'
   | 'CURRICULO'
   | 'CERTIDAO_ETICA'
-  | 'CONTRATO_ASSINADO';
+  | 'CONTRATO_ASSINADO'
+  | 'OUTRO';
 
 export type CertidaoStatus = 'OK' | 'VENCENDO' | 'VENCIDA' | 'PENDENTE';
 
@@ -101,9 +102,22 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
     hasExpiration: false,
     warningDays: 0,
   },
+  {
+    code: 'OUTRO',
+    label: 'Outro',
+    required: false,
+    hasExpiration: false,
+    warningDays: 0,
+  },
 ];
 
-export const REQUIRED_DOCUMENT_TYPES = DOCUMENT_TYPES.filter((item) => item.required);
+export const UPLOAD_ONLY_DOCUMENT_TYPES: DocumentTypeCode[] = ['OUTRO'];
+
+export const CHECKLIST_DOCUMENT_TYPES = DOCUMENT_TYPES.filter(
+  (item) => !UPLOAD_ONLY_DOCUMENT_TYPES.includes(item.code)
+);
+
+export const REQUIRED_DOCUMENT_TYPES = CHECKLIST_DOCUMENT_TYPES.filter((item) => item.required);
 
 export const CONTRACT_TYPES: ContractTypeDef[] = [
   {

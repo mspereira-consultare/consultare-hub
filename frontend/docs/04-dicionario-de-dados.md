@@ -403,7 +403,8 @@ Campos:
 - `notes`
 - `verified_by`, `verified_at`, `updated_at`
 
-Uso: base para pendencias enquanto upload em S3 nao esta ativo.
+Uso: base de pendencias no modo hibrido, junto com `professional_documents`.
+Observacao: o tipo `OUTRO` e upload-only (nao faz parte deste checklist).
 
 ### `professional_documents`
 
@@ -418,6 +419,9 @@ Campos:
 - `expires_at`
 - `is_active`
 - `uploaded_by`, `created_at`
+
+Observacao de tipos:
+- aceita os tipos documentais oficiais do modulo e tambem `OUTRO` para anexos livres.
 
 ### `professional_contracts`
 
@@ -484,4 +488,4 @@ Escrita: APIs de criacao/edicao do modulo.
 ### Nota de escrita
 
 No estado atual, `professional_documents` é alimentada por `POST /api/admin/profissionais/:id/documentos` com storage S3.
-A tela continua em transição com checklist manual até conclusão da validação funcional do upload no fluxo de operação.
+O modulo opera em modo hibrido: checklist manual + upload em S3 no mesmo fluxo.

@@ -247,14 +247,17 @@ WHERE scheduled_at BETWEEN CONCAT(CURDATE(),' 00:00:00') AND CONCAT(CURDATE(),' 
 ### Smoke test recomendado
 
 1. Criar/editar um profissional em `/profissionais`.
-2. Enviar arquivo por endpoint `POST /api/admin/profissionais/:id/documentos` (manual/API client).
+2. Enviar arquivo por endpoint `POST /api/admin/profissionais/:id/documentos` (ou pela UI do modal).
 3. Validar registro em `professional_documents`.
-4. Baixar o mesmo arquivo em `GET /api/admin/profissionais/documentos/:documentId/download`.
-5. Validar auditoria em `professional_audit_log` (`DOCUMENT_UPLOADED` e `DOCUMENT_DOWNLOADED`).
+4. Visualizar o mesmo arquivo em `GET /api/admin/profissionais/documentos/:documentId/download?inline=1`.
+5. Baixar em `GET /api/admin/profissionais/documentos/:documentId/download`.
+6. Validar auditoria em `professional_audit_log` (`DOCUMENT_UPLOADED` e `DOCUMENT_DOWNLOADED`).
 
 ### Observação de rollout
 
-A interface da página `/profissionais` mantém aviso de transição até validação final do fluxo S3 em produção.
+A interface da página `/profissionais` opera em modo hibrido sem bloqueio:
+- checklist manual de transicao;
+- upload S3 ativo (incluindo `Visualizar`/`Baixar` por documento).
 
 
 ## 9) Modelos de Contrato (Settings)
@@ -276,6 +279,8 @@ A interface da página `/profissionais` mantém aviso de transição até valida
 ### Checklist rapido de validacao
 
 - API `GET /api/admin/contract-templates?mode=all` responde com modelos.
+- API `GET /api/admin/contract-templates/:id/download?inline=1` abre o modelo para visualizacao.
+- API `GET /api/admin/contract-templates/:id/download` baixa o `.docx`.
 - API `GET /api/admin/profissionais/options` retorna `activeContractTemplates`.
 - `POST /api/admin/profissionais` aceita `contractTemplateId` valido/ativo.
 - Vinculo invalido (modelo inativo ou tipo divergente) retorna erro 400.

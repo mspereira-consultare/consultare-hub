@@ -44,5 +44,6 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 
 - Modulo `/profissionais` iniciado com APIs e UI base para cadastro da carteira medica.
 - O dicionario e a arquitetura ja incluem as novas tabelas `professional_*`.
-- Fluxo documental em modo hibrido (manual) durante a transicao para upload em S3.
-- Módulo `/profissionais`: APIs específicas de registros/checklist/documentos e camada de storage S3 (server-side) já documentadas.
+- Fluxo documental em modo hibrido (checklist manual + upload S3 ativo).
+- Modulo `/profissionais`: APIs de documentos com `download` e `visualizacao inline` documentadas.
+- Settings/modelos: `download` e `visualizacao` de templates adicionados ao fluxo tecnico.

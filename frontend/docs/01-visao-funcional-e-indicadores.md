@@ -454,6 +454,7 @@ Gerenciar credenciais de integracao (Feegow e Clinia) e modelos de contrato (.do
 - `PUT /api/admin/contract-templates/:id/mapping`
 - `POST /api/admin/contract-templates/:id/activate`
 - `POST /api/admin/contract-templates/:id/archive`
+- `GET /api/admin/contract-templates/:id/download` (com `?inline=1` para visualizacao)
 
 ### Campos de integracao
 
@@ -468,9 +469,10 @@ Gerenciar credenciais de integracao (Feegow e Clinia) e modelos de contrato (.do
 |---|---|
 | Upload | Aceita somente `.docx` |
 | Placeholders | Extraidos automaticamente no padrao `{{token}}` |
-| Mapeamento | Placeholder deve ser associado a fonte de dados |
+| Mapeamento | Placeholder deve ser associado a fonte de dados; secao inicia recolhida e abre em `Mapear` |
 | Ativacao | Exige mapeamento obrigatorio completo |
 | Arquivamento | Remove da lista de ativos sem perda de historico |
+| Arquivo do modelo | A tabela permite `Visualizar` e `Baixar` o `.docx` armazenado |
 
 ---
 
@@ -520,7 +522,7 @@ IDs disponíveis em `frontend/src/app/(admin)/metas/constants.ts`:
 Centralizar o cadastro da carteira de profissionais, com foco em:
 - dados contratuais (PF/PJ e tipo de contrato);
 - registros regionais (CRM/CRO/CRP etc.) com registro principal;
-- controle documental em modo hibrido (manual + upload futuro);
+- controle documental em modo hibrido (checklist manual + upload S3 ativo);
 - status de pendencias e vencimento da certidao etica.
 
 ### Filtros
@@ -550,13 +552,15 @@ Centralizar o cadastro da carteira de profissionais, com foco em:
 
 ### Observacao operacional
 
-Na fase atual, o controle documental continua funcionando no modo de transicao:
+No fluxo atual:
 - o usuario pode marcar manualmente copia fisica/digital por tipo de documento;
-- upload em S3 entra depois sem quebrar o fluxo atual.
+- tambem pode fazer upload real de arquivos via S3 no mesmo modal;
+- o tipo `OUTRO` aparece apenas no upload (nao entra no checklist manual e nao altera o indicador `X/Y` de documentos).
 
 ### Evolução técnica (18/02/2026)
 
 - Endpoints de documentos para o módulo foram adicionados:
   - `GET/POST /api/admin/profissionais/:id/documentos`
   - `GET /api/admin/profissionais/documentos/:documentId/download`
-- A UI mantém aviso de transição e prioriza checklist manual até validação final do S3 em produção.
+- A tabela de documentos do modal permite `Visualizar` (`?inline=1`) e `Baixar`.
+- O modal foi ampliado para reduzir scroll e manter mais campos visiveis.

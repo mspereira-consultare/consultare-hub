@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import { ensureContractTemplatesTables } from '@/lib/contract_templates/repository';
 import {
+  CHECKLIST_DOCUMENT_TYPES,
   CERTIDAO_DOC_TYPE,
   CONTRACT_TYPES,
   DOCUMENT_TYPES,
@@ -222,7 +223,7 @@ const withChecklistDefaults = (
     map.set(item.docType, item);
   }
 
-  for (const def of DOCUMENT_TYPES) {
+  for (const def of CHECKLIST_DOCUMENT_TYPES) {
     if (!map.has(def.code)) {
       map.set(def.code, {
         docType: def.code,

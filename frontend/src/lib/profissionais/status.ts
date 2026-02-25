@@ -1,6 +1,6 @@
 import {
+  CHECKLIST_DOCUMENT_TYPES,
   CERTIDAO_DOC_TYPE,
-  DOCUMENT_TYPES,
   DOCUMENT_VALIDATION_MODE,
   REQUIRED_DOCUMENT_TYPES,
   type CertidaoStatus,
@@ -135,9 +135,9 @@ export const computeDocProgress = (
   documents: ProfessionalDocument[]
 ) => {
   let done = 0;
-  const total = DOCUMENT_TYPES.length;
+  const total = CHECKLIST_DOCUMENT_TYPES.length;
 
-  for (const item of DOCUMENT_TYPES) {
+  for (const item of CHECKLIST_DOCUMENT_TYPES) {
     const activeDoc = hasActiveDocument(documents, item.code);
     const manual = hasManualEvidence(findChecklist(checklist, item.code));
     const ok = DOCUMENT_VALIDATION_MODE === 'hybrid' ? activeDoc || manual : activeDoc;
