@@ -149,6 +149,34 @@ export type ProfessionalDocumentUploadInput = {
   uploadedBy: string;
 };
 
+export type FeegowProcedureCatalogItem = {
+  procedimentoId: number;
+  nome: string;
+  codigo: string | null;
+  tipoProcedimento: number | null;
+  grupoProcedimento: number | null;
+  valor: number;
+  updatedAt: string | null;
+};
+
+export type ProfessionalProcedureRate = {
+  id: string;
+  professionalId: string;
+  procedimentoId: number;
+  procedimentoNome: string;
+  valorBase: number;
+  valorProfissional: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProfessionalProcedureRateInput = {
+  procedimentoId: number;
+  procedimentoNome?: string | null;
+  valorBase?: number | null;
+  valorProfissional?: number | null;
+};
+
 export type ProfessionalFilters = {
   search: string;
   status: 'all' | 'active' | 'inactive' | 'pending';

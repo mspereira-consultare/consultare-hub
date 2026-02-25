@@ -113,6 +113,15 @@ def list_procedures():
         return df[list(cols.keys())].rename(columns=cols)
     return pd.DataFrame()
 
+def fetch_procedures_catalog(extra_params=None):
+    """
+    Retorna o catalogo bruto de procedimentos da Feegow (campos completos).
+    Pode receber filtros opcionais em extra_params.
+    """
+    params = extra_params if isinstance(extra_params, dict) else None
+    data = request_endpoint("procedures/list", method="GET", json_body=params)
+    return pd.DataFrame(normalize_content(data))
+
 def list_procedure_groups():
     data = request_endpoint("procedures/groups", method="GET")
     df = pd.DataFrame(normalize_content(data))

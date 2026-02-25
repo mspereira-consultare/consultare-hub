@@ -21,6 +21,7 @@ import {
   computeMissingFields,
 } from '@/lib/profissionais/status';
 import type {
+  FeegowProcedureCatalogItem,
   Professional,
   ProfessionalChecklistItem,
   ProfessionalDocument,
@@ -28,6 +29,8 @@ import type {
   ProfessionalFilters,
   ProfessionalInput,
   ProfessionalListItem,
+  ProfessionalProcedureRate,
+  ProfessionalProcedureRateInput,
   ProfessionalRegistration,
 } from '@/lib/profissionais/types';
 
@@ -170,6 +173,27 @@ const normalizePhone = (value: any): string | null => {
     throw new ProfessionalValidationError('Telefone invalido. Use DDD + numero (10 ou 11 digitos).');
   }
   return digits;
+};
+
+const toMoneyNumber = (value: any): number | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return null;
+    return value;
+  }
+  const raw = clean(value);
+  if (!raw) return null;
+  let normalized = raw.replace(/\s+/g, '').replace(/[^0-9,.-]/g, '');
+  const hasDot = normalized.includes('.');
+  const hasComma = normalized.includes(',');
+  if (hasDot && hasComma) {
+    normalized = normalized.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma) {
+    normalized = normalized.replace(',', '.');
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) return null;
+  return parsed;
 };
 
 const normalizeRegistration = (registration: any): ProfessionalRegistration => {
@@ -467,6 +491,33 @@ const mapDocument = (row: any): ProfessionalDocument => ({
   createdAt: clean(row.created_at),
 });
 
+const mapProcedureCatalog = (row: any): FeegowProcedureCatalogItem => ({
+  procedimentoId: Number(row.procedimento_id || 0),
+  nome: clean(row.nome),
+  codigo: clean(row.codigo) || null,
+  tipoProcedimento:
+    row.tipo_procedimento === null || row.tipo_procedimento === undefined
+      ? null
+      : Number(row.tipo_procedimento),
+  grupoProcedimento:
+    row.grupo_procedimento === null || row.grupo_procedimento === undefined
+      ? null
+      : Number(row.grupo_procedimento),
+  valor: Number(row.valor || 0),
+  updatedAt: clean(row.updated_at) || null,
+});
+
+const mapProfessionalProcedureRate = (row: any): ProfessionalProcedureRate => ({
+  id: clean(row.id),
+  professionalId: clean(row.professional_id),
+  procedimentoId: Number(row.procedimento_id || 0),
+  procedimentoNome: clean(row.procedimento_nome),
+  valorBase: Number(row.valor_base || 0),
+  valorProfissional: Number(row.valor_profissional || 0),
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
 const buildIn = (values: string[]) => {
   if (values.length === 0) return { clause: '(NULL)', params: [] as string[] };
   return {
@@ -573,6 +624,25 @@ const safeAddColumn = async (db: DbInterface, sql: string) => {
     const msg = String(error?.message || '');
     const code = String(error?.code || '');
     if (code === 'ER_DUP_FIELDNAME' || /Duplicate column name/i.test(msg)) return;
+    throw error;
+  }
+};
+
+const safeCreateIndex = async (db: DbInterface, sql: string) => {
+  try {
+    await db.execute(sql);
+  } catch (error: any) {
+    const msg = String(error?.message || '');
+    const code = String(error?.code || '');
+    if (
+      code === 'ER_DUP_KEYNAME' ||
+      code === 'ER_BLOB_KEY_WITHOUT_LENGTH' ||
+      /already exists/i.test(msg) ||
+      /Duplicate key name/i.test(msg) ||
+      /BLOB\/TEXT column .* used in key specification without a key length/i.test(msg)
+    ) {
+      return;
+    }
     throw error;
   }
 };
@@ -761,6 +831,34 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS feegow_procedures_catalog (
+      procedimento_id BIGINT PRIMARY KEY,
+      nome VARCHAR(255) NOT NULL,
+      codigo VARCHAR(80) NULL,
+      tipo_procedimento INTEGER NULL,
+      grupo_procedimento INTEGER NULL,
+      valor DECIMAL(12,2) NOT NULL DEFAULT 0,
+      especialidades_json LONGTEXT NULL,
+      raw_json LONGTEXT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS professional_procedure_rates (
+      id VARCHAR(64) PRIMARY KEY,
+      professional_id VARCHAR(64) NOT NULL,
+      procedimento_id BIGINT NOT NULL,
+      procedimento_nome VARCHAR(255) NOT NULL,
+      valor_base DECIMAL(12,2) NOT NULL DEFAULT 0,
+      valor_profissional DECIMAL(12,2) NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(professional_id, procedimento_id)
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS professional_document_checklist (
       id VARCHAR(64) PRIMARY KEY,
       professional_id VARCHAR(64) NOT NULL,
@@ -804,6 +902,15 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
       created_at TEXT NOT NULL
     )
   `);
+
+  await safeCreateIndex(
+    db,
+    `CREATE INDEX idx_feegow_procedures_catalog_nome ON feegow_procedures_catalog (nome)`
+  );
+  await safeCreateIndex(
+    db,
+    `CREATE INDEX idx_prof_proc_rates_prof ON professional_procedure_rates (professional_id)`
+  );
 
   tablesEnsured = true;
 };
@@ -1103,6 +1210,7 @@ export const deleteProfessional = async (
   await db.execute(`DELETE FROM professional_contracts WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professional_documents WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professional_document_checklist WHERE professional_id = ?`, [professionalId]);
+  await db.execute(`DELETE FROM professional_procedure_rates WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professional_registrations WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professionals WHERE id = ?`, [professionalId]);
 
@@ -1331,4 +1439,176 @@ export const registerDocumentDownloadAudit = async (
   actorUserId: string
 ) => {
   await insertAudit(db, 'DOCUMENT_DOWNLOADED', actorUserId, professionalId, { documentId });
+};
+
+const normalizeProcedureRateInput = (item: any): ProfessionalProcedureRateInput => {
+  const procedimentoId = Number(item?.procedimentoId || item?.procedimento_id || 0);
+  if (!Number.isFinite(procedimentoId) || procedimentoId <= 0) {
+    throw new ProfessionalValidationError('Procedimento invalido (ID ausente).');
+  }
+
+  const procedimentoNome = clean(item?.procedimentoNome || item?.procedimento_nome) || null;
+  const valorBase = toMoneyNumber(item?.valorBase ?? item?.valor_base);
+  const valorProfissional = toMoneyNumber(item?.valorProfissional ?? item?.valor_profissional);
+
+  return {
+    procedimentoId: Math.trunc(procedimentoId),
+    procedimentoNome,
+    valorBase,
+    valorProfissional,
+  };
+};
+
+export const listFeegowProcedureCatalog = async (
+  db: DbInterface,
+  options?: { search?: string; limit?: number }
+): Promise<FeegowProcedureCatalogItem[]> => {
+  await ensureProfessionalsTables(db);
+
+  const search = clean(options?.search);
+  const limitRaw = Number(options?.limit || 100);
+  const limit = Number.isFinite(limitRaw) ? Math.max(1, Math.min(500, Math.trunc(limitRaw))) : 100;
+
+  const where: string[] = ['1=1'];
+  const params: any[] = [];
+  if (search) {
+    where.push('UPPER(nome) LIKE ?');
+    params.push(`%${upper(search)}%`);
+  }
+
+  const rows = await db.query(
+    `
+    SELECT
+      procedimento_id,
+      nome,
+      codigo,
+      tipo_procedimento,
+      grupo_procedimento,
+      valor,
+      updated_at
+    FROM feegow_procedures_catalog
+    WHERE ${where.join(' AND ')}
+    ORDER BY nome ASC
+    LIMIT ${limit}
+    `,
+    params
+  );
+
+  return rows.map((row) => mapProcedureCatalog(row));
+};
+
+export const getProfessionalProcedureRates = async (
+  db: DbInterface,
+  professionalId: string
+): Promise<ProfessionalProcedureRate[]> => {
+  await ensureProfessionalsTables(db);
+  await ensureProfessionalExists(db, professionalId);
+
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM professional_procedure_rates
+    WHERE professional_id = ?
+    ORDER BY procedimento_nome ASC
+    `,
+    [professionalId]
+  );
+  return rows.map((row) => mapProfessionalProcedureRate(row));
+};
+
+export const replaceProfessionalProcedureRates = async (
+  db: DbInterface,
+  professionalId: string,
+  ratesRaw: unknown,
+  actorUserId: string
+): Promise<ProfessionalProcedureRate[]> => {
+  await ensureProfessionalsTables(db);
+  await ensureProfessionalExists(db, professionalId);
+
+  if (!Array.isArray(ratesRaw)) {
+    throw new ProfessionalValidationError('Procedimentos devem ser enviados em array.');
+  }
+
+  const normalized = ratesRaw.map((item) => normalizeProcedureRateInput(item));
+  const byId = new Map<number, ProfessionalProcedureRateInput>();
+  for (const item of normalized) {
+    byId.set(item.procedimentoId, item);
+  }
+  const unique = Array.from(byId.values());
+
+  let catalogById = new Map<number, FeegowProcedureCatalogItem>();
+  if (unique.length > 0) {
+    const ids = unique.map((item) => item.procedimentoId);
+    const placeholders = ids.map(() => '?').join(',');
+    const catalogRows = await db.query(
+      `
+      SELECT procedimento_id, nome, codigo, tipo_procedimento, grupo_procedimento, valor, updated_at
+      FROM feegow_procedures_catalog
+      WHERE procedimento_id IN (${placeholders})
+      `,
+      ids
+    );
+    catalogById = new Map(
+      catalogRows.map((row) => {
+        const mapped = mapProcedureCatalog(row);
+        return [mapped.procedimentoId, mapped] as const;
+      })
+    );
+  }
+
+  const now = NOW();
+  await db.execute(`DELETE FROM professional_procedure_rates WHERE professional_id = ?`, [professionalId]);
+
+  for (const item of unique) {
+    const catalog = catalogById.get(item.procedimentoId);
+    const procedimentoNome = clean(item.procedimentoNome) || catalog?.nome || '';
+    if (!procedimentoNome) {
+      throw new ProfessionalValidationError(
+        `Nao foi possivel identificar o nome do procedimento ID ${item.procedimentoId}.`
+      );
+    }
+    const valorBase = item.valorBase ?? catalog?.valor ?? 0;
+    const valorProfissional = item.valorProfissional ?? valorBase;
+    if (!Number.isFinite(valorBase) || valorBase < 0) {
+      throw new ProfessionalValidationError(
+        `Valor base invalido para o procedimento ${procedimentoNome}.`
+      );
+    }
+    if (!Number.isFinite(valorProfissional) || valorProfissional < 0) {
+      throw new ProfessionalValidationError(
+        `Valor profissional invalido para o procedimento ${procedimentoNome}.`
+      );
+    }
+
+    await db.execute(
+      `
+      INSERT INTO professional_procedure_rates (
+        id,
+        professional_id,
+        procedimento_id,
+        procedimento_nome,
+        valor_base,
+        valor_profissional,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        randomUUID(),
+        professionalId,
+        item.procedimentoId,
+        procedimentoNome,
+        valorBase,
+        valorProfissional,
+        now,
+        now,
+      ]
+    );
+  }
+
+  await insertAudit(db, 'PROFESSIONAL_PROCEDURES_UPDATED', actorUserId, professionalId, {
+    totalProcedures: unique.length,
+  });
+
+  return getProfessionalProcedureRates(db, professionalId);
 };

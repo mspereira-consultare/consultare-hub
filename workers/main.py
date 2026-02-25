@@ -54,6 +54,7 @@ try:
     from database_manager import DatabaseManager
     # Workers (Execução única)
     from worker_feegow_appointments import update_appointments_data
+    from worker_feegow_procedures import update_procedures_catalog
     from worker_proposals import update_proposals
     from worker_faturamento_scraping import run_scraper
     from worker_contracts import run_worker_contracts
@@ -112,6 +113,7 @@ service_locks = {}
 
 KNOWN_ACTIONS = {
     'appointments',
+    'procedures_catalog',
     'faturamento', # Receita bruta analítica
     'comercial', # Propostas (API)
     'contratos', # Cartão de Benefícios (API)
@@ -141,6 +143,11 @@ ALIAS_ACTION_MAP = {
     'feegow_finance': 'appointments',
     'worker_feegow': 'appointments',
     'worker_feegow_appointments': 'appointments',
+    'procedures_catalog': 'procedures_catalog',
+    'procedures': 'procedures_catalog',
+    'catalogo_procedimentos': 'procedures_catalog',
+    'feegow_procedures': 'procedures_catalog',
+    'worker_feegow_procedures': 'procedures_catalog',
     'faturamento': 'faturamento',
     'faturamento_scraping': 'faturamento',
     'faturamento_scraper': 'faturamento',
@@ -164,6 +171,7 @@ ALIAS_ACTION_MAP = {
 # Mapeia ação para nome canônico no `system_status`
 CANONICAL_NAME = {
     'appointments': 'Appointments (Feegow API)',
+    'procedures_catalog': 'Catalogo de Procedimentos (Feegow API)',
     'faturamento': 'Faturamento (Scraping)',
     'comercial': 'Propostas (API)',
     'contratos': 'Cartão de Beneficios (API)',
@@ -279,6 +287,8 @@ def run_service(key: str):
 
         if action == 'appointments':
             update_appointments_data()
+        elif action == 'procedures_catalog':
+            update_procedures_catalog()
         elif action == 'faturamento':
             # Scraper específico
             run_scraper()
@@ -442,11 +452,13 @@ def run_scheduler():
     # Agendamento
     schedule.every().day.at("05:00").do(run_token_renewal)
     schedule.every().day.at("05:10").do(run_clinia_token_renewal)
+    schedule.every().day.at("05:20").do(lambda: run_service('procedures_catalog'))
 
     schedule.every().day.at("12:00").do(lambda: run_service('contratos'))
 
     schedule.every().day.at("12:00").do(run_token_renewal)
     schedule.every().day.at("12:10").do(run_clinia_token_renewal)
+    schedule.every().day.at("12:20").do(lambda: run_service('procedures_catalog'))
     # Workers pesados: 14h, 17h, 19h
     schedule.every().day.at("14:00").do(run_heavy_workers)
     schedule.every().day.at("17:00").do(run_heavy_workers)

@@ -141,6 +141,8 @@ Operações implementadas em `frontend/src/lib/permissions_server.ts`:
 | `/api/admin/financial/general-report` | `financeiro` | `view` |
 | `/api/admin/profissionais/:id/documentos` | `profissionais` | `view`/`edit` |
 | `/api/admin/profissionais/documentos/:documentId/download` | `profissionais` | `view` |
+| `/api/admin/profissionais/:id/procedimentos` | `profissionais` | `view`/`edit` |
+| `/api/admin/profissionais/procedures/options` | `profissionais` | `view` |
 | `/api/admin/profissionais/:id/contratos` | `profissionais` | `view`/`edit` |
 | `/api/admin/profissionais/:id/contratos/:contractId/reprocess` | `profissionais` | `edit` |
 | `/api/admin/profissionais/:id/contratos/:contractId/download` | `profissionais` | `view` |
@@ -160,6 +162,7 @@ Em `frontend/src/app/api/admin/refresh/route.ts`:
 | `monitor_medico` | `monitor` |
 | `monitor_recepcao` | `monitor` |
 | `clinia` | `monitor` |
+| `procedures_catalog` | `profissionais` |
 | `auth` | `settings` |
 
 ## Observações de manutenção
@@ -191,6 +194,7 @@ A pagina `profissionais` foi adicionada com `pageKey = profissionais`.
 
 - Listagem e detalhe (`GET`): exige `view`.
 - Criacao/edicao (`POST`/`PUT`): exige `edit`.
+- Procedimentos (`GET/PUT /api/admin/profissionais/:id/procedimentos`): `view` para leitura e `edit` para gravação.
 
 Implementacao:
 - `frontend/src/lib/permissions.ts`

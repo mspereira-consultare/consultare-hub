@@ -31,6 +31,8 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
   - Relatório Geral Financeiro (PDF/XLSX): `faturamento_analitico`.
   - Filas: `espera_medica`, `recepcao_historico`, `clinia_group_snapshots`.
   - Produtividade/agendamentos: `feegow_appointments`.
+  - Catalogo de procedimentos: `feegow_procedures_catalog`.
+  - Procedimentos por profissional: `professional_procedure_rates`.
   - Propostas: `feegow_proposals`.
   - Resolvesaúde: `feegow_contracts`.
 
@@ -48,3 +50,4 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Modulo `/profissionais`: APIs de documentos com `download` e `visualizacao inline` documentadas.
 - Pagina `/modelos-contrato`: `download` e `visualizacao` de templates adicionados ao fluxo tecnico.
 - Modal de profissional: aba `Contratos` com geracao em `PDF + Word`, `Gerar novo`, `Reprocessar`, `Visualizar PDF`, `Baixar PDF` e `Baixar Word`.
+- Modal de profissional: aba `Procedimentos` com vinculo de procedimentos e valores por profissional.

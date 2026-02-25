@@ -14,13 +14,25 @@ import {
   PROFESSIONAL_SERVICE_UNITS,
   type ContractPartyType,
 } from '@/lib/profissionais/constants';
-import type { ProfessionalContract, ProfessionalDocument, ProfessionalListItem } from '@/lib/profissionais/types';
+import type {
+  FeegowProcedureCatalogItem,
+  ProfessionalContract,
+  ProfessionalDocument,
+  ProfessionalListItem,
+  ProfessionalProcedureRate,
+} from '@/lib/profissionais/types';
 import { hasPermission } from '@/lib/permissions';
 
 type FormRegistration = { id?: string; councilType: string; councilNumber: string; councilUf: string; isPrimary: boolean };
 type FormChecklist = { docType: string; hasPhysicalCopy: boolean; hasDigitalCopy: boolean; expiresAt: string; notes: string };
 type FormSpecialty = { name: string; isPrimary: boolean };
 type ContractTemplateOption = { id: string; name: string; contractType: string; version: number };
+type FormProcedureRate = {
+  procedimentoId: number;
+  procedimentoNome: string;
+  valorBase: number;
+  valorProfissional: string;
+};
 type FormState = {
   name: string; contractPartyType: ContractPartyType; contractType: string; cpf: string; cnpj: string; legalName: string;
   specialties: FormSpecialty[]; phone: string; email: string; ageMin: number; ageMax: number; serviceUnits: string[];
@@ -30,7 +42,7 @@ type FormState = {
   hasPhysicalFolder: boolean; physicalFolderNote: string; contractTemplateId: string; contractStartDate: string; contractEndDate: string;
   registrations: FormRegistration[]; checklist: FormChecklist[];
 };
-type ModalTab = 'cadastro' | 'contratos';
+type ModalTab = 'cadastro' | 'procedimentos' | 'contratos';
 
 const pageSize = 20;
 
@@ -129,6 +141,32 @@ const formatDateBr = (isoDate: string | null | undefined) => {
   return `${m[3]}/${m[2]}/${m[1]}`;
 };
 
+const parseMoneyInput = (value: string | number | null | undefined) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const raw = String(value || '').trim();
+  if (!raw) return 0;
+  let normalized = raw.replace(/\s+/g, '').replace(/[^0-9,.-]/g, '');
+  const hasDot = normalized.includes('.');
+  const hasComma = normalized.includes(',');
+  if (hasDot && hasComma) {
+    normalized = normalized.replace(/\./g, '').replace(',', '.');
+  } else if (hasComma) {
+    normalized = normalized.replace(',', '.');
+  }
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatCurrency = (value: number) =>
+  Number(value || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const toMoneyInputString = (value: number) => Number(value || 0).toFixed(2).replace('.', ',');
+
 const hasGeneratedFileInMeta = (contract: ProfessionalContract, format: 'pdf' | 'docx') => {
   const filesRaw = contract.meta?.files;
   if (!filesRaw || typeof filesRaw !== 'object' || Array.isArray(filesRaw)) return false;
@@ -186,6 +224,16 @@ export default function ProfessionalsPage() {
   const [contracts, setContracts] = useState<ProfessionalContract[]>([]);
   const [generatingContract, setGeneratingContract] = useState(false);
   const [reprocessingContractId, setReprocessingContractId] = useState<string | null>(null);
+  const [proceduresLoading, setProceduresLoading] = useState(false);
+  const [procedureSaveLoading, setProcedureSaveLoading] = useState(false);
+  const [procedureOptionsLoading, setProcedureOptionsLoading] = useState(false);
+  const [procedureOptions, setProcedureOptions] = useState<FeegowProcedureCatalogItem[]>([]);
+  const [procedureSearch, setProcedureSearch] = useState('');
+  const [procedureSource, setProcedureSource] = useState<
+    'catalog_db' | 'feegow_api_fallback' | 'empty' | 'unknown'
+  >('unknown');
+  const [selectedProcedureId, setSelectedProcedureId] = useState('');
+  const [procedureRates, setProcedureRates] = useState<FormProcedureRate[]>([]);
 
   const contractLabelByCode = useMemo(() => new Map(CONTRACT_TYPES.map((c) => [c.code, c.label])), []);
   const specialtiesOptions = useMemo(() => {
@@ -361,6 +409,124 @@ export default function ProfessionalsPage() {
     }
   };
 
+  const mapProcedureRateToForm = (row: ProfessionalProcedureRate): FormProcedureRate => ({
+    procedimentoId: Number(row.procedimentoId || 0),
+    procedimentoNome: String(row.procedimentoNome || '').trim(),
+    valorBase: Number(row.valorBase || 0),
+    valorProfissional: toMoneyInputString(Number(row.valorProfissional || 0)),
+  });
+
+  const fetchProcedureOptions = async (searchText = '') => {
+    setProcedureOptionsLoading(true);
+    try {
+      const qs = new URLSearchParams();
+      if (searchText.trim()) qs.set('search', searchText.trim());
+      qs.set('limit', '120');
+      const res = await fetch(`/api/admin/profissionais/procedures/options?${qs.toString()}`, {
+        cache: 'no-store',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao carregar procedimentos.');
+      const list = Array.isArray(data?.data) ? data.data : [];
+      setProcedureOptions(list);
+      setProcedureSource(
+        data?.source === 'catalog_db' || data?.source === 'feegow_api_fallback' || data?.source === 'empty'
+          ? data.source
+          : 'unknown'
+      );
+    } catch {
+      setProcedureOptions([]);
+      setProcedureSource('unknown');
+    } finally {
+      setProcedureOptionsLoading(false);
+    }
+  };
+
+  const fetchProcedureRates = async (professionalId: string) => {
+    setProceduresLoading(true);
+    setModalError('');
+    try {
+      const res = await fetch(
+        `/api/admin/profissionais/${encodeURIComponent(professionalId)}/procedimentos`,
+        { cache: 'no-store' }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao carregar procedimentos do profissional.');
+      const list = Array.isArray(data?.data) ? data.data : [];
+      setProcedureRates(list.map((row: ProfessionalProcedureRate) => mapProcedureRateToForm(row)));
+    } catch (e: any) {
+      setProcedureRates([]);
+      setModalError(e?.message || 'Falha ao carregar procedimentos do profissional.');
+    } finally {
+      setProceduresLoading(false);
+    }
+  };
+
+  const addSelectedProcedure = () => {
+    const procedureId = Number(selectedProcedureId || 0);
+    if (!Number.isFinite(procedureId) || procedureId <= 0) {
+      setModalError('Selecione um procedimento valido para adicionar.');
+      return;
+    }
+    const option = procedureOptions.find((item) => Number(item.procedimentoId) === procedureId);
+    if (!option) {
+      setModalError('Procedimento selecionado nao encontrado no catalogo.');
+      return;
+    }
+    if (procedureRates.some((item) => item.procedimentoId === procedureId)) {
+      setModalError('Este procedimento ja foi adicionado para o profissional.');
+      return;
+    }
+    setModalError('');
+    setProcedureRates((prev) => [
+      ...prev,
+      {
+        procedimentoId: procedureId,
+        procedimentoNome: option.nome,
+        valorBase: Number(option.valor || 0),
+        valorProfissional: toMoneyInputString(Number(option.valor || 0)),
+      },
+    ]);
+    setSelectedProcedureId('');
+  };
+
+  const saveProcedureRates = async () => {
+    if (!editingId) {
+      setModalError('Salve o cadastro do profissional antes de configurar procedimentos.');
+      return;
+    }
+    setProcedureSaveLoading(true);
+    setModalError('');
+    setModalNotice('');
+    try {
+      const payload = {
+        procedures: procedureRates.map((row) => ({
+          procedimentoId: row.procedimentoId,
+          procedimentoNome: row.procedimentoNome,
+          valorBase: Number(row.valorBase || 0),
+          valorProfissional: parseMoneyInput(row.valorProfissional),
+        })),
+      };
+      const res = await fetch(
+        `/api/admin/profissionais/${encodeURIComponent(editingId)}/procedimentos`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao salvar procedimentos do profissional.');
+      const list = Array.isArray(data?.data) ? data.data : [];
+      setProcedureRates(list.map((row: ProfessionalProcedureRate) => mapProcedureRateToForm(row)));
+      setModalNotice('Procedimentos salvos com sucesso.');
+    } catch (e: any) {
+      setModalError(e?.message || 'Falha ao salvar procedimentos do profissional.');
+    } finally {
+      setProcedureSaveLoading(false);
+    }
+  };
+
   const generateContractNow = async () => {
     if (!editingId) {
       setModalError('Salve o cadastro do profissional antes de gerar contrato.');
@@ -455,6 +621,7 @@ export default function ProfessionalsPage() {
 
   useEffect(() => {
     fetchSpecialties();
+    fetchProcedureOptions();
   }, []);
 
   const openCreate = () => {
@@ -462,6 +629,9 @@ export default function ProfessionalsPage() {
     setForm(emptyForm());
     setUploadedDocs([]);
     setContracts([]);
+    setProcedureRates([]);
+    setProcedureSearch('');
+    setSelectedProcedureId('');
     setUploadFile(null);
     setUploadExpiresAt('');
     setUploadDocType(DOCUMENT_TYPES[0]?.code || 'RG');
@@ -485,12 +655,14 @@ export default function ProfessionalsPage() {
       setUploadFile(null);
       setUploadExpiresAt('');
       setUploadDocType(DOCUMENT_TYPES[0]?.code || 'RG');
+      setProcedureSearch('');
+      setSelectedProcedureId('');
       setIsUploadExpanded(false);
       setIsChecklistExpanded(false);
       setModalTab('cadastro');
       setModalNotice('');
       setIsModalOpen(true);
-      await Promise.all([fetchDocuments(id), fetchContracts(id)]);
+      await Promise.all([fetchDocuments(id), fetchContracts(id), fetchProcedureRates(id)]);
     } catch (e: any) {
       setError(e?.message || 'Falha ao abrir profissional.');
     }
@@ -672,6 +844,13 @@ export default function ProfessionalsPage() {
                   className={`px-3 py-1.5 rounded text-sm ${modalTab === 'cadastro' ? 'bg-white border text-slate-900' : 'text-slate-600'}`}
                 >
                   Cadastro
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModalTab('procedimentos')}
+                  className={`px-3 py-1.5 rounded text-sm ${modalTab === 'procedimentos' ? 'bg-white border text-slate-900' : 'text-slate-600'}`}
+                >
+                  Procedimentos
                 </button>
                 <button
                   type="button"
@@ -1231,6 +1410,164 @@ export default function ProfessionalsPage() {
               </>
               )}
 
+              {modalTab === 'procedimentos' && (
+                <div className="space-y-4">
+                  {!editingId ? (
+                    <div className="text-sm px-3 py-2 rounded border bg-slate-50 text-slate-600">
+                      Salve o profissional primeiro para vincular procedimentos e valores.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="border rounded-xl p-4 bg-slate-50/70 space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                          <div className="md:col-span-3">
+                            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+                              Buscar procedimento no catalogo
+                            </label>
+                            <input
+                              value={procedureSearch}
+                              onChange={(e) => setProcedureSearch(e.target.value)}
+                              placeholder="Digite parte do nome do procedimento"
+                              className="w-full px-3 py-2 border rounded-lg"
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => fetchProcedureOptions(procedureSearch)}
+                            className="px-3 py-2 border rounded-lg text-sm inline-flex items-center justify-center gap-2"
+                            disabled={procedureOptionsLoading}
+                          >
+                            {procedureOptionsLoading ? (
+                              <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                              <Search size={14} />
+                            )}
+                            Buscar
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
+                          <div className="md:col-span-3">
+                            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">
+                              Selecionar procedimento
+                            </label>
+                            <select
+                              value={selectedProcedureId}
+                              onChange={(e) => setSelectedProcedureId(e.target.value)}
+                              className="w-full px-3 py-2 border rounded-lg bg-white"
+                            >
+                              <option value="">Selecione</option>
+                              {procedureOptions.map((procedure) => (
+                                <option key={procedure.procedimentoId} value={procedure.procedimentoId}>
+                                  {procedure.nome} | {formatCurrency(Number(procedure.valor || 0))}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={addSelectedProcedure}
+                            className="px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm disabled:opacity-60"
+                            disabled={!canEdit}
+                          >
+                            Adicionar
+                          </button>
+                        </div>
+
+                        <p className="text-[11px] text-slate-500">
+                          Fonte: {procedureSource === 'catalog_db'
+                            ? 'Catalogo Feegow (MySQL)'
+                            : procedureSource === 'feegow_api_fallback'
+                              ? 'Feegow API (fallback)'
+                              : procedureSource === 'empty'
+                                ? 'Sem dados no catalogo'
+                                : 'Nao carregada'}
+                        </p>
+                      </div>
+
+                      <div className="border rounded-xl overflow-auto">
+                        <table className="w-full text-sm min-w-[820px]">
+                          <thead className="bg-slate-50 text-xs uppercase text-slate-600">
+                            <tr>
+                              <th className="px-3 py-2 text-left">Procedimento</th>
+                              <th className="px-3 py-2 text-left">Valor base (Feegow)</th>
+                              <th className="px-3 py-2 text-left">Valor do profissional</th>
+                              <th className="px-3 py-2 text-left">Acoes</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {proceduresLoading ? (
+                              <tr>
+                                <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
+                                  <span className="inline-flex items-center gap-2">
+                                    <Loader2 size={14} className="animate-spin" />
+                                    Carregando procedimentos do profissional...
+                                  </span>
+                                </td>
+                              </tr>
+                            ) : procedureRates.length === 0 ? (
+                              <tr>
+                                <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
+                                  Nenhum procedimento vinculado.
+                                </td>
+                              </tr>
+                            ) : (
+                              procedureRates.map((item, idx) => (
+                                <tr key={`${item.procedimentoId}-${idx}`} className="border-t">
+                                  <td className="px-3 py-2">
+                                    {item.procedimentoNome}
+                                  </td>
+                                  <td className="px-3 py-2">{formatCurrency(item.valorBase)}</td>
+                                  <td className="px-3 py-2">
+                                    <input
+                                      value={item.valorProfissional}
+                                      onChange={(e) =>
+                                        setProcedureRates((prev) => {
+                                          const next = [...prev];
+                                          next[idx] = { ...next[idx], valorProfissional: e.target.value };
+                                          return next;
+                                        })
+                                      }
+                                      className="w-40 px-2 py-1 border rounded"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setProcedureRates((prev) =>
+                                          prev.filter((_, rowIdx) => rowIdx !== idx)
+                                        )
+                                      }
+                                      className="text-xs px-2 py-1 border rounded-md text-rose-700 border-rose-300 hover:bg-rose-50"
+                                      disabled={!canEdit}
+                                    >
+                                      Remover
+                                    </button>
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={saveProcedureRates}
+                          disabled={!canEdit || procedureSaveLoading}
+                          className="px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm disabled:opacity-60 inline-flex items-center gap-2"
+                        >
+                          {procedureSaveLoading && <Loader2 size={14} className="animate-spin" />}
+                          {procedureSaveLoading ? 'Salvando...' : 'Salvar procedimentos'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
               {modalTab === 'contratos' && (
                 <div className="space-y-4">
                   {!editingId ? (
@@ -1409,7 +1746,7 @@ export default function ProfessionalsPage() {
             </div>
             <div className="px-5 py-3 border-t flex justify-end gap-2">
               <button type="button" className="px-3 py-2 border rounded-lg" onClick={() => setIsModalOpen(false)}>
-                {modalTab === 'contratos' ? 'Fechar' : 'Cancelar'}
+                {modalTab === 'cadastro' ? 'Cancelar' : 'Fechar'}
               </button>
               {modalTab === 'cadastro' && (
                 <button

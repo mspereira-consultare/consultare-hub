@@ -28,6 +28,7 @@ Persistência principal atual: **MySQL (Railway)**, com suporte legado para Turs
   - clinia: `workers/worker_clinia.py`
 - Carga transacional:
   - agendamentos Feegow: `workers/worker_feegow_appointments.py` (base do dashboard de agendamentos)
+  - catalogo de procedimentos Feegow: `workers/worker_feegow_procedures.py`
   - propostas: `workers/worker_proposals.py`
   - contratos: `workers/worker_contracts.py`
   - faturamento (scraping com janela móvel): `workers/worker_faturamento_scraping.py` (padrão: últimos 7 dias)
@@ -132,6 +133,7 @@ Arquivo: `workers/main.py`.
   - `WORK_START` (padrão: `06:30`)
   - `WORK_END` (padrão: `20:00`)
 - `auth`: 05:00 e 12:00.
+- `procedures_catalog`: 05:20 e 12:20.
 - `contratos`: 12:00.
 - Lote pesado (`faturamento`, `financeiro`, `comercial`, `contratos`): 14:00, 17:00, 19:00.
 - `appointments` (Feegow agendamentos): de hora em hora no minuto `:30`, dentro da janela operacional.
@@ -141,6 +143,7 @@ Arquivo: `workers/main.py`.
 ### Feegow
 
 - API de agendamentos (`worker_feegow_appointments.py`).
+- API de procedimentos (`worker_feegow_procedures.py`).
 - API de propostas (`worker_proposals.py`).
 - API de contratos (`worker_contracts.py`).
 - Fluxos de monitor via páginas internas (recepção/médico).
@@ -194,6 +197,8 @@ Checklists usam duas estratégias:
 - API list/create: `frontend/src/app/api/admin/profissionais/route.ts`
 - API detail/update: `frontend/src/app/api/admin/profissionais/[id]/route.ts`
 - API contratos: `frontend/src/app/api/admin/profissionais/[id]/contratos/route.ts`
+- API procedimentos por profissional: `frontend/src/app/api/admin/profissionais/[id]/procedimentos/route.ts`
+- API opcoes de procedimentos: `frontend/src/app/api/admin/profissionais/procedures/options/route.ts`
 - API reprocesso: `frontend/src/app/api/admin/profissionais/[id]/contratos/[contractId]/reprocess/route.ts`
 - Repositorio e schema: `frontend/src/lib/profissionais/repository.ts`
 - Servico de contratos: `frontend/src/lib/profissionais/contracts.ts`
@@ -206,6 +211,8 @@ Checklists usam duas estratégias:
 O modulo cria/garante as tabelas em runtime:
 - `professionals`
 - `professional_registrations`
+- `feegow_procedures_catalog`
+- `professional_procedure_rates`
 - `professional_documents`
 - `professional_document_checklist`
 - `professional_contracts`
@@ -219,7 +226,8 @@ O modulo cria/garante as tabelas em runtime:
 4. Em criacao/edicao, frontend envia payload para `POST` ou `PUT`.
 5. API valida regras de negocio (PF/PJ, contrato, registro principal, checklist) e persiste.
 6. API grava auditoria em `professional_audit_log`.
-7. Na aba `Contratos`, usuario pode gerar/reprocessar e consultar historico.
+7. Na aba `Procedimentos`, usuario vincula procedimentos e valores por profissional.
+8. Na aba `Contratos`, usuario pode gerar/reprocessar e consultar historico.
 
 ### Observacao de storage
 

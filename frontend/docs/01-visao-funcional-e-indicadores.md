@@ -536,6 +536,7 @@ Centralizar o cadastro da carteira de profissionais, com foco em:
 - dados contratuais (PF/PJ e tipo de contrato);
 - clausula opcional de pagamento minimo (`paymentMinimumText`);
 - registros regionais (CRM/CRO/CRP etc.) com registro principal;
+- vinculacao de procedimentos e valores por profissional (base Feegow);
 - controle documental em modo hibrido (checklist manual + upload S3 ativo);
 - status de pendencias e vencimento da certidao etica.
 
@@ -552,6 +553,9 @@ Centralizar o cadastro da carteira de profissionais, com foco em:
 - `GET /api/admin/profissionais/:id`
 - `POST /api/admin/profissionais`
 - `PUT /api/admin/profissionais/:id`
+- `GET /api/admin/profissionais/:id/procedimentos`
+- `PUT /api/admin/profissionais/:id/procedimentos`
+- `GET /api/admin/profissionais/procedures/options`
 - `GET /api/admin/profissionais/:id/contratos`
 - `POST /api/admin/profissionais/:id/contratos`
 - `POST /api/admin/profissionais/:id/contratos/:contractId/reprocess`
@@ -567,6 +571,7 @@ Centralizar o cadastro da carteira de profissionais, com foco em:
 | Registro principal | `professional_registrations` | Exibe `council_type/council_uf council_number` do item `is_primary=1` |
 | Tipo de contrato | `professionals.contract_type` | Define qual template de contrato sera usado na automacao |
 | Modelo de contrato | `professionals.contract_template_id` + `contract_templates` | Lista apenas modelos ativos do mesmo tipo de contrato |
+| Procedimentos do profissional | `professional_procedure_rates` | Lista de procedimentos e valores personalizados por profissional |
 
 ### Observacao operacional
 
@@ -577,6 +582,7 @@ No fluxo atual:
 - a tabela de documentos exibida no cadastro nao recebe mais `CONTRATO_GERADO` automaticamente; para contrato final, usar upload manual de `CONTRATO_ASSINADO`.
 - a aba `Contratos` do modal gera os dois formatos por padrao (`PDF` + `Word`), permite `Visualizar PDF`, `Baixar PDF`, `Baixar Word`, `Gerar novo` e `Reprocessar` (somente status `ERRO`).
 - na renderizacao do contrato: CPF e CNPJ sao formatados automaticamente; `Todas Especialidades` usa separacao em portugues (`A, B e C`).
+- a aba `Procedimentos` do modal permite buscar no catalogo Feegow, adicionar multiplos procedimentos e salvar `valor_profissional`.
 
 ### Evolução técnica (18/02/2026)
 

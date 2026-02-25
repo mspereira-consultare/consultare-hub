@@ -15,6 +15,10 @@ const SERVICE_ALIASES: Record<string, string> = {
   feegow_finance: 'appointments',
   worker_feegow: 'appointments',
   worker_feegow_appointments: 'appointments',
+  procedures_catalog: 'procedures_catalog',
+  procedures: 'procedures_catalog',
+  feegow_procedures: 'procedures_catalog',
+  worker_feegow_procedures: 'procedures_catalog',
   faturamento: 'faturamento',
   faturamento_scraping: 'faturamento',
   faturamento_scraper: 'faturamento',
@@ -55,6 +59,7 @@ const SERVICE_PAGE_MAP: Record<string, PageKey> = {
   monitor_medico: 'monitor',
   monitor_recepcao: 'monitor',
   clinia: 'monitor',
+  procedures_catalog: 'profissionais',
   auth: 'settings',
   auth_clinia: 'settings',
 };
@@ -67,6 +72,7 @@ const SERVICE_REFRESH_PAGES: Record<string, PageKey[]> = {
   clinia: ['monitor', 'checklist_crc'],
   monitor_medico: ['monitor'],
   monitor_recepcao: ['monitor'],
+  procedures_catalog: ['profissionais'],
   auth: ['settings'],
   auth_clinia: ['settings'],
 };

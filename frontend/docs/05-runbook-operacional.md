@@ -108,10 +108,12 @@ Serviços comuns:
 - `comercial`
 - `contratos`
 - `clinia`
+- `procedures_catalog`
 
 ## Agendamentos automáticos (orquestrador)
 
 - `auth`: 05:00 e 12:00.
+- `procedures_catalog`: 05:20 e 12:20.
 - `contratos`: 12:00.
 - lote pesado: 14:00, 17:00, 19:00.
 - `financeiro` horário comercial: de hora em hora no minuto `:30`.
@@ -222,6 +224,19 @@ FROM feegow_appointments
 WHERE scheduled_at BETWEEN CONCAT(CURDATE(),' 00:00:00') AND CONCAT(CURDATE(),' 23:59:59');
 ```
 
+## Catalogo de procedimentos (Feegow)
+
+```sql
+SELECT COUNT(*) AS total_procedimentos, MAX(updated_at) AS ultima_atualizacao
+FROM feegow_procedures_catalog;
+
+SELECT professional_id, COUNT(*) AS total_vinculados
+FROM professional_procedure_rates
+GROUP BY professional_id
+ORDER BY total_vinculados DESC
+LIMIT 20;
+```
+
 ## 8) Política de Operação Segura
 
 - Não executar limpeza destrutiva sem query de preview.
@@ -252,6 +267,7 @@ WHERE scheduled_at BETWEEN CONCAT(CURDATE(),' 00:00:00') AND CONCAT(CURDATE(),' 
 4. Visualizar o mesmo arquivo em `GET /api/admin/profissionais/documentos/:documentId/download?inline=1`.
 5. Baixar em `GET /api/admin/profissionais/documentos/:documentId/download`.
 6. Validar auditoria em `professional_audit_log` (`DOCUMENT_UPLOADED` e `DOCUMENT_DOWNLOADED`).
+7. Na aba `Procedimentos`, vincular itens e validar persistência em `professional_procedure_rates`.
 
 ### Observação de rollout
 

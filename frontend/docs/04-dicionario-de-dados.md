@@ -391,6 +391,39 @@ Campos:
 
 Regra: cada profissional deve ter exatamente 1 registro principal.
 
+### `feegow_procedures_catalog`
+
+Catalogo de procedimentos sincronizado da API Feegow.
+
+Campos:
+- `procedimento_id` (PK)
+- `nome`
+- `codigo`
+- `tipo_procedimento`
+- `grupo_procedimento`
+- `valor`
+- `especialidades_json` (lista de especialidades)
+- `raw_json` (payload bruto do item para rastreabilidade)
+- `updated_at`
+
+Escrita: worker `worker_feegow_procedures.py`.
+
+### `professional_procedure_rates`
+
+Tabela de vinculo `profissional x procedimento` com valor customizavel.
+
+Campos:
+- `id` (PK)
+- `professional_id`
+- `procedimento_id`
+- `procedimento_nome`
+- `valor_base` (valor de referencia do catalogo Feegow)
+- `valor_profissional` (valor final negociado para o profissional)
+- `created_at`, `updated_at`
+
+Regra: `UNIQUE(professional_id, procedimento_id)`.
+Escrita: API `PUT /api/admin/profissionais/:id/procedimentos`.
+
 ### `professional_document_checklist`
 
 Checklist manual de transicao (controle fisico/digital).
