@@ -27,6 +27,12 @@ type FormRegistration = { id?: string; councilType: string; councilNumber: strin
 type FormChecklist = { docType: string; hasPhysicalCopy: boolean; hasDigitalCopy: boolean; expiresAt: string; notes: string };
 type FormSpecialty = { name: string; isPrimary: boolean };
 type ContractTemplateOption = { id: string; name: string; contractType: string; version: number };
+type ServiceStatus = {
+  service_name: string;
+  status: string;
+  last_run: string | null;
+  details: string | null;
+};
 type FormProcedureRate = {
   procedimentoId: number;
   procedimentoNome: string;
@@ -188,6 +194,7 @@ export default function ProfessionalsPage() {
   const { data: session } = useSession();
   const role = String((session?.user as any)?.role || 'OPERADOR').toUpperCase();
   const canEdit = hasPermission((session?.user as any)?.permissions, 'profissionais', 'edit', role);
+  const canRefresh = hasPermission((session?.user as any)?.permissions, 'profissionais', 'refresh', role);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -232,6 +239,8 @@ export default function ProfessionalsPage() {
   const [procedureSource, setProcedureSource] = useState<
     'catalog_db' | 'feegow_api_fallback' | 'empty' | 'unknown'
   >('unknown');
+  const [procedureWorkerStatus, setProcedureWorkerStatus] = useState<ServiceStatus | null>(null);
+  const [procedureWorkerRefreshing, setProcedureWorkerRefreshing] = useState(false);
   const [selectedProcedureId, setSelectedProcedureId] = useState('');
   const [procedureRates, setProcedureRates] = useState<FormProcedureRate[]>([]);
 
@@ -244,12 +253,16 @@ export default function ProfessionalsPage() {
     return Array.from(all).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [specialties, form.specialties]);
   const contractTemplateOptions = useMemo(
-    () =>
-      activeContractTemplates.filter((tpl) => {
+    () => {
+      if (activeContractTemplates.length === 0) return [];
+      const filtered = activeContractTemplates.filter((tpl) => {
         const tplType = normalizeContractTypeCode(tpl.contractType);
         const formType = normalizeContractTypeCode(form.contractType);
         return Boolean(tplType && formType && tplType === formType);
-      }),
+      });
+      // Fallback para cadastros legados com tipo de contrato fora do padrao.
+      return filtered.length > 0 ? filtered : activeContractTemplates;
+    },
     [activeContractTemplates, form.contractType]
   );
   const photoDoc = useMemo(
@@ -442,6 +455,64 @@ export default function ProfessionalsPage() {
     }
   };
 
+  const loadProceduresWorkerStatus = async (forceFresh = false) => {
+    try {
+      const refreshQ = forceFresh ? `?refresh=${Date.now()}` : '';
+      const res = await fetch(`/api/admin/status${refreshQ}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data)) return false;
+
+      const normalize = (v: string) => String(v || '').trim().toLowerCase();
+      const row = (data as ServiceStatus[]).find((item) =>
+        ['procedures_catalog', 'worker_feegow_procedures', 'feegow_procedures', 'procedures'].includes(
+          normalize(item.service_name)
+        )
+      );
+      setProcedureWorkerStatus(row || null);
+      const st = normalize(String(row?.status || ''));
+      return st === 'pending' || st === 'running';
+    } catch {
+      return false;
+    }
+  };
+
+  const triggerProceduresCatalogRefresh = async () => {
+    if (!canRefresh) {
+      setModalError('Sem permissao para atualizar o catalogo de procedimentos.');
+      return;
+    }
+    setProcedureWorkerRefreshing(true);
+    setModalError('');
+    try {
+      const refreshRes = await fetch('/api/admin/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service: 'procedures_catalog' }),
+      });
+      const refreshData = await refreshRes.json().catch(() => ({}));
+      if (!refreshRes.ok) {
+        throw new Error(refreshData?.error || 'Falha ao acionar atualizacao do catalogo.');
+      }
+
+      let attempts = 0;
+      const maxAttempts = 40;
+      while (attempts < maxAttempts) {
+        attempts += 1;
+        const stillRunning = await loadProceduresWorkerStatus(true);
+        if (!stillRunning) break;
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+
+      await fetchProcedureOptions(procedureSearch);
+      if (editingId) await fetchProcedureRates(editingId);
+      await loadProceduresWorkerStatus(true);
+    } catch (e: any) {
+      setModalError(e?.message || 'Falha ao atualizar catalogo de procedimentos.');
+    } finally {
+      setProcedureWorkerRefreshing(false);
+    }
+  };
+
   const fetchProcedureRates = async (professionalId: string) => {
     setProceduresLoading(true);
     setModalError('');
@@ -623,6 +694,11 @@ export default function ProfessionalsPage() {
     fetchSpecialties();
     fetchProcedureOptions();
   }, []);
+
+  useEffect(() => {
+    if (!isModalOpen || modalTab !== 'procedimentos') return;
+    loadProceduresWorkerStatus().catch(() => null);
+  }, [isModalOpen, modalTab]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -1419,6 +1495,34 @@ export default function ProfessionalsPage() {
                   ) : (
                     <>
                       <div className="border rounded-xl p-4 bg-slate-50/70 space-y-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                          <span>
+                            Worker catálogo:{' '}
+                            <strong>
+                              {procedureWorkerStatus
+                                ? `${String(procedureWorkerStatus.status || '-').toUpperCase()}${
+                                    procedureWorkerStatus.last_run
+                                      ? ` | ${String(procedureWorkerStatus.last_run).slice(0, 19).replace('T', ' ')}`
+                                      : ''
+                                  }`
+                                : 'SEM HEARTBEAT'}
+                            </strong>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={triggerProceduresCatalogRefresh}
+                            disabled={!canRefresh || procedureWorkerRefreshing}
+                            className="px-3 py-1.5 rounded border bg-white text-slate-700 text-xs inline-flex items-center gap-2 disabled:opacity-60"
+                          >
+                            {procedureWorkerRefreshing ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <RefreshCw size={12} />
+                            )}
+                            {procedureWorkerRefreshing ? 'Atualizando catálogo...' : 'Atualizar catálogo'}
+                          </button>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
                           <div className="md:col-span-3">
                             <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">

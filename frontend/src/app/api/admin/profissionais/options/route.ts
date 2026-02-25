@@ -68,25 +68,36 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const contractType = String(searchParams.get('contractType') || '').toUpperCase() as ContractTypeCode;
 
-    const fromFeegow = await tryLoadSpecialtiesFromFeegow();
-    const activeTemplates = await listActiveContractTemplateOptions(auth.db, contractType || '');
-    if (fromFeegow.length > 0) {
-      return NextResponse.json({
-        status: 'success',
-        data: {
-          specialties: fromFeegow,
-          source: 'feegow_api',
-          activeContractTemplates: activeTemplates,
-        },
-      });
+    let activeTemplates: Array<{ id: string; name: string; contractType: string; version: number }> = [];
+    try {
+      activeTemplates = await listActiveContractTemplateOptions(auth.db, contractType || '');
+    } catch (error) {
+      console.error('Erro ao carregar modelos ativos na rota de opcoes de profissionais:', error);
     }
 
-    const fromDb = await loadSpecialtiesFromDatabase(auth.db);
+    let specialties: string[] = [];
+    let source: 'feegow_api' | 'database' | 'unknown' = 'unknown';
+
+    const fromFeegow = await tryLoadSpecialtiesFromFeegow();
+    if (fromFeegow.length > 0) {
+      specialties = fromFeegow;
+      source = 'feegow_api';
+    } else {
+      try {
+        const fromDb = await loadSpecialtiesFromDatabase(auth.db);
+        specialties = fromDb;
+        source = 'database';
+      } catch (error) {
+        // Especialidades nao podem derrubar retorno dos modelos de contrato.
+        console.error('Erro ao carregar especialidades no fallback de banco:', error);
+      }
+    }
+
     return NextResponse.json({
       status: 'success',
       data: {
-        specialties: fromDb,
-        source: 'database',
+        specialties,
+        source,
         activeContractTemplates: activeTemplates,
       },
     });
