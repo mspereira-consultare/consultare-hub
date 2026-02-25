@@ -26,6 +26,7 @@ export const PLACEHOLDER_SOURCE_OPTIONS: PlaceholderSourceOption[] = [
   { value: 'professional.address_text', label: 'Profissional - Endereco', group: 'profissional' },
   { value: 'professional.personal_doc_type', label: 'Profissional - Tipo Documento', group: 'profissional' },
   { value: 'professional.personal_doc_number', label: 'Profissional - Numero Documento', group: 'profissional' },
+  { value: 'professional.payment_minimum_text', label: 'Profissional - Pagamento Minimo', group: 'profissional' },
   { value: 'professional.age_range', label: 'Profissional - Faixa Etaria', group: 'profissional' },
   { value: 'professional.service_units', label: 'Profissional - Unidades', group: 'profissional' },
   { value: 'professional.primary_specialty', label: 'Profissional - Especialidade Principal', group: 'profissional' },
@@ -44,4 +45,3 @@ export const CONTRACT_TEMPLATE_SUPPORTED_TYPES = new Set<ContractTypeCode>([
   'PJ_PADRAO',
   'PLANTONISTA',
 ]);
-

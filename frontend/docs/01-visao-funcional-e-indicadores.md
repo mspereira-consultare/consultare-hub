@@ -532,6 +532,7 @@ IDs disponíveis em `frontend/src/app/(admin)/metas/constants.ts`:
 
 Centralizar o cadastro da carteira de profissionais, com foco em:
 - dados contratuais (PF/PJ e tipo de contrato);
+- clausula opcional de pagamento minimo (`paymentMinimumText`);
 - registros regionais (CRM/CRO/CRP etc.) com registro principal;
 - controle documental em modo hibrido (checklist manual + upload S3 ativo);
 - status de pendencias e vencimento da certidao etica.
@@ -573,6 +574,7 @@ No fluxo atual:
 - o tipo `OUTRO` aparece apenas no upload (nao entra no checklist manual e nao altera o indicador `X/Y` de documentos).
 - a tabela de documentos exibida no cadastro nao recebe mais `CONTRATO_GERADO` automaticamente; para contrato final, usar upload manual de `CONTRATO_ASSINADO`.
 - a aba `Contratos` do modal gera os dois formatos por padrao (`PDF` + `Word`), permite `Visualizar PDF`, `Baixar PDF`, `Baixar Word`, `Gerar novo` e `Reprocessar` (somente status `ERRO`).
+- na renderizacao do contrato: CPF e CNPJ sao formatados automaticamente; `Todas Especialidades` usa separacao em portugues (`A, B e C`).
 
 ### Evolução técnica (18/02/2026)
 

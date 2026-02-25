@@ -87,6 +87,7 @@ export type Professional = {
   isActive: boolean;
   hasPhysicalFolder: boolean;
   physicalFolderNote: string | null;
+  paymentMinimumText: string | null;
   contractTemplateId: string | null;
   contractStartDate: string | null;
   contractEndDate: string | null;
@@ -128,6 +129,7 @@ export type ProfessionalInput = {
   isActive: boolean;
   hasPhysicalFolder: boolean;
   physicalFolderNote?: string | null;
+  paymentMinimumText?: string | null;
   contractTemplateId?: string | null;
   contractStartDate?: string | null;
   contractEndDate?: string | null;

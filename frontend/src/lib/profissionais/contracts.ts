@@ -31,6 +31,32 @@ const toDateBr = (isoDate: string | null | undefined) => {
   return `${m[3]}/${m[2]}/${m[1]}`;
 };
 
+const formatCpf = (value: string | null | undefined) => {
+  const digits = clean(value).replace(/\D/g, '').slice(0, 11);
+  if (digits.length !== 11) return clean(value);
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
+};
+
+const formatCnpj = (value: string | null | undefined) => {
+  const digits = clean(value).replace(/\D/g, '').slice(0, 14);
+  if (digits.length !== 14) return clean(value);
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`;
+};
+
+const joinWithAndPtBr = (values: string[]) => {
+  const items = Array.from(
+    new Set(
+      (values || [])
+        .map((value) => clean(value))
+        .filter(Boolean)
+    )
+  );
+  if (items.length === 0) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} e ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')} e ${items[items.length - 1]}`;
+};
+
 const nowPartsSaoPaulo = () => {
   const date = new Date();
   const datePart = new Intl.DateTimeFormat('pt-BR', {
@@ -142,9 +168,9 @@ const resolveSourceValue = (
     case 'professional.contract_end_date':
       return toDateBr(professional.contractEndDate);
     case 'professional.cpf':
-      return professional.cpf || '';
+      return formatCpf(professional.cpf || '');
     case 'professional.cnpj':
-      return professional.cnpj || '';
+      return formatCnpj(professional.cnpj || '');
     case 'professional.legal_name':
       return professional.legalName || '';
     case 'professional.phone':
@@ -157,6 +183,8 @@ const resolveSourceValue = (
       return professional.personalDocType || '';
     case 'professional.personal_doc_number':
       return professional.personalDocNumber || '';
+    case 'professional.payment_minimum_text':
+      return professional.paymentMinimumText || '';
     case 'professional.age_range':
       return professional.ageRange || '';
     case 'professional.service_units':
@@ -164,7 +192,7 @@ const resolveSourceValue = (
     case 'professional.primary_specialty':
       return professional.primarySpecialty || professional.specialty || '';
     case 'professional.specialties':
-      return Array.isArray(professional.specialties) ? professional.specialties.join(', ') : '';
+      return joinWithAndPtBr(Array.isArray(professional.specialties) ? professional.specialties : []);
     case 'registration.primary.council_type':
       return registration?.councilType || '';
     case 'registration.primary.council_number':

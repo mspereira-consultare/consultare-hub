@@ -9,6 +9,7 @@ import {
   CONTRACT_TYPES,
   COUNCIL_TYPES,
   DOCUMENT_TYPES,
+  normalizeContractTypeCode,
   PERSONAL_DOC_TYPES,
   PROFESSIONAL_SERVICE_UNITS,
   type ContractPartyType,
@@ -24,6 +25,7 @@ type FormState = {
   name: string; contractPartyType: ContractPartyType; contractType: string; cpf: string; cnpj: string; legalName: string;
   specialties: FormSpecialty[]; phone: string; email: string; ageMin: number; ageMax: number; serviceUnits: string[];
   hasFeegowPermissions: boolean;
+  paymentMinimumText: string;
   personalDocType: string; personalDocNumber: string; addressText: string; isActive: boolean;
   hasPhysicalFolder: boolean; physicalFolderNote: string; contractTemplateId: string; contractStartDate: string; contractEndDate: string;
   registrations: FormRegistration[]; checklist: FormChecklist[];
@@ -77,6 +79,7 @@ const parseAgeRange = (value: string | null | undefined) => {
 const emptyForm = (): FormState => ({
   name: '', contractPartyType: 'PF', contractType: CONTRACT_TYPES.find((c) => c.isActive)?.code || '', cpf: '', cnpj: '', legalName: '',
   specialties: [{ name: '', isPrimary: true }], phone: '', email: '', ageMin: 0, ageMax: 120, serviceUnits: [], hasFeegowPermissions: false,
+  paymentMinimumText: '',
   personalDocType: PERSONAL_DOC_TYPES[0], personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
   physicalFolderNote: '', contractTemplateId: '', contractStartDate: '', contractEndDate: '',
   registrations: [{ councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
@@ -100,6 +103,7 @@ const toForm = (item: ProfessionalListItem): FormState => {
   cnpj: formatCnpj(item.cnpj || ''), legalName: item.legalName || '', specialties,
   phone: formatPhone(item.phone || ''), email: item.email || '', ageMin: age.min, ageMax: age.max, serviceUnits: item.serviceUnits || [],
   hasFeegowPermissions: Boolean(item.hasFeegowPermissions),
+  paymentMinimumText: item.paymentMinimumText || '',
   personalDocType: item.personalDocType || 'RG',
   personalDocNumber: item.personalDocNumber || '', addressText: item.addressText || '', isActive: Boolean(item.isActive),
   hasPhysicalFolder: Boolean(item.hasPhysicalFolder), physicalFolderNote: item.physicalFolderNote || '',
@@ -192,7 +196,12 @@ export default function ProfessionalsPage() {
     return Array.from(all).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [specialties, form.specialties]);
   const contractTemplateOptions = useMemo(
-    () => activeContractTemplates.filter((tpl) => String(tpl.contractType || '').toUpperCase() === String(form.contractType || '').toUpperCase()),
+    () =>
+      activeContractTemplates.filter((tpl) => {
+        const tplType = normalizeContractTypeCode(tpl.contractType);
+        const formType = normalizeContractTypeCode(form.contractType);
+        return Boolean(tplType && formType && tplType === formType);
+      }),
     [activeContractTemplates, form.contractType]
   );
   const photoDoc = useMemo(
@@ -509,6 +518,7 @@ export default function ProfessionalsPage() {
         ageRange: `${form.ageMin}-${form.ageMax}`,
         serviceUnits: form.serviceUnits || [],
         hasFeegowPermissions: form.hasFeegowPermissions,
+        paymentMinimumText: form.paymentMinimumText || null,
         physicalFolderNote: form.physicalFolderNote || null,
         contractTemplateId: form.contractTemplateId || null,
         contractStartDate: form.contractStartDate || null,
@@ -849,9 +859,11 @@ export default function ProfessionalsPage() {
                       onChange={(e) =>
                         setForm((p) => {
                           const nextType = e.target.value;
-                          const matches = activeContractTemplates.filter(
-                            (tpl) => String(tpl.contractType || '').toUpperCase() === String(nextType || '').toUpperCase()
-                          );
+                          const matches = activeContractTemplates.filter((tpl) => {
+                            const tplType = normalizeContractTypeCode(tpl.contractType);
+                            const nextTypeNormalized = normalizeContractTypeCode(nextType);
+                            return Boolean(tplType && nextTypeNormalized && tplType === nextTypeNormalized);
+                          });
                           const keepCurrent = matches.some((tpl) => tpl.id === p.contractTemplateId);
                           return {
                             ...p,
@@ -881,8 +893,18 @@ export default function ProfessionalsPage() {
                       ))}
                     </select>
                     <p className="text-[11px] text-slate-500 mt-1">
-                      Opcoes vindas da aba de modelos de contrato em Configuracoes.
+                      Opcoes vindas da pagina Modelos de Contrato.
                     </p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Pagamento minimo (texto livre)</label>
+                    <input
+                      value={form.paymentMinimumText}
+                      onChange={(e) => setForm((p) => ({ ...p, paymentMinimumText: e.target.value }))}
+                      placeholder="Ex.: PAGAMENTO NO VALOR MINIMO DE R$ 900,00 PELO PERIODO DE 4/H"
+                      className="w-full px-3 py-2 border rounded-lg"
+                    />
                   </div>
 
                   <div>

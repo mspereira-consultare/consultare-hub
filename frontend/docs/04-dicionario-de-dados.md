@@ -370,6 +370,7 @@ Campos relevantes:
 - `address_text`
 - `is_active`
 - `has_physical_folder`, `physical_folder_note`
+- `payment_minimum_text` (texto livre opcional para clausula de pagamento minimo)
 - `contract_start_date`, `contract_end_date`
 - `created_at`, `updated_at`
 

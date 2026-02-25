@@ -5,6 +5,8 @@ import {
   CHECKLIST_DOCUMENT_TYPES,
   CERTIDAO_DOC_TYPE,
   CONTRACT_TYPES,
+  getContractTypeCandidates,
+  normalizeContractTypeCode,
   DOCUMENT_TYPES,
   PROFESSIONAL_SERVICE_UNITS,
   PERSONAL_DOC_TYPES,
@@ -78,11 +80,11 @@ const normalizeContractPartyType = (value: any): ContractPartyType => {
 };
 
 const normalizeContractType = (value: any): ContractTypeCode => {
-  const normalized = upper(value);
-  if (!allowedContractTypes.has(normalized as ContractTypeCode)) {
+  const normalized = normalizeContractTypeCode(value);
+  if (!normalized || !allowedContractTypes.has(normalized)) {
     throw new ProfessionalValidationError('Tipo de contrato invalido ou inativo.');
   }
-  return normalized as ContractTypeCode;
+  return normalized;
 };
 
 const normalizePersonalDocType = (value: any): string => {
@@ -328,6 +330,7 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     isActive: bool(payload?.isActive ?? true),
     hasPhysicalFolder: bool(payload?.hasPhysicalFolder),
     physicalFolderNote: clean(payload?.physicalFolderNote) || null,
+    paymentMinimumText: clean(payload?.paymentMinimumText) || null,
     contractTemplateId,
     contractStartDate,
     contractEndDate,
@@ -388,6 +391,7 @@ const mapProfessional = (row: any): Professional => ({
   isActive: bool(row.is_active),
   hasPhysicalFolder: bool(row.has_physical_folder),
   physicalFolderNote: clean(row.physical_folder_note) || null,
+  paymentMinimumText: clean(row.payment_minimum_text) || null,
   contractTemplateId: clean(row.contract_template_id) || null,
   contractStartDate: parseDate(row.contract_start_date),
   contractEndDate: parseDate(row.contract_end_date),
@@ -418,7 +422,8 @@ const validateContractTemplateLink = async (
     throw new ProfessionalValidationError('Selecione um modelo de contrato ativo.');
   }
   const tplType = String(row.contract_type || '').toUpperCase();
-  if (tplType !== String(contractType || '').toUpperCase()) {
+  const allowedTypes = new Set(getContractTypeCandidates(contractType).map((item) => upper(item)));
+  if (!allowedTypes.has(tplType)) {
     throw new ProfessionalValidationError('O modelo de contrato nao pertence ao tipo selecionado.');
   }
 };
@@ -668,6 +673,7 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
       is_active INTEGER NOT NULL DEFAULT 1,
       has_physical_folder INTEGER NOT NULL DEFAULT 0,
       physical_folder_note TEXT,
+      payment_minimum_text TEXT,
       contract_template_id VARCHAR(64) NULL,
       contract_start_date DATE NULL,
       contract_end_date DATE NULL,
@@ -715,6 +721,10 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   await safeAddColumn(
     db,
     `ALTER TABLE professionals ADD COLUMN contract_template_id VARCHAR(64) NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN payment_minimum_text TEXT NULL`
   );
 
   await db.execute(`
@@ -935,8 +945,9 @@ export const createProfessional = async (
       specialty, primary_specialty, specialties_json, phone, email, age_range, service_units_json,
       has_feegow_permissions, personal_doc_type, personal_doc_number, address_text, is_active,
       has_physical_folder, physical_folder_note, contract_template_id, contract_start_date, contract_end_date,
+      payment_minimum_text,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -963,6 +974,7 @@ export const createProfessional = async (
       input.contractTemplateId || null,
       input.contractStartDate,
       input.contractEndDate,
+      input.paymentMinimumText || null,
       now,
       now,
     ]
@@ -1022,6 +1034,7 @@ export const updateProfessional = async (
       is_active = ?,
       has_physical_folder = ?,
       physical_folder_note = ?,
+      payment_minimum_text = ?,
       contract_template_id = ?,
       contract_start_date = ?,
       contract_end_date = ?,
@@ -1049,6 +1062,7 @@ export const updateProfessional = async (
       input.isActive ? 1 : 0,
       input.hasPhysicalFolder ? 1 : 0,
       input.physicalFolderNote,
+      input.paymentMinimumText || null,
       input.contractTemplateId || null,
       input.contractStartDate,
       input.contractEndDate,

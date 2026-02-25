@@ -151,6 +151,66 @@ export const CONTRACT_TYPES: ContractTypeDef[] = [
   },
 ];
 
+const normalizeContractToken = (value: string) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .replace(/_+/g, '_');
+
+const CONTRACT_TYPE_ALIASES: Record<ContractTypeCode, string[]> = {
+  PADRAO_CLT: [
+    'PADRAO_CLT',
+    'PADRAO CLT',
+    'PADRÃO CLT',
+    'ESPECIALIDADES',
+    'ESPECIALIDADE',
+    'CLT',
+  ],
+  PJ_PADRAO: [
+    'PJ_PADRAO',
+    'PJ PADRAO',
+    'PJ PADRÃO',
+    'ODONTOLOGIA',
+    'ODONTO',
+  ],
+  PLANTONISTA: [
+    'PLANTONISTA',
+    'ULTRASSOM',
+    'ULTRASSONOGRAFIA',
+    'USG',
+  ],
+};
+
+export const normalizeContractTypeCode = (value: unknown): ContractTypeCode | null => {
+  const token = normalizeContractToken(String(value || ''));
+  if (!token) return null;
+
+  for (const item of CONTRACT_TYPES) {
+    if (token === normalizeContractToken(item.code)) return item.code;
+    if (token === normalizeContractToken(item.label)) return item.code;
+    const aliases = CONTRACT_TYPE_ALIASES[item.code] || [];
+    if (aliases.some((alias) => token === normalizeContractToken(alias))) {
+      return item.code;
+    }
+  }
+
+  return null;
+};
+
+export const getContractTypeCandidates = (code: ContractTypeCode): string[] => {
+  const current = CONTRACT_TYPES.find((item) => item.code === code);
+  const aliases = CONTRACT_TYPE_ALIASES[code] || [];
+  const raw = [
+    code,
+    current?.label || '',
+    ...aliases,
+  ];
+  return Array.from(new Set(raw.map((item) => String(item || '').trim()).filter(Boolean)));
+};
+
 export const PERSONAL_DOC_TYPES = ['RG', 'CPF', 'CNH'] as const;
 
 export const COUNCIL_TYPES = [

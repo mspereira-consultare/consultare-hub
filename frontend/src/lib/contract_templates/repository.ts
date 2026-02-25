@@ -1,6 +1,11 @@
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
-import { CONTRACT_TYPES, type ContractTypeCode } from '@/lib/profissionais/constants';
+import {
+  CONTRACT_TYPES,
+  getContractTypeCandidates,
+  normalizeContractTypeCode,
+  type ContractTypeCode,
+} from '@/lib/profissionais/constants';
 import {
   PLACEHOLDER_SOURCE_OPTIONS,
   type PlaceholderSourceOption,
@@ -43,8 +48,8 @@ const safeJsonParse = <T>(value: any, fallback: T): T => {
 };
 
 const normalizeContractType = (value: any): ContractTypeCode => {
-  const normalized = clean(value).toUpperCase() as ContractTypeCode;
-  if (!allowedContractTypes.has(normalized)) {
+  const normalized = normalizeContractTypeCode(value);
+  if (!normalized || !allowedContractTypes.has(normalized)) {
     throw new ContractTemplateValidationError('Tipo de contrato invalido para modelo.');
   }
   return normalized;
@@ -252,14 +257,15 @@ export const listContractTemplates = async (
 
   const status = filters?.status || 'all';
   if (status !== 'all') {
-    where.push('status = ?');
-    params.push(status);
+    where.push('LOWER(status) = ?');
+    params.push(String(status).toLowerCase());
   }
 
-  const contractType = clean(filters?.contractType || '').toUpperCase();
-  if (contractType) {
-    where.push('contract_type = ?');
-    params.push(contractType);
+  const normalizedType = normalizeContractTypeCode(filters?.contractType || '');
+  if (normalizedType) {
+    const candidates = getContractTypeCandidates(normalizedType).map((item) => String(item).toUpperCase());
+    where.push(`UPPER(contract_type) IN (${candidates.map(() => '?').join(', ')})`);
+    params.push(...candidates);
   }
 
   const rows = await db.query(
@@ -272,7 +278,20 @@ export const listContractTemplates = async (
     params
   );
 
-  return rows.map((row) => mapTemplate(row));
+  const out: ContractTemplate[] = [];
+  for (const row of rows) {
+    try {
+      out.push(mapTemplate(row));
+    } catch (error) {
+      const raw = row as Record<string, unknown>;
+      console.warn('Modelo de contrato ignorado por dados invalidos:', {
+        id: clean(raw?.id),
+        contractType: clean(raw?.contract_type),
+        status: clean(raw?.status),
+      });
+    }
+  }
+  return out;
 };
 
 const getNextTemplateVersion = async (
@@ -474,4 +493,3 @@ export const listActiveContractTemplateOptions = async (
 
 export const getTemplatePlaceholderSourceOptions = (): PlaceholderSourceOption[] =>
   PLACEHOLDER_SOURCE_OPTIONS;
-
