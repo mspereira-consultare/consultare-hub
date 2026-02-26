@@ -20,6 +20,21 @@ const encodeXmlEntities = (value: string) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
 
+const renderTextNodeWithLineBreaks = (open: string, rawValue: string, close: string) => {
+  const normalized = rawValue.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!normalized.includes('\n')) {
+    return `${open}${encodeXmlEntities(normalized)}${close}`;
+  }
+
+  const parts = normalized.split('\n');
+  return parts
+    .map((part, idx) => {
+      const prefix = idx === 0 ? '' : `<w:br/>`;
+      return `${prefix}${open}${encodeXmlEntities(part)}${close}`;
+    })
+    .join('');
+};
+
 type NodeBoundary = { node: number; offset: number };
 
 const locateBoundary = (parts: string[], position: number): NodeBoundary => {
@@ -88,7 +103,7 @@ const replacePlaceholdersInXml = (
   return xml.replace(TEXT_NODE_REGEX, (fullMatch, open, _content, close) => {
     const next = decodedParts[textNodeIndex] ?? '';
     textNodeIndex += 1;
-    return `${open}${encodeXmlEntities(next)}${close}`;
+    return renderTextNodeWithLineBreaks(String(open), String(next), String(close));
   });
 };
 

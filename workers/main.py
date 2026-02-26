@@ -411,20 +411,18 @@ def run_on_demand_listener():
 # --- WRAPPERS DE SEGURANÇA ---
 def run_monitor_recepcao_safe():
     while True:
-        if is_working_hours():
-            try: 
-                run_monitor_recepcao()
-            except Exception as e: 
-                print(f"⚠️ Crash Monitor Recepção: {e}. Reiniciando em 10s...")
+        try: 
+            run_monitor_recepcao()
+        except Exception as e: 
+            print(f"[WARN] Crash Monitor Recepcao: {e}. Reiniciando em 10s...")
         time.sleep(10)
 
 def run_monitor_medico_safe():
     while True:
-        if is_working_hours():
-            try: 
-                run_monitor_medico()
-            except Exception as e:
-                print(f"⚠️ Crash Monitor Médico: {e}. Reiniciando em 10s...")
+        try: 
+            run_monitor_medico()
+        except Exception as e:
+            print(f"[WARN] Crash Monitor Medico: {e}. Reiniciando em 10s...")
         time.sleep(10)
 
 def run_clinia_safe():
@@ -517,8 +515,7 @@ def run_watchdog():
 
     print(
         f"🛡️ Watchdog ativo: services={','.join(WATCHDOG_SERVICES)} "
-        f"stale={WATCHDOG_STALE_SEC}s interval={WATCHDOG_INTERVAL_SEC}s "
-        f"tz={WORK_TZ_NAME} window={WORK_START_HHMM}-{WORK_END_HHMM}"
+        f"stale={WATCHDOG_STALE_SEC}s interval={WATCHDOG_INTERVAL_SEC}s tz={WORK_TZ_NAME}"
     )
 
     db = DatabaseManager()
@@ -527,10 +524,6 @@ def run_watchdog():
     while True:
         time.sleep(WATCHDOG_INTERVAL_SEC)
         try:
-            # Fora do horário: não reinicia por staleness, pois é esperado parar/pausar.
-            if not is_working_hours():
-                continue
-
             now = _now_work_tz()
             if WATCHDOG_GRACE_SEC and (now - started_at).total_seconds() < WATCHDOG_GRACE_SEC:
                 continue
