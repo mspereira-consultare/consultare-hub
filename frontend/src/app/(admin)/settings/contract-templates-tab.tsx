@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useMemo, useState } from 'react';
-import { CheckCircle, Download, Eye, Loader2, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
+import { CheckCircle, Download, Loader2, RefreshCw, Trash2, UploadCloud } from 'lucide-react';
 import { CONTRACT_TYPES, type ContractTypeCode } from '@/lib/profissionais/constants';
 
 type PlaceholderSourceOption = {
@@ -371,15 +371,6 @@ export default function ContractTemplatesTab() {
                     <td className="px-3 py-2 text-xs text-slate-600">{item.uploadedAt ? item.uploadedAt.slice(0, 19).replace('T', ' ') : '-'}</td>
                     <td className="px-3 py-2">
                       <div className="flex items-center gap-2">
-                        <a
-                          href={`/api/admin/contract-templates/${encodeURIComponent(item.id)}/download?inline=1`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="px-2 py-1 border rounded text-xs inline-flex items-center gap-1"
-                        >
-                          <Eye size={12} />
-                          Visualizar
-                        </a>
                         <a
                           href={`/api/admin/contract-templates/${encodeURIComponent(item.id)}/download`}
                           className="px-2 py-1 border rounded text-xs inline-flex items-center gap-1"

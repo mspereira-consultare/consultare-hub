@@ -173,7 +173,7 @@ const formatCurrency = (value: number) =>
 
 const toMoneyInputString = (value: number) => Number(value || 0).toFixed(2).replace('.', ',');
 
-const hasGeneratedFileInMeta = (contract: ProfessionalContract, format: 'pdf' | 'docx') => {
+const hasGeneratedFileInMeta = (contract: ProfessionalContract, format: 'docx') => {
   const filesRaw = contract.meta?.files;
   if (!filesRaw || typeof filesRaw !== 'object' || Array.isArray(filesRaw)) return false;
   const byFormat = (filesRaw as Record<string, unknown>)[format];
@@ -186,9 +186,6 @@ const hasGeneratedDocx = (contract: ProfessionalContract) => {
   if (hasGeneratedFileInMeta(contract, 'docx')) return true;
   return Boolean(contract.documentId || contract.storageKey);
 };
-
-const hasGeneratedPdf = (contract: ProfessionalContract) =>
-  hasGeneratedFileInMeta(contract, 'pdf');
 
 export default function ProfessionalsPage() {
   const { data: session } = useSession();
@@ -612,7 +609,7 @@ export default function ProfessionalsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Falha ao gerar contrato.');
-      setModalNotice('Contrato gerado com sucesso (PDF + Word).');
+      setModalNotice('Contrato gerado com sucesso (Word).');
       await fetchContracts(editingId);
     } catch (e: any) {
       setModalError(e?.message || 'Falha ao gerar contrato.');
@@ -633,7 +630,7 @@ export default function ProfessionalsPage() {
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Falha ao reprocessar contrato.');
-      setModalNotice('Contrato reprocessado com sucesso (PDF + Word).');
+      setModalNotice('Contrato reprocessado com sucesso (Word).');
       await fetchContracts(editingId);
     } catch (e: any) {
       setModalError(e?.message || 'Falha ao reprocessar contrato.');
@@ -1761,7 +1758,6 @@ export default function ProfessionalsPage() {
                               </tr>
                             ) : (
                               contracts.map((contract) => {
-                                const hasPdf = hasGeneratedPdf(contract);
                                 const hasDocx = hasGeneratedDocx(contract);
                                 const downloadBaseHref = `/api/admin/profissionais/${encodeURIComponent(contract.professionalId)}/contratos/${encodeURIComponent(contract.id)}/download`;
                                 return (
@@ -1786,30 +1782,10 @@ export default function ProfessionalsPage() {
                                     <td className="px-3 py-2 text-rose-700">{contract.errorMessage || '-'}</td>
                                     <td className="px-3 py-2">
                                       <div className="flex items-center gap-3">
-                                        {!hasPdf && !hasDocx ? (
+                                        {!hasDocx ? (
                                           <span className="text-xs text-slate-400">Sem arquivo</span>
                                         ) : (
                                           <>
-                                            {hasPdf && (
-                                              <a
-                                                href={`${downloadBaseHref}?format=pdf&inline=1`}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                                className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
-                                              >
-                                                <Eye size={13} />
-                                                Visualizar PDF
-                                              </a>
-                                            )}
-                                            {hasPdf && (
-                                              <a
-                                                href={`${downloadBaseHref}?format=pdf`}
-                                                className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
-                                              >
-                                                <Download size={13} />
-                                                Baixar PDF
-                                              </a>
-                                            )}
                                             {hasDocx && (
                                               <a
                                                 href={`${downloadBaseHref}?format=docx`}

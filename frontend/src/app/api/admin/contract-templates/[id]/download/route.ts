@@ -11,7 +11,7 @@ type ParamsContext = {
   params: Promise<{ id: string }>;
 };
 
-export async function GET(request: Request, context: ParamsContext) {
+export async function GET(_request: Request, context: ParamsContext) {
   try {
     const auth = await requireContractTemplatesPermission('view');
     if (!auth.ok) {
@@ -23,9 +23,6 @@ export async function GET(request: Request, context: ParamsContext) {
     if (!template) {
       return NextResponse.json({ error: 'Modelo de contrato nao encontrado.' }, { status: 404 });
     }
-
-    const { searchParams } = new URL(request.url);
-    const inline = searchParams.get('inline') === '1';
 
     const provider = getStorageProviderByName(template.storageProvider);
     const stream = await provider.getFileStream({
@@ -40,7 +37,7 @@ export async function GET(request: Request, context: ParamsContext) {
       status: 200,
       headers: {
         'Content-Type': template.mimeType || 'application/octet-stream',
-        'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
         'Cache-Control': 'no-store',
       },
     });

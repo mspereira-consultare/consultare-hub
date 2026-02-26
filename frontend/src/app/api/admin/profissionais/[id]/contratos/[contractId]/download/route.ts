@@ -14,10 +14,13 @@ type ParamsContext = {
   params: Promise<{ id: string; contractId: string }>;
 };
 
-const parseFormat = (value: string | null): 'pdf' | 'docx' =>
-  String(value || '').trim().toLowerCase() === 'docx' ? 'docx' : 'pdf';
+const parseFormat = (value: string | null): 'docx' | 'invalid' => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (!normalized || normalized === 'docx') return 'docx';
+  return 'invalid';
+};
 
-const defaultNameByFormat = (contractId: string, format: 'pdf' | 'docx') =>
+const defaultNameByFormat = (contractId: string, format: 'docx') =>
   `contrato-${contractId}.${format}`;
 
 export async function GET(request: Request, context: ParamsContext) {
@@ -36,7 +39,12 @@ export async function GET(request: Request, context: ParamsContext) {
 
     const { searchParams } = new URL(request.url);
     const format = parseFormat(searchParams.get('format'));
-    const wantsInline = searchParams.get('inline') === '1';
+    if (format === 'invalid') {
+      return NextResponse.json(
+        { error: 'Formato nao suportado. Use apenas DOCX.' },
+        { status: 400 }
+      );
+    }
 
     const contract = await getProfessionalContractById(auth.db, professionalId, cleanContractId);
     if (!contract) {
@@ -61,16 +69,13 @@ export async function GET(request: Request, context: ParamsContext) {
     const fileName = file.originalName || defaultNameByFormat(contract.id, format);
     const contentType =
       file.mimeType ||
-      (format === 'pdf'
-        ? 'application/pdf'
-        : 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-    const canInline = wantsInline && format === 'pdf';
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
     return new NextResponse(webStream, {
       status: 200,
       headers: {
         'Content-Type': contentType,
-        'Content-Disposition': `${canInline ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(fileName)}`,
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`,
         'Cache-Control': 'no-store',
       },
     });
