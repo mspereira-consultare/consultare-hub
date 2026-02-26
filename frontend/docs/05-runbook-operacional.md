@@ -320,3 +320,25 @@ A interface da página `/profissionais` opera em modo hibrido sem bloqueio:
 - `POST /api/admin/profissionais/:id/contratos`
 - `POST /api/admin/profissionais/:id/contratos/:contractId/reprocess`
 - `GET /api/admin/profissionais/:id/contratos/:contractId/download?format=pdf|docx`
+## Modulo Qualidade - Sprint 1 (Documentos)
+
+Rotas entregues:
+- Tela: `/qualidade/documentos`
+- API:
+  - `GET/POST /api/admin/qms/documentos`
+  - `GET/PATCH/DELETE /api/admin/qms/documentos/:id`
+  - `POST /api/admin/qms/documentos/:id/versoes`
+  - `GET/POST /api/admin/qms/documentos/:id/arquivos`
+  - `GET /api/admin/qms/documentos/:id/arquivos/:fileId/download`
+  - `POST /api/admin/qms/documentos/refresh`
+
+Checklist rapido de validacao:
+1. Criar um POP novo sem codigo (codigo deve ser gerado automaticamente).
+2. Editar o POP e salvar alteracoes.
+3. Criar nova versao via botao `Nova versao`.
+4. Fazer upload de arquivo e validar visualizacao/download.
+5. Rodar refresh manual e verificar `service_name='qms_documentos'` em `system_status`.
+
+Observacoes:
+- os arquivos usam o mesmo provider S3 ja adotado no projeto;
+- as paginas de `Treinamentos` e `Auditorias` foram criadas como base visual para os proximos sprints.

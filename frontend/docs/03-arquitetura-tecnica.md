@@ -302,3 +302,27 @@ Variáveis necessárias para ativar S3:
   - modelo existe;
   - modelo esta `active`;
   - `contract_type` do modelo bate com `contract_type` do profissional.
+## Atualizacao - Sprint 1 Qualidade (Documentos)
+
+Componentes adicionados:
+
+- Backend:
+  - `frontend/src/lib/qms/repository.ts`
+  - `frontend/src/lib/qms/auth.ts`
+  - APIs em `frontend/src/app/api/admin/qms/documentos/*`
+- Frontend:
+  - `frontend/src/app/(admin)/qualidade/documentos/page.tsx`
+  - componentes em `frontend/src/app/(admin)/qualidade/documentos/components/*`
+  - placeholders iniciais:
+    - `/qualidade/treinamentos`
+    - `/qualidade/auditorias`
+
+Detalhes tecnicos:
+
+- tabelas criadas sob demanda:
+  - `qms_documents`
+  - `qms_document_versions`
+  - `qms_document_files`
+  - `qms_audit_log`
+- upload de arquivo usando provider S3 ja existente;
+- heartbeat/refresh do modulo em `system_status` com `service_name='qms_documentos'`.

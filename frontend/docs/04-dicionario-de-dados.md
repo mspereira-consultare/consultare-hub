@@ -537,3 +537,62 @@ Escrita: APIs de criacao/edicao do modulo.
 No estado atual, `professional_documents` é alimentada por `POST /api/admin/profissionais/:id/documentos` com storage S3.
 Contratos gerados automaticamente ficam em `professional_contracts` e sao baixados por endpoint proprio.
 O modulo opera em modo hibrido: checklist manual + upload em S3 no mesmo fluxo.
+## Tabelas - Modulo Qualidade (Sprint 1)
+
+### `qms_documents`
+
+Finalidade:
+- cadastro mestre de POP/documento operacional.
+
+Campos principais:
+- `id` (PK)
+- `code` (unico; formato legivel ex.: `POP-2026-0001`)
+- `sector`
+- `name`
+- `objective`
+- `periodicity_days`
+- `status`
+- `archived_at`
+- `created_by`, `created_at`, `updated_by`, `updated_at`
+
+### `qms_document_versions`
+
+Finalidade:
+- historico de revisoes/versoes do POP.
+
+Campos principais:
+- `id` (PK)
+- `document_id` (vinculo logico com `qms_documents.id`)
+- `version_label`
+- `elaborated_by`, `reviewed_by`, `approved_by`
+- `creation_date`, `last_review_date`, `next_review_date`
+- `linked_training_ref` (temporario Sprint 1)
+- `revision_reason`, `scope`, `notes`
+- `is_current`
+- `created_by`, `created_at`
+
+### `qms_document_files`
+
+Finalidade:
+- metadados de arquivo do POP armazenado no S3.
+
+Campos principais:
+- `id` (PK)
+- `document_version_id`
+- `storage_provider`, `storage_bucket`, `storage_key`
+- `filename`, `mime_type`, `size_bytes`
+- `uploaded_by`, `uploaded_at`
+- `is_active`
+
+### `qms_audit_log`
+
+Finalidade:
+- trilha de auditoria de alteracoes do modulo.
+
+Campos principais:
+- `id` (PK)
+- `entity_type`, `entity_id`
+- `action`
+- `before_json`, `after_json`
+- `actor_user_id`
+- `created_at`

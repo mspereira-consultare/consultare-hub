@@ -102,6 +102,30 @@ const menuItems: MenuItem[] = [
     pageKey: "profissionais",
   },
   {
+    href: "/qualidade/documentos",
+    label: "Qualidade - Documentos",
+    icon: FileText,
+    group: "QUALIDADE",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "qualidade_documentos",
+  },
+  {
+    href: "/qualidade/treinamentos",
+    label: "Qualidade - Treinamentos",
+    icon: Calendar,
+    group: "QUALIDADE",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "qualidade_treinamentos",
+  },
+  {
+    href: "/qualidade/auditorias",
+    label: "Qualidade - Auditorias",
+    icon: ClipboardList,
+    group: "QUALIDADE",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "qualidade_auditorias",
+  },
+  {
     href: "/financeiro",
     label: "Financeiro",
     icon: DollarSign,
@@ -175,7 +199,7 @@ const menuItems: MenuItem[] = [
   },
 ];
 
-const GROUP_ORDER = ["PRINCIPAL", "OPERAÇÕES", "FINANCEIRO", "INTELIGÊNCIA", "SISTEMA"];
+const GROUP_ORDER = ["PRINCIPAL", "OPERAÇÕES", "QUALIDADE", "FINANCEIRO", "INTELIGÊNCIA", "SISTEMA"];
 const STORAGE_KEY = "consultare_sidebar_expanded_groups_v1";
 
 const ROLE_LABEL: Record<UserRole, string> = {

@@ -33,6 +33,9 @@ const SERVICE_ALIASES: Record<string, string> = {
   auth_feegow: 'auth',
   auth_clinia: 'auth_clinia',
   clinia_auth: 'auth_clinia',
+  qms_documentos: 'qms_documentos',
+  qualidade_documentos: 'qms_documentos',
+  qms_docs: 'qms_documentos',
   clinia: 'clinia',
   worker_clinia: 'clinia',
   monitor_medico: 'monitor_medico',
@@ -60,6 +63,7 @@ const SERVICE_PAGE_MAP: Record<string, PageKey> = {
   monitor_recepcao: 'monitor',
   clinia: 'monitor',
   procedures_catalog: 'profissionais',
+  qms_documentos: 'qualidade_documentos',
   auth: 'settings',
   auth_clinia: 'settings',
 };
@@ -73,6 +77,7 @@ const SERVICE_REFRESH_PAGES: Record<string, PageKey[]> = {
   monitor_medico: ['monitor'],
   monitor_recepcao: ['monitor'],
   procedures_catalog: ['profissionais'],
+  qms_documentos: ['qualidade_documentos'],
   auth: ['settings'],
   auth_clinia: ['settings'],
 };

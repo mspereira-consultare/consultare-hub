@@ -592,3 +592,22 @@ No fluxo atual:
 - A tabela de documentos do modal permite `Visualizar` (`?inline=1`) e `Baixar`.
 - A geração de contrato foi incorporada na aba `Contratos` do modal, com histórico por profissional.
 - O modal foi ampliado e reorganizado para reduzir scroll e condensar campos.
+## Qualidade - Sprint 1 (Documentos Operacionais)
+
+Nova tela:
+- `/qualidade/documentos`
+
+Funcionalidades entregues:
+- cadastro de documento operacional (POP) com codigo legivel;
+- edicao e exclusao de documento;
+- controle de versao com acao "Nova versao";
+- upload e download/visualizacao de arquivo vinculado ao documento;
+- refresh manual para recalculo de status por data de proxima revisao.
+
+Indicadores/regras iniciais:
+- `Status`: `Rascunho`, `Vigente`, `A vencer`, `Vencido`, `Arquivado`;
+- regra de status por revisao:
+  - `Vencido`: `next_review_date < hoje`;
+  - `A vencer`: ate 30 dias para vencimento;
+  - `Vigente`: acima de 30 dias.
+- heartbeat: servico `qms_documentos` em `system_status`.

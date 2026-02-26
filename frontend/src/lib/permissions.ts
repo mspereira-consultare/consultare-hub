@@ -12,6 +12,9 @@ export type PageKey =
   | 'produtividade'
   | 'agendamentos'
   | 'profissionais'
+  | 'qualidade_documentos'
+  | 'qualidade_treinamentos'
+  | 'qualidade_auditorias'
   | 'checklist_crc'
   | 'checklist_recepcao'
   | 'ajuda'
@@ -38,6 +41,9 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'produtividade', label: 'Produtividade', path: '/produtividade' },
   { key: 'agendamentos', label: 'Agendamentos', path: '/agendamentos' },
   { key: 'profissionais', label: 'Profissionais', path: '/profissionais' },
+  { key: 'qualidade_documentos', label: 'Qualidade - Documentos', path: '/qualidade/documentos' },
+  { key: 'qualidade_treinamentos', label: 'Qualidade - Treinamentos', path: '/qualidade/treinamentos' },
+  { key: 'qualidade_auditorias', label: 'Qualidade - Auditorias', path: '/qualidade/auditorias' },
   { key: 'checklist_crc', label: 'Checklist CRC', path: '/checklist-crc' },
   { key: 'checklist_recepcao', label: 'Checklist Recepcao', path: '/checklist-recepcao' },
   { key: 'ajuda', label: 'Ajuda', path: '/ajuda' },
@@ -76,13 +82,13 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'checklist_crc', 'checklist_recepcao'], { edit: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'produtividade', 'agendamentos', 'profissionais', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { edit: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
     return matrix;
   }
 
-  setMany(matrix, ['dashboard', 'monitor', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
+  setMany(matrix, ['dashboard', 'monitor', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
   setMany(matrix, ['checklist_crc', 'checklist_recepcao'], { edit: true });
   setMany(matrix, ['monitor', 'produtividade', 'agendamentos', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
   return matrix;
@@ -140,6 +146,9 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/produtividade') return 'produtividade';
   if (path === '/agendamentos') return 'agendamentos';
   if (path === '/profissionais') return 'profissionais';
+  if (path === '/qualidade/documentos') return 'qualidade_documentos';
+  if (path === '/qualidade/treinamentos') return 'qualidade_treinamentos';
+  if (path === '/qualidade/auditorias') return 'qualidade_auditorias';
   if (path === '/metas/dashboard') return 'metas_dashboard';
   if (path === '/metas') return 'metas';
   if (path === '/checklist-crc') return 'checklist_crc';
@@ -157,6 +166,9 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/teams')) return 'produtividade';
   if (path.startsWith('/api/admin/agendamentos')) return 'agendamentos';
   if (path.startsWith('/api/admin/profissionais')) return 'profissionais';
+  if (path.startsWith('/api/admin/qms/documentos')) return 'qualidade_documentos';
+  if (path.startsWith('/api/admin/qms/treinamentos')) return 'qualidade_treinamentos';
+  if (path.startsWith('/api/admin/qms/auditorias')) return 'qualidade_auditorias';
   if (path.startsWith('/api/admin/goals')) return 'metas';
   if (path.startsWith('/api/admin/options/')) return 'metas';
   if (path.startsWith('/api/admin/checklist/crc')) return 'checklist_crc';

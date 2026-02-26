@@ -51,3 +51,5 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Pagina `/modelos-contrato`: `download` e `visualizacao` de templates adicionados ao fluxo tecnico.
 - Modal de profissional: aba `Contratos` com geracao em `PDF + Word`, `Gerar novo`, `Reprocessar`, `Visualizar PDF`, `Baixar PDF` e `Baixar Word`.
 - Modal de profissional: aba `Procedimentos` com vinculo de procedimentos e valores por profissional.
+- Novo plano tecnico do modulo de Qualidade e Treinamentos em `docs/06-plano-tecnico-qualidade-treinamentos.md`.
+- Sprint 1 iniciado para Qualidade: pagina `/qualidade/documentos` e APIs `qms/documentos` entregues.
