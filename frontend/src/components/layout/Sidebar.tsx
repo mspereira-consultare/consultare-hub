@@ -103,7 +103,7 @@ const menuItems: MenuItem[] = [
   },
   {
     href: "/qualidade/documentos",
-    label: "Qualidade - Documentos",
+    label: "Documentos",
     icon: FileText,
     group: "QUALIDADE",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
@@ -111,7 +111,7 @@ const menuItems: MenuItem[] = [
   },
   {
     href: "/qualidade/treinamentos",
-    label: "Qualidade - Treinamentos",
+    label: "Treinamentos",
     icon: Calendar,
     group: "QUALIDADE",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
@@ -119,7 +119,7 @@ const menuItems: MenuItem[] = [
   },
   {
     href: "/qualidade/auditorias",
-    label: "Qualidade - Auditorias",
+    label: "Auditorias",
     icon: ClipboardList,
     group: "QUALIDADE",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],

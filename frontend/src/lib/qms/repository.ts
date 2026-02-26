@@ -280,9 +280,9 @@ export const ensureQmsTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE qms_documents ADD COLUMN status VARCHAR(30) NOT NULL DEFAULT 'rascunho'`);
   await safeAddColumn(db, `ALTER TABLE qms_documents ADD COLUMN archived_at TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE qms_documents ADD COLUMN created_by VARCHAR(64) NOT NULL DEFAULT ''`);
-  await safeAddColumn(db, `ALTER TABLE qms_documents ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`);
+  await safeAddColumn(db, `ALTER TABLE qms_documents ADD COLUMN created_at TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE qms_documents ADD COLUMN updated_by VARCHAR(64) NOT NULL DEFAULT ''`);
-  await safeAddColumn(db, `ALTER TABLE qms_documents ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`);
+  await safeAddColumn(db, `ALTER TABLE qms_documents ADD COLUMN updated_at TEXT NULL`);
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS qms_document_versions (
