@@ -850,12 +850,12 @@ export default function ProfessionalsPage() {
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('status')} className="inline-flex items-center gap-1">Status <span>{sortIndicator('status')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('name')} className="inline-flex items-center gap-1">Profissional <span>{sortIndicator('name')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('specialty')} className="inline-flex items-center gap-1">Especialidade <span>{sortIndicator('specialty')}</span></button></th>
-              <th className="px-4 py-3"><button type="button" onClick={() => onSort('contractEndDate')} className="inline-flex items-center gap-1">Expiracao Contrato <span>{sortIndicator('contractEndDate')}</span></button></th>
+              <th className="px-4 py-3"><button type="button" onClick={() => onSort('contractEndDate')} className="inline-flex items-center gap-1">Expiração Contrato <span>{sortIndicator('contractEndDate')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('registration')} className="inline-flex items-center gap-1">Registro principal <span>{sortIndicator('registration')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('contractType')} className="inline-flex items-center gap-1">Tipo contrato <span>{sortIndicator('contractType')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('documents')} className="inline-flex items-center gap-1">Documentos <span>{sortIndicator('documents')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('certidao')} className="inline-flex items-center gap-1">Certidao <span>{sortIndicator('certidao')}</span></button></th>
-              <th className="px-4 py-3">Acoes</th>
+              <th className="px-4 py-3">Ações</th>
             </tr>
           </thead>
           <tbody>
@@ -977,7 +977,7 @@ export default function ProfessionalsPage() {
 
                 <div className="xl:col-span-9">
                   <div className="border rounded-xl p-4 bg-slate-50/60 h-full min-h-[230px]">
-                    <h3 className="text-sm font-semibold text-slate-700 mb-3">Dados b?sicos</h3>
+                    <h3 className="text-sm font-semibold text-slate-700 mb-3">Dados básicos</h3>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                       <div className="md:col-span-8">
                         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Nome do profissional</label>
@@ -1080,7 +1080,7 @@ export default function ProfessionalsPage() {
                   </div>
 
                   <p className="text-[11px] text-slate-500">
-                    Fonte das especialidades: {specialtiesSource === 'feegow_api' ? 'Feegow API' : specialtiesSource === 'database' ? 'Banco local' : 'N?o carregada'}
+                    Fonte das especialidades: {specialtiesSource === 'feegow_api' ? 'Feegow API' : specialtiesSource === 'database' ? 'Banco local' : 'Não carregada'}
                   </p>
 
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
@@ -1111,7 +1111,7 @@ export default function ProfessionalsPage() {
                     </div>
 
                     <div className="md:col-span-6">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Faixa et?ria de atendimento (anos)</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Faixa etária de atendimento (anos)</label>
                       <div className="rounded-lg border bg-white p-3 space-y-3">
                         <div className="relative h-8">
                           <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 rounded bg-slate-200" />
@@ -1132,7 +1132,7 @@ export default function ProfessionalsPage() {
                               setForm((p) => ({ ...p, ageMin: Math.min(nextMin, p.ageMax) }));
                             }}
                             className="dual-range-input absolute inset-0 w-full h-8"
-                            aria-label="Idade m?nima"
+                            aria-label="Idade mínima"
                           />
                           <input
                             type="range"
@@ -1144,13 +1144,13 @@ export default function ProfessionalsPage() {
                               setForm((p) => ({ ...p, ageMax: Math.max(nextMax, p.ageMin) }));
                             }}
                             className="dual-range-input absolute inset-0 w-full h-8"
-                            aria-label="Idade m?xima"
+                            aria-label="Idade máxima"
                           />
                         </div>
 
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="block text-[11px] text-slate-500 mb-1">M?n.</label>
+                            <label className="block text-[11px] text-slate-500 mb-1">Mín.</label>
                             <input
                               type="number"
                               min={0}
@@ -1166,7 +1166,7 @@ export default function ProfessionalsPage() {
                             />
                           </div>
                           <div>
-                            <label className="block text-[11px] text-slate-500 mb-1">M?x.</label>
+                            <label className="block text-[11px] text-slate-500 mb-1">Máx.</label>
                             <input
                               type="number"
                               min={0}
@@ -1231,7 +1231,7 @@ export default function ProfessionalsPage() {
                         ))}
                       </select>
                       <p className="text-[11px] text-slate-500 mt-1">
-                        Op??es vindas da p?gina Modelos de Contrato.
+                        Opções vindas da página Modelos de Contrato.
                       </p>
                     </div>
 
@@ -1261,13 +1261,13 @@ export default function ProfessionalsPage() {
 
                     {form.contractPartyType === 'PJ' && (
                       <div className="md:col-span-5">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Raz?o social</label>
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Razão social</label>
                         <input value={form.legalName} onChange={(e) => setForm((p) => ({ ...p, legalName: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
                       </div>
                     )}
 
                     <div className="md:col-span-2">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">In?cio contrato</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Início contrato</label>
                       <input
                         type="date"
                         value={form.contractStartDate}
@@ -1288,11 +1288,11 @@ export default function ProfessionalsPage() {
                     </div>
 
                     <div className="md:col-span-6">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Pagamento m?nimo (texto livre)</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Pagamento mínimo (texto livre)</label>
                       <textarea
                         value={form.paymentMinimumText}
                         onChange={(e) => setForm((p) => ({ ...p, paymentMinimumText: e.target.value }))}
-                        placeholder="Ex.: PAGAMENTO M?NIMO DE R$ 900,00 PELO PER?ODO DE 4H"
+                        placeholder="Ex.: PAGAMENTO MÍNIMO DE R$ 900,00 PELO PERÍODO DE 4H"
                         rows={2}
                         className="w-full px-3 py-2 border rounded-lg resize-y min-h-[72px]"
                       />
@@ -1304,13 +1304,13 @@ export default function ProfessionalsPage() {
                         checked={form.hasFeegowPermissions}
                         onChange={(e) => setForm((p) => ({ ...p, hasFeegowPermissions: e.target.checked }))}
                       />
-                      Permiss?es do Feegow
+                      Permissões do Feegow
                     </label>
                   </div>
                 </div>
 
                 <div className="xl:col-span-12 border rounded-xl p-4 bg-slate-50/60 space-y-3">
-                  <h3 className="text-sm font-semibold text-slate-700">Documento pessoal e endere?o</h3>
+                  <h3 className="text-sm font-semibold text-slate-700">Documento pessoal e endereço</h3>
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                     <div className="md:col-span-3">
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">RG</label>
@@ -1338,18 +1338,18 @@ export default function ProfessionalsPage() {
                     </div>
 
                     <div className="md:col-span-6">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Endere?o Completo</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Endereço Completo</label>
                       <textarea value={form.addressText} onChange={(e) => setForm((p) => ({ ...p, addressText: e.target.value }))} rows={2} className="w-full px-3 py-2 border rounded-lg" />
                     </div>
 
                     <div className="md:col-span-9">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Observa??es do profissional</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Observações do profissional</label>
                       <textarea value={form.physicalFolderNote} onChange={(e) => setForm((p) => ({ ...p, physicalFolderNote: e.target.value }))} rows={3} className="w-full px-3 py-2 border rounded-lg resize-y min-h-[96px]" />
                     </div>
 
                     <label className="md:col-span-3 inline-flex items-center gap-2 text-sm text-slate-700 mt-7">
                       <input type="checkbox" checked={form.hasPhysicalFolder} onChange={(e) => setForm((p) => ({ ...p, hasPhysicalFolder: e.target.checked }))} />
-                      Possui pasta f?sica
+                      Possui pasta física
                     </label>
                   </div>
                 </div>
@@ -1461,9 +1461,9 @@ export default function ProfessionalsPage() {
                           <tr>
                             <th className="px-2 py-2 text-left">Tipo</th>
                             <th className="px-2 py-2 text-left">Arquivo</th>
-                            <th className="px-2 py-2 text-left">Expiracao</th>
+                            <th className="px-2 py-2 text-left">Expiração</th>
                             <th className="px-2 py-2 text-left">Upload</th>
-                            <th className="px-2 py-2 text-left">Acoes</th>
+                            <th className="px-2 py-2 text-left">Ações</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1527,11 +1527,11 @@ export default function ProfessionalsPage() {
                   onClick={() => setIsChecklistExpanded((v) => !v)}
                   className="w-full flex items-center justify-between py-2 text-sm font-semibold text-slate-700"
                 >
-                  <span>Checklist manual de documentos (transicao)</span>
+                  <span>Checklist manual de documentos (transição)</span>
                   {isChecklistExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                 </button>
                 {isChecklistExpanded && (
-                  <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="px-2 py-2 text-left">Documento</th><th className="px-2 py-2 text-left">Fisico</th><th className="px-2 py-2 text-left">Digital</th><th className="px-2 py-2 text-left">Expiracao</th><th className="px-2 py-2 text-left">Obs</th></tr></thead><tbody>{form.checklist.map((c, i) => { const d = DOCUMENT_TYPES.find((x) => x.code === c.docType); return <tr key={c.docType} className="border-t"><td className="px-2 py-2">{d?.label || c.docType}</td><td className="px-2 py-2"><input type="checkbox" checked={c.hasPhysicalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasPhysicalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2"><input type="checkbox" checked={c.hasDigitalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasDigitalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2">{d?.hasExpiration ? <input type="date" value={c.expiresAt} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], expiresAt: e.target.value }; return { ...p, checklist: n }; })} className="px-2 py-1 border rounded" /> : <span className="text-xs text-slate-400">-</span>}</td><td className="px-2 py-2"><input value={c.notes} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], notes: e.target.value }; return { ...p, checklist: n }; })} className="w-full px-2 py-1 border rounded" /></td></tr>; })}</tbody></table></div>
+                  <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="px-2 py-2 text-left">Documento</th><th className="px-2 py-2 text-left">Físico</th><th className="px-2 py-2 text-left">Digital</th><th className="px-2 py-2 text-left">Expiração</th><th className="px-2 py-2 text-left">Obs</th></tr></thead><tbody>{form.checklist.map((c, i) => { const d = DOCUMENT_TYPES.find((x) => x.code === c.docType); return <tr key={c.docType} className="border-t"><td className="px-2 py-2">{d?.label || c.docType}</td><td className="px-2 py-2"><input type="checkbox" checked={c.hasPhysicalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasPhysicalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2"><input type="checkbox" checked={c.hasDigitalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasDigitalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2">{d?.hasExpiration ? <input type="date" value={c.expiresAt} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], expiresAt: e.target.value }; return { ...p, checklist: n }; })} className="px-2 py-1 border rounded" /> : <span className="text-xs text-slate-400">-</span>}</td><td className="px-2 py-2"><input value={c.notes} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], notes: e.target.value }; return { ...p, checklist: n }; })} className="w-full px-2 py-1 border rounded" /></td></tr>; })}</tbody></table></div>
                 )}
               </div>
                 </>
@@ -1636,7 +1636,7 @@ export default function ProfessionalsPage() {
                               ? 'Feegow API (fallback)'
                               : procedureSource === 'empty'
                                 ? 'Sem dados no catalogo'
-                                : 'Nao carregada'}
+                                : 'Não carregada'}
                         </p>
                       </div>
 
@@ -1647,7 +1647,7 @@ export default function ProfessionalsPage() {
                               <th className="px-3 py-2 text-left">Procedimento</th>
                               <th className="px-3 py-2 text-left">Valor base (Feegow)</th>
                               <th className="px-3 py-2 text-left">Valor do profissional</th>
-                              <th className="px-3 py-2 text-left">Acoes</th>
+                              <th className="px-3 py-2 text-left">Ações</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -1782,7 +1782,7 @@ export default function ProfessionalsPage() {
                               <th className="px-3 py-2 text-left">Status</th>
                               <th className="px-3 py-2 text-left">Gerado por</th>
                               <th className="px-3 py-2 text-left">Erro</th>
-                              <th className="px-3 py-2 text-left">Acoes</th>
+                              <th className="px-3 py-2 text-left">Ações</th>
                             </tr>
                           </thead>
                           <tbody>
