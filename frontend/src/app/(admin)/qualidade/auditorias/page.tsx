@@ -323,7 +323,7 @@ export default function QualidadeAuditoriasPage() {
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Conformidade e Auditorias</h1>
             <p className="text-sm text-slate-600 mt-1">
-              Sprint 3: registro de auditorias internas e plano de acao corretiva.
+              QMS (Sistema de Gestao da Qualidade): auditorias internas, conformidade e acoes corretivas.
             </p>
           </div>
 

@@ -419,7 +419,7 @@ export default function QualidadeTreinamentosPage() {
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Treinamentos</h1>
             <p className="text-sm text-slate-600 mt-1">
-              Sprint 2: cronograma anual e realizacoes com anexos e vinculo com POPs.
+              QMS (Sistema de Gestao da Qualidade): cronograma anual e realizacoes com vinculo aos POPs.
             </p>
           </div>
           <div className="flex items-center gap-2">

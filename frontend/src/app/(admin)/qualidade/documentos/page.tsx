@@ -294,7 +294,7 @@ export default function QmsDocumentosPage() {
           <div>
             <h1 className="text-2xl font-bold text-slate-800">Documentos Operacionais (POPs)</h1>
             <p className="text-sm text-slate-600 mt-1">
-              Sprint 1: gestão de documentos, versões, status e anexos.
+              QMS (Sistema de Gestao da Qualidade): controle de POPs, revisoes e anexos.
             </p>
           </div>
 
