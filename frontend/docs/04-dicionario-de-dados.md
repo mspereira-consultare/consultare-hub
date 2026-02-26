@@ -657,3 +657,50 @@ Campos principais:
 - `document_id`
 - `training_plan_id`
 - `created_at`
+
+## Tabelas - Modulo Qualidade (Sprint 3)
+
+### `qms_audits`
+
+Finalidade:
+- registrar auditorias internas por POP/versionamento, com dados de conformidade e plano de acao.
+
+Campos principais:
+- `id` (PK)
+- `code` (unico; formato `AUD-YYYY-0001`)
+- `document_id`
+- `document_version_id`
+- `responsible`
+- `audit_date`
+- `compliance_percent`
+- `non_conformity`
+- `action_plan`
+- `correction_deadline`
+- `reassessed`
+- `effectiveness_check_date`
+- `criticality` (`baixa`, `media`, `alta`)
+- `status` (`aberta`, `em_tratativa`, `encerrada`)
+- `created_by`, `created_at`, `updated_by`, `updated_at`
+
+Regras:
+- `document_version_id` deve pertencer ao `document_id` informado;
+- status e reconciliado automaticamente com base nas acoes corretivas e no campo `reassessed`.
+
+### `qms_audit_actions`
+
+Finalidade:
+- registrar plano de acao corretiva por auditoria.
+
+Campos principais:
+- `id` (PK)
+- `audit_id`
+- `description`
+- `owner`
+- `deadline`
+- `status` (`aberta`, `em_andamento`, `concluida`, `atrasada`)
+- `completion_note`
+- `created_by`, `created_at`, `updated_by`, `updated_at`
+
+Regras:
+- acao com `deadline < hoje` e status `aberta/em_andamento` e marcada como `atrasada` no refresh;
+- quando nao houver mais acoes abertas e a auditoria estiver reavaliada, a auditoria pode ser encerrada.

@@ -348,3 +348,25 @@ Detalhes tecnicos:
 - vinculo entre cronograma e POP via tabela de ligacao (N:N);
 - anexos de realizacao usando provider S3 existente;
 - heartbeat/refresh com `service_name='qms_treinamentos'`.
+
+## Atualizacao - Sprint 3 Qualidade (Auditorias)
+
+Componentes adicionados:
+
+- Backend:
+  - `frontend/src/lib/qms/audits_repository.ts`
+  - APIs em `frontend/src/app/api/admin/qms/auditorias/*`
+- Frontend:
+  - `frontend/src/app/(admin)/qualidade/auditorias/page.tsx`
+  - componentes em `frontend/src/app/(admin)/qualidade/auditorias/components/*`
+
+Detalhes tecnicos:
+
+- novas tabelas:
+  - `qms_audits`
+  - `qms_audit_actions`
+- auditoria vinculada a `qms_documents` + `qms_document_versions`;
+- reconciliacao automatica de status de auditoria conforme estado das acoes;
+- regra automatica de atraso para acao corretiva por prazo;
+- heartbeat/refresh com `service_name='qms_auditorias'`;
+- alias de refresh no endpoint unificado (`/api/admin/refresh`) para `qms_auditorias`.

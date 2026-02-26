@@ -39,6 +39,9 @@ const SERVICE_ALIASES: Record<string, string> = {
   qms_treinamentos: 'qms_treinamentos',
   qualidade_treinamentos: 'qms_treinamentos',
   qms_trainings: 'qms_treinamentos',
+  qms_auditorias: 'qms_auditorias',
+  qualidade_auditorias: 'qms_auditorias',
+  qms_audits: 'qms_auditorias',
   clinia: 'clinia',
   worker_clinia: 'clinia',
   monitor_medico: 'monitor_medico',
@@ -68,6 +71,7 @@ const SERVICE_PAGE_MAP: Record<string, PageKey> = {
   procedures_catalog: 'profissionais',
   qms_documentos: 'qualidade_documentos',
   qms_treinamentos: 'qualidade_treinamentos',
+  qms_auditorias: 'qualidade_auditorias',
   auth: 'settings',
   auth_clinia: 'settings',
 };
@@ -83,6 +87,7 @@ const SERVICE_REFRESH_PAGES: Record<string, PageKey[]> = {
   procedures_catalog: ['profissionais'],
   qms_documentos: ['qualidade_documentos'],
   qms_treinamentos: ['qualidade_treinamentos'],
+  qms_auditorias: ['qualidade_auditorias'],
   auth: ['settings'],
   auth_clinia: ['settings'],
 };

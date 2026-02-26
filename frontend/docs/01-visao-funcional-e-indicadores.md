@@ -633,3 +633,27 @@ Indicadores/regras iniciais:
 - total de anexos por realizacao (`files_count`);
 - status de cronograma e realizacao (`planejado`, `em_andamento`, `concluido`, `cancelado`);
 - heartbeat: servico `qms_treinamentos` em `system_status`.
+
+## Qualidade - Sprint 3 (Conformidade e Auditorias)
+
+Nova tela:
+- `/qualidade/auditorias`
+
+Funcionalidades entregues:
+- cadastro/edicao/exclusao de auditoria interna;
+- vinculo obrigatorio com POP e versao auditada;
+- registro de nao conformidade e plano de acao;
+- cadastro e edicao de acoes corretivas por auditoria;
+- refresh manual para recalculo de status.
+
+Indicadores/regras iniciais:
+- `Status da auditoria`:
+  - `encerrada`: sem acoes abertas e com `reassessed=true`;
+  - `em_tratativa`: existe acao aberta/em andamento/atrasada;
+  - `aberta`: estado inicial sem tratativa.
+- `Status da acao corretiva`:
+  - passa para `atrasada` quando `deadline < hoje` e status anterior era `aberta` ou `em_andamento`.
+- coluna `Acoes` da tabela:
+  - `actions_open / actions_total`.
+- heartbeat:
+  - servico `qms_auditorias` em `system_status`.

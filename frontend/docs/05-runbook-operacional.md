@@ -363,3 +363,35 @@ Checklist rapido de validacao:
 3. Criar realizacao vinculada ao cronograma.
 4. Fazer upload de anexo de realizacao e validar visualizacao/download.
 5. Rodar refresh manual e confirmar `qms_treinamentos` em `system_status`.
+
+## Modulo Qualidade - Sprint 3 (Auditorias)
+
+Rotas entregues:
+- Tela: `/qualidade/auditorias`
+- API:
+  - `GET/POST /api/admin/qms/auditorias`
+  - `GET/PATCH/DELETE /api/admin/qms/auditorias/:id`
+  - `GET/POST /api/admin/qms/auditorias/:id/acoes`
+  - `PATCH /api/admin/qms/auditorias/:id/acoes/:actionId`
+  - `POST /api/admin/qms/auditorias/refresh`
+
+Checklist rapido de validacao:
+1. Criar auditoria e selecionar POP + versao.
+2. Editar auditoria (responsavel, conformidade e plano de acao) e salvar.
+3. Abrir modal de acoes, adicionar pelo menos 1 acao corretiva.
+4. Editar a acao para `concluida` e confirmar atualizacao na tabela.
+5. Rodar refresh manual e validar `qms_auditorias` em `system_status`.
+
+Consultas uteis:
+
+```sql
+SELECT code, status, reassessed, audit_date, correction_deadline
+FROM qms_audits
+ORDER BY updated_at DESC
+LIMIT 20;
+
+SELECT audit_id, status, deadline, owner
+FROM qms_audit_actions
+ORDER BY updated_at DESC
+LIMIT 50;
+```

@@ -246,3 +246,76 @@ export type QmsTrainingFileInput = {
   mimeType: string;
   sizeBytes: number;
 };
+
+export type QmsAuditCriticality = 'baixa' | 'media' | 'alta';
+export type QmsAuditStatus = 'aberta' | 'em_tratativa' | 'encerrada';
+export type QmsAuditActionStatus = 'aberta' | 'em_andamento' | 'concluida' | 'atrasada';
+
+export type QmsAudit = {
+  id: string;
+  code: string;
+  documentId: string;
+  documentVersionId: string;
+  documentCode: string;
+  documentName: string;
+  documentVersionLabel: string;
+  responsible: string | null;
+  auditDate: string | null;
+  compliancePercent: number | null;
+  nonConformity: string | null;
+  actionPlan: string | null;
+  correctionDeadline: string | null;
+  reassessed: boolean;
+  effectivenessCheckDate: string | null;
+  criticality: QmsAuditCriticality;
+  status: QmsAuditStatus;
+  actionsTotal: number;
+  actionsOpen: number;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type QmsAuditAction = {
+  id: string;
+  auditId: string;
+  description: string;
+  owner: string | null;
+  deadline: string | null;
+  status: QmsAuditActionStatus;
+  completionNote: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type QmsAuditDetail = {
+  audit: QmsAudit;
+  actions: QmsAuditAction[];
+};
+
+export type QmsAuditInput = {
+  code?: string | null;
+  documentId: string;
+  documentVersionId: string;
+  responsible?: string | null;
+  auditDate?: string | null;
+  compliancePercent?: number | null;
+  nonConformity?: string | null;
+  actionPlan?: string | null;
+  correctionDeadline?: string | null;
+  reassessed?: boolean;
+  effectivenessCheckDate?: string | null;
+  criticality?: QmsAuditCriticality | null;
+  status?: QmsAuditStatus | null;
+};
+
+export type QmsAuditActionInput = {
+  description: string;
+  owner?: string | null;
+  deadline?: string | null;
+  status?: QmsAuditActionStatus | null;
+  completionNote?: string | null;
+};

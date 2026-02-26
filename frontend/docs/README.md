@@ -54,3 +54,4 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Novo plano tecnico do modulo de Qualidade e Treinamentos em `docs/06-plano-tecnico-qualidade-treinamentos.md`.
 - Sprint 1 iniciado para Qualidade: pagina `/qualidade/documentos` e APIs `qms/documentos` entregues.
 - Sprint 2 iniciado para Qualidade: pagina `/qualidade/treinamentos` e APIs `qms/treinamentos` entregues.
+- Sprint 3 iniciado para Qualidade: pagina `/qualidade/auditorias` e APIs `qms/auditorias` entregues.
