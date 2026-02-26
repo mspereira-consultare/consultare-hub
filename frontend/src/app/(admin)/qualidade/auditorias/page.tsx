@@ -8,6 +8,7 @@ import type { QmsAudit, QmsAuditDetail } from '@/lib/qms/types';
 import { AuditActionsModal, type AuditActionPayload } from './components/AuditActionsModal';
 import { AuditFormModal, type AuditFormPayload } from './components/AuditFormModal';
 import { AuditTable } from './components/AuditTable';
+import { QmsStatusStrip } from '../components/QmsStatusStrip';
 
 type AuditOption = {
   documentId: string;
@@ -388,6 +389,8 @@ export default function QualidadeAuditoriasPage() {
           {serviceStatus?.last_run ? ` | Ultima execucao: ${serviceStatus.last_run}` : ''}
         </div>
       </header>
+
+      <QmsStatusStrip pageKey="qualidade_auditorias" canRefresh={canRefresh} />
 
       {error && (
         <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">

@@ -685,6 +685,8 @@ Campos principais:
 Regras:
 - `document_version_id` deve pertencer ao `document_id` informado;
 - status e reconciliado automaticamente com base nas acoes corretivas e no campo `reassessed`.
+- `compliance_percent` deve estar no intervalo `0..100`;
+- `status='encerrada'` exige `reassessed=true`.
 
 ### `qms_audit_actions`
 
@@ -704,3 +706,4 @@ Campos principais:
 Regras:
 - acao com `deadline < hoje` e status `aberta/em_andamento` e marcada como `atrasada` no refresh;
 - quando nao houver mais acoes abertas e a auditoria estiver reavaliada, a auditoria pode ser encerrada.
+- acao `concluida` exige preenchimento de `completion_note`.

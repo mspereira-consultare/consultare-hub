@@ -319,3 +319,39 @@ export type QmsAuditActionInput = {
   status?: QmsAuditActionStatus | null;
   completionNote?: string | null;
 };
+
+export type QmsServiceHeartbeat = {
+  serviceName: string;
+  status: string;
+  lastRun: string | null;
+  details: string | null;
+};
+
+export type QmsOverviewMetrics = {
+  generatedAt: string;
+  documents: {
+    total: number;
+    vigente: number;
+    aVencer: number;
+    vencido: number;
+    rascunho: number;
+    arquivado: number;
+  };
+  trainings: {
+    plansTotal: number;
+    plansConcluidos: number;
+    plansEmAberto: number;
+    executionsTotal: number;
+    executionsConcluidas: number;
+    executionRate: number | null;
+  };
+  audits: {
+    total: number;
+    abertas: number;
+    emTratativa: number;
+    encerradas: number;
+    overdueActions: number;
+    avgCompliance: number | null;
+  };
+  heartbeats: QmsServiceHeartbeat[];
+};

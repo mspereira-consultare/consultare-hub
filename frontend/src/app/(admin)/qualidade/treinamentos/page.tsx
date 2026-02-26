@@ -12,6 +12,7 @@ import {
   TrainingExecutionModal,
   type TrainingExecutionPayload,
 } from './components/TrainingExecutionModal';
+import { QmsStatusStrip } from '../components/QmsStatusStrip';
 
 type TabKey = 'cronograma' | 'realizacoes';
 
@@ -501,6 +502,8 @@ export default function QualidadeTreinamentosPage() {
           {serviceStatus?.last_run ? ` | Ultima execucao: ${serviceStatus.last_run}` : ''}
         </div>
       </header>
+
+      <QmsStatusStrip pageKey="qualidade_treinamentos" canRefresh={canRefresh} />
 
       {error && (
         <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">

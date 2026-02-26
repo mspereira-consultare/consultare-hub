@@ -7,6 +7,7 @@ import { hasPermission } from '@/lib/permissions';
 import type { QmsDocumentDetail, QmsDocumentSummary } from '@/lib/qms/types';
 import { DocumentFormModal, type DocumentFormPayload } from './components/DocumentFormModal';
 import { DocumentTable } from './components/DocumentTable';
+import { QmsStatusStrip } from '../components/QmsStatusStrip';
 
 type ServiceStatus = {
   service_name: string;
@@ -363,6 +364,8 @@ export default function QmsDocumentosPage() {
           {serviceStatus?.last_run ? ` | Última execução: ${serviceStatus.last_run}` : ''}
         </div>
       </header>
+
+      <QmsStatusStrip pageKey="qualidade_documentos" canRefresh={canRefresh} />
 
       {error && (
         <div className="bg-rose-50 border border-rose-200 text-rose-700 px-4 py-3 rounded-lg text-sm">

@@ -657,3 +657,31 @@ Indicadores/regras iniciais:
   - `actions_open / actions_total`.
 - heartbeat:
   - servico `qms_auditorias` em `system_status`.
+
+## Qualidade - Sprint 4 (Indicadores consolidados e hardening)
+
+Recursos entregues:
+- faixa consolidada de indicadores em todas as telas de Qualidade:
+  - `/qualidade/documentos`
+  - `/qualidade/treinamentos`
+  - `/qualidade/auditorias`
+- endpoint de leitura consolidada:
+  - `GET /api/admin/qms/indicadores?page=<pageKey>`
+- endpoint de refresh consolidado do modulo:
+  - `POST /api/admin/qms/indicadores/refresh`
+
+Indicadores consolidados:
+| Indicador | Regra |
+|---|---|
+| Documentos vigentes | `vigente / total` |
+| A vencer / vencidos | contagem por `status` em `qms_documents` |
+| Treinamentos concluidos | `executions_concluidas / executions_total` |
+| Taxa de execucao | `executions_concluidas / plans_total * 100` |
+| Compliance medio auditorias | `AVG(compliance_percent)` de `qms_audits` |
+| Acoes atrasadas | acoes com `deadline < hoje` e status aberto/em andamento/atrasada |
+
+Hardening aplicado:
+- validacao de conformidade entre `0` e `100`;
+- impedimento de auditoria `encerrada` sem `reassessed=true`;
+- validacao de coerencia de datas (checagem/prazo nao anteriores a auditoria);
+- acao corretiva `concluida` exige `completion_note`.

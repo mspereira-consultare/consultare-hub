@@ -370,3 +370,35 @@ Detalhes tecnicos:
 - regra automatica de atraso para acao corretiva por prazo;
 - heartbeat/refresh com `service_name='qms_auditorias'`;
 - alias de refresh no endpoint unificado (`/api/admin/refresh`) para `qms_auditorias`.
+
+## Atualizacao - Sprint 4 Qualidade (Indicadores e Hardening)
+
+Componentes adicionados:
+
+- Backend:
+  - `frontend/src/lib/qms/metrics_repository.ts`
+  - `GET /api/admin/qms/indicadores`
+  - `POST /api/admin/qms/indicadores/refresh`
+- Frontend:
+  - `frontend/src/app/(admin)/qualidade/components/QmsStatusStrip.tsx`
+  - integracao da faixa consolidada nas paginas:
+    - `documentos`
+    - `treinamentos`
+    - `auditorias`
+
+Detalhes tecnicos:
+
+- leitura consolidada de:
+  - status de documentos (`qms_documents`);
+  - execucao de treinamentos (`qms_training_plans` + `qms_trainings`);
+  - conformidade e atraso de acoes (`qms_audits` + `qms_audit_actions`);
+  - heartbeat de `system_status` (`qms_documentos`, `qms_treinamentos`, `qms_auditorias`).
+- refresh consolidado executa os tres recalculos existentes em lote:
+  - `refreshQmsDocumentStatuses`
+  - `refreshQmsTrainingStatuses`
+  - `refreshQmsAuditStatuses`
+- hardening de dominio aplicado em auditorias:
+  - conformidade limitada a `0..100`;
+  - auditoria `encerrada` exige `reassessed=true`;
+  - validacao de datas de auditoria/checagem/prazo;
+  - acao corretiva `concluida` exige `completion_note`.

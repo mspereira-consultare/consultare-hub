@@ -392,6 +392,12 @@ Criterios de aceite:
 - refresh manual e heartbeat visiveis.
 - sem regressao nas permissoes existentes.
 
+Status de execucao:
+- Sprint 1: entregue.
+- Sprint 2: entregue.
+- Sprint 3: entregue.
+- Sprint 4: entregue (indicadores consolidados, refresh em lote e hardening de auditorias).
+
 ## 10) Riscos e mitigacao
 
 1. Duplicidade entre planejamento e execucao.
@@ -414,4 +420,3 @@ Criterios de aceite:
 - Permissoes `view/edit/refresh` ativas por pagina.
 - Logs de auditoria gerados para create/update/delete.
 - Documentacao atualizada em `frontend/docs`.
-

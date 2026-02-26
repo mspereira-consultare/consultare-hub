@@ -55,3 +55,4 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Sprint 1 iniciado para Qualidade: pagina `/qualidade/documentos` e APIs `qms/documentos` entregues.
 - Sprint 2 iniciado para Qualidade: pagina `/qualidade/treinamentos` e APIs `qms/treinamentos` entregues.
 - Sprint 3 iniciado para Qualidade: pagina `/qualidade/auditorias` e APIs `qms/auditorias` entregues.
+- Sprint 4 iniciado para Qualidade: indicadores consolidados, refresh em lote e hardening de validacoes.

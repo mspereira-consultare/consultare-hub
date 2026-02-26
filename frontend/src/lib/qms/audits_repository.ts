@@ -39,6 +39,16 @@ const parseDate = (value: unknown): string | null => {
   return null;
 };
 
+const parseDateOrThrow = (value: unknown, fieldLabel: string): string | null => {
+  const raw = clean(value);
+  if (!raw) return null;
+  const parsed = parseDate(raw);
+  if (!parsed) {
+    throw new QmsValidationError(`Data invalida para "${fieldLabel}". Use YYYY-MM-DD ou DD/MM/YYYY.`);
+  }
+  return parsed;
+};
+
 const todayIsoSp = () => {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo',
@@ -84,6 +94,42 @@ const normalizeActionStatus = (
 ): QmsAuditActionStatus => {
   const normalized = clean(value).toLowerCase() as QmsAuditActionStatus;
   return ALLOWED_ACTION_STATUS.has(normalized) ? normalized : fallback;
+};
+
+const validateCompliancePercent = (value: number | null) => {
+  if (value === null) return;
+  if (value < 0 || value > 100) {
+    throw new QmsValidationError('Conformidade deve estar entre 0 e 100.');
+  }
+};
+
+const validateAuditConsistency = (params: {
+  status: QmsAuditStatus;
+  reassessed: boolean;
+  auditDate: string | null;
+  correctionDeadline: string | null;
+  effectivenessCheckDate: string | null;
+}) => {
+  if (params.status === 'encerrada' && !params.reassessed) {
+    throw new QmsValidationError('Para encerrar auditoria, marque o campo "Reavaliado".');
+  }
+  if (params.effectivenessCheckDate && params.auditDate && params.effectivenessCheckDate < params.auditDate) {
+    throw new QmsValidationError(
+      'Data de checagem de eficacia nao pode ser anterior a data da auditoria.'
+    );
+  }
+  if (params.correctionDeadline && params.auditDate && params.correctionDeadline < params.auditDate) {
+    throw new QmsValidationError('Prazo de correcao nao pode ser anterior a data da auditoria.');
+  }
+};
+
+const validateActionConsistency = (params: {
+  status: QmsAuditActionStatus;
+  completionNote: string | null;
+}) => {
+  if (params.status === 'concluida' && !clean(params.completionNote)) {
+    throw new QmsValidationError('Informe a nota de conclusao ao concluir a acao corretiva.');
+  }
 };
 
 const safeAddColumn = async (db: DbInterface, sql: string) => {
@@ -468,6 +514,25 @@ export const createQmsAudit = async (
   const id = randomUUID();
   const createdAt = nowIso();
   const code = clean(input.code) || (await nextAuditCode(db));
+  const auditDate = parseDateOrThrow(input.auditDate, 'Data auditoria');
+  const compliancePercent = toNumberOrNull(input.compliancePercent);
+  const correctionDeadline = parseDateOrThrow(input.correctionDeadline, 'Prazo correcao');
+  const reassessed = Boolean(input.reassessed);
+  const effectivenessCheckDate = parseDateOrThrow(
+    input.effectivenessCheckDate,
+    'Data checagem eficacia'
+  );
+  const criticality = normalizeCriticality(input.criticality, 'media');
+  const status = normalizeStatus(input.status, 'aberta');
+
+  validateCompliancePercent(compliancePercent);
+  validateAuditConsistency({
+    status,
+    reassessed,
+    auditDate,
+    correctionDeadline,
+    effectivenessCheckDate,
+  });
 
   await db.execute(
     `
@@ -483,15 +548,15 @@ export const createQmsAudit = async (
       documentId,
       versionId,
       clean(input.responsible) || null,
-      parseDate(input.auditDate),
-      toNumberOrNull(input.compliancePercent),
+      auditDate,
+      compliancePercent,
       clean(input.nonConformity) || null,
       clean(input.actionPlan) || null,
-      parseDate(input.correctionDeadline),
-      input.reassessed ? 1 : 0,
-      parseDate(input.effectivenessCheckDate),
-      normalizeCriticality(input.criticality, 'media'),
-      normalizeStatus(input.status, 'aberta'),
+      correctionDeadline,
+      reassessed ? 1 : 0,
+      effectivenessCheckDate,
+      criticality,
+      status,
       actorUserId,
       createdAt,
       actorUserId,
@@ -525,6 +590,41 @@ export const updateQmsAudit = async (
       : current.audit.documentVersionId;
 
   await validateDocumentVersionLink(db, documentId, versionId);
+  const nextAuditDate =
+    input.auditDate !== undefined
+      ? parseDateOrThrow(input.auditDate, 'Data auditoria')
+      : current.audit.auditDate;
+  const nextCompliancePercent =
+    input.compliancePercent !== undefined
+      ? toNumberOrNull(input.compliancePercent)
+      : current.audit.compliancePercent;
+  const nextCorrectionDeadline =
+    input.correctionDeadline !== undefined
+      ? parseDateOrThrow(input.correctionDeadline, 'Prazo correcao')
+      : current.audit.correctionDeadline;
+  const nextReassessed =
+    input.reassessed !== undefined ? Boolean(input.reassessed) : current.audit.reassessed;
+  const nextEffectivenessCheckDate =
+    input.effectivenessCheckDate !== undefined
+      ? parseDateOrThrow(input.effectivenessCheckDate, 'Data checagem eficacia')
+      : current.audit.effectivenessCheckDate;
+  const nextCriticality =
+    input.criticality !== undefined
+      ? normalizeCriticality(input.criticality, current.audit.criticality)
+      : current.audit.criticality;
+  const nextStatus =
+    input.status !== undefined
+      ? normalizeStatus(input.status, current.audit.status)
+      : current.audit.status;
+
+  validateCompliancePercent(nextCompliancePercent);
+  validateAuditConsistency({
+    status: nextStatus,
+    reassessed: nextReassessed,
+    auditDate: nextAuditDate,
+    correctionDeadline: nextCorrectionDeadline,
+    effectivenessCheckDate: nextEffectivenessCheckDate,
+  });
 
   await db.execute(
     `
@@ -539,27 +639,17 @@ export const updateQmsAudit = async (
       documentId,
       versionId,
       input.responsible !== undefined ? clean(input.responsible) || null : current.audit.responsible,
-      input.auditDate !== undefined ? parseDate(input.auditDate) : current.audit.auditDate,
-      input.compliancePercent !== undefined
-        ? toNumberOrNull(input.compliancePercent)
-        : current.audit.compliancePercent,
+      nextAuditDate,
+      nextCompliancePercent,
       input.nonConformity !== undefined
         ? clean(input.nonConformity) || null
         : current.audit.nonConformity,
       input.actionPlan !== undefined ? clean(input.actionPlan) || null : current.audit.actionPlan,
-      input.correctionDeadline !== undefined
-        ? parseDate(input.correctionDeadline)
-        : current.audit.correctionDeadline,
-      input.reassessed !== undefined ? (input.reassessed ? 1 : 0) : current.audit.reassessed ? 1 : 0,
-      input.effectivenessCheckDate !== undefined
-        ? parseDate(input.effectivenessCheckDate)
-        : current.audit.effectivenessCheckDate,
-      input.criticality !== undefined
-        ? normalizeCriticality(input.criticality, current.audit.criticality)
-        : current.audit.criticality,
-      input.status !== undefined
-        ? normalizeStatus(input.status, current.audit.status)
-        : current.audit.status,
+      nextCorrectionDeadline,
+      nextReassessed ? 1 : 0,
+      nextEffectivenessCheckDate,
+      nextCriticality,
+      nextStatus,
       actorUserId,
       nowIso(),
       auditId,
@@ -599,6 +689,11 @@ export const createQmsAuditAction = async (
 
   const description = clean(input.description);
   if (!description) throw new QmsValidationError('Descricao da acao e obrigatoria.');
+  const status = normalizeActionStatus(input.status, 'aberta');
+  const deadline = parseDateOrThrow(input.deadline, 'Prazo da acao');
+  const completionNote = clean(input.completionNote) || null;
+
+  validateActionConsistency({ status, completionNote });
 
   const id = randomUUID();
   const createdAt = nowIso();
@@ -614,9 +709,9 @@ export const createQmsAuditAction = async (
       auditId,
       description,
       clean(input.owner) || null,
-      parseDate(input.deadline),
-      normalizeActionStatus(input.status, 'aberta'),
-      clean(input.completionNote) || null,
+      deadline,
+      status,
+      completionNote,
       actorUserId,
       createdAt,
       actorUserId,
@@ -671,7 +766,8 @@ export const updateQmsAuditAction = async (
     ...current,
     description,
     owner: input.owner !== undefined ? clean(input.owner) || null : current.owner,
-    deadline: input.deadline !== undefined ? parseDate(input.deadline) : current.deadline,
+    deadline:
+      input.deadline !== undefined ? parseDateOrThrow(input.deadline, 'Prazo da acao') : current.deadline,
     status:
       input.status !== undefined
         ? normalizeActionStatus(input.status, current.status)
@@ -683,6 +779,11 @@ export const updateQmsAuditAction = async (
     updatedBy: actorUserId,
     updatedAt: nowIso(),
   };
+
+  validateActionConsistency({
+    status: merged.status,
+    completionNote: merged.completionNote,
+  });
 
   await db.execute(
     `

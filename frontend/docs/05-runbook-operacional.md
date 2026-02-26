@@ -395,3 +395,24 @@ FROM qms_audit_actions
 ORDER BY updated_at DESC
 LIMIT 50;
 ```
+
+## Modulo Qualidade - Sprint 4 (Indicadores e Refresh consolidado)
+
+Rotas entregues:
+- `GET /api/admin/qms/indicadores?page=qualidade_documentos|qualidade_treinamentos|qualidade_auditorias`
+- `POST /api/admin/qms/indicadores/refresh`
+
+Checklist rapido:
+1. Abrir qualquer tela de Qualidade e validar a faixa "Indicadores do modulo Qualidade".
+2. Conferir os 3 heartbeats (`qms_documentos`, `qms_treinamentos`, `qms_auditorias`).
+3. Acionar `Recalcular modulo` e verificar retorno sem erro.
+4. Validar atualizacao de `system_status` para os 3 servicos.
+
+Query de validacao de heartbeat:
+
+```sql
+SELECT service_name, status, last_run, details
+FROM system_status
+WHERE service_name IN ('qms_documentos', 'qms_treinamentos', 'qms_auditorias')
+ORDER BY service_name;
+```
