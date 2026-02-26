@@ -48,7 +48,7 @@ type FormState = {
   hasPhysicalFolder: boolean; physicalFolderNote: string; contractTemplateId: string; contractStartDate: string; contractEndDate: string;
   registrations: FormRegistration[]; checklist: FormChecklist[];
 };
-type ModalTab = 'cadastro' | 'procedimentos' | 'contratos';
+type ModalTab = 'cadastro' | 'documentos' | 'procedimentos' | 'contratos';
 
 const pageSize = 20;
 
@@ -929,6 +929,13 @@ export default function ProfessionalsPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setModalTab('documentos')}
+                  className={`px-3 py-1.5 rounded text-sm ${modalTab === 'documentos' ? 'bg-white border text-slate-900' : 'text-slate-600'}`}
+                >
+                  Documentos
+                </button>
+                <button
+                  type="button"
                   onClick={() => setModalTab('procedimentos')}
                   className={`px-3 py-1.5 rounded text-sm ${modalTab === 'procedimentos' ? 'bg-white border text-slate-900' : 'text-slate-600'}`}
                 >
@@ -1350,6 +1357,12 @@ export default function ProfessionalsPage() {
                 </div>
               </div>
 
+
+              </>
+              )}
+
+              {modalTab === 'documentos' && (
+                <>
               <div>
                 <button
                   type="button"
@@ -1489,7 +1502,7 @@ export default function ProfessionalsPage() {
                   <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="px-2 py-2 text-left">Documento</th><th className="px-2 py-2 text-left">Fisico</th><th className="px-2 py-2 text-left">Digital</th><th className="px-2 py-2 text-left">Expiracao</th><th className="px-2 py-2 text-left">Obs</th></tr></thead><tbody>{form.checklist.map((c, i) => { const d = DOCUMENT_TYPES.find((x) => x.code === c.docType); return <tr key={c.docType} className="border-t"><td className="px-2 py-2">{d?.label || c.docType}</td><td className="px-2 py-2"><input type="checkbox" checked={c.hasPhysicalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasPhysicalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2"><input type="checkbox" checked={c.hasDigitalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasDigitalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2">{d?.hasExpiration ? <input type="date" value={c.expiresAt} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], expiresAt: e.target.value }; return { ...p, checklist: n }; })} className="px-2 py-1 border rounded" /> : <span className="text-xs text-slate-400">-</span>}</td><td className="px-2 py-2"><input value={c.notes} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], notes: e.target.value }; return { ...p, checklist: n }; })} className="w-full px-2 py-1 border rounded" /></td></tr>; })}</tbody></table></div>
                 )}
               </div>
-              </>
+                </>
               )}
 
               {modalTab === 'procedimentos' && (
