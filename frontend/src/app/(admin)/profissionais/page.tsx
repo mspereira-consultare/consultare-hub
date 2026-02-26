@@ -903,9 +903,9 @@ export default function ProfessionalsPage() {
 
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 p-4 flex items-center justify-center">
-          <div className="w-full max-w-[95vw] xl:max-w-[1500px] bg-white border rounded-2xl max-h-[95vh] overflow-hidden">
+          <div className="w-full max-w-[95vw] xl:max-w-[1500px] h-[95vh] bg-white border rounded-2xl overflow-hidden flex flex-col">
             <div className="px-5 py-3 border-b flex items-center justify-between"><h2 className="font-semibold text-slate-800">{editingId ? 'Editar profissional' : 'Novo profissional'}</h2><button onClick={() => setIsModalOpen(false)} className="p-1 rounded hover:bg-slate-100"><X size={16} /></button></div>
-            <div className="p-5 max-h-[84vh] overflow-auto space-y-6">
+            <div className="p-5 flex-1 overflow-auto space-y-6">
               {modalError && (
                 <div className="px-3 py-2 border border-rose-200 bg-rose-50 rounded-lg text-rose-700 text-sm flex items-center gap-2">
                   <AlertCircle size={14} />
@@ -952,16 +952,62 @@ export default function ProfessionalsPage() {
 
               {modalTab === 'cadastro' && (
               <>
-              <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-                <div className="md:col-span-8 grid grid-cols-1 md:grid-cols-3 gap-2">
-                  <div className="md:col-span-3">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Nome do profissional</label>
-                    <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+              <div className="grid grid-cols-1 xl:grid-cols-12 gap-4">
+                <div className="xl:col-span-3 space-y-4">
+                  <div className="border rounded-xl p-3 bg-slate-50/60">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Foto do profissional</label>
+                    <div className="h-[240px] bg-white border rounded-lg overflow-hidden flex items-center justify-center">
+                      {editingId && photoDoc && !photoLoadError ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={`/api/admin/profissionais/documentos/${encodeURIComponent(photoDoc.id)}/download?inline=1`}
+                          alt="Foto do profissional"
+                          className="w-full h-full object-cover"
+                          onError={() => setPhotoLoadError(true)}
+                        />
+                      ) : (
+                        <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
+                          <User size={52} />
+                          <span className="text-sm text-slate-500">Sem foto cadastrada</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="xl:col-span-9 space-y-4">
+                  <div className="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                    <h3 className="text-sm font-semibold text-slate-700">Dados basicos</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-8">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Nome do profissional</label>
+                        <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div className="md:col-span-4">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Status do profissional</label>
+                        <select
+                          value={form.isActive ? 'active' : 'inactive'}
+                          onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.value === 'active' }))}
+                          className="w-full px-3 py-2 border rounded-lg bg-white"
+                        >
+                          <option value="active">Ativo</option>
+                          <option value="inactive">Inativo</option>
+                        </select>
+                      </div>
+                      <div className="md:col-span-6">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Telefone</label>
+                        <input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: formatPhone(e.target.value) }))} placeholder="(11) 99999-9999" className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                      <div className="md:col-span-6">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Email</label>
+                        <input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="md:col-span-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600">Especialidades</label>
+                  <div className="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-semibold text-slate-700">Atendimento</h3>
                       <button
                         type="button"
                         onClick={() =>
@@ -975,6 +1021,7 @@ export default function ProfessionalsPage() {
                         + Especialidade
                       </button>
                     </div>
+
                     <div className="space-y-2">
                       {form.specialties.map((sp, idx) => (
                         <div key={`sp-${idx}`} className="grid grid-cols-12 gap-2 items-center">
@@ -1030,268 +1077,195 @@ export default function ProfessionalsPage() {
                         </div>
                       ))}
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Fonte: {specialtiesSource === 'feegow_api' ? 'Feegow API' : specialtiesSource === 'database' ? 'Banco local' : 'Nao carregada'}
+
+                    <p className="text-[11px] text-slate-500">
+                      Fonte das especialidades: {specialtiesSource === 'feegow_api' ? 'Feegow API' : specialtiesSource === 'database' ? 'Banco local' : 'Nao carregada'}
                     </p>
-                  </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Telefone</label>
-                    <input value={form.phone} onChange={(e) => setForm((p) => ({ ...p, phone: formatPhone(e.target.value) }))} placeholder="(11) 99999-9999" className="w-full px-3 py-2 border rounded-lg" />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Email</label>
-                    <input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Faixa etaria de atendimento (anos)</label>
-                    <div className="rounded-lg border bg-slate-50 p-3 space-y-3">
-                      <div className="relative h-8">
-                        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 rounded bg-slate-200" />
-                        <div
-                          className="absolute top-1/2 -translate-y-1/2 h-1 rounded bg-[#17407E]"
-                          style={{
-                            left: `${(form.ageMin / 120) * 100}%`,
-                            width: `${((form.ageMax - form.ageMin) / 120) * 100}%`,
-                          }}
-                        />
-                        <input
-                          type="range"
-                          min={0}
-                          max={120}
-                          value={form.ageMin}
-                          onChange={(e) => {
-                            const nextMin = Number(e.target.value);
-                            setForm((p) => ({ ...p, ageMin: Math.min(nextMin, p.ageMax) }));
-                          }}
-                          className="dual-range-input absolute inset-0 w-full h-8"
-                          aria-label="Idade minima"
-                        />
-                        <input
-                          type="range"
-                          min={0}
-                          max={120}
-                          value={form.ageMax}
-                          onChange={(e) => {
-                            const nextMax = Number(e.target.value);
-                            setForm((p) => ({ ...p, ageMax: Math.max(nextMax, p.ageMin) }));
-                          }}
-                          className="dual-range-input absolute inset-0 w-full h-8"
-                          aria-label="Idade maxima"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="block text-[11px] text-slate-500 mb-1">Min</label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={120}
-                            value={form.ageMin}
-                            onFocus={(e) => e.currentTarget.select()}
-                            onChange={(e) => {
-                              const raw = Number.parseInt(e.target.value, 10);
-                              const nextMin = Number.isFinite(raw) ? Math.max(0, Math.min(120, raw)) : 0;
-                              setForm((p) => ({ ...p, ageMin: Math.min(nextMin, p.ageMax) }));
-                            }}
-                            className="w-full px-3 py-2 border rounded-lg bg-white"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-[11px] text-slate-500 mb-1">Max</label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={120}
-                            value={form.ageMax}
-                            onFocus={(e) => e.currentTarget.select()}
-                            onChange={(e) => {
-                              const raw = Number.parseInt(e.target.value, 10);
-                              const nextMax = Number.isFinite(raw) ? Math.max(0, Math.min(120, raw)) : 120;
-                              setForm((p) => ({ ...p, ageMax: Math.max(nextMax, p.ageMin) }));
-                            }}
-                            className="w-full px-3 py-2 border rounded-lg bg-white"
-                          />
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-6">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Unidades de atendimento</label>
+                        <div className="grid grid-cols-1 gap-2 border rounded-lg p-3 bg-white">
+                          {PROFESSIONAL_SERVICE_UNITS.map((unit) => {
+                            const checked = form.serviceUnits.includes(unit);
+                            return (
+                              <label key={unit} className="inline-flex items-center gap-2 text-sm text-slate-700">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) =>
+                                    setForm((p) => ({
+                                      ...p,
+                                      serviceUnits: e.target.checked
+                                        ? Array.from(new Set([...p.serviceUnits, unit]))
+                                        : p.serviceUnits.filter((u) => u !== unit),
+                                    }))
+                                  }
+                                />
+                                {unit}
+                              </label>
+                            );
+                          })}
                         </div>
                       </div>
-                    </div>
-                  </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de contrato</label>
-                    <select
-                      value={form.contractType}
-                      onChange={(e) =>
-                        setForm((p) => {
-                          const nextType = e.target.value;
-                          const matches = activeContractTemplates.filter((tpl) => {
-                            const tplType = normalizeContractTypeCode(tpl.contractType);
-                            const nextTypeNormalized = normalizeContractTypeCode(nextType);
-                            return Boolean(tplType && nextTypeNormalized && tplType === nextTypeNormalized);
-                          });
-                          const keepCurrent = matches.some((tpl) => tpl.id === p.contractTemplateId);
-                          return {
-                            ...p,
-                            contractType: nextType,
-                            contractTemplateId: keepCurrent ? p.contractTemplateId : (matches[0]?.id || ''),
-                          };
-                        })
-                      }
-                      className="w-full px-3 py-2 border rounded-lg bg-white"
-                    >
-                      {CONTRACT_TYPES.filter((t) => t.isActive).map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
-                    </select>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Modelo de contrato (ativo)</label>
-                    <select
-                      value={form.contractTemplateId}
-                      onChange={(e) => setForm((p) => ({ ...p, contractTemplateId: e.target.value }))}
-                      className="w-full px-3 py-2 border rounded-lg bg-white"
-                    >
-                      <option value="">Selecione</option>
-                      {contractTemplateOptions.map((tpl) => (
-                        <option key={tpl.id} value={tpl.id}>
-                          {tpl.name} (v{tpl.version})
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Opcoes vindas da pagina Modelos de Contrato.
-                    </p>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Pagamento minimo (texto livre)</label>
-                    <input
-                      value={form.paymentMinimumText}
-                      onChange={(e) => setForm((p) => ({ ...p, paymentMinimumText: e.target.value }))}
-                      placeholder="Ex.: PAGAMENTO NO VALOR MINIMO DE R$ 900,00 PELO PERIODO DE 4/H"
-                      className="w-full px-3 py-2 border rounded-lg"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de contratante</label>
-                    <select value={form.contractPartyType} onChange={(e) => setForm((p) => ({ ...p, contractPartyType: e.target.value as ContractPartyType }))} className="w-full px-3 py-2 border rounded-lg bg-white">
-                      <option value="PF">PF</option>
-                      <option value="PJ">PJ</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">{form.contractPartyType === 'PF' ? 'CPF' : 'CNPJ'}</label>
-                    <input
-                      value={form.contractPartyType === 'PF' ? form.cpf : form.cnpj}
-                      onChange={(e) =>
-                        setForm((p) =>
-                          p.contractPartyType === 'PF'
-                            ? { ...p, cpf: formatCpf(e.target.value) }
-                            : { ...p, cnpj: formatCnpj(e.target.value) }
-                        )
-                      }
-                      placeholder={form.contractPartyType === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
-                      className="w-full px-3 py-2 border rounded-lg"
-                    />
-                  </div>
-
-                  {form.contractPartyType === 'PJ' && (
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Razao social</label>
-                      <input value={form.legalName} onChange={(e) => setForm((p) => ({ ...p, legalName: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de documento pessoal</label>
-                    <select value={form.personalDocType} onChange={(e) => setForm((p) => ({ ...p, personalDocType: e.target.value }))} className="w-full px-3 py-2 border rounded-lg bg-white">
-                      {PERSONAL_DOC_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Numero documento pessoal</label>
-                    <input value={form.personalDocNumber} onChange={(e) => setForm((p) => ({ ...p, personalDocNumber: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
-                  </div>
-
-                  <div className="md:col-span-3">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Endereco</label>
-                    <textarea value={form.addressText} onChange={(e) => setForm((p) => ({ ...p, addressText: e.target.value }))} rows={2} className="w-full px-3 py-2 border rounded-lg" />
-                  </div>
-
-                  <div className="md:col-span-3">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Unidades de atendimento</label>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2 border rounded-lg p-3 bg-slate-50">
-                      {PROFESSIONAL_SERVICE_UNITS.map((unit) => {
-                        const checked = form.serviceUnits.includes(unit);
-                        return (
-                          <label key={unit} className="inline-flex items-center gap-2 text-sm text-slate-700">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e) =>
-                                setForm((p) => ({
-                                  ...p,
-                                  serviceUnits: e.target.checked
-                                    ? Array.from(new Set([...p.serviceUnits, unit]))
-                                    : p.serviceUnits.filter((u) => u !== unit),
-                                }))
-                              }
+                      <div className="md:col-span-6">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Faixa etaria de atendimento (anos)</label>
+                        <div className="rounded-lg border bg-white p-3 space-y-3">
+                          <div className="relative h-8">
+                            <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 rounded bg-slate-200" />
+                            <div
+                              className="absolute top-1/2 -translate-y-1/2 h-1 rounded bg-[#17407E]"
+                              style={{
+                                left: `${(form.ageMin / 120) * 100}%`,
+                                width: `${((form.ageMax - form.ageMin) / 120) * 100}%`,
+                              }}
                             />
-                            {unit}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
+                            <input
+                              type="range"
+                              min={0}
+                              max={120}
+                              value={form.ageMin}
+                              onChange={(e) => {
+                                const nextMin = Number(e.target.value);
+                                setForm((p) => ({ ...p, ageMin: Math.min(nextMin, p.ageMax) }));
+                              }}
+                              className="dual-range-input absolute inset-0 w-full h-8"
+                              aria-label="Idade minima"
+                            />
+                            <input
+                              type="range"
+                              min={0}
+                              max={120}
+                              value={form.ageMax}
+                              onChange={(e) => {
+                                const nextMax = Number(e.target.value);
+                                setForm((p) => ({ ...p, ageMax: Math.max(nextMax, p.ageMin) }));
+                              }}
+                              className="dual-range-input absolute inset-0 w-full h-8"
+                              aria-label="Idade maxima"
+                            />
+                          </div>
 
-                  <div className="md:col-span-3">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Observacoes do profissional</label>
-                    <textarea value={form.physicalFolderNote} onChange={(e) => setForm((p) => ({ ...p, physicalFolderNote: e.target.value }))} rows={2} className="w-full px-3 py-2 border rounded-lg" />
-                    <label className="inline-flex items-center gap-2 text-sm text-slate-700 mt-2">
-                      <input type="checkbox" checked={form.hasPhysicalFolder} onChange={(e) => setForm((p) => ({ ...p, hasPhysicalFolder: e.target.checked }))} />
-                      Possui pasta fisica
-                    </label>
-                  </div>
-                </div>
-
-                <div className="md:col-span-4">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Foto do profissional</label>
-                  <div className="h-[220px] bg-slate-50 border rounded-lg overflow-hidden flex items-center justify-center">
-                    {editingId && photoDoc && !photoLoadError ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={`/api/admin/profissionais/documentos/${encodeURIComponent(photoDoc.id)}/download?inline=1`}
-                        alt="Foto do profissional"
-                        className="w-full h-full object-cover"
-                        onError={() => setPhotoLoadError(true)}
-                      />
-                    ) : (
-                      <div className="flex flex-col items-center justify-center gap-2 text-slate-400">
-                        <User size={52} />
-                        <span className="text-sm text-slate-500">Sem foto cadastrada</span>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[11px] text-slate-500 mb-1">Min</label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={120}
+                                value={form.ageMin}
+                                onFocus={(e) => e.currentTarget.select()}
+                                onChange={(e) => {
+                                  const raw = Number.parseInt(e.target.value, 10);
+                                  const nextMin = Number.isFinite(raw) ? Math.max(0, Math.min(120, raw)) : 0;
+                                  setForm((p) => ({ ...p, ageMin: Math.min(nextMin, p.ageMax) }));
+                                }}
+                                className="w-full px-3 py-2 border rounded-lg bg-white"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] text-slate-500 mb-1">Max</label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={120}
+                                value={form.ageMax}
+                                onFocus={(e) => e.currentTarget.select()}
+                                onChange={(e) => {
+                                  const raw = Number.parseInt(e.target.value, 10);
+                                  const nextMax = Number.isFinite(raw) ? Math.max(0, Math.min(120, raw)) : 120;
+                                  setForm((p) => ({ ...p, ageMax: Math.max(nextMax, p.ageMin) }));
+                                }}
+                                className="w-full px-3 py-2 border rounded-lg bg-white"
+                              />
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                    )}
+                    </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <div className="col-span-2">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Status do profissional</label>
-                      <select
-                        value={form.isActive ? 'active' : 'inactive'}
-                        onChange={(e) => setForm((p) => ({ ...p, isActive: e.target.value === 'active' }))}
-                        className="w-full px-3 py-2 border rounded-lg bg-white"
-                      >
-                        <option value="active">Ativo</option>
-                        <option value="inactive">Inativo</option>
-                      </select>
-                    </div>
+                  <div className="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                    <h3 className="text-sm font-semibold text-slate-700">Contrato e dados fiscais</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-4">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de contrato</label>
+                        <select
+                          value={form.contractType}
+                          onChange={(e) =>
+                            setForm((p) => {
+                              const nextType = e.target.value;
+                              const matches = activeContractTemplates.filter((tpl) => {
+                                const tplType = normalizeContractTypeCode(tpl.contractType);
+                                const nextTypeNormalized = normalizeContractTypeCode(nextType);
+                                return Boolean(tplType && nextTypeNormalized && tplType === nextTypeNormalized);
+                              });
+                              const keepCurrent = matches.some((tpl) => tpl.id === p.contractTemplateId);
+                              return {
+                                ...p,
+                                contractType: nextType,
+                                contractTemplateId: keepCurrent ? p.contractTemplateId : (matches[0]?.id || ''),
+                              };
+                            })
+                          }
+                          className="w-full px-3 py-2 border rounded-lg bg-white"
+                        >
+                          {CONTRACT_TYPES.filter((t) => t.isActive).map((t) => <option key={t.code} value={t.code}>{t.label}</option>)}
+                        </select>
+                      </div>
 
-                    <div>
+                      <div className="md:col-span-8">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Modelo de contrato (ativo)</label>
+                        <select
+                          value={form.contractTemplateId}
+                          onChange={(e) => setForm((p) => ({ ...p, contractTemplateId: e.target.value }))}
+                          className="w-full px-3 py-2 border rounded-lg bg-white"
+                        >
+                          <option value="">Selecione</option>
+                          {contractTemplateOptions.map((tpl) => (
+                            <option key={tpl.id} value={tpl.id}>
+                              {tpl.name} (v{tpl.version})
+                            </option>
+                          ))}
+                        </select>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          Opcoes vindas da pagina Modelos de Contrato.
+                        </p>
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de contratante</label>
+                        <select value={form.contractPartyType} onChange={(e) => setForm((p) => ({ ...p, contractPartyType: e.target.value as ContractPartyType }))} className="w-full px-3 py-2 border rounded-lg bg-white">
+                          <option value="PF">PF</option>
+                          <option value="PJ">PJ</option>
+                        </select>
+                      </div>
+
+                      <div className="md:col-span-4">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">{form.contractPartyType === 'PF' ? 'CPF' : 'CNPJ'}</label>
+                        <input
+                          value={form.contractPartyType === 'PF' ? form.cpf : form.cnpj}
+                          onChange={(e) =>
+                            setForm((p) =>
+                              p.contractPartyType === 'PF'
+                                ? { ...p, cpf: formatCpf(e.target.value) }
+                                : { ...p, cnpj: formatCnpj(e.target.value) }
+                            )
+                          }
+                          placeholder={form.contractPartyType === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
+                          className="w-full px-3 py-2 border rounded-lg"
+                        />
+                      </div>
+
+                      {form.contractPartyType === 'PJ' && (
+                        <div className="md:col-span-5">
+                          <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Razao social</label>
+                          <input value={form.legalName} onChange={(e) => setForm((p) => ({ ...p, legalName: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+                        </div>
+                      )}
+
+                      <div className="md:col-span-3">
                         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Inicio contrato</label>
                         <input
                           type="date"
@@ -1300,7 +1274,8 @@ export default function ProfessionalsPage() {
                           className="w-full px-3 py-2 border rounded-lg"
                         />
                       </div>
-                      <div>
+
+                      <div className="md:col-span-3">
                         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Fim contrato</label>
                         <input
                           type="date"
@@ -1311,14 +1286,57 @@ export default function ProfessionalsPage() {
                         />
                       </div>
 
-                    <label className="inline-flex items-center gap-2 text-sm text-slate-700 col-span-2">
-                      <input
-                        type="checkbox"
-                        checked={form.hasFeegowPermissions}
-                        onChange={(e) => setForm((p) => ({ ...p, hasFeegowPermissions: e.target.checked }))}
-                      />
-                      Permissoes do Feegow
-                    </label>
+                      <div className="md:col-span-4">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Pagamento minimo (texto livre)</label>
+                        <input
+                          value={form.paymentMinimumText}
+                          onChange={(e) => setForm((p) => ({ ...p, paymentMinimumText: e.target.value }))}
+                          placeholder="Ex.: PAGAMENTO MINIMO DE R$ 900,00 / 4H"
+                          className="w-full px-3 py-2 border rounded-lg"
+                        />
+                      </div>
+
+                      <label className="md:col-span-2 inline-flex items-center gap-2 text-sm text-slate-700 mt-6">
+                        <input
+                          type="checkbox"
+                          checked={form.hasFeegowPermissions}
+                          onChange={(e) => setForm((p) => ({ ...p, hasFeegowPermissions: e.target.checked }))}
+                        />
+                        Permissoes Feegow
+                      </label>
+                    </div>
+                  </div>
+
+                  <div className="border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                    <h3 className="text-sm font-semibold text-slate-700">Documento pessoal e endereco</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de documento pessoal</label>
+                        <select value={form.personalDocType} onChange={(e) => setForm((p) => ({ ...p, personalDocType: e.target.value }))} className="w-full px-3 py-2 border rounded-lg bg-white">
+                          {PERSONAL_DOC_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="md:col-span-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Numero do documento</label>
+                        <input value={form.personalDocNumber} onChange={(e) => setForm((p) => ({ ...p, personalDocNumber: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+
+                      <div className="md:col-span-6">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Endereco</label>
+                        <textarea value={form.addressText} onChange={(e) => setForm((p) => ({ ...p, addressText: e.target.value }))} rows={2} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+
+                      <div className="md:col-span-4">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Observacoes do profissional</label>
+                        <textarea value={form.physicalFolderNote} onChange={(e) => setForm((p) => ({ ...p, physicalFolderNote: e.target.value }))} rows={2} className="w-full px-3 py-2 border rounded-lg" />
+                      </div>
+
+                      <label className="md:col-span-4 inline-flex items-center gap-2 text-sm text-slate-700 mt-6">
+                        <input type="checkbox" checked={form.hasPhysicalFolder} onChange={(e) => setForm((p) => ({ ...p, hasPhysicalFolder: e.target.checked }))} />
+                        Possui pasta fisica
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
