@@ -326,3 +326,25 @@ Detalhes tecnicos:
   - `qms_audit_log`
 - upload de arquivo usando provider S3 ja existente;
 - heartbeat/refresh do modulo em `system_status` com `service_name='qms_documentos'`.
+
+## Atualizacao - Sprint 2 Qualidade (Treinamentos)
+
+Componentes adicionados:
+
+- Backend:
+  - `frontend/src/lib/qms/trainings_repository.ts`
+  - APIs em `frontend/src/app/api/admin/qms/treinamentos/*`
+- Frontend:
+  - `frontend/src/app/(admin)/qualidade/treinamentos/page.tsx`
+  - componentes em `frontend/src/app/(admin)/qualidade/treinamentos/components/*`
+
+Detalhes tecnicos:
+
+- novas tabelas:
+  - `qms_training_plans`
+  - `qms_trainings`
+  - `qms_training_files`
+  - `qms_document_training_links`
+- vinculo entre cronograma e POP via tabela de ligacao (N:N);
+- anexos de realizacao usando provider S3 existente;
+- heartbeat/refresh com `service_name='qms_treinamentos'`.

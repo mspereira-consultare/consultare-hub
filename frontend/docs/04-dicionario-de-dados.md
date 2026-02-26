@@ -596,3 +596,64 @@ Campos principais:
 - `before_json`, `after_json`
 - `actor_user_id`
 - `created_at`
+
+## Tabelas - Modulo Qualidade (Sprint 2)
+
+### `qms_training_plans`
+
+Finalidade:
+- planejamento anual de treinamentos.
+
+Campos principais:
+- `id` (PK)
+- `code` (unico; formato `CRN-YYYY-0001`)
+- `theme`, `sector`, `training_type`
+- `objective`, `instructor`, `target_audience`
+- `workload_hours`, `planned_date`, `expiration_date`
+- `evaluation_applied`, `evaluation_type`
+- `target_indicator`, `expected_goal`
+- `status`, `notes`
+- `created_by`, `created_at`, `updated_by`, `updated_at`
+
+### `qms_trainings`
+
+Finalidade:
+- registro de realizacoes de treinamento.
+
+Campos principais:
+- `id` (PK)
+- `code` (unico; formato `TRN-YYYY-0001`)
+- `plan_id` (opcional)
+- `name`, `sector`, `training_type`
+- `instructor`, `target_audience`
+- `performed_at`, `workload_hours`
+- `evaluation_applied`, `average_score`
+- `next_training_date`
+- `participants_planned`, `participants_actual`
+- `result_post_training`, `status`, `notes`
+- `created_by`, `created_at`, `updated_by`, `updated_at`
+
+### `qms_training_files`
+
+Finalidade:
+- metadados de anexos por realizacao.
+
+Campos principais:
+- `id` (PK)
+- `training_id`
+- `file_type` (`attendance_list`, `evaluation`, `evidence`, `other`)
+- `storage_provider`, `storage_bucket`, `storage_key`
+- `filename`, `mime_type`, `size_bytes`
+- `uploaded_by`, `uploaded_at`
+- `is_active`
+
+### `qms_document_training_links`
+
+Finalidade:
+- ligacao entre POP e cronograma (N:N).
+
+Campos principais:
+- `id` (PK)
+- `document_id`
+- `training_plan_id`
+- `created_at`

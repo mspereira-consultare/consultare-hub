@@ -611,3 +611,25 @@ Indicadores/regras iniciais:
   - `A vencer`: ate 30 dias para vencimento;
   - `Vigente`: acima de 30 dias.
 - heartbeat: servico `qms_documentos` em `system_status`.
+
+## Qualidade - Sprint 2 (Treinamentos)
+
+Nova tela:
+- `/qualidade/treinamentos`
+
+Estrutura:
+- Aba `Cronograma Anual`
+- Aba `Realizacoes`
+
+Funcionalidades entregues:
+- cadastro/edicao/exclusao de cronogramas;
+- vinculo de cronograma com POPs do modulo de documentos;
+- cadastro/edicao/exclusao de realizacoes;
+- upload de anexos por realizacao (`lista de presenca`, `avaliacao`, `evidencia`, `outro`);
+- visualizacao/download do ultimo anexo da realizacao;
+- refresh manual de status operacional.
+
+Indicadores/regras iniciais:
+- total de anexos por realizacao (`files_count`);
+- status de cronograma e realizacao (`planejado`, `em_andamento`, `concluido`, `cancelado`);
+- heartbeat: servico `qms_treinamentos` em `system_status`.

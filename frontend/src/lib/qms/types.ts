@@ -123,3 +123,126 @@ export type QmsRefreshResult = {
     arquivado: number;
   };
 };
+
+export type QmsTrainingType = 'inicial' | 'reciclagem';
+export type QmsTrainingPlanStatus = 'planejado' | 'em_andamento' | 'concluido' | 'cancelado';
+export type QmsTrainingExecutionStatus = 'planejado' | 'em_andamento' | 'concluido' | 'cancelado';
+export type QmsTrainingFileType = 'attendance_list' | 'evaluation' | 'evidence' | 'other';
+
+export type QmsTrainingPlan = {
+  id: string;
+  code: string;
+  theme: string;
+  sector: string;
+  trainingType: QmsTrainingType;
+  objective: string | null;
+  instructor: string | null;
+  targetAudience: string | null;
+  workloadHours: number | null;
+  plannedDate: string | null;
+  expirationDate: string | null;
+  evaluationApplied: boolean;
+  evaluationType: string | null;
+  targetIndicator: string | null;
+  expectedGoal: string | null;
+  status: QmsTrainingPlanStatus;
+  notes: string | null;
+  linkedDocumentIds: string[];
+  linkedDocumentCodes: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type QmsTrainingPlanInput = {
+  code?: string | null;
+  theme: string;
+  sector?: string | null;
+  trainingType?: QmsTrainingType | null;
+  objective?: string | null;
+  instructor?: string | null;
+  targetAudience?: string | null;
+  workloadHours?: number | null;
+  plannedDate?: string | null;
+  expirationDate?: string | null;
+  evaluationApplied?: boolean;
+  evaluationType?: string | null;
+  targetIndicator?: string | null;
+  expectedGoal?: string | null;
+  status?: QmsTrainingPlanStatus | null;
+  notes?: string | null;
+  linkedDocumentIds?: string[];
+};
+
+export type QmsTraining = {
+  id: string;
+  code: string;
+  planId: string | null;
+  planCode: string | null;
+  name: string;
+  sector: string;
+  trainingType: QmsTrainingType;
+  instructor: string | null;
+  targetAudience: string | null;
+  performedAt: string | null;
+  workloadHours: number | null;
+  evaluationApplied: boolean;
+  averageScore: number | null;
+  nextTrainingDate: string | null;
+  status: QmsTrainingExecutionStatus;
+  participantsPlanned: number | null;
+  participantsActual: number | null;
+  resultPostTraining: string | null;
+  notes: string | null;
+  filesCount: number;
+  createdBy: string;
+  createdAt: string;
+  updatedBy: string;
+  updatedAt: string;
+};
+
+export type QmsTrainingInput = {
+  code?: string | null;
+  planId?: string | null;
+  name: string;
+  sector?: string | null;
+  trainingType?: QmsTrainingType | null;
+  instructor?: string | null;
+  targetAudience?: string | null;
+  performedAt?: string | null;
+  workloadHours?: number | null;
+  evaluationApplied?: boolean;
+  averageScore?: number | null;
+  nextTrainingDate?: string | null;
+  status?: QmsTrainingExecutionStatus | null;
+  participantsPlanned?: number | null;
+  participantsActual?: number | null;
+  resultPostTraining?: string | null;
+  notes?: string | null;
+};
+
+export type QmsTrainingFile = {
+  id: string;
+  trainingId: string;
+  fileType: QmsTrainingFileType;
+  storageProvider: string;
+  storageBucket: string | null;
+  storageKey: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadedBy: string;
+  uploadedAt: string;
+  isActive: boolean;
+};
+
+export type QmsTrainingFileInput = {
+  fileType: QmsTrainingFileType;
+  storageProvider: string;
+  storageBucket?: string | null;
+  storageKey: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+};

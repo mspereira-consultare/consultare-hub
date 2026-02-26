@@ -342,3 +342,24 @@ Checklist rapido de validacao:
 Observacoes:
 - os arquivos usam o mesmo provider S3 ja adotado no projeto;
 - as paginas de `Treinamentos` e `Auditorias` foram criadas como base visual para os proximos sprints.
+
+## Modulo Qualidade - Sprint 2 (Treinamentos)
+
+Rotas entregues:
+- Tela: `/qualidade/treinamentos`
+- API:
+  - `GET/POST /api/admin/qms/treinamentos/planos`
+  - `GET/PATCH/DELETE /api/admin/qms/treinamentos/planos/:id`
+  - `GET/POST /api/admin/qms/treinamentos/realizacoes`
+  - `GET/PATCH/DELETE /api/admin/qms/treinamentos/realizacoes/:id`
+  - `GET/POST /api/admin/qms/treinamentos/realizacoes/:id/arquivos`
+  - `GET /api/admin/qms/treinamentos/realizacoes/:id/arquivos/:fileId/download`
+  - `GET /api/admin/qms/treinamentos/opcoes`
+  - `POST /api/admin/qms/treinamentos/refresh`
+
+Checklist rapido de validacao:
+1. Criar cronograma e vincular pelo menos 1 POP.
+2. Editar cronograma e salvar.
+3. Criar realizacao vinculada ao cronograma.
+4. Fazer upload de anexo de realizacao e validar visualizacao/download.
+5. Rodar refresh manual e confirmar `qms_treinamentos` em `system_status`.
