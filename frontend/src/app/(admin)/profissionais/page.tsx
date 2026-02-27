@@ -1178,12 +1178,12 @@ export default function ProfessionalsPage() {
                     </div>
 
                     <div className="md:col-span-6">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Faixa etária de atendimento (anos)</label>
-                      <div className="rounded-lg border bg-white p-3 space-y-3">
-                        <div className="relative h-8">
-                          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-1 rounded bg-slate-200" />
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Faixa etaria de atendimento (anos)</label>
+                      <div className="rounded-lg border bg-white px-3 py-2 space-y-2">
+                        <div className="relative h-5">
+                          <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-0.5 rounded bg-slate-200" />
                           <div
-                            className="absolute top-1/2 -translate-y-1/2 h-1 rounded bg-[#17407E]"
+                            className="absolute top-1/2 -translate-y-1/2 h-0.5 rounded bg-[#17407E]"
                             style={{
                               left: `${(form.ageMin / 120) * 100}%`,
                               width: `${((form.ageMax - form.ageMin) / 120) * 100}%`,
@@ -1198,8 +1198,8 @@ export default function ProfessionalsPage() {
                               const nextMin = Number(e.target.value);
                               setForm((p) => ({ ...p, ageMin: Math.min(nextMin, p.ageMax) }));
                             }}
-                            className="dual-range-input absolute inset-0 w-full h-8"
-                            aria-label="Idade mínima"
+                            className="dual-range-input absolute inset-0 w-full h-5"
+                            aria-label="Idade minima"
                           />
                           <input
                             type="range"
@@ -1210,14 +1210,14 @@ export default function ProfessionalsPage() {
                               const nextMax = Number(e.target.value);
                               setForm((p) => ({ ...p, ageMax: Math.max(nextMax, p.ageMin) }));
                             }}
-                            className="dual-range-input absolute inset-0 w-full h-8"
-                            aria-label="Idade máxima"
+                            className="dual-range-input absolute inset-0 w-full h-5"
+                            aria-label="Idade maxima"
                           />
                         </div>
 
                         <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[11px] text-slate-500 mb-1">Mín.</label>
+                          <label className="text-[11px] text-slate-500 flex items-center gap-2">
+                            Min.
                             <input
                               type="number"
                               min={0}
@@ -1229,11 +1229,11 @@ export default function ProfessionalsPage() {
                                 const nextMin = Number.isFinite(raw) ? Math.max(0, Math.min(120, raw)) : 0;
                                 setForm((p) => ({ ...p, ageMin: Math.min(nextMin, p.ageMax) }));
                               }}
-                              className="w-full px-3 py-2 border rounded-lg bg-white"
+                              className="w-full px-2 py-1.5 text-sm border rounded-md bg-white"
                             />
-                          </div>
-                          <div>
-                            <label className="block text-[11px] text-slate-500 mb-1">Máx.</label>
+                          </label>
+                          <label className="text-[11px] text-slate-500 flex items-center gap-2">
+                            Max.
                             <input
                               type="number"
                               min={0}
@@ -1245,9 +1245,9 @@ export default function ProfessionalsPage() {
                                 const nextMax = Number.isFinite(raw) ? Math.max(0, Math.min(120, raw)) : 120;
                                 setForm((p) => ({ ...p, ageMax: Math.max(nextMax, p.ageMin) }));
                               }}
-                              className="w-full px-3 py-2 border rounded-lg bg-white"
+                              className="w-full px-2 py-1.5 text-sm border rounded-md bg-white"
                             />
-                          </div>
+                          </label>
                         </div>
                       </div>
                     </div>
@@ -1355,6 +1355,49 @@ export default function ProfessionalsPage() {
                   </div>
                 </div>
                 <div className="xl:col-span-12 border rounded-xl p-4 bg-slate-50/60 space-y-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="text-sm font-semibold text-slate-700">Registros regionais</h3>
+                    <button
+                      type="button"
+                      className="text-xs px-2 py-1 border rounded-md"
+                      onClick={() => setForm((p) => ({ ...p, registrations: [...p.registrations, { councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: false }] }))}
+                    >
+                      + Registro
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-12 gap-2 text-xs font-semibold uppercase text-slate-500 mb-1 px-1">
+                    <div className="col-span-3">Conselho</div>
+                    <div className="col-span-4">Numero</div>
+                    <div className="col-span-2">UF</div>
+                    <div className="col-span-2">Principal</div>
+                    <div className="col-span-1">Remover</div>
+                  </div>
+                  <div className="space-y-2">
+                    {form.registrations.map((r, i) => (
+                      <div key={`${r.id || 'new'}-${i}`} className="grid grid-cols-12 gap-2 items-center">
+                        <select
+                          value={r.councilType}
+                          onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilType: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })}
+                          className="col-span-3 px-2 py-1.5 border rounded bg-white"
+                        >
+                          {COUNCIL_TYPES.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                        <input value={r.councilNumber} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilNumber: e.target.value }; return { ...p, registrations: n }; })} className="col-span-4 px-2 py-1.5 border rounded" placeholder="Numero" />
+                        <select
+                          value={r.councilUf}
+                          onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilUf: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })}
+                          className="col-span-2 px-2 py-1.5 border rounded bg-white"
+                        >
+                          {BRAZIL_UFS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
+                        </select>
+                        <label className="col-span-2 text-xs inline-flex items-center gap-1"><input type="radio" checked={r.isPrimary} onChange={() => setForm((p) => ({ ...p, registrations: p.registrations.map((x, xIdx) => ({ ...x, isPrimary: xIdx === i })) }))} />Principal</label>
+                        <button type="button" onClick={() => setForm((p) => { if (p.registrations.length <= 1) return p; const n = p.registrations.filter((_, xIdx) => xIdx !== i); if (!n.some((x) => x.isPrimary)) n[0] = { ...n[0], isPrimary: true }; return { ...p, registrations: n }; })} className="col-span-1 text-slate-500 hover:text-rose-600">x</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="xl:col-span-12 border rounded-xl p-4 bg-slate-50/60 space-y-3">
                   <h3 className="text-sm font-semibold text-slate-700">Observacoes do profissional</h3>
                   <textarea
                     value={form.physicalFolderNote}
@@ -1366,39 +1409,6 @@ export default function ProfessionalsPage() {
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-2"><h3 className="text-sm font-semibold text-slate-700">Registros regionais</h3><button type="button" className="text-xs px-2 py-1 border rounded-md" onClick={() => setForm((p) => ({ ...p, registrations: [...p.registrations, { councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: false }] }))}>+ Registro</button></div>
-                <div className="grid grid-cols-12 gap-2 text-xs font-semibold uppercase text-slate-500 mb-1 px-1">
-                  <div className="col-span-3">Conselho</div>
-                  <div className="col-span-4">Número</div>
-                  <div className="col-span-2">UF</div>
-                  <div className="col-span-2">Principal</div>
-                  <div className="col-span-1">Remover</div>
-                </div>
-                <div className="space-y-2">
-                  {form.registrations.map((r, i) => (
-                    <div key={`${r.id || 'new'}-${i}`} className="grid grid-cols-12 gap-2 items-center">
-                      <select
-                        value={r.councilType}
-                        onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilType: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })}
-                        className="col-span-3 px-2 py-1.5 border rounded bg-white"
-                      >
-                        {COUNCIL_TYPES.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                      <input value={r.councilNumber} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilNumber: e.target.value }; return { ...p, registrations: n }; })} className="col-span-4 px-2 py-1.5 border rounded" placeholder="Número" />
-                      <select
-                        value={r.councilUf}
-                        onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilUf: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })}
-                        className="col-span-2 px-2 py-1.5 border rounded bg-white"
-                      >
-                        {BRAZIL_UFS.map((uf) => <option key={uf} value={uf}>{uf}</option>)}
-                      </select>
-                      <label className="col-span-2 text-xs inline-flex items-center gap-1"><input type="radio" checked={r.isPrimary} onChange={() => setForm((p) => ({ ...p, registrations: p.registrations.map((x, xIdx) => ({ ...x, isPrimary: xIdx === i })) }))} />Principal</label>
-                      <button type="button" onClick={() => setForm((p) => { if (p.registrations.length <= 1) return p; const n = p.registrations.filter((_, xIdx) => xIdx !== i); if (!n.some((x) => x.isPrimary)) n[0] = { ...n[0], isPrimary: true }; return { ...p, registrations: n }; })} className="col-span-1 text-slate-500 hover:text-rose-600">x</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
 
 
               </>
@@ -1960,19 +1970,19 @@ export default function ProfessionalsPage() {
           -webkit-appearance: none;
           appearance: none;
           pointer-events: auto;
-          height: 16px;
-          width: 16px;
+          height: 14px;
+          width: 14px;
           border-radius: 9999px;
           border: 2px solid #17407e;
           background: #ffffff;
           box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
           cursor: pointer;
-          margin-top: -8px;
+          margin-top: -7px;
         }
         .dual-range-input::-moz-range-thumb {
           pointer-events: auto;
-          height: 16px;
-          width: 16px;
+          height: 14px;
+          width: 14px;
           border-radius: 9999px;
           border: 2px solid #17407e;
           background: #ffffff;
