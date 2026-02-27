@@ -655,9 +655,11 @@ export default function ProfessionalsPage() {
     setUploadingDoc(true);
     setModalError('');
     try {
+      const uploadedType = uploadDocType;
+      const uploadedExpiresAt = uploadExpiresAt;
       const fd = new FormData();
       fd.append('file', uploadFile);
-      fd.append('docType', uploadDocType);
+      fd.append('docType', uploadedType);
       if (uploadExpiresAt) fd.append('expiresAt', uploadExpiresAt);
 
       const res = await fetch(`/api/admin/profissionais/${encodeURIComponent(editingId)}/documentos`, {
@@ -670,6 +672,18 @@ export default function ProfessionalsPage() {
       setUploadFile(null);
       setUploadExpiresAt('');
       await fetchDocuments(editingId);
+      setForm((prev) => ({
+        ...prev,
+        checklist: prev.checklist.map((row) =>
+          row.docType === uploadedType
+            ? {
+                ...row,
+                hasDigitalCopy: true,
+                expiresAt: uploadedExpiresAt || row.expiresAt,
+              }
+            : row
+        ),
+      }));
     } catch (e: any) {
       setModalError(e?.message || 'Falha no upload.');
     } finally {

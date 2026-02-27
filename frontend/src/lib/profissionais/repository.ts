@@ -55,6 +55,7 @@ const allowedContractTypes = new Set(
   CONTRACT_TYPES.filter((item) => item.isActive).map((item) => item.code)
 );
 const allowedDocTypes = new Set(DOCUMENT_TYPES.map((item) => item.code));
+const checklistDocTypes = new Set(CHECKLIST_DOCUMENT_TYPES.map((item) => item.code));
 const allowedPersonalDocTypes = new Set(PERSONAL_DOC_TYPES);
 const allowedServiceUnits = new Set(PROFESSIONAL_SERVICE_UNITS);
 
@@ -1405,6 +1406,33 @@ export const createProfessionalDocumentRecord = async (
       now,
     ]
   );
+
+  // Se o documento estiver no checklist manual, marca automaticamente como "digital = OK".
+  if (checklistDocTypes.has(docType)) {
+    await db.execute(
+      `
+      INSERT INTO professional_document_checklist (
+        id, professional_id, doc_type, has_physical_copy, has_digital_copy, expires_at, notes,
+        verified_by, verified_at, updated_at
+      ) VALUES (?, ?, ?, 0, 1, ?, '', ?, ?, ?)
+      ON CONFLICT(professional_id, doc_type) DO UPDATE SET
+        has_digital_copy = 1,
+        expires_at = excluded.expires_at,
+        verified_by = excluded.verified_by,
+        verified_at = excluded.verified_at,
+        updated_at = excluded.updated_at
+      `,
+      [
+        randomUUID(),
+        professionalId,
+        docType,
+        expiresAt,
+        actorUserId,
+        now,
+        now,
+      ]
+    );
+  }
 
   await insertAudit(db, 'DOCUMENT_UPLOADED', actorUserId, professionalId, {
     documentId: id,
