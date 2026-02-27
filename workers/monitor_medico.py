@@ -2,8 +2,10 @@ import time
 import sys
 import os
 import hashlib
+import threading
 from datetime import datetime
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
+from queue import Queue, Empty
+from concurrent.futures import TimeoutError as FutureTimeoutError
 
 import pytz
 from dotenv import load_dotenv
@@ -59,9 +61,37 @@ def _parse_db_datetime(raw_value):
 
 
 def _parse_html_with_timeout(sistema, html, nome_unidade, timeout_sec):
-    with ThreadPoolExecutor(max_workers=1) as pool:
-        future = pool.submit(sistema.parse_html, html, nome_unidade)
-        return future.result(timeout=timeout_sec)
+    result_queue = Queue(maxsize=1)
+
+    def _target():
+        try:
+            parsed = sistema.parse_html(html, nome_unidade)
+            result_queue.put(("ok", parsed), timeout=1)
+        except Exception as exc:
+            try:
+                result_queue.put(("err", exc), timeout=1)
+            except Exception:
+                pass
+
+    worker = threading.Thread(
+        target=_target,
+        name=f"MedParse-{nome_unidade}",
+        daemon=True,
+    )
+    worker.start()
+    worker.join(timeout=timeout_sec)
+
+    if worker.is_alive():
+        raise FutureTimeoutError(f"parse_html excedeu {timeout_sec}s")
+
+    try:
+        status, payload = result_queue.get_nowait()
+    except Empty:
+        raise RuntimeError("parse_html terminou sem retornar resultado")
+
+    if status == "err":
+        raise payload
+    return payload
 
 
 def run_monitor_medico():
