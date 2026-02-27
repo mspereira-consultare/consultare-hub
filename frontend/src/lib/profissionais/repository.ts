@@ -148,7 +148,7 @@ const normalizeSpecialties = (
   }
 
   if (list.length === 0) {
-    throw new ProfessionalValidationError('Especialidade e obrigatoria.');
+    list.push({ name: 'Nao informado', isPrimary: true });
   }
 
   const explicitPrimary = list.find((item) => item.isPrimary)?.name || null;
@@ -194,25 +194,6 @@ const toMoneyNumber = (value: any): number | null => {
   const parsed = Number(normalized);
   if (!Number.isFinite(parsed)) return null;
   return parsed;
-};
-
-const normalizeRegistration = (registration: any): ProfessionalRegistration => {
-  const councilType = upper(registration?.councilType);
-  const councilNumber = clean(registration?.councilNumber);
-  const councilUf = upper(registration?.councilUf);
-  const isPrimary = bool(registration?.isPrimary);
-
-  if (!councilType) throw new ProfessionalValidationError('Conselho do registro regional e obrigatorio.');
-  if (!councilNumber) throw new ProfessionalValidationError('Numero do registro regional e obrigatorio.');
-  if (!/^[A-Z]{2}$/.test(councilUf)) throw new ProfessionalValidationError('UF do registro regional invalida.');
-
-  return {
-    id: clean(registration?.id) || undefined,
-    councilType,
-    councilNumber,
-    councilUf,
-    isPrimary,
-  };
 };
 
 const normalizeChecklistItem = (item: any): ProfessionalChecklistItem => {
@@ -275,18 +256,20 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     payload?.primarySpecialty,
     payload?.specialty
   );
-  const personalDocNumber = clean(payload?.personalDocNumber);
-  const addressText = clean(payload?.addressText);
+  const personalDocNumber = clean(payload?.personalDocNumber) || '-';
+  const addressText = clean(payload?.addressText) || '-';
 
   if (!name) throw new ProfessionalValidationError('Nome do profissional e obrigatorio.');
-  if (!personalDocNumber) {
-    throw new ProfessionalValidationError('Numero do documento pessoal e obrigatorio.');
-  }
-  if (!addressText) throw new ProfessionalValidationError('Endereco e obrigatorio.');
 
-  const contractPartyType = normalizeContractPartyType(payload?.contractPartyType);
-  const contractType = normalizeContractType(payload?.contractType);
-  const personalDocType = normalizePersonalDocType(payload?.personalDocType);
+  const contractPartyType: ContractPartyType = 'PF';
+  const contractTypeRaw = clean(payload?.contractType);
+  const contractType = contractTypeRaw
+    ? normalizeContractType(contractTypeRaw)
+    : (CONTRACT_TYPES.find((item) => item.isActive)?.code || CONTRACT_TYPES[0].code);
+  const personalDocTypeRaw = clean(payload?.personalDocType);
+  const personalDocType = personalDocTypeRaw
+    ? normalizePersonalDocType(personalDocTypeRaw)
+    : 'CPF';
   const hasFeegowPermissions = bool(payload?.hasFeegowPermissions);
 
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
@@ -303,27 +286,38 @@ const normalizeInput = (payload: any): ProfessionalInput => {
   }
 
   const cpf = clean(payload?.cpf) || null;
-  const cnpj = clean(payload?.cnpj) || null;
-  const legalName = clean(payload?.legalName) || null;
-
-  if (contractPartyType === 'PF' && !cpf) {
-    throw new ProfessionalValidationError('CPF e obrigatorio para contratacao PF.');
-  }
-  if (contractPartyType === 'PJ') {
-    if (!cnpj) throw new ProfessionalValidationError('CNPJ e obrigatorio para contratacao PJ.');
-    if (!legalName) throw new ProfessionalValidationError('Razao social e obrigatoria para contratacao PJ.');
-  }
+  const cnpj = null;
+  const legalName = null;
 
   const registrationsRaw: unknown[] = Array.isArray(payload?.registrations)
     ? payload.registrations
     : [];
-  const registrations = registrationsRaw.map((row) => normalizeRegistration(row));
-  const primaryCount = registrations.filter((item) => item.isPrimary).length;
-  if (registrations.length === 0) {
-    throw new ProfessionalValidationError('Informe ao menos um registro regional.');
-  }
-  if (primaryCount !== 1) {
-    throw new ProfessionalValidationError('Selecione exatamente um registro regional principal.');
+  const registrations = registrationsRaw
+    .map((row: any) => {
+      const councilType = upper(row?.councilType || 'CRM');
+      const councilNumber = clean(row?.councilNumber);
+      const councilUf = upper(row?.councilUf || 'SP');
+      const isPrimary = bool(row?.isPrimary);
+      if (!councilNumber) return null;
+      if (!/^[A-Z]{2}$/.test(councilUf)) return null;
+      return {
+        id: clean(row?.id) || undefined,
+        councilType,
+        councilNumber,
+        councilUf,
+        isPrimary,
+      } as ProfessionalRegistration;
+    })
+    .filter((row): row is ProfessionalRegistration => Boolean(row));
+
+  if (registrations.length > 0) {
+    const primaryCount = registrations.filter((item) => item.isPrimary).length;
+    if (primaryCount !== 1) {
+      registrations[0] = { ...registrations[0], isPrimary: true };
+      for (let i = 1; i < registrations.length; i += 1) {
+        registrations[i] = { ...registrations[i], isPrimary: false };
+      }
+    }
   }
 
   const checklistRaw: unknown[] = Array.isArray(payload?.checklist)
@@ -361,13 +355,6 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     registrations,
     checklist,
   };
-
-  const missingFields = computeMissingFields(result, registrations);
-  if (missingFields.length > 0) {
-    throw new ProfessionalValidationError(
-      `Campos obrigatorios ausentes: ${missingFields.join(', ')}`
-    );
-  }
 
   return result;
 };

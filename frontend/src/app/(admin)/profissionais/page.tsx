@@ -10,7 +10,6 @@ import {
   COUNCIL_TYPES,
   DOCUMENT_TYPES,
   normalizeContractTypeCode,
-  PERSONAL_DOC_TYPES,
   PROFESSIONAL_SERVICE_UNITS,
   type ContractPartyType,
 } from '@/lib/profissionais/constants';
@@ -98,7 +97,7 @@ const emptyForm = (): FormState => ({
   name: '', contractPartyType: 'PF', contractType: CONTRACT_TYPES.find((c) => c.isActive)?.code || '', cpf: '', cnpj: '', legalName: '',
   specialties: [{ name: '', isPrimary: true }], phone: '', email: '', ageMin: 0, ageMax: 120, serviceUnits: [], hasFeegowPermissions: false,
   paymentMinimumText: '',
-  personalDocType: PERSONAL_DOC_TYPES[0], personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
+  personalDocType: 'CPF', personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
   physicalFolderNote: '', contractTemplateId: '', contractStartDate: '', contractEndDate: '',
   registrations: [{ councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
 });
@@ -117,12 +116,12 @@ const toForm = (item: ProfessionalListItem): FormState => {
   if (!specialties.some((s) => s.isPrimary)) specialties[0] = { ...specialties[0], isPrimary: true };
 
   return ({
-  name: item.name || '', contractPartyType: item.contractPartyType || 'PF', contractType: item.contractType || '', cpf: formatCpf(item.cpf || ''),
+  name: item.name || '', contractPartyType: 'PF', contractType: item.contractType || '', cpf: formatCpf(item.cpf || ''),
   cnpj: formatCnpj(item.cnpj || ''), legalName: item.legalName || '', specialties,
   phone: formatPhone(item.phone || ''), email: item.email || '', ageMin: age.min, ageMax: age.max, serviceUnits: item.serviceUnits || [],
   hasFeegowPermissions: Boolean(item.hasFeegowPermissions),
   paymentMinimumText: item.paymentMinimumText || '',
-  personalDocType: item.personalDocType || 'RG',
+  personalDocType: item.personalDocType === 'CNH' ? 'CNH' : 'CPF',
   personalDocNumber: item.personalDocNumber || '', addressText: item.addressText || '', isActive: Boolean(item.isActive),
   hasPhysicalFolder: Boolean(item.hasPhysicalFolder), physicalFolderNote: item.physicalFolderNote || '',
   contractTemplateId: item.contractTemplateId || '',
@@ -757,8 +756,9 @@ export default function ProfessionalsPage() {
       const payload = {
         ...form,
         cpf: stripDigits(form.cpf) || null,
-        cnpj: stripDigits(form.cnpj) || null,
-        legalName: form.legalName || null,
+        contractPartyType: 'PF',
+        cnpj: null,
+        legalName: null,
         specialty: form.specialties.find((s) => s.isPrimary)?.name || form.specialties[0]?.name || null,
         specialties: form.specialties
           .map((s) => ({ name: s.name.trim(), isPrimary: s.isPrimary }))
@@ -870,7 +870,7 @@ export default function ProfessionalsPage() {
                     {item.isActive ? 'Ativo' : 'Inativo'}
                   </span>
                 </td>
-                <td className="px-4 py-3"><div className="font-semibold text-slate-800">{item.name}</div><div className="text-xs text-slate-500">{item.contractPartyType === 'PF' ? `CPF: ${maskCpf(item.cpf)}` : `CNPJ: ${item.cnpj || '-'}`}</div></td>
+                <td className="px-4 py-3"><div className="font-semibold text-slate-800">{item.name}</div><div className="text-xs text-slate-500">{item.personalDocType === 'CNH' ? `CNH: ${item.cpf || '-'}` : `CPF: ${maskCpf(item.cpf)}`}</div></td>
                 <td className="px-4 py-3">{item.specialty || '-'}</td>
                 <td className="px-4 py-3">{formatDateBr(item.contractEndDate)}</td>
                 <td className="px-4 py-3">{item.primaryRegistration ? `${item.primaryRegistration.councilType}/${item.primaryRegistration.councilUf} ${item.primaryRegistration.councilNumber}` : '-'}</td>
@@ -949,6 +949,11 @@ export default function ProfessionalsPage() {
                   Contratos
                 </button>
               </div>
+              {modalTab === 'cadastro' && (
+                <p className="text-xs text-slate-500">
+                  Campos obrigatorios: <span className="font-semibold">Nome do profissional *</span>
+                </p>
+              )}
 
               {modalTab === 'cadastro' && (
               <>
@@ -980,7 +985,7 @@ export default function ProfessionalsPage() {
                     <h3 className="text-sm font-semibold text-slate-700 mb-3">Dados básicos</h3>
                     <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                       <div className="md:col-span-8">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Nome do profissional</label>
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Nome do profissional *</label>
                         <input value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
                       </div>
                       <div className="md:col-span-4">
@@ -1002,6 +1007,53 @@ export default function ProfessionalsPage() {
                         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">E-mail</label>
                         <input type="email" value={form.email} onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
                       </div>
+                      <div className="md:col-span-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">RG</label>
+                        <input
+                          value={form.personalDocNumber}
+                          onChange={(e) => setForm((p) => ({ ...p, personalDocNumber: e.target.value }))}
+                          className="w-full px-3 py-2 border rounded-lg"
+                        />
+                      </div>
+                      <div className="md:col-span-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de documento (CPF/CNH)</label>
+                        <select
+                          value={form.personalDocType}
+                          onChange={(e) =>
+                            setForm((p) => ({
+                              ...p,
+                              personalDocType: e.target.value === 'CNH' ? 'CNH' : 'CPF',
+                              cpf: e.target.value === 'CPF' ? formatCpf(p.cpf) : p.cpf,
+                            }))
+                          }
+                          className="w-full px-3 py-2 border rounded-lg bg-white"
+                        >
+                          <option value="CPF">CPF</option>
+                          <option value="CNH">CNH</option>
+                        </select>
+                      </div>
+                      <div className="md:col-span-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">CPF/CNH</label>
+                        <input
+                          value={form.cpf}
+                          onChange={(e) =>
+                            setForm((p) => ({
+                              ...p,
+                              cpf: p.personalDocType === 'CPF' ? formatCpf(e.target.value) : e.target.value,
+                            }))
+                          }
+                          placeholder={form.personalDocType === 'CPF' ? '000.000.000-00' : 'Numero da CNH'}
+                          className="w-full px-3 py-2 border rounded-lg"
+                        />
+                      </div>
+                      <label className="md:col-span-3 inline-flex items-center gap-2 text-sm text-slate-700 mt-7">
+                        <input
+                          type="checkbox"
+                          checked={form.hasPhysicalFolder}
+                          onChange={(e) => setForm((p) => ({ ...p, hasPhysicalFolder: e.target.checked }))}
+                        />
+                        Possui pasta fisica
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -1024,6 +1076,7 @@ export default function ProfessionalsPage() {
                   </div>
 
                   <div className="space-y-2">
+                    <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Especialidades</label>
                     {form.specialties.map((sp, idx) => (
                       <div key={`sp-${idx}`} className="grid grid-cols-12 gap-2 items-center">
                         <select
@@ -1235,37 +1288,6 @@ export default function ProfessionalsPage() {
                       </p>
                     </div>
 
-                    <div className="md:col-span-3">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de contratante</label>
-                      <select value={form.contractPartyType} onChange={(e) => setForm((p) => ({ ...p, contractPartyType: e.target.value as ContractPartyType }))} className="w-full px-3 py-2 border rounded-lg bg-white">
-                        <option value="PF">PF</option>
-                        <option value="PJ">PJ</option>
-                      </select>
-                    </div>
-
-                    <div className="md:col-span-4">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">{form.contractPartyType === 'PF' ? 'CPF' : 'CNPJ'}</label>
-                      <input
-                        value={form.contractPartyType === 'PF' ? form.cpf : form.cnpj}
-                        onChange={(e) =>
-                          setForm((p) =>
-                            p.contractPartyType === 'PF'
-                              ? { ...p, cpf: formatCpf(e.target.value) }
-                              : { ...p, cnpj: formatCnpj(e.target.value) }
-                          )
-                        }
-                        placeholder={form.contractPartyType === 'PF' ? '000.000.000-00' : '00.000.000/0000-00'}
-                        className="w-full px-3 py-2 border rounded-lg"
-                      />
-                    </div>
-
-                    {form.contractPartyType === 'PJ' && (
-                      <div className="md:col-span-5">
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Razão social</label>
-                        <input value={form.legalName} onChange={(e) => setForm((p) => ({ ...p, legalName: e.target.value }))} className="w-full px-3 py-2 border rounded-lg" />
-                      </div>
-                    )}
-
                     <div className="md:col-span-2">
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Início contrato</label>
                       <input
@@ -1287,6 +1309,16 @@ export default function ProfessionalsPage() {
                       />
                     </div>
 
+                    <div className="md:col-span-8">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Endereco Completo</label>
+                      <textarea
+                        value={form.addressText}
+                        onChange={(e) => setForm((p) => ({ ...p, addressText: e.target.value }))}
+                        rows={2}
+                        className="w-full px-3 py-2 border rounded-lg resize-y"
+                      />
+                    </div>
+
                     <div className="md:col-span-6">
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Pagamento mínimo (texto livre)</label>
                       <textarea
@@ -1298,7 +1330,7 @@ export default function ProfessionalsPage() {
                       />
                     </div>
 
-                    <label className="md:col-span-3 inline-flex items-center gap-2 text-sm text-slate-700 mt-6">
+                    <label className="md:col-span-6 inline-flex items-center gap-2 text-sm text-slate-700 mt-6">
                       <input
                         type="checkbox"
                         checked={form.hasFeegowPermissions}
@@ -1308,50 +1340,15 @@ export default function ProfessionalsPage() {
                     </label>
                   </div>
                 </div>
-
                 <div className="xl:col-span-12 border rounded-xl p-4 bg-slate-50/60 space-y-3">
-                  <h3 className="text-sm font-semibold text-slate-700">Documento pessoal e endereço</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                    <div className="md:col-span-3">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">RG</label>
-                      <input
-                        value={form.personalDocType === 'RG' ? form.personalDocNumber : ''}
-                        onChange={(e) =>
-                          setForm((p) => ({
-                            ...p,
-                            personalDocType: 'RG',
-                            personalDocNumber: e.target.value,
-                          }))
-                        }
-                        className="w-full px-3 py-2 border rounded-lg"
-                      />
-                    </div>
-
-                    <div className="md:col-span-3">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">CPF/CNH</label>
-                      <input
-                        value={form.cpf}
-                        onChange={(e) => setForm((p) => ({ ...p, cpf: e.target.value }))}
-                        placeholder="CPF ou CNH"
-                        className="w-full px-3 py-2 border rounded-lg"
-                      />
-                    </div>
-
-                    <div className="md:col-span-6">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Endereço Completo</label>
-                      <textarea value={form.addressText} onChange={(e) => setForm((p) => ({ ...p, addressText: e.target.value }))} rows={2} className="w-full px-3 py-2 border rounded-lg" />
-                    </div>
-
-                    <div className="md:col-span-9">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Observações do profissional</label>
-                      <textarea value={form.physicalFolderNote} onChange={(e) => setForm((p) => ({ ...p, physicalFolderNote: e.target.value }))} rows={3} className="w-full px-3 py-2 border rounded-lg resize-y min-h-[96px]" />
-                    </div>
-
-                    <label className="md:col-span-3 inline-flex items-center gap-2 text-sm text-slate-700 mt-7">
-                      <input type="checkbox" checked={form.hasPhysicalFolder} onChange={(e) => setForm((p) => ({ ...p, hasPhysicalFolder: e.target.checked }))} />
-                      Possui pasta física
-                    </label>
-                  </div>
+                  <h3 className="text-sm font-semibold text-slate-700">Observacoes do profissional</h3>
+                  <textarea
+                    value={form.physicalFolderNote}
+                    onChange={(e) => setForm((p) => ({ ...p, physicalFolderNote: e.target.value }))}
+                    rows={4}
+                    className="w-full px-3 py-2 border rounded-lg resize-y min-h-[120px]"
+                    placeholder="Observacoes gerais, combinados e anotacoes internas."
+                  />
                 </div>
               </div>
 
