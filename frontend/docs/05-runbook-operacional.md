@@ -416,3 +416,34 @@ FROM system_status
 WHERE service_name IN ('qms_documentos', 'qms_treinamentos', 'qms_auditorias')
 ORDER BY service_name;
 ```
+
+
+## 9) Monitor Medico - Hardening (2026-03)
+
+Mudancas aplicadas para evitar fila zerada apos virada do dia:
+
+- Deteccao de sessao invalida por conteudo HTML (nao depende apenas de redirect para login).
+- Re-login imediato no mesmo ciclo quando a sessao cai.
+- Re-login preventivo periodico e na virada de dia.
+- Prewarm diario antes da abertura: 07:40, 07:45, 07:50, 07:55.
+- Failsafe de coleta vazia suspeita com reautenticacao automatica.
+- Logs de warning com throttle para evitar poluicao.
+
+Variaveis novas (workers):
+
+- `MEDICO_LOGIN_REFRESH_MINUTES` (default `90`)
+- `MEDICO_EMPTY_RELOGIN_CYCLES` (default `3`)
+- `MEDICO_WARN_THROTTLE_SECONDS` (default `120`)
+- `MEDICO_ACTIVITY_WINDOW_START` (default `06:00`)
+- `MEDICO_ACTIVITY_WINDOW_END` (default `22:00`)
+- `WATCHDOG_BUSINESS_START` (default `08:00`)
+- `WATCHDOG_BUSINESS_END` (default `19:00`)
+- `WATCHDOG_STALE_BUSINESS_SEC` (default `180`)
+- `WATCHDOG_STALE_OFFHOURS_SEC` (default `900`)
+
+Checklist rapido de validacao:
+
+1. Verificar `system_status` do `monitor_medico` atualizando continuamente.
+2. Confirmar logs de prewarm entre 07:40 e 07:55.
+3. Simular sessao expirada e validar re-login automatico sem restart manual.
+4. Conferir que warnings repetidos nao spamam logs (throttle ativo).

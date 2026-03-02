@@ -28,6 +28,11 @@ FINALIZE_INTERVAL_SEC = int(os.getenv("MEDICO_FINALIZE_INTERVAL_SEC", "300"))
 CLEANUP_INTERVAL_SEC = int(os.getenv("MEDICO_CLEANUP_INTERVAL_SEC", "600"))
 ABSENCE_CONFIRM_MINUTES = max(1, int(os.getenv("MEDICO_ABSENCE_CONFIRM_MINUTES", "10")))
 PARSE_TIMEOUT_SEC = max(5, int(os.getenv("MEDICO_PARSE_TIMEOUT_SEC", "25")))
+LOGIN_REFRESH_MINUTES = max(0, int(os.getenv("MEDICO_LOGIN_REFRESH_MINUTES", "90")))
+EMPTY_RELOGIN_CYCLES = max(1, int(os.getenv("MEDICO_EMPTY_RELOGIN_CYCLES", "3")))
+ACTIVITY_WINDOW_START = os.getenv("MEDICO_ACTIVITY_WINDOW_START", "06:00")
+ACTIVITY_WINDOW_END = os.getenv("MEDICO_ACTIVITY_WINDOW_END", "22:00")
+WARN_THROTTLE_SECONDS = max(30, int(os.getenv("MEDICO_WARN_THROTTLE_SECONDS", "120")))
 
 UNIDADES = [
     ("Ouro Verde", 2),
@@ -58,6 +63,45 @@ def _parse_db_datetime(raw_value):
     if dt.tzinfo is None:
         return tz.localize(dt)
     return dt.astimezone(tz)
+
+
+def _parse_hhmm(value, default_h, default_m):
+    try:
+        raw = str(value or "").strip()
+        if not raw:
+            return default_h, default_m
+        hh, mm = raw.split(":")
+        h = int(hh)
+        m = int(mm)
+        if not (0 <= h <= 23 and 0 <= m <= 59):
+            return default_h, default_m
+        return h, m
+    except Exception:
+        return default_h, default_m
+
+
+def _is_activity_window(now_dt):
+    start_h, start_m = _parse_hhmm(ACTIVITY_WINDOW_START, 6, 0)
+    end_h, end_m = _parse_hhmm(ACTIVITY_WINDOW_END, 22, 0)
+    start = now_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+    end = now_dt.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
+    if end <= start:
+        return now_dt >= start or now_dt < end
+    return start <= now_dt < end
+
+
+def _format_fetch_meta(meta):
+    if not isinstance(meta, dict) or not meta:
+        return "meta=indisponivel"
+    status = meta.get("status_code")
+    final_url = meta.get("final_url")
+    reason = meta.get("reason")
+    markers = meta.get("login_markers")
+    size = meta.get("content_len")
+    return (
+        f"status={status} reason={reason} markers={markers} "
+        f"len={size} url={final_url}"
+    )
 
 
 def _parse_html_with_timeout(sistema, html, nome_unidade, timeout_sec):
@@ -94,6 +138,54 @@ def _parse_html_with_timeout(sistema, html, nome_unidade, timeout_sec):
     return payload
 
 
+def run_medico_prewarm():
+    """
+    Pré-aquecimento de sessão antes da abertura:
+    - login
+    - troca de unidade
+    - leitura/parsing básico da fila
+    """
+    db = DatabaseManager()
+    sistema = FeegowSystem()
+    ts = datetime.now(tz).strftime("%H:%M:%S")
+    db.update_heartbeat("monitor_medico", "RUNNING", "Prewarm: iniciando login e teste de coleta")
+
+    if not sistema.login():
+        msg = "Prewarm: falha de login no Feegow"
+        print(f"[{ts}] [PREWARM] {msg}")
+        db.update_heartbeat("monitor_medico", "WARNING", msg)
+        return False
+
+    ok_units = 0
+    results = []
+    for nome_unidade, uid in UNIDADES:
+        try:
+            if not sistema.trocar_unidade(uid):
+                results.append(f"{nome_unidade}:troca_falhou")
+                continue
+            time.sleep(0.6)
+            html = sistema.obter_fila_raw()
+            if html is None:
+                results.append(f"{nome_unidade}:sessao_invalida")
+                continue
+            df = _parse_html_with_timeout(sistema, html, nome_unidade, max(10, PARSE_TIMEOUT_SEC))
+            ok_units += 1
+            results.append(f"{nome_unidade}:{len(df)}")
+        except Exception as e:
+            results.append(f"{nome_unidade}:erro_{e.__class__.__name__}")
+
+    if ok_units == len(UNIDADES):
+        msg = f"Prewarm OK ({' | '.join(results)})"
+        print(f"[{ts}] [PREWARM] {msg}")
+        db.update_heartbeat("monitor_medico", "ONLINE", msg)
+        return True
+
+    msg = f"Prewarm parcial {ok_units}/{len(UNIDADES)} ({' | '.join(results)})"
+    print(f"[{ts}] [PREWARM] {msg}")
+    db.update_heartbeat("monitor_medico", "WARNING", msg)
+    return False
+
+
 def run_monitor_medico():
     print("=== MONITOR MEDICO (COM HISTORICO) INICIADO ===")
 
@@ -102,17 +194,47 @@ def run_monitor_medico():
     sessao_ativa = False
     last_finalize_ts = 0
     last_cleanup_ts = 0
+    last_login_ts = 0
+    last_login_date = None
+    consecutive_zero_cycles = 0
+    warning_last_by_key = {}
+    last_unit_counts = {nome: None for nome, _ in UNIDADES}
+
+    def warn_throttled(key, message, heartbeat_detail=None):
+        now_ts_local = time.time()
+        last = warning_last_by_key.get(key, 0)
+        if (now_ts_local - last) >= WARN_THROTTLE_SECONDS:
+            print(message)
+            warning_last_by_key[key] = now_ts_local
+        if heartbeat_detail:
+            db.update_heartbeat("monitor_medico", "WARNING", heartbeat_detail)
 
     while True:
         try:
             db.update_heartbeat("monitor_medico", "RUNNING", "Iniciando ciclo...")
 
+            now_local = datetime.now(tz)
+            if sessao_ativa:
+                force_reauth = None
+                if last_login_date and now_local.date() != last_login_date:
+                    force_reauth = "virada de dia"
+                elif LOGIN_REFRESH_MINUTES > 0 and last_login_ts > 0:
+                    age_min = (time.time() - last_login_ts) / 60.0
+                    if age_min >= LOGIN_REFRESH_MINUTES:
+                        force_reauth = f"renovacao preventiva ({int(age_min)} min)"
+                if force_reauth:
+                    print(f"   [AUTH] Reautenticando por {force_reauth}...")
+                    sessao_ativa = False
+
             if not sessao_ativa:
                 print("   [AUTH] Realizando login...")
                 if sistema.login():
                     sessao_ativa = True
+                    last_login_ts = time.time()
+                    last_login_date = datetime.now(tz).date()
                 else:
                     print("   [AUTH] Falha no login. Retentando em 30s...")
+                    db.update_heartbeat("monitor_medico", "WARNING", "Falha no login Feegow")
                     time.sleep(30)
                     continue
 
@@ -123,6 +245,8 @@ def run_monitor_medico():
 
             timestamp = datetime.now(tz).strftime("%H:%M:%S")
             total_detectado_ciclo = 0
+            auth_issue_detected = False
+            unidades_processadas = 0
 
             for nome_unidade, uid in UNIDADES:
                 db.update_heartbeat("monitor_medico", "RUNNING", f"Coletando {nome_unidade}...")
@@ -130,30 +254,56 @@ def run_monitor_medico():
                 if not sistema.trocar_unidade(uid):
                     print(f"[{timestamp}] Falha ao trocar para {nome_unidade} ({uid})")
                     continue
+                unidades_processadas += 1
 
                 time.sleep(1.0)
                 html = sistema.obter_fila_raw()
                 if html is None:
-                    print(f"[{timestamp}] Sessao expirou ao consultar {nome_unidade}.")
+                    meta_info = _format_fetch_meta(getattr(sistema, "last_queue_fetch_meta", {}))
+                    warn_throttled(
+                        f"sessao_{nome_unidade}",
+                        f"[{timestamp}] [WARN] Sessao invalida em {nome_unidade}. Re-login imediato. {meta_info}",
+                        f"Sessao invalida em {nome_unidade}; reautenticando",
+                    )
                     sessao_ativa = False
-                    break
+
+                    if sistema.login():
+                        sessao_ativa = True
+                        last_login_ts = time.time()
+                        last_login_date = datetime.now(tz).date()
+                        if sistema.trocar_unidade(uid):
+                            time.sleep(0.8)
+                            html = sistema.obter_fila_raw()
+                        else:
+                            html = None
+                    else:
+                        html = None
+
+                    if html is None:
+                        auth_issue_detected = True
+                        meta_info = _format_fetch_meta(getattr(sistema, "last_queue_fetch_meta", {}))
+                        warn_throttled(
+                            f"relogin_falha_{nome_unidade}",
+                            f"[{timestamp}] [WARN] Re-login falhou em {nome_unidade}; encerrando ciclo para retry. {meta_info}",
+                            f"Re-login falhou em {nome_unidade}; ciclo interrompido",
+                        )
+                        break
 
                 try:
                     df = _parse_html_with_timeout(sistema, html, nome_unidade, PARSE_TIMEOUT_SEC)
                 except FutureTimeoutError:
-                    print(
-                        f"[{timestamp}] [WARN] {nome_unidade}: parse_html excedeu "
-                        f"{PARSE_TIMEOUT_SEC}s; pulando unidade neste ciclo."
-                    )
-                    db.update_heartbeat(
-                        "monitor_medico",
-                        "WARNING",
+                    warn_throttled(
+                        f"timeout_parse_{nome_unidade}",
+                        f"[{timestamp}] [WARN] {nome_unidade}: parse_html excedeu {PARSE_TIMEOUT_SEC}s; unidade ignorada no ciclo.",
                         f"Timeout parse {nome_unidade} ({PARSE_TIMEOUT_SEC}s)",
                     )
                     continue
                 except Exception as parse_err:
-                    print(f"[{timestamp}] [WARN] {nome_unidade}: erro no parse_html: {parse_err}")
-                    db.update_heartbeat("monitor_medico", "WARNING", f"Erro parse {nome_unidade}")
+                    warn_throttled(
+                        f"erro_parse_{nome_unidade}",
+                        f"[{timestamp}] [WARN] {nome_unidade}: erro no parse_html: {parse_err}",
+                        f"Erro parse {nome_unidade}",
+                    )
                     continue
 
                 qtd_unidade = 0
@@ -177,15 +327,22 @@ def run_monitor_medico():
                     hash_ids_atuais = set()
 
                 if not df.empty and not hash_ids_atuais:
-                    print(f"[{timestamp}] [WARN] {nome_unidade}: sem hash_ids_atuais; pulando finalizacao por seguranca.")
-                    print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
+                    warn_throttled(
+                        f"hash_vazio_{nome_unidade}",
+                        f"[{timestamp}] [WARN] {nome_unidade}: sem hash_ids_atuais; finalizacao pausada por seguranca.",
+                        f"{nome_unidade}: hash_ids ausentes",
+                    )
+                    if last_unit_counts.get(nome_unidade) != qtd_unidade or qtd_unidade > 0:
+                        print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
+                        last_unit_counts[nome_unidade] = qtd_unidade
                     continue
 
                 if coleta_vazia:
                     # Evita finalizar em massa quando o scrape vier vazio por oscilacao/intermitencia.
-                    print(
-                        f"[{timestamp}] [WARN] {nome_unidade}: coleta vazia; "
-                        f"finalizacao por ausencia pausada neste ciclo."
+                    warn_throttled(
+                        f"coleta_vazia_{nome_unidade}",
+                        f"[{timestamp}] [WARN] {nome_unidade}: coleta vazia; finalizacao por ausencia pausada.",
+                        f"{nome_unidade}: coleta vazia",
                     )
                 else:
                     conn = db.get_connection()
@@ -241,21 +398,52 @@ def run_monitor_medico():
                         conn.close()
 
                 # Fallback legado de limpeza por tempo (casos presos)
-                if FINALIZE_INTERVAL_SEC <= 0 or (time.time() - last_finalize_ts) >= FINALIZE_INTERVAL_SEC:
+                if (
+                    not coleta_vazia
+                    and not auth_issue_detected
+                    and (FINALIZE_INTERVAL_SEC <= 0 or (time.time() - last_finalize_ts) >= FINALIZE_INTERVAL_SEC)
+                ):
                     db.finalizar_expirados_medicos(nome_unidade, minutos=120)
 
-                print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
+                if last_unit_counts.get(nome_unidade) != qtd_unidade or qtd_unidade > 0:
+                    print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
+                    last_unit_counts[nome_unidade] = qtd_unidade
 
             if FINALIZE_INTERVAL_SEC <= 0 or (time.time() - last_finalize_ts) >= FINALIZE_INTERVAL_SEC:
                 last_finalize_ts = time.time()
 
-            if sessao_ativa:
+            if auth_issue_detected:
+                consecutive_zero_cycles = 0
+                db.update_heartbeat(
+                    "monitor_medico",
+                    "WARNING",
+                    "Falha de autenticacao/sessao invalida durante o ciclo; aguardando novo login.",
+                )
+            elif sessao_ativa:
                 msg = f"Ciclo concluido. Total detectado: {total_detectado_ciclo}"
-                db.update_heartbeat("monitor_medico", "ONLINE", msg)
 
                 if total_detectado_ciclo == 0:
-                    print(".", end="", flush=True)
+                    if unidades_processadas == len(UNIDADES) and _is_activity_window(datetime.now(tz)):
+                        consecutive_zero_cycles += 1
+                        if consecutive_zero_cycles >= EMPTY_RELOGIN_CYCLES:
+                            warn_msg = (
+                                f"Coleta vazia suspeita por {consecutive_zero_cycles} ciclo(s); "
+                                "forcando re-login no proximo ciclo."
+                            )
+                            print(f"[{timestamp}] [WARN] {warn_msg}")
+                            db.update_heartbeat("monitor_medico", "WARNING", warn_msg)
+                            sessao_ativa = False
+                            consecutive_zero_cycles = 0
+                        else:
+                            db.update_heartbeat("monitor_medico", "ONLINE", msg)
+                            print(".", end="", flush=True)
+                    else:
+                        consecutive_zero_cycles = 0
+                        db.update_heartbeat("monitor_medico", "ONLINE", msg)
+                        print(".", end="", flush=True)
                 else:
+                    consecutive_zero_cycles = 0
+                    db.update_heartbeat("monitor_medico", "ONLINE", msg)
                     print(f"[{timestamp}] {msg}")
 
         except Exception as e:

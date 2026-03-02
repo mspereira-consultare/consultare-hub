@@ -48,6 +48,54 @@ class FeegowSystem:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
         })
         self.base_url = "https://franchising.feegow.com"
+        self.last_queue_fetch_meta = {}
+
+    @staticmethod
+    def _looks_like_login_html(html_text: str) -> bool:
+        """
+        Detecta resposta de login mesmo quando o servidor retorna HTTP 200
+        sem redirecionar a URL.
+
+        Usa marcadores da tela de login do próprio Feegow (mesmos sinais
+        usados nos scrapers Playwright): E-mail, Senha, Entrar, P=Login.
+        """
+        if not html_text:
+            return False
+
+        lower = str(html_text).lower()
+        markers = [
+            'p=login',
+            'main/?p=login',
+            'name="user"',
+            'name="password"',
+            'name="e-mail"',
+            'placeholder="e-mail"',
+            'placeholder="senha"',
+            'btnlogar',
+            '>entrar<',
+        ]
+        found = sum(1 for m in markers if m in lower)
+
+        # Threshold >1 para reduzir falso positivo por texto solto.
+        return found >= 2
+
+    @staticmethod
+    def _count_login_markers(html_text: str) -> int:
+        if not html_text:
+            return 0
+        lower = str(html_text).lower()
+        markers = [
+            'p=login',
+            'main/?p=login',
+            'name="user"',
+            'name="password"',
+            'name="e-mail"',
+            'placeholder="e-mail"',
+            'placeholder="senha"',
+            'btnlogar',
+            '>entrar<',
+        ]
+        return sum(1 for m in markers if m in lower)
 
     def login(self):
         """Realiza o login via POST e valida a sessão"""
@@ -103,12 +151,36 @@ class FeegowSystem:
             "StatusExibir": "4"
         }
         try:
-            resp = self.session.get(url, params=params, timeout=10)
+            resp = self.session.get(url, params=params, timeout=20)
+            meta = {
+                "status_code": resp.status_code,
+                "final_url": resp.url,
+                "content_len": len(resp.content or b""),
+                "login_markers": 0,
+                "reason": "",
+            }
             # Se redirecionar para Login, a sessão caiu
             if "login" in resp.url.lower():
+                meta["reason"] = "redirect_login"
+                self.last_queue_fetch_meta = meta
                 return None 
-            return resp.content.decode('iso-8859-1')
-        except:
+            html_text = resp.content.decode('iso-8859-1', errors='ignore')
+            meta["login_markers"] = self._count_login_markers(html_text)
+            if self._looks_like_login_html(html_text):
+                meta["reason"] = "login_html"
+                self.last_queue_fetch_meta = meta
+                return None
+            meta["reason"] = "ok"
+            self.last_queue_fetch_meta = meta
+            return html_text
+        except Exception as e:
+            self.last_queue_fetch_meta = {
+                "status_code": None,
+                "final_url": None,
+                "content_len": 0,
+                "login_markers": 0,
+                "reason": f"exception:{e.__class__.__name__}",
+            }
             return None
         
     def _login_app_specific(self):

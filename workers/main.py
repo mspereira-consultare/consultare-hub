@@ -63,7 +63,7 @@ try:
     
     # Monitores (Loops infinitos)
     from monitor_recepcao import run_monitor_recepcao
-    from monitor_medico import run_monitor_medico
+    from monitor_medico import run_monitor_medico, run_medico_prewarm
     
     # Worker Clinia (Ciclo único que precisa de loop externo)
     from worker_clinia import process_and_save as clinia_cycle
@@ -87,6 +87,19 @@ def _parse_hhmm(raw_value: str, default_h: int, default_m: int):
         return h, m
     except Exception:
         return default_h, default_m
+
+
+def _is_within_window(now_dt: datetime.datetime, start_hhmm: str, end_hhmm: str, default_start="08:00", default_end="19:00"):
+    ds_h, ds_m = _parse_hhmm(default_start, 8, 0)
+    de_h, de_m = _parse_hhmm(default_end, 19, 0)
+    start_h, start_m = _parse_hhmm(start_hhmm, ds_h, ds_m)
+    end_h, end_m = _parse_hhmm(end_hhmm, de_h, de_m)
+
+    start = now_dt.replace(hour=start_h, minute=start_m, second=0, microsecond=0)
+    end = now_dt.replace(hour=end_h, minute=end_m, second=0, microsecond=0)
+    if end <= start:
+        return now_dt >= start or now_dt < end
+    return start <= now_dt < end
 
 WORK_START_HHMM = os.getenv("WORK_START", "06:30")
 WORK_END_HHMM = os.getenv("WORK_END", "20:00")
@@ -446,6 +459,13 @@ def run_scheduler():
             print("✅ Job Diário Finalizado.")
         except Exception as e:
             print(f"❌ Falha no Job Diário: {e}")
+
+    def run_medico_prewarm_job():
+        try:
+            print("🩺 Prewarm monitor médico...")
+            run_medico_prewarm()
+        except Exception as e:
+            print(f"⚠️ Falha no prewarm monitor médico: {e}")
         
     # Agendamento
     schedule.every().day.at("05:00").do(run_token_renewal)
@@ -457,6 +477,11 @@ def run_scheduler():
     schedule.every().day.at("12:00").do(run_token_renewal)
     schedule.every().day.at("12:10").do(run_clinia_token_renewal)
     schedule.every().day.at("12:20").do(lambda: run_service('procedures_catalog'))
+    # Pré-aquecimento de sessão do monitor médico antes da abertura (08:00)
+    schedule.every().day.at("07:40").do(run_medico_prewarm_job)
+    schedule.every().day.at("07:45").do(run_medico_prewarm_job)
+    schedule.every().day.at("07:50").do(run_medico_prewarm_job)
+    schedule.every().day.at("07:55").do(run_medico_prewarm_job)
     # Workers pesados: 14h, 17h, 19h
     schedule.every().day.at("14:00").do(run_heavy_workers)
     schedule.every().day.at("17:00").do(run_heavy_workers)
@@ -502,6 +527,10 @@ WATCHDOG_ENABLED = str(os.getenv("WATCHDOG_ENABLED", "1")).strip().lower() in ("
 WATCHDOG_INTERVAL_SEC = max(10, int(os.getenv("WATCHDOG_INTERVAL_SEC", "60")))
 WATCHDOG_STALE_SEC = max(60, int(os.getenv("WATCHDOG_STALE_SEC", "600")))
 WATCHDOG_GRACE_SEC = max(0, int(os.getenv("WATCHDOG_GRACE_SEC", "180")))
+WATCHDOG_BUSINESS_START = os.getenv("WATCHDOG_BUSINESS_START", "08:00")
+WATCHDOG_BUSINESS_END = os.getenv("WATCHDOG_BUSINESS_END", "19:00")
+WATCHDOG_STALE_BUSINESS_SEC = max(60, int(os.getenv("WATCHDOG_STALE_BUSINESS_SEC", "180")))
+WATCHDOG_STALE_OFFHOURS_SEC = max(120, int(os.getenv("WATCHDOG_STALE_OFFHOURS_SEC", "900")))
 WATCHDOG_SERVICES = [
     s.strip()
     for s in str(os.getenv("WATCHDOG_SERVICES", "monitor_medico")).split(",")
@@ -515,7 +544,11 @@ def run_watchdog():
 
     print(
         f"🛡️ Watchdog ativo: services={','.join(WATCHDOG_SERVICES)} "
-        f"stale={WATCHDOG_STALE_SEC}s interval={WATCHDOG_INTERVAL_SEC}s tz={WORK_TZ_NAME}"
+        f"stale_default={WATCHDOG_STALE_SEC}s "
+        f"stale_business={WATCHDOG_STALE_BUSINESS_SEC}s "
+        f"stale_offhours={WATCHDOG_STALE_OFFHOURS_SEC}s "
+        f"window={WATCHDOG_BUSINESS_START}-{WATCHDOG_BUSINESS_END} "
+        f"interval={WATCHDOG_INTERVAL_SEC}s tz={WORK_TZ_NAME}"
     )
 
     db = DatabaseManager()
@@ -554,12 +587,24 @@ def run_watchdog():
                     continue
 
                 age_sec = (now - last_dt).total_seconds()
-                if age_sec <= WATCHDOG_STALE_SEC:
+                in_business = _is_within_window(
+                    now,
+                    WATCHDOG_BUSINESS_START,
+                    WATCHDOG_BUSINESS_END,
+                    default_start="08:00",
+                    default_end="19:00",
+                )
+                dynamic_stale_sec = WATCHDOG_STALE_BUSINESS_SEC if in_business else WATCHDOG_STALE_OFFHOURS_SEC
+                if WATCHDOG_STALE_SEC > 0:
+                    dynamic_stale_sec = min(dynamic_stale_sec, WATCHDOG_STALE_SEC)
+
+                if age_sec <= dynamic_stale_sec:
                     continue
 
                 print(
                     f"🛑 [WATCHDOG] {service_name} stale há {int(age_sec)}s "
-                    f"(status={status}, details={details}). Reiniciando processo..."
+                    f"(status={status}, details={details}, limit={int(dynamic_stale_sec)}s, "
+                    f"in_business={in_business}). Reiniciando processo..."
                 )
 
                 try:
