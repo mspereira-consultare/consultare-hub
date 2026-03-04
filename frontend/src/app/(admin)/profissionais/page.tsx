@@ -874,8 +874,8 @@ export default function ProfessionalsPage() {
     <div className="p-8 max-w-[1700px] mx-auto">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-5">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Gestao de Profissionais</h1>
-          <p className="text-slate-500">Cadastro de medicos, pendencias documentais e contratos.</p>
+          <h1 className="text-2xl font-bold text-slate-800">Gestão de Profissionais</h1>
+          <p className="text-slate-500">Cadastro de médicos, pendências documentais e contratos.</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => fetchList()} className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2"><RefreshCw size={14} />Atualizar</button>
@@ -995,7 +995,7 @@ export default function ProfessionalsPage() {
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('contractType')} className="inline-flex items-center gap-1">Tipo contrato <span>{sortIndicator('contractType')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('documents')} className="inline-flex items-center gap-1">Documentos <span>{sortIndicator('documents')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('certidao')} className="inline-flex items-center gap-1">Certidão <span>{sortIndicator('certidao')}</span></button></th>
-              <th className="px-4 py-3">A??es</th>
+              <th className="px-4 py-3">Ações</th>
             </tr>
           </thead>
           <tbody>
