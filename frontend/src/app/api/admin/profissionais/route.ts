@@ -36,7 +36,7 @@ export async function GET(request: Request) {
     const statusRaw = String(searchParams.get('status') || 'all').trim().toLowerCase();
     const pendencyRaw = String(searchParams.get('pendencyStatus') || 'all').trim().toLowerCase();
     const certRaw = String(searchParams.get('certidaoStatus') || 'all').trim().toUpperCase();
-    const contractType = String(searchParams.get('contractType') || 'all').trim().toUpperCase();
+    const contractTypeRaw = String(searchParams.get('contractType') || 'all').trim();
     const serviceUnit = String(searchParams.get('serviceUnit') || 'all').trim();
     const feegowPermissionsRaw = String(searchParams.get('feegowPermissions') || 'all').trim().toLowerCase();
 
@@ -54,6 +54,11 @@ export async function GET(request: Request) {
       certRaw === 'OK' || certRaw === 'VENCENDO' || certRaw === 'VENCIDA' || certRaw === 'PENDENTE'
         ? (certRaw as CertidaoStatus)
         : 'all';
+
+    const contractType =
+      !contractTypeRaw || contractTypeRaw.toLowerCase() === 'all'
+        ? 'all'
+        : contractTypeRaw.toUpperCase();
 
     const feegowPermissions =
       feegowPermissionsRaw === 'yes' || feegowPermissionsRaw === 'no'
