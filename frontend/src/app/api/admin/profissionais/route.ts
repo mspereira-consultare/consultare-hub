@@ -34,11 +34,20 @@ export async function GET(request: Request) {
     );
     const search = String(searchParams.get('search') || '').trim();
     const statusRaw = String(searchParams.get('status') || 'all').trim().toLowerCase();
+    const pendencyRaw = String(searchParams.get('pendencyStatus') || 'all').trim().toLowerCase();
     const certRaw = String(searchParams.get('certidaoStatus') || 'all').trim().toUpperCase();
+    const contractType = String(searchParams.get('contractType') || 'all').trim().toUpperCase();
+    const serviceUnit = String(searchParams.get('serviceUnit') || 'all').trim();
+    const feegowPermissionsRaw = String(searchParams.get('feegowPermissions') || 'all').trim().toLowerCase();
 
     const status =
-      statusRaw === 'active' || statusRaw === 'inactive' || statusRaw === 'pending'
+      statusRaw === 'active' || statusRaw === 'inactive'
         ? statusRaw
+        : 'all';
+
+    const pendencyStatus =
+      pendencyRaw === 'pending' || pendencyRaw === 'complete'
+        ? pendencyRaw
         : 'all';
 
     const certidaoStatus: 'all' | CertidaoStatus =
@@ -46,10 +55,19 @@ export async function GET(request: Request) {
         ? (certRaw as CertidaoStatus)
         : 'all';
 
+    const feegowPermissions =
+      feegowPermissionsRaw === 'yes' || feegowPermissionsRaw === 'no'
+        ? feegowPermissionsRaw
+        : 'all';
+
     const result = await listProfessionals(auth.db, {
       search,
       status,
+      pendencyStatus,
       certidaoStatus,
+      contractType,
+      serviceUnit,
+      feegowPermissions,
       page,
       pageSize,
     });
@@ -100,4 +118,3 @@ export async function POST(request: Request) {
     );
   }
 }
-

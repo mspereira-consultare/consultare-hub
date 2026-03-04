@@ -180,8 +180,12 @@ export type ProfessionalProcedureRateInput = {
 
 export type ProfessionalFilters = {
   search: string;
-  status: 'all' | 'active' | 'inactive' | 'pending';
+  status: 'all' | 'active' | 'inactive';
+  pendencyStatus: 'all' | 'pending' | 'complete';
   certidaoStatus: 'all' | CertidaoStatus;
+  contractType: string;
+  serviceUnit: string;
+  feegowPermissions: 'all' | 'yes' | 'no';
   page: number;
   pageSize: number;
 };

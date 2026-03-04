@@ -995,11 +995,30 @@ export const listProfessionals = async (
   });
 
   let filtered = enriched;
-  if (filters.status === 'pending') {
+  if (filters.pendencyStatus === 'pending') {
     filtered = filtered.filter((item) => item.pending);
+  }
+  if (filters.pendencyStatus === 'complete') {
+    filtered = filtered.filter((item) => !item.pending);
   }
   if (filters.certidaoStatus !== 'all') {
     filtered = filtered.filter((item) => item.certidaoStatus === filters.certidaoStatus);
+  }
+  if (filters.contractType && filters.contractType !== 'all') {
+    filtered = filtered.filter((item) => item.contractType === filters.contractType);
+  }
+  if (filters.serviceUnit && filters.serviceUnit !== 'all') {
+    const targetUnit = upper(filters.serviceUnit);
+    filtered = filtered.filter((item) =>
+      Array.isArray(item.serviceUnits) &&
+      item.serviceUnits.some((unit) => upper(unit) === targetUnit)
+    );
+  }
+  if (filters.feegowPermissions === 'yes') {
+    filtered = filtered.filter((item) => item.hasFeegowPermissions);
+  }
+  if (filters.feegowPermissions === 'no') {
+    filtered = filtered.filter((item) => !item.hasFeegowPermissions);
   }
 
   const total = filtered.length;

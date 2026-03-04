@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { AlertCircle, ChevronDown, ChevronRight, Download, Edit3, Eye, FileUp, Loader2, Plus, RefreshCw, RotateCcw, Search, User, X } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronRight, Download, Edit3, Eye, FileUp, Filter, Loader2, Plus, RefreshCw, RotateCcw, Search, User, X } from 'lucide-react';
 import {
   BRAZIL_UFS,
   CHECKLIST_DOCUMENT_TYPES,
@@ -217,8 +217,13 @@ export default function ProfessionalsPage() {
   const [items, setItems] = useState<ProfessionalListItem[]>([]);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [status, setStatus] = useState<'all' | 'active' | 'inactive' | 'pending'>('all');
+  const [status, setStatus] = useState<'all' | 'active' | 'inactive'>('all');
+  const [pendencyStatus, setPendencyStatus] = useState<'all' | 'pending' | 'complete'>('all');
   const [certidaoStatus, setCertidaoStatus] = useState<'all' | 'OK' | 'VENCENDO' | 'VENCIDA' | 'PENDENTE'>('all');
+  const [contractTypeFilter, setContractTypeFilter] = useState('all');
+  const [serviceUnitFilter, setServiceUnitFilter] = useState('all');
+  const [feegowPermissionsFilter, setFeegowPermissionsFilter] = useState<'all' | 'yes' | 'no'>('all');
+  const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [form, setForm] = useState<FormState>(emptyForm());
@@ -238,7 +243,7 @@ export default function ProfessionalsPage() {
   const [deleting, setDeleting] = useState(false);
   const [isUploadExpanded, setIsUploadExpanded] = useState(false);
   const [isChecklistExpanded, setIsChecklistExpanded] = useState(false);
-  const [sortBy, setSortBy] = useState<'status' | 'name' | 'specialty' | 'contractEndDate' | 'registration' | 'contractType' | 'documents' | 'certidao'>('name');
+  const [sortBy, setSortBy] = useState<'status' | 'name' | 'specialty' | 'registration' | 'contractType' | 'documents' | 'certidao'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [modalTab, setModalTab] = useState<ModalTab>('cadastro');
   const [contractsLoading, setContractsLoading] = useState(false);
@@ -299,10 +304,6 @@ export default function ProfessionalsPage() {
           av = a.specialty || '';
           bv = b.specialty || '';
           break;
-        case 'contractEndDate':
-          av = a.contractEndDate || '';
-          bv = b.contractEndDate || '';
-          break;
         case 'registration':
           av = a.primaryRegistration ? `${a.primaryRegistration.councilType}-${a.primaryRegistration.councilUf}-${a.primaryRegistration.councilNumber}-${a.primaryRegistration.rqe || ''}` : '';
           bv = b.primaryRegistration ? `${b.primaryRegistration.councilType}-${b.primaryRegistration.councilUf}-${b.primaryRegistration.councilNumber}-${b.primaryRegistration.rqe || ''}` : '';
@@ -327,6 +328,17 @@ export default function ProfessionalsPage() {
     return arr;
   }, [items, sortBy, sortDir, contractLabelByCode]);
 
+  const hasExpandedFilters = useMemo(
+    () =>
+      status !== 'all' ||
+      pendencyStatus !== 'all' ||
+      certidaoStatus !== 'all' ||
+      contractTypeFilter !== 'all' ||
+      serviceUnitFilter !== 'all' ||
+      feegowPermissionsFilter !== 'all',
+    [status, pendencyStatus, certidaoStatus, contractTypeFilter, serviceUnitFilter, feegowPermissionsFilter]
+  );
+
   useEffect(() => {
     setPhotoLoadError(false);
   }, [editingId, photoDoc?.id]);
@@ -340,7 +352,11 @@ export default function ProfessionalsPage() {
         pageSize: String(pageSize),
         search: search.trim(),
         status,
+        pendencyStatus,
         certidaoStatus,
+        contractType: contractTypeFilter,
+        serviceUnit: serviceUnitFilter,
+        feegowPermissions: feegowPermissionsFilter,
       });
       const res = await fetch(`/api/admin/profissionais?${params.toString()}`);
       const data = await res.json();
@@ -378,7 +394,7 @@ export default function ProfessionalsPage() {
   };
 
   const onSort = (
-    field: 'status' | 'name' | 'specialty' | 'contractEndDate' | 'registration' | 'contractType' | 'documents' | 'certidao'
+    field: 'status' | 'name' | 'specialty' | 'registration' | 'contractType' | 'documents' | 'certidao'
   ) => {
     setSortBy((current) => {
       if (current === field) {
@@ -391,7 +407,7 @@ export default function ProfessionalsPage() {
   };
 
   const sortIndicator = (
-    field: 'status' | 'name' | 'specialty' | 'contractEndDate' | 'registration' | 'contractType' | 'documents' | 'certidao'
+    field: 'status' | 'name' | 'specialty' | 'registration' | 'contractType' | 'documents' | 'certidao'
   ) => {
     if (sortBy !== field) return '<>';
     return sortDir === 'asc' ? '^' : 'v';
@@ -712,7 +728,7 @@ export default function ProfessionalsPage() {
   useEffect(() => {
     fetchList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, status, certidaoStatus]);
+  }, [page, status, pendencyStatus, certidaoStatus, contractTypeFilter, serviceUnitFilter, feegowPermissionsFilter]);
 
   useEffect(() => {
     fetchSpecialties();
@@ -868,33 +884,125 @@ export default function ProfessionalsPage() {
       </div>
 
       {error && <div className="mb-4 px-3 py-2 border border-rose-200 bg-rose-50 rounded-lg text-rose-700 text-sm flex items-center gap-2"><AlertCircle size={14} />{error}</div>}
-      <div className="bg-white border rounded-xl p-4 mb-4 grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
-        <div className="md:col-span-5 relative"><Search size={15} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" /><input value={search} onChange={(e) => setSearch(e.target.value)} className="w-full pl-8 pr-3 py-2 border rounded-lg" placeholder="Buscar por nome/especialidade/CPF/CNPJ" /></div>
-        <select value={status} onChange={(e) => { setStatus(e.target.value as any); setPage(1); }} className="md:col-span-2 px-3 py-2 border rounded-lg"><option value="all">Todos</option><option value="active">Ativos</option><option value="inactive">Inativos</option><option value="pending">Pendentes</option></select>
-        <select value={certidaoStatus} onChange={(e) => { setCertidaoStatus(e.target.value as any); setPage(1); }} className="md:col-span-3 px-3 py-2 border rounded-lg"><option value="all">Certidao: todos</option><option value="OK">OK</option><option value="VENCENDO">Vencendo</option><option value="VENCIDA">Vencida</option><option value="PENDENTE">Pendente</option></select>
-        <button onClick={() => { setPage(1); fetchList(1); }} className="md:col-span-2 px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm">Aplicar</button>
+      <div className="bg-white border rounded-xl p-4 mb-4 space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-2 items-end">
+          <div className="md:col-span-8 relative">
+            <Search size={15} className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-2 border rounded-lg"
+              placeholder="Buscar por nome, especialidade ou CPF"
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => setFiltersExpanded((prev) => !prev)}
+            className="md:col-span-2 px-3 py-2 border rounded-lg bg-white text-sm inline-flex items-center justify-center gap-2"
+          >
+            <Filter size={14} />
+            {filtersExpanded ? 'Ocultar filtros' : 'Mostrar filtros'}
+          </button>
+          <button onClick={() => { setPage(1); fetchList(1); }} className="md:col-span-2 px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm">Aplicar</button>
+        </div>
+
+        {filtersExpanded && (
+          <div className="border-t pt-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Status do cadastro</label>
+                <select value={status} onChange={(e) => { setStatus(e.target.value as any); setPage(1); }} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="all">Todos</option>
+                  <option value="active">Ativos</option>
+                  <option value="inactive">Inativos</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Pendência documental</label>
+                <select value={pendencyStatus} onChange={(e) => { setPendencyStatus(e.target.value as any); setPage(1); }} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="all">Todos</option>
+                  <option value="pending">Pendentes</option>
+                  <option value="complete">Completos</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Certidão</label>
+                <select value={certidaoStatus} onChange={(e) => { setCertidaoStatus(e.target.value as any); setPage(1); }} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="all">Todos</option>
+                  <option value="OK">OK</option>
+                  <option value="VENCENDO">Vencendo</option>
+                  <option value="VENCIDA">Vencida</option>
+                  <option value="PENDENTE">Pendente</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Tipo de contrato</label>
+                <select value={contractTypeFilter} onChange={(e) => { setContractTypeFilter(e.target.value); setPage(1); }} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="all">Todos</option>
+                  {CONTRACT_TYPES.map((item) => (
+                    <option key={item.code} value={item.code}>{item.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Unidade de atendimento</label>
+                <select value={serviceUnitFilter} onChange={(e) => { setServiceUnitFilter(e.target.value); setPage(1); }} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="all">Todas</option>
+                  {PROFESSIONAL_SERVICE_UNITS.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Permissões Feegow</label>
+                <select value={feegowPermissionsFilter} onChange={(e) => { setFeegowPermissionsFilter(e.target.value as any); setPage(1); }} className="w-full px-3 py-2 border rounded-lg">
+                  <option value="all">Todos</option>
+                  <option value="yes">Com permissão</option>
+                  <option value="no">Sem permissão</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => {
+                  setStatus('all');
+                  setPendencyStatus('all');
+                  setCertidaoStatus('all');
+                  setContractTypeFilter('all');
+                  setServiceUnitFilter('all');
+                  setFeegowPermissionsFilter('all');
+                  setPage(1);
+                }}
+                disabled={!hasExpandedFilters}
+                className="px-3 py-2 border rounded-lg text-sm disabled:opacity-50"
+              >
+                Limpar filtros avançados
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white border rounded-xl overflow-auto">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[1100px] text-sm">
           <thead className="bg-slate-50 text-left text-xs uppercase text-slate-600">
             <tr>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('status')} className="inline-flex items-center gap-1">Status <span>{sortIndicator('status')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('name')} className="inline-flex items-center gap-1">Profissional <span>{sortIndicator('name')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('specialty')} className="inline-flex items-center gap-1">Especialidade <span>{sortIndicator('specialty')}</span></button></th>
-              <th className="px-4 py-3"><button type="button" onClick={() => onSort('contractEndDate')} className="inline-flex items-center gap-1">Expiração Contrato <span>{sortIndicator('contractEndDate')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('registration')} className="inline-flex items-center gap-1">Registro principal <span>{sortIndicator('registration')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('contractType')} className="inline-flex items-center gap-1">Tipo contrato <span>{sortIndicator('contractType')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('documents')} className="inline-flex items-center gap-1">Documentos <span>{sortIndicator('documents')}</span></button></th>
-              <th className="px-4 py-3"><button type="button" onClick={() => onSort('certidao')} className="inline-flex items-center gap-1">Certidao <span>{sortIndicator('certidao')}</span></button></th>
-              <th className="px-4 py-3">Ações</th>
+              <th className="px-4 py-3"><button type="button" onClick={() => onSort('certidao')} className="inline-flex items-center gap-1">Certidão <span>{sortIndicator('certidao')}</span></button></th>
+              <th className="px-4 py-3">A??es</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500"><span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" />Carregando...</span></td></tr>
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500"><span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" />Carregando...</span></td></tr>
             ) : sortedItems.length === 0 ? (
-              <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500">Nenhum profissional encontrado.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500">Nenhum profissional encontrado.</td></tr>
             ) : sortedItems.map((item) => (
               <tr key={item.id} className="border-t">
                 <td className="px-4 py-3">
@@ -902,9 +1010,8 @@ export default function ProfessionalsPage() {
                     {item.isActive ? 'Ativo' : 'Inativo'}
                   </span>
                 </td>
-                <td className="px-4 py-3"><div className="font-semibold text-slate-800">{item.name}</div><div className="text-xs text-slate-500">{item.personalDocType === 'CNH' ? `CNH: ${item.cpf || '-'}` : `CPF: ${maskCpf(item.cpf)}`}</div></td>
+                <td className="px-4 py-3 min-w-[300px] whitespace-nowrap"><div className="font-semibold text-slate-800">{item.name}</div><div className="text-xs text-slate-500">{item.personalDocType === 'CNH' ? `CNH: ${item.cpf || '-'}` : `CPF: ${maskCpf(item.cpf)}`}</div></td>
                 <td className="px-4 py-3">{item.specialty || '-'}</td>
-                <td className="px-4 py-3">{formatDateBr(item.contractEndDate)}</td>
                 <td className="px-4 py-3">
                   {item.primaryRegistration
                     ? `${item.primaryRegistration.councilType}/${item.primaryRegistration.councilUf} ${item.primaryRegistration.councilNumber}${
@@ -913,7 +1020,7 @@ export default function ProfessionalsPage() {
                     : '-'}
                 </td>
                 <td className="px-4 py-3">{contractLabelByCode.get(item.contractType) || item.contractType}</td>
-                <td className="px-4 py-3">{item.requiredDocsDone}/{item.requiredDocsTotal} {item.pending && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Pendente</span>}</td>
+                <td className="px-4 py-3 min-w-[190px] whitespace-nowrap">{item.requiredDocsDone}/{item.requiredDocsTotal} {item.pending && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Pendente</span>}</td>
                 <td className="px-4 py-3">{item.certidaoStatus} <span className="text-xs text-slate-500">{item.certidaoExpiresAt || '-'}</span></td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">

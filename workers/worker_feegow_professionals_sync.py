@@ -344,19 +344,23 @@ def _build_address(info_row):
     cep = _clean(info_row.get("CEP"))
 
     parts = []
+
     line1 = ", ".join([part for part in [street, number] if part])
-    if complement:
-        line1 = f"{line1} - {complement}" if line1 else complement
     if line1:
         parts.append(line1)
+
+    if complement:
+        parts.append(complement)
     if bairro:
         parts.append(bairro)
     if cidade:
         parts.append(cidade)
-    if cep:
-        parts.append(f"CEP {cep}")
 
-    return " | ".join(parts)
+    address = ", ".join(parts)
+    if cep:
+        address = f"{address} - CEP {cep}" if address else f"CEP {cep}"
+
+    return address
 
 
 def _build_registrations(bucket, detail):
