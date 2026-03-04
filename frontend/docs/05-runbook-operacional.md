@@ -94,6 +94,7 @@ Esperado:
 - login com `ADMIN`: acesso total.
 - login com perfil restrito: menu e ações coerentes com matriz.
 - testar `view/edit/refresh` em uma página de checklist.
+- a matriz de permissões do usuário é a fonte primária de autorização; alterações salvas devem refletir sem exigir novo login manual.
 
 ## 4) Rotina de Operação
 
@@ -139,6 +140,32 @@ Flags úteis:
 Checkpoint:
 
 - tabela `faturamento_backfill_checkpoint`.
+
+## 5.1) Sync de profissionais ativos (Feegow)
+
+Script:
+
+`workers/worker_feegow_professionals_sync.py`
+
+Exemplos:
+
+```bash
+python workers/worker_feegow_professionals_sync.py --dry-run
+python workers/worker_feegow_professionals_sync.py
+```
+
+Flags uteis:
+
+- `--units 2,3,12` para limitar unidades
+- `--delay-seconds 0.15` para ajustar intervalo entre chamadas
+- `--limit 10` para teste rapido
+
+Comportamento:
+
+- faz upsert dos profissionais ativos da Feegow;
+- preserva campos administrativos/contratuais ja preenchidos no painel;
+- substitui os registros regionais do profissional pelos dados atuais retornados pela Feegow.
+- ignora cadastros operacionais/salas conhecidos por blacklist de nome (ex.: laboratorio, raio-x, empresa fono).
 
 ## 6) Troubleshooting
 

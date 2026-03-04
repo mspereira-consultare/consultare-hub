@@ -126,6 +126,19 @@ export const authOptions: NextAuthOptions = {
         token.department = user.department;
         token.permissions = user.permissions;
       }
+
+      if (token?.id) {
+        try {
+          const permissions = await getUserPermissions(
+            String(token.id),
+            String(token.role || 'OPERADOR')
+          );
+          token.permissions = permissions;
+        } catch (error) {
+          console.error('Erro ao recarregar permissoes no JWT:', error);
+        }
+      }
+
       return token;
     },
     async session({ session, token }: any) {

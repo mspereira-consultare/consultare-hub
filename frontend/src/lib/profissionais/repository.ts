@@ -297,6 +297,7 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     .map((row: any) => {
       const councilType = upper(row?.councilType || 'CRM');
       const councilNumber = clean(row?.councilNumber);
+      const rqe = clean(row?.rqe);
       const councilUf = upper(row?.councilUf || 'SP');
       const isPrimary = bool(row?.isPrimary);
       if (!councilNumber) return null;
@@ -305,6 +306,7 @@ const normalizeInput = (payload: any): ProfessionalInput => {
         id: clean(row?.id) || undefined,
         councilType,
         councilNumber,
+        rqe: rqe || '',
         councilUf,
         isPrimary,
       } as ProfessionalRegistration;
@@ -445,6 +447,7 @@ const mapRegistration = (row: any): ProfessionalRegistration => ({
   professionalId: clean(row.professional_id),
   councilType: upper(row.council_type),
   councilNumber: clean(row.council_number),
+  rqe: clean(row.rqe) || '',
   councilUf: upper(row.council_uf),
   isPrimary: bool(row.is_primary),
 });
@@ -528,14 +531,15 @@ const upsertRegistrations = async (
     await db.execute(
       `
       INSERT INTO professional_registrations (
-        id, professional_id, council_type, council_number, council_uf, is_primary, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        id, professional_id, council_type, council_number, rqe, council_uf, is_primary, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         reg.id || randomUUID(),
         professionalId,
         reg.councilType,
         reg.councilNumber,
+        clean(reg.rqe) || null,
         reg.councilUf,
         reg.isPrimary ? 1 : 0,
         now,
@@ -791,6 +795,7 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
       professional_id VARCHAR(64) NOT NULL,
       council_type VARCHAR(10) NOT NULL,
       council_number VARCHAR(40) NOT NULL,
+      rqe VARCHAR(40),
       council_uf VARCHAR(2) NOT NULL,
       is_primary INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -798,6 +803,10 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
       UNIQUE(council_type, council_number, council_uf)
     )
   `);
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professional_registrations ADD COLUMN rqe VARCHAR(40) NULL`
+  );
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS professional_documents (

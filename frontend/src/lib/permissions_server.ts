@@ -5,6 +5,7 @@ import {
   type PageKey,
   type PermissionMatrix,
   type UserRole,
+  createEmptyMatrix,
   getDefaultMatrixByRole,
   sanitizeMatrix,
 } from '@/lib/permissions';
@@ -65,7 +66,7 @@ export const loadUserPermissionMatrix = async (
     [userId]
   );
 
-  const matrix = getDefaultMatrixByRole(roleRaw);
+  const matrix = rows.length > 0 ? createEmptyMatrix() : getDefaultMatrixByRole(roleRaw);
   for (const row of rows) {
     const key = String(row.page_key || '') as PageKey;
     if (!PAGE_KEYS.includes(key)) continue;

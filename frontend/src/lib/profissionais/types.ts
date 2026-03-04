@@ -10,6 +10,7 @@ export type ProfessionalRegistration = {
   professionalId?: string;
   councilType: string;
   councilNumber: string;
+  rqe?: string;
   councilUf: string;
   isPrimary: boolean;
 };

@@ -57,6 +57,20 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  if (pathname.startsWith('/api/admin/goals/dashboard')) {
+    const role = String((token as any).role || 'OPERADOR');
+    const permissions = (token as any).permissions;
+    const allowed =
+      hasPermission(permissions, 'metas_dashboard', 'view', role) ||
+      hasPermission(permissions, 'metas', 'view', role);
+
+    if (allowed) {
+      return NextResponse.next();
+    }
+
+    return denyApi(403, 'Forbidden');
+  }
+
   const pageKey = getPageFromPath(pathname);
   if (!pageKey) {
     return NextResponse.next();

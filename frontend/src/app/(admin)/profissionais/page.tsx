@@ -22,7 +22,14 @@ import type {
 } from '@/lib/profissionais/types';
 import { hasPermission } from '@/lib/permissions';
 
-type FormRegistration = { id?: string; councilType: string; councilNumber: string; councilUf: string; isPrimary: boolean };
+type FormRegistration = {
+  id?: string;
+  councilType: string;
+  councilNumber: string;
+  rqe: string;
+  councilUf: string;
+  isPrimary: boolean;
+};
 type FormChecklist = { docType: string; hasPhysicalCopy: boolean; hasDigitalCopy: boolean; expiresAt: string; notes: string };
 type FormSpecialty = { name: string; isPrimary: boolean };
 type ContractTemplateOption = { id: string; name: string; contractType: string; version: number };
@@ -99,7 +106,7 @@ const emptyForm = (): FormState => ({
   paymentMinimumText: '',
   personalDocType: 'CPF', personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
   physicalFolderNote: '', contractTemplateId: '', contractStartDate: '', contractEndDate: '',
-  registrations: [{ councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
+  registrations: [{ councilType: 'CRM', councilNumber: '', rqe: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
 });
 
 const toForm = (item: ProfessionalListItem): FormState => {
@@ -126,7 +133,18 @@ const toForm = (item: ProfessionalListItem): FormState => {
   hasPhysicalFolder: Boolean(item.hasPhysicalFolder), physicalFolderNote: item.physicalFolderNote || '',
   contractTemplateId: item.contractTemplateId || '',
   contractStartDate: item.contractStartDate || '', contractEndDate: item.contractEndDate || '',
-  registrations: (item.registrations || []).map((r) => ({ id: r.id, councilType: r.councilType, councilNumber: r.councilNumber, councilUf: r.councilUf, isPrimary: Boolean(r.isPrimary) })),
+  registrations: (() => {
+    const mapped = (item.registrations || []).map((r) => ({
+      id: r.id,
+      councilType: r.councilType,
+      councilNumber: r.councilNumber,
+      rqe: r.rqe || '',
+      councilUf: r.councilUf,
+      isPrimary: Boolean(r.isPrimary),
+    }));
+    if (mapped.length > 0) return mapped;
+    return [{ councilType: 'CRM', councilNumber: '', rqe: '', councilUf: 'SP', isPrimary: true }];
+  })(),
   checklist: newChecklist().map((base) => {
     const f = item.checklist?.find((x) => x.docType === base.docType);
     return { ...base, hasPhysicalCopy: Boolean(f?.hasPhysicalCopy), hasDigitalCopy: Boolean(f?.hasDigitalCopy), expiresAt: f?.expiresAt || '', notes: f?.notes || '' };
@@ -286,8 +304,8 @@ export default function ProfessionalsPage() {
           bv = b.contractEndDate || '';
           break;
         case 'registration':
-          av = a.primaryRegistration ? `${a.primaryRegistration.councilType}-${a.primaryRegistration.councilUf}-${a.primaryRegistration.councilNumber}` : '';
-          bv = b.primaryRegistration ? `${b.primaryRegistration.councilType}-${b.primaryRegistration.councilUf}-${b.primaryRegistration.councilNumber}` : '';
+          av = a.primaryRegistration ? `${a.primaryRegistration.councilType}-${a.primaryRegistration.councilUf}-${a.primaryRegistration.councilNumber}-${a.primaryRegistration.rqe || ''}` : '';
+          bv = b.primaryRegistration ? `${b.primaryRegistration.councilType}-${b.primaryRegistration.councilUf}-${b.primaryRegistration.councilNumber}-${b.primaryRegistration.rqe || ''}` : '';
           break;
         case 'contractType':
           av = contractLabelByCode.get(a.contractType) || a.contractType || '';
@@ -887,7 +905,13 @@ export default function ProfessionalsPage() {
                 <td className="px-4 py-3"><div className="font-semibold text-slate-800">{item.name}</div><div className="text-xs text-slate-500">{item.personalDocType === 'CNH' ? `CNH: ${item.cpf || '-'}` : `CPF: ${maskCpf(item.cpf)}`}</div></td>
                 <td className="px-4 py-3">{item.specialty || '-'}</td>
                 <td className="px-4 py-3">{formatDateBr(item.contractEndDate)}</td>
-                <td className="px-4 py-3">{item.primaryRegistration ? `${item.primaryRegistration.councilType}/${item.primaryRegistration.councilUf} ${item.primaryRegistration.councilNumber}` : '-'}</td>
+                <td className="px-4 py-3">
+                  {item.primaryRegistration
+                    ? `${item.primaryRegistration.councilType}/${item.primaryRegistration.councilUf} ${item.primaryRegistration.councilNumber}${
+                        item.primaryRegistration.rqe ? ` | RQE ${item.primaryRegistration.rqe}` : ''
+                      }`
+                    : '-'}
+                </td>
                 <td className="px-4 py-3">{contractLabelByCode.get(item.contractType) || item.contractType}</td>
                 <td className="px-4 py-3">{item.requiredDocsDone}/{item.requiredDocsTotal} {item.pending && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Pendente</span>}</td>
                 <td className="px-4 py-3">{item.certidaoStatus} <span className="text-xs text-slate-500">{item.certidaoExpiresAt || '-'}</span></td>
@@ -1360,14 +1384,29 @@ export default function ProfessionalsPage() {
                     <button
                       type="button"
                       className="text-xs px-2 py-1 border rounded-md"
-                      onClick={() => setForm((p) => ({ ...p, registrations: [...p.registrations, { councilType: 'CRM', councilNumber: '', councilUf: 'SP', isPrimary: false }] }))}
+                      onClick={() =>
+                        setForm((p) => ({
+                          ...p,
+                          registrations: [
+                            ...p.registrations,
+                            {
+                              councilType: 'CRM',
+                              councilNumber: '',
+                              rqe: '',
+                              councilUf: 'SP',
+                              isPrimary: false,
+                            },
+                          ],
+                        }))
+                      }
                     >
                       + Registro
                     </button>
                   </div>
                   <div className="grid grid-cols-12 gap-2 text-xs font-semibold uppercase text-slate-500 mb-1 px-1">
-                    <div className="col-span-3">Conselho</div>
-                    <div className="col-span-4">Numero</div>
+                    <div className="col-span-2">Conselho</div>
+                    <div className="col-span-3">Numero</div>
+                    <div className="col-span-2">RQE</div>
                     <div className="col-span-2">UF</div>
                     <div className="col-span-2">Principal</div>
                     <div className="col-span-1">Remover</div>
@@ -1378,11 +1417,12 @@ export default function ProfessionalsPage() {
                         <select
                           value={r.councilType}
                           onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilType: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })}
-                          className="col-span-3 px-2 py-1.5 border rounded bg-white"
+                          className="col-span-2 px-2 py-1.5 border rounded bg-white"
                         >
                           {COUNCIL_TYPES.map((c) => <option key={c} value={c}>{c}</option>)}
                         </select>
-                        <input value={r.councilNumber} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilNumber: e.target.value }; return { ...p, registrations: n }; })} className="col-span-4 px-2 py-1.5 border rounded" placeholder="Numero" />
+                        <input value={r.councilNumber} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilNumber: e.target.value }; return { ...p, registrations: n }; })} className="col-span-3 px-2 py-1.5 border rounded" placeholder="Numero" />
+                        <input value={r.rqe} onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], rqe: e.target.value }; return { ...p, registrations: n }; })} className="col-span-2 px-2 py-1.5 border rounded" placeholder="RQE" />
                         <select
                           value={r.councilUf}
                           onChange={(e) => setForm((p) => { const n = [...p.registrations]; n[i] = { ...n[i], councilUf: e.target.value.toUpperCase() }; return { ...p, registrations: n }; })}

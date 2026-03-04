@@ -102,7 +102,7 @@ const toBool = (value: unknown): boolean => {
 };
 
 export const sanitizeMatrix = (input: unknown, roleRaw = 'OPERADOR'): PermissionMatrix => {
-  const base = getDefaultMatrixByRole(roleRaw);
+  const base = input && typeof input === 'object' ? createEmptyMatrix() : getDefaultMatrixByRole(roleRaw);
   if (!input || typeof input !== 'object') return base;
   const src = input as Record<string, unknown>;
 
@@ -169,6 +169,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/qms/documentos')) return 'qualidade_documentos';
   if (path.startsWith('/api/admin/qms/treinamentos')) return 'qualidade_treinamentos';
   if (path.startsWith('/api/admin/qms/auditorias')) return 'qualidade_auditorias';
+  if (path.startsWith('/api/admin/goals/dashboard')) return 'metas_dashboard';
   if (path.startsWith('/api/admin/goals')) return 'metas';
   if (path.startsWith('/api/admin/options/')) return 'metas';
   if (path.startsWith('/api/admin/checklist/crc')) return 'checklist_crc';

@@ -385,11 +385,14 @@ Campos:
 - `professional_id`
 - `council_type` (CRM, CRO, CRP...)
 - `council_number`
+- `rqe` (quando aplicavel)
 - `council_uf`
 - `is_primary`
 - `created_at`, `updated_at`
 
 Regra: cada profissional deve ter exatamente 1 registro principal.
+
+Escrita: API `/api/admin/profissionais` e worker `worker_feegow_professionals_sync.py`.
 
 ### `feegow_procedures_catalog`
 
