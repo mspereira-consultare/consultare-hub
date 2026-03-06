@@ -71,6 +71,7 @@ export type RepasseProfessionalSummary = {
   totalValue: number;
   lastProcessedAt: string | null;
   errorMessage: string | null;
+  note: string | null;
 };
 
 export type RepasseProfessionalOption = {

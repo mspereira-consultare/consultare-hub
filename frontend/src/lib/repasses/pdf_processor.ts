@@ -1,10 +1,13 @@
 ﻿import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { DbInterface } from '@/lib/db';
 import {
+  deleteRepassePdfArtifactsByIds,
   createRepassePdfArtifact,
   ensureRepasseTables,
+  getRepasseProfessionalNote,
   getNextPendingRepassePdfJob,
   listRepasseConsolidatedLinesByProfessional,
+  listRepassePdfArtifactsByPeriodProfessional,
   listRepassePdfTargetProfessionals,
   markRepassePdfJobFinished,
   markRepassePdfJobRunning,
@@ -65,6 +68,7 @@ type RenderPayload = {
   periodRef: string;
   professionalName: string;
   rows: RepasseConsolidatedLine[];
+  note?: string | null;
 };
 
 const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
@@ -216,8 +220,13 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
   const total = payload.rows.reduce((acc, item) => acc + Number(item.repasseValue || 0), 0);
   const totalText = `Total de repasses: ${toCurrency(total)}`;
   const sourceText = 'Fonte: https://franchising.feegow.com/v8.1/?P=RepassesConferidos&Pers=';
+  const noteText = String(payload.note || '').trim();
+  const noteLines = noteText
+    ? splitText(`Observação: ${noteText}`, pageWidth - marginX * 2, fontRegular, 8)
+    : [];
 
-  if (y - 26 < marginBottom) {
+  const footerHeight = 26 + (noteLines.length ? noteLines.length * 10 + 6 : 0);
+  if (y - footerHeight < marginBottom) {
     createPage();
   }
 
@@ -235,6 +244,20 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
     font: fontRegular,
     color: rgb(0.32, 0.32, 0.32),
   });
+
+  if (noteLines.length) {
+    let noteY = y - 42;
+    for (const line of noteLines) {
+      page.drawText(line, {
+        x: marginX,
+        y: noteY,
+        size: 8,
+        font: fontRegular,
+        color: rgb(0.22, 0.22, 0.22),
+      });
+      noteY -= 10;
+    }
+  }
 
   const bytes = await pdfDoc.save();
   return Buffer.from(bytes);
@@ -320,10 +343,40 @@ export const processPendingRepassePdfJobs = async (
           );
           if (!lines.length) continue;
 
+          const existingArtifacts = await listRepassePdfArtifactsByPeriodProfessional(db, {
+            periodRef: job.periodRef,
+            professionalId: target.professionalId,
+          });
+          if (existingArtifacts.length) {
+            for (const artifact of existingArtifacts) {
+              try {
+                const provider = artifact.storageProvider
+                  ? getStorageProvider()
+                  : storage;
+                await provider.deleteFile({
+                  bucket: artifact.storageBucket,
+                  key: artifact.storageKey,
+                });
+              } catch {
+                // Mantemos o fluxo: o registro sera substituido mesmo se o delete fisico falhar.
+              }
+            }
+            await deleteRepassePdfArtifactsByIds(
+              db,
+              existingArtifacts.map((artifact) => artifact.id)
+            );
+          }
+
+          const note = await getRepasseProfessionalNote(db, {
+            periodRef: job.periodRef,
+            professionalId: target.professionalId,
+          });
+
           const pdf = await renderRepassePdf({
             periodRef: job.periodRef,
             professionalName: target.professionalName,
             rows: lines,
+            note,
           });
 
           const stamp = nowIso().replace(/[^0-9]/g, '').slice(0, 14);

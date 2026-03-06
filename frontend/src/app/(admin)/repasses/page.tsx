@@ -1,8 +1,8 @@
-﻿"use client";
+"use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
-import { AlertCircle, FileText, Loader2, RefreshCw, Search } from "lucide-react";
+import { AlertCircle, FileText, Loader2, RefreshCw, Users } from "lucide-react";
 import { hasPermission } from "@/lib/permissions";
 import { isRepassesModuleEnabledClient } from "@/lib/repasses/feature";
 import { JobHistoryTable } from "./components/JobHistoryTable";
@@ -46,12 +46,6 @@ type PdfArtifact = {
 };
 
 type ProfessionalStatusFilter = "all" | "success" | "no_data" | "error" | "not_processed";
-type SyncScope = "all" | "single" | "multi";
-
-type ProfessionalOption = {
-  professionalId: string;
-  professionalName: string;
-};
 
 type ProfessionalSummary = {
   professionalId: string;
@@ -61,6 +55,7 @@ type ProfessionalSummary = {
   totalValue: number;
   lastProcessedAt: string | null;
   errorMessage: string | null;
+  note: string | null;
 };
 
 type ProfessionalStats = {
@@ -109,16 +104,14 @@ export default function RepassesPage() {
   const canEdit = hasPermission((session?.user as any)?.permissions, "repasses", "edit", role);
 
   const [periodRef, setPeriodRef] = useState(previousMonthRef());
+  const [statusFilter, setStatusFilter] = useState<ProfessionalStatusFilter>("all");
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<ProfessionalStatusFilter>("all");
-  const [syncScope, setSyncScope] = useState<SyncScope>("all");
-  const [selectedProfessionalIds, setSelectedProfessionalIds] = useState<string[]>([]);
-  const [professionalOptions, setProfessionalOptions] = useState<ProfessionalOption[]>([]);
-  const [loadingOptions, setLoadingOptions] = useState(false);
-  const [optionsSearch, setOptionsSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectingAll, setSelectingAll] = useState(false);
 
   const [syncJobs, setSyncJobs] = useState<SyncJob[]>([]);
   const [pdfJobs, setPdfJobs] = useState<PdfJob[]>([]);
@@ -135,6 +128,8 @@ export default function RepassesPage() {
     totalRows: 0,
     totalValue: 0,
   });
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [savingNoteById, setSavingNoteById] = useState<Record<string, boolean>>({});
 
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [loadingProfessionals, setLoadingProfessionals] = useState(false);
@@ -151,16 +146,8 @@ export default function RepassesPage() {
     return `${m}/${y}`;
   }, [periodRef]);
 
-  const selectedCount = selectedProfessionalIds.length;
-  const isSelectionRequired = syncScope === "single" || syncScope === "multi";
-
-  const handleSelectionChange = (values: string[]) => {
-    if (syncScope === "single") {
-      setSelectedProfessionalIds(values.slice(-1));
-      return;
-    }
-    setSelectedProfessionalIds(values);
-  };
+  const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
+  const selectedCount = selectedIdsArray.length;
 
   const fetchJobs = useCallback(async () => {
     if (!canView) return;
@@ -175,8 +162,8 @@ export default function RepassesPage() {
       const syncData = await syncRes.json().catch(() => ({}));
       const pdfData = await pdfRes.json().catch(() => ({}));
 
-      if (!syncRes.ok) throw new Error(syncData?.error || "Falha ao carregar jobs de scraping.");
-      if (!pdfRes.ok) throw new Error(pdfData?.error || "Falha ao carregar jobs de PDF.");
+      if (!syncRes.ok) throw new Error(syncData?.error || "Falha ao carregar histórico de atualização.");
+      if (!pdfRes.ok) throw new Error(pdfData?.error || "Falha ao carregar histórico de relatórios.");
 
       setSyncJobs(Array.isArray(syncData?.data?.items) ? syncData.data.items : []);
       setPdfJobs(Array.isArray(pdfData?.data?.items) ? pdfData.data.items : []);
@@ -201,7 +188,8 @@ export default function RepassesPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Falha ao carregar resumo por profissional.");
 
-      setItems(Array.isArray(data?.data?.items) ? data.data.items : []);
+      const loadedItems: ProfessionalSummary[] = Array.isArray(data?.data?.items) ? data.data.items : [];
+      setItems(loadedItems);
       setTotal(Number(data?.data?.total) || 0);
       setStats(
         data?.data?.stats || {
@@ -214,31 +202,20 @@ export default function RepassesPage() {
           totalValue: 0,
         }
       );
+
+      setNoteDrafts((prev) => {
+        const next = { ...prev };
+        for (const item of loadedItems) {
+          if (next[item.professionalId] === undefined) {
+            next[item.professionalId] = item.note || "";
+          }
+        }
+        return next;
+      });
     } finally {
       setLoadingProfessionals(false);
     }
   }, [canView, page, pageSize, periodRef, search, statusFilter]);
-
-  const fetchProfessionalOptions = useCallback(
-    async (query = "") => {
-      if (!canView) return;
-      setLoadingOptions(true);
-      try {
-        const qs = new URLSearchParams({
-          mode: "options",
-          search: query.trim(),
-          limit: "1200",
-        }).toString();
-        const res = await fetch(`/api/admin/repasses/professionals?${qs}`, { cache: "no-store" });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.error || "Falha ao carregar lista de profissionais.");
-        setProfessionalOptions(Array.isArray(data?.data?.items) ? data.data.items : []);
-      } finally {
-        setLoadingOptions(false);
-      }
-    },
-    [canView]
-  );
 
   const fetchArtifacts = useCallback(async () => {
     if (!canView) return;
@@ -247,7 +224,7 @@ export default function RepassesPage() {
       const qs = new URLSearchParams({ periodRef, limit: "120" }).toString();
       const res = await fetch(`/api/admin/repasses/artifacts?${qs}`, { cache: "no-store" });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao carregar PDFs gerados.");
+      if (!res.ok) throw new Error(data?.error || "Falha ao carregar relatórios gerados.");
       setArtifacts(Array.isArray(data?.data?.items) ? data.data.items : []);
     } finally {
       setLoadingArtifacts(false);
@@ -258,47 +235,93 @@ export default function RepassesPage() {
     setError("");
     setNotice("");
     try {
-      await Promise.all([fetchJobs(), fetchProfessionals(), fetchArtifacts(), fetchProfessionalOptions(optionsSearch)]);
+      await Promise.all([fetchJobs(), fetchProfessionals(), fetchArtifacts()]);
     } catch (e: any) {
       setError(e?.message || "Erro ao atualizar dados de repasse.");
     }
-  }, [fetchArtifacts, fetchJobs, fetchProfessionalOptions, fetchProfessionals, optionsSearch]);
+  }, [fetchArtifacts, fetchJobs, fetchProfessionals]);
+
+  const applySearch = () => {
+    setPage(1);
+    setSearch(searchDraft.trim());
+  };
+
+  const toggleRowSelection = (professionalId: string, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(professionalId);
+      else next.delete(professionalId);
+      return next;
+    });
+  };
+
+  const toggleVisibleSelection = (professionalIds: string[], checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of professionalIds) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  const selectAllFiltered = async () => {
+    if (!canView || total === 0) return;
+    setSelectingAll(true);
+    setError("");
+    try {
+      const qs = new URLSearchParams({
+        mode: "ids",
+        periodRef,
+        search,
+        status: statusFilter,
+      }).toString();
+      const res = await fetch(`/api/admin/repasses/professionals?${qs}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Falha ao selecionar profissionais.");
+      const ids = Array.isArray(data?.data?.items)
+        ? data.data.items.map((v: unknown) => String(v || "").trim()).filter(Boolean)
+        : [];
+      setSelectedIds(new Set(ids));
+      setNotice(`${ids.length} profissionais selecionados.`);
+    } catch (e: any) {
+      setError(e?.message || "Erro ao selecionar profissionais.");
+    } finally {
+      setSelectingAll(false);
+    }
+  };
 
   const createSyncJob = async () => {
     if (!canRefresh) return;
-    if (syncScope === "single" && selectedProfessionalIds.length !== 1) {
-      setError("Selecione exatamente 1 profissional para o escopo individual.");
-      return;
-    }
-    if (syncScope === "multi" && selectedProfessionalIds.length < 1) {
-      setError("Selecione ao menos 1 profissional para o escopo múltiplo.");
+    if (selectedCount < 1) {
+      setError("Selecione ao menos 1 profissional para atualizar.");
       return;
     }
     setCreatingSync(true);
     setError("");
     setNotice("");
     try {
+      const scope = selectedCount === 1 ? "single" : "multi";
       const res = await fetch("/api/admin/repasses/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           periodRef,
-          scope: syncScope,
-          professionalIds: syncScope === "all" ? [] : selectedProfessionalIds,
+          scope,
+          professionalIds: selectedIdsArray,
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao criar job de scraping.");
-      const scopeLabel =
-        syncScope === "all"
-          ? "todos os profissionais ativos"
-          : syncScope === "single"
-            ? "1 profissional"
-            : `${selectedProfessionalIds.length} profissionais`;
-      setNotice(`Job de scraping criado com sucesso (${scopeLabel}).`);
+      if (!res.ok) throw new Error(data?.error || "Falha ao iniciar atualização de repasses.");
+      setNotice(`Atualização de repasses solicitada para ${selectedCount} profissional(is).`);
       await fetchJobs();
     } catch (e: any) {
-      setError(e?.message || "Erro ao criar job de scraping.");
+      setError(e?.message || "Erro ao criar job de atualização.");
     } finally {
       setCreatingSync(false);
     }
@@ -306,21 +329,30 @@ export default function RepassesPage() {
 
   const createPdfJob = async () => {
     if (!canEdit) return;
+    if (selectedCount < 1) {
+      setError("Selecione ao menos 1 profissional para gerar relatório.");
+      return;
+    }
     setCreatingPdf(true);
     setError("");
     setNotice("");
     try {
+      const scope = selectedCount === 1 ? "single" : "multi";
       const res = await fetch("/api/admin/repasses/pdf-jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ periodRef, scope: "all_with_data" }),
+        body: JSON.stringify({
+          periodRef,
+          scope,
+          professionalIds: selectedIdsArray,
+        }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao criar job de PDF.");
-      setNotice("Job de PDF criado com sucesso.");
+      if (!res.ok) throw new Error(data?.error || "Falha ao criar job de relatório.");
+      setNotice(`Geração de relatórios solicitada para ${selectedCount} profissional(is).`);
       await fetchJobs();
     } catch (e: any) {
-      setError(e?.message || "Erro ao criar job de PDF.");
+      setError(e?.message || "Erro ao criar job de relatório.");
     } finally {
       setCreatingPdf(false);
     }
@@ -338,30 +370,67 @@ export default function RepassesPage() {
         body: JSON.stringify({ maxJobs: 3 }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao processar fila de PDF.");
+      if (!res.ok) throw new Error(data?.error || "Falha ao processar fila de relatório.");
       const generated = Number(data?.data?.generatedFiles || 0);
       const processed = Number(data?.data?.processedJobs || 0);
-      setNotice(`Fila de PDF processada. Jobs: ${processed} | Arquivos gerados: ${generated}.`);
+      setNotice(`Fila de relatório processada. Jobs: ${processed} | Arquivos: ${generated}.`);
       await refreshAll();
     } catch (e: any) {
-      setError(e?.message || "Erro ao processar fila de PDF.");
+      setError(e?.message || "Erro ao processar fila de relatório.");
     } finally {
       setProcessingPdf(false);
     }
   };
 
-  useEffect(() => {
-    if (!moduleEnabled || !canView) return;
-    refreshAll();
-  }, [moduleEnabled, canView, refreshAll]);
+  const saveProfessionalNote = async (professionalId: string) => {
+    if (!canEdit || !professionalId) return;
+    const note = noteDrafts[professionalId] ?? "";
+    setSavingNoteById((prev) => ({ ...prev, [professionalId]: true }));
+    setError("");
+    try {
+      const res = await fetch("/api/admin/repasses/notes", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          periodRef,
+          professionalId,
+          note,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Falha ao salvar observação.");
+
+      setItems((prev) =>
+        prev.map((item) =>
+          item.professionalId === professionalId
+            ? {
+                ...item,
+                note: note.trim() || null,
+              }
+            : item
+        )
+      );
+      setNotice("Observação salva.");
+    } catch (e: any) {
+      setError(e?.message || "Erro ao salvar observação.");
+    } finally {
+      setSavingNoteById((prev) => ({ ...prev, [professionalId]: false }));
+    }
+  };
 
   useEffect(() => {
     if (!moduleEnabled || !canView) return;
-    const timer = setTimeout(() => {
-      fetchProfessionalOptions(optionsSearch).catch(() => {});
-    }, 250);
-    return () => clearTimeout(timer);
-  }, [moduleEnabled, canView, fetchProfessionalOptions, optionsSearch]);
+    Promise.all([fetchJobs(), fetchArtifacts()]).catch((e: any) => {
+      setError(e?.message || "Erro ao carregar histórico de repasses.");
+    });
+  }, [moduleEnabled, canView, fetchArtifacts, fetchJobs]);
+
+  useEffect(() => {
+    if (!moduleEnabled || !canView) return;
+    fetchProfessionals().catch((e: any) => {
+      setError(e?.message || "Erro ao carregar tabela de profissionais.");
+    });
+  }, [moduleEnabled, canView, fetchProfessionals]);
 
   if (!moduleEnabled) {
     return (
@@ -391,11 +460,11 @@ export default function RepassesPage() {
             <div className="min-w-0 xl:pr-3">
               <h1 className="text-xl font-bold text-slate-800">Fechamento de repasses</h1>
               <p className="text-xs text-slate-500">
-                Visão operacional condensada por profissional para o período {periodLabel}.
+                Selecione profissionais na tabela para atualizar dados e gerar relatórios.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[160px_minmax(220px,1fr)_150px_120px_180px_100px_116px] xl:items-end xl:gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[170px_170px_130px_116px] xl:items-end">
               <div>
                 <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                   Período
@@ -406,30 +475,11 @@ export default function RepassesPage() {
                   onChange={(e) => {
                     setPeriodRef(e.target.value);
                     setPage(1);
+                    setSelectedIds(new Set());
+                    setNoteDrafts({});
                   }}
                   className="h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm"
                 />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Profissional
-                </label>
-                <div className="flex h-10 items-center gap-2 rounded-lg border bg-white px-2 py-1.5">
-                  <Search size={14} className="text-slate-400" />
-                  <input
-                    value={searchDraft}
-                    onChange={(e) => setSearchDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        setPage(1);
-                        setSearch(searchDraft.trim());
-                      }
-                    }}
-                    placeholder="Buscar por nome"
-                    className="w-full border-0 bg-transparent text-sm outline-none"
-                  />
-                </div>
               </div>
 
               <div>
@@ -472,39 +522,6 @@ export default function RepassesPage() {
                 </select>
               </div>
 
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Escopo scraping
-                </label>
-                <select
-                  value={syncScope}
-                  onChange={(e) => {
-                    const next = e.target.value as SyncScope;
-                    setSyncScope(next);
-                    if (next === "all") setSelectedProfessionalIds([]);
-                    if (next === "single" && selectedProfessionalIds.length > 1) {
-                      setSelectedProfessionalIds(selectedProfessionalIds.slice(0, 1));
-                    }
-                  }}
-                  className="h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm"
-                >
-                  <option value="all">Todos os ativos</option>
-                  <option value="single">Somente 1</option>
-                  <option value="multi">Conjunto selecionado</option>
-                </select>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setPage(1);
-                  setSearch(searchDraft.trim());
-                }}
-                className="h-10 rounded-lg border bg-white px-3 py-2 text-sm"
-              >
-                Aplicar
-              </button>
-
               <button
                 type="button"
                 onClick={refreshAll}
@@ -517,63 +534,25 @@ export default function RepassesPage() {
           </div>
         </div>
 
-        {isSelectionRequired && (
-          <div className="rounded-lg border bg-slate-50 p-2">
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-[200px_minmax(280px,1fr)] md:items-start">
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Seleção de profissionais ({selectedCount})
-                </label>
-                <input
-                  value={optionsSearch}
-                  onChange={(e) => setOptionsSearch(e.target.value)}
-                  placeholder="Filtrar lista..."
-                  className="h-9 w-full rounded-lg border bg-white px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <select
-                  multiple
-                  value={selectedProfessionalIds}
-                  onChange={(e) => {
-                    const values = Array.from(e.target.selectedOptions).map((o) => o.value);
-                    handleSelectionChange(values);
-                  }}
-                  className="h-24 w-full rounded-lg border bg-white px-2 py-1 text-xs"
-                >
-                  {professionalOptions.map((item) => (
-                    <option key={item.professionalId} value={item.professionalId}>
-                      {item.professionalName}
-                    </option>
-                  ))}
-                </select>
-                <div className="mt-1 text-[10px] text-slate-500">
-                  {loadingOptions ? "Carregando lista..." : "Use Ctrl/Cmd para seleção múltipla."}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
           <button
             type="button"
             onClick={createSyncJob}
-            disabled={!canRefresh || creatingSync}
+            disabled={!canRefresh || creatingSync || selectedCount === 0}
             className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
             {creatingSync ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Solicitar scraping
+            Atualizar dados de repasse
           </button>
 
           <button
             type="button"
             onClick={createPdfJob}
-            disabled={!canEdit || creatingPdf}
+            disabled={!canEdit || creatingPdf || selectedCount === 0}
             className="inline-flex items-center gap-2 rounded-lg bg-[#229A8A] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
             {creatingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-            Solicitar PDFs (lote)
+            Gerar relatórios
           </button>
 
           <button
@@ -583,10 +562,31 @@ export default function RepassesPage() {
             className="inline-flex items-center gap-2 rounded-lg bg-[#0F766E] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
             {processingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-            Processar fila PDF
+            Gerar relatórios pendentes
           </button>
 
-          <span className="text-xs text-slate-500">Período operacional: {periodLabel}</span>
+          <button
+            type="button"
+            onClick={selectAllFiltered}
+            disabled={selectingAll || total === 0}
+            className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          >
+            {selectingAll ? <Loader2 size={14} className="animate-spin" /> : <Users size={14} />}
+            Selecionar todos do filtro ({total})
+          </button>
+
+          <button
+            type="button"
+            onClick={clearSelection}
+            disabled={selectedCount === 0}
+            className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          >
+            Limpar seleção
+          </button>
+
+          <span className="text-xs text-slate-500">
+            Período: {periodLabel} | Selecionados: {selectedCount}
+          </span>
         </div>
       </header>
 
@@ -625,7 +625,7 @@ export default function RepassesPage() {
           <p className="text-lg font-bold text-slate-700">{stats.notProcessed}</p>
         </div>
         <div className="rounded-lg border bg-white px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wide text-slate-500">Linhas totais</p>
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Atendimentos</p>
           <p className="text-lg font-bold text-slate-800">{stats.totalRows}</p>
         </div>
         <div className="rounded-lg border bg-white px-3 py-2">
@@ -641,14 +641,29 @@ export default function RepassesPage() {
         pageSize={pageSize}
         total={total}
         onPageChange={setPage}
+        selectedIds={selectedIds}
+        selectedCount={selectedCount}
+        onToggleRow={toggleRowSelection}
+        onToggleVisible={toggleVisibleSelection}
+        searchDraft={searchDraft}
+        onSearchDraftChange={setSearchDraft}
+        onApplySearch={applySearch}
+        canEdit={canEdit}
+        noteValues={noteDrafts}
+        savingNoteById={savingNoteById}
+        onNoteChange={(professionalId, value) =>
+          setNoteDrafts((prev) => ({ ...prev, [professionalId]: value }))
+        }
+        onSaveNote={saveProfessionalNote}
       />
 
       <RepasseArtifactsTable items={artifacts} loading={loadingArtifacts} />
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <JobHistoryTable title="Histórico de jobs de scraping" jobs={syncJobs} loading={loadingJobs} mode="sync" />
-        <JobHistoryTable title="Histórico de jobs de PDF" jobs={pdfJobs} loading={loadingJobs} mode="pdf" />
+        <JobHistoryTable title="Histórico de atualizações" jobs={syncJobs} loading={loadingJobs} mode="sync" />
+        <JobHistoryTable title="Histórico de jobs de relatório" jobs={pdfJobs} loading={loadingJobs} mode="pdf" />
       </section>
     </div>
   );
 }
+

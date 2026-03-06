@@ -207,6 +207,194 @@ const mapProfessionalStatus = (
   return 'NOT_PROCESSED';
 };
 
+const loadRepasseProfessionalSummaries = async (
+  db: DbInterface,
+  input: { periodRef: string; search: string }
+): Promise<{ items: RepasseProfessionalSummary[]; stats: RepasseProfessionalListResult['stats'] }> => {
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const search = clean(input.search);
+
+  const where: string[] = ['is_active = 1'];
+  const whereParams: any[] = [];
+  if (search) {
+    where.push('UPPER(name) LIKE ?');
+    whereParams.push(`%${search.toUpperCase()}%`);
+  }
+
+  const professionals = await db.query(
+    `
+    SELECT id, name
+    FROM professionals
+    WHERE ${where.join(' AND ')}
+    ORDER BY name ASC
+    `,
+    whereParams
+  );
+
+  const repasseWhere: string[] = ['period_ref = ?', 'is_active = 1'];
+  const repasseWhereParams: any[] = [periodRef];
+  if (search) {
+    repasseWhere.push('UPPER(professional_name) LIKE ?');
+    repasseWhereParams.push(`%${search.toUpperCase()}%`);
+  }
+  const repasseProfessionals = await db.query(
+    `
+    SELECT DISTINCT professional_id, professional_name
+    FROM feegow_repasse_consolidado
+    WHERE ${repasseWhere.join(' AND ')}
+    `,
+    repasseWhereParams
+  );
+
+  const professionalMap = new Map<string, string>();
+  for (const row of professionals) {
+    const id = clean((row as any).id);
+    const name = clean((row as any).name);
+    if (!id || !name) continue;
+    professionalMap.set(id, name);
+  }
+  for (const row of repasseProfessionals) {
+    const id = clean((row as any).professional_id);
+    const name = clean((row as any).professional_name);
+    if (!id || !name || professionalMap.has(id)) continue;
+    professionalMap.set(id, name);
+  }
+
+  const professionalPairs = Array.from(professionalMap.entries()).map(([id, name]) => ({
+    id,
+    name,
+  }));
+  professionalPairs.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const professionalIds = professionalPairs.map((pair) => pair.id);
+
+  const aggregateByProfessional = new Map<
+    string,
+    { rowsCount: number; totalValue: number }
+  >();
+  const latestByProfessional = new Map<
+    string,
+    { status: RepasseProfessionalSummary['status']; errorMessage: string | null; updatedAt: string | null }
+  >();
+  const noteByProfessional = new Map<string, string | null>();
+
+  if (professionalIds.length > 0) {
+    const placeholders = professionalIds.map(() => '?').join(', ');
+
+    const aggregateRows = await db.query(
+      `
+      SELECT professional_id, COUNT(*) as rows_count, COALESCE(SUM(repasse_value), 0) as total_value
+      FROM feegow_repasse_consolidado
+      WHERE period_ref = ?
+        AND is_active = 1
+        AND professional_id IN (${placeholders})
+      GROUP BY professional_id
+      `,
+      [periodRef, ...professionalIds]
+    );
+
+    for (const row of aggregateRows) {
+      const id = clean((row as any).professional_id);
+      if (!id) continue;
+      aggregateByProfessional.set(id, {
+        rowsCount: Number((row as any).rows_count) || 0,
+        totalValue: Number((row as any).total_value) || 0,
+      });
+    }
+
+    const latestRows = await db.query(
+      `
+      SELECT
+        i.professional_id,
+        i.status,
+        i.error_message,
+        i.updated_at,
+        j.created_at as job_created_at
+      FROM repasse_sync_job_items i
+      INNER JOIN repasse_sync_jobs j ON j.id = i.job_id
+      WHERE j.period_ref = ?
+        AND i.professional_id IN (${placeholders})
+      ORDER BY j.created_at DESC, i.updated_at DESC
+      `,
+      [periodRef, ...professionalIds]
+    );
+
+    for (const row of latestRows) {
+      const id = clean((row as any).professional_id);
+      if (!id || latestByProfessional.has(id)) continue;
+      latestByProfessional.set(id, {
+        status: mapProfessionalStatus((row as any).status),
+        errorMessage: clean((row as any).error_message) || null,
+        updatedAt: clean((row as any).updated_at) || null,
+      });
+    }
+
+    const noteRows = await db.query(
+      `
+      SELECT professional_id, note
+      FROM repasse_professional_notes
+      WHERE period_ref = ?
+        AND professional_id IN (${placeholders})
+      `,
+      [periodRef, ...professionalIds]
+    );
+    for (const row of noteRows) {
+      noteByProfessional.set(clean((row as any).professional_id), clean((row as any).note) || null);
+    }
+  }
+
+  const items: RepasseProfessionalSummary[] = professionalPairs.map((pair) => {
+    const professionalId = pair.id;
+    const professionalName = pair.name;
+    const aggregate = aggregateByProfessional.get(professionalId) || {
+      rowsCount: 0,
+      totalValue: 0,
+    };
+    const latest = latestByProfessional.get(professionalId);
+
+    const status = latest?.status
+      ? latest.status
+      : aggregate.rowsCount > 0
+        ? 'SUCCESS'
+        : 'NOT_PROCESSED';
+
+    return {
+      professionalId,
+      professionalName,
+      status,
+      rowsCount: aggregate.rowsCount,
+      totalValue: aggregate.totalValue,
+      lastProcessedAt: latest?.updatedAt || null,
+      errorMessage: status === 'ERROR' ? latest?.errorMessage || null : null,
+      note: noteByProfessional.get(professionalId) || null,
+    };
+  });
+
+  const stats = items.reduce(
+    (acc, item) => {
+      acc.totalRows += item.rowsCount;
+      acc.totalValue += item.totalValue;
+
+      if (item.status === 'SUCCESS') acc.success += 1;
+      else if (item.status === 'NO_DATA') acc.noData += 1;
+      else if (item.status === 'ERROR') acc.error += 1;
+      else acc.notProcessed += 1;
+
+      return acc;
+    },
+    {
+      totalProfessionals: items.length,
+      success: 0,
+      noData: 0,
+      error: 0,
+      notProcessed: 0,
+      totalRows: 0,
+      totalValue: 0,
+    }
+  );
+
+  return { items, stats };
+};
+
 export const ensureRepasseTables = async (db: DbInterface) => {
   if (repasseTablesEnsured) return;
 
@@ -319,6 +507,21 @@ export const ensureRepasseTables = async (db: DbInterface) => {
     'repasse_sync_job_items',
     'professional_id',
     'VARCHAR(64) NOT NULL'
+  );
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_professional_notes (
+      period_ref VARCHAR(7) NOT NULL,
+      professional_id VARCHAR(64) NOT NULL,
+      note TEXT,
+      updated_by VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL,
+      PRIMARY KEY (period_ref, professional_id)
+    )
+  `);
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_prof_notes_prof ON repasse_professional_notes(professional_id)`
   );
 
   await db.execute(`
@@ -572,168 +775,9 @@ export const listRepasseProfessionalSummaries = async (
   const page = normalizePage(filters.page);
   const pageSize = normalizeLimit(filters.pageSize, 50);
 
-  const where: string[] = ['is_active = 1'];
-  const whereParams: any[] = [];
-  if (search) {
-    where.push('UPPER(name) LIKE ?');
-    whereParams.push(`%${search.toUpperCase()}%`);
-  }
-
-  const professionals = await db.query(
-    `
-    SELECT id, name
-    FROM professionals
-    WHERE ${where.join(' AND ')}
-    ORDER BY name ASC
-    `,
-    whereParams
-  );
-
-  const repasseWhere: string[] = ['period_ref = ?', 'is_active = 1'];
-  const repasseWhereParams: any[] = [periodRef];
-  if (search) {
-    repasseWhere.push('UPPER(professional_name) LIKE ?');
-    repasseWhereParams.push(`%${search.toUpperCase()}%`);
-  }
-  const repasseProfessionals = await db.query(
-    `
-    SELECT DISTINCT professional_id, professional_name
-    FROM feegow_repasse_consolidado
-    WHERE ${repasseWhere.join(' AND ')}
-    `,
-    repasseWhereParams
-  );
-
-  const professionalMap = new Map<string, string>();
-  for (const row of professionals) {
-    const id = clean(row.id);
-    const name = clean(row.name);
-    if (!id || !name) continue;
-    professionalMap.set(id, name);
-  }
-  for (const row of repasseProfessionals) {
-    const id = clean(row.professional_id);
-    const name = clean(row.professional_name);
-    if (!id || !name || professionalMap.has(id)) continue;
-    professionalMap.set(id, name);
-  }
-
-  const professionalPairs = Array.from(professionalMap.entries()).map(([id, name]) => ({
-    id,
-    name,
-  }));
-  professionalPairs.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
-  const professionalIds = professionalPairs.map((pair) => pair.id);
-
-  const aggregateByProfessional = new Map<
-    string,
-    { rowsCount: number; totalValue: number }
-  >();
-  const latestByProfessional = new Map<
-    string,
-    { status: RepasseProfessionalSummary['status']; errorMessage: string | null; updatedAt: string | null }
-  >();
-
-  if (professionalIds.length > 0) {
-    const placeholders = professionalIds.map(() => '?').join(', ');
-
-    const aggregateRows = await db.query(
-      `
-      SELECT professional_id, COUNT(*) as rows_count, COALESCE(SUM(repasse_value), 0) as total_value
-      FROM feegow_repasse_consolidado
-      WHERE period_ref = ?
-        AND is_active = 1
-        AND professional_id IN (${placeholders})
-      GROUP BY professional_id
-      `,
-      [periodRef, ...professionalIds]
-    );
-
-    for (const row of aggregateRows) {
-      const id = clean(row.professional_id);
-      if (!id) continue;
-      aggregateByProfessional.set(id, {
-        rowsCount: Number(row.rows_count) || 0,
-        totalValue: Number(row.total_value) || 0,
-      });
-    }
-
-    const latestRows = await db.query(
-      `
-      SELECT
-        i.professional_id,
-        i.status,
-        i.error_message,
-        i.updated_at,
-        j.created_at as job_created_at
-      FROM repasse_sync_job_items i
-      INNER JOIN repasse_sync_jobs j ON j.id = i.job_id
-      WHERE j.period_ref = ?
-        AND i.professional_id IN (${placeholders})
-      ORDER BY j.created_at DESC, i.updated_at DESC
-      `,
-      [periodRef, ...professionalIds]
-    );
-
-    for (const row of latestRows) {
-      const id = clean(row.professional_id);
-      if (!id || latestByProfessional.has(id)) continue;
-      latestByProfessional.set(id, {
-        status: mapProfessionalStatus(row.status),
-        errorMessage: clean(row.error_message) || null,
-        updatedAt: clean(row.updated_at) || null,
-      });
-    }
-  }
-
-  const allItems: RepasseProfessionalSummary[] = professionalPairs.map((pair) => {
-    const professionalId = pair.id;
-    const professionalName = pair.name;
-    const aggregate = aggregateByProfessional.get(professionalId) || {
-      rowsCount: 0,
-      totalValue: 0,
-    };
-    const latest = latestByProfessional.get(professionalId);
-
-    const status = latest?.status
-      ? latest.status
-      : aggregate.rowsCount > 0
-        ? 'SUCCESS'
-        : 'NOT_PROCESSED';
-
-    return {
-      professionalId,
-      professionalName,
-      status,
-      rowsCount: aggregate.rowsCount,
-      totalValue: aggregate.totalValue,
-      lastProcessedAt: latest?.updatedAt || null,
-      errorMessage: status === 'ERROR' ? latest?.errorMessage || null : null,
-    };
-  });
-
-  const stats = allItems.reduce(
-    (acc, item) => {
-      acc.totalRows += item.rowsCount;
-      acc.totalValue += item.totalValue;
-
-      if (item.status === 'SUCCESS') acc.success += 1;
-      else if (item.status === 'NO_DATA') acc.noData += 1;
-      else if (item.status === 'ERROR') acc.error += 1;
-      else acc.notProcessed += 1;
-
-      return acc;
-    },
-    {
-      totalProfessionals: allItems.length,
-      success: 0,
-      noData: 0,
-      error: 0,
-      notProcessed: 0,
-      totalRows: 0,
-      totalValue: 0,
-    }
-  );
+  const loaded = await loadRepasseProfessionalSummaries(db, { periodRef, search });
+  const allItems = loaded.items;
+  const stats = loaded.stats;
 
   const filteredItems =
     statusFilter === 'all'
@@ -752,6 +796,23 @@ export const listRepasseProfessionalSummaries = async (
     pageSize,
     stats,
   };
+};
+
+export const listRepasseProfessionalIds = async (
+  db: DbInterface,
+  filters: Pick<RepasseProfessionalListFilters, 'periodRef' | 'search' | 'status'> = {}
+): Promise<string[]> => {
+  await ensureRepasseTables(db);
+  const periodRef = normalizePeriodRef(filters.periodRef);
+  const search = clean(filters.search);
+  const statusFilter = normalizeProfessionalStatusFilter(filters.status);
+
+  const loaded = await loadRepasseProfessionalSummaries(db, { periodRef, search });
+  const filteredItems =
+    statusFilter === 'all'
+      ? loaded.items
+      : loaded.items.filter((item) => item.status.toLowerCase() === statusFilter);
+  return filteredItems.map((item) => item.professionalId);
 };
 
 export const listRepasseProfessionalOptions = async (
@@ -789,6 +850,58 @@ export const listRepasseProfessionalOptions = async (
       professionalName: clean((row as any).professional_name),
     }))
     .filter((row) => row.professionalId && row.professionalName);
+};
+
+export const upsertRepasseProfessionalNote = async (
+  db: DbInterface,
+  input: { periodRef?: string; professionalId: string; note?: string | null },
+  actorUserId: string
+): Promise<{ periodRef: string; professionalId: string; note: string | null; updatedAt: string }> => {
+  await ensureRepasseTables(db);
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalId = clean(input.professionalId);
+  if (!professionalId) {
+    throw new RepasseValidationError('Profissional invalido para salvar observacao.');
+  }
+  const note = clean(input.note) || null;
+  const now = nowIso();
+
+  await db.execute(
+    `
+    INSERT INTO repasse_professional_notes (
+      period_ref, professional_id, note, updated_by, updated_at
+    ) VALUES (?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      note = ?,
+      updated_by = ?,
+      updated_at = ?
+    `,
+    [periodRef, professionalId, note, clean(actorUserId), now, note, clean(actorUserId), now]
+  );
+
+  return { periodRef, professionalId, note, updatedAt: now };
+};
+
+export const getRepasseProfessionalNote = async (
+  db: DbInterface,
+  input: { periodRef?: string; professionalId: string }
+): Promise<string | null> => {
+  await ensureRepasseTables(db);
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalId = clean(input.professionalId);
+  if (!professionalId) return null;
+  const rows = await db.query(
+    `
+    SELECT note
+    FROM repasse_professional_notes
+    WHERE period_ref = ?
+      AND professional_id = ?
+    LIMIT 1
+    `,
+    [periodRef, professionalId]
+  );
+  if (!rows?.length) return null;
+  return clean((rows[0] as any).note) || null;
 };
 
 export type RepassePdfJobRow = RepassePdfJob;
@@ -994,6 +1107,46 @@ export const createRepassePdfArtifact = async (
     [id]
   );
   return mapPdfArtifact(rows[0]);
+};
+
+export const listRepassePdfArtifactsByPeriodProfessional = async (
+  db: DbInterface,
+  input: { periodRef?: string; professionalId: string }
+): Promise<RepassePdfArtifact[]> => {
+  await ensureRepasseTables(db);
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalId = clean(input.professionalId);
+  if (!professionalId) return [];
+
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM repasse_pdf_artifacts
+    WHERE period_ref = ?
+      AND professional_id = ?
+    ORDER BY created_at DESC
+    `,
+    [periodRef, professionalId]
+  );
+  return rows.map(mapPdfArtifact);
+};
+
+export const deleteRepassePdfArtifactsByIds = async (
+  db: DbInterface,
+  artifactIds: string[]
+): Promise<number> => {
+  await ensureRepasseTables(db);
+  const ids = Array.from(new Set((artifactIds || []).map((id) => clean(id)).filter(Boolean)));
+  if (!ids.length) return 0;
+  const placeholders = ids.map(() => '?').join(', ');
+  await db.execute(
+    `
+    DELETE FROM repasse_pdf_artifacts
+    WHERE id IN (${placeholders})
+    `,
+    ids
+  );
+  return ids.length;
 };
 
 export const listRepassePdfArtifacts = async (

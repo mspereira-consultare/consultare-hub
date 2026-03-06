@@ -1,6 +1,10 @@
 ﻿import { NextResponse } from 'next/server';
 import { requireRepassesPermission } from '@/lib/repasses/auth';
-import { listRepasseProfessionalOptions, listRepasseProfessionalSummaries } from '@/lib/repasses/repository';
+import {
+  listRepasseProfessionalIds,
+  listRepasseProfessionalOptions,
+  listRepasseProfessionalSummaries,
+} from '@/lib/repasses/repository';
 import { isRepassesModuleEnabledServer } from '@/lib/repasses/feature';
 import type { RepasseProfessionalStatusFilter } from '@/lib/repasses/types';
 
@@ -28,6 +32,16 @@ export async function GET(request: Request) {
         limit: Number(searchParams.get('limit') || 500),
       });
       return NextResponse.json({ status: 'success', data: { items: options } });
+    }
+
+
+    if (mode === 'ids') {
+      const ids = await listRepasseProfessionalIds(auth.db, {
+        periodRef: String(searchParams.get('periodRef') || '').trim() || undefined,
+        search: String(searchParams.get('search') || '').trim() || undefined,
+        status: (statusRaw || undefined) as RepasseProfessionalStatusFilter | undefined,
+      });
+      return NextResponse.json({ status: 'success', data: { items: ids } });
     }
 
     const data = await listRepasseProfessionalSummaries(auth.db, {

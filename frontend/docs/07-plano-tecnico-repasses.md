@@ -240,3 +240,23 @@ Status atual:
 - Worker atualizado para respeitar o escopo do job no processamento.
 - Endpoint de apoio:
   - `GET /api/admin/repasses/professionals?mode=options` para carregar lista de profissionais ativos (selecao de escopo).
+
+
+## 17. Atualizacao - Selecao por checkbox e observacoes (2026-03-06)
+- A selecao de profissionais foi movida para a tabela principal:
+  - checkbox por linha
+  - checkbox no cabecalho para selecionar/desselecionar os profissionais visiveis na pagina
+  - contador global de selecionados no periodo
+- Selecao persistente entre paginacao e buscas no frontend.
+- Novo atalho para selecao em massa por filtro atual:
+  - `GET /api/admin/repasses/professionals?mode=ids&periodRef=...&search=...&status=...`
+- Acoes principais agora operam sobre a selecao atual:
+  - `Atualizar dados de repasse`
+  - `Gerar relatorios`
+- Observacoes por profissional e periodo:
+  - tabela nova `repasse_professional_notes` (PK: `period_ref + professional_id`)
+  - API nova `PUT /api/admin/repasses/notes`
+  - coluna Observacao na tabela com edicao e salvamento por linha
+  - observacao inclu?da no PDF gerado do profissional
+- Substituicao de relatorios por periodo/profissional:
+  - antes de gravar novo PDF, artefatos antigos do mesmo periodo/profissional sao removidos (storage + banco).
