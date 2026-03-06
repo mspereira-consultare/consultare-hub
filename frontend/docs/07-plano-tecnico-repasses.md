@@ -196,3 +196,24 @@ Status atual:
   - cards de resumo operacional
   - historico de jobs de scraping e PDF em componentes separados
 - A rota continua fora da sidebar enquanto o modulo nao for liberado oficialmente.
+
+## 14. Atualização Sprint 4 (2026-03-06)
+- Processamento de PDF implementado no backend Node (`pdf-lib`) com persistencia no S3.
+- Novo processador: `src/lib/repasses/pdf_processor.ts`
+  - consome jobs `PENDING` em `repasse_pdf_jobs`
+  - marca status do job (`RUNNING`, `COMPLETED`, `PARTIAL`, `FAILED`)
+  - gera PDF por profissional com dados da tabela `feegow_repasse_consolidado`
+  - registra heartbeat em `system_status` com `service_name='repasse_pdf'`
+  - grava artefatos em `repasse_pdf_artifacts`
+- Novas APIs:
+  - `POST /api/admin/repasses/pdf-jobs/process` (processa fila pendente manualmente)
+  - `GET /api/admin/repasses/artifacts` (lista PDFs gerados)
+  - `GET /api/admin/repasses/artifacts/[artifactId]/download` (download/inline)
+- Frontend `/repasses` atualizado:
+  - botao `Processar fila PDF`
+  - tabela de `PDFs gerados` com visualizar/baixar
+  - refresh unificado inclui jobs, profissionais e artefatos
+
+### Variaveis de ambiente usadas no Sprint 4
+- `REPASSE_PDF_S3_PREFIX` (opcional, default: `repasses/pdfs/`)
+- `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`

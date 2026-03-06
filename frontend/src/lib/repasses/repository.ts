@@ -2,6 +2,8 @@ import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import type {
   RepasseJobListFilters,
+  RepassePdfArtifact,
+  RepassePdfArtifactListFilters,
   RepasseProfessionalListFilters,
   RepasseProfessionalListResult,
   RepasseProfessionalSummary,
@@ -85,6 +87,17 @@ const normalizeProfessionalIds = (value: unknown): string[] => {
   return Array.from(unique);
 };
 
+const parseProfessionalIdsJson = (value: unknown): string[] => {
+  const raw = clean(value);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizeProfessionalIds(parsed);
+  } catch {
+    return [];
+  }
+};
+
 const safeExecute = async (db: DbInterface, sql: string) => {
   try {
     await db.execute(sql);
@@ -119,21 +132,27 @@ const mapPdfJob = (row: any): RepassePdfJob => ({
   id: clean(row.id),
   periodRef: clean(row.period_ref),
   scope: normalizeScope(row.scope),
-  professionalIds: (() => {
-    const raw = clean(row.professional_ids_json);
-    if (!raw) return [];
-    try {
-      const parsed = JSON.parse(raw);
-      return normalizeProfessionalIds(parsed);
-    } catch {
-      return [];
-    }
-  })(),
+  professionalIds: parseProfessionalIdsJson(row.professional_ids_json),
   status: clean(row.status).toUpperCase() as RepassePdfJob['status'],
   requestedBy: clean(row.requested_by),
   startedAt: clean(row.started_at) || null,
   finishedAt: clean(row.finished_at) || null,
   error: clean(row.error) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const mapPdfArtifact = (row: any): RepassePdfArtifact => ({
+  id: clean(row.id),
+  pdfJobId: clean(row.pdf_job_id),
+  periodRef: clean(row.period_ref),
+  professionalId: clean(row.professional_id),
+  professionalName: clean(row.professional_name),
+  storageProvider: clean(row.storage_provider),
+  storageBucket: clean(row.storage_bucket) || null,
+  storageKey: clean(row.storage_key),
+  fileName: clean(row.file_name),
+  sizeBytes: Number(row.size_bytes) || 0,
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
@@ -604,4 +623,277 @@ export const listRepasseProfessionalSummaries = async (
     pageSize,
     stats,
   };
+};
+
+export type RepassePdfJobRow = RepassePdfJob;
+
+export type RepassePdfJobTargetProfessional = {
+  professionalId: string;
+  professionalName: string;
+};
+
+export type RepasseConsolidatedLine = {
+  dataExec: string;
+  paciente: string;
+  descricao: string;
+  funcao: string;
+  convenio: string;
+  repasseValue: number;
+};
+
+export const getNextPendingRepassePdfJob = async (
+  db: DbInterface
+): Promise<RepassePdfJobRow | null> => {
+  await ensureRepasseTables(db);
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM repasse_pdf_jobs
+    WHERE status = 'PENDING'
+    ORDER BY created_at ASC
+    LIMIT 1
+    `
+  );
+  if (!rows.length) return null;
+  return mapPdfJob(rows[0]);
+};
+
+export const markRepassePdfJobRunning = async (db: DbInterface, jobId: string) => {
+  await ensureRepasseTables(db);
+  const now = nowIso();
+  await db.execute(
+    `
+    UPDATE repasse_pdf_jobs
+    SET status = 'RUNNING',
+        started_at = ?,
+        finished_at = NULL,
+        error = NULL,
+        updated_at = ?
+    WHERE id = ?
+    `,
+    [now, now, clean(jobId)]
+  );
+};
+
+export const markRepassePdfJobFinished = async (
+  db: DbInterface,
+  jobId: string,
+  status: RepassePdfJob['status'],
+  errorMessage?: string | null
+) => {
+  await ensureRepasseTables(db);
+  const now = nowIso();
+  await db.execute(
+    `
+    UPDATE repasse_pdf_jobs
+    SET status = ?,
+        finished_at = ?,
+        error = ?,
+        updated_at = ?
+    WHERE id = ?
+    `,
+    [status, now, clean(errorMessage) || null, now, clean(jobId)]
+  );
+};
+
+export const listRepassePdfTargetProfessionals = async (
+  db: DbInterface,
+  job: RepassePdfJobRow
+): Promise<RepassePdfJobTargetProfessional[]> => {
+  await ensureRepasseTables(db);
+  const periodRef = normalizePeriodRef(job.periodRef);
+
+  if (job.scope === 'all_with_data') {
+    const rows = await db.query(
+      `
+      SELECT professional_id, professional_name
+      FROM feegow_repasse_consolidado
+      WHERE period_ref = ?
+        AND is_active = 1
+      GROUP BY professional_id, professional_name
+      ORDER BY professional_name ASC
+      `,
+      [periodRef]
+    );
+    return rows.map((row) => ({
+      professionalId: clean(row.professional_id),
+      professionalName: clean(row.professional_name),
+    }));
+  }
+
+  const ids = normalizeProfessionalIds(job.professionalIds);
+  if (!ids.length) return [];
+
+  const placeholders = ids.map(() => '?').join(', ');
+  const rows = await db.query(
+    `
+    SELECT id, name
+    FROM professionals
+    WHERE id IN (${placeholders})
+    ORDER BY name ASC
+    `,
+    ids
+  );
+
+  const byId = new Map(
+    rows.map((row) => [clean(row.id), clean(row.name)] as const)
+  );
+  return ids.map((id) => ({
+    professionalId: id,
+    professionalName: byId.get(id) || id,
+  }));
+};
+
+export const listRepasseConsolidatedLinesByProfessional = async (
+  db: DbInterface,
+  periodRefRaw: string,
+  professionalIdRaw: string
+): Promise<RepasseConsolidatedLine[]> => {
+  await ensureRepasseTables(db);
+  const periodRef = normalizePeriodRef(periodRefRaw);
+  const professionalId = clean(professionalIdRaw);
+  if (!professionalId) return [];
+
+  const rows = await db.query(
+    `
+    SELECT data_exec, paciente, descricao, funcao, convenio, repasse_value
+    FROM feegow_repasse_consolidado
+    WHERE period_ref = ?
+      AND professional_id = ?
+      AND is_active = 1
+    ORDER BY data_exec DESC, paciente ASC
+    `,
+    [periodRef, professionalId]
+  );
+
+  return rows.map((row) => ({
+    dataExec: clean(row.data_exec),
+    paciente: clean(row.paciente),
+    descricao: clean(row.descricao),
+    funcao: clean(row.funcao),
+    convenio: clean(row.convenio),
+    repasseValue: Number(row.repasse_value) || 0,
+  }));
+};
+
+export const createRepassePdfArtifact = async (
+  db: DbInterface,
+  payload: {
+    pdfJobId: string;
+    periodRef: string;
+    professionalId: string;
+    professionalName: string;
+    storageProvider: string;
+    storageBucket?: string | null;
+    storageKey: string;
+    fileName: string;
+    sizeBytes: number;
+  }
+): Promise<RepassePdfArtifact> => {
+  await ensureRepasseTables(db);
+  const now = nowIso();
+  const id = randomUUID();
+
+  await db.execute(
+    `
+    INSERT INTO repasse_pdf_artifacts (
+      id, pdf_job_id, period_ref, professional_id, professional_name,
+      storage_provider, storage_bucket, storage_key, file_name, size_bytes,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      id,
+      clean(payload.pdfJobId),
+      normalizePeriodRef(payload.periodRef),
+      clean(payload.professionalId),
+      clean(payload.professionalName),
+      clean(payload.storageProvider),
+      clean(payload.storageBucket) || null,
+      clean(payload.storageKey),
+      clean(payload.fileName),
+      Math.max(0, Math.floor(Number(payload.sizeBytes) || 0)),
+      now,
+      now,
+    ]
+  );
+
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM repasse_pdf_artifacts
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [id]
+  );
+  return mapPdfArtifact(rows[0]);
+};
+
+export const listRepassePdfArtifacts = async (
+  db: DbInterface,
+  filters: RepassePdfArtifactListFilters = {}
+): Promise<{ items: RepassePdfArtifact[]; total: number }> => {
+  await ensureRepasseTables(db);
+
+  const where: string[] = ['1=1'];
+  const params: any[] = [];
+  const periodRef = clean(filters.periodRef);
+  const professionalId = clean(filters.professionalId);
+  const limit = normalizeLimit(filters.limit, 50);
+
+  if (periodRef) {
+    where.push('period_ref = ?');
+    params.push(periodRef);
+  }
+  if (professionalId) {
+    where.push('professional_id = ?');
+    params.push(professionalId);
+  }
+
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM repasse_pdf_artifacts
+    WHERE ${where.join(' AND ')}
+    ORDER BY created_at DESC
+    LIMIT ?
+    `,
+    [...params, limit]
+  );
+
+  const countRows = await db.query(
+    `
+    SELECT COUNT(*) as total
+    FROM repasse_pdf_artifacts
+    WHERE ${where.join(' AND ')}
+    `,
+    params
+  );
+
+  return {
+    items: rows.map(mapPdfArtifact),
+    total: readCount(countRows[0]),
+  };
+};
+
+export const getRepassePdfArtifactById = async (
+  db: DbInterface,
+  artifactId: string
+): Promise<RepassePdfArtifact | null> => {
+  await ensureRepasseTables(db);
+  const cleanId = clean(artifactId);
+  if (!cleanId) return null;
+
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM repasse_pdf_artifacts
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [cleanId]
+  );
+  if (!rows.length) return null;
+  return mapPdfArtifact(rows[0]);
 };

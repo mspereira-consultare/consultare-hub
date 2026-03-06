@@ -85,3 +85,24 @@ export type RepasseProfessionalListResult = {
   pageSize: number;
   stats: RepasseProfessionalStats;
 };
+
+export type RepassePdfArtifact = {
+  id: string;
+  pdfJobId: string;
+  periodRef: string;
+  professionalId: string;
+  professionalName: string;
+  storageProvider: string;
+  storageBucket: string | null;
+  storageKey: string;
+  fileName: string;
+  sizeBytes: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RepassePdfArtifactListFilters = {
+  periodRef?: string;
+  professionalId?: string;
+  limit?: number;
+};

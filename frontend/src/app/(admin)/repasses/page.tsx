@@ -7,6 +7,7 @@ import { hasPermission } from "@/lib/permissions";
 import { isRepassesModuleEnabledClient } from "@/lib/repasses/feature";
 import { JobHistoryTable } from "./components/JobHistoryTable";
 import { ProfessionalSummaryTable } from "./components/ProfessionalSummaryTable";
+import { RepasseArtifactsTable } from "./components/RepasseArtifactsTable";
 
 type SyncJob = {
   id: string;
@@ -29,6 +30,17 @@ type PdfJob = {
   startedAt: string | null;
   finishedAt: string | null;
   error: string | null;
+};
+
+type PdfArtifact = {
+  id: string;
+  pdfJobId: string;
+  periodRef: string;
+  professionalId: string;
+  professionalName: string;
+  fileName: string;
+  sizeBytes: number;
+  createdAt: string;
 };
 
 type ProfessionalStatusFilter = "all" | "success" | "no_data" | "error" | "not_processed";
@@ -97,6 +109,7 @@ export default function RepassesPage() {
 
   const [syncJobs, setSyncJobs] = useState<SyncJob[]>([]);
   const [pdfJobs, setPdfJobs] = useState<PdfJob[]>([]);
+  const [artifacts, setArtifacts] = useState<PdfArtifact[]>([]);
 
   const [items, setItems] = useState<ProfessionalSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -112,8 +125,10 @@ export default function RepassesPage() {
 
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [loadingProfessionals, setLoadingProfessionals] = useState(false);
+  const [loadingArtifacts, setLoadingArtifacts] = useState(false);
   const [creatingSync, setCreatingSync] = useState(false);
   const [creatingPdf, setCreatingPdf] = useState(false);
+  const [processingPdf, setProcessingPdf] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -180,15 +195,29 @@ export default function RepassesPage() {
     }
   }, [canView, page, pageSize, periodRef, search, statusFilter]);
 
+  const fetchArtifacts = useCallback(async () => {
+    if (!canView) return;
+    setLoadingArtifacts(true);
+    try {
+      const qs = new URLSearchParams({ periodRef, limit: "120" }).toString();
+      const res = await fetch(`/api/admin/repasses/artifacts?${qs}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Falha ao carregar PDFs gerados.");
+      setArtifacts(Array.isArray(data?.data?.items) ? data.data.items : []);
+    } finally {
+      setLoadingArtifacts(false);
+    }
+  }, [canView, periodRef]);
+
   const refreshAll = useCallback(async () => {
     setError("");
     setNotice("");
     try {
-      await Promise.all([fetchJobs(), fetchProfessionals()]);
+      await Promise.all([fetchJobs(), fetchProfessionals(), fetchArtifacts()]);
     } catch (e: any) {
       setError(e?.message || "Erro ao atualizar dados de repasse.");
     }
-  }, [fetchJobs, fetchProfessionals]);
+  }, [fetchArtifacts, fetchJobs, fetchProfessionals]);
 
   const createSyncJob = async () => {
     if (!canRefresh) return;
@@ -231,6 +260,30 @@ export default function RepassesPage() {
       setError(e?.message || "Erro ao criar job de PDF.");
     } finally {
       setCreatingPdf(false);
+    }
+  };
+
+  const processPdfQueue = async () => {
+    if (!canEdit) return;
+    setProcessingPdf(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch("/api/admin/repasses/pdf-jobs/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxJobs: 3 }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Falha ao processar fila de PDF.");
+      const generated = Number(data?.data?.generatedFiles || 0);
+      const processed = Number(data?.data?.processedJobs || 0);
+      setNotice(`Fila de PDF processada. Jobs: ${processed} | Arquivos gerados: ${generated}.`);
+      await refreshAll();
+    } catch (e: any) {
+      setError(e?.message || "Erro ao processar fila de PDF.");
+    } finally {
+      setProcessingPdf(false);
     }
   };
 
@@ -388,6 +441,16 @@ export default function RepassesPage() {
             Solicitar PDFs (lote)
           </button>
 
+          <button
+            type="button"
+            onClick={processPdfQueue}
+            disabled={!canEdit || processingPdf}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#0F766E] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {processingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+            Processar fila PDF
+          </button>
+
           <span className="text-xs text-slate-500">Período operacional: {periodLabel}</span>
         </div>
       </header>
@@ -444,6 +507,8 @@ export default function RepassesPage() {
         total={total}
         onPageChange={setPage}
       />
+
+      <RepasseArtifactsTable items={artifacts} loading={loadingArtifacts} />
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <JobHistoryTable title="Histórico de jobs de scraping" jobs={syncJobs} loading={loadingJobs} mode="sync" />
