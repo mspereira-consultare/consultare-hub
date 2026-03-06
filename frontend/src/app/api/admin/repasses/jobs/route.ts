@@ -5,12 +5,16 @@ import {
   listRepasseSyncJobs,
   RepasseValidationError,
 } from '@/lib/repasses/repository';
+import { isRepassesModuleEnabledServer } from '@/lib/repasses/feature';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
   try {
+    if (!isRepassesModuleEnabledServer()) {
+      return NextResponse.json({ error: 'Modulo de repasses desabilitado.' }, { status: 404 });
+    }
     const auth = await requireRepassesPermission('view');
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
@@ -38,6 +42,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    if (!isRepassesModuleEnabledServer()) {
+      return NextResponse.json({ error: 'Modulo de repasses desabilitado.' }, { status: 404 });
+    }
     const auth = await requireRepassesPermission('refresh');
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });

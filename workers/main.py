@@ -58,6 +58,7 @@ try:
     from worker_proposals import update_proposals
     from worker_faturamento_scraping import run_scraper
     from worker_contracts import run_worker_contracts
+    from worker_repasse_consolidado import run_repasse_sync_loop, process_pending_repasse_jobs_once
     from worker_auth import FeegowTokenRenewer
     from worker_auth_clinia import CliniaCookieRenewer
     
@@ -129,6 +130,7 @@ KNOWN_ACTIONS = {
     'procedures_catalog',
     'faturamento', # Receita bruta analítica
     'comercial', # Propostas (API)
+    'repasses', # Repasses consolidados (scraping)
     'contratos', # Cartão de Benefícios (API)
     'auth', # Obtém cookies e x-access-token Feegow
     'auth_clinia', # Obtém cookie Clinia
@@ -168,6 +170,10 @@ ALIAS_ACTION_MAP = {
     'comercial': 'comercial',
     'propostas': 'comercial',
     'propostas_api': 'comercial',
+    'repasses': 'repasses',
+    'repasse': 'repasses',
+    'repasse_sync': 'repasses',
+    'worker_repasse_consolidado': 'repasses',
     'contratos': 'contratos',
     'contratos_api': 'contratos',
     'cartao_de_beneficios_api': 'contratos',
@@ -187,6 +193,7 @@ CANONICAL_NAME = {
     'procedures_catalog': 'Catalogo de Procedimentos (Feegow API)',
     'faturamento': 'Faturamento (Scraping)',
     'comercial': 'Propostas (API)',
+    'repasses': 'Repasses Consolidados (Scraping)',
     'contratos': 'Cartão de Beneficios (API)',
     'auth': 'Auth Feegow',
     'auth_clinia': 'Auth Clinia',
@@ -307,6 +314,8 @@ def run_service(key: str):
             run_scraper()
         elif action == 'comercial':
             update_proposals()
+        elif action == 'repasses':
+            process_pending_repasse_jobs_once()
         elif action == 'contratos':
             run_worker_contracts()
         elif action == 'auth':
@@ -637,6 +646,7 @@ def start_orchestrator():
         threading.Thread(target=run_monitor_recepcao_safe, name="MonRec", daemon=True),
         threading.Thread(target=run_monitor_medico_safe, name="MonMed", daemon=True),
         threading.Thread(target=run_clinia_safe, name="Clinia", daemon=True),
+        threading.Thread(target=run_repasse_sync_loop, name="RepasseSync", daemon=True),
         threading.Thread(target=run_watchdog, name="Watchdog", daemon=True),
     ]
 

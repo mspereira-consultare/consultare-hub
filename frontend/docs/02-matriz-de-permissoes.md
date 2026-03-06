@@ -218,7 +218,7 @@ Implementacao:
 | Perfil | view | edit | refresh |
 |---|---:|---:|---:|
 | ADMIN | sim | sim | sim |
-| GESTOR | sim | sim | sim |
+| GESTOR | nao | nao | nao |
 | OPERADOR | nao | nao | nao |
 
 ### Regras de autorizacao server-side
@@ -227,6 +227,9 @@ Implementacao:
 - `POST /api/admin/repasses/jobs`: exige `refresh`.
 - `GET /api/admin/repasses/pdf-jobs`: exige `view`.
 - `POST /api/admin/repasses/pdf-jobs`: exige `edit`.
+
+Observacao:
+- mesmo com permissao, o modulo pode ser bloqueado por feature flag (`REPASSES_MODULE_ENABLED` e `NEXT_PUBLIC_REPASSES_MODULE_ENABLED`).
 
 Implementacao:
 - `frontend/src/lib/permissions.ts`

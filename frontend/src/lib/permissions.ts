@@ -84,9 +84,9 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'repasses', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'repasses', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { edit: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'repasses', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { edit: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
     return matrix;
   }
 

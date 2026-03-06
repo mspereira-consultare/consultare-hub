@@ -504,3 +504,31 @@ Tabelas criadas:
 - `repasse_sync_job_items`
 - `repasse_pdf_jobs`
 - `repasse_pdf_artifacts`
+
+## 11) Repasses - Sprint 2 (worker scraping)
+
+Worker:
+
+- arquivo: `workers/worker_repasse_consolidado.py`
+- service heartbeat: `repasse_sync`
+- modo loop: processa jobs `PENDING` com polling
+- modo unitario: `python workers/worker_repasse_consolidado.py --once`
+
+Comportamento:
+
+- processa todos os profissionais ativos (`professionals.is_active = 1`);
+- aplica periodo do job (`YYYY-MM`);
+- trata retorno vazio por profissional como `NO_DATA`;
+- persiste linhas com `UPSERT` por `source_row_hash`.
+
+Integracao no orquestrador:
+
+- thread dedicada `RepasseSync` adicionada em `workers/main.py`.
+- pode ser acionado manualmente pela API de jobs (`/api/admin/repasses/jobs`).
+
+Feature flag do modulo:
+
+- backend/API: `REPASSES_MODULE_ENABLED=1`
+- frontend/pagina: `NEXT_PUBLIC_REPASSES_MODULE_ENABLED=1`
+
+Se ausente/`0`, o modulo permanece desabilitado para acesso.

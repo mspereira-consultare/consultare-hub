@@ -164,6 +164,13 @@ Logs por profissional com:
 - Persistência com `UPSERT` por hash.
 - Registro de status por profissional.
 
+Status atual:
+- iniciado
+- worker `workers/worker_repasse_consolidado.py` implementado para consumir jobs `PENDING`
+- tratamento de tabela vazia implementado (`NO_DATA`)
+- integracao no orquestrador implementada (`thread RepasseSync`)
+- modulo oculto da sidebar e protegido por feature flag (`REPASSES_MODULE_ENABLED` / `NEXT_PUBLIC_REPASSES_MODULE_ENABLED`)
+
 ### Sprint 3 (frontend)
 - Página `/repasses` com filtros, acompanhamento de jobs e ações manuais.
 

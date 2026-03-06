@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { AlertCircle, FileText, Loader2, RefreshCw } from "lucide-react";
 import { hasPermission } from "@/lib/permissions";
+import { isRepassesModuleEnabledClient } from "@/lib/repasses/feature";
 
 type SyncJob = {
   id: string;
@@ -53,6 +54,7 @@ const statusChip = (status: string) => {
 };
 
 export default function RepassesPage() {
+  const moduleEnabled = isRepassesModuleEnabledClient();
   const { data: session } = useSession();
   const role = String((session?.user as any)?.role || "OPERADOR");
 
@@ -149,6 +151,16 @@ export default function RepassesPage() {
     fetchJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [periodRef, canView]);
+
+  if (!moduleEnabled) {
+    return (
+      <div className="p-8 max-w-[1400px] mx-auto">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 text-sm">
+          Módulo de repasses em desenvolvimento. Acesso temporariamente desabilitado.
+        </div>
+      </div>
+    );
+  }
 
   if (!canView) {
     return (
