@@ -373,7 +373,18 @@ export default function RepassesPage() {
       if (!res.ok) throw new Error(data?.error || "Falha ao processar fila de relatório.");
       const generated = Number(data?.data?.generatedFiles || 0);
       const processed = Number(data?.data?.processedJobs || 0);
-      setNotice(`Fila de relatório processada. Jobs: ${processed} | Arquivos: ${generated}.`);
+      const failed = Number(data?.data?.failedJobs || 0);
+      const details = Array.isArray(data?.data?.details) ? data.data.details : [];
+      if (failed > 0) {
+        setError(
+          `Falha na geração de ${failed} job(s). ${
+            details.length ? String(details[0]) : "Verifique o histórico de jobs."
+          }`
+        );
+      }
+      setNotice(
+        `Fila de relatório processada. Jobs: ${processed} | Arquivos: ${generated} | Falhas: ${failed}.`
+      );
       await refreshAll();
     } catch (e: any) {
       setError(e?.message || "Erro ao processar fila de relatório.");
@@ -666,4 +677,3 @@ export default function RepassesPage() {
     </div>
   );
 }
-

@@ -300,6 +300,12 @@ const jobFailure = async (db: DbInterface, job: RepassePdfJobRow, message: strin
   await updateRepassePdfServiceStatus(db, 'FAILED', `job=${job.id} periodo=${job.periodRef} erro=${message}`);
 };
 
+const compactError = (value: string, max = 420) => {
+  const clean = String(value || '').replace(/\s+/g, ' ').trim();
+  if (clean.length <= max) return clean;
+  return `${clean.slice(0, max - 3)}...`;
+};
+
 export const processPendingRepassePdfJobs = async (
   db: DbInterface,
   options?: { maxJobs?: number }
@@ -410,9 +416,9 @@ export const processPendingRepassePdfJobs = async (
           summary.generatedFiles += 1;
         } catch (error: any) {
           errors += 1;
-          summary.details.push(
-            `job ${job.id}: falha em ${target.professionalName} - ${String(error?.message || error)}`
-          );
+          const message = compactError(String(error?.message || error || 'Erro desconhecido ao gerar PDF'));
+          summary.details.push(`job ${job.id}: falha em ${target.professionalName} - ${message}`);
+          console.error(`repasse_pdf job=${job.id} profissional=${target.professionalId} erro=${message}`);
         }
       }
 
@@ -427,17 +433,28 @@ export const processPendingRepassePdfJobs = async (
       }
 
       if (generated > 0 && errors > 0) {
+        const partialMessage = `Gerados ${generated} PDFs com ${errors} falhas.`;
         await markRepassePdfJobFinished(
           db,
           job.id,
           'PARTIAL',
-          `Gerados ${generated} PDFs com ${errors} falhas.`
+          partialMessage
         );
         await updateRepassePdfServiceStatus(
           db,
           'PARTIAL',
           `job=${job.id} periodo=${job.periodRef} arquivos=${generated} erros=${errors}`
         );
+        summary.details.push(`job ${job.id}: ${partialMessage}`);
+        continue;
+      }
+
+      if (errors > 0) {
+        const firstError =
+          summary.details.find((line) => line.includes(`job ${job.id}:`)) ||
+          `job ${job.id}: falha sem detalhe`;
+        await jobFailure(db, job, compactError(firstError));
+        summary.failedJobs += 1;
         continue;
       }
 
