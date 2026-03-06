@@ -29,6 +29,13 @@ let repasseTablesEnsured = false;
 
 const nowIso = () => new Date().toISOString();
 const clean = (value: unknown) => String(value ?? '').trim();
+const textTypes = new Set(['tinytext', 'text', 'mediumtext', 'longtext']);
+const isMysqlProvider = () => {
+  const provider = clean(process.env.DB_PROVIDER).toLowerCase();
+  if (provider === 'mysql') return true;
+  if (provider === 'turso') return false;
+  return Boolean(process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL);
+};
 
 const readCount = (row: any): number => {
   if (!row || typeof row !== 'object') return 0;
@@ -203,23 +210,51 @@ const mapProfessionalStatus = (
 export const ensureRepasseTables = async (db: DbInterface) => {
   if (repasseTablesEnsured) return;
 
+  const ensureMysqlColumnDefinition = async (
+    tableName: string,
+    columnName: string,
+    definitionSql: string
+  ) => {
+    if (!isMysqlProvider()) return;
+    const rows = await db.query(
+      `
+      SELECT DATA_TYPE as data_type, COLUMN_TYPE as column_type
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+        AND column_name = ?
+      LIMIT 1
+      `,
+      [tableName, columnName]
+    );
+    const row = rows?.[0] as any;
+    if (!row) return;
+    const dataType = clean(row.data_type).toLowerCase();
+    const currentType = clean(row.column_type).toLowerCase();
+    const targetType = clean(definitionSql).toLowerCase();
+    if (currentType === targetType) return;
+    if (textTypes.has(dataType) || !currentType.startsWith(targetType.split(' ')[0])) {
+      await db.execute(`ALTER TABLE ${tableName} MODIFY COLUMN ${columnName} ${definitionSql}`);
+    }
+  };
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS feegow_repasse_consolidado (
-      id TEXT PRIMARY KEY,
-      period_ref TEXT NOT NULL,
-      professional_id TEXT NOT NULL,
-      professional_name TEXT NOT NULL,
-      data_exec TEXT NOT NULL,
-      paciente TEXT NOT NULL,
-      descricao TEXT NOT NULL,
-      funcao TEXT NOT NULL,
-      convenio TEXT NOT NULL,
+      id VARCHAR(64) PRIMARY KEY,
+      period_ref VARCHAR(7) NOT NULL,
+      professional_id VARCHAR(64) NOT NULL,
+      professional_name VARCHAR(180) NOT NULL,
+      data_exec VARCHAR(32) NOT NULL,
+      paciente VARCHAR(180) NOT NULL,
+      descricao VARCHAR(255) NOT NULL,
+      funcao VARCHAR(120) NOT NULL,
+      convenio VARCHAR(180) NOT NULL,
       repasse_value DECIMAL(14,2) NOT NULL,
-      source_row_hash TEXT NOT NULL UNIQUE,
+      source_row_hash VARCHAR(64) NOT NULL UNIQUE,
       is_active INTEGER NOT NULL,
-      last_job_id TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      last_job_id VARCHAR(64),
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
     )
   `);
 
@@ -231,20 +266,23 @@ export const ensureRepasseTables = async (db: DbInterface) => {
     db,
     `CREATE INDEX idx_repasse_consolidado_data_exec ON feegow_repasse_consolidado(data_exec)`
   );
+  await ensureMysqlColumnDefinition('feegow_repasse_consolidado', 'id', 'VARCHAR(64) NOT NULL');
+  await ensureMysqlColumnDefinition('feegow_repasse_consolidado', 'professional_id', 'VARCHAR(64) NOT NULL');
+  await ensureMysqlColumnDefinition('feegow_repasse_consolidado', 'source_row_hash', 'VARCHAR(64) NOT NULL');
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS repasse_sync_jobs (
-      id TEXT PRIMARY KEY,
-      period_ref TEXT NOT NULL,
+      id VARCHAR(64) PRIMARY KEY,
+      period_ref VARCHAR(7) NOT NULL,
       scope VARCHAR(20) NOT NULL,
-      professional_ids_json TEXT,
-      status TEXT NOT NULL,
-      requested_by TEXT NOT NULL,
-      started_at TEXT,
-      finished_at TEXT,
+      professional_ids_json LONGTEXT,
+      status VARCHAR(20) NOT NULL,
+      requested_by VARCHAR(64) NOT NULL,
+      started_at VARCHAR(32),
+      finished_at VARCHAR(32),
       error TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
     )
   `);
 
@@ -253,66 +291,84 @@ export const ensureRepasseTables = async (db: DbInterface) => {
   await safeExecute(db, `CREATE INDEX idx_repasse_sync_jobs_created ON repasse_sync_jobs(created_at)`);
   await safeExecute(db, `ALTER TABLE repasse_sync_jobs ADD COLUMN scope VARCHAR(20) NOT NULL DEFAULT 'all'`);
   await safeExecute(db, `ALTER TABLE repasse_sync_jobs ADD COLUMN professional_ids_json TEXT`);
+  await ensureMysqlColumnDefinition('repasse_sync_jobs', 'id', 'VARCHAR(64) NOT NULL');
+  await ensureMysqlColumnDefinition('repasse_sync_jobs', 'scope', 'VARCHAR(20) NOT NULL');
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS repasse_sync_job_items (
-      id TEXT PRIMARY KEY,
-      job_id TEXT NOT NULL,
-      professional_id TEXT NOT NULL,
-      professional_name TEXT NOT NULL,
-      status TEXT NOT NULL,
+      id VARCHAR(64) PRIMARY KEY,
+      job_id VARCHAR(64) NOT NULL,
+      professional_id VARCHAR(64) NOT NULL,
+      professional_name VARCHAR(180) NOT NULL,
+      status VARCHAR(20) NOT NULL,
       rows_count INTEGER NOT NULL,
       total_value DECIMAL(14,2) NOT NULL,
       error_message TEXT,
       duration_ms INTEGER,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
     )
   `);
 
   await safeExecute(db, `CREATE INDEX idx_repasse_sync_items_job ON repasse_sync_job_items(job_id)`);
   await safeExecute(db, `CREATE INDEX idx_repasse_sync_items_prof ON repasse_sync_job_items(professional_id)`);
   await safeExecute(db, `CREATE INDEX idx_repasse_sync_items_status ON repasse_sync_job_items(status)`);
+  await ensureMysqlColumnDefinition('repasse_sync_job_items', 'id', 'VARCHAR(64) NOT NULL');
+  await ensureMysqlColumnDefinition('repasse_sync_job_items', 'job_id', 'VARCHAR(64) NOT NULL');
+  await ensureMysqlColumnDefinition(
+    'repasse_sync_job_items',
+    'professional_id',
+    'VARCHAR(64) NOT NULL'
+  );
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS repasse_pdf_jobs (
-      id TEXT PRIMARY KEY,
-      period_ref TEXT NOT NULL,
-      scope TEXT NOT NULL,
-      professional_ids_json TEXT,
-      status TEXT NOT NULL,
-      requested_by TEXT NOT NULL,
-      started_at TEXT,
-      finished_at TEXT,
+      id VARCHAR(64) PRIMARY KEY,
+      period_ref VARCHAR(7) NOT NULL,
+      scope VARCHAR(20) NOT NULL,
+      professional_ids_json LONGTEXT,
+      status VARCHAR(20) NOT NULL,
+      requested_by VARCHAR(64) NOT NULL,
+      started_at VARCHAR(32),
+      finished_at VARCHAR(32),
       error TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
     )
   `);
 
   await safeExecute(db, `CREATE INDEX idx_repasse_pdf_jobs_period ON repasse_pdf_jobs(period_ref)`);
   await safeExecute(db, `CREATE INDEX idx_repasse_pdf_jobs_status ON repasse_pdf_jobs(status)`);
   await safeExecute(db, `CREATE INDEX idx_repasse_pdf_jobs_created ON repasse_pdf_jobs(created_at)`);
+  await ensureMysqlColumnDefinition('repasse_pdf_jobs', 'id', 'VARCHAR(64) NOT NULL');
+  await ensureMysqlColumnDefinition('repasse_pdf_jobs', 'scope', 'VARCHAR(20) NOT NULL');
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS repasse_pdf_artifacts (
-      id TEXT PRIMARY KEY,
-      pdf_job_id TEXT NOT NULL,
-      period_ref TEXT NOT NULL,
-      professional_id TEXT NOT NULL,
-      professional_name TEXT NOT NULL,
-      storage_provider TEXT NOT NULL,
-      storage_bucket TEXT,
-      storage_key TEXT NOT NULL,
-      file_name TEXT NOT NULL,
+      id VARCHAR(64) PRIMARY KEY,
+      pdf_job_id VARCHAR(64) NOT NULL,
+      period_ref VARCHAR(7) NOT NULL,
+      professional_id VARCHAR(64) NOT NULL,
+      professional_name VARCHAR(180) NOT NULL,
+      storage_provider VARCHAR(30) NOT NULL,
+      storage_bucket VARCHAR(120),
+      storage_key VARCHAR(255) NOT NULL,
+      file_name VARCHAR(255) NOT NULL,
       size_bytes INTEGER NOT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
     )
   `);
 
   await safeExecute(db, `CREATE INDEX idx_repasse_pdf_artifacts_job ON repasse_pdf_artifacts(pdf_job_id)`);
   await safeExecute(db, `CREATE INDEX idx_repasse_pdf_artifacts_prof ON repasse_pdf_artifacts(professional_id)`);
+  await ensureMysqlColumnDefinition('repasse_pdf_artifacts', 'id', 'VARCHAR(64) NOT NULL');
+  await ensureMysqlColumnDefinition('repasse_pdf_artifacts', 'pdf_job_id', 'VARCHAR(64) NOT NULL');
+  await ensureMysqlColumnDefinition(
+    'repasse_pdf_artifacts',
+    'professional_id',
+    'VARCHAR(64) NOT NULL'
+  );
 
   repasseTablesEnsured = true;
 };
@@ -533,9 +589,41 @@ export const listRepasseProfessionalSummaries = async (
     whereParams
   );
 
-  const professionalIds = professionals
-    .map((row) => clean(row.id))
-    .filter(Boolean);
+  const repasseWhere: string[] = ['period_ref = ?', 'is_active = 1'];
+  const repasseWhereParams: any[] = [periodRef];
+  if (search) {
+    repasseWhere.push('UPPER(professional_name) LIKE ?');
+    repasseWhereParams.push(`%${search.toUpperCase()}%`);
+  }
+  const repasseProfessionals = await db.query(
+    `
+    SELECT DISTINCT professional_id, professional_name
+    FROM feegow_repasse_consolidado
+    WHERE ${repasseWhere.join(' AND ')}
+    `,
+    repasseWhereParams
+  );
+
+  const professionalMap = new Map<string, string>();
+  for (const row of professionals) {
+    const id = clean(row.id);
+    const name = clean(row.name);
+    if (!id || !name) continue;
+    professionalMap.set(id, name);
+  }
+  for (const row of repasseProfessionals) {
+    const id = clean(row.professional_id);
+    const name = clean(row.professional_name);
+    if (!id || !name || professionalMap.has(id)) continue;
+    professionalMap.set(id, name);
+  }
+
+  const professionalPairs = Array.from(professionalMap.entries()).map(([id, name]) => ({
+    id,
+    name,
+  }));
+  professionalPairs.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const professionalIds = professionalPairs.map((pair) => pair.id);
 
   const aggregateByProfessional = new Map<
     string,
@@ -598,9 +686,9 @@ export const listRepasseProfessionalSummaries = async (
     }
   }
 
-  const allItems: RepasseProfessionalSummary[] = professionals.map((row) => {
-    const professionalId = clean(row.id);
-    const professionalName = clean(row.name);
+  const allItems: RepasseProfessionalSummary[] = professionalPairs.map((pair) => {
+    const professionalId = pair.id;
+    const professionalName = pair.name;
     const aggregate = aggregateByProfessional.get(professionalId) || {
       rowsCount: 0,
       totalValue: 0,
@@ -673,29 +761,34 @@ export const listRepasseProfessionalOptions = async (
   await ensureRepasseTables(db);
   const search = clean(input.search);
   const limit = normalizeOptionLimit(input.limit, 500);
-
-  const where: string[] = ['is_active = 1'];
-  const params: any[] = [];
-  if (search) {
-    where.push('UPPER(name) LIKE ?');
-    params.push(`%${search.toUpperCase()}%`);
-  }
+  const searchPattern = `%${search.toUpperCase()}%`;
 
   const rows = await db.query(
     `
-    SELECT id, name
-    FROM professionals
-    WHERE ${where.join(' AND ')}
-    ORDER BY name ASC
+    SELECT professional_id, professional_name
+    FROM (
+      SELECT id as professional_id, name as professional_name
+      FROM professionals
+      WHERE is_active = 1
+        AND (? = '' OR UPPER(name) LIKE ?)
+      UNION
+      SELECT professional_id, professional_name
+      FROM feegow_repasse_consolidado
+      WHERE is_active = 1
+        AND (? = '' OR UPPER(professional_name) LIKE ?)
+    ) unioned
+    ORDER BY professional_name ASC
     LIMIT ?
     `,
-    [...params, limit]
+    [search, searchPattern, search, searchPattern, limit]
   );
 
-  return rows.map((row) => ({
-    professionalId: clean(row.id),
-    professionalName: clean(row.name),
-  }));
+  return rows
+    .map((row) => ({
+      professionalId: clean((row as any).professional_id),
+      professionalName: clean((row as any).professional_name),
+    }))
+    .filter((row) => row.professionalId && row.professionalName);
 };
 
 export type RepassePdfJobRow = RepassePdfJob;

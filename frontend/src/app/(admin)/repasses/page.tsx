@@ -386,113 +386,141 @@ export default function RepassesPage() {
   return (
     <div className="mx-auto max-w-[1800px] space-y-4 p-6">
       <header className="rounded-xl border bg-white p-4">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-slate-800">Fechamento de repasses</h1>
-            <p className="text-xs text-slate-500">
-              Visão operacional condensada por profissional para o período {periodLabel}.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-end gap-2">
-            <div className="min-w-[150px]">
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Período
-              </label>
-              <input
-                type="month"
-                value={periodRef}
-                onChange={(e) => {
-                  setPeriodRef(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
-              />
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+            <div className="min-w-0 xl:pr-3">
+              <h1 className="text-xl font-bold text-slate-800">Fechamento de repasses</h1>
+              <p className="text-xs text-slate-500">
+                Visão operacional condensada por profissional para o período {periodLabel}.
+              </p>
             </div>
 
-            <div className="min-w-[220px]">
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Profissional
-              </label>
-              <div className="flex items-center gap-2 rounded-lg border bg-white px-2 py-1.5">
-                <Search size={14} className="text-slate-400" />
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[160px_minmax(220px,1fr)_150px_120px_180px_100px_116px] xl:items-end xl:gap-2">
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Período
+                </label>
                 <input
-                  value={searchDraft}
-                  onChange={(e) => setSearchDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      setPage(1);
-                      setSearch(searchDraft.trim());
-                    }
+                  type="month"
+                  value={periodRef}
+                  onChange={(e) => {
+                    setPeriodRef(e.target.value);
+                    setPage(1);
                   }}
-                  placeholder="Buscar por nome"
-                  className="w-full border-0 bg-transparent text-sm outline-none"
+                  className="h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm"
                 />
               </div>
-            </div>
 
-            <div className="min-w-[170px]">
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Status
-              </label>
-              <select
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value as ProfessionalStatusFilter);
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Profissional
+                </label>
+                <div className="flex h-10 items-center gap-2 rounded-lg border bg-white px-2 py-1.5">
+                  <Search size={14} className="text-slate-400" />
+                  <input
+                    value={searchDraft}
+                    onChange={(e) => setSearchDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        setPage(1);
+                        setSearch(searchDraft.trim());
+                      }
+                    }}
+                    placeholder="Buscar por nome"
+                    className="w-full border-0 bg-transparent text-sm outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Status
+                </label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value as ProfessionalStatusFilter);
+                    setPage(1);
+                  }}
+                  className="h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                >
+                  {statusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Linhas
+                </label>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value) || 100);
+                    setPage(1);
+                  }}
+                  className="h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                >
+                  {pageSizeOptions.map((n) => (
+                    <option key={n} value={n}>
+                      {n}/página
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Escopo scraping
+                </label>
+                <select
+                  value={syncScope}
+                  onChange={(e) => {
+                    const next = e.target.value as SyncScope;
+                    setSyncScope(next);
+                    if (next === "all") setSelectedProfessionalIds([]);
+                    if (next === "single" && selectedProfessionalIds.length > 1) {
+                      setSelectedProfessionalIds(selectedProfessionalIds.slice(0, 1));
+                    }
+                  }}
+                  className="h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                >
+                  <option value="all">Todos os ativos</option>
+                  <option value="single">Somente 1</option>
+                  <option value="multi">Conjunto selecionado</option>
+                </select>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
                   setPage(1);
+                  setSearch(searchDraft.trim());
                 }}
-                className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                className="h-10 rounded-lg border bg-white px-3 py-2 text-sm"
               >
-                {statusOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+                Aplicar
+              </button>
 
-            <div className="min-w-[120px]">
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Linhas
-              </label>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value) || 100);
-                  setPage(1);
-                }}
-                className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+              <button
+                type="button"
+                onClick={refreshAll}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm"
               >
-                {pageSizeOptions.map((n) => (
-                  <option key={n} value={n}>{n}/página</option>
-                ))}
-              </select>
+                <RefreshCw size={14} />
+                Atualizar
+              </button>
             </div>
+          </div>
+        </div>
 
-            <div className="min-w-[190px]">
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                Escopo scraping
-              </label>
-              <select
-                value={syncScope}
-                onChange={(e) => {
-                  const next = e.target.value as SyncScope;
-                  setSyncScope(next);
-                  if (next === "all") setSelectedProfessionalIds([]);
-                  if (next === "single" && selectedProfessionalIds.length > 1) {
-                    setSelectedProfessionalIds(selectedProfessionalIds.slice(0, 1));
-                  }
-                }}
-                className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
-              >
-                <option value="all">Todos os ativos</option>
-                <option value="single">Somente 1</option>
-                <option value="multi">Conjunto selecionado</option>
-              </select>
-            </div>
-
-            {isSelectionRequired && (
-              <div className="min-w-[280px] max-w-[320px]">
+        {isSelectionRequired && (
+          <div className="rounded-lg border bg-slate-50 p-2">
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-[200px_minmax(280px,1fr)] md:items-start">
+              <div>
                 <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                   Seleção de profissionais ({selectedCount})
                 </label>
@@ -500,8 +528,10 @@ export default function RepassesPage() {
                   value={optionsSearch}
                   onChange={(e) => setOptionsSearch(e.target.value)}
                   placeholder="Filtrar lista..."
-                  className="mb-1 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                  className="h-9 w-full rounded-lg border bg-white px-3 py-2 text-sm"
                 />
+              </div>
+              <div>
                 <select
                   multiple
                   value={selectedProfessionalIds}
@@ -521,29 +551,9 @@ export default function RepassesPage() {
                   {loadingOptions ? "Carregando lista..." : "Use Ctrl/Cmd para seleção múltipla."}
                 </div>
               </div>
-            )}
-
-            <button
-              type="button"
-              onClick={() => {
-                setPage(1);
-                setSearch(searchDraft.trim());
-              }}
-              className="rounded-lg border bg-white px-3 py-2 text-sm"
-            >
-              Aplicar
-            </button>
-
-            <button
-              type="button"
-              onClick={refreshAll}
-              className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm"
-            >
-              <RefreshCw size={14} />
-              Atualizar
-            </button>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
           <button
