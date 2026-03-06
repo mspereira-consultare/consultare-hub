@@ -710,3 +710,79 @@ Regras:
 - acao com `deadline < hoje` e status `aberta/em_andamento` e marcada como `atrasada` no refresh;
 - quando nao houver mais acoes abertas e a auditoria estiver reavaliada, a auditoria pode ser encerrada.
 - acao `concluida` exige preenchimento de `completion_note`.
+
+## Tabelas - Modulo Repasses (Sprint 1)
+
+### `feegow_repasse_consolidado`
+
+Finalidade:
+- armazenar os repasses consolidados por profissional e periodo.
+
+Campos principais:
+- `id` (PK)
+- `period_ref` (`YYYY-MM`)
+- `professional_id`, `professional_name`
+- `data_exec`, `paciente`, `descricao`, `funcao`, `convenio`
+- `repasse_value`
+- `source_row_hash` (unico)
+- `is_active`
+- `last_job_id`
+- `created_at`, `updated_at`
+
+### `repasse_sync_jobs`
+
+Finalidade:
+- registrar solicitacoes manuais de scraping de repasses.
+
+Campos principais:
+- `id` (PK)
+- `period_ref`
+- `status` (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `PARTIAL`)
+- `requested_by`
+- `started_at`, `finished_at`
+- `error`
+- `created_at`, `updated_at`
+
+### `repasse_sync_job_items`
+
+Finalidade:
+- registrar resultado por profissional dentro de um job de scraping.
+
+Campos principais:
+- `id` (PK)
+- `job_id`
+- `professional_id`, `professional_name`
+- `status` (`SUCCESS`, `NO_DATA`, `ERROR`)
+- `rows_count`, `total_value`
+- `error_message`, `duration_ms`
+- `created_at`, `updated_at`
+
+### `repasse_pdf_jobs`
+
+Finalidade:
+- registrar solicitacoes manuais de geracao de PDF (individual/lote).
+
+Campos principais:
+- `id` (PK)
+- `period_ref`
+- `scope` (`single`, `multi`, `all_with_data`)
+- `professional_ids_json`
+- `status` (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `PARTIAL`)
+- `requested_by`
+- `started_at`, `finished_at`
+- `error`
+- `created_at`, `updated_at`
+
+### `repasse_pdf_artifacts`
+
+Finalidade:
+- armazenar metadados dos PDFs gerados e salvos em storage.
+
+Campos principais:
+- `id` (PK)
+- `pdf_job_id`
+- `period_ref`
+- `professional_id`, `professional_name`
+- `storage_provider`, `storage_bucket`, `storage_key`
+- `file_name`, `size_bytes`
+- `created_at`, `updated_at`

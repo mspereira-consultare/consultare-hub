@@ -474,3 +474,33 @@ Checklist rapido de validacao:
 2. Confirmar logs de prewarm entre 07:40 e 07:55.
 3. Simular sessao expirada e validar re-login automatico sem restart manual.
 4. Conferir que warnings repetidos nao spamam logs (throttle ativo).
+
+## 10) Repasses - Sprint 1 (base de jobs manuais)
+
+Objetivo:
+
+- disponibilizar infraestrutura inicial do modulo de repasses;
+- permitir disparo manual de jobs de scraping e PDF.
+
+Rotas entregues:
+
+- `GET /api/admin/repasses/jobs` (view)
+- `POST /api/admin/repasses/jobs` (refresh)
+- `GET /api/admin/repasses/pdf-jobs` (view)
+- `POST /api/admin/repasses/pdf-jobs` (edit)
+
+Checklist rapido:
+
+1. Abrir `/repasses`.
+2. Selecionar periodo (YYYY-MM).
+3. Acionar `Solicitar scraping`.
+4. Acionar `Solicitar PDFs em lote`.
+5. Confirmar exibicao dos jobs nas duas tabelas da pagina.
+
+Tabelas criadas:
+
+- `feegow_repasse_consolidado`
+- `repasse_sync_jobs`
+- `repasse_sync_job_items`
+- `repasse_pdf_jobs`
+- `repasse_pdf_artifacts`

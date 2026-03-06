@@ -56,3 +56,5 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Sprint 2 iniciado para Qualidade: pagina `/qualidade/treinamentos` e APIs `qms/treinamentos` entregues.
 - Sprint 3 iniciado para Qualidade: pagina `/qualidade/auditorias` e APIs `qms/auditorias` entregues.
 - Sprint 4 iniciado para Qualidade: indicadores consolidados, refresh em lote e hardening de validacoes.
+- Novo plano tecnico do modulo de Repasses em `docs/07-plano-tecnico-repasses.md`.
+- Sprint 1 de Repasses iniciado: base de schema, permissoes, APIs de jobs manuais e pagina `/repasses`.

@@ -7,6 +7,7 @@ export type PageKey =
   | 'financeiro'
   | 'contratos'
   | 'propostas'
+  | 'repasses'
   | 'metas_dashboard'
   | 'metas'
   | 'produtividade'
@@ -36,6 +37,7 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'financeiro', label: 'Financeiro', path: '/financeiro' },
   { key: 'contratos', label: 'ResolveSaude', path: '/contratos' },
   { key: 'propostas', label: 'Propostas', path: '/propostas' },
+  { key: 'repasses', label: 'Fechamento de Repasses', path: '/repasses' },
   { key: 'metas_dashboard', label: 'Painel de Metas', path: '/metas/dashboard' },
   { key: 'metas', label: 'Gestao de Metas', path: '/metas' },
   { key: 'produtividade', label: 'Produtividade', path: '/produtividade' },
@@ -82,9 +84,9 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { edit: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'repasses', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'repasses', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { edit: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'repasses', 'produtividade', 'agendamentos', 'profissionais', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
     return matrix;
   }
 
@@ -143,6 +145,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/financeiro') return 'financeiro';
   if (path === '/contratos') return 'contratos';
   if (path === '/propostas') return 'propostas';
+  if (path === '/repasses') return 'repasses';
   if (path === '/produtividade') return 'produtividade';
   if (path === '/agendamentos') return 'agendamentos';
   if (path === '/profissionais') return 'profissionais';
@@ -161,6 +164,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/financial/')) return 'financeiro';
   if (path.startsWith('/api/admin/contratos')) return 'contratos';
   if (path.startsWith('/api/admin/propostas')) return 'propostas';
+  if (path.startsWith('/api/admin/repasses')) return 'repasses';
   if (path.startsWith('/api/admin/produtividade')) return 'produtividade';
   if (path.startsWith('/api/admin/user-teams')) return 'produtividade';
   if (path.startsWith('/api/admin/teams')) return 'produtividade';

@@ -201,3 +201,35 @@ Implementacao:
 - `frontend/src/lib/profissionais/auth.ts`
 - `frontend/src/app/api/admin/profissionais/route.ts`
 - `frontend/src/app/api/admin/profissionais/[id]/route.ts`
+
+---
+
+## Atualizacao: modulo `repasses`
+
+### Rota
+
+- `/repasses`
+- APIs relacionadas:
+  - `/api/admin/repasses/jobs`
+  - `/api/admin/repasses/pdf-jobs`
+
+### Defaults atuais
+
+| Perfil | view | edit | refresh |
+|---|---:|---:|---:|
+| ADMIN | sim | sim | sim |
+| GESTOR | sim | sim | sim |
+| OPERADOR | nao | nao | nao |
+
+### Regras de autorizacao server-side
+
+- `GET /api/admin/repasses/jobs`: exige `view`.
+- `POST /api/admin/repasses/jobs`: exige `refresh`.
+- `GET /api/admin/repasses/pdf-jobs`: exige `view`.
+- `POST /api/admin/repasses/pdf-jobs`: exige `edit`.
+
+Implementacao:
+- `frontend/src/lib/permissions.ts`
+- `frontend/src/lib/repasses/auth.ts`
+- `frontend/src/app/api/admin/repasses/jobs/route.ts`
+- `frontend/src/app/api/admin/repasses/pdf-jobs/route.ts`
