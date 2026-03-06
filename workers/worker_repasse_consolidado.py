@@ -3,6 +3,7 @@ import sys
 import time
 import re
 import hashlib
+import uuid
 import unicodedata
 import calendar
 from datetime import datetime
@@ -132,6 +133,19 @@ def _previous_month_ref() -> str:
         month = 12
         year -= 1
     return f"{year}-{month:02d}"
+
+
+def _normalize_period_ref(period_ref: Optional[str]) -> str:
+    raw = str(period_ref or "").strip()
+    if not raw:
+        return _previous_month_ref()
+    if not re.match(r"^\d{4}-\d{2}$", raw):
+        raise RuntimeError("period_ref invalido. Use o formato YYYY-MM.")
+    year = int(raw[:4])
+    month = int(raw[5:7])
+    if month < 1 or month > 12:
+        raise RuntimeError("period_ref invalido. Mes deve estar entre 01 e 12.")
+    return f"{year:04d}-{month:02d}"
 
 
 def _extract_table_rows(page) -> List[Dict]:
@@ -321,6 +335,42 @@ def _get_pending_job(db: "DatabaseManager") -> Optional[Dict]:
         "period_ref": str(_row_get(row, 1, "period_ref")),
         "requested_by": str(_row_get(row, 2, "requested_by")),
     }
+
+
+def enqueue_repasse_job(
+    period_ref: Optional[str] = None,
+    requested_by: str = "manual",
+    db: Optional["DatabaseManager"] = None,
+) -> Dict:
+    own_db = db is None
+    db_ref = db or DatabaseManager()
+    _ensure_repasse_tables(db_ref)
+
+    normalized_period = _normalize_period_ref(period_ref)
+    now = _now_iso()
+    job_id = uuid.uuid4().hex
+    requested = str(requested_by or "manual").strip() or "manual"
+
+    db_ref.execute_query(
+        """
+        INSERT INTO repasse_sync_jobs (
+          id, period_ref, status, requested_by, started_at, finished_at, error, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?, ?)
+        """,
+        (job_id, normalized_period, STATUS_PENDING, requested, now, now),
+    )
+
+    if own_db:
+        try:
+            db_ref.update_heartbeat(
+                SERVICE_NAME,
+                "COMPLETED",
+                f"Job enfileirado manualmente id={job_id} periodo={normalized_period}",
+            )
+        except Exception:
+            pass
+
+    return {"id": job_id, "period_ref": normalized_period, "requested_by": requested}
 
 
 def _mark_job_running(db: "DatabaseManager", job_id: str):
@@ -569,7 +619,7 @@ def _process_job(job: Dict):
 
     with sync_playwright() as p:
         headless = str(os.getenv("PLAYWRIGHT_HEADLESS", "1")).strip().lower() in ("1", "true", "yes")
-        browser = p.chromium.launch(headless=headless)
+        browser = p.chromium.launch(headless=False)
         context = browser.new_context()
         page = context.new_page()
 
@@ -709,10 +759,22 @@ def _process_job(job: Dict):
     print(f"--- Repasse Consolidado finalizado | job={job_id} | status={final_status} ---")
 
 
-def process_pending_repasse_jobs_once():
+def process_pending_repasse_jobs_once(
+    auto_enqueue_if_empty: bool = False,
+    period_ref: Optional[str] = None,
+    requested_by: str = "system_status",
+):
     db = DatabaseManager()
     _ensure_repasse_tables(db)
     job = _get_pending_job(db)
+    if not job and auto_enqueue_if_empty:
+        created_job = enqueue_repasse_job(period_ref=period_ref, requested_by=requested_by, db=db)
+        print(
+            f"📝 Job de repasse criado automaticamente | id={created_job['id']} | "
+            f"periodo={created_job['period_ref']}"
+        )
+        job = _get_pending_job(db)
+
     if not job:
         db.update_heartbeat(SERVICE_NAME, "COMPLETED", "Sem jobs pendentes")
         return False
@@ -744,9 +806,35 @@ def run_repasse_sync_loop():
 
 
 if __name__ == "__main__":
-    if "--once" in sys.argv:
-        had_job = process_pending_repasse_jobs_once()
+    args = sys.argv[1:]
+
+    period_arg = None
+    requested_by_arg = "manual_cli"
+    for i, token in enumerate(args):
+        if token.startswith("--period="):
+            period_arg = token.split("=", 1)[1].strip()
+        elif token == "--period" and i + 1 < len(args):
+            period_arg = str(args[i + 1] or "").strip()
+        elif token.startswith("--requested-by="):
+            requested_by_arg = token.split("=", 1)[1].strip() or "manual_cli"
+        elif token == "--requested-by" and i + 1 < len(args):
+            requested_by_arg = str(args[i + 1] or "").strip() or "manual_cli"
+
+    if "--enqueue" in args:
+        job = enqueue_repasse_job(period_ref=period_arg, requested_by=requested_by_arg)
+        print(f"Job enfileirado: id={job['id']} periodo={job['period_ref']} requested_by={job['requested_by']}")
+        if "--once" in args:
+            process_pending_repasse_jobs_once()
+        sys.exit(0)
+
+    if "--once" in args:
+        had_job = process_pending_repasse_jobs_once(
+            auto_enqueue_if_empty=bool(period_arg),
+            period_ref=period_arg,
+            requested_by=requested_by_arg,
+        )
         if not had_job:
             print("Sem jobs pendentes.")
-    else:
-        run_repasse_sync_loop()
+        sys.exit(0)
+
+    run_repasse_sync_loop()

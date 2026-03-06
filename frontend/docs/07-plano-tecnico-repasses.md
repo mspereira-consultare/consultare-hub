@@ -217,3 +217,12 @@ Status atual:
 ### Variaveis de ambiente usadas no Sprint 4
 - `REPASSE_PDF_S3_PREFIX` (opcional, default: `repasses/pdfs/`)
 - `AWS_REGION`, `AWS_S3_BUCKET`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+
+## 15. Ajuste de disparo (system_status x fila de jobs)
+- Repasses continua com fila propria (`repasse_sync_jobs`) para suportar periodo e rastreio por profissional.
+- Para padronizar com o orquestrador:
+  - quando o listener receber `service_name='repasses'` em `system_status` com `PENDING`, ele agora cria um job automaticamente se a fila estiver vazia (periodo default = mes anterior) e processa em seguida.
+- Worker CLI atualizado para teste local sem painel/API:
+  - `python workers/worker_repasse_consolidado.py --enqueue --period YYYY-MM`
+  - `python workers/worker_repasse_consolidado.py --once --period YYYY-MM`
+  - `python workers/worker_repasse_consolidado.py --enqueue --period YYYY-MM --once`

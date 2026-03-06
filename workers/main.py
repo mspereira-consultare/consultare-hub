@@ -315,7 +315,10 @@ def run_service(key: str):
         elif action == 'comercial':
             update_proposals()
         elif action == 'repasses':
-            process_pending_repasse_jobs_once()
+            process_pending_repasse_jobs_once(
+                auto_enqueue_if_empty=True,
+                requested_by='system_status',
+            )
         elif action == 'contratos':
             run_worker_contracts()
         elif action == 'auth':
