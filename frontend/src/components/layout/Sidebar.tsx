@@ -150,6 +150,14 @@ const menuItems: MenuItem[] = [
     pageKey: "propostas",
   },
   {
+    href: "/repasses",
+    label: "Fechamento de Repasses",
+    icon: FileText,
+    group: "FINANCEIRO",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "repasses",
+  },
+  {
     href: "/metas/dashboard",
     label: "Painel de Metas",
     icon: Target,
