@@ -184,3 +184,15 @@ Status atual:
 - Profissionais sem produção aparecem como `NO_DATA`.
 - Job manual pode ser acompanhado do início ao fim no frontend.
 - PDF individual e em lote gerado a partir do banco com layout definido.
+
+## 13. Atualização Sprint 3 (2026-03-06)
+- Endpoint novo: `GET /api/admin/repasses/professionals`
+- Filtros: `periodRef`, `search`, `status`, `page`, `pageSize`
+- Resultado: lista paginada por profissional com status (`SUCCESS`, `NO_DATA`, `ERROR`, `NOT_PROCESSED`), quantidade de linhas, total de repasse, ultimo processamento e erro.
+- Estatisticas agregadas no retorno para leitura rapida: total de profissionais, distribuicao por status, linhas totais e total financeiro.
+- Frontend `/repasses` refatorado para tela condensada e legivel para alto volume:
+  - tabela principal de profissionais com alta densidade (scroll interno + paginacao)
+  - filtros operacionais no topo (periodo, busca, status, page size)
+  - cards de resumo operacional
+  - historico de jobs de scraping e PDF em componentes separados
+- A rota continua fora da sidebar enquanto o modulo nao for liberado oficialmente.

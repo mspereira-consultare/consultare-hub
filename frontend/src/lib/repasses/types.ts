@@ -42,3 +42,46 @@ export type RepasseJobListFilters = {
   periodRef?: string;
   limit?: number;
 };
+
+export type RepasseProfessionalStatusFilter =
+  | 'all'
+  | 'success'
+  | 'no_data'
+  | 'error'
+  | 'not_processed';
+
+export type RepasseProfessionalListFilters = {
+  periodRef?: string;
+  search?: string;
+  status?: RepasseProfessionalStatusFilter;
+  page?: number;
+  pageSize?: number;
+};
+
+export type RepasseProfessionalSummary = {
+  professionalId: string;
+  professionalName: string;
+  status: 'SUCCESS' | 'NO_DATA' | 'ERROR' | 'NOT_PROCESSED';
+  rowsCount: number;
+  totalValue: number;
+  lastProcessedAt: string | null;
+  errorMessage: string | null;
+};
+
+export type RepasseProfessionalStats = {
+  totalProfessionals: number;
+  success: number;
+  noData: number;
+  error: number;
+  notProcessed: number;
+  totalRows: number;
+  totalValue: number;
+};
+
+export type RepasseProfessionalListResult = {
+  items: RepasseProfessionalSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  stats: RepasseProfessionalStats;
+};

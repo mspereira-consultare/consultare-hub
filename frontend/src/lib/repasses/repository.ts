@@ -2,6 +2,9 @@ import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import type {
   RepasseJobListFilters,
+  RepasseProfessionalListFilters,
+  RepasseProfessionalListResult,
+  RepasseProfessionalSummary,
   RepassePdfJob,
   RepassePdfJobInput,
   RepassePdfScope,
@@ -56,6 +59,12 @@ const normalizeLimit = (value: unknown, fallback = 20) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
   return Math.max(1, Math.min(200, Math.floor(n)));
+};
+
+const normalizePage = (value: unknown) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.max(1, Math.floor(n));
 };
 
 const normalizeScope = (value: unknown): RepassePdfScope => {
@@ -128,6 +137,32 @@ const mapPdfJob = (row: any): RepassePdfJob => ({
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
+
+const normalizeProfessionalStatusFilter = (
+  value: unknown
+): RepasseProfessionalListFilters['status'] => {
+  const raw = clean(value).toLowerCase();
+  if (
+    raw === 'success' ||
+    raw === 'no_data' ||
+    raw === 'error' ||
+    raw === 'not_processed' ||
+    raw === 'all'
+  ) {
+    return raw;
+  }
+  return 'all';
+};
+
+const mapProfessionalStatus = (
+  rowStatus: string | null | undefined
+): RepasseProfessionalSummary['status'] => {
+  const normalized = clean(rowStatus).toUpperCase();
+  if (normalized === 'SUCCESS') return 'SUCCESS';
+  if (normalized === 'NO_DATA') return 'NO_DATA';
+  if (normalized === 'ERROR') return 'ERROR';
+  return 'NOT_PROCESSED';
+};
 
 export const ensureRepasseTables = async (db: DbInterface) => {
   if (repasseTablesEnsured) return;
@@ -406,5 +441,167 @@ export const listRepassePdfJobs = async (
   return {
     items: rows.map(mapPdfJob),
     total: readCount(countRows[0]),
+  };
+};
+
+export const listRepasseProfessionalSummaries = async (
+  db: DbInterface,
+  filters: RepasseProfessionalListFilters = {}
+): Promise<RepasseProfessionalListResult> => {
+  await ensureRepasseTables(db);
+
+  const periodRef = normalizePeriodRef(filters.periodRef);
+  const search = clean(filters.search);
+  const statusFilter = normalizeProfessionalStatusFilter(filters.status);
+  const page = normalizePage(filters.page);
+  const pageSize = normalizeLimit(filters.pageSize, 50);
+
+  const where: string[] = ['is_active = 1'];
+  const whereParams: any[] = [];
+  if (search) {
+    where.push('UPPER(name) LIKE ?');
+    whereParams.push(`%${search.toUpperCase()}%`);
+  }
+
+  const professionals = await db.query(
+    `
+    SELECT id, name
+    FROM professionals
+    WHERE ${where.join(' AND ')}
+    ORDER BY name ASC
+    `,
+    whereParams
+  );
+
+  const professionalIds = professionals
+    .map((row) => clean(row.id))
+    .filter(Boolean);
+
+  const aggregateByProfessional = new Map<
+    string,
+    { rowsCount: number; totalValue: number }
+  >();
+  const latestByProfessional = new Map<
+    string,
+    { status: RepasseProfessionalSummary['status']; errorMessage: string | null; updatedAt: string | null }
+  >();
+
+  if (professionalIds.length > 0) {
+    const placeholders = professionalIds.map(() => '?').join(', ');
+
+    const aggregateRows = await db.query(
+      `
+      SELECT professional_id, COUNT(*) as rows_count, COALESCE(SUM(repasse_value), 0) as total_value
+      FROM feegow_repasse_consolidado
+      WHERE period_ref = ?
+        AND is_active = 1
+        AND professional_id IN (${placeholders})
+      GROUP BY professional_id
+      `,
+      [periodRef, ...professionalIds]
+    );
+
+    for (const row of aggregateRows) {
+      const id = clean(row.professional_id);
+      if (!id) continue;
+      aggregateByProfessional.set(id, {
+        rowsCount: Number(row.rows_count) || 0,
+        totalValue: Number(row.total_value) || 0,
+      });
+    }
+
+    const latestRows = await db.query(
+      `
+      SELECT
+        i.professional_id,
+        i.status,
+        i.error_message,
+        i.updated_at,
+        j.created_at as job_created_at
+      FROM repasse_sync_job_items i
+      INNER JOIN repasse_sync_jobs j ON j.id = i.job_id
+      WHERE j.period_ref = ?
+        AND i.professional_id IN (${placeholders})
+      ORDER BY j.created_at DESC, i.updated_at DESC
+      `,
+      [periodRef, ...professionalIds]
+    );
+
+    for (const row of latestRows) {
+      const id = clean(row.professional_id);
+      if (!id || latestByProfessional.has(id)) continue;
+      latestByProfessional.set(id, {
+        status: mapProfessionalStatus(row.status),
+        errorMessage: clean(row.error_message) || null,
+        updatedAt: clean(row.updated_at) || null,
+      });
+    }
+  }
+
+  const allItems: RepasseProfessionalSummary[] = professionals.map((row) => {
+    const professionalId = clean(row.id);
+    const professionalName = clean(row.name);
+    const aggregate = aggregateByProfessional.get(professionalId) || {
+      rowsCount: 0,
+      totalValue: 0,
+    };
+    const latest = latestByProfessional.get(professionalId);
+
+    const status = latest?.status
+      ? latest.status
+      : aggregate.rowsCount > 0
+        ? 'SUCCESS'
+        : 'NOT_PROCESSED';
+
+    return {
+      professionalId,
+      professionalName,
+      status,
+      rowsCount: aggregate.rowsCount,
+      totalValue: aggregate.totalValue,
+      lastProcessedAt: latest?.updatedAt || null,
+      errorMessage: status === 'ERROR' ? latest?.errorMessage || null : null,
+    };
+  });
+
+  const stats = allItems.reduce(
+    (acc, item) => {
+      acc.totalRows += item.rowsCount;
+      acc.totalValue += item.totalValue;
+
+      if (item.status === 'SUCCESS') acc.success += 1;
+      else if (item.status === 'NO_DATA') acc.noData += 1;
+      else if (item.status === 'ERROR') acc.error += 1;
+      else acc.notProcessed += 1;
+
+      return acc;
+    },
+    {
+      totalProfessionals: allItems.length,
+      success: 0,
+      noData: 0,
+      error: 0,
+      notProcessed: 0,
+      totalRows: 0,
+      totalValue: 0,
+    }
+  );
+
+  const filteredItems =
+    statusFilter === 'all'
+      ? allItems
+      : allItems.filter((item) => item.status.toLowerCase() === statusFilter);
+
+  const total = filteredItems.length;
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
+  const items = filteredItems.slice(start, end);
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    stats,
   };
 };

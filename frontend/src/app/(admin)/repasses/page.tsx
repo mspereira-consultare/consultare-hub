@@ -1,10 +1,12 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
-import { AlertCircle, FileText, Loader2, RefreshCw } from "lucide-react";
+import { AlertCircle, FileText, Loader2, RefreshCw, Search } from "lucide-react";
 import { hasPermission } from "@/lib/permissions";
 import { isRepassesModuleEnabledClient } from "@/lib/repasses/feature";
+import { JobHistoryTable } from "./components/JobHistoryTable";
+import { ProfessionalSummaryTable } from "./components/ProfessionalSummaryTable";
 
 type SyncJob = {
   id: string;
@@ -29,6 +31,28 @@ type PdfJob = {
   error: string | null;
 };
 
+type ProfessionalStatusFilter = "all" | "success" | "no_data" | "error" | "not_processed";
+
+type ProfessionalSummary = {
+  professionalId: string;
+  professionalName: string;
+  status: "SUCCESS" | "NO_DATA" | "ERROR" | "NOT_PROCESSED";
+  rowsCount: number;
+  totalValue: number;
+  lastProcessedAt: string | null;
+  errorMessage: string | null;
+};
+
+type ProfessionalStats = {
+  totalProfessionals: number;
+  success: number;
+  noData: number;
+  error: number;
+  notProcessed: number;
+  totalRows: number;
+  totalValue: number;
+};
+
 const previousMonthRef = () => {
   const now = new Date();
   const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -37,21 +61,23 @@ const previousMonthRef = () => {
   return `${y}-${m}`;
 };
 
-const toBrDate = (value: string | null | undefined) => {
-  if (!value) return "-";
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return value;
-  return dt.toLocaleString("pt-BR");
-};
+const formatCurrency = (value: number) =>
+  Number(value || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 
-const statusChip = (status: string) => {
-  const normalized = String(status || "").toUpperCase();
-  if (normalized === "COMPLETED") return "bg-emerald-100 text-emerald-700";
-  if (normalized === "RUNNING") return "bg-sky-100 text-sky-700";
-  if (normalized === "FAILED") return "bg-rose-100 text-rose-700";
-  if (normalized === "PARTIAL") return "bg-amber-100 text-amber-700";
-  return "bg-slate-100 text-slate-700";
-};
+const statusOptions: Array<{ value: ProfessionalStatusFilter; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "success", label: "Com dados" },
+  { value: "no_data", label: "Sem produção" },
+  { value: "error", label: "Com erro" },
+  { value: "not_processed", label: "Não processados" },
+];
+
+const pageSizeOptions = [25, 50, 100, 200];
 
 export default function RepassesPage() {
   const moduleEnabled = isRepassesModuleEnabledClient();
@@ -63,9 +89,29 @@ export default function RepassesPage() {
   const canEdit = hasPermission((session?.user as any)?.permissions, "repasses", "edit", role);
 
   const [periodRef, setPeriodRef] = useState(previousMonthRef());
+  const [searchDraft, setSearchDraft] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<ProfessionalStatusFilter>("all");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(100);
+
   const [syncJobs, setSyncJobs] = useState<SyncJob[]>([]);
   const [pdfJobs, setPdfJobs] = useState<PdfJob[]>([]);
-  const [loading, setLoading] = useState(false);
+
+  const [items, setItems] = useState<ProfessionalSummary[]>([]);
+  const [total, setTotal] = useState(0);
+  const [stats, setStats] = useState<ProfessionalStats>({
+    totalProfessionals: 0,
+    success: 0,
+    noData: 0,
+    error: 0,
+    notProcessed: 0,
+    totalRows: 0,
+    totalValue: 0,
+  });
+
+  const [loadingJobs, setLoadingJobs] = useState(false);
+  const [loadingProfessionals, setLoadingProfessionals] = useState(false);
   const [creatingSync, setCreatingSync] = useState(false);
   const [creatingPdf, setCreatingPdf] = useState(false);
   const [error, setError] = useState("");
@@ -77,10 +123,9 @@ export default function RepassesPage() {
     return `${m}/${y}`;
   }, [periodRef]);
 
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     if (!canView) return;
-    setLoading(true);
-    setError("");
+    setLoadingJobs(true);
     try {
       const qs = new URLSearchParams({ periodRef, limit: "30" }).toString();
       const [syncRes, pdfRes] = await Promise.all([
@@ -96,12 +141,54 @@ export default function RepassesPage() {
 
       setSyncJobs(Array.isArray(syncData?.data?.items) ? syncData.data.items : []);
       setPdfJobs(Array.isArray(pdfData?.data?.items) ? pdfData.data.items : []);
-    } catch (e: any) {
-      setError(e?.message || "Erro ao carregar jobs de repasse.");
     } finally {
-      setLoading(false);
+      setLoadingJobs(false);
     }
-  };
+  }, [canView, periodRef]);
+
+  const fetchProfessionals = useCallback(async () => {
+    if (!canView) return;
+    setLoadingProfessionals(true);
+    try {
+      const qs = new URLSearchParams({
+        periodRef,
+        search,
+        status: statusFilter,
+        page: String(page),
+        pageSize: String(pageSize),
+      }).toString();
+
+      const res = await fetch(`/api/admin/repasses/professionals?${qs}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Falha ao carregar resumo por profissional.");
+
+      setItems(Array.isArray(data?.data?.items) ? data.data.items : []);
+      setTotal(Number(data?.data?.total) || 0);
+      setStats(
+        data?.data?.stats || {
+          totalProfessionals: 0,
+          success: 0,
+          noData: 0,
+          error: 0,
+          notProcessed: 0,
+          totalRows: 0,
+          totalValue: 0,
+        }
+      );
+    } finally {
+      setLoadingProfessionals(false);
+    }
+  }, [canView, page, pageSize, periodRef, search, statusFilter]);
+
+  const refreshAll = useCallback(async () => {
+    setError("");
+    setNotice("");
+    try {
+      await Promise.all([fetchJobs(), fetchProfessionals()]);
+    } catch (e: any) {
+      setError(e?.message || "Erro ao atualizar dados de repasse.");
+    }
+  }, [fetchJobs, fetchProfessionals]);
 
   const createSyncJob = async () => {
     if (!canRefresh) return;
@@ -148,14 +235,14 @@ export default function RepassesPage() {
   };
 
   useEffect(() => {
-    fetchJobs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [periodRef, canView]);
+    if (!moduleEnabled || !canView) return;
+    refreshAll();
+  }, [moduleEnabled, canView, refreshAll]);
 
   if (!moduleEnabled) {
     return (
-      <div className="p-8 max-w-[1400px] mx-auto">
-        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-slate-700 text-sm">
+      <div className="mx-auto max-w-[1600px] p-8">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
           Módulo de repasses em desenvolvimento. Acesso temporariamente desabilitado.
         </div>
       </div>
@@ -164,8 +251,8 @@ export default function RepassesPage() {
 
   if (!canView) {
     return (
-      <div className="p-8 max-w-[1400px] mx-auto">
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 text-sm">
+      <div className="mx-auto max-w-[1600px] p-8">
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Sem permissão para visualizar este módulo.
         </div>
       </div>
@@ -173,153 +260,195 @@ export default function RepassesPage() {
   }
 
   return (
-    <div className="p-8 max-w-[1600px] mx-auto space-y-4">
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Fechamento de Repasses</h1>
-          <p className="text-slate-500 text-sm">
-            Sprint 1: base de jobs manuais, schema e monitoramento inicial do processamento.
-          </p>
+    <div className="mx-auto max-w-[1800px] space-y-4 p-6">
+      <header className="rounded-xl border bg-white p-4">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-slate-800">Fechamento de repasses</h1>
+            <p className="text-xs text-slate-500">
+              Visão operacional condensada por profissional para o período {periodLabel}.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[150px]">
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Período
+              </label>
+              <input
+                type="month"
+                value={periodRef}
+                onChange={(e) => {
+                  setPeriodRef(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="min-w-[220px]">
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Profissional
+              </label>
+              <div className="flex items-center gap-2 rounded-lg border bg-white px-2 py-1.5">
+                <Search size={14} className="text-slate-400" />
+                <input
+                  value={searchDraft}
+                  onChange={(e) => setSearchDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      setPage(1);
+                      setSearch(searchDraft.trim());
+                    }
+                  }}
+                  placeholder="Buscar por nome"
+                  className="w-full border-0 bg-transparent text-sm outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="min-w-[170px]">
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Status
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value as ProfessionalStatusFilter);
+                  setPage(1);
+                }}
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+              >
+                {statusOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="min-w-[120px]">
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Linhas
+              </label>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value) || 100);
+                  setPage(1);
+                }}
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+              >
+                {pageSizeOptions.map((n) => (
+                  <option key={n} value={n}>{n}/página</option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setPage(1);
+                setSearch(searchDraft.trim());
+              }}
+              className="rounded-lg border bg-white px-3 py-2 text-sm"
+            >
+              Aplicar
+            </button>
+
+            <button
+              type="button"
+              onClick={refreshAll}
+              className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm"
+            >
+              <RefreshCw size={14} />
+              Atualizar
+            </button>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">Período</label>
-          <input
-            type="month"
-            value={periodRef}
-            onChange={(e) => setPeriodRef(e.target.value)}
-            className="px-3 py-2 border rounded-lg bg-white text-sm"
-          />
+
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
           <button
             type="button"
-            onClick={fetchJobs}
-            className="px-3 py-2 border rounded-lg bg-white text-sm inline-flex items-center gap-2"
+            onClick={createSyncJob}
+            disabled={!canRefresh || creatingSync}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
-            <RefreshCw size={14} />
-            Atualizar
+            {creatingSync ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            Solicitar scraping
           </button>
+
+          <button
+            type="button"
+            onClick={createPdfJob}
+            disabled={!canEdit || creatingPdf}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#229A8A] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {creatingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
+            Solicitar PDFs (lote)
+          </button>
+
+          <span className="text-xs text-slate-500">Período operacional: {periodLabel}</span>
         </div>
-      </div>
+      </header>
 
       {error && (
-        <div className="px-3 py-2 border border-rose-200 bg-rose-50 rounded-lg text-rose-700 text-sm inline-flex items-center gap-2">
+        <div className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           <AlertCircle size={14} />
           {error}
         </div>
       )}
 
       {notice && (
-        <div className="px-3 py-2 border border-emerald-200 bg-emerald-50 rounded-lg text-emerald-700 text-sm">
+        <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
           {notice}
         </div>
       )}
 
-      <div className="bg-white border rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div className="text-sm text-slate-600">
-          Executar operações manuais para o período <span className="font-semibold">{periodLabel}</span>.
+      <section className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
+        <div className="rounded-lg border bg-white px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Profissionais</p>
+          <p className="text-lg font-bold text-slate-800">{stats.totalProfessionals}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={createSyncJob}
-            disabled={!canRefresh || creatingSync}
-            className="px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm disabled:opacity-50 inline-flex items-center gap-2"
-          >
-            {creatingSync ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Solicitar scraping
-          </button>
-          <button
-            type="button"
-            onClick={createPdfJob}
-            disabled={!canEdit || creatingPdf}
-            className="px-3 py-2 rounded-lg bg-[#229A8A] text-white text-sm disabled:opacity-50 inline-flex items-center gap-2"
-          >
-            {creatingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-            Solicitar PDFs em lote
-          </button>
+        <div className="rounded-lg border bg-white px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Com dados</p>
+          <p className="text-lg font-bold text-emerald-700">{stats.success}</p>
         </div>
-      </div>
+        <div className="rounded-lg border bg-white px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Sem produção</p>
+          <p className="text-lg font-bold text-violet-700">{stats.noData}</p>
+        </div>
+        <div className="rounded-lg border bg-white px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Com erro</p>
+          <p className="text-lg font-bold text-rose-700">{stats.error}</p>
+        </div>
+        <div className="rounded-lg border bg-white px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Não processados</p>
+          <p className="text-lg font-bold text-slate-700">{stats.notProcessed}</p>
+        </div>
+        <div className="rounded-lg border bg-white px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Linhas totais</p>
+          <p className="text-lg font-bold text-slate-800">{stats.totalRows}</p>
+        </div>
+        <div className="rounded-lg border bg-white px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Total repasse</p>
+          <p className="text-base font-bold text-slate-800">{formatCurrency(stats.totalValue)}</p>
+        </div>
+      </section>
 
-      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <section className="bg-white border rounded-xl overflow-hidden">
-          <header className="px-4 py-3 border-b bg-slate-50">
-            <h2 className="text-sm font-semibold text-slate-700">Jobs de Scraping</h2>
-          </header>
-          <div className="overflow-auto max-h-[420px]">
-            <table className="w-full text-sm">
-              <thead className="text-xs uppercase text-slate-500 bg-white">
-                <tr>
-                  <th className="px-3 py-2 text-left">Status</th>
-                  <th className="px-3 py-2 text-left">Período</th>
-                  <th className="px-3 py-2 text-left">Solicitado por</th>
-                  <th className="px-3 py-2 text-left">Criado em</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td className="px-3 py-4 text-center text-slate-500" colSpan={4}>
-                      <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Carregando...</span>
-                    </td>
-                  </tr>
-                ) : syncJobs.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-4 text-center text-slate-500" colSpan={4}>Nenhum job encontrado.</td>
-                  </tr>
-                ) : syncJobs.map((job) => (
-                  <tr key={job.id} className="border-t">
-                    <td className="px-3 py-2">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusChip(job.status)}`}>{job.status}</span>
-                    </td>
-                    <td className="px-3 py-2">{job.periodRef}</td>
-                    <td className="px-3 py-2">{job.requestedBy}</td>
-                    <td className="px-3 py-2">{toBrDate(job.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+      <ProfessionalSummaryTable
+        items={items}
+        loading={loadingProfessionals}
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        onPageChange={setPage}
+      />
 
-        <section className="bg-white border rounded-xl overflow-hidden">
-          <header className="px-4 py-3 border-b bg-slate-50">
-            <h2 className="text-sm font-semibold text-slate-700">Jobs de PDF</h2>
-          </header>
-          <div className="overflow-auto max-h-[420px]">
-            <table className="w-full text-sm">
-              <thead className="text-xs uppercase text-slate-500 bg-white">
-                <tr>
-                  <th className="px-3 py-2 text-left">Status</th>
-                  <th className="px-3 py-2 text-left">Escopo</th>
-                  <th className="px-3 py-2 text-left">Período</th>
-                  <th className="px-3 py-2 text-left">Criado em</th>
-                </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td className="px-3 py-4 text-center text-slate-500" colSpan={4}>
-                      <span className="inline-flex items-center gap-2"><Loader2 size={14} className="animate-spin" />Carregando...</span>
-                    </td>
-                  </tr>
-                ) : pdfJobs.length === 0 ? (
-                  <tr>
-                    <td className="px-3 py-4 text-center text-slate-500" colSpan={4}>Nenhum job encontrado.</td>
-                  </tr>
-                ) : pdfJobs.map((job) => (
-                  <tr key={job.id} className="border-t">
-                    <td className="px-3 py-2">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${statusChip(job.status)}`}>{job.status}</span>
-                    </td>
-                    <td className="px-3 py-2">{job.scope}</td>
-                    <td className="px-3 py-2">{job.periodRef}</td>
-                    <td className="px-3 py-2">{toBrDate(job.createdAt)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <JobHistoryTable title="Histórico de jobs de scraping" jobs={syncJobs} loading={loadingJobs} mode="sync" />
+        <JobHistoryTable title="Histórico de jobs de PDF" jobs={pdfJobs} loading={loadingJobs} mode="pdf" />
+      </section>
     </div>
   );
 }
