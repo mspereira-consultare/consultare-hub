@@ -43,6 +43,62 @@ def _now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _is_debug_enabled() -> bool:
+    return str(os.getenv("REPASSE_DEBUG", "0")).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _debug(msg: str):
+    print(f"[REPASSE_DEBUG] {msg}")
+
+
+def _debug_dump_page(page, stage: str):
+    if not _is_debug_enabled():
+        return
+    try:
+        base = os.getenv("REPASSE_DEBUG_DIR") or os.path.join(os.path.dirname(__file__), "_debug_repasse")
+        os.makedirs(base, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_stage = re.sub(r"[^a-zA-Z0-9_-]+", "_", stage)
+        html_path = os.path.join(base, f"{stamp}_{safe_stage}.html")
+        png_path = os.path.join(base, f"{stamp}_{safe_stage}.png")
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(page.content())
+        page.screenshot(path=png_path, full_page=True)
+        _debug(f"dump salvo: {html_path} | {png_path}")
+    except Exception as e:
+        _debug(f"falha ao salvar dump de pagina ({stage}): {e}")
+
+
+def _debug_read_filter_state(page, stage: str):
+    if not _is_debug_enabled():
+        return
+    try:
+        state = page.evaluate(
+            """
+            () => {
+              const buttons = Array.from(document.querySelectorAll('button.multiselect.dropdown-toggle')).map((b, idx) => ({
+                index: idx,
+                text: String(b.textContent || '').replace(/\\s+/g, ' ').trim(),
+                title: String(b.getAttribute('title') || '').replace(/\\s+/g, ' ').trim()
+              }));
+              const de = (document.querySelector('#De') || {}).value || '';
+              const ate = (document.querySelector('#Ate') || {}).value || '';
+              const acc = document.querySelector('select#AccountID');
+              const accValue = acc ? String(acc.value || '') : '';
+              const accSelected = acc && acc.options && acc.selectedIndex >= 0
+                ? String(acc.options[acc.selectedIndex].textContent || '').replace(/\\s+/g, ' ').trim()
+                : '';
+              return { buttons, de, ate, accValue, accSelected };
+            }
+            """
+        )
+        _debug(f"{stage} | De={state.get('de')} Ate={state.get('ate')} AccountID={state.get('accValue')}::{state.get('accSelected')}")
+        for btn in state.get("buttons", []):
+            _debug(f"{stage} | multiselect[{btn.get('index')}] text='{btn.get('text')}' title='{btn.get('title')}'")
+    except Exception as e:
+        _debug(f"falha ao ler estado de filtros ({stage}): {e}")
+
+
 def _normalize_text(value: str) -> str:
     raw = str(value or "").strip().upper()
     raw = unicodedata.normalize("NFD", raw)
@@ -115,6 +171,48 @@ def _parse_date(value: str) -> str:
     return f"{yyyy}-{mm}-{dd}"
 
 
+def _parse_table_rows(headers: List[str], rows_matrix: List[List[str]]) -> List[Dict]:
+    normalized_headers = [_normalize_text(h) for h in headers]
+
+    def _idx_for(candidates: List[str]) -> int:
+        for idx, h in enumerate(normalized_headers):
+            for c in candidates:
+                if c in h:
+                    return idx
+        return -1
+
+    idx_data = _idx_for(["DATA EXEC"])
+    idx_paciente = _idx_for(["PACIENTE"])
+    idx_descricao = _idx_for(["DESCRICAO"])
+    idx_funcao = _idx_for(["FUNCAO"])
+    idx_convenio = _idx_for(["CONVENIO"])
+    idx_repasse = _idx_for(["REPASSE"])
+
+    if min(idx_data, idx_paciente, idx_descricao, idx_funcao, idx_convenio, idx_repasse) < 0:
+        raise RuntimeError(f"Colunas esperadas nao encontradas na tabela: {headers}")
+
+    out: List[Dict] = []
+    for cells in rows_matrix:
+        def _cell(i: int) -> str:
+            if i < 0 or i >= len(cells):
+                return ""
+            return re.sub(r"\s+", " ", str(cells[i] or "")).strip()
+
+        out.append(
+            {
+                "data_exec_raw": _cell(idx_data),
+                "data_exec": _parse_date(_cell(idx_data)),
+                "paciente": _cell(idx_paciente),
+                "descricao": _cell(idx_descricao),
+                "funcao": _cell(idx_funcao),
+                "convenio": _cell(idx_convenio),
+                "repasse_raw": _cell(idx_repasse),
+                "repasse_value": _parse_currency(_cell(idx_repasse)),
+            }
+        )
+    return out
+
+
 def _period_to_range(period_ref: str) -> Tuple[str, str]:
     m = re.match(r"^(\d{4})-(\d{2})$", str(period_ref or "").strip())
     if not m:
@@ -149,58 +247,86 @@ def _normalize_period_ref(period_ref: Optional[str]) -> str:
 
 
 def _extract_table_rows(page) -> List[Dict]:
+    has_no_data = page.evaluate(
+        """
+        () => {
+          const txt = ((document.body && document.body.innerText) || '').replace(/\\s+/g, ' ');
+          return /Nenhum repasse consolidado foi encontrado/i.test(txt);
+        }
+        """
+    )
+    if has_no_data:
+        return []
+
+    dt_data = page.evaluate(
+        """
+        () => {
+          const table = document.querySelector('#datatableRepasses');
+          if (!table) return null;
+          const headers = Array.from(table.querySelectorAll('thead th')).map(
+            th => String(th.textContent || '').replace(/\\s+/g, ' ').trim()
+          );
+          if (!(window.$ && window.$.fn && window.$.fn.dataTable)) {
+            return { headers, rows: null };
+          }
+          try {
+            const dt = window.$('#datatableRepasses').DataTable();
+            if (!dt) return { headers, rows: null };
+            const rows = dt.rows({ search: 'applied' }).data().toArray().map((row) => {
+              const arr = Array.isArray(row) ? row : Object.values(row || {});
+              return arr.map((cell) => {
+                const div = document.createElement('div');
+                div.innerHTML = String(cell ?? '');
+                return String(div.textContent || '').replace(/\\s+/g, ' ').trim();
+              });
+            });
+            return { headers, rows };
+          } catch (e) {
+            return { headers, rows: null };
+          }
+        }
+        """
+    )
+
+    if dt_data and isinstance(dt_data, dict):
+        headers = dt_data.get("headers") or []
+        rows_matrix = dt_data.get("rows")
+        if headers and rows_matrix is not None:
+            if not rows_matrix:
+                return []
+            return _parse_table_rows(headers, rows_matrix)
+
     content = page.content()
     soup = BeautifulSoup(content, "html.parser")
     table = soup.find("table", {"id": "datatableRepasses"})
     if not table:
-        raise RuntimeError("Tabela datatableRepasses nao encontrada.")
+        table = soup.select_one("table[id*='datatableRepasses'], table[id*='datatable']")
+    if not table:
+        for candidate in soup.find_all("table"):
+            th_text = " ".join(
+                re.sub(r"\s+", " ", th.get_text(" ", strip=True))
+                for th in candidate.select("thead th")
+            )
+            norm = _normalize_text(th_text)
+            if "DATA EXEC" in norm and "PACIENTE" in norm and "REPASSE" in norm:
+                table = candidate
+                break
+    if not table:
+        raise RuntimeError("Tabela de repasses nao encontrada apos busca.")
 
-    header_cells = table.select("thead th")
-    headers = [re.sub(r"\s+", " ", th.get_text(" ", strip=True)) for th in header_cells]
-    normalized_headers = [_normalize_text(h) for h in headers]
-
-    def _idx_for(candidates: List[str]) -> int:
-        for idx, h in enumerate(normalized_headers):
-            for c in candidates:
-                if c in h:
-                    return idx
-        return -1
-
-    idx_data = _idx_for(["DATA EXEC"])
-    idx_paciente = _idx_for(["PACIENTE"])
-    idx_descricao = _idx_for(["DESCRICAO"])
-    idx_funcao = _idx_for(["FUNCAO"])
-    idx_convenio = _idx_for(["CONVENIO"])
-    idx_repasse = _idx_for(["REPASSE"])
-
-    if min(idx_data, idx_paciente, idx_descricao, idx_funcao, idx_convenio, idx_repasse) < 0:
-        raise RuntimeError(f"Colunas esperadas nao encontradas na tabela: {headers}")
-
-    parsed_rows: List[Dict] = []
+    headers = [re.sub(r"\s+", " ", th.get_text(" ", strip=True)) for th in table.select("thead th")]
+    rows_matrix: List[List[str]] = []
     for tr in table.select("tbody tr"):
         if tr.select_one("td.dataTables_empty"):
             continue
         tds = tr.find_all("td")
         if not tds:
             continue
-        def _cell(i: int) -> str:
-            if i < 0 or i >= len(tds):
-                return ""
-            return re.sub(r"\s+", " ", tds[i].get_text(" ", strip=True)).strip()
+        rows_matrix.append([re.sub(r"\s+", " ", td.get_text(" ", strip=True)).strip() for td in tds])
 
-        parsed_rows.append(
-            {
-                "data_exec_raw": _cell(idx_data),
-                "data_exec": _parse_date(_cell(idx_data)),
-                "paciente": _cell(idx_paciente),
-                "descricao": _cell(idx_descricao),
-                "funcao": _cell(idx_funcao),
-                "convenio": _cell(idx_convenio),
-                "repasse_raw": _cell(idx_repasse),
-                "repasse_value": _parse_currency(_cell(idx_repasse)),
-            }
-        )
-    return parsed_rows
+    if not rows_matrix:
+        return []
+    return _parse_table_rows(headers, rows_matrix)
 
 
 def _ensure_repasse_tables(db: "DatabaseManager"):
@@ -341,6 +467,7 @@ def enqueue_repasse_job(
     period_ref: Optional[str] = None,
     requested_by: str = "manual",
     db: Optional["DatabaseManager"] = None,
+    initial_status: str = STATUS_PENDING,
 ) -> Dict:
     own_db = db is None
     db_ref = db or DatabaseManager()
@@ -355,9 +482,17 @@ def enqueue_repasse_job(
         """
         INSERT INTO repasse_sync_jobs (
           id, period_ref, status, requested_by, started_at, finished_at, error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, NULL, NULL, NULL, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?)
         """,
-        (job_id, normalized_period, STATUS_PENDING, requested, now, now),
+        (
+            job_id,
+            normalized_period,
+            str(initial_status or STATUS_PENDING),
+            requested,
+            now if str(initial_status or "").upper() == STATUS_RUNNING else None,
+            now,
+            now,
+        ),
     )
 
     if own_db:
@@ -532,7 +667,7 @@ def _build_professional_option_map(page) -> Dict[str, str]:
         text = str(item.get("text") or "").strip()
         if not value:
             continue
-        name = text.split("»")[0].strip()
+        name = re.split(r"\s*(?:Â»|»)\s*", text, maxsplit=1)[0].strip()
         if not name:
             continue
         mapping[_normalize_professional_label(name)] = value
@@ -561,15 +696,353 @@ def _select_professional(page, option_value: str):
         raise RuntimeError("Nao foi possivel selecionar o profissional no filtro.")
 
 
+def _visible_multiselect_menu(page):
+    menus = page.locator("ul.multiselect-container.dropdown-menu")
+    total = menus.count()
+    for i in range(total):
+        menu = menus.nth(i)
+        try:
+            if menu.is_visible():
+                return menu
+        except Exception:
+            continue
+    return None
+
+
+def _force_select_all_multiselects_via_js(page):
+    return page.evaluate(
+        """
+        () => {
+          const out = [];
+          const selects = Array.from(document.querySelectorAll('select[multiple]'));
+          for (const sel of selects) {
+            const options = Array.from(sel.options || []);
+            const enabled = options.filter(o => !o.disabled);
+            const totalEnabled = enabled.length;
+            const before = enabled.filter(o => o.selected).length;
+
+            for (const opt of enabled) opt.selected = true;
+            sel.dispatchEvent(new Event('input', { bubbles: true }));
+            sel.dispatchEvent(new Event('change', { bubbles: true }));
+
+            try {
+              if (window.$ && typeof window.$ === 'function') {
+                const $sel = window.$(sel);
+                if ($sel && typeof $sel.multiselect === 'function') {
+                  try { $sel.multiselect('selectAll', false); } catch (e) {}
+                  try { $sel.multiselect('refresh'); } catch (e) {}
+                  try { $sel.multiselect('updateButtonText'); } catch (e) {}
+                }
+                try { $sel.trigger('change'); } catch (e) {}
+              }
+            } catch (e) {}
+
+            const after = enabled.filter(o => o.selected).length;
+            const sample = enabled.slice(0, 4).map(o => String(o.textContent || '').trim());
+            out.push({
+              id: sel.id || '',
+              name: sel.name || '',
+              before,
+              after,
+              total: totalEnabled,
+              sample
+            });
+          }
+          return out;
+        }
+        """
+    ) or []
+
+
+def _select_all_multiselect_filters(page):
+    _debug("aplicando multiselects (select all)...")
+    # 1) Forca no select base + plugin (mais robusto)
+    changed = _force_select_all_multiselects_via_js(page)
+
+    # 2) Reforco pela UI do dropdown (quando existir)
+    toggles = page.locator("button.multiselect.dropdown-toggle")
+    count = toggles.count()
+    if count <= 0:
+        return changed
+
+    for i in range(count):
+        btn = toggles.nth(i)
+        try:
+            title = btn.get_attribute("title") or ""
+            btn.click()
+            page.wait_for_timeout(250)
+
+            menu = _visible_multiselect_menu(page)
+            if menu is None:
+                page.keyboard.press("Escape")
+                page.wait_for_timeout(120)
+                continue
+
+            try:
+                select_all = menu.get_by_text("Selecionar tudo")
+                if select_all.count() > 0:
+                    select_all.first.click()
+                    page.wait_for_timeout(80)
+            except Exception:
+                pass
+
+            checkboxes = menu.locator("li:not(.multiselect-filter) input[type='checkbox']")
+            total_boxes = checkboxes.count()
+            selected_before = 0
+            selected_after = 0
+            for j in range(total_boxes):
+                cb = checkboxes.nth(j)
+                try:
+                    if cb.is_checked():
+                        selected_before += 1
+                    else:
+                        cb.click()
+                except Exception:
+                    continue
+
+            for j in range(total_boxes):
+                cb = checkboxes.nth(j)
+                try:
+                    if cb.is_checked():
+                        selected_after += 1
+                except Exception:
+                    continue
+
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(120)
+
+            changed.append(
+                {
+                    "index": i,
+                    "title": title.strip(),
+                    "before": selected_before,
+                    "after": selected_after,
+                    "total": total_boxes,
+                }
+            )
+        except Exception:
+            try:
+                page.keyboard.press("Escape")
+            except Exception:
+                pass
+            continue
+
+    return changed
+
+
+def _env_csv(name: str, default: str) -> List[str]:
+    raw = str(os.getenv(name, default) or "").strip()
+    if not raw:
+        return []
+    return [part.strip() for part in raw.split(",") if part.strip()]
+
+
+def _normalize_option_value(value: str) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("|") and raw.endswith("|"):
+        return raw
+    raw = raw.strip("|")
+    return f"|{raw}|"
+
+
+def _set_multiselect_values(page, select_id: str, target_values: List[str]) -> Tuple[int, int]:
+    selected_count, total_count = page.evaluate(
+        """
+        ({selectId, values}) => {
+          const sel = document.querySelector(`select#${selectId}`);
+          if (!sel) return [0, 0];
+          const target = new Set((values || []).map(v => String(v).trim()));
+          const options = Array.from(sel.options || []).filter(o => !o.disabled);
+          for (const opt of options) {
+            opt.selected = target.has(String(opt.value || '').trim());
+          }
+          sel.dispatchEvent(new Event('input', { bubbles: true }));
+          sel.dispatchEvent(new Event('change', { bubbles: true }));
+
+          if (window.$ && typeof window.$ === 'function') {
+            try {
+              const $sel = window.$(sel);
+              if ($sel && typeof $sel.multiselect === 'function') {
+                try { $sel.multiselect('refresh'); } catch (e) {}
+                try { $sel.multiselect('updateButtonText'); } catch (e) {}
+              }
+              try { $sel.trigger('change'); } catch (e) {}
+            } catch (e) {}
+          }
+          const selected = options.filter(o => o.selected).length;
+          return [selected, options.length];
+        }
+        """,
+        {"selectId": select_id, "values": target_values},
+    )
+    return int(selected_count or 0), int(total_count or 0)
+
+
+def _select_all_multiselect_values(page, select_id: str) -> Tuple[int, int]:
+    values = page.evaluate(
+        """
+        (selectId) => {
+          const sel = document.querySelector(`select#${selectId}`);
+          if (!sel) return [];
+          return Array.from(sel.options || [])
+            .filter(o => !o.disabled)
+            .map(o => String(o.value || '').trim());
+        }
+        """,
+        select_id,
+    ) or []
+    return _set_multiselect_values(page, select_id, values)
+
+
+def _apply_repasse_filters(page):
+    parts: List[str] = []
+
+    # Convenio (Forma): manter todos selecionados.
+    conv_selected, conv_total = _select_all_multiselect_values(page, "Forma")
+    parts.append(f"Convenios(Forma):{conv_selected}/{conv_total}")
+
+    # Unidades: restringir ao conjunto operacional.
+    unit_values = [_normalize_option_value(v) for v in _env_csv("REPASSE_UNIDADES_VALUES", "|0|,|12|,|2|,|3|")]
+    unit_values = [v for v in unit_values if v]
+    uni_selected, uni_total = _set_multiselect_values(page, "Unidades", unit_values)
+    parts.append(f"Unidades:{uni_selected}/{uni_total} -> {','.join(unit_values)}")
+
+    print("Filtros multiselect aplicados:", ", ".join(parts))
+    _debug("filtros multiselect aplicados: " + ", ".join(parts))
+
+
 def _fill_filters(page, date_from_br: str, date_to_br: str):
-    page.fill("#De", date_from_br)
-    page.fill("#Ate", date_to_br)
+    _debug(f"iniciando preenchimento de filtros | De={date_from_br} Ate={date_to_br}")
+    _debug_read_filter_state(page, "before_fill")
+    _apply_repasse_filters(page)
+
+    de_selector = "#De:visible" if page.locator("#De:visible").count() > 0 else "#De"
+    ate_selector = "#Ate:visible" if page.locator("#Ate:visible").count() > 0 else "#Ate"
+
+    de_input = page.locator(de_selector).first
+    ate_input = page.locator(ate_selector).first
+
+    de_input.click()
+    page.keyboard.press("Control+a")
+    page.keyboard.type(date_from_br, delay=30)
+    de_input.dispatch_event("change")
+    page.wait_for_timeout(100)
+
+    ate_input.click()
+    page.keyboard.press("Control+a")
+    page.keyboard.type(date_to_br, delay=30)
+    ate_input.dispatch_event("change")
+    page.wait_for_timeout(100)
+
+    ok = page.evaluate(
+        """
+        ({de, ate}) => {
+          const findVisible = (sel) => {
+            const all = Array.from(document.querySelectorAll(sel));
+            for (const el of all) {
+              const style = window.getComputedStyle(el);
+              const visible = style && style.display !== 'none' && style.visibility !== 'hidden';
+              if (visible) return el;
+            }
+            return all[0] || null;
+          };
+          const deEl = findVisible('#De');
+          const ateEl = findVisible('#Ate');
+          if (deEl) {
+            deEl.value = de;
+            deEl.dispatchEvent(new Event('input', { bubbles: true }));
+            deEl.dispatchEvent(new Event('change', { bubbles: true }));
+            deEl.dispatchEvent(new Event('blur', { bubbles: true }));
+          }
+          if (ateEl) {
+            ateEl.value = ate;
+            ateEl.dispatchEvent(new Event('input', { bubbles: true }));
+            ateEl.dispatchEvent(new Event('change', { bubbles: true }));
+            ateEl.dispatchEvent(new Event('blur', { bubbles: true }));
+          }
+          return {
+            okDe: !!deEl,
+            okAte: !!ateEl,
+            deValue: deEl ? String(deEl.value || '') : '',
+            ateValue: ateEl ? String(ateEl.value || '') : '',
+          };
+        }
+        """,
+        {"de": date_from_br, "ate": date_to_br},
+    )
+
+    page.locator("body").click(force=True)
+    page.wait_for_timeout(300)
+
+    if not ok or not ok.get("okDe") or not ok.get("okAte"):
+        raise RuntimeError("Nao foi possivel preencher os campos de data do relatorio.")
+
+    if str(ok.get("deValue") or "").strip() != date_from_br or str(ok.get("ateValue") or "").strip() != date_to_br:
+        raise RuntimeError(
+            f"Datas nao aplicadas corretamente. De='{ok.get('deValue')}' Ate='{ok.get('ateValue')}'"
+        )
+
+    print(f"Datas aplicadas: De={date_from_br} Ate={date_to_br}")
+    _debug_read_filter_state(page, "after_fill")
+    _debug_dump_page(page, "after_fill")
 
 
 def _click_search(page):
-    page.locator("button.btn.btn-ms.btn-primary", has_text="Buscar").first.click()
-    page.wait_for_selector("#datatableRepasses", timeout=20000)
-    page.wait_for_timeout(800)
+    clicked_locator = None
+    for selector in [
+        "button.btn.btn-ms.btn-primary:has-text('Buscar')",
+        "button.btn.btn-primary:has-text('Buscar')",
+        "button:has-text('Buscar')",
+    ]:
+        try:
+            locator = page.locator(selector)
+            if locator.count() > 0:
+                clicked_locator = locator.first
+                break
+        except Exception:
+            continue
+
+    if clicked_locator is None:
+        raise RuntimeError("Botao Buscar nao encontrado na tela de repasses.")
+
+    clicked_locator.click()
+    try:
+        page.wait_for_load_state("domcontentloaded", timeout=7000)
+    except Exception:
+        pass
+
+    try:
+        page.wait_for_function(
+            """
+            () => {
+              const txt = (document.body && document.body.innerText) ? document.body.innerText : '';
+              if (/Nenhum repasse consolidado foi encontrado/i.test(txt)) return true;
+              if (/Nenhum registro|No matching records|Sem registros/i.test(txt)) return true;
+              if (document.querySelector('#datatableRepasses')) return true;
+              if (document.querySelector("table[id*='datatableRepasses'], table[id*='datatable']")) return true;
+              return false;
+            }
+            """,
+            timeout=40000,
+        )
+
+        page.wait_for_function(
+            """
+            () => {
+              const proc = document.querySelector('#datatableRepasses_processing');
+              if (!proc) return true;
+              const style = window.getComputedStyle(proc);
+              return style.display === 'none' || style.visibility === 'hidden';
+            }
+            """,
+            timeout=15000,
+        )
+    except Exception:
+        _debug_dump_page(page, "search_timeout")
+        raise
+    page.wait_for_timeout(700)
 
 
 def _login_feegow(page):
@@ -579,22 +1052,106 @@ def _login_feegow(page):
         raise RuntimeError("FEEGOW_USER/FEEGOW_PASS nao configurados.")
 
     page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-    page.fill("input[name='User']", user)
-    page.fill("input[name='password']", password)
-    page.locator("button[name='btnLogar']").first.click()
-    page.wait_for_timeout(1200)
+    page.wait_for_timeout(800)
 
-    if "login" in page.url.lower():
+    # Se a sessão já estiver válida, evita forçar seleção de campos de login.
+    has_old_user = page.locator("input[name='User']").count() > 0
+    has_old_pass = page.locator("input[name='password']").count() > 0
+    has_email_role = False
+    try:
+        has_email_role = page.get_by_role("textbox", name="E-mail").count() > 0
+    except Exception:
+        has_email_role = False
+
+    looks_login = has_old_user or has_old_pass or has_email_role or ("login" in page.url.lower())
+    if not looks_login:
+        return
+
+    clicked = False
+    try:
+        if has_email_role:
+            page.get_by_role("textbox", name="E-mail").fill(user)
+            page.get_by_role("textbox", name="Senha").fill(password)
+            btn = page.get_by_role("button", name=re.compile(r"Entrar", re.IGNORECASE))
+            if btn.count() > 0:
+                btn.first.click()
+                clicked = True
+    except Exception:
+        pass
+
+    if not clicked:
+        if has_old_user:
+            page.fill("input[name='User']", user)
+        if has_old_pass:
+            page.fill("input[name='password']", password)
+
+        for sel in [
+            "button[name='btnLogar']",
+            "button[type='submit']",
+            "input[type='submit']",
+            "button:has-text('Entrar')",
+        ]:
+            try:
+                if page.locator(sel).count() > 0:
+                    page.locator(sel).first.click()
+                    clicked = True
+                    break
+            except Exception:
+                continue
+
+    page.wait_for_timeout(1500)
+
+    # Confirma se saiu da tela de login.
+    still_old_user = page.locator("input[name='User']").count() > 0
+    still_old_pass = page.locator("input[name='password']").count() > 0
+    still_email_role = False
+    try:
+        still_email_role = page.get_by_role("textbox", name="E-mail").count() > 0
+    except Exception:
+        still_email_role = False
+
+    if still_old_user or still_old_pass or still_email_role or ("login" in page.url.lower()):
         raise RuntimeError("Falha no login Feegow (permaneceu na tela de login).")
 
 
 def _open_repasse_screen(page):
-    page.goto(CHANGE_UNIT_URL, wait_until="domcontentloaded", timeout=60000)
+    _debug("abrindo tela de repasses...")
+    try:
+        page.goto(CHANGE_UNIT_URL, wait_until="domcontentloaded", timeout=60000)
+    except Exception:
+        pass
+
     page.goto(REPASSE_URL, wait_until="domcontentloaded", timeout=60000)
-    page.wait_for_selector("select#AccountID", timeout=20000)
-    page.wait_for_selector("#De", timeout=20000)
-    page.wait_for_selector("#Ate", timeout=20000)
-    page.wait_for_selector("#datatableRepasses", timeout=20000)
+    page.wait_for_timeout(800)
+
+    # Alguns ambientes exigem aplicar "alteraUnidade" para liberar os filtros.
+    try:
+        btn = page.locator("button[onclick*='alteraUnidade']")
+        if btn.count() > 0:
+            btn.first.click()
+            page.wait_for_timeout(500)
+    except Exception:
+        pass
+
+    try:
+        page.wait_for_selector("#De", timeout=30000)
+        page.wait_for_selector("#Ate", timeout=30000)
+        # Profissional pode estar no select real ou apenas no select2 renderizado.
+        page.wait_for_function(
+            """
+            () => {
+              return !!document.querySelector('select#AccountID')
+                || !!document.querySelector('#select2-AccountID-container');
+            }
+            """,
+            timeout=30000,
+        )
+    except Exception:
+        _debug_dump_page(page, "open_screen_timeout")
+        raise
+
+    _debug_read_filter_state(page, "open_screen")
+    _debug_dump_page(page, "open_screen")
 
 
 def _process_job(job: Dict):
@@ -619,7 +1176,7 @@ def _process_job(job: Dict):
 
     with sync_playwright() as p:
         headless = str(os.getenv("PLAYWRIGHT_HEADLESS", "1")).strip().lower() in ("1", "true", "yes")
-        browser = p.chromium.launch(headless=False)
+        browser = p.chromium.launch(headless=headless)
         context = browser.new_context()
         page = context.new_page()
 
@@ -627,6 +1184,10 @@ def _process_job(job: Dict):
             _login_feegow(page)
             _open_repasse_screen(page)
             _fill_filters(page, date_from_br, date_to_br)
+            pause_sec = int(os.getenv("REPASSE_DEBUG_PAUSE_SEC", "0") or "0")
+            if _is_debug_enabled() and pause_sec > 0:
+                _debug(f"pausa de debug apos filtros: {pause_sec}s")
+                time.sleep(pause_sec)
             option_map = _build_professional_option_map(page)
 
             for idx, (professional_id, professional_name) in enumerate(professionals, start=1):
@@ -766,20 +1327,32 @@ def process_pending_repasse_jobs_once(
 ):
     db = DatabaseManager()
     _ensure_repasse_tables(db)
+    preclaimed_job = False
     job = _get_pending_job(db)
     if not job and auto_enqueue_if_empty:
-        created_job = enqueue_repasse_job(period_ref=period_ref, requested_by=requested_by, db=db)
+        created_job = enqueue_repasse_job(
+            period_ref=period_ref,
+            requested_by=requested_by,
+            db=db,
+            initial_status=STATUS_RUNNING,
+        )
         print(
             f"📝 Job de repasse criado automaticamente | id={created_job['id']} | "
             f"periodo={created_job['period_ref']}"
         )
-        job = _get_pending_job(db)
+        job = {
+            "id": created_job["id"],
+            "period_ref": created_job["period_ref"],
+            "requested_by": created_job["requested_by"],
+        }
+        preclaimed_job = True
 
     if not job:
         db.update_heartbeat(SERVICE_NAME, "COMPLETED", "Sem jobs pendentes")
         return False
 
-    _mark_job_running(db, job["id"])
+    if not preclaimed_job:
+        _mark_job_running(db, job["id"])
     try:
         _process_job(job)
     except Exception as e:
