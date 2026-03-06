@@ -12,6 +12,8 @@ import { RepasseArtifactsTable } from "./components/RepasseArtifactsTable";
 type SyncJob = {
   id: string;
   periodRef: string;
+  scope?: "all" | "single" | "multi";
+  professionalIds?: string[];
   status: string;
   requestedBy: string;
   createdAt: string;
@@ -44,6 +46,12 @@ type PdfArtifact = {
 };
 
 type ProfessionalStatusFilter = "all" | "success" | "no_data" | "error" | "not_processed";
+type SyncScope = "all" | "single" | "multi";
+
+type ProfessionalOption = {
+  professionalId: string;
+  professionalName: string;
+};
 
 type ProfessionalSummary = {
   professionalId: string;
@@ -104,6 +112,11 @@ export default function RepassesPage() {
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<ProfessionalStatusFilter>("all");
+  const [syncScope, setSyncScope] = useState<SyncScope>("all");
+  const [selectedProfessionalIds, setSelectedProfessionalIds] = useState<string[]>([]);
+  const [professionalOptions, setProfessionalOptions] = useState<ProfessionalOption[]>([]);
+  const [loadingOptions, setLoadingOptions] = useState(false);
+  const [optionsSearch, setOptionsSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(100);
 
@@ -137,6 +150,17 @@ export default function RepassesPage() {
     if (!y || !m) return periodRef;
     return `${m}/${y}`;
   }, [periodRef]);
+
+  const selectedCount = selectedProfessionalIds.length;
+  const isSelectionRequired = syncScope === "single" || syncScope === "multi";
+
+  const handleSelectionChange = (values: string[]) => {
+    if (syncScope === "single") {
+      setSelectedProfessionalIds(values.slice(-1));
+      return;
+    }
+    setSelectedProfessionalIds(values);
+  };
 
   const fetchJobs = useCallback(async () => {
     if (!canView) return;
@@ -195,6 +219,27 @@ export default function RepassesPage() {
     }
   }, [canView, page, pageSize, periodRef, search, statusFilter]);
 
+  const fetchProfessionalOptions = useCallback(
+    async (query = "") => {
+      if (!canView) return;
+      setLoadingOptions(true);
+      try {
+        const qs = new URLSearchParams({
+          mode: "options",
+          search: query.trim(),
+          limit: "1200",
+        }).toString();
+        const res = await fetch(`/api/admin/repasses/professionals?${qs}`, { cache: "no-store" });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || "Falha ao carregar lista de profissionais.");
+        setProfessionalOptions(Array.isArray(data?.data?.items) ? data.data.items : []);
+      } finally {
+        setLoadingOptions(false);
+      }
+    },
+    [canView]
+  );
+
   const fetchArtifacts = useCallback(async () => {
     if (!canView) return;
     setLoadingArtifacts(true);
@@ -213,14 +258,22 @@ export default function RepassesPage() {
     setError("");
     setNotice("");
     try {
-      await Promise.all([fetchJobs(), fetchProfessionals(), fetchArtifacts()]);
+      await Promise.all([fetchJobs(), fetchProfessionals(), fetchArtifacts(), fetchProfessionalOptions(optionsSearch)]);
     } catch (e: any) {
       setError(e?.message || "Erro ao atualizar dados de repasse.");
     }
-  }, [fetchArtifacts, fetchJobs, fetchProfessionals]);
+  }, [fetchArtifacts, fetchJobs, fetchProfessionalOptions, fetchProfessionals, optionsSearch]);
 
   const createSyncJob = async () => {
     if (!canRefresh) return;
+    if (syncScope === "single" && selectedProfessionalIds.length !== 1) {
+      setError("Selecione exatamente 1 profissional para o escopo individual.");
+      return;
+    }
+    if (syncScope === "multi" && selectedProfessionalIds.length < 1) {
+      setError("Selecione ao menos 1 profissional para o escopo múltiplo.");
+      return;
+    }
     setCreatingSync(true);
     setError("");
     setNotice("");
@@ -228,11 +281,21 @@ export default function RepassesPage() {
       const res = await fetch("/api/admin/repasses/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ periodRef }),
+        body: JSON.stringify({
+          periodRef,
+          scope: syncScope,
+          professionalIds: syncScope === "all" ? [] : selectedProfessionalIds,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Falha ao criar job de scraping.");
-      setNotice("Job de scraping criado com sucesso.");
+      const scopeLabel =
+        syncScope === "all"
+          ? "todos os profissionais ativos"
+          : syncScope === "single"
+            ? "1 profissional"
+            : `${selectedProfessionalIds.length} profissionais`;
+      setNotice(`Job de scraping criado com sucesso (${scopeLabel}).`);
       await fetchJobs();
     } catch (e: any) {
       setError(e?.message || "Erro ao criar job de scraping.");
@@ -291,6 +354,14 @@ export default function RepassesPage() {
     if (!moduleEnabled || !canView) return;
     refreshAll();
   }, [moduleEnabled, canView, refreshAll]);
+
+  useEffect(() => {
+    if (!moduleEnabled || !canView) return;
+    const timer = setTimeout(() => {
+      fetchProfessionalOptions(optionsSearch).catch(() => {});
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [moduleEnabled, canView, fetchProfessionalOptions, optionsSearch]);
 
   if (!moduleEnabled) {
     return (
@@ -397,6 +468,60 @@ export default function RepassesPage() {
                 ))}
               </select>
             </div>
+
+            <div className="min-w-[190px]">
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                Escopo scraping
+              </label>
+              <select
+                value={syncScope}
+                onChange={(e) => {
+                  const next = e.target.value as SyncScope;
+                  setSyncScope(next);
+                  if (next === "all") setSelectedProfessionalIds([]);
+                  if (next === "single" && selectedProfessionalIds.length > 1) {
+                    setSelectedProfessionalIds(selectedProfessionalIds.slice(0, 1));
+                  }
+                }}
+                className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+              >
+                <option value="all">Todos os ativos</option>
+                <option value="single">Somente 1</option>
+                <option value="multi">Conjunto selecionado</option>
+              </select>
+            </div>
+
+            {isSelectionRequired && (
+              <div className="min-w-[280px] max-w-[320px]">
+                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Seleção de profissionais ({selectedCount})
+                </label>
+                <input
+                  value={optionsSearch}
+                  onChange={(e) => setOptionsSearch(e.target.value)}
+                  placeholder="Filtrar lista..."
+                  className="mb-1 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                />
+                <select
+                  multiple
+                  value={selectedProfessionalIds}
+                  onChange={(e) => {
+                    const values = Array.from(e.target.selectedOptions).map((o) => o.value);
+                    handleSelectionChange(values);
+                  }}
+                  className="h-24 w-full rounded-lg border bg-white px-2 py-1 text-xs"
+                >
+                  {professionalOptions.map((item) => (
+                    <option key={item.professionalId} value={item.professionalId}>
+                      {item.professionalName}
+                    </option>
+                  ))}
+                </select>
+                <div className="mt-1 text-[10px] text-slate-500">
+                  {loadingOptions ? "Carregando lista..." : "Use Ctrl/Cmd para seleção múltipla."}
+                </div>
+              </div>
+            )}
 
             <button
               type="button"

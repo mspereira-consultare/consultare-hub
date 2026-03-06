@@ -1,10 +1,13 @@
 export type RepasseJobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
 export type RepasseJobItemStatus = 'SUCCESS' | 'NO_DATA' | 'ERROR';
 export type RepassePdfScope = 'single' | 'multi' | 'all_with_data';
+export type RepasseSyncScope = 'all' | 'single' | 'multi';
 
 export type RepasseSyncJob = {
   id: string;
   periodRef: string;
+  scope: RepasseSyncScope;
+  professionalIds: string[];
   status: RepasseJobStatus;
   requestedBy: string;
   startedAt: string | null;
@@ -30,6 +33,8 @@ export type RepassePdfJob = {
 
 export type RepasseSyncJobInput = {
   periodRef?: string;
+  scope?: RepasseSyncScope;
+  professionalIds?: string[];
 };
 
 export type RepassePdfJobInput = {
@@ -66,6 +71,11 @@ export type RepasseProfessionalSummary = {
   totalValue: number;
   lastProcessedAt: string | null;
   errorMessage: string | null;
+};
+
+export type RepasseProfessionalOption = {
+  professionalId: string;
+  professionalName: string;
 };
 
 export type RepasseProfessionalStats = {

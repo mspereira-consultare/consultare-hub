@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import re
+import json
 import hashlib
 import uuid
 import unicodedata
@@ -352,6 +353,38 @@ def _ensure_repasse_tables(db: "DatabaseManager"):
             return
         conn.execute(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns_sql})")
 
+    def _ensure_column(conn, table_name: str, column_name: str, column_def_sql: str):
+        if db.use_mysql:
+            res = conn.execute(
+                """
+                SELECT COUNT(1)
+                FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = ?
+                  AND column_name = ?
+                """,
+                (table_name, column_name),
+            )
+            rows = _fetch_rows(res)
+            cnt = 0
+            if rows:
+                row = rows[0]
+                cnt = int(_row_get(row, 0, "COUNT(1)") or _row_get(row, 0, "count(1)") or 0)
+            if cnt == 0:
+                conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def_sql}")
+            return
+
+        res = conn.execute(f"PRAGMA table_info({table_name})")
+        rows = _fetch_rows(res)
+        exists = False
+        for row in rows:
+            name = _row_get(row, 1, "name")
+            if str(name or "").strip().lower() == column_name.lower():
+                exists = True
+                break
+        if not exists:
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def_sql}")
+
     conn = db.get_connection()
     try:
         conn.execute(
@@ -383,6 +416,8 @@ def _ensure_repasse_tables(db: "DatabaseManager"):
             CREATE TABLE IF NOT EXISTS repasse_sync_jobs (
               id VARCHAR(64) PRIMARY KEY,
               period_ref VARCHAR(7) NOT NULL,
+              scope VARCHAR(20) NOT NULL,
+              professional_ids_json TEXT,
               status VARCHAR(20) NOT NULL,
               requested_by VARCHAR(64) NOT NULL,
               started_at VARCHAR(32),
@@ -393,6 +428,8 @@ def _ensure_repasse_tables(db: "DatabaseManager"):
             )
             """
         )
+        _ensure_column(conn, "repasse_sync_jobs", "scope", "VARCHAR(20) NOT NULL DEFAULT 'all'")
+        _ensure_column(conn, "repasse_sync_jobs", "professional_ids_json", "TEXT")
         _ensure_index(conn, "repasse_sync_jobs", "idx_repasse_sync_jobs_period", "period_ref")
         _ensure_index(conn, "repasse_sync_jobs", "idx_repasse_sync_jobs_status", "status")
         _ensure_index(conn, "repasse_sync_jobs", "idx_repasse_sync_jobs_created", "created_at")
@@ -442,10 +479,63 @@ def _list_active_professionals(db: "DatabaseManager") -> List[Tuple[str, str]]:
     return out
 
 
+def _parse_professional_ids_json(raw_value) -> List[str]:
+    raw = str(raw_value or "").strip()
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    out: List[str] = []
+    seen = set()
+    for item in parsed:
+        pid = str(item or "").strip()
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+        out.append(pid)
+    return out
+
+
+def _list_selected_active_professionals(db: "DatabaseManager", professional_ids: List[str]) -> List[Tuple[str, str]]:
+    ids = [str(x or "").strip() for x in (professional_ids or []) if str(x or "").strip()]
+    if not ids:
+        return _list_active_professionals(db)
+
+    conn = db.get_connection()
+    try:
+        placeholders = ", ".join(["?"] * len(ids))
+        rs = conn.execute(
+            f"""
+            SELECT id, name
+            FROM professionals
+            WHERE is_active = 1
+              AND id IN ({placeholders})
+            ORDER BY name ASC
+            """,
+            tuple(ids),
+        )
+        rows = _fetch_rows(rs)
+    finally:
+        conn.close()
+
+    by_id = {}
+    for row in rows:
+        pid = str(_row_get(row, 0, "id") or "").strip()
+        name = str(_row_get(row, 1, "name") or "").strip()
+        if pid and name:
+            by_id[pid] = name
+
+    return [(pid, by_id[pid]) for pid in ids if pid in by_id]
+
+
 def _get_pending_job(db: "DatabaseManager") -> Optional[Dict]:
     rows = db.execute_query(
         """
-        SELECT id, period_ref, requested_by
+        SELECT id, period_ref, scope, requested_by, professional_ids_json
         FROM repasse_sync_jobs
         WHERE status = ?
         ORDER BY created_at ASC
@@ -459,7 +549,9 @@ def _get_pending_job(db: "DatabaseManager") -> Optional[Dict]:
     return {
         "id": str(_row_get(row, 0, "id")),
         "period_ref": str(_row_get(row, 1, "period_ref")),
-        "requested_by": str(_row_get(row, 2, "requested_by")),
+        "scope": str(_row_get(row, 2, "scope") or ""),
+        "requested_by": str(_row_get(row, 3, "requested_by")),
+        "professional_ids_json": _row_get(row, 4, "professional_ids_json"),
     }
 
 
@@ -468,6 +560,7 @@ def enqueue_repasse_job(
     requested_by: str = "manual",
     db: Optional["DatabaseManager"] = None,
     initial_status: str = STATUS_PENDING,
+    professional_ids: Optional[List[str]] = None,
 ) -> Dict:
     own_db = db is None
     db_ref = db or DatabaseManager()
@@ -477,16 +570,21 @@ def enqueue_repasse_job(
     now = _now_iso()
     job_id = uuid.uuid4().hex
     requested = str(requested_by or "manual").strip() or "manual"
+    selected_ids = [str(x or "").strip() for x in (professional_ids or []) if str(x or "").strip()]
+    selected_json = json.dumps(selected_ids, ensure_ascii=False) if selected_ids else None
+    scope = "single" if len(selected_ids) == 1 else ("multi" if len(selected_ids) > 1 else "all")
 
     db_ref.execute_query(
         """
         INSERT INTO repasse_sync_jobs (
-          id, period_ref, status, requested_by, started_at, finished_at, error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+          id, period_ref, scope, professional_ids_json, status, requested_by, started_at, finished_at, error, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
         """,
         (
             job_id,
             normalized_period,
+            scope,
+            selected_json,
             str(initial_status or STATUS_PENDING),
             requested,
             now if str(initial_status or "").upper() == STATUS_RUNNING else None,
@@ -505,7 +603,13 @@ def enqueue_repasse_job(
         except Exception:
             pass
 
-    return {"id": job_id, "period_ref": normalized_period, "requested_by": requested}
+    return {
+        "id": job_id,
+        "period_ref": normalized_period,
+        "requested_by": requested,
+        "scope": scope,
+        "professional_ids_json": selected_json,
+    }
 
 
 def _mark_job_running(db: "DatabaseManager", job_id: str):
@@ -1161,15 +1265,24 @@ def _process_job(job: Dict):
     job_id = job["id"]
     period_ref = job["period_ref"] or _previous_month_ref()
     date_from_br, date_to_br = _period_to_range(period_ref)
-    professionals = _list_active_professionals(db)
+    selected_professional_ids = _parse_professional_ids_json(job.get("professional_ids_json"))
+    professionals = _list_selected_active_professionals(db, selected_professional_ids)
 
     if not professionals:
-        _mark_job_done(db, job_id, STATUS_FAILED, "Nenhum profissional ativo encontrado.")
-        db.update_heartbeat(SERVICE_NAME, "ERROR", "Nenhum profissional ativo para processar.")
+        _mark_job_done(db, job_id, STATUS_FAILED, "Nenhum profissional ativo encontrado para o escopo do job.")
+        db.update_heartbeat(SERVICE_NAME, "ERROR", "Nenhum profissional ativo para processar no escopo.")
         return
 
-    print(f"--- Repasse Consolidado | job={job_id} | periodo={period_ref} | profissionais={len(professionals)} ---")
-    db.update_heartbeat(SERVICE_NAME, "RUNNING", f"job={job_id} periodo={period_ref} profissionais={len(professionals)}")
+    scope_label = "selecionados" if selected_professional_ids else "todos_ativos"
+    print(
+        f"--- Repasse Consolidado | job={job_id} | periodo={period_ref} | "
+        f"profissionais={len(professionals)} | scope={scope_label} ---"
+    )
+    db.update_heartbeat(
+        SERVICE_NAME,
+        "RUNNING",
+        f"job={job_id} periodo={period_ref} profissionais={len(professionals)} scope={scope_label}",
+    )
 
     any_error = False
     any_success = False
@@ -1324,6 +1437,7 @@ def process_pending_repasse_jobs_once(
     auto_enqueue_if_empty: bool = False,
     period_ref: Optional[str] = None,
     requested_by: str = "system_status",
+    professional_ids: Optional[List[str]] = None,
 ):
     db = DatabaseManager()
     _ensure_repasse_tables(db)
@@ -1335,15 +1449,19 @@ def process_pending_repasse_jobs_once(
             requested_by=requested_by,
             db=db,
             initial_status=STATUS_RUNNING,
+            professional_ids=professional_ids,
         )
         print(
             f"📝 Job de repasse criado automaticamente | id={created_job['id']} | "
-            f"periodo={created_job['period_ref']}"
+            f"periodo={created_job['period_ref']} | "
+            f"profissionais={len(professional_ids) if professional_ids else 'todos'}"
         )
         job = {
             "id": created_job["id"],
             "period_ref": created_job["period_ref"],
+            "scope": created_job.get("scope") or "",
             "requested_by": created_job["requested_by"],
+            "professional_ids_json": created_job.get("professional_ids_json"),
         }
         preclaimed_job = True
 
@@ -1383,6 +1501,7 @@ if __name__ == "__main__":
 
     period_arg = None
     requested_by_arg = "manual_cli"
+    professional_ids_arg: List[str] = []
     for i, token in enumerate(args):
         if token.startswith("--period="):
             period_arg = token.split("=", 1)[1].strip()
@@ -1392,9 +1511,19 @@ if __name__ == "__main__":
             requested_by_arg = token.split("=", 1)[1].strip() or "manual_cli"
         elif token == "--requested-by" and i + 1 < len(args):
             requested_by_arg = str(args[i + 1] or "").strip() or "manual_cli"
+        elif token.startswith("--professional-ids="):
+            raw_ids = token.split("=", 1)[1].strip()
+            professional_ids_arg = [x.strip() for x in raw_ids.split(",") if x.strip()]
+        elif token == "--professional-ids" and i + 1 < len(args):
+            raw_ids = str(args[i + 1] or "").strip()
+            professional_ids_arg = [x.strip() for x in raw_ids.split(",") if x.strip()]
 
     if "--enqueue" in args:
-        job = enqueue_repasse_job(period_ref=period_arg, requested_by=requested_by_arg)
+        job = enqueue_repasse_job(
+            period_ref=period_arg,
+            requested_by=requested_by_arg,
+            professional_ids=professional_ids_arg,
+        )
         print(f"Job enfileirado: id={job['id']} periodo={job['period_ref']} requested_by={job['requested_by']}")
         if "--once" in args:
             process_pending_repasse_jobs_once()
@@ -1402,9 +1531,10 @@ if __name__ == "__main__":
 
     if "--once" in args:
         had_job = process_pending_repasse_jobs_once(
-            auto_enqueue_if_empty=bool(period_arg),
+            auto_enqueue_if_empty=bool(period_arg or professional_ids_arg),
             period_ref=period_arg,
             requested_by=requested_by_arg,
+            professional_ids=professional_ids_arg,
         )
         if not had_job:
             print("Sem jobs pendentes.")

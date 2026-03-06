@@ -53,7 +53,11 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const job = await createRepasseSyncJob(
       auth.db,
-      { periodRef: body?.periodRef },
+      {
+        periodRef: body?.periodRef,
+        scope: body?.scope,
+        professionalIds: body?.professionalIds,
+      },
       auth.userId
     );
 

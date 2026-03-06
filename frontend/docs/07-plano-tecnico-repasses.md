@@ -226,3 +226,17 @@ Status atual:
   - `python workers/worker_repasse_consolidado.py --enqueue --period YYYY-MM`
   - `python workers/worker_repasse_consolidado.py --once --period YYYY-MM`
   - `python workers/worker_repasse_consolidado.py --enqueue --period YYYY-MM --once`
+
+## 16. Atualizacao - Escopo de scraping por profissional (2026-03-06)
+- O job de scraping (`repasse_sync_jobs`) agora suporta escopo:
+  - `all` (todos os profissionais ativos)
+  - `single` (um profissional)
+  - `multi` (conjunto especifico)
+- Campo novo no job: `professional_ids_json` (lista de IDs internos do painel).
+- Fluxo frontend atualizado na pagina `/repasses`:
+  - usuario escolhe escopo de scraping
+  - para `single`/`multi`, seleciona profissionais ativos
+  - API `POST /api/admin/repasses/jobs` recebe `scope` + `professionalIds`
+- Worker atualizado para respeitar o escopo do job no processamento.
+- Endpoint de apoio:
+  - `GET /api/admin/repasses/professionals?mode=options` para carregar lista de profissionais ativos (selecao de escopo).

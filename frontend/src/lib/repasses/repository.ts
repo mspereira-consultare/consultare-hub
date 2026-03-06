@@ -6,10 +6,12 @@ import type {
   RepassePdfArtifactListFilters,
   RepasseProfessionalListFilters,
   RepasseProfessionalListResult,
+  RepasseProfessionalOption,
   RepasseProfessionalSummary,
   RepassePdfJob,
   RepassePdfJobInput,
   RepassePdfScope,
+  RepasseSyncScope,
   RepasseSyncJob,
   RepasseSyncJobInput,
 } from '@/lib/repasses/types';
@@ -63,6 +65,12 @@ const normalizeLimit = (value: unknown, fallback = 20) => {
   return Math.max(1, Math.min(200, Math.floor(n)));
 };
 
+const normalizeOptionLimit = (value: unknown, fallback = 500) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(1, Math.min(3000, Math.floor(n)));
+};
+
 const normalizePage = (value: unknown) => {
   const n = Number(value);
   if (!Number.isFinite(n)) return 1;
@@ -75,6 +83,13 @@ const normalizeScope = (value: unknown): RepassePdfScope => {
     return raw;
   }
   return 'all_with_data';
+};
+
+const normalizeSyncScope = (value: unknown, hasProfessionalIds: boolean): RepasseSyncScope => {
+  const raw = clean(value).toLowerCase();
+  if (raw === 'single' || raw === 'multi') return raw;
+  if (raw === 'all') return 'all';
+  return hasProfessionalIds ? 'multi' : 'all';
 };
 
 const normalizeProfessionalIds = (value: unknown): string[] => {
@@ -119,6 +134,8 @@ const safeExecute = async (db: DbInterface, sql: string) => {
 const mapSyncJob = (row: any): RepasseSyncJob => ({
   id: clean(row.id),
   periodRef: clean(row.period_ref),
+  scope: normalizeSyncScope(row.scope, parseProfessionalIdsJson(row.professional_ids_json).length > 0),
+  professionalIds: parseProfessionalIdsJson(row.professional_ids_json),
   status: clean(row.status).toUpperCase() as RepasseSyncJob['status'],
   requestedBy: clean(row.requested_by),
   startedAt: clean(row.started_at) || null,
@@ -219,6 +236,8 @@ export const ensureRepasseTables = async (db: DbInterface) => {
     CREATE TABLE IF NOT EXISTS repasse_sync_jobs (
       id TEXT PRIMARY KEY,
       period_ref TEXT NOT NULL,
+      scope VARCHAR(20) NOT NULL,
+      professional_ids_json TEXT,
       status TEXT NOT NULL,
       requested_by TEXT NOT NULL,
       started_at TEXT,
@@ -232,6 +251,8 @@ export const ensureRepasseTables = async (db: DbInterface) => {
   await safeExecute(db, `CREATE INDEX idx_repasse_sync_jobs_period ON repasse_sync_jobs(period_ref)`);
   await safeExecute(db, `CREATE INDEX idx_repasse_sync_jobs_status ON repasse_sync_jobs(status)`);
   await safeExecute(db, `CREATE INDEX idx_repasse_sync_jobs_created ON repasse_sync_jobs(created_at)`);
+  await safeExecute(db, `ALTER TABLE repasse_sync_jobs ADD COLUMN scope VARCHAR(20) NOT NULL DEFAULT 'all'`);
+  await safeExecute(db, `ALTER TABLE repasse_sync_jobs ADD COLUMN professional_ids_json TEXT`);
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS repasse_sync_job_items (
@@ -304,16 +325,36 @@ export const createRepasseSyncJob = async (
   await ensureRepasseTables(db);
 
   const periodRef = normalizePeriodRef(input?.periodRef);
+  const professionalIds = normalizeProfessionalIds(input?.professionalIds);
+  const scope = normalizeSyncScope(input?.scope, professionalIds.length > 0);
+  if ((scope === 'single' || scope === 'multi') && professionalIds.length === 0) {
+    throw new RepasseValidationError('Informe ao menos um profissional para o escopo selecionado.');
+  }
+  if (scope === 'single' && professionalIds.length !== 1) {
+    throw new RepasseValidationError('Escopo single exige exatamente um profissional.');
+  }
   const now = nowIso();
   const id = randomUUID();
 
   await db.execute(
     `
     INSERT INTO repasse_sync_jobs (
-      id, period_ref, status, requested_by, started_at, finished_at, error, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      id, period_ref, scope, professional_ids_json, status, requested_by, started_at, finished_at, error, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
-    [id, periodRef, 'PENDING', actorUserId, null, null, null, now, now]
+    [
+      id,
+      periodRef,
+      scope,
+      professionalIds.length ? JSON.stringify(professionalIds) : null,
+      'PENDING',
+      actorUserId,
+      null,
+      null,
+      null,
+      now,
+      now,
+    ]
   );
 
   const rows = await db.query(
@@ -623,6 +664,38 @@ export const listRepasseProfessionalSummaries = async (
     pageSize,
     stats,
   };
+};
+
+export const listRepasseProfessionalOptions = async (
+  db: DbInterface,
+  input: { search?: string; limit?: number } = {}
+): Promise<RepasseProfessionalOption[]> => {
+  await ensureRepasseTables(db);
+  const search = clean(input.search);
+  const limit = normalizeOptionLimit(input.limit, 500);
+
+  const where: string[] = ['is_active = 1'];
+  const params: any[] = [];
+  if (search) {
+    where.push('UPPER(name) LIKE ?');
+    params.push(`%${search.toUpperCase()}%`);
+  }
+
+  const rows = await db.query(
+    `
+    SELECT id, name
+    FROM professionals
+    WHERE ${where.join(' AND ')}
+    ORDER BY name ASC
+    LIMIT ?
+    `,
+    [...params, limit]
+  );
+
+  return rows.map((row) => ({
+    professionalId: clean(row.id),
+    professionalName: clean(row.name),
+  }));
 };
 
 export type RepassePdfJobRow = RepassePdfJob;
