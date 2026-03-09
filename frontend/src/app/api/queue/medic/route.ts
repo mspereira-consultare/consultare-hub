@@ -4,6 +4,10 @@ import { withCache } from '@/lib/api_cache';
 
 export const dynamic = 'force-dynamic';
 const CACHE_TTL_MS = 15000;
+const ACTIVE_MAX_AGE_HOURS = Math.max(
+  1,
+  Number.parseInt(process.env.MEDIC_API_ACTIVE_MAX_AGE_HOURS || '12', 10) || 12
+);
 
 function normalizeUnitId(dbName: string): string { 
   const upper = (dbName || '').toUpperCase(); 
@@ -39,6 +43,8 @@ export async function GET() {
           SELECT hash_id, unidade, paciente, chegada, espera_minutos, status, profissional, updated_at
           FROM espera_medica
           WHERE (status IS NULL OR status NOT LIKE 'Finalizado%')
+            AND updated_at IS NOT NULL
+            AND updated_at >= DATE_FORMAT(DATE_SUB(NOW(), INTERVAL ${ACTIVE_MAX_AGE_HOURS} HOUR), '%Y-%m-%d %H:%i:%s')
           ORDER BY
             CASE WHEN status = 'Em Atendimento' THEN 0 ELSE 1 END,
             DATE_ADD(updated_at, INTERVAL 3 HOUR) DESC
@@ -47,6 +53,8 @@ export async function GET() {
           SELECT hash_id, unidade, paciente, chegada, espera_minutos, status, profissional, updated_at
           FROM espera_medica
           WHERE (status IS NULL OR status NOT LIKE 'Finalizado%')
+            AND updated_at IS NOT NULL
+            AND datetime(updated_at) >= datetime('now', '-${ACTIVE_MAX_AGE_HOURS} hours')
           ORDER BY
             CASE WHEN status = 'Em Atendimento' THEN 0 ELSE 1 END,
             datetime(updated_at, '+3 hours') DESC

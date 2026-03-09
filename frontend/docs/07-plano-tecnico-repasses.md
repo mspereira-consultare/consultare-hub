@@ -260,3 +260,18 @@ Status atual:
   - observacao inclu?da no PDF gerado do profissional
 - Substituicao de relatorios por periodo/profissional:
   - antes de gravar novo PDF, artefatos antigos do mesmo periodo/profissional sao removidos (storage + banco).
+
+
+## 18. Atualizacao - UX operacional de fechamento (2026-03-06)
+- Tabela de profissionais virou o painel central do modulo:
+  - checkbox por linha
+  - checkbox no cabecalho (pagina atual)
+  - selecao em massa por filtro (`Selecionar todos do filtro`)
+  - contador de profissionais selecionados
+- Acoes de operacao agora usam a selecao da tabela:
+  - Atualizar dados de repasse
+  - Gerar relatorios
+- Historicos de atualizacao e relatorios sairam da tela fixa e foram movidos para modais sob demanda.
+- Coluna de relatorio foi integrada na tabela de profissionais (botao Visualizar + data de geracao).
+- Pagina padrao de listagem alterada para 300 linhas por pagina.
+- Coluna `Solicitado por` no historico agora exibe nome/e-mail do usuario logado (quando disponivel), em vez de ID tecnico.

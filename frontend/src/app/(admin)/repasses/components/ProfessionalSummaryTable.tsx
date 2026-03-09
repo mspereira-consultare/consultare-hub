@@ -13,6 +13,8 @@ type ProfessionalSummary = {
   lastProcessedAt: string | null;
   errorMessage: string | null;
   note: string | null;
+  lastPdfAt: string | null;
+  lastPdfArtifactId: string | null;
 };
 
 type ProfessionalSummaryTableProps = {
@@ -122,8 +124,8 @@ export function ProfessionalSummaryTable({
         </div>
       </header>
 
-      <div className="max-h-[560px] overflow-auto">
-        <table className="w-full min-w-[1180px] text-xs">
+      <div className="max-h-[760px] overflow-auto">
+        <table className="w-full min-w-[1320px] text-xs">
           <thead className="sticky top-0 z-10 bg-white text-[10px] uppercase tracking-wide text-slate-500">
             <tr>
               <th className="w-10 px-2 py-2 text-center">
@@ -141,12 +143,13 @@ export function ProfessionalSummaryTable({
               <th className="px-2 py-2 text-right">Total repasse</th>
               <th className="px-2 py-2 text-left">Último processamento</th>
               <th className="px-2 py-2 text-left">Observação</th>
+              <th className="px-2 py-2 text-left">Relatório</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="px-2 py-6 text-center text-slate-500">
+                <td colSpan={8} className="px-2 py-6 text-center text-slate-500">
                   <span className="inline-flex items-center gap-2">
                     <Loader2 size={14} className="animate-spin" />
                     Carregando profissionais...
@@ -155,7 +158,7 @@ export function ProfessionalSummaryTable({
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-2 py-6 text-center text-slate-500">
+                <td colSpan={8} className="px-2 py-6 text-center text-slate-500">
                   Nenhum profissional encontrado para os filtros.
                 </td>
               </tr>
@@ -209,6 +212,27 @@ export function ProfessionalSummaryTable({
                       </div>
                     ) : null}
                   </td>
+                  <td className="px-2 py-1.5">
+                    {item.lastPdfArtifactId ? (
+                      <div className="inline-flex flex-col gap-1">
+                        <a
+                          href={`/api/admin/repasses/artifacts/${encodeURIComponent(
+                            item.lastPdfArtifactId
+                          )}/download?disposition=inline`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#17407E] hover:underline"
+                        >
+                          Visualizar
+                        </a>
+                        <span className="text-[10px] text-slate-500">
+                          {toBrDateTime(item.lastPdfAt)}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-[11px] text-slate-400">-</span>
+                    )}
+                  </td>
                 </tr>
               ))
             )}
@@ -242,4 +266,3 @@ export function ProfessionalSummaryTable({
     </section>
   );
 }
-

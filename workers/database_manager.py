@@ -536,7 +536,7 @@ class DatabaseManager:
         try:
             agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
             limite = (datetime.now(tz) - timedelta(minutes=minutos)).strftime('%Y-%m-%d %H:%M:%S')
-            limite_hard = (datetime.now(tz) - timedelta(hours=24)).strftime('%Y-%m-%d %H:%M:%S')
+            limite_delete = (datetime.now(tz) - timedelta(hours=72)).strftime('%Y-%m-%d %H:%M:%S')
 
             # Remove registros ativos muito antigos (ruido de sessoes passadas).
             sql_delete = """
@@ -545,7 +545,7 @@ class DatabaseManager:
                 AND (status IS NULL OR status NOT LIKE ?)
                 AND updated_at < ?
             """
-            conn.execute(sql_delete, (nome_unidade, "Finalizado%", limite_hard))
+            conn.execute(sql_delete, (nome_unidade, "Finalizado%", limite_delete))
 
             sql = """
                 UPDATE espera_medica
@@ -553,10 +553,9 @@ class DatabaseManager:
                 WHERE unidade = ?
                 AND (status IS NULL OR status NOT LIKE ?)
                 AND updated_at < ?
-                AND updated_at >= ?
             """
 
-            conn.execute(sql, (agora, nome_unidade, "Finalizado%", limite, limite_hard))
+            conn.execute(sql, (agora, nome_unidade, "Finalizado%", limite))
 
             if not self.use_turso:
                 conn.commit()
@@ -706,6 +705,70 @@ class DatabaseManager:
                 conn.execute("DELETE FROM espera_medica WHERE updated_at < ?", (limit,))
                 conn.commit()
         except: pass
+        finally:
+            conn.close()
+
+    def finalizar_medicos_por_hash(self, nome_unidade, hash_ids, motivo="Ausencia Confirmada"):
+        if not hash_ids:
+            return 0
+        conn = self.get_connection()
+        try:
+            agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+            status_final = f"Finalizado ({motivo})"
+            sql = """
+                UPDATE espera_medica
+                SET status = ?, updated_at = ?
+                WHERE hash_id = ?
+                  AND unidade = ?
+                  AND (status IS NULL OR status NOT LIKE ?)
+            """
+            for hash_id in hash_ids:
+                conn.execute(sql, (status_final, agora, str(hash_id), nome_unidade, "Finalizado%"))
+
+            if not self.use_turso:
+                conn.commit()
+
+            self.clear_espera_cache(hash_ids)
+            return len(hash_ids)
+        except Exception as e:
+            print(f"Erro finalizar medicos por hash: {e}")
+            return 0
+        finally:
+            conn.close()
+
+    def finalizar_medicos_dia_anterior(self):
+        conn = self.get_connection()
+        try:
+            hoje = datetime.now(tz).strftime('%Y-%m-%d')
+            agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+
+            sql_count = """
+                SELECT COUNT(*)
+                FROM espera_medica
+                WHERE (status IS NULL OR status NOT LIKE ?)
+                  AND DATE(updated_at) < ?
+            """
+            count_rs = conn.execute(sql_count, ("Finalizado%", hoje))
+            row = count_rs.fetchone() if hasattr(count_rs, "fetchone") else None
+            total = int(row[0]) if row and row[0] is not None else 0
+            if total <= 0:
+                return 0
+
+            sql_update = """
+                UPDATE espera_medica
+                SET status = 'Finalizado (Virada do Dia)', updated_at = ?
+                WHERE (status IS NULL OR status NOT LIKE ?)
+                  AND DATE(updated_at) < ?
+            """
+            conn.execute(sql_update, (agora, "Finalizado%", hoje))
+            if not self.use_turso:
+                conn.commit()
+
+            _clear_espera_cache()
+            return total
+        except Exception as e:
+            print(f"Erro finalizar medicos dia anterior: {e}")
+            return 0
         finally:
             conn.close()
 

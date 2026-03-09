@@ -7,7 +7,6 @@ import { hasPermission } from "@/lib/permissions";
 import { isRepassesModuleEnabledClient } from "@/lib/repasses/feature";
 import { JobHistoryTable } from "./components/JobHistoryTable";
 import { ProfessionalSummaryTable } from "./components/ProfessionalSummaryTable";
-import { RepasseArtifactsTable } from "./components/RepasseArtifactsTable";
 
 type SyncJob = {
   id: string;
@@ -34,17 +33,6 @@ type PdfJob = {
   error: string | null;
 };
 
-type PdfArtifact = {
-  id: string;
-  pdfJobId: string;
-  periodRef: string;
-  professionalId: string;
-  professionalName: string;
-  fileName: string;
-  sizeBytes: number;
-  createdAt: string;
-};
-
 type ProfessionalStatusFilter = "all" | "success" | "no_data" | "error" | "not_processed";
 
 type ProfessionalSummary = {
@@ -56,6 +44,8 @@ type ProfessionalSummary = {
   lastProcessedAt: string | null;
   errorMessage: string | null;
   note: string | null;
+  lastPdfAt: string | null;
+  lastPdfArtifactId: string | null;
 };
 
 type ProfessionalStats = {
@@ -92,7 +82,7 @@ const statusOptions: Array<{ value: ProfessionalStatusFilter; label: string }> =
   { value: "not_processed", label: "Não processados" },
 ];
 
-const pageSizeOptions = [25, 50, 100, 200];
+const pageSizeOptions = [100, 200, 300, 500];
 
 export default function RepassesPage() {
   const moduleEnabled = isRepassesModuleEnabledClient();
@@ -108,14 +98,15 @@ export default function RepassesPage() {
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(100);
+  const [pageSize, setPageSize] = useState(300);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectingAll, setSelectingAll] = useState(false);
+  const [showSyncHistoryModal, setShowSyncHistoryModal] = useState(false);
+  const [showPdfHistoryModal, setShowPdfHistoryModal] = useState(false);
 
   const [syncJobs, setSyncJobs] = useState<SyncJob[]>([]);
   const [pdfJobs, setPdfJobs] = useState<PdfJob[]>([]);
-  const [artifacts, setArtifacts] = useState<PdfArtifact[]>([]);
 
   const [items, setItems] = useState<ProfessionalSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -133,7 +124,6 @@ export default function RepassesPage() {
 
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [loadingProfessionals, setLoadingProfessionals] = useState(false);
-  const [loadingArtifacts, setLoadingArtifacts] = useState(false);
   const [creatingSync, setCreatingSync] = useState(false);
   const [creatingPdf, setCreatingPdf] = useState(false);
   const [processingPdf, setProcessingPdf] = useState(false);
@@ -217,29 +207,15 @@ export default function RepassesPage() {
     }
   }, [canView, page, pageSize, periodRef, search, statusFilter]);
 
-  const fetchArtifacts = useCallback(async () => {
-    if (!canView) return;
-    setLoadingArtifacts(true);
-    try {
-      const qs = new URLSearchParams({ periodRef, limit: "120" }).toString();
-      const res = await fetch(`/api/admin/repasses/artifacts?${qs}`, { cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao carregar relatórios gerados.");
-      setArtifacts(Array.isArray(data?.data?.items) ? data.data.items : []);
-    } finally {
-      setLoadingArtifacts(false);
-    }
-  }, [canView, periodRef]);
-
   const refreshAll = useCallback(async () => {
     setError("");
     setNotice("");
     try {
-      await Promise.all([fetchJobs(), fetchProfessionals(), fetchArtifacts()]);
+      await Promise.all([fetchJobs(), fetchProfessionals()]);
     } catch (e: any) {
       setError(e?.message || "Erro ao atualizar dados de repasse.");
     }
-  }, [fetchArtifacts, fetchJobs, fetchProfessionals]);
+  }, [fetchJobs, fetchProfessionals]);
 
   const applySearch = () => {
     setPage(1);
@@ -431,10 +407,10 @@ export default function RepassesPage() {
 
   useEffect(() => {
     if (!moduleEnabled || !canView) return;
-    Promise.all([fetchJobs(), fetchArtifacts()]).catch((e: any) => {
+    fetchJobs().catch((e: any) => {
       setError(e?.message || "Erro ao carregar histórico de repasses.");
     });
-  }, [moduleEnabled, canView, fetchArtifacts, fetchJobs]);
+  }, [moduleEnabled, canView, fetchJobs]);
 
   useEffect(() => {
     if (!moduleEnabled || !canView) return;
@@ -578,6 +554,22 @@ export default function RepassesPage() {
 
           <button
             type="button"
+            onClick={() => setShowSyncHistoryModal(true)}
+            className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+          >
+            Histórico de atualizações
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowPdfHistoryModal(true)}
+            className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+          >
+            Histórico de relatórios
+          </button>
+
+          <button
+            type="button"
             onClick={selectAllFiltered}
             disabled={selectingAll || total === 0}
             className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
@@ -668,12 +660,41 @@ export default function RepassesPage() {
         onSaveNote={saveProfessionalNote}
       />
 
-      <RepasseArtifactsTable items={artifacts} loading={loadingArtifacts} />
+      {showSyncHistoryModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-5xl rounded-xl bg-white p-4 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-800">Histórico de atualizações</h3>
+              <button
+                type="button"
+                onClick={() => setShowSyncHistoryModal(false)}
+                className="rounded border px-3 py-1 text-xs"
+              >
+                Fechar
+              </button>
+            </div>
+            <JobHistoryTable title="Histórico de atualizações" jobs={syncJobs} loading={loadingJobs} mode="sync" />
+          </div>
+        </div>
+      )}
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <JobHistoryTable title="Histórico de atualizações" jobs={syncJobs} loading={loadingJobs} mode="sync" />
-        <JobHistoryTable title="Histórico de jobs de relatório" jobs={pdfJobs} loading={loadingJobs} mode="pdf" />
-      </section>
+      {showPdfHistoryModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-5xl rounded-xl bg-white p-4 shadow-xl">
+            <div className="mb-3 flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-800">Histórico de relatórios</h3>
+              <button
+                type="button"
+                onClick={() => setShowPdfHistoryModal(false)}
+                className="rounded border px-3 py-1 text-xs"
+              >
+                Fechar
+              </button>
+            </div>
+            <JobHistoryTable title="Histórico de jobs de relatório" jobs={pdfJobs} loading={loadingJobs} mode="pdf" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

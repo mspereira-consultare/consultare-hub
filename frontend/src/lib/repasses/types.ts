@@ -72,6 +72,8 @@ export type RepasseProfessionalSummary = {
   lastProcessedAt: string | null;
   errorMessage: string | null;
   note: string | null;
+  lastPdfAt: string | null;
+  lastPdfArtifactId: string | null;
 };
 
 export type RepasseProfessionalOption = {

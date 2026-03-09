@@ -144,7 +144,7 @@ const mapSyncJob = (row: any): RepasseSyncJob => ({
   scope: normalizeSyncScope(row.scope, parseProfessionalIdsJson(row.professional_ids_json).length > 0),
   professionalIds: parseProfessionalIdsJson(row.professional_ids_json),
   status: clean(row.status).toUpperCase() as RepasseSyncJob['status'],
-  requestedBy: clean(row.requested_by),
+  requestedBy: clean((row as any).requested_by_display || row.requested_by),
   startedAt: clean(row.started_at) || null,
   finishedAt: clean(row.finished_at) || null,
   error: clean(row.error) || null,
@@ -158,7 +158,7 @@ const mapPdfJob = (row: any): RepassePdfJob => ({
   scope: normalizeScope(row.scope),
   professionalIds: parseProfessionalIdsJson(row.professional_ids_json),
   status: clean(row.status).toUpperCase() as RepassePdfJob['status'],
-  requestedBy: clean(row.requested_by),
+  requestedBy: clean((row as any).requested_by_display || row.requested_by),
   startedAt: clean(row.started_at) || null,
   finishedAt: clean(row.finished_at) || null,
   error: clean(row.error) || null,
@@ -276,6 +276,10 @@ const loadRepasseProfessionalSummaries = async (
     { status: RepasseProfessionalSummary['status']; errorMessage: string | null; updatedAt: string | null }
   >();
   const noteByProfessional = new Map<string, string | null>();
+  const latestPdfByProfessional = new Map<
+    string,
+    { createdAt: string | null; artifactId: string | null }
+  >();
 
   if (professionalIds.length > 0) {
     const placeholders = professionalIds.map(() => '?').join(', ');
@@ -340,6 +344,32 @@ const loadRepasseProfessionalSummaries = async (
     for (const row of noteRows) {
       noteByProfessional.set(clean((row as any).professional_id), clean((row as any).note) || null);
     }
+
+    const latestPdfRows = await db.query(
+      `
+      SELECT a.professional_id, a.id as artifact_id, a.created_at
+      FROM repasse_pdf_artifacts a
+      INNER JOIN (
+        SELECT professional_id, MAX(created_at) as max_created_at
+        FROM repasse_pdf_artifacts
+        WHERE period_ref = ?
+          AND professional_id IN (${placeholders})
+        GROUP BY professional_id
+      ) latest
+        ON latest.professional_id = a.professional_id
+       AND latest.max_created_at = a.created_at
+      WHERE a.period_ref = ?
+      `,
+      [periodRef, ...professionalIds, periodRef]
+    );
+    for (const row of latestPdfRows) {
+      const professionalId = clean((row as any).professional_id);
+      if (!professionalId || latestPdfByProfessional.has(professionalId)) continue;
+      latestPdfByProfessional.set(professionalId, {
+        createdAt: clean((row as any).created_at) || null,
+        artifactId: clean((row as any).artifact_id) || null,
+      });
+    }
   }
 
   const items: RepasseProfessionalSummary[] = professionalPairs.map((pair) => {
@@ -366,6 +396,8 @@ const loadRepasseProfessionalSummaries = async (
       lastProcessedAt: latest?.updatedAt || null,
       errorMessage: status === 'ERROR' ? latest?.errorMessage || null : null,
       note: noteByProfessional.get(professionalId) || null,
+      lastPdfAt: latestPdfByProfessional.get(professionalId)?.createdAt || null,
+      lastPdfArtifactId: latestPdfByProfessional.get(professionalId)?.artifactId || null,
     };
   });
 
@@ -640,16 +672,19 @@ export const listRepasseSyncJobs = async (
   const limit = normalizeLimit(filters.limit, 20);
 
   if (periodRef) {
-    where.push('period_ref = ?');
+    where.push('j.period_ref = ?');
     params.push(periodRef);
   }
 
   const rows = await db.query(
     `
-    SELECT *
-    FROM repasse_sync_jobs
+    SELECT
+      j.*,
+      COALESCE(u.name, u.email, j.requested_by) as requested_by_display
+    FROM repasse_sync_jobs j
+    LEFT JOIN users u ON u.id = j.requested_by
     WHERE ${where.join(' AND ')}
-    ORDER BY created_at DESC
+    ORDER BY j.created_at DESC
     LIMIT ?
     `,
     [...params, limit]
@@ -658,7 +693,7 @@ export const listRepasseSyncJobs = async (
   const countRows = await db.query(
     `
     SELECT COUNT(*) as total
-    FROM repasse_sync_jobs
+    FROM repasse_sync_jobs j
     WHERE ${where.join(' AND ')}
     `,
     params
@@ -733,16 +768,19 @@ export const listRepassePdfJobs = async (
   const limit = normalizeLimit(filters.limit, 20);
 
   if (periodRef) {
-    where.push('period_ref = ?');
+    where.push('j.period_ref = ?');
     params.push(periodRef);
   }
 
   const rows = await db.query(
     `
-    SELECT *
-    FROM repasse_pdf_jobs
+    SELECT
+      j.*,
+      COALESCE(u.name, u.email, j.requested_by) as requested_by_display
+    FROM repasse_pdf_jobs j
+    LEFT JOIN users u ON u.id = j.requested_by
     WHERE ${where.join(' AND ')}
-    ORDER BY created_at DESC
+    ORDER BY j.created_at DESC
     LIMIT ?
     `,
     [...params, limit]
@@ -751,7 +789,7 @@ export const listRepassePdfJobs = async (
   const countRows = await db.query(
     `
     SELECT COUNT(*) as total
-    FROM repasse_pdf_jobs
+    FROM repasse_pdf_jobs j
     WHERE ${where.join(' AND ')}
     `,
     params

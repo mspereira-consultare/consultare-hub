@@ -27,12 +27,15 @@ load_dotenv()
 FINALIZE_INTERVAL_SEC = int(os.getenv("MEDICO_FINALIZE_INTERVAL_SEC", "300"))
 CLEANUP_INTERVAL_SEC = int(os.getenv("MEDICO_CLEANUP_INTERVAL_SEC", "600"))
 ABSENCE_CONFIRM_MINUTES = max(1, int(os.getenv("MEDICO_ABSENCE_CONFIRM_MINUTES", "10")))
+ABSENCE_CONFIRM_CYCLES = max(1, int(os.getenv("MEDICO_ABSENCE_CONFIRM_CYCLES", "2")))
 PARSE_TIMEOUT_SEC = max(5, int(os.getenv("MEDICO_PARSE_TIMEOUT_SEC", "25")))
 LOGIN_REFRESH_MINUTES = max(0, int(os.getenv("MEDICO_LOGIN_REFRESH_MINUTES", "90")))
 EMPTY_RELOGIN_CYCLES = max(1, int(os.getenv("MEDICO_EMPTY_RELOGIN_CYCLES", "3")))
 ACTIVITY_WINDOW_START = os.getenv("MEDICO_ACTIVITY_WINDOW_START", "06:00")
 ACTIVITY_WINDOW_END = os.getenv("MEDICO_ACTIVITY_WINDOW_END", "22:00")
 WARN_THROTTLE_SECONDS = max(30, int(os.getenv("MEDICO_WARN_THROTTLE_SECONDS", "120")))
+MIDNIGHT_FINALIZE_ENABLED = str(os.getenv("MEDICO_MIDNIGHT_FINALIZE_ENABLED", "1")).strip().lower() in ("1", "true", "yes")
+HARD_STALE_MINUTES = max(120, int(os.getenv("MEDICO_HARD_STALE_MINUTES", "360")))
 
 UNIDADES = [
     ("Ouro Verde", 2),
@@ -199,6 +202,8 @@ def run_monitor_medico():
     consecutive_zero_cycles = 0
     warning_last_by_key = {}
     last_unit_counts = {nome: None for nome, _ in UNIDADES}
+    unit_missing_tracker = {nome: {} for nome, _ in UNIDADES}
+    last_midnight_finalize_date = None
 
     def warn_throttled(key, message, heartbeat_detail=None):
         now_ts_local = time.time()
@@ -214,6 +219,14 @@ def run_monitor_medico():
             db.update_heartbeat("monitor_medico", "RUNNING", "Iniciando ciclo...")
 
             now_local = datetime.now(tz)
+            if MIDNIGHT_FINALIZE_ENABLED:
+                current_date = now_local.date()
+                if last_midnight_finalize_date != current_date:
+                    closed_prev_day = db.finalizar_medicos_dia_anterior()
+                    last_midnight_finalize_date = current_date
+                    if closed_prev_day > 0:
+                        print(f"   [CLEANUP] Virada de dia: {closed_prev_day} registro(s) finalizado(s).")
+
             if sessao_ativa:
                 force_reauth = None
                 if last_login_date and now_local.date() != last_login_date:
@@ -308,6 +321,7 @@ def run_monitor_medico():
 
                 qtd_unidade = 0
                 coleta_vazia = df.empty
+                coleta_confiavel = bool(html and "<table" in str(html).lower())
 
                 if not df.empty:
                     qtd_unidade = len(df)
@@ -337,73 +351,88 @@ def run_monitor_medico():
                         last_unit_counts[nome_unidade] = qtd_unidade
                     continue
 
-                if coleta_vazia:
-                    # Evita finalizar em massa quando o scrape vier vazio por oscilacao/intermitencia.
+                if not coleta_confiavel:
                     warn_throttled(
-                        f"coleta_vazia_{nome_unidade}",
-                        f"[{timestamp}] [WARN] {nome_unidade}: coleta vazia; finalizacao por ausencia pausada.",
-                        f"{nome_unidade}: coleta vazia",
+                        f"coleta_inconfiavel_{nome_unidade}",
+                        f"[{timestamp}] [WARN] {nome_unidade}: coleta sem tabela confiavel; finalizacao pausada por seguranca.",
+                        f"{nome_unidade}: coleta inconfiavel",
                     )
                 else:
-                    conn = db.get_connection()
-                    try:
-                        cursor = conn.cursor()
-                        cursor.execute(
-                            """
-                            SELECT hash_id, updated_at
-                            FROM espera_medica
-                            WHERE unidade = %s AND (status IS NULL OR status NOT LIKE 'Finalizado%%')
-                            """,
-                            (nome_unidade,),
+                    rows_ativos_local = db.execute_query(
+                        """
+                        SELECT hash_id, updated_at
+                        FROM espera_medica
+                        WHERE unidade = ? AND (status IS NULL OR status NOT LIKE ?)
+                        """,
+                        (nome_unidade, "Finalizado%"),
+                    )
+
+                    agora_dt = datetime.now(tz)
+                    ids_para_finalizar = []
+                    active_hashes_local = set()
+                    unit_tracker = unit_missing_tracker.setdefault(nome_unidade, {})
+
+                    for row in rows_ativos_local:
+                        hash_id = str(row[0]) if row and row[0] is not None else ""
+                        updated_at = row[1] if row and len(row) > 1 else None
+                        if not hash_id:
+                            continue
+                        active_hashes_local.add(hash_id)
+
+                        if hash_id in hash_ids_atuais:
+                            unit_tracker.pop(hash_id, None)
+                            continue
+
+                        last_seen_dt = _parse_db_datetime(updated_at)
+                        if last_seen_dt is None:
+                            mins_absente = ABSENCE_CONFIRM_MINUTES + 1
+                        else:
+                            mins_absente = max(0.0, (agora_dt - last_seen_dt).total_seconds() / 60.0)
+
+                        tracker_entry = unit_tracker.get(hash_id, {"cycles": 0, "mins": 0.0})
+                        tracker_entry["cycles"] = int(tracker_entry.get("cycles", 0)) + 1
+                        tracker_entry["mins"] = float(mins_absente)
+                        unit_tracker[hash_id] = tracker_entry
+
+                        if (
+                            tracker_entry["cycles"] >= ABSENCE_CONFIRM_CYCLES
+                            and mins_absente >= ABSENCE_CONFIRM_MINUTES
+                        ):
+                            ids_para_finalizar.append(hash_id)
+
+                    # Remove tracking de hashes que ja nao estao mais ativos localmente.
+                    for tracked_hash in list(unit_tracker.keys()):
+                        if tracked_hash not in active_hashes_local:
+                            unit_tracker.pop(tracked_hash, None)
+
+                    if ids_para_finalizar:
+                        finalized_count = db.finalizar_medicos_por_hash(
+                            nome_unidade,
+                            ids_para_finalizar,
+                            motivo="Ausencia Confirmada",
                         )
-                        rows_ativos_local = cursor.fetchall()
+                        for hash_id in ids_para_finalizar:
+                            unit_tracker.pop(hash_id, None)
+                        if finalized_count > 0:
+                            print(
+                                f"   [FINALIZACAO] {nome_unidade}: {finalized_count} paciente(s) finalizado(s) por ausencia confirmada."
+                            )
+                    elif coleta_vazia and active_hashes_local:
+                        warn_throttled(
+                            f"coleta_vazia_confirmacao_{nome_unidade}",
+                            (
+                                f"[{timestamp}] [WARN] {nome_unidade}: coleta vazia, "
+                                f"aguardando {ABSENCE_CONFIRM_CYCLES} ciclo(s) validos para confirmar ausencia."
+                            ),
+                            f"{nome_unidade}: coleta vazia em confirmacao",
+                        )
 
-                        agora_dt = datetime.now(tz)
-                        ids_para_finalizar = []
-
-                        for row in rows_ativos_local:
-                            hash_id = row[0]
-                            updated_at = row[1]
-
-                            if hash_id in hash_ids_atuais:
-                                continue
-
-                            last_seen_dt = _parse_db_datetime(updated_at)
-                            if last_seen_dt is None:
-                                ids_para_finalizar.append(hash_id)
-                                continue
-
-                            mins_absente = (agora_dt - last_seen_dt).total_seconds() / 60.0
-                            if mins_absente >= ABSENCE_CONFIRM_MINUTES:
-                                ids_para_finalizar.append(hash_id)
-
-                        if ids_para_finalizar:
-                            agora = datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S")
-                            for hash_id in ids_para_finalizar:
-                                cursor.execute(
-                                    """
-                                    UPDATE espera_medica
-                                    SET status = 'Finalizado (Saiu)', updated_at = %s
-                                    WHERE hash_id = %s
-                                      AND unidade = %s
-                                      AND (status IS NULL OR status NOT LIKE 'Finalizado%%')
-                                    """,
-                                    (agora, hash_id, nome_unidade),
-                                )
-                            if not db.use_turso:
-                                conn.commit()
-                            # Evita cache stale bloquear reabertura se paciente reaparecer.
-                            db.clear_espera_cache(ids_para_finalizar)
-                    finally:
-                        conn.close()
-
-                # Fallback legado de limpeza por tempo (casos presos)
+                # Fallback de limpeza de casos muito antigos (seguranca operacional).
                 if (
-                    not coleta_vazia
-                    and not auth_issue_detected
+                    not auth_issue_detected
                     and (FINALIZE_INTERVAL_SEC <= 0 or (time.time() - last_finalize_ts) >= FINALIZE_INTERVAL_SEC)
                 ):
-                    db.finalizar_expirados_medicos(nome_unidade, minutos=120)
+                    db.finalizar_expirados_medicos(nome_unidade, minutos=HARD_STALE_MINUTES)
 
                 if last_unit_counts.get(nome_unidade) != qtd_unidade or qtd_unidade > 0:
                     print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
