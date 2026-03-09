@@ -59,3 +59,7 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Novo plano tecnico do modulo de Repasses em `docs/07-plano-tecnico-repasses.md`.
 - Sprint 1 de Repasses iniciado: base de schema, permissoes, APIs de jobs manuais e pagina `/repasses`.
 - Sprint 2 de Repasses iniciado: worker de scraping (`worker_repasse_consolidado.py`) com `NO_DATA` e `UPSERT` por hash.
+
+## Atualizacao adicional (2026-03)
+
+- [`docs/08-agenda-ocupacao.md`](docs/08-agenda-ocupacao.md): modulo de ocupacao da agenda por especialidade/unidade, com snapshot diario, jobs manuais e exportacoes.

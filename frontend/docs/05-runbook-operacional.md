@@ -532,3 +532,16 @@ Feature flag do modulo:
 - frontend/pagina: `NEXT_PUBLIC_REPASSES_MODULE_ENABLED=1`
 
 Se ausente/`0`, o modulo permanece desabilitado para acesso.
+
+## Atualizacao adicional - Worker agenda_occupancy
+
+Variaveis opcionais do worker `workers/worker_agenda_ocupacao.py`:
+
+- `AGENDA_OCCUPANCY_SLOT_MINUTES` (default: `10`)
+- `AGENDA_OCCUPANCY_API_TIMEOUT_SEC` (default: `60`)
+- `AGENDA_OCCUPANCY_API_SLEEP_SEC` (default: `0`)
+- `AGENDA_OCCUPANCY_POLL_SEC` (default: `30`)
+
+Servico monitorado no heartbeat:
+
+- `system_status.service_name = 'agenda_occupancy'`

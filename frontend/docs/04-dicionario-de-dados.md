@@ -786,3 +786,15 @@ Campos principais:
 - `storage_provider`, `storage_bucket`, `storage_key`
 - `file_name`, `size_bytes`
 - `created_at`, `updated_at`
+
+## Atualizacao adicional - Agenda Ocupacao
+
+### agenda_occupancy_daily
+- Snapshot diario por `data_ref + unidade_id + especialidade_id`.
+- Campos principais: `agendamentos_count`, `horarios_disponiveis_count`, `horarios_bloqueados_count`, `capacidade_liquida_count`, `taxa_confirmacao_pct`.
+- Alimentacao: `workers/worker_agenda_ocupacao.py`.
+
+### agenda_occupancy_jobs
+- Fila manual de processamento para atualizacao de ocupacao.
+- Status: `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`.
+- Origem de solicitacao: `/api/admin/agenda-ocupacao/refresh`.

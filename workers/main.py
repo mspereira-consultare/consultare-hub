@@ -59,6 +59,7 @@ try:
     from worker_faturamento_scraping import run_scraper
     from worker_contracts import run_worker_contracts
     from worker_repasse_consolidado import run_repasse_sync_loop, process_pending_repasse_jobs_once
+    from worker_agenda_ocupacao import process_pending_agenda_occupancy_jobs_once
     from worker_auth import FeegowTokenRenewer
     from worker_auth_clinia import CliniaCookieRenewer
     
@@ -137,6 +138,7 @@ KNOWN_ACTIONS = {
     'clinia', # Fila de atendimento WhatsApp
     'monitor_medico', # Espera para atendimento médico
     'monitor_recepcao', # Espera para atendimento recepção
+    'agenda_occupancy', # Ocupacao da agenda por especialidade
 }
 
 def _normalize_service_key(service_raw: str) -> str:
@@ -185,6 +187,9 @@ ALIAS_ACTION_MAP = {
     'clinia': 'clinia',
     'monitor_medico': 'monitor_medico',
     'monitor_recepcao': 'monitor_recepcao',
+    'agenda_occupancy': 'agenda_occupancy',
+    'agenda_ocupacao': 'agenda_occupancy',
+    'ocupacao_agenda': 'agenda_occupancy',
 }
 
 # Mapeia ação para nome canônico no `system_status`
@@ -200,6 +205,7 @@ CANONICAL_NAME = {
     'clinia': 'Worker Clinia',
     'monitor_medico': 'Monitor Médico',
     'monitor_recepcao': 'Monitor Recepção',
+    'agenda_occupancy': 'Agenda Ocupacao (Feegow API)',
 }
 
 def canonicalize(service_raw: str):
@@ -327,6 +333,8 @@ def run_service(key: str):
             run_clinia_token_renewal()
         elif action == 'clinia':
             clinia_cycle()
+        elif action == 'agenda_occupancy':
+            process_pending_agenda_occupancy_jobs_once()
         else:
             print(f"⚠️ Ação desconhecida solicitada: {action}")
 

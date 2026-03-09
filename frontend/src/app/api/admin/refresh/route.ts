@@ -46,6 +46,9 @@ const SERVICE_ALIASES: Record<string, string> = {
   worker_clinia: 'clinia',
   monitor_medico: 'monitor_medico',
   monitor_recepcao: 'monitor_recepcao',
+  agenda_occupancy: 'agenda_occupancy',
+  agenda_ocupacao: 'agenda_occupancy',
+  ocupacao_agenda: 'agenda_occupancy',
 };
 
 const normalizeService = (serviceRaw: string) => {
@@ -67,6 +70,7 @@ const SERVICE_PAGE_MAP: Record<string, PageKey> = {
   contratos: 'contratos',
   monitor_medico: 'monitor',
   monitor_recepcao: 'monitor',
+  agenda_occupancy: 'agenda_ocupacao',
   clinia: 'monitor',
   procedures_catalog: 'profissionais',
   qms_documentos: 'qualidade_documentos',
@@ -84,6 +88,7 @@ const SERVICE_REFRESH_PAGES: Record<string, PageKey[]> = {
   clinia: ['monitor', 'checklist_crc'],
   monitor_medico: ['monitor'],
   monitor_recepcao: ['monitor'],
+  agenda_occupancy: ['agenda_ocupacao'],
   procedures_catalog: ['profissionais'],
   qms_documentos: ['qualidade_documentos'],
   qms_treinamentos: ['qualidade_treinamentos'],

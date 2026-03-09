@@ -236,3 +236,13 @@ Implementacao:
 - `frontend/src/lib/repasses/auth.ts`
 - `frontend/src/app/api/admin/repasses/jobs/route.ts`
 - `frontend/src/app/api/admin/repasses/pdf-jobs/route.ts`
+
+## Atualizacao adicional - Agenda Ocupacao
+
+- Novo `PageKey`: `agenda_ocupacao` (rota `/agenda-ocupacao`).
+- A pagina valida `view` no carregamento e `refresh` para disparar atualizacao manual.
+- APIs protegidas:
+  - `GET /api/admin/agenda-ocupacao`
+  - `POST /api/admin/agenda-ocupacao/refresh`
+  - `GET /api/admin/agenda-ocupacao/jobs/latest`
+  - `GET /api/admin/agenda-ocupacao/export`

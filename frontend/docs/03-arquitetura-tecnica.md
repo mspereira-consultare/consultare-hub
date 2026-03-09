@@ -402,3 +402,10 @@ Detalhes tecnicos:
   - auditoria `encerrada` exige `reassessed=true`;
   - validacao de datas de auditoria/checagem/prazo;
   - acao corretiva `concluida` exige `completion_note`.
+
+## Atualizacao adicional - Arquitetura Agenda Ocupacao
+
+- API frontend cria jobs em `agenda_occupancy_jobs` (`POST /api/admin/agenda-ocupacao/refresh`).
+- Orquestrador (`workers/main.py`) processa o servico `agenda_occupancy` sob demanda via `system_status`.
+- Worker `workers/worker_agenda_ocupacao.py` coleta API Feegow e grava snapshot em `agenda_occupancy_daily`.
+- Exportacoes (`xlsx`/`pdf`) leem apenas o snapshot no banco (sem chamada online a API Feegow).

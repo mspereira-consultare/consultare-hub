@@ -685,3 +685,21 @@ Hardening aplicado:
 - impedimento de auditoria `encerrada` sem `reassessed=true`;
 - validacao de coerencia de datas (checagem/prazo nao anteriores a auditoria);
 - acao corretiva `concluida` exige `completion_note`.
+
+## Atualizacao adicional - Pagina Agenda Ocupacao (`/agenda-ocupacao`)
+
+Indicador principal por especialidade:
+
+`Tx. Confirmacao (%) = Agendamentos / (Horarios Disponiveis + Agendamentos - Horarios Bloqueados)`
+
+Filtros:
+
+- Data inicial/final
+- Unidade (`Todas`, `2`, `3`, `12`)
+
+Acoes:
+
+- Atualizar dados (job manual)
+- Atualizar tela
+- Exportar XLSX
+- Exportar PDF
