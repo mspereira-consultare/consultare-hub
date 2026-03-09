@@ -37,6 +37,11 @@ const isMysqlProvider = () => {
   return Boolean(process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL);
 };
 
+const buildRequestedByUserJoin = (jobAlias: string) =>
+  isMysqlProvider()
+    ? `CONVERT(u.id USING utf8mb4) COLLATE utf8mb4_bin = CONVERT(${jobAlias}.requested_by USING utf8mb4) COLLATE utf8mb4_bin`
+    : `u.id = ${jobAlias}.requested_by`;
+
 const readCount = (row: any): number => {
   if (!row || typeof row !== 'object') return 0;
   if (row.total !== undefined) return Number(row.total) || 0;
@@ -675,6 +680,7 @@ export const listRepasseSyncJobs = async (
     where.push('j.period_ref = ?');
     params.push(periodRef);
   }
+  const userJoinCondition = buildRequestedByUserJoin('j');
 
   const rows = await db.query(
     `
@@ -682,7 +688,7 @@ export const listRepasseSyncJobs = async (
       j.*,
       COALESCE(u.name, u.email, j.requested_by) as requested_by_display
     FROM repasse_sync_jobs j
-    LEFT JOIN users u ON u.id = j.requested_by
+    LEFT JOIN users u ON ${userJoinCondition}
     WHERE ${where.join(' AND ')}
     ORDER BY j.created_at DESC
     LIMIT ?
@@ -771,6 +777,7 @@ export const listRepassePdfJobs = async (
     where.push('j.period_ref = ?');
     params.push(periodRef);
   }
+  const userJoinCondition = buildRequestedByUserJoin('j');
 
   const rows = await db.query(
     `
@@ -778,7 +785,7 @@ export const listRepassePdfJobs = async (
       j.*,
       COALESCE(u.name, u.email, j.requested_by) as requested_by_display
     FROM repasse_pdf_jobs j
-    LEFT JOIN users u ON u.id = j.requested_by
+    LEFT JOIN users u ON ${userJoinCondition}
     WHERE ${where.join(' AND ')}
     ORDER BY j.created_at DESC
     LIMIT ?
