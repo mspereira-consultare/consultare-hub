@@ -324,6 +324,20 @@ export function Sidebar() {
     setExpandedGroups((prev) => ({ ...prev, [group]: !prev[group] }));
   };
 
+  const expandAllGroups = () => {
+    const next: Record<string, boolean> = {};
+    groupsOrdered.forEach((group) => {
+      next[group] = true;
+    });
+    setExpandedGroups(next);
+  };
+
+  const collapseAllGroups = () => {
+    const next: Record<string, boolean> = {};
+    if (activeGroup) next[activeGroup] = true;
+    setExpandedGroups(next);
+  };
+
   const clearSearch = () => setSearchTerm("");
 
   const handleLogout = async () => {
@@ -368,9 +382,9 @@ export function Sidebar() {
         </button>
       </div>
 
-      <nav className="flex-1 px-3 overflow-y-auto overflow-x-hidden mt-5 scrollbar-hide">
+      <nav className="flex-1 px-3 overflow-y-auto overflow-x-hidden mt-2 scrollbar-hide">
         {isOpen && (
-          <div className="px-1">
+          <div className="px-1 space-y-2">
             <div className="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">
               <Search size={16} className="text-slate-300/70 flex-shrink-0" />
               <input
@@ -394,11 +408,27 @@ export function Sidebar() {
                 </button>
               )}
             </div>
+            <div className="flex items-center justify-end gap-2 px-1">
+              <button
+                type="button"
+                onClick={expandAllGroups}
+                className="rounded-md border border-white/10 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+              >
+                Expandir tudo
+              </button>
+              <button
+                type="button"
+                onClick={collapseAllGroups}
+                className="rounded-md border border-white/10 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+              >
+                Recolher tudo
+              </button>
+            </div>
           </div>
         )}
 
         {/* ↓ mais condensado: diminui o gap entre cards */}
-        <div className={cn("space-y-4", isOpen ? "mt-4" : "")}>
+        <div className={cn("space-y-1", isOpen ? "mt-2" : "")}>
           {/* Modo de busca: também em card por grupo */}
           {isOpen && searchResultsByGroup ? (
             searchResultsByGroup.matches.length === 0 ? (
@@ -414,17 +444,17 @@ export function Sidebar() {
                   return (
                     <div
                       key={group}
-                      className="rounded-xl border border-white/10 bg-white/0 overflow-hidden"
+                      className="overflow-hidden border-t border-white/10 first:border-t-0"
                     >
                       {/* ↓ header mais compacto */}
-                      <div className="px-3 py-2.5 bg-white/0">
+                      <div className="px-3 py-2">
                         <span className="text-xs font-bold text-slate-200/90 uppercase tracking-wider">
                           {group}
                         </span>
                       </div>
 
                       {/* ↓ body mais compacto */}
-                      <div className="border-t border-white/10 px-2 py-1.5">
+                      <div className="border-t border-white/10 px-2 py-1">
                         <div className="space-y-1">
                           {items.map((item) => {
                             const isActive = isItemActive(item);
@@ -443,7 +473,7 @@ export function Sidebar() {
                                 className={cn(
                                   "group relative flex items-center rounded-lg transition-all duration-200",
                                   // ↓ itens mais condensados
-                                  "pl-3 pr-2.5 py-2",
+                                  "pl-3 pr-2.5 py-1.5",
                                   isActive
                                     ? "bg-[#17407E] text-white font-medium shadow-md"
                                     : "text-slate-300 hover:bg-white/5 hover:text-white"
@@ -536,14 +566,14 @@ export function Sidebar() {
               return (
                 <div
                   key={group}
-                  className="rounded-xl border border-white/10 bg-white/0 overflow-hidden"
+                  className="overflow-hidden border-t border-white/10 first:border-t-0"
                 >
                   {/* ↓ header mais compacto */}
                   <button
                     type="button"
                     onClick={() => toggleGroup(group)}
                     className={cn(
-                      "w-full flex items-center justify-between px-3 py-2.5 transition-colors select-none",
+                      "w-full flex items-center justify-between px-3 py-2 transition-colors select-none",
                       "bg-white/0 hover:bg-white/5",
                       group === activeGroup ? "text-white" : "text-slate-300"
                     )}
@@ -573,7 +603,7 @@ export function Sidebar() {
                     aria-hidden={!isExpanded}
                   >
                     {/* ↓ body mais compacto */}
-                    <div className="border-t border-white/10 px-2 py-1.5">
+                    <div className="border-t border-white/10 px-2 py-1">
                       <div
                         className={cn(
                           "space-y-1 transition-transform duration-300 ease-in-out",
@@ -594,7 +624,7 @@ export function Sidebar() {
                               className={cn(
                                 "group relative flex items-center rounded-lg transition-all duration-200",
                                 // ↓ itens mais condensados
-                                "pl-3 pr-2.5 py-2",
+                                "pl-3 pr-2.5 py-1.5",
                                 isActive
                                   ? "bg-[#17407E] text-white font-medium shadow-md"
                                   : "text-slate-300 hover:bg-white/5 hover:text-white"
