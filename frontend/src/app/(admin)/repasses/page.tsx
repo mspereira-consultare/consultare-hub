@@ -141,7 +141,6 @@ export default function RepassesPage() {
   const [loadingProfessionals, setLoadingProfessionals] = useState(false);
   const [creatingSync, setCreatingSync] = useState(false);
   const [creatingPdf, setCreatingPdf] = useState(false);
-  const [processingPdf, setProcessingPdf] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -321,7 +320,7 @@ export default function RepassesPage() {
   const createPdfJob = async () => {
     if (!canEdit) return;
     if (selectedCount < 1) {
-      setError("Selecione ao menos 1 profissional para gerar relatório.");
+      setError("Selecione ao menos 1 profissional para gerar relatorio.");
       return;
     }
     setCreatingPdf(true);
@@ -339,48 +338,35 @@ export default function RepassesPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao criar job de relatório.");
-      setNotice(`Geração de relatórios solicitada para ${selectedCount} profissional(is).`);
-      await fetchJobs();
-    } catch (e: any) {
-      setError(e?.message || "Erro ao criar job de relatório.");
-    } finally {
-      setCreatingPdf(false);
-    }
-  };
+      if (!res.ok) throw new Error(data?.error || "Falha ao criar job de relatorio.");
 
-  const processPdfQueue = async () => {
-    if (!canEdit) return;
-    setProcessingPdf(true);
-    setError("");
-    setNotice("");
-    try {
-      const res = await fetch("/api/admin/repasses/pdf-jobs/process", {
+      const processRes = await fetch("/api/admin/repasses/pdf-jobs/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ maxJobs: 3 }),
+        body: JSON.stringify({ maxJobs: 1 }),
       });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao processar fila de relatório.");
-      const generated = Number(data?.data?.generatedFiles || 0);
-      const processed = Number(data?.data?.processedJobs || 0);
-      const failed = Number(data?.data?.failedJobs || 0);
-      const details = Array.isArray(data?.data?.details) ? data.data.details : [];
+      const processData = await processRes.json().catch(() => ({}));
+      if (!processRes.ok) {
+        throw new Error(processData?.error || "Falha ao gerar relatorio.");
+      }
+
+      const generated = Number(processData?.data?.generatedFiles || 0);
+      const processed = Number(processData?.data?.processedJobs || 0);
+      const failed = Number(processData?.data?.failedJobs || 0);
+      const details = Array.isArray(processData?.data?.details) ? processData.data.details : [];
       if (failed > 0) {
         setError(
-          `Falha na geração de ${failed} job(s). ${
-            details.length ? String(details[0]) : "Verifique o histórico de jobs."
+          `Falha na geracao de ${failed} job(s). ${
+            details.length ? String(details[0]) : "Verifique o historico de jobs."
           }`
         );
       }
-      setNotice(
-        `Fila de relatório processada. Jobs: ${processed} | Arquivos: ${generated} | Falhas: ${failed}.`
-      );
+      setNotice(`Geracao concluida. Jobs: ${processed} | Arquivos: ${generated} | Falhas: ${failed}.`);
       await refreshAll();
     } catch (e: any) {
-      setError(e?.message || "Erro ao processar fila de relatório.");
+      setError(e?.message || "Erro ao gerar relatorio.");
     } finally {
-      setProcessingPdf(false);
+      setCreatingPdf(false);
     }
   };
 
@@ -586,16 +572,6 @@ export default function RepassesPage() {
           >
             {creatingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
             Gerar relatórios
-          </button>
-
-          <button
-            type="button"
-            onClick={processPdfQueue}
-            disabled={!canEdit || processingPdf}
-            className="inline-flex items-center gap-2 rounded-lg bg-[#0F766E] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
-          >
-            {processingPdf ? <Loader2 size={14} className="animate-spin" /> : <FileText size={14} />}
-            Gerar relatórios pendentes
           </button>
 
           <button
