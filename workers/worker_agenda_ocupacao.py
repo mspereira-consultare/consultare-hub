@@ -511,7 +511,7 @@ def _aggregate_appointments(
     unit_id: int,
     start_iso: str,
     end_iso: str,
-) -> Dict[Tuple[str, int, int], int]:
+) -> Tuple[Dict[Tuple[str, int, int], int], Dict[int, Set[int]]]:
     params = {
         "data_start": _to_br_date(start_iso),
         "data_end": _to_br_date(end_iso),
@@ -520,9 +520,10 @@ def _aggregate_appointments(
     data = _api_get(session, token, "appoints/search", params)
     items = data.get("content") if isinstance(data, dict) else []
     if not isinstance(items, list):
-        return {}
+        return {}, {}
 
     agg: Dict[Tuple[str, int, int], int] = defaultdict(int)
+    active_prof_by_spec: Dict[int, Set[int]] = defaultdict(set)
     for row in items:
         if not isinstance(row, dict):
             continue
@@ -542,17 +543,24 @@ def _aggregate_appointments(
         if data_iso < start_iso or data_iso > end_iso:
             continue
         agg[(data_iso, unit_id, spec_id)] += 1
-    return dict(agg)
+        prof_id = _to_int(row.get("profissional_id"), 0)
+        if prof_id > 0:
+            active_prof_by_spec[spec_id].add(prof_id)
+    return dict(agg), dict(active_prof_by_spec)
 
 
-def _extract_available_counts(content: object) -> Dict[str, int]:
+def _extract_available_details(content: object) -> Tuple[Dict[str, int], Set[int]]:
     daily: Dict[str, int] = defaultdict(int)
+    active_prof_ids: Set[int] = set()
 
     if isinstance(content, list):
         # Formato alternativo: lista simples de slots
         for item in content:
             if not isinstance(item, dict):
                 continue
+            pid = _to_int(item.get("profissional_id") or item.get("professional_id"), 0)
+            if pid > 0:
+                active_prof_ids.add(pid)
             data_iso = _to_iso_date(str(item.get("data") or item.get("date") or ""))
             if not data_iso:
                 continue
@@ -560,16 +568,19 @@ def _extract_available_counts(content: object) -> Dict[str, int]:
                 daily[data_iso] += len(item.get("horarios") or [])
             elif item.get("horario"):
                 daily[data_iso] += 1
-        return dict(daily)
+        return dict(daily), active_prof_ids
 
     if not isinstance(content, dict):
-        return {}
+        return {}, active_prof_ids
 
     prof_map = content.get("profissional_id")
     if not isinstance(prof_map, dict):
-        return {}
+        return {}, active_prof_ids
 
-    for _, prof_data in prof_map.items():
+    for raw_prof_id, prof_data in prof_map.items():
+        prof_id = _to_int(raw_prof_id, 0)
+        if prof_id > 0:
+            active_prof_ids.add(prof_id)
         if not isinstance(prof_data, dict):
             continue
         local_map = prof_data.get("local_id")
@@ -585,7 +596,12 @@ def _extract_available_counts(content: object) -> Dict[str, int]:
                 if isinstance(times, list):
                     daily[data_iso] += len(times)
 
-    return dict(daily)
+    return dict(daily), active_prof_ids
+
+
+def _extract_available_counts(content: object) -> Dict[str, int]:
+    daily, _ = _extract_available_details(content)
+    return daily
 
 
 def _aggregate_available_slots(
@@ -594,45 +610,98 @@ def _aggregate_available_slots(
     unit_id: int,
     start_iso: str,
     end_iso: str,
-    prof_specs: Dict[int, Set[int]],
-) -> Dict[Tuple[str, int, int], int]:
+    unit_specialties: Set[int],
+    prof_specs: Optional[Dict[int, Set[int]]] = None,
+) -> Tuple[Dict[Tuple[str, int, int], int], Dict[int, Set[int]]]:
+    """
+    Agrega slots disponíveis por unidade+especialidade.
+
+    Abordagem principal:
+      - chama /appoints/available-schedule por ESPECIALIDADE (sem profissional_id),
+        para evitar subcontagem quando há inconsistência no vínculo profissional-especialidade.
+
+    Fallback:
+      - se a chamada por especialidade falhar, tenta por profissional para a mesma especialidade.
+    """
     agg: Dict[Tuple[str, int, int], int] = defaultdict(int)
+    active_prof_by_spec: Dict[int, Set[int]] = defaultdict(set)
     start_br = _to_br_date(start_iso)
     end_br = _to_br_date(end_iso)
 
-    total_calls = sum(len(specs) for specs in prof_specs.values())
+    specialties = sorted(int(s) for s in (unit_specialties or set()) if int(s) > 0)
+    total_calls = len(specialties)
     done_calls = 0
+    prof_specs = prof_specs or {}
 
-    for prof_id, specialties in prof_specs.items():
-        for spec_id in specialties:
-            params = {
-                "unidade_id": unit_id,
-                "profissional_id": prof_id,
-                "data_start": start_br,
-                "data_end": end_br,
-                "tipo": "E",
-                "especialidade_id": spec_id,
-            }
-            try:
-                data = _api_get(session, token, "appoints/available-schedule", params)
-                content = data.get("content") if isinstance(data, dict) else []
-                daily_counts = _extract_available_counts(content)
-                for data_iso, count in daily_counts.items():
-                    if data_iso < start_iso or data_iso > end_iso:
-                        continue
-                    agg[(data_iso, unit_id, spec_id)] += int(count or 0)
-            except Exception as exc:
-                print(
-                    f"[agenda_occupancy] aviso available-schedule unidade={unit_id} "
-                    f"profissional={prof_id} especialidade={spec_id}: {exc}"
-                )
-            done_calls += 1
-            if API_SLEEP_SEC > 0:
-                time.sleep(API_SLEEP_SEC)
-            if done_calls % 50 == 0:
-                print(f"[agenda_occupancy] available-schedule progresso: {done_calls}/{total_calls}")
+    # Índice reverso para fallback
+    spec_to_profs: Dict[int, List[int]] = defaultdict(list)
+    for prof_id, specs in prof_specs.items():
+        for sid in specs:
+            sid_int = int(sid or 0)
+            if sid_int > 0:
+                spec_to_profs[sid_int].append(int(prof_id))
 
-    return dict(agg)
+    for spec_id in specialties:
+        params = {
+            "unidade_id": unit_id,
+            "data_start": start_br,
+            "data_end": end_br,
+            "tipo": "E",
+            "especialidade_id": spec_id,
+        }
+
+        used_fallback = False
+        try:
+            data = _api_get(session, token, "appoints/available-schedule", params)
+            content = data.get("content") if isinstance(data, dict) else []
+            daily_counts, active_prof_ids = _extract_available_details(content)
+            for pid in active_prof_ids:
+                active_prof_by_spec[spec_id].add(pid)
+            for data_iso, count in daily_counts.items():
+                if data_iso < start_iso or data_iso > end_iso:
+                    continue
+                agg[(data_iso, unit_id, spec_id)] += int(count or 0)
+        except Exception as exc:
+            used_fallback = True
+            profs = spec_to_profs.get(spec_id) or []
+            print(
+                f"[agenda_occupancy] aviso available-schedule unidade={unit_id} "
+                f"especialidade={spec_id} (modo agregado) falhou: {exc} | fallback_profissionais={len(profs)}"
+            )
+            for prof_id in profs:
+                prof_params = {
+                    "unidade_id": unit_id,
+                    "profissional_id": prof_id,
+                    "data_start": start_br,
+                    "data_end": end_br,
+                    "tipo": "E",
+                    "especialidade_id": spec_id,
+                }
+                try:
+                    data = _api_get(session, token, "appoints/available-schedule", prof_params)
+                    content = data.get("content") if isinstance(data, dict) else []
+                    daily_counts, active_prof_ids = _extract_available_details(content)
+                    for pid in active_prof_ids:
+                        active_prof_by_spec[spec_id].add(pid)
+                    for data_iso, count in daily_counts.items():
+                        if data_iso < start_iso or data_iso > end_iso:
+                            continue
+                        agg[(data_iso, unit_id, spec_id)] += int(count or 0)
+                except Exception as inner_exc:
+                    print(
+                        f"[agenda_occupancy] aviso fallback available-schedule unidade={unit_id} "
+                        f"profissional={prof_id} especialidade={spec_id}: {inner_exc}"
+                    )
+                if API_SLEEP_SEC > 0:
+                    time.sleep(API_SLEEP_SEC)
+
+        done_calls += 1
+        if API_SLEEP_SEC > 0 and not used_fallback:
+            time.sleep(API_SLEEP_SEC)
+        if done_calls % 25 == 0 or done_calls == total_calls:
+            print(f"[agenda_occupancy] available-schedule progresso: {done_calls}/{total_calls} (unidade={unit_id})")
+
+    return dict(agg), dict(active_prof_by_spec)
 
 
 def _aggregate_blocked_slots(
@@ -643,6 +712,7 @@ def _aggregate_blocked_slots(
     end_iso: str,
     prof_specs: Dict[int, Set[int]],
     unit_specialties: Set[int],
+    allowed_prof_by_spec: Optional[Dict[int, Set[int]]] = None,
 ) -> Dict[Tuple[str, int, int], int]:
     start_dt = datetime.strptime(start_iso, "%Y-%m-%d").date()
     end_dt = datetime.strptime(end_iso, "%Y-%m-%d").date()
@@ -689,19 +759,22 @@ def _aggregate_blocked_slots(
                 if 1 <= val <= 7:
                     week_days.add(val)
 
-        per_day_slots = _blocked_slots_count(
-            str(block.get("time_start") or "00:00:00"),
-            str(block.get("time_end") or "23:59:00"),
-            SLOT_MINUTES,
-        )
-        if per_day_slots <= 0:
-            continue
-
         prof_id = _to_int(block.get("professional_id"), 0)
         if prof_id > 0:
             target_specs = set(prof_specs.get(prof_id) or [])
+            if allowed_prof_by_spec:
+                target_specs = {
+                    sid for sid in target_specs
+                    if prof_id in (allowed_prof_by_spec.get(sid) or set())
+                }
         else:
-            target_specs = set(unit_specialties)
+            if allowed_prof_by_spec:
+                target_specs = {
+                    sid for sid, profs in allowed_prof_by_spec.items()
+                    if sid in unit_specialties and bool(profs)
+                }
+            else:
+                target_specs = set(unit_specialties)
         if not target_specs:
             continue
 
@@ -714,7 +787,9 @@ def _aggregate_blocked_slots(
             for spec_id in target_specs:
                 if spec_id <= 0:
                     continue
-                agg[(day_iso, unit_id, spec_id)] += per_day_slots
+                # lock/list não expõe duracao de slot por especialidade.
+                # Evita inflacao artificial de bloqueios usando peso 1 por dia.
+                agg[(day_iso, unit_id, spec_id)] += 1
 
     return dict(agg)
 
@@ -756,8 +831,13 @@ def _build_daily_rows(
             taxa = 0.0
             anomalies += 1
         else:
-            capacidade = capacidade_raw
+            # Regra de sanidade: denominador não pode ficar menor que agendamentos.
+            # Evita taxas >100% quando bloqueios superam "livres" no mesmo dia.
+            capacidade = capacidade_raw if capacidade_raw >= ag else ag
             taxa = round((ag * 100.0) / capacidade_raw, 4)
+            if capacidade != capacidade_raw:
+                anomalies += 1
+                taxa = round((ag * 100.0) / capacidade, 4)
 
         unidade_nome = UNIT_NAME_MAP.get(unit_id, f"UNIDADE {unit_id}")
         especialidade_nome = specialty_names.get(spec_id) or f"Especialidade {spec_id}"
@@ -875,22 +955,34 @@ def _process_job(db: "DatabaseManager", job: Dict):
             f"especialidades={len(unit_specialties[unit_id])}"
         )
 
-        agg_ag = _aggregate_appointments(session, token, unit_id, start_iso, end_iso)
+        agg_ag, appt_active_prof_by_spec = _aggregate_appointments(session, token, unit_id, start_iso, end_iso)
         for k, v in agg_ag.items():
             agendamentos[k] += int(v or 0)
             unit_specialties[unit_id].add(k[2])
 
-        agg_disp = _aggregate_available_slots(
+        agg_disp, avail_active_prof_by_spec = _aggregate_available_slots(
             session=session,
             token=token,
             unit_id=unit_id,
             start_iso=start_iso,
             end_iso=end_iso,
+            unit_specialties=unit_specialties[unit_id],
             prof_specs=prof_specs,
         )
         for k, v in agg_disp.items():
             disponiveis[k] += int(v or 0)
             unit_specialties[unit_id].add(k[2])
+
+        active_prof_by_spec: Dict[int, Set[int]] = defaultdict(set)
+        for source in (appt_active_prof_by_spec, avail_active_prof_by_spec):
+            for sid, pset in (source or {}).items():
+                sid_int = int(sid or 0)
+                if sid_int <= 0:
+                    continue
+                for pid in (pset or set()):
+                    pid_int = int(pid or 0)
+                    if pid_int > 0:
+                        active_prof_by_spec[sid_int].add(pid_int)
 
         agg_bloq = _aggregate_blocked_slots(
             session=session,
@@ -900,6 +992,7 @@ def _process_job(db: "DatabaseManager", job: Dict):
             end_iso=end_iso,
             prof_specs=prof_specs,
             unit_specialties=unit_specialties[unit_id],
+            allowed_prof_by_spec=dict(active_prof_by_spec),
         )
         for k, v in agg_bloq.items():
             bloqueados[k] += int(v or 0)
