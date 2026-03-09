@@ -166,20 +166,20 @@ const menuItems: MenuItem[] = [
     pageKey: "metas_dashboard",
   },
   {
-    href: "/agenda-ocupacao",
-    label: "Ocupacao da Agenda",
-    icon: Calendar,
-    group: "INTELIGÊNCIA",
-    roles: ["ADMIN", "GESTOR", "OPERADOR"],
-    pageKey: "agenda_ocupacao",
-  },
-  {
     href: "/metas",
     label: "Gestão de Metas",
     icon: Settings2,
     group: "INTELIGÊNCIA",
     roles: ["ADMIN", "GESTOR"],
     pageKey: "metas",
+  },
+  {
+    href: "/agenda-ocupacao",
+    label: "Ocupação da Agenda",
+    icon: Calendar,
+    group: "INTELIGÊNCIA",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "agenda_ocupacao",
   },
   {
     href: "/users",
