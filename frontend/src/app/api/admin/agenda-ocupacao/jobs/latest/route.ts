@@ -5,6 +5,11 @@ import { AgendaOcupacaoValidationError, getLatestAgendaOcupacaoJob } from '@/lib
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
+const normalizeUnitParam = (value: string | null): 'all' | '2' | '3' | '12' | undefined => {
+  if (value === '2' || value === '3' || value === '12' || value === 'all') return value;
+  return undefined;
+};
+
 export async function GET(request: Request) {
   try {
     const auth = await requireAgendaOcupacaoPermission('view');
@@ -16,7 +21,7 @@ export async function GET(request: Request) {
     const filters = {
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,
-      unitId: searchParams.get('unit') || undefined,
+      unitId: normalizeUnitParam(searchParams.get('unit')),
     };
 
     const latestJob = await getLatestAgendaOcupacaoJob(auth.db, filters);

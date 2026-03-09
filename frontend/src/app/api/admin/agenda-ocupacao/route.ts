@@ -32,6 +32,11 @@ const getDefaultRange = () => {
   };
 };
 
+const normalizeUnitParam = (value: string | null): 'all' | '2' | '3' | '12' => {
+  if (value === '2' || value === '3' || value === '12') return value;
+  return 'all';
+};
+
 export async function GET(request: Request) {
   try {
     const auth = await requireAgendaOcupacaoPermission('view');
@@ -45,7 +50,7 @@ export async function GET(request: Request) {
     const filters = normalizeAgendaFilters({
       startDate: searchParams.get('startDate') || defaults.startDate,
       endDate: searchParams.get('endDate') || defaults.endDate,
-      unitId: searchParams.get('unit') || 'all',
+      unitId: normalizeUnitParam(searchParams.get('unit')),
     });
 
     const cacheKey = buildCacheKey('admin:agenda-ocupacao', request.url);

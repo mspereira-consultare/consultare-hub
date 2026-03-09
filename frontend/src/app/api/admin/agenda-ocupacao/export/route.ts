@@ -40,6 +40,11 @@ const unitLabel = (unitId: 'all' | '2' | '3' | '12') => {
   return 'Todas as unidades';
 };
 
+const normalizeUnitParam = (value: string | null): 'all' | '2' | '3' | '12' => {
+  if (value === '2' || value === '3' || value === '12') return value;
+  return 'all';
+};
+
 const buildXlsx = async (args: {
   startDate: string;
   endDate: string;
@@ -255,7 +260,7 @@ export async function GET(request: Request) {
     const filters = normalizeAgendaFilters({
       startDate: searchParams.get('startDate') || defaults.startDate,
       endDate: searchParams.get('endDate') || defaults.endDate,
-      unitId: searchParams.get('unit') || 'all',
+      unitId: normalizeUnitParam(searchParams.get('unit')),
     });
 
     const [summary, dailyRows] = await Promise.all([
