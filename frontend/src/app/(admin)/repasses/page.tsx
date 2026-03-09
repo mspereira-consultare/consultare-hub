@@ -6,6 +6,7 @@ import { AlertCircle, FileText, Loader2, RefreshCw, Users } from "lucide-react";
 import { hasPermission } from "@/lib/permissions";
 import { isRepassesModuleEnabledClient } from "@/lib/repasses/feature";
 import { JobHistoryTable } from "./components/JobHistoryTable";
+import { ProfessionalDetailsModal } from "./components/ProfessionalDetailsModal";
 import { ProfessionalSummaryTable } from "./components/ProfessionalSummaryTable";
 
 type SyncJob = {
@@ -46,6 +47,15 @@ type ProfessionalSummary = {
   note: string | null;
   lastPdfAt: string | null;
   lastPdfArtifactId: string | null;
+};
+
+type RepasseLine = {
+  dataExec: string;
+  paciente: string;
+  descricao: string;
+  funcao: string;
+  convenio: string;
+  repasseValue: number;
 };
 
 type ProfessionalStats = {
@@ -121,6 +131,11 @@ export default function RepassesPage() {
   });
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [savingNoteById, setSavingNoteById] = useState<Record<string, boolean>>({});
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsItem, setDetailsItem] = useState<ProfessionalSummary | null>(null);
+  const [detailRows, setDetailRows] = useState<RepasseLine[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
 
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [loadingProfessionals, setLoadingProfessionals] = useState(false);
@@ -405,6 +420,37 @@ export default function RepassesPage() {
     }
   };
 
+  const openProfessionalDetails = async (item: ProfessionalSummary) => {
+    setDetailsItem(item);
+    setDetailsOpen(true);
+    setDetailLoading(true);
+    setDetailError("");
+    try {
+      const qs = new URLSearchParams({ periodRef }).toString();
+      const res = await fetch(
+        `/api/admin/repasses/professionals/${encodeURIComponent(item.professionalId)}/details?${qs}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Falha ao carregar detalhes do profissional.");
+
+      const rows: RepasseLine[] = Array.isArray(data?.data?.rows) ? data.data.rows : [];
+      const note = String(data?.data?.note || "");
+      setDetailRows(rows);
+      setNoteDrafts((prev) => ({ ...prev, [item.professionalId]: note }));
+      setItems((prev) =>
+        prev.map((current) =>
+          current.professionalId === item.professionalId ? { ...current, note: note || null } : current
+        )
+      );
+    } catch (e: any) {
+      setDetailRows([]);
+      setDetailError(e?.message || "Erro ao carregar detalhes do profissional.");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!moduleEnabled || !canView) return;
     fetchJobs().catch((e: any) => {
@@ -651,13 +697,33 @@ export default function RepassesPage() {
         searchDraft={searchDraft}
         onSearchDraftChange={setSearchDraft}
         onApplySearch={applySearch}
+        onOpenDetails={openProfessionalDetails}
+      />
+
+      <ProfessionalDetailsModal
+        open={detailsOpen}
+        item={detailsItem}
+        periodRef={periodRef}
+        rows={detailRows}
+        loadingRows={detailLoading}
+        rowsError={detailError}
+        noteValue={detailsItem ? noteDrafts[detailsItem.professionalId] ?? detailsItem.note ?? "" : ""}
         canEdit={canEdit}
-        noteValues={noteDrafts}
-        savingNoteById={savingNoteById}
-        onNoteChange={(professionalId, value) =>
-          setNoteDrafts((prev) => ({ ...prev, [professionalId]: value }))
-        }
-        onSaveNote={saveProfessionalNote}
+        savingNote={detailsItem ? !!savingNoteById[detailsItem.professionalId] : false}
+        onClose={() => {
+          setDetailsOpen(false);
+          setDetailsItem(null);
+          setDetailRows([]);
+          setDetailError("");
+        }}
+        onNoteChange={(value) => {
+          if (!detailsItem) return;
+          setNoteDrafts((prev) => ({ ...prev, [detailsItem.professionalId]: value }));
+        }}
+        onSaveNote={() => {
+          if (!detailsItem) return;
+          saveProfessionalNote(detailsItem.professionalId);
+        }}
       />
 
       {showSyncHistoryModal && (

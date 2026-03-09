@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef } from 'react';
-import { AlertCircle, Loader2, Save, Search } from 'lucide-react';
+import { AlertCircle, Loader2, MessageSquareText, Search } from 'lucide-react';
 import { StatusBadge } from './StatusBadge';
 
 type ProfessionalSummary = {
@@ -31,11 +31,7 @@ type ProfessionalSummaryTableProps = {
   searchDraft: string;
   onSearchDraftChange: (value: string) => void;
   onApplySearch: () => void;
-  canEdit: boolean;
-  noteValues: Record<string, string>;
-  savingNoteById: Record<string, boolean>;
-  onNoteChange: (professionalId: string, value: string) => void;
-  onSaveNote: (professionalId: string) => void;
+  onOpenDetails: (item: ProfessionalSummary) => void;
 };
 
 const currency = (value: number) =>
@@ -67,11 +63,7 @@ export function ProfessionalSummaryTable({
   searchDraft,
   onSearchDraftChange,
   onApplySearch,
-  canEdit,
-  noteValues,
-  savingNoteById,
-  onNoteChange,
-  onSaveNote,
+  onOpenDetails,
 }: ProfessionalSummaryTableProps) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
@@ -125,7 +117,7 @@ export function ProfessionalSummaryTable({
       </header>
 
       <div className="max-h-[760px] overflow-auto">
-        <table className="w-full min-w-[1320px] text-xs">
+        <table className="w-full min-w-[1160px] text-xs">
           <thead className="sticky top-0 z-10 bg-white text-[10px] uppercase tracking-wide text-slate-500">
             <tr>
               <th className="w-10 px-2 py-2 text-center">
@@ -142,7 +134,7 @@ export function ProfessionalSummaryTable({
               <th className="px-2 py-2 text-right">Atendimentos</th>
               <th className="px-2 py-2 text-right">Total repasse</th>
               <th className="px-2 py-2 text-left">Último processamento</th>
-              <th className="px-2 py-2 text-left">Observação</th>
+              <th className="w-[70px] px-2 py-2 text-center">Obs.</th>
               <th className="px-2 py-2 text-left">Relatório</th>
             </tr>
           </thead>
@@ -164,7 +156,12 @@ export function ProfessionalSummaryTable({
               </tr>
             ) : (
               items.map((item) => (
-                <tr key={item.professionalId} className="border-t text-slate-700">
+                <tr
+                  key={item.professionalId}
+                  className="border-t text-slate-700 hover:bg-slate-50"
+                  onDoubleClick={() => onOpenDetails(item)}
+                  title="Duplo clique para abrir detalhes"
+                >
                   <td className="px-2 py-1.5 text-center">
                     <input
                       type="checkbox"
@@ -173,44 +170,39 @@ export function ProfessionalSummaryTable({
                       className="h-4 w-4 rounded border-slate-300"
                     />
                   </td>
-                  <td className="max-w-[260px] truncate px-2 py-1.5" title={item.professionalName}>
-                    {item.professionalName}
+                  <td className="max-w-[280px] truncate px-2 py-1.5" title={item.professionalName}>
+                    <button
+                      type="button"
+                      onClick={() => onOpenDetails(item)}
+                      className="truncate text-left font-semibold text-[#17407E] hover:underline"
+                      title="Abrir detalhes"
+                    >
+                      {item.professionalName}
+                    </button>
                   </td>
                   <td className="px-2 py-1.5">
                     <StatusBadge status={item.status} />
+                    {item.status === 'ERROR' && item.errorMessage ? (
+                      <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-rose-700" title={item.errorMessage}>
+                        <AlertCircle size={12} />
+                        <span className="max-w-[220px] truncate">{item.errorMessage}</span>
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-2 py-1.5 text-right tabular-nums">{item.rowsCount}</td>
                   <td className="px-2 py-1.5 text-right font-medium tabular-nums">{currency(item.totalValue)}</td>
                   <td className="px-2 py-1.5">{toBrDateTime(item.lastProcessedAt)}</td>
-                  <td className="px-2 py-1.5">
-                    <div className="flex items-center gap-2">
-                      <input
-                        value={noteValues[item.professionalId] ?? item.note ?? ''}
-                        onChange={(e) => onNoteChange(item.professionalId, e.target.value)}
-                        placeholder="Adicionar observação..."
-                        className="h-8 w-full rounded border px-2 text-xs"
-                        disabled={!canEdit}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => onSaveNote(item.professionalId)}
-                        disabled={!canEdit || !!savingNoteById[item.professionalId]}
-                        className="inline-flex h-8 min-w-[70px] items-center justify-center gap-1 rounded border px-2 text-[11px] font-semibold text-slate-700 disabled:opacity-40"
+                  <td className="px-2 py-1.5 text-center">
+                    {item.note ? (
+                      <span
+                        className="inline-flex items-center justify-center rounded-md border border-amber-300 bg-amber-50 p-1 text-amber-700"
+                        title={item.note}
                       >
-                        {savingNoteById[item.professionalId] ? (
-                          <Loader2 size={12} className="animate-spin" />
-                        ) : (
-                          <Save size={12} />
-                        )}
-                        Salvar
-                      </button>
-                    </div>
-                    {item.status === 'ERROR' && item.errorMessage ? (
-                      <div className="mt-1 inline-flex items-center gap-1 text-[11px] text-rose-700">
-                        <AlertCircle size={12} />
-                        {item.errorMessage}
-                      </div>
-                    ) : null}
+                        <MessageSquareText size={14} />
+                      </span>
+                    ) : (
+                      <span className="text-slate-300">-</span>
+                    )}
                   </td>
                   <td className="px-2 py-1.5">
                     {item.lastPdfArtifactId ? (
@@ -225,9 +217,7 @@ export function ProfessionalSummaryTable({
                         >
                           Visualizar
                         </a>
-                        <span className="text-[10px] text-slate-500">
-                          {toBrDateTime(item.lastPdfAt)}
-                        </span>
+                        <span className="text-[10px] text-slate-500">{toBrDateTime(item.lastPdfAt)}</span>
                       </div>
                     ) : (
                       <span className="text-[11px] text-slate-400">-</span>
