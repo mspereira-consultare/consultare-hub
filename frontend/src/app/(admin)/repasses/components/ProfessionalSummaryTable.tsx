@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef } from 'react';
-import { AlertCircle, Loader2, MessageSquareText, Search } from 'lucide-react';
+import { AlertCircle, Loader2, MessageSquareText, Search, Wallet } from 'lucide-react';
 import { StatusBadge } from './StatusBadge';
 
 type ProfessionalSummary = {
@@ -13,6 +13,7 @@ type ProfessionalSummary = {
   lastProcessedAt: string | null;
   errorMessage: string | null;
   note: string | null;
+  paymentMinimumText: string | null;
   lastPdfAt: string | null;
   lastPdfArtifactId: string | null;
 };
@@ -134,7 +135,7 @@ export function ProfessionalSummaryTable({
               <th className="px-2 py-2 text-right">Atendimentos</th>
               <th className="px-2 py-2 text-right">Total repasse</th>
               <th className="px-2 py-2 text-left">Último processamento</th>
-              <th className="w-[70px] px-2 py-2 text-center">Obs.</th>
+              <th className="w-[110px] px-2 py-2 text-center">Indicadores</th>
               <th className="px-2 py-2 text-left">Relatório</th>
             </tr>
           </thead>
@@ -193,13 +194,25 @@ export function ProfessionalSummaryTable({
                   <td className="px-2 py-1.5 text-right font-medium tabular-nums">{currency(item.totalValue)}</td>
                   <td className="px-2 py-1.5">{toBrDateTime(item.lastProcessedAt)}</td>
                   <td className="px-2 py-1.5 text-center">
-                    {item.note ? (
-                      <span
-                        className="inline-flex items-center justify-center rounded-md border border-amber-300 bg-amber-50 p-1 text-amber-700"
-                        title={item.note}
-                      >
-                        <MessageSquareText size={14} />
-                      </span>
+                    {item.note || item.paymentMinimumText ? (
+                      <div className="inline-flex items-center justify-center gap-1">
+                        {item.note ? (
+                          <span
+                            className="inline-flex items-center justify-center rounded-md border border-amber-300 bg-amber-50 p-1 text-amber-700"
+                            title={item.note}
+                          >
+                            <MessageSquareText size={14} />
+                          </span>
+                        ) : null}
+                        {item.paymentMinimumText ? (
+                          <span
+                            className="inline-flex items-center justify-center rounded-md border border-sky-300 bg-sky-50 p-1 text-sky-700"
+                            title={item.paymentMinimumText}
+                          >
+                            <Wallet size={14} />
+                          </span>
+                        ) : null}
+                      </div>
                     ) : (
                       <span className="text-slate-300">-</span>
                     )}

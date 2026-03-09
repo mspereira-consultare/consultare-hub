@@ -24,6 +24,7 @@ export async function PUT(request: Request) {
         periodRef: body?.periodRef,
         professionalId: body?.professionalId,
         note: body?.note,
+        internalNote: body?.internalNote,
       },
       auth.userId
     );
@@ -37,4 +38,3 @@ export async function PUT(request: Request) {
     );
   }
 }
-

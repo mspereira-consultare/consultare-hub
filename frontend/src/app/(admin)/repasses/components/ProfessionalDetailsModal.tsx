@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Loader2, MessageSquareText, X } from 'lucide-react';
 
@@ -20,6 +20,7 @@ type ProfessionalSummary = {
   lastProcessedAt: string | null;
   errorMessage: string | null;
   note: string | null;
+  paymentMinimumText: string | null;
 };
 
 type ProfessionalDetailsModalProps = {
@@ -30,10 +31,12 @@ type ProfessionalDetailsModalProps = {
   loadingRows: boolean;
   rowsError: string;
   noteValue: string;
+  internalNoteValue: string;
   canEdit: boolean;
   savingNote: boolean;
   onClose: () => void;
   onNoteChange: (value: string) => void;
+  onInternalNoteChange: (value: string) => void;
   onSaveNote: () => void;
 };
 
@@ -61,17 +64,19 @@ export function ProfessionalDetailsModal({
   loadingRows,
   rowsError,
   noteValue,
+  internalNoteValue,
   canEdit,
   savingNote,
   onClose,
   onNoteChange,
+  onInternalNoteChange,
   onSaveNote,
 }: ProfessionalDetailsModalProps) {
   if (!open || !item) return null;
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-[1200px] rounded-xl bg-white shadow-xl">
+      <div className="w-full max-w-[1240px] rounded-xl bg-white shadow-xl">
         <div className="flex items-start justify-between border-b px-4 py-3">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">Detalhes do profissional</h3>
@@ -110,12 +115,12 @@ export function ProfessionalDetailsModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_360px]">
+        <div className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_380px]">
           <div className="rounded-lg border">
             <div className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
               Atendimentos no período
             </div>
-            <div className="max-h-[460px] overflow-auto">
+            <div className="max-h-[500px] overflow-auto">
               <table className="w-full min-w-[760px] text-xs">
                 <thead className="sticky top-0 bg-white text-[10px] uppercase tracking-wide text-slate-500">
                   <tr>
@@ -166,19 +171,44 @@ export function ProfessionalDetailsModal({
             </div>
           </div>
 
-          <div className="rounded-lg border bg-slate-50 p-3">
-            <div className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              <MessageSquareText size={14} />
-              Observação do profissional
+          <div className="space-y-3">
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <div className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                <MessageSquareText size={14} />
+                Observação do relatório
+              </div>
+              <textarea
+                value={noteValue}
+                onChange={(e) => onNoteChange(e.target.value)}
+                placeholder="Este texto será incluído no PDF do repasse."
+                className="min-h-[130px] w-full resize-y rounded border bg-white px-3 py-2 text-sm outline-none"
+                disabled={!canEdit}
+              />
             </div>
-            <textarea
-              value={noteValue}
-              onChange={(e) => onNoteChange(e.target.value)}
-              placeholder="Digite observações para aparecer no relatório..."
-              className="min-h-[160px] w-full resize-y rounded border bg-white px-3 py-2 text-sm outline-none"
-              disabled={!canEdit}
-            />
-            <div className="mt-2 flex justify-end">
+
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Observação interna
+              </div>
+              <textarea
+                value={internalNoteValue}
+                onChange={(e) => onInternalNoteChange(e.target.value)}
+                placeholder="Anotação interna do time (não vai para o PDF)."
+                className="min-h-[110px] w-full resize-y rounded border bg-white px-3 py-2 text-sm outline-none"
+                disabled={!canEdit}
+              />
+            </div>
+
+            <div className="rounded-lg border bg-slate-50 p-3">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                Pagamento mínimo (cadastro)
+              </div>
+              <div className="rounded border bg-white px-3 py-2 text-sm text-slate-700">
+                {item.paymentMinimumText || '-'}
+              </div>
+            </div>
+
+            <div className="flex justify-end">
               <button
                 type="button"
                 onClick={onSaveNote}
@@ -186,7 +216,7 @@ export function ProfessionalDetailsModal({
                 className="inline-flex items-center gap-2 rounded border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
               >
                 {savingNote ? <Loader2 size={14} className="animate-spin" /> : null}
-                Salvar observação
+                Salvar observações
               </button>
             </div>
           </div>
@@ -195,4 +225,3 @@ export function ProfessionalDetailsModal({
     </div>
   );
 }
-

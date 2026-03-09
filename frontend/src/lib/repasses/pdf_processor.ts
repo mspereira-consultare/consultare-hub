@@ -64,6 +64,29 @@ const splitText = (text: string, maxWidth: number, font: PDFFont, size: number):
   return lines;
 };
 
+const splitTextPreserveLineBreaks = (
+  text: string,
+  maxWidth: number,
+  font: PDFFont,
+  size: number
+): string[] => {
+  const rawLines = String(text || '').replace(/\r\n/g, '\n').split('\n');
+  const out: string[] = [];
+
+  for (const raw of rawLines) {
+    const line = raw.replace(/\t/g, '    ').replace(/\s+$/g, '');
+    if (!line.trim()) {
+      out.push('');
+      continue;
+    }
+    const wrapped = splitText(line, maxWidth, font, size);
+    if (!wrapped.length) out.push('');
+    else out.push(...wrapped);
+  }
+
+  return out.length ? out : [''];
+};
+
 type RenderPayload = {
   periodRef: string;
   professionalName: string;
@@ -76,38 +99,42 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
   const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-  const pageWidth = 841.89; // A4 landscape
-  const pageHeight = 595.28;
-  const marginX = 22;
-  const marginTop = 20;
-  const marginBottom = 20;
-  const tableHeaderHeight = 20;
+  const pageWidth = 595.28; // A4 portrait
+  const pageHeight = 841.89;
+  const marginX = 24;
+  const marginTop = 24;
+  const marginBottom = 24;
+  const tableHeaderHeight = 18;
   const generatedAt = new Date().toLocaleString('pt-BR');
   const sourceText = 'Fonte: https://franchising.feegow.com/v8.1/?P=RepassesConferidos&Pers=';
 
   const columns = [
-    { key: 'dataExec', label: 'Data Exec.', width: 68 },
-    { key: 'paciente', label: 'Paciente', width: 170 },
-    { key: 'descricao', label: 'Descrição', width: 215 },
-    { key: 'funcao', label: 'Função', width: 90 },
-    { key: 'convenio', label: 'Convênio', width: 130 },
-    { key: 'repasseValue', label: 'Repasse', width: 96 },
+    { key: 'dataExec', label: 'Data Exec.', width: 62 },
+    { key: 'paciente', label: 'Paciente', width: 112 },
+    { key: 'descricao', label: 'Descrição', width: 148 },
+    { key: 'funcao', label: 'Função', width: 74 },
+    { key: 'convenio', label: 'Convênio', width: 86 },
+    { key: 'repasseValue', label: 'Repasse', width: 65 },
   ] as const;
 
   const tableWidth = columns.reduce((acc, c) => acc + c.width, 0);
   const tableLeft = marginX;
+  const contentBottom = marginBottom + 20;
+  const totalValue = payload.rows.reduce((acc, item) => acc + Number(item.repasseValue || 0), 0);
   let page!: PDFPage;
   let y = 0;
 
-  const drawHeader = () => {
-    const headerHeight = 40;
-    const summaryTop = pageHeight - marginTop - headerHeight - 8;
-    const boxGap = 8;
-    const boxWidth = (tableWidth - boxGap * 2) / 3;
+  const drawMainHeader = () => {
+    const top = pageHeight - marginTop;
+    const headerHeight = 46;
+    const cardsGap = 8;
+    const cardHeight = 34;
+    const cardTop = top - headerHeight - 8;
+    const cardWidth = (tableWidth - cardsGap * 2) / 3;
 
     page.drawRectangle({
       x: tableLeft,
-      y: pageHeight - marginTop - headerHeight,
+      y: top - headerHeight,
       width: tableWidth,
       height: headerHeight,
       color: rgb(0.09, 0.25, 0.49),
@@ -115,54 +142,57 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
 
     page.drawText('Feegow - Repasses Consolidados', {
       x: tableLeft + 10,
-      y: pageHeight - marginTop - 17,
-      size: 13,
+      y: top - 18,
+      size: 12,
       font: fontBold,
       color: rgb(1, 1, 1),
     });
-
     page.drawText(`Profissional: ${payload.professionalName}`, {
       x: tableLeft + 10,
-      y: pageHeight - marginTop - 31,
-      size: 9,
+      y: top - 33,
+      size: 8.5,
       font: fontRegular,
-      color: rgb(0.95, 0.96, 0.99),
+      color: rgb(0.94, 0.96, 1),
     });
 
-    const totalValue = payload.rows.reduce((acc, item) => acc + Number(item.repasseValue || 0), 0);
-
-    const drawInfoBox = (x: number, title: string, value: string) => {
+    const drawInfoCard = (x: number, title: string, value: string) => {
       page.drawRectangle({
         x,
-        y: summaryTop - 26,
-        width: boxWidth,
-        height: 26,
+        y: cardTop - cardHeight,
+        width: cardWidth,
+        height: cardHeight,
         color: rgb(0.95, 0.97, 1),
         borderColor: rgb(0.82, 0.88, 0.96),
         borderWidth: 1,
       });
       page.drawText(title, {
         x: x + 6,
-        y: summaryTop - 10,
+        y: cardTop - 11,
         size: 7,
         font: fontBold,
         color: rgb(0.24, 0.33, 0.49),
       });
       page.drawText(value, {
         x: x + 6,
-        y: summaryTop - 20,
+        y: cardTop - 24,
         size: 8.5,
         font: fontRegular,
         color: rgb(0.17, 0.22, 0.31),
       });
     };
 
-    drawInfoBox(tableLeft, 'PERÍODO', payload.periodRef);
-    drawInfoBox(tableLeft + boxWidth + boxGap, 'GERADO EM', generatedAt);
-    drawInfoBox(tableLeft + (boxWidth + boxGap) * 2, 'TOTAL DE REPASSE', toCurrency(totalValue));
+    drawInfoCard(tableLeft, 'PERÍODO', payload.periodRef);
+    drawInfoCard(tableLeft + cardWidth + cardsGap, 'GERADO EM', generatedAt);
+    drawInfoCard(
+      tableLeft + (cardWidth + cardsGap) * 2,
+      'TOTAL DE REPASSE',
+      toCurrency(totalValue)
+    );
 
-    y = summaryTop - 34;
+    y = cardTop - cardHeight - 10;
+  };
 
+  const drawTableHeader = () => {
     page.drawRectangle({
       x: tableLeft,
       y: y - tableHeaderHeight,
@@ -176,9 +206,9 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
     let cursorX = tableLeft;
     for (const column of columns) {
       page.drawText(column.label, {
-        x: cursorX + 4,
-        y: y - 13.5,
-        size: 8,
+        x: cursorX + 3,
+        y: y - 12.5,
+        size: 7.5,
         font: fontBold,
         color: rgb(0.14, 0.23, 0.39),
       });
@@ -194,9 +224,13 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
     y -= tableHeaderHeight + 2;
   };
 
-  const createPage = () => {
+  const createPage = (withMainHeader: boolean) => {
     page = pdfDoc.addPage([pageWidth, pageHeight]);
-    drawHeader();
+    y = pageHeight - marginTop;
+    if (withMainHeader) {
+      drawMainHeader();
+    }
+    drawTableHeader();
   };
 
   const drawRow = (row: RepasseConsolidatedLine, rowIndex: number) => {
@@ -217,10 +251,10 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
     }
 
     const maxLines = Math.max(...Object.values(lineMap).map((lines) => lines.length));
-    const rowHeight = Math.max(16, maxLines * 10 + 4);
+    const rowHeight = Math.max(16, maxLines * 9 + 5);
 
-    if (y - rowHeight < marginBottom + 34) {
-      createPage();
+    if (y - rowHeight < contentBottom) {
+      createPage(false);
     }
 
     if (rowIndex % 2 === 0) {
@@ -236,11 +270,11 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
     let cursorX = tableLeft;
     for (const column of columns) {
       const lines = lineMap[column.key];
-      let lineY = y - 11;
+      let lineY = y - 10.5;
       const isValueCol = column.key === 'repasseValue';
       for (const line of lines) {
         const textWidth = fontRegular.widthOfTextAtSize(line, 8);
-        const textX = isValueCol ? cursorX + column.width - 6 - textWidth : cursorX + 4;
+        const textX = isValueCol ? cursorX + column.width - 4 - textWidth : cursorX + 3;
         page.drawText(line, {
           x: textX,
           y: lineY,
@@ -248,7 +282,7 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
           font: isValueCol ? fontBold : fontRegular,
           color: rgb(0.16, 0.16, 0.16),
         });
-        lineY -= 10;
+        lineY -= 9;
       }
       cursorX += column.width;
       page.drawLine({
@@ -269,22 +303,22 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
     y -= rowHeight;
   };
 
-  createPage();
+  createPage(true);
 
   for (let idx = 0; idx < payload.rows.length; idx += 1) {
     drawRow(payload.rows[idx], idx);
   }
 
-  const total = payload.rows.reduce((acc, item) => acc + Number(item.repasseValue || 0), 0);
-  const totalText = `Total de repasses: ${toCurrency(total)}`;
+  const totalText = `Total de repasses: ${toCurrency(totalValue)}`;
   const noteText = String(payload.note || '').trim();
   const noteLines = noteText
-    ? splitText(`Observação: ${noteText}`, tableWidth - 10, fontRegular, 8)
+    ? splitTextPreserveLineBreaks(noteText, tableWidth - 12, fontRegular, 8)
     : [];
 
-  const footerHeight = 26 + (noteLines.length ? noteLines.length * 10 + 6 : 0);
+  const noteBlockHeight = noteLines.length ? noteLines.length * 10 + 22 : 0;
+  const footerHeight = 30 + (noteBlockHeight ? noteBlockHeight + 8 : 0);
   if (y - footerHeight < marginBottom) {
-    createPage();
+    createPage(false);
   }
 
   page.drawText(totalText, {
@@ -303,24 +337,35 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
   });
 
   if (noteLines.length) {
+    const noteTitle = 'Observação do relatório:';
+    const noteTop = y - 40;
     page.drawRectangle({
       x: tableLeft,
-      y: y - 42 - noteLines.length * 10 - 6,
+      y: noteTop - noteBlockHeight,
       width: tableWidth,
-      height: noteLines.length * 10 + 8,
+      height: noteBlockHeight,
       color: rgb(0.996, 0.987, 0.925),
       borderColor: rgb(0.98, 0.86, 0.54),
       borderWidth: 1,
     });
-    let noteY = y - 48;
+    page.drawText(noteTitle, {
+      x: tableLeft + 4,
+      y: noteTop - 12,
+      size: 8,
+      font: fontBold,
+      color: rgb(0.32, 0.25, 0.08),
+    });
+    let noteY = noteTop - 24;
     for (const line of noteLines) {
-      page.drawText(line, {
-        x: tableLeft + 4,
-        y: noteY,
-        size: 8,
-        font: fontRegular,
-        color: rgb(0.32, 0.25, 0.08),
-      });
+      if (line) {
+        page.drawText(line, {
+          x: tableLeft + 4,
+          y: noteY,
+          size: 8,
+          font: fontRegular,
+          color: rgb(0.32, 0.25, 0.08),
+        });
+      }
       noteY -= 10;
     }
   }
@@ -453,7 +498,7 @@ export const processPendingRepassePdfJobs = async (
             );
           }
 
-          const note = await getRepasseProfessionalNote(db, {
+          const notes = await getRepasseProfessionalNote(db, {
             periodRef: job.periodRef,
             professionalId: target.professionalId,
           });
@@ -462,7 +507,7 @@ export const processPendingRepassePdfJobs = async (
             periodRef: job.periodRef,
             professionalName: target.professionalName,
             rows: lines,
-            note,
+            note: notes.note,
           });
 
           const stamp = nowIso().replace(/[^0-9]/g, '').slice(0, 14);

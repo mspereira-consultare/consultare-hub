@@ -72,6 +72,7 @@ export type RepasseProfessionalSummary = {
   lastProcessedAt: string | null;
   errorMessage: string | null;
   note: string | null;
+  paymentMinimumText: string | null;
   lastPdfAt: string | null;
   lastPdfArtifactId: string | null;
 };

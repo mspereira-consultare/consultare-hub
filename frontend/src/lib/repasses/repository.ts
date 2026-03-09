@@ -228,7 +228,7 @@ const loadRepasseProfessionalSummaries = async (
 
   const professionals = await db.query(
     `
-    SELECT id, name
+    SELECT id, name, payment_minimum_text
     FROM professionals
     WHERE ${where.join(' AND ')}
     ORDER BY name ASC
@@ -252,11 +252,13 @@ const loadRepasseProfessionalSummaries = async (
   );
 
   const professionalMap = new Map<string, string>();
+  const paymentMinimumByProfessional = new Map<string, string | null>();
   for (const row of professionals) {
     const id = clean((row as any).id);
     const name = clean((row as any).name);
     if (!id || !name) continue;
     professionalMap.set(id, name);
+    paymentMinimumByProfessional.set(id, clean((row as any).payment_minimum_text) || null);
   }
   for (const row of repasseProfessionals) {
     const id = clean((row as any).professional_id);
@@ -401,6 +403,7 @@ const loadRepasseProfessionalSummaries = async (
       lastProcessedAt: latest?.updatedAt || null,
       errorMessage: status === 'ERROR' ? latest?.errorMessage || null : null,
       note: noteByProfessional.get(professionalId) || null,
+      paymentMinimumText: paymentMinimumByProfessional.get(professionalId) || null,
       lastPdfAt: latestPdfByProfessional.get(professionalId)?.createdAt || null,
       lastPdfArtifactId: latestPdfByProfessional.get(professionalId)?.artifactId || null,
     };
@@ -551,11 +554,16 @@ export const ensureRepasseTables = async (db: DbInterface) => {
       period_ref VARCHAR(7) NOT NULL,
       professional_id VARCHAR(64) NOT NULL,
       note TEXT,
+      internal_note TEXT,
       updated_by VARCHAR(64) NOT NULL,
       updated_at VARCHAR(32) NOT NULL,
       PRIMARY KEY (period_ref, professional_id)
     )
   `);
+  await safeExecute(
+    db,
+    `ALTER TABLE repasse_professional_notes ADD COLUMN internal_note TEXT NULL`
+  );
   await safeExecute(
     db,
     `CREATE INDEX idx_repasse_prof_notes_prof ON repasse_professional_notes(professional_id)`
@@ -899,45 +907,37 @@ export const listRepasseProfessionalOptions = async (
 
 export const upsertRepasseProfessionalNote = async (
   db: DbInterface,
-  input: { periodRef?: string; professionalId: string; note?: string | null },
+  input: {
+    periodRef?: string;
+    professionalId: string;
+    note?: string | null;
+    internalNote?: string | null;
+  },
   actorUserId: string
-): Promise<{ periodRef: string; professionalId: string; note: string | null; updatedAt: string }> => {
+): Promise<{
+  periodRef: string;
+  professionalId: string;
+  note: string | null;
+  internalNote: string | null;
+  updatedAt: string;
+}> => {
   await ensureRepasseTables(db);
   const periodRef = normalizePeriodRef(input.periodRef);
   const professionalId = clean(input.professionalId);
   if (!professionalId) {
     throw new RepasseValidationError('Profissional invalido para salvar observacao.');
   }
-  const note = clean(input.note) || null;
-  const now = nowIso();
+  const hasNote = Object.prototype.hasOwnProperty.call(input, 'note');
+  const hasInternalNote = Object.prototype.hasOwnProperty.call(input, 'internalNote');
+  if (!hasNote && !hasInternalNote) {
+    throw new RepasseValidationError(
+      'Informe ao menos um campo para atualizacao (note ou internalNote).'
+    );
+  }
 
-  await db.execute(
+  const currentRows = await db.query(
     `
-    INSERT INTO repasse_professional_notes (
-      period_ref, professional_id, note, updated_by, updated_at
-    ) VALUES (?, ?, ?, ?, ?)
-    ON DUPLICATE KEY UPDATE
-      note = ?,
-      updated_by = ?,
-      updated_at = ?
-    `,
-    [periodRef, professionalId, note, clean(actorUserId), now, note, clean(actorUserId), now]
-  );
-
-  return { periodRef, professionalId, note, updatedAt: now };
-};
-
-export const getRepasseProfessionalNote = async (
-  db: DbInterface,
-  input: { periodRef?: string; professionalId: string }
-): Promise<string | null> => {
-  await ensureRepasseTables(db);
-  const periodRef = normalizePeriodRef(input.periodRef);
-  const professionalId = clean(input.professionalId);
-  if (!professionalId) return null;
-  const rows = await db.query(
-    `
-    SELECT note
+    SELECT note, internal_note
     FROM repasse_professional_notes
     WHERE period_ref = ?
       AND professional_id = ?
@@ -945,8 +945,85 @@ export const getRepasseProfessionalNote = async (
     `,
     [periodRef, professionalId]
   );
+  const current = (currentRows?.[0] as any) || null;
+  const currentNote = current ? clean(current.note) || null : null;
+  const currentInternalNote = current ? clean(current.internal_note) || null : null;
+
+  const note = hasNote ? clean(input.note) || null : currentNote;
+  const internalNote = hasInternalNote ? clean(input.internalNote) || null : currentInternalNote;
+  const now = nowIso();
+
+  await db.execute(
+    `
+    INSERT INTO repasse_professional_notes (
+      period_ref, professional_id, note, internal_note, updated_by, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      note = ?,
+      internal_note = ?,
+      updated_by = ?,
+      updated_at = ?
+    `,
+    [
+      periodRef,
+      professionalId,
+      note,
+      internalNote,
+      clean(actorUserId),
+      now,
+      note,
+      internalNote,
+      clean(actorUserId),
+      now,
+    ]
+  );
+
+  return { periodRef, professionalId, note, internalNote, updatedAt: now };
+};
+
+export const getRepasseProfessionalNote = async (
+  db: DbInterface,
+  input: { periodRef?: string; professionalId: string }
+): Promise<{ note: string | null; internalNote: string | null }> => {
+  await ensureRepasseTables(db);
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalId = clean(input.professionalId);
+  if (!professionalId) return { note: null, internalNote: null };
+  const rows = await db.query(
+    `
+    SELECT note, internal_note
+    FROM repasse_professional_notes
+    WHERE period_ref = ?
+      AND professional_id = ?
+    LIMIT 1
+    `,
+    [periodRef, professionalId]
+  );
+  if (!rows?.length) return { note: null, internalNote: null };
+  return {
+    note: clean((rows[0] as any).note) || null,
+    internalNote: clean((rows[0] as any).internal_note) || null,
+  };
+};
+
+export const getRepasseProfessionalPaymentMinimum = async (
+  db: DbInterface,
+  professionalIdRaw: string
+): Promise<string | null> => {
+  await ensureRepasseTables(db);
+  const professionalId = clean(professionalIdRaw);
+  if (!professionalId) return null;
+  const rows = await db.query(
+    `
+    SELECT payment_minimum_text
+    FROM professionals
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [professionalId]
+  );
   if (!rows?.length) return null;
-  return clean((rows[0] as any).note) || null;
+  return clean((rows[0] as any).payment_minimum_text) || null;
 };
 
 export type RepassePdfJobRow = RepassePdfJob;

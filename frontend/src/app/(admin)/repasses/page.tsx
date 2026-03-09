@@ -45,6 +45,7 @@ type ProfessionalSummary = {
   lastProcessedAt: string | null;
   errorMessage: string | null;
   note: string | null;
+  paymentMinimumText: string | null;
   lastPdfAt: string | null;
   lastPdfArtifactId: string | null;
 };
@@ -130,6 +131,7 @@ export default function RepassesPage() {
     totalValue: 0,
   });
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [internalNoteDrafts, setInternalNoteDrafts] = useState<Record<string, string>>({});
   const [savingNoteById, setSavingNoteById] = useState<Record<string, boolean>>({});
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsItem, setDetailsItem] = useState<ProfessionalSummary | null>(null);
@@ -370,9 +372,10 @@ export default function RepassesPage() {
     }
   };
 
-  const saveProfessionalNote = async (professionalId: string) => {
+  const saveProfessionalNotes = async (professionalId: string) => {
     if (!canEdit || !professionalId) return;
     const note = noteDrafts[professionalId] ?? "";
+    const internalNote = internalNoteDrafts[professionalId] ?? "";
     setSavingNoteById((prev) => ({ ...prev, [professionalId]: true }));
     setError("");
     try {
@@ -383,10 +386,11 @@ export default function RepassesPage() {
           periodRef,
           professionalId,
           note,
+          internalNote,
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao salvar observação.");
+      if (!res.ok) throw new Error(data?.error || "Falha ao salvar observacoes.");
 
       setItems((prev) =>
         prev.map((item) =>
@@ -398,9 +402,9 @@ export default function RepassesPage() {
             : item
         )
       );
-      setNotice("Observação salva.");
+      setNotice("Observacoes salvas.");
     } catch (e: any) {
-      setError(e?.message || "Erro ao salvar observação.");
+      setError(e?.message || "Erro ao salvar observacoes.");
     } finally {
       setSavingNoteById((prev) => ({ ...prev, [professionalId]: false }));
     }
@@ -422,12 +426,26 @@ export default function RepassesPage() {
 
       const rows: RepasseLine[] = Array.isArray(data?.data?.rows) ? data.data.rows : [];
       const note = String(data?.data?.note || "");
+      const internalNote = String(data?.data?.internalNote || "");
+      const paymentMinimumTextRaw = data?.data?.paymentMinimumText;
+      const paymentMinimumText =
+        paymentMinimumTextRaw === null || paymentMinimumTextRaw === undefined
+          ? null
+          : String(paymentMinimumTextRaw).trim() || null;
       setDetailRows(rows);
       setNoteDrafts((prev) => ({ ...prev, [item.professionalId]: note }));
+      setInternalNoteDrafts((prev) => ({ ...prev, [item.professionalId]: internalNote }));
       setItems((prev) =>
         prev.map((current) =>
-          current.professionalId === item.professionalId ? { ...current, note: note || null } : current
+          current.professionalId === item.professionalId
+            ? { ...current, note: note || null, paymentMinimumText }
+            : current
         )
+      );
+      setDetailsItem((current) =>
+        current && current.professionalId === item.professionalId
+          ? { ...current, note: note || null, paymentMinimumText }
+          : current
       );
     } catch (e: any) {
       setDetailRows([]);
@@ -496,6 +514,7 @@ export default function RepassesPage() {
                     setPage(1);
                     setSelectedIds(new Set());
                     setNoteDrafts({});
+                    setInternalNoteDrafts({});
                   }}
                   className="h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm"
                 />
@@ -684,6 +703,7 @@ export default function RepassesPage() {
         loadingRows={detailLoading}
         rowsError={detailError}
         noteValue={detailsItem ? noteDrafts[detailsItem.professionalId] ?? detailsItem.note ?? "" : ""}
+        internalNoteValue={detailsItem ? internalNoteDrafts[detailsItem.professionalId] ?? "" : ""}
         canEdit={canEdit}
         savingNote={detailsItem ? !!savingNoteById[detailsItem.professionalId] : false}
         onClose={() => {
@@ -696,9 +716,13 @@ export default function RepassesPage() {
           if (!detailsItem) return;
           setNoteDrafts((prev) => ({ ...prev, [detailsItem.professionalId]: value }));
         }}
+        onInternalNoteChange={(value) => {
+          if (!detailsItem) return;
+          setInternalNoteDrafts((prev) => ({ ...prev, [detailsItem.professionalId]: value }));
+        }}
         onSaveNote={() => {
           if (!detailsItem) return;
-          saveProfessionalNote(detailsItem.professionalId);
+          saveProfessionalNotes(detailsItem.professionalId);
         }}
       />
 
