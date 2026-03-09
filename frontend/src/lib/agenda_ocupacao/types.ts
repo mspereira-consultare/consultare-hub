@@ -20,8 +20,9 @@ export type AgendaOccupancyRow = {
   agendamentosCount: number;
   horariosDisponiveisCount: number;
   horariosBloqueadosCount: number;
-  capacidadeLiquidaCount: number;
-  taxaConfirmacaoPct: number;
+  capacidadeLiquidaCount: number; // Base ofertavel = agendados + livres
+  taxaOcupacaoComercialPct: number;
+  taxaBloqueioPct: number;
 };
 
 export type AgendaOccupancyFilters = {
@@ -37,8 +38,9 @@ export type AgendaOccupancyResult = {
     agendamentos: number;
     horariosDisponiveis: number;
     horariosBloqueados: number;
-    capacidadeLiquida: number;
-    taxaConfirmacaoPct: number;
+    capacidadeLiquida: number; // Base ofertavel = agendados + livres
+    taxaOcupacaoComercialPct: number;
+    taxaBloqueioPct: number;
   };
 };
 
@@ -52,7 +54,8 @@ export type AgendaOccupancyDailyRow = {
   horariosDisponiveisCount: number;
   horariosBloqueadosCount: number;
   capacidadeLiquidaCount: number;
-  taxaConfirmacaoPct: number;
+  taxaOcupacaoComercialPct: number;
+  taxaBloqueioPct: number;
   updatedAt: string;
 };
 

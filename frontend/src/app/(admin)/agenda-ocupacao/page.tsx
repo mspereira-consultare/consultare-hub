@@ -12,7 +12,8 @@ type SortKey =
   | "horariosDisponiveisCount"
   | "horariosBloqueadosCount"
   | "capacidadeLiquidaCount"
-  | "taxaConfirmacaoPct";
+  | "taxaOcupacaoComercialPct"
+  | "taxaBloqueioPct";
 
 type OccupancyRow = {
   especialidadeId: number;
@@ -21,7 +22,8 @@ type OccupancyRow = {
   horariosDisponiveisCount: number;
   horariosBloqueadosCount: number;
   capacidadeLiquidaCount: number;
-  taxaConfirmacaoPct: number;
+  taxaOcupacaoComercialPct: number;
+  taxaBloqueioPct: number;
 };
 
 type Totals = {
@@ -30,7 +32,8 @@ type Totals = {
   horariosDisponiveis: number;
   horariosBloqueados: number;
   capacidadeLiquida: number;
-  taxaConfirmacaoPct: number;
+  taxaOcupacaoComercialPct: number;
+  taxaBloqueioPct: number;
 };
 
 type LatestJob = {
@@ -103,7 +106,8 @@ export default function AgendaOcupacaoPage() {
     horariosDisponiveis: 0,
     horariosBloqueados: 0,
     capacidadeLiquida: 0,
-    taxaConfirmacaoPct: 0,
+    taxaOcupacaoComercialPct: 0,
+    taxaBloqueioPct: 0,
   });
   const [latestJob, setLatestJob] = useState<LatestJob>(null);
   const [heartbeat, setHeartbeat] = useState<{ status: string; lastRun: string | null; details: string }>({
@@ -112,7 +116,7 @@ export default function AgendaOcupacaoPage() {
     details: "",
   });
 
-  const [sortKey, setSortKey] = useState<SortKey>("taxaConfirmacaoPct");
+  const [sortKey, setSortKey] = useState<SortKey>("taxaOcupacaoComercialPct");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const [loading, setLoading] = useState(false);
@@ -139,7 +143,8 @@ export default function AgendaOcupacaoPage() {
           horariosDisponiveis: 0,
           horariosBloqueados: 0,
           capacidadeLiquida: 0,
-          taxaConfirmacaoPct: 0,
+          taxaOcupacaoComercialPct: 0,
+          taxaBloqueioPct: 0,
         }
       );
       setLatestJob(data?.data?.latestJob || null);
@@ -185,7 +190,7 @@ export default function AgendaOcupacaoPage() {
       return;
     }
     setSortKey(key);
-    setSortDir(key === "taxaConfirmacaoPct" ? "asc" : "desc");
+    setSortDir(key === "taxaOcupacaoComercialPct" || key === "taxaBloqueioPct" ? "asc" : "desc");
   };
 
   const onRefresh = async () => {
@@ -250,9 +255,9 @@ export default function AgendaOcupacaoPage() {
       <header className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <h1 className="text-xl font-bold text-slate-800">Ocupacao da agenda por especialidade</h1>
+            <h1 className="text-xl font-bold text-slate-800">Ocupação da agenda por especialidade</h1>
             <p className="text-xs text-slate-500">
-              Taxa de confirmacao por especialidade e unidade para o periodo selecionado.
+              Indicadores: ocupação comercial e taxa de bloqueio por especialidade e unidade.
             </p>
           </div>
 
@@ -339,7 +344,7 @@ export default function AgendaOcupacaoPage() {
         </div>
       )}
 
-      <section className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-6">
+      <section className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
         <div className="rounded-lg border bg-white px-3 py-2">
           <p className="text-[10px] uppercase tracking-wide text-slate-500">Especialidades</p>
           <p className="text-lg font-bold text-slate-800">{formatNumber(totals.especialidades)}</p>
@@ -349,7 +354,7 @@ export default function AgendaOcupacaoPage() {
           <p className="text-lg font-bold text-slate-800">{formatNumber(totals.agendamentos)}</p>
         </div>
         <div className="rounded-lg border bg-white px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wide text-slate-500">Disponiveis</p>
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Disponíveis</p>
           <p className="text-lg font-bold text-slate-800">{formatNumber(totals.horariosDisponiveis)}</p>
         </div>
         <div className="rounded-lg border bg-white px-3 py-2">
@@ -357,12 +362,16 @@ export default function AgendaOcupacaoPage() {
           <p className="text-lg font-bold text-slate-800">{formatNumber(totals.horariosBloqueados)}</p>
         </div>
         <div className="rounded-lg border bg-white px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wide text-slate-500">Capacidade liquida</p>
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Base ofertável (Ag + Livres)</p>
           <p className="text-lg font-bold text-slate-800">{formatNumber(totals.capacidadeLiquida)}</p>
         </div>
         <div className="rounded-lg border bg-white px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wide text-slate-500">Tx. confirmacao</p>
-          <p className="text-lg font-bold text-slate-800">{formatPercent(totals.taxaConfirmacaoPct)}</p>
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Tx. Ocupação</p>
+          <p className="text-lg font-bold text-slate-800">{formatPercent(totals.taxaOcupacaoComercialPct)}</p>
+        </div>
+        <div className="rounded-lg border bg-white px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Taxa de bloqueio</p>
+          <p className="text-lg font-bold text-slate-800">{formatPercent(totals.taxaBloqueioPct)}</p>
         </div>
       </section>
 

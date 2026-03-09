@@ -12,7 +12,7 @@ import {
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const formatCurrencyNumber = (value: number) => Number(value || 0).toLocaleString('pt-BR');
+const formatNumber = (value: number) => Number(value || 0).toLocaleString('pt-BR');
 const formatPercent = (value: number) => `${Number(value || 0).toFixed(2).replace('.', ',')}%`;
 
 const getDefaultRange = () => {
@@ -61,22 +61,23 @@ const buildXlsx = async (args: {
   ws.columns = [
     { header: 'Especialidade', key: 'especialidade', width: 40 },
     { header: 'Agendamentos', key: 'ag', width: 16 },
-    { header: 'Horarios Disponiveis', key: 'disp', width: 20 },
-    { header: 'Horarios Bloqueados', key: 'bloq', width: 20 },
-    { header: 'Capacidade Liquida', key: 'cap', width: 20 },
-    { header: 'Tx. Confirmacao (%)', key: 'taxa', width: 20 },
+    { header: 'Horários Disponíveis', key: 'disp', width: 20 },
+    { header: 'Horários Bloqueados', key: 'bloq', width: 20 },
+    { header: 'Base Ofertável', key: 'base', width: 18 },
+    { header: 'Tx. Ocupação (%)', key: 'taxa_ocupacao', width: 18 },
+    { header: 'Taxa de Bloqueio (%)', key: 'taxa_bloqueio', width: 20 },
   ];
 
-  ws.mergeCells('A1:F1');
-  ws.getCell('A1').value = 'Relatorio de Ocupacao da Agenda';
+  ws.mergeCells('A1:G1');
+  ws.getCell('A1').value = 'Relatório de Ocupação da Agenda';
   ws.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
   ws.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF053F74' } };
 
-  ws.mergeCells('A2:F2');
-  ws.getCell('A2').value = `Periodo: ${args.startDate} ate ${args.endDate} | Unidade: ${unitLabel(args.unit)}`;
+  ws.mergeCells('A2:G2');
+  ws.getCell('A2').value = `Período: ${args.startDate} até ${args.endDate} | Unidade: ${unitLabel(args.unit)}`;
   ws.getCell('A2').font = { size: 10 };
 
-  ws.mergeCells('A3:F3');
+  ws.mergeCells('A3:G3');
   ws.getCell('A3').value = `Gerado em: ${args.generatedAt}`;
   ws.getCell('A3').font = { size: 10 };
 
@@ -94,9 +95,11 @@ const buildXlsx = async (args: {
       row.horariosDisponiveisCount,
       row.horariosBloqueadosCount,
       row.capacidadeLiquidaCount,
-      row.taxaConfirmacaoPct / 100,
+      row.taxaOcupacaoComercialPct / 100,
+      row.taxaBloqueioPct / 100,
     ];
     excelRow.getCell(6).numFmt = '0.00%';
+    excelRow.getCell(7).numFmt = '0.00%';
     rowIdx += 1;
   }
 
@@ -106,10 +109,11 @@ const buildXlsx = async (args: {
     { header: 'Unidade', key: 'unidade', width: 24 },
     { header: 'Especialidade', key: 'especialidade', width: 34 },
     { header: 'Agendamentos', key: 'ag', width: 14 },
-    { header: 'Disponiveis', key: 'disp', width: 14 },
+    { header: 'Disponíveis', key: 'disp', width: 14 },
     { header: 'Bloqueados', key: 'bloq', width: 14 },
-    { header: 'Capacidade', key: 'cap', width: 14 },
-    { header: 'Taxa (%)', key: 'taxa', width: 12 },
+    { header: 'Base Ofertável', key: 'base', width: 14 },
+    { header: 'Tx. Ocupação (%)', key: 'taxaOcupacao', width: 14 },
+    { header: 'Taxa de Bloqueio (%)', key: 'taxaBloqueio', width: 16 },
   ];
 
   wsDaily.getRow(1).values = wsDaily.columns.map((c) => c.header as string);
@@ -124,12 +128,14 @@ const buildXlsx = async (args: {
       ag: row.agendamentosCount,
       disp: row.horariosDisponiveisCount,
       bloq: row.horariosBloqueadosCount,
-      cap: row.capacidadeLiquidaCount,
-      taxa: row.taxaConfirmacaoPct / 100,
+      base: row.capacidadeLiquidaCount,
+      taxaOcupacao: row.taxaOcupacaoComercialPct / 100,
+      taxaBloqueio: row.taxaBloqueioPct / 100,
     });
   }
 
-  wsDaily.getColumn('taxa').numFmt = '0.00%';
+  wsDaily.getColumn('taxaOcupacao').numFmt = '0.00%';
+  wsDaily.getColumn('taxaBloqueio').numFmt = '0.00%';
 
   const out = await wb.xlsx.writeBuffer();
   return Buffer.isBuffer(out) ? out : Buffer.from(out as ArrayBuffer);
@@ -153,10 +159,11 @@ const buildPdf = async (args: {
   const cols = [
     { key: 'especialidade', label: 'Especialidade', w: 255 },
     { key: 'ag', label: 'Agend.', w: 75 },
-    { key: 'disp', label: 'Dispon.', w: 85 },
-    { key: 'bloq', label: 'Bloq.', w: 75 },
-    { key: 'cap', label: 'Cap. Liquida', w: 90 },
-    { key: 'taxa', label: 'Tx. (%)', w: 70 },
+    { key: 'disp', label: 'Disponíveis', w: 90 },
+    { key: 'bloq', label: 'Bloqueados', w: 85 },
+    { key: 'base', label: 'Base Ofertável', w: 95 },
+    { key: 'taxa_ocup', label: 'Tx. Ocupação (%)', w: 85 },
+    { key: 'taxa_bloq', label: 'Taxa Bloqueio (%)', w: 85 },
   ];
 
   let page = pdfDoc.addPage(pageSize);
@@ -170,14 +177,14 @@ const buildPdf = async (args: {
         height: 36,
         color: rgb(0.02, 0.24, 0.45),
       });
-      target.drawText('Relatorio de Ocupacao da Agenda', {
+      target.drawText('Relatório de Ocupação da Agenda', {
         x: margin + 10,
         y: height - 48,
         size: 14,
         font: bold,
         color: rgb(1, 1, 1),
       });
-      target.drawText(`Periodo: ${args.startDate} ate ${args.endDate} | Unidade: ${unitLabel(args.unit)}`, {
+      target.drawText(`Período: ${args.startDate} até ${args.endDate} | Unidade: ${unitLabel(args.unit)}`, {
         x: margin,
         y: height - 78,
         size: 9,
@@ -219,11 +226,12 @@ const buildPdf = async (args: {
 
     const data = [
       row.especialidadeNome,
-      formatCurrencyNumber(row.agendamentosCount),
-      formatCurrencyNumber(row.horariosDisponiveisCount),
-      formatCurrencyNumber(row.horariosBloqueadosCount),
-      formatCurrencyNumber(row.capacidadeLiquidaCount),
-      formatPercent(row.taxaConfirmacaoPct),
+      formatNumber(row.agendamentosCount),
+      formatNumber(row.horariosDisponiveisCount),
+      formatNumber(row.horariosBloqueadosCount),
+      formatNumber(row.capacidadeLiquidaCount),
+      formatPercent(row.taxaOcupacaoComercialPct),
+      formatPercent(row.taxaBloqueioPct),
     ];
 
     let x = margin;

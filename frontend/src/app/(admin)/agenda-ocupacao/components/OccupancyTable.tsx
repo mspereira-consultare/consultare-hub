@@ -8,7 +8,8 @@ type SortKey =
   | "horariosDisponiveisCount"
   | "horariosBloqueadosCount"
   | "capacidadeLiquidaCount"
-  | "taxaConfirmacaoPct";
+  | "taxaOcupacaoComercialPct"
+  | "taxaBloqueioPct";
 
 type Row = {
   especialidadeId: number;
@@ -17,7 +18,8 @@ type Row = {
   horariosDisponiveisCount: number;
   horariosBloqueadosCount: number;
   capacidadeLiquidaCount: number;
-  taxaConfirmacaoPct: number;
+  taxaOcupacaoComercialPct: number;
+  taxaBloqueioPct: number;
 };
 
 const formatNumber = (value: number) => Number(value || 0).toLocaleString("pt-BR");
@@ -48,7 +50,7 @@ export function OccupancyTable({
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <div className="overflow-auto max-h-[68vh]">
-        <table className="min-w-[980px] w-full text-sm">
+        <table className="min-w-[1120px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-100">
             <tr className="text-left text-slate-600">
               <th className="px-3 py-2 font-semibold">
@@ -77,7 +79,7 @@ export function OccupancyTable({
                   className="inline-flex items-center gap-1"
                   onClick={() => onSort("horariosDisponiveisCount")}
                 >
-                  Horarios Disponiveis
+                  Horários Disponíveis
                   {iconFor("horariosDisponiveisCount")}
                 </button>
               </th>
@@ -87,7 +89,7 @@ export function OccupancyTable({
                   className="inline-flex items-center gap-1"
                   onClick={() => onSort("horariosBloqueadosCount")}
                 >
-                  Horarios Bloqueados
+                  Horários Bloqueados
                   {iconFor("horariosBloqueadosCount")}
                 </button>
               </th>
@@ -97,7 +99,7 @@ export function OccupancyTable({
                   className="inline-flex items-center gap-1"
                   onClick={() => onSort("capacidadeLiquidaCount")}
                 >
-                  Capacidade Liquida
+                  Base Ofertável
                   {iconFor("capacidadeLiquidaCount")}
                 </button>
               </th>
@@ -105,10 +107,20 @@ export function OccupancyTable({
                 <button
                   type="button"
                   className="inline-flex items-center gap-1"
-                  onClick={() => onSort("taxaConfirmacaoPct")}
+                  onClick={() => onSort("taxaOcupacaoComercialPct")}
                 >
-                  Tx. Confirmacao (%)
-                  {iconFor("taxaConfirmacaoPct")}
+                  Tx. Ocupação (%)
+                  {iconFor("taxaOcupacaoComercialPct")}
+                </button>
+              </th>
+              <th className="px-3 py-2 font-semibold text-right">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1"
+                  onClick={() => onSort("taxaBloqueioPct")}
+                >
+                  Taxa de Bloqueio (%)
+                  {iconFor("taxaBloqueioPct")}
                 </button>
               </th>
             </tr>
@@ -116,13 +128,13 @@ export function OccupancyTable({
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-3 py-8 text-center text-slate-500">
                   Carregando dados...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-8 text-center text-slate-500">
+                <td colSpan={7} className="px-3 py-8 text-center text-slate-500">
                   Nenhum registro encontrado para os filtros selecionados.
                 </td>
               </tr>
@@ -134,7 +146,8 @@ export function OccupancyTable({
                   <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.horariosDisponiveisCount)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.horariosBloqueadosCount)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.capacidadeLiquidaCount)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums font-semibold">{formatPercent(row.taxaConfirmacaoPct)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold">{formatPercent(row.taxaOcupacaoComercialPct)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold">{formatPercent(row.taxaBloqueioPct)}</td>
                 </tr>
               ))
             )}

@@ -118,7 +118,8 @@ const mapRow = (row: Record<string, unknown>): AgendaOccupancyRow => ({
   horariosDisponiveisCount: Number(row.horarios_disponiveis_count) || 0,
   horariosBloqueadosCount: Number(row.horarios_bloqueados_count) || 0,
   capacidadeLiquidaCount: Number(row.capacidade_liquida_count) || 0,
-  taxaConfirmacaoPct: Number(row.taxa_confirmacao_pct) || 0,
+  taxaOcupacaoComercialPct: Number(row.taxa_ocupacao_comercial_pct) || 0,
+  taxaBloqueioPct: Number(row.taxa_bloqueio_pct) || 0,
 });
 
 const mapDailyRow = (row: Record<string, unknown>): AgendaOccupancyDailyRow => ({
@@ -131,7 +132,8 @@ const mapDailyRow = (row: Record<string, unknown>): AgendaOccupancyDailyRow => (
   horariosDisponiveisCount: Number(row.horarios_disponiveis_count) || 0,
   horariosBloqueadosCount: Number(row.horarios_bloqueados_count) || 0,
   capacidadeLiquidaCount: Number(row.capacidade_liquida_count) || 0,
-  taxaConfirmacaoPct: Number(row.taxa_confirmacao_pct) || 0,
+  taxaOcupacaoComercialPct: Number(row.taxa_ocupacao_comercial_pct) || 0,
+  taxaBloqueioPct: Number(row.taxa_bloqueio_pct) || 0,
   updatedAt: clean(row.updated_at),
 });
 
@@ -305,16 +307,21 @@ export const listAgendaOcupacaoBySpecialty = async (
       SUM(agendamentos_count) as agendamentos_count,
       SUM(horarios_disponiveis_count) as horarios_disponiveis_count,
       SUM(horarios_bloqueados_count) as horarios_bloqueados_count,
-      SUM(capacidade_liquida_count) as capacidade_liquida_count,
+      (SUM(agendamentos_count) + SUM(horarios_disponiveis_count)) as capacidade_liquida_count,
       CASE
-        WHEN SUM(capacidade_liquida_count) > 0
-        THEN (SUM(agendamentos_count) * 100.0 / SUM(capacidade_liquida_count))
+        WHEN (SUM(agendamentos_count) + SUM(horarios_disponiveis_count)) > 0
+        THEN (SUM(agendamentos_count) * 100.0 / (SUM(agendamentos_count) + SUM(horarios_disponiveis_count)))
         ELSE 0
-      END as taxa_confirmacao_pct
+      END as taxa_ocupacao_comercial_pct,
+      CASE
+        WHEN (SUM(agendamentos_count) + SUM(horarios_disponiveis_count) + SUM(horarios_bloqueados_count)) > 0
+        THEN (SUM(horarios_bloqueados_count) * 100.0 / (SUM(agendamentos_count) + SUM(horarios_disponiveis_count) + SUM(horarios_bloqueados_count)))
+        ELSE 0
+      END as taxa_bloqueio_pct
     FROM agenda_occupancy_daily
     WHERE ${where.join(' AND ')}
     GROUP BY especialidade_id, especialidade_nome
-    ORDER BY taxa_confirmacao_pct ASC, especialidade_nome ASC
+    ORDER BY taxa_ocupacao_comercial_pct ASC, especialidade_nome ASC
     `,
     params
   );
@@ -336,12 +343,16 @@ export const listAgendaOcupacaoBySpecialty = async (
       horariosDisponiveis: 0,
       horariosBloqueados: 0,
       capacidadeLiquida: 0,
-      taxaConfirmacaoPct: 0,
+      taxaOcupacaoComercialPct: 0,
+      taxaBloqueioPct: 0,
     }
   );
 
-  totals.taxaConfirmacaoPct =
+  totals.taxaOcupacaoComercialPct =
     totals.capacidadeLiquida > 0 ? (totals.agendamentos * 100) / totals.capacidadeLiquida : 0;
+
+  const baseCompleta = totals.agendamentos + totals.horariosDisponiveis + totals.horariosBloqueados;
+  totals.taxaBloqueioPct = baseCompleta > 0 ? (totals.horariosBloqueados * 100) / baseCompleta : 0;
 
   return {
     rows: mappedRows,
@@ -367,8 +378,17 @@ export const listAgendaOcupacaoDailyRows = async (
       agendamentos_count,
       horarios_disponiveis_count,
       horarios_bloqueados_count,
-      capacidade_liquida_count,
-      taxa_confirmacao_pct,
+      (agendamentos_count + horarios_disponiveis_count) as capacidade_liquida_count,
+      CASE
+        WHEN (agendamentos_count + horarios_disponiveis_count) > 0
+        THEN (agendamentos_count * 100.0 / (agendamentos_count + horarios_disponiveis_count))
+        ELSE 0
+      END as taxa_ocupacao_comercial_pct,
+      CASE
+        WHEN (agendamentos_count + horarios_disponiveis_count + horarios_bloqueados_count) > 0
+        THEN (horarios_bloqueados_count * 100.0 / (agendamentos_count + horarios_disponiveis_count + horarios_bloqueados_count))
+        ELSE 0
+      END as taxa_bloqueio_pct,
       updated_at
     FROM agenda_occupancy_daily
     WHERE ${where.join(' AND ')}
