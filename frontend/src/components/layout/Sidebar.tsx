@@ -408,18 +408,18 @@ export function Sidebar() {
                 </button>
               )}
             </div>
-            <div className="flex items-center justify-end gap-2 px-1">
+            <div className="flex items-center gap-2 px-1">
               <button
                 type="button"
                 onClick={expandAllGroups}
-                className="rounded-md border border-white/10 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+                className="flex-1 rounded-md border border-white/10 px-2 py-0.5 text-[10px] font-medium text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
               >
                 Expandir tudo
               </button>
               <button
                 type="button"
                 onClick={collapseAllGroups}
-                className="rounded-md border border-white/10 px-2 py-1 text-[11px] font-medium text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
+                className="flex-1 rounded-md border border-white/10 px-2 py-0.5 text-[10px] font-medium text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
               >
                 Recolher tudo
               </button>
