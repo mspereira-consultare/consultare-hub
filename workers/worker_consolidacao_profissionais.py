@@ -1739,11 +1739,20 @@ def build_parser():
         help="Lista de IDs internos separados por virgula (ex: feegow:121659,2389).",
     )
     parser.add_argument("--requested-by", default="manual_cli", help="Identificador do solicitante do job.")
-    parser.add_argument(
+    browser_group = parser.add_mutually_exclusive_group()
+    browser_group.add_argument(
         "--headless",
+        dest="headless",
         action="store_true",
-        help="Executa navegador em modo headless. Default desta fase: headful.",
+        help="Executa navegador em modo headless (padrao).",
     )
+    browser_group.add_argument(
+        "--headful",
+        dest="headless",
+        action="store_false",
+        help="Executa navegador visivel para depuracao local.",
+    )
+    parser.set_defaults(headless=True)
     parser.add_argument("--debug", action="store_true", help="Salva dumps html/png por etapa.")
     return parser
 
