@@ -34,6 +34,20 @@ DEFAULT_UNITS = ["|12|", "|2|", "|3|"]
 DEFAULT_RETRY_ATTEMPTS = 2
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "_debug_consolidacao")
 
+SERVICE_NAME = "repasse_consolidacao"
+
+STATUS_PENDING = "PENDING"
+STATUS_RUNNING = "RUNNING"
+STATUS_COMPLETED = "COMPLETED"
+STATUS_FAILED = "FAILED"
+STATUS_PARTIAL = "PARTIAL"
+
+ITEM_SUCCESS = "SUCCESS"
+ITEM_NO_DATA = "NO_DATA"
+ITEM_SKIPPED_NOT_IN_FILTER = "SKIPPED_NOT_IN_FILTER"
+ITEM_SKIPPED_AMBIGUOUS_NAME = "SKIPPED_AMBIGUOUS_NAME"
+ITEM_ERROR = "ERROR"
+
 
 def _now_ts() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -165,6 +179,188 @@ def _row_value(row, index: int, key: str):
         return None
 
 
+def _fetch_rows(result) -> List:
+    if result is None:
+        return []
+    if hasattr(result, "fetchall"):
+        try:
+            return result.fetchall() or []
+        except Exception:
+            return []
+    try:
+        return list(result)
+    except Exception:
+        return []
+
+
+def _normalize_period_ref(period_ref: Optional[str]) -> str:
+    raw = _clean_ws(period_ref)
+    if not raw:
+        return _period_default_previous_month()
+    if not re.match(r"^\d{4}-\d{2}$", raw):
+        raise RuntimeError("periodo invalido. Use YYYY-MM.")
+    year = int(raw[:4])
+    month = int(raw[5:7])
+    if month < 1 or month > 12:
+        raise RuntimeError("periodo invalido. Mes deve estar entre 01 e 12.")
+    return f"{year:04d}-{month:02d}"
+
+
+def _parse_professional_ids_json(raw_value) -> List[str]:
+    raw = _clean_ws(raw_value)
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    out: List[str] = []
+    seen = set()
+    for item in parsed:
+        val = _clean_ws(item)
+        if not val or val in seen:
+            continue
+        seen.add(val)
+        out.append(val)
+    return out
+
+
+def _ensure_consolidacao_tables(db: "DatabaseManager"):
+    def _ensure_index(conn, table_name: str, index_name: str, columns_sql: str):
+        if db.use_mysql:
+            rs = conn.execute(
+                """
+                SELECT COUNT(1)
+                FROM information_schema.statistics
+                WHERE table_schema = DATABASE()
+                  AND table_name = ?
+                  AND index_name = ?
+                """,
+                (table_name, index_name),
+            )
+            rows = _fetch_rows(rs)
+            cnt = 0
+            if rows:
+                row = rows[0]
+                cnt = int(_row_value(row, 0, "COUNT(1)") or _row_value(row, 0, "count(1)") or 0)
+            if cnt == 0:
+                conn.execute(f"CREATE INDEX {index_name} ON {table_name} ({columns_sql})")
+            return
+        conn.execute(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns_sql})")
+
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS feegow_repasse_a_conferir (
+              id VARCHAR(64) PRIMARY KEY,
+              period_ref VARCHAR(7) NOT NULL,
+              professional_id VARCHAR(64) NOT NULL,
+              professional_name VARCHAR(180) NOT NULL,
+              invoice_id VARCHAR(64),
+              execution_date VARCHAR(32),
+              patient_name VARCHAR(180),
+              unit_name VARCHAR(120),
+              account_date VARCHAR(32),
+              requester_name VARCHAR(180),
+              specialty_name VARCHAR(180),
+              procedure_name VARCHAR(255),
+              attendance_value DECIMAL(14,2) NOT NULL,
+              detail_status VARCHAR(32),
+              detail_status_text VARCHAR(255),
+              role_code VARCHAR(32),
+              role_name VARCHAR(120),
+              detail_professional_name VARCHAR(180),
+              detail_repasse_value DECIMAL(14,2) NOT NULL,
+              executante_option_value VARCHAR(64),
+              executante_option_title VARCHAR(255),
+              source_row_hash VARCHAR(64) NOT NULL UNIQUE,
+              is_active INTEGER NOT NULL,
+              last_job_id VARCHAR(64),
+              created_at VARCHAR(32) NOT NULL,
+              updated_at VARCHAR(32) NOT NULL
+            )
+            """
+        )
+        _ensure_index(
+            conn,
+            "feegow_repasse_a_conferir",
+            "idx_repasse_conferir_period_prof",
+            "period_ref, professional_id",
+        )
+        _ensure_index(
+            conn,
+            "feegow_repasse_a_conferir",
+            "idx_repasse_conferir_exec_date",
+            "execution_date",
+        )
+        _ensure_index(
+            conn,
+            "feegow_repasse_a_conferir",
+            "idx_repasse_conferir_detail_status",
+            "detail_status",
+        )
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS repasse_consolidacao_jobs (
+              id VARCHAR(64) PRIMARY KEY,
+              period_ref VARCHAR(7) NOT NULL,
+              scope VARCHAR(20) NOT NULL,
+              professional_ids_json TEXT,
+              status VARCHAR(20) NOT NULL,
+              requested_by VARCHAR(64) NOT NULL,
+              started_at VARCHAR(32),
+              finished_at VARCHAR(32),
+              error TEXT,
+              created_at VARCHAR(32) NOT NULL,
+              updated_at VARCHAR(32) NOT NULL
+            )
+            """
+        )
+        _ensure_index(conn, "repasse_consolidacao_jobs", "idx_repasse_consol_jobs_period", "period_ref")
+        _ensure_index(conn, "repasse_consolidacao_jobs", "idx_repasse_consol_jobs_status", "status")
+        _ensure_index(conn, "repasse_consolidacao_jobs", "idx_repasse_consol_jobs_created", "created_at")
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS repasse_consolidacao_job_items (
+              id VARCHAR(64) PRIMARY KEY,
+              job_id VARCHAR(64) NOT NULL,
+              professional_id VARCHAR(64) NOT NULL,
+              professional_name VARCHAR(180) NOT NULL,
+              status VARCHAR(40) NOT NULL,
+              rows_count INTEGER NOT NULL,
+              total_value DECIMAL(14,2) NOT NULL,
+              error_message TEXT,
+              duration_ms INTEGER,
+              created_at VARCHAR(32) NOT NULL,
+              updated_at VARCHAR(32) NOT NULL
+            )
+            """
+        )
+        _ensure_index(conn, "repasse_consolidacao_job_items", "idx_repasse_consol_items_job", "job_id")
+        _ensure_index(
+            conn,
+            "repasse_consolidacao_job_items",
+            "idx_repasse_consol_items_prof",
+            "professional_id",
+        )
+        _ensure_index(
+            conn,
+            "repasse_consolidacao_job_items",
+            "idx_repasse_consol_items_status",
+            "status",
+        )
+
+        if not db.use_turso:
+            conn.commit()
+    finally:
+        conn.close()
+
+
 def _list_active_professionals(db: "DatabaseManager", filter_ids: List[str]) -> List[Dict[str, str]]:
     all_rows = db.execute_query(
         """
@@ -201,6 +397,246 @@ def _list_active_professionals(db: "DatabaseManager", filter_ids: List[str]) -> 
             }
         )
     return out
+
+
+def _get_pending_job(db: "DatabaseManager") -> Optional[Dict]:
+    rows = db.execute_query(
+        """
+        SELECT id, period_ref, scope, requested_by, professional_ids_json
+        FROM repasse_consolidacao_jobs
+        WHERE status = ?
+        ORDER BY created_at ASC
+        LIMIT 1
+        """,
+        (STATUS_PENDING,),
+    ) or []
+    if not rows:
+        return None
+    row = rows[0]
+    return {
+        "id": _clean_ws(_row_value(row, 0, "id")),
+        "period_ref": _clean_ws(_row_value(row, 1, "period_ref")),
+        "scope": _clean_ws(_row_value(row, 2, "scope")),
+        "requested_by": _clean_ws(_row_value(row, 3, "requested_by")),
+        "professional_ids_json": _row_value(row, 4, "professional_ids_json"),
+    }
+
+
+def enqueue_consolidacao_job(
+    period_ref: Optional[str] = None,
+    requested_by: str = "manual",
+    db: Optional["DatabaseManager"] = None,
+    initial_status: str = STATUS_PENDING,
+    professional_ids: Optional[List[str]] = None,
+) -> Dict:
+    own_db = db is None
+    db_ref = db or DatabaseManager()
+    _ensure_consolidacao_tables(db_ref)
+
+    normalized_period = _normalize_period_ref(period_ref)
+    now = _now_ts()
+    job_id = uuid.uuid4().hex
+    requested = _clean_ws(requested_by) or "manual"
+    selected_ids = [_clean_ws(x) for x in (professional_ids or []) if _clean_ws(x)]
+    selected_json = json.dumps(selected_ids, ensure_ascii=False) if selected_ids else None
+    scope = "single" if len(selected_ids) == 1 else ("multi" if len(selected_ids) > 1 else "all")
+
+    db_ref.execute_query(
+        """
+        INSERT INTO repasse_consolidacao_jobs (
+          id, period_ref, scope, professional_ids_json, status, requested_by,
+          started_at, finished_at, error, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+        """,
+        (
+            job_id,
+            normalized_period,
+            scope,
+            selected_json,
+            _clean_ws(initial_status) or STATUS_PENDING,
+            requested,
+            now if _clean_ws(initial_status).upper() == STATUS_RUNNING else None,
+            now,
+            now,
+        ),
+    )
+
+    if own_db:
+        try:
+            db_ref.update_heartbeat(
+                SERVICE_NAME,
+                "COMPLETED",
+                f"Job enfileirado manualmente id={job_id} periodo={normalized_period}",
+            )
+        except Exception:
+            pass
+
+    return {
+        "id": job_id,
+        "period_ref": normalized_period,
+        "requested_by": requested,
+        "scope": scope,
+        "professional_ids_json": selected_json,
+    }
+
+
+def _mark_job_running(db: "DatabaseManager", job_id: str):
+    now = _now_ts()
+    db.execute_query(
+        """
+        UPDATE repasse_consolidacao_jobs
+        SET status = ?, started_at = ?, finished_at = NULL, error = NULL, updated_at = ?
+        WHERE id = ?
+        """,
+        (STATUS_RUNNING, now, now, job_id),
+    )
+
+
+def _mark_job_done(db: "DatabaseManager", job_id: str, status: str, error: str = ""):
+    now = _now_ts()
+    db.execute_query(
+        """
+        UPDATE repasse_consolidacao_jobs
+        SET status = ?, finished_at = ?, error = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (status, now, (error or None), now, job_id),
+    )
+
+
+def _save_job_item(
+    db: "DatabaseManager",
+    job_id: str,
+    professional_id: str,
+    professional_name: str,
+    status: str,
+    rows_count: int,
+    total_value: Decimal,
+    error_message: str = "",
+    duration_ms: Optional[int] = None,
+):
+    now = _now_ts()
+    db.execute_query(
+        "DELETE FROM repasse_consolidacao_job_items WHERE job_id = ? AND professional_id = ?",
+        (job_id, professional_id),
+    )
+    db.execute_query(
+        """
+        INSERT INTO repasse_consolidacao_job_items (
+          id, job_id, professional_id, professional_name, status, rows_count, total_value,
+          error_message, duration_ms, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            hashlib.md5(f"{job_id}:{professional_id}".encode("utf-8")).hexdigest(),
+            job_id,
+            professional_id,
+            professional_name,
+            status,
+            int(rows_count),
+            float(total_value),
+            error_message or None,
+            duration_ms,
+            now,
+            now,
+        ),
+    )
+
+
+def _upsert_professional_rows(
+    db: "DatabaseManager",
+    job_id: str,
+    period_ref: str,
+    professional_id: str,
+    professional_name: str,
+    rows: List[Dict],
+):
+    now = _now_ts()
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            UPDATE feegow_repasse_a_conferir
+            SET is_active = 0, updated_at = ?, last_job_id = ?
+            WHERE period_ref = ? AND professional_id = ?
+            """,
+            (now, job_id, period_ref, professional_id),
+        )
+
+        for row in rows:
+            source_hash = _clean_ws(row.get("line_key_hash"))
+            if not source_hash:
+                source_hash = _hash_line(period_ref, professional_id, row)
+
+            row_id = hashlib.md5(f"{job_id}:{source_hash}".encode("utf-8")).hexdigest()
+            conn.execute(
+                """
+                INSERT INTO feegow_repasse_a_conferir (
+                  id, period_ref, professional_id, professional_name, invoice_id, execution_date,
+                  patient_name, unit_name, account_date, requester_name, specialty_name, procedure_name,
+                  attendance_value, detail_status, detail_status_text, role_code, role_name,
+                  detail_professional_name, detail_repasse_value, executante_option_value,
+                  executante_option_title, source_row_hash, is_active, last_job_id, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(source_row_hash) DO UPDATE SET
+                  period_ref = excluded.period_ref,
+                  professional_id = excluded.professional_id,
+                  professional_name = excluded.professional_name,
+                  invoice_id = excluded.invoice_id,
+                  execution_date = excluded.execution_date,
+                  patient_name = excluded.patient_name,
+                  unit_name = excluded.unit_name,
+                  account_date = excluded.account_date,
+                  requester_name = excluded.requester_name,
+                  specialty_name = excluded.specialty_name,
+                  procedure_name = excluded.procedure_name,
+                  attendance_value = excluded.attendance_value,
+                  detail_status = excluded.detail_status,
+                  detail_status_text = excluded.detail_status_text,
+                  role_code = excluded.role_code,
+                  role_name = excluded.role_name,
+                  detail_professional_name = excluded.detail_professional_name,
+                  detail_repasse_value = excluded.detail_repasse_value,
+                  executante_option_value = excluded.executante_option_value,
+                  executante_option_title = excluded.executante_option_title,
+                  is_active = 1,
+                  last_job_id = excluded.last_job_id,
+                  updated_at = excluded.updated_at
+                """,
+                (
+                    row_id,
+                    period_ref,
+                    professional_id,
+                    professional_name,
+                    _clean_ws(row.get("invoice_id")),
+                    _clean_ws(row.get("execution_date")),
+                    _clean_ws(row.get("patient_name")),
+                    _clean_ws(row.get("unit_name")),
+                    _clean_ws(row.get("account_date")),
+                    _clean_ws(row.get("requester_name")),
+                    _clean_ws(row.get("specialty_name")),
+                    _clean_ws(row.get("procedure_name")),
+                    float(row.get("attendance_value_num") or 0),
+                    _clean_ws(row.get("detail_status")),
+                    _clean_ws(row.get("detail_status_text")),
+                    _clean_ws(row.get("role_code")),
+                    _clean_ws(row.get("role_name")),
+                    _clean_ws(row.get("detail_professional_name")),
+                    float(row.get("detail_repasse_num") or 0),
+                    _clean_ws(row.get("executante_option_value")),
+                    _clean_ws(row.get("executante_option_title")),
+                    source_hash,
+                    1,
+                    job_id,
+                    now,
+                    now,
+                ),
+            )
+
+        if not db.use_turso:
+            conn.commit()
+    finally:
+        conn.close()
 
 
 def _login_feegow(page):
@@ -812,14 +1248,21 @@ def _process_professional(
     date_to: str,
     prof: Dict,
     debug: bool,
+    heartbeat_cb=None,
 ) -> Tuple[str, List[Dict], Optional[Dict]]:
     last_error = None
     for attempt in range(1, DEFAULT_RETRY_ATTEMPTS + 1):
         try:
+            if heartbeat_cb:
+                heartbeat_cb("executante", prof.get("name"))
             select_status, chosen_candidate = _select_professional_by_name(page, prof)
             if select_status != "OK":
                 return select_status, [], None
+            if heartbeat_cb:
+                heartbeat_cb("buscar", prof.get("name"))
             _click_search(page, run_id, debug)
+            if heartbeat_cb:
+                heartbeat_cb("parse", prof.get("name"))
             parsed = _parse_result_rows(page, run_id, debug)
             if not parsed:
                 return "NO_DATA", [], None
@@ -929,119 +1372,42 @@ def _parse_professional_filter_arg(raw: str) -> List[str]:
     return [x.strip() for x in text.split(",") if x.strip()]
 
 
-def run_once(args):
-    if DatabaseManager is None:
-        raise RuntimeError("DatabaseManager indisponivel.")
-
-    debug = bool(args.debug)
-    run_id = _run_id()
-    period_ref, date_from, date_to = _parse_period_args(args.period, args.start, args.end)
+def _save_debug_outputs(
+    debug: bool,
+    run_id: str,
+    period_ref: str,
+    date_from: str,
+    date_to: str,
+    selected_ids: List[str],
+    professionals_total: int,
+    counters: Dict[str, int],
+    rows: List[Dict],
+    errors: List[Dict],
+    started_ts: float,
+):
+    if not debug:
+        return
     output_paths = _make_output_paths(run_id)
-    selected_ids = _parse_professional_filter_arg(args.professionals)
-
-    db = DatabaseManager()
-    professionals = _list_active_professionals(db, selected_ids)
-    if not professionals:
-        raise RuntimeError("nenhum profissional ativo encontrado para o escopo informado.")
-
-    print(
-        f"--- Consolidacao profissionais | run={run_id} | periodo={period_ref} | "
-        f"de={date_from} ate={date_to} | profissionais={len(professionals)} ---"
-    )
-
-    start_ts = time.time()
-    all_rows: List[Dict] = []
-    all_errors: List[Dict] = []
-
-    counters = {
-        "ok": 0,
-        "no_data": 0,
-        "skipped": 0,
-        "skipped_ambiguous": 0,
-        "error": 0,
-    }
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=(not args.headful))
-        # browser = p.chromium.launch(headless=False)
-        
-        context = browser.new_context(ignore_https_errors=True)
-        page = context.new_page()
-        try:
-            _login_feegow(page)
-            _open_consolidacao_screen(page)
-            _apply_fixed_filters(page, date_from, date_to)
-
-            for idx, prof in enumerate(professionals, start=1):
-                t0 = time.time()
-                status, rows, err = _process_professional(
-                    page=page,
-                    run_id=run_id,
-                    period_ref=period_ref,
-                    date_from=date_from,
-                    date_to=date_to,
-                    prof=prof,
-                    debug=debug,
-                )
-
-                if status == "OK":
-                    counters["ok"] += 1
-                    all_rows.extend(rows)
-                    total_repasse = sum(float(r.get("detail_repasse_num") or 0.0) for r in rows)
-                    print(
-                        f"[{idx}/{len(professionals)}] OK {prof['name']}: "
-                        f"linhas={len(rows)} total={total_repasse:.2f}"
-                    )
-                elif status == "NO_DATA":
-                    counters["no_data"] += 1
-                    print(f"[{idx}/{len(professionals)}] NO_DATA {prof['name']}")
-                elif status == "SKIPPED_NOT_IN_FILTER":
-                    counters["skipped"] += 1
-                    print(f"[{idx}/{len(professionals)}] SKIPPED_NOT_IN_FILTER {prof['name']}")
-                elif status == "SKIPPED_AMBIGUOUS_NAME":
-                    counters["skipped_ambiguous"] += 1
-                    print(f"[{idx}/{len(professionals)}] SKIPPED_AMBIGUOUS_NAME {prof['name']}")
-                else:
-                    counters["error"] += 1
-                    error_item = {
-                        "run_id": run_id,
-                        "period_ref": period_ref,
-                        "professional_id": prof["internal_id"],
-                        "professional_name": prof["name"],
-                        "status": status,
-                        "duration_ms": int((time.time() - t0) * 1000),
-                        "error": err or {"message": "erro desconhecido"},
-                        "logged_at": _now_ts(),
-                    }
-                    all_errors.append(error_item)
-                    print(f"[{idx}/{len(professionals)}] ERROR {prof['name']}: {error_item['error']['message']}")
-
-        finally:
-            context.close()
-            browser.close()
-
-    duration_sec = round(time.time() - start_ts, 2)
-
     summary = {
         "run_id": run_id,
         "period_ref": period_ref,
         "date_from": date_from,
         "date_to": date_to,
-        "started_at": datetime.fromtimestamp(start_ts).strftime("%Y-%m-%d %H:%M:%S"),
+        "started_at": datetime.fromtimestamp(started_ts).strftime("%Y-%m-%d %H:%M:%S"),
         "finished_at": _now_ts(),
-        "duration_sec": duration_sec,
+        "duration_sec": round(time.time() - started_ts, 2),
         "scope": "all_active" if not selected_ids else "selected",
         "selected_professional_ids": selected_ids,
         "totals": {
-            "professionals_total": len(professionals),
-            "ok": counters["ok"],
-            "no_data": counters["no_data"],
-            "skipped_not_in_filter": counters["skipped"],
-            "skipped_ambiguous_name": counters["skipped_ambiguous"],
-            "error": counters["error"],
-            "rows": len(all_rows),
+            "professionals_total": professionals_total,
+            "ok": counters.get("ok", 0),
+            "no_data": counters.get("no_data", 0),
+            "skipped_not_in_filter": counters.get("skipped", 0),
+            "skipped_ambiguous_name": counters.get("skipped_ambiguous", 0),
+            "error": counters.get("error", 0),
+            "rows": len(rows),
             "detail_repasse_total": round(
-                sum(float(r.get("detail_repasse_num") or 0.0) for r in all_rows), 2
+                sum(float(r.get("detail_repasse_num") or 0.0) for r in rows), 2
             ),
         },
         "assumptions": {
@@ -1051,33 +1417,333 @@ def run_once(args):
         },
         "files": output_paths,
     }
-
     with open(output_paths["summary"], "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
-    _write_jsonl(output_paths["rows_jsonl"], all_rows)
-    _write_csv(output_paths["rows_csv"], all_rows)
-    _write_jsonl(output_paths["errors_jsonl"], all_errors)
+    _write_jsonl(output_paths["rows_jsonl"], rows)
+    _write_csv(output_paths["rows_csv"], rows)
+    _write_jsonl(output_paths["errors_jsonl"], errors)
+    print(f"debug_summary: {output_paths['summary']}")
 
-    print("--- Consolidacao finalizada ---")
-    print(f"summary: {output_paths['summary']}")
-    print(f"rows   : {output_paths['rows_jsonl']}")
-    print(f"csv    : {output_paths['rows_csv']}")
-    print(f"errors : {output_paths['errors_jsonl']}")
-    print(json.dumps(summary["totals"], ensure_ascii=False))
+
+def _hb(db: "DatabaseManager", status: str, job_id: str, stage: str, extra: str = ""):
+    details = f"job={job_id} etapa={stage}"
+    if extra:
+        details = f"{details} {extra}"
+    db.update_heartbeat(SERVICE_NAME, status, details)
+
+
+def _process_job(
+    db: "DatabaseManager",
+    job: Dict,
+    debug: bool = False,
+    headless: bool = False,
+    date_from_override: str = "",
+    date_to_override: str = "",
+):
+    job_id = _clean_ws(job.get("id"))
+    period_ref = _normalize_period_ref(job.get("period_ref"))
+    selected_ids = _parse_professional_ids_json(job.get("professional_ids_json"))
+    date_from = _clean_ws(date_from_override)
+    date_to = _clean_ws(date_to_override)
+    if not date_from or not date_to:
+        date_from, date_to = _period_to_dates(period_ref)
+
+    professionals = _list_active_professionals(db, selected_ids)
+    if not professionals:
+        _mark_job_done(db, job_id, STATUS_FAILED, "Nenhum profissional ativo encontrado para o escopo do job.")
+        db.update_heartbeat(SERVICE_NAME, "ERROR", "Nenhum profissional ativo para processar no escopo.")
+        print(f"--- Repasse a conferir | job={job_id} | status={STATUS_FAILED} (sem profissionais) ---")
+        return
+
+    scope_label = _clean_ws(job.get("scope")) or ("selected" if selected_ids else "all")
+    run_id = _run_id()
+    start_ts = time.time()
+    all_rows: List[Dict] = []
+    all_errors: List[Dict] = []
+    counters = {
+        "ok": 0,
+        "no_data": 0,
+        "skipped": 0,
+        "skipped_ambiguous": 0,
+        "error": 0,
+    }
+
+    print(
+        f"--- Repasse a conferir | job={job_id} | periodo={period_ref} | "
+        f"de={date_from} ate={date_to} | profissionais={len(professionals)} | escopo={scope_label} ---"
+    )
+    _hb(db, "RUNNING", job_id, "init", f"periodo={period_ref} profissionais={len(professionals)}")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=headless)
+        context = browser.new_context(ignore_https_errors=True)
+        page = context.new_page()
+        try:
+            _hb(db, "RUNNING", job_id, "login")
+            _login_feegow(page)
+            _hb(db, "RUNNING", job_id, "filtros")
+            _open_consolidacao_screen(page)
+            _apply_fixed_filters(page, date_from, date_to)
+
+            for idx, prof in enumerate(professionals, start=1):
+                t0 = time.time()
+
+                def _stage_cb(stage: str, prof_name: str = ""):
+                    if stage in ("executante", "buscar", "parse"):
+                        suffix = f"profissional={prof_name}" if prof_name else ""
+                        _hb(db, "RUNNING", job_id, stage, suffix)
+
+                status, rows, err = _process_professional(
+                    page=page,
+                    run_id=run_id,
+                    period_ref=period_ref,
+                    date_from=date_from,
+                    date_to=date_to,
+                    prof=prof,
+                    debug=debug,
+                    heartbeat_cb=_stage_cb,
+                )
+
+                duration_ms = int((time.time() - t0) * 1000)
+                if status == "OK":
+                    _hb(db, "RUNNING", job_id, "persist", f"profissional={prof['name']}")
+                    _upsert_professional_rows(
+                        db=db,
+                        job_id=job_id,
+                        period_ref=period_ref,
+                        professional_id=prof["internal_id"],
+                        professional_name=prof["name"],
+                        rows=rows,
+                    )
+                    total_repasse = Decimal("0")
+                    for item in rows:
+                        total_repasse += Decimal(str(item.get("detail_repasse_num") or 0))
+                    _save_job_item(
+                        db,
+                        job_id,
+                        prof["internal_id"],
+                        prof["name"],
+                        ITEM_SUCCESS,
+                        len(rows),
+                        total_repasse,
+                        "",
+                        duration_ms,
+                    )
+                    counters["ok"] += 1
+                    all_rows.extend(rows)
+                    print(
+                        f"[{idx}/{len(professionals)}] OK {prof['name']}: "
+                        f"linhas={len(rows)} total={float(total_repasse):.2f}"
+                    )
+                elif status == "NO_DATA":
+                    _hb(db, "RUNNING", job_id, "persist", f"profissional={prof['name']}")
+                    _upsert_professional_rows(
+                        db=db,
+                        job_id=job_id,
+                        period_ref=period_ref,
+                        professional_id=prof["internal_id"],
+                        professional_name=prof["name"],
+                        rows=[],
+                    )
+                    _save_job_item(
+                        db,
+                        job_id,
+                        prof["internal_id"],
+                        prof["name"],
+                        ITEM_NO_DATA,
+                        0,
+                        Decimal("0"),
+                        "",
+                        duration_ms,
+                    )
+                    counters["no_data"] += 1
+                    print(f"[{idx}/{len(professionals)}] NO_DATA {prof['name']}")
+                elif status == "SKIPPED_NOT_IN_FILTER":
+                    _save_job_item(
+                        db,
+                        job_id,
+                        prof["internal_id"],
+                        prof["name"],
+                        ITEM_SKIPPED_NOT_IN_FILTER,
+                        0,
+                        Decimal("0"),
+                        "Executante nao encontrado no filtro da tela",
+                        duration_ms,
+                    )
+                    counters["skipped"] += 1
+                    print(f"[{idx}/{len(professionals)}] SKIPPED_NOT_IN_FILTER {prof['name']}")
+                elif status == "SKIPPED_AMBIGUOUS_NAME":
+                    _save_job_item(
+                        db,
+                        job_id,
+                        prof["internal_id"],
+                        prof["name"],
+                        ITEM_SKIPPED_AMBIGUOUS_NAME,
+                        0,
+                        Decimal("0"),
+                        "Nome ambiguo no filtro de executante",
+                        duration_ms,
+                    )
+                    counters["skipped_ambiguous"] += 1
+                    print(f"[{idx}/{len(professionals)}] SKIPPED_AMBIGUOUS_NAME {prof['name']}")
+                else:
+                    counters["error"] += 1
+                    message = _clean_ws((err or {}).get("message")) or "erro desconhecido"
+                    all_errors.append(
+                        {
+                            "run_id": run_id,
+                            "period_ref": period_ref,
+                            "professional_id": prof["internal_id"],
+                            "professional_name": prof["name"],
+                            "status": status,
+                            "duration_ms": duration_ms,
+                            "error": err or {"message": message},
+                            "logged_at": _now_ts(),
+                        }
+                    )
+                    _save_job_item(
+                        db,
+                        job_id,
+                        prof["internal_id"],
+                        prof["name"],
+                        ITEM_ERROR,
+                        0,
+                        Decimal("0"),
+                        message,
+                        duration_ms,
+                    )
+                    print(f"[{idx}/{len(professionals)}] ERROR {prof['name']}: {message}")
+        finally:
+            context.close()
+            browser.close()
+
+    if counters["error"] >= len(professionals):
+        final_status = STATUS_FAILED
+    elif counters["error"] > 0:
+        final_status = STATUS_PARTIAL
+    else:
+        final_status = STATUS_COMPLETED
+
+    _mark_job_done(db, job_id, final_status)
+    hb_status = "ERROR" if final_status == STATUS_FAILED else ("WARNING" if final_status == STATUS_PARTIAL else "COMPLETED")
+    _hb(db, hb_status, job_id, "done", f"status={final_status}")
+
+    _save_debug_outputs(
+        debug=debug,
+        run_id=run_id,
+        period_ref=period_ref,
+        date_from=date_from,
+        date_to=date_to,
+        selected_ids=selected_ids,
+        professionals_total=len(professionals),
+        counters=counters,
+        rows=all_rows,
+        errors=all_errors,
+        started_ts=start_ts,
+    )
+    print(f"--- Repasse a conferir finalizado | job={job_id} | status={final_status} ---")
+
+
+def process_pending_consolidacao_jobs_once(
+    auto_enqueue_if_empty: bool = False,
+    period_ref: Optional[str] = None,
+    requested_by: str = "manual",
+    professional_ids: Optional[List[str]] = None,
+    debug: bool = False,
+    headless: bool = False,
+    date_from: str = "",
+    date_to: str = "",
+) -> bool:
+    db = DatabaseManager()
+    _ensure_consolidacao_tables(db)
+
+    pending = _get_pending_job(db)
+    date_from_override = ""
+    date_to_override = ""
+
+    if not pending and auto_enqueue_if_empty:
+        normalized_period = _normalize_period_ref(period_ref)
+        if _clean_ws(date_from) and _clean_ws(date_to):
+            _, date_from_override, date_to_override = _parse_period_args(normalized_period, date_from, date_to)
+
+        job = enqueue_consolidacao_job(
+            period_ref=normalized_period,
+            requested_by=requested_by,
+            db=db,
+            initial_status=STATUS_PENDING,
+            professional_ids=professional_ids or [],
+        )
+        print(
+            f"📝 Job de consolidacao criado automaticamente | id={job['id']} | periodo={job['period_ref']}"
+        )
+        pending = {
+            "id": job["id"],
+            "period_ref": job["period_ref"],
+            "scope": job.get("scope") or "",
+            "requested_by": job["requested_by"],
+            "professional_ids_json": job.get("professional_ids_json"),
+        }
+
+    if not pending:
+        db.update_heartbeat(SERVICE_NAME, "COMPLETED", "Sem jobs pendentes")
+        return False
+
+    _mark_job_running(db, pending["id"])
+    try:
+        _process_job(
+            db=db,
+            job=pending,
+            debug=debug,
+            headless=headless,
+            date_from_override=date_from_override,
+            date_to_override=date_to_override,
+        )
+    except Exception as exc:
+        _mark_job_done(db, pending["id"], STATUS_FAILED, str(exc))
+        db.update_heartbeat(SERVICE_NAME, "ERROR", f"job={pending['id']} erro={exc}")
+        print(f"❌ Erro fatal no job {pending['id']}: {exc}")
+        raise
+    return True
+
+
+def run_once(args):
+    if DatabaseManager is None:
+        raise RuntimeError("DatabaseManager indisponivel.")
+
+    selected_ids = _parse_professional_filter_arg(args.professionals)
+    period_ref, date_from, date_to = _parse_period_args(args.period, args.start, args.end)
+
+    had_job = process_pending_consolidacao_jobs_once(
+        auto_enqueue_if_empty=True,
+        period_ref=period_ref,
+        requested_by=_clean_ws(args.requested_by) or "manual_cli",
+        professional_ids=selected_ids,
+        debug=bool(args.debug),
+        headless=bool(args.headless),
+        date_from=date_from,
+        date_to=date_to,
+    )
+    if not had_job:
+        print("Sem jobs pendentes.")
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(description="Extrator de consolidacao de repasses (fase 1, sem persistencia em tabela).")
-    parser.add_argument("--once", action="store_true", help="Executa uma unica vez (modo padrao).")
+    parser = argparse.ArgumentParser(description="Extrator de consolidacao de repasses (RepassesAConferir) com persistencia em banco.")
+    parser.add_argument("--once", action="store_true", help="Executa uma unica vez (processa 1 job pendente).")
     parser.add_argument("--period", default="", help="Periodo no formato YYYY-MM.")
     parser.add_argument("--start", default="", help="Data inicial DD/MM/YYYY.")
     parser.add_argument("--end", default="", help="Data final DD/MM/YYYY.")
     parser.add_argument(
         "--professionals",
         default="",
-        help="Lista de IDs internos separados por virgula (ex: feegow:121659,feegow:999).",
+        help="Lista de IDs internos separados por virgula (ex: feegow:121659,2389).",
     )
-    parser.add_argument("--headful", action="store_true", help="Abre navegador visivel para debug.")
+    parser.add_argument("--requested-by", default="manual_cli", help="Identificador do solicitante do job.")
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Executa navegador em modo headless. Default desta fase: headful.",
+    )
     parser.add_argument("--debug", action="store_true", help="Salva dumps html/png por etapa.")
     return parser
 
