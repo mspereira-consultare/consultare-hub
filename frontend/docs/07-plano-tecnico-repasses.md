@@ -275,3 +275,22 @@ Status atual:
 - Coluna de relatorio foi integrada na tabela de profissionais (botao Visualizar + data de geracao).
 - Pagina padrao de listagem alterada para 300 linhas por pagina.
 - Coluna `Solicitado por` no historico agora exibe nome/e-mail do usuario logado (quando disponivel), em vez de ID tecnico.
+
+## 19. Atualizacao - APIs de Consolidacao (A Conferir) (2026-03-10)
+- Namespace novo de API: `/api/admin/repasses/consolidacao/*`.
+- Fonte separada do modulo existente:
+  - dados: `feegow_repasse_a_conferir`
+  - jobs: `repasse_consolidacao_jobs` e `repasse_consolidacao_job_items`
+  - observacoes: `repasse_consolidacao_notes`
+- Endpoints adicionados:
+  - `GET|POST /api/admin/repasses/consolidacao/jobs`
+  - `GET /api/admin/repasses/consolidacao/professionals`
+  - `GET /api/admin/repasses/consolidacao/professionals/[professionalId]/details`
+  - `PUT /api/admin/repasses/consolidacao/notes`
+- Regras:
+  - `periodRef` default = mes anterior (`YYYY-MM`)
+  - `requested_by_display` com join seguro na tabela `users`
+  - status resumido por profissional:
+    - `ERROR`, `NO_DATA`, `SKIPPED`, `SUCCESS`, `NOT_PROCESSED`
+- Permissoes reutilizadas: `repasses` com `view`, `refresh`, `edit`.
+- Compatibilidade: nenhuma rota antiga de `/api/admin/repasses/*` foi removida ou alterada.

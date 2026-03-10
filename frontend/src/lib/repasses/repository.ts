@@ -1,6 +1,13 @@
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import type {
+  RepasseAConferirLine,
+  RepasseConsolidacaoJob,
+  RepasseConsolidacaoJobInput,
+  RepasseConsolidacaoProfessionalListFilters,
+  RepasseConsolidacaoProfessionalListResult,
+  RepasseConsolidacaoProfessionalStatus,
+  RepasseConsolidacaoScope,
   RepasseJobListFilters,
   RepassePdfArtifact,
   RepassePdfArtifactListFilters,
@@ -26,6 +33,7 @@ export class RepasseValidationError extends Error {
 }
 
 let repasseTablesEnsured = false;
+let repasseConsolidacaoTablesEnsured = false;
 
 const nowIso = () => new Date().toISOString();
 const clean = (value: unknown) => String(value ?? '').trim();
@@ -104,6 +112,16 @@ const normalizeSyncScope = (value: unknown, hasProfessionalIds: boolean): Repass
   return hasProfessionalIds ? 'multi' : 'all';
 };
 
+const normalizeConsolidacaoScope = (
+  value: unknown,
+  hasProfessionalIds: boolean
+): RepasseConsolidacaoScope => {
+  const raw = clean(value).toLowerCase();
+  if (raw === 'single' || raw === 'multi') return raw;
+  if (raw === 'all') return 'all';
+  return hasProfessionalIds ? 'multi' : 'all';
+};
+
 const normalizeProfessionalIds = (value: unknown): string[] => {
   if (!Array.isArray(value)) return [];
   const unique = new Set<string>();
@@ -171,6 +189,23 @@ const mapPdfJob = (row: any): RepassePdfJob => ({
   updatedAt: clean(row.updated_at),
 });
 
+const mapConsolidacaoJob = (row: any): RepasseConsolidacaoJob => ({
+  id: clean(row.id),
+  periodRef: clean(row.period_ref),
+  scope: normalizeConsolidacaoScope(
+    row.scope,
+    parseProfessionalIdsJson(row.professional_ids_json).length > 0
+  ),
+  professionalIds: parseProfessionalIdsJson(row.professional_ids_json),
+  status: clean(row.status).toUpperCase() as RepasseConsolidacaoJob['status'],
+  requestedBy: clean((row as any).requested_by_display || row.requested_by),
+  startedAt: clean(row.started_at) || null,
+  finishedAt: clean(row.finished_at) || null,
+  error: clean(row.error) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
 const mapPdfArtifact = (row: any): RepassePdfArtifact => ({
   id: clean(row.id),
   pdfJobId: clean(row.pdf_job_id),
@@ -208,6 +243,36 @@ const mapProfessionalStatus = (
   const normalized = clean(rowStatus).toUpperCase();
   if (normalized === 'SUCCESS') return 'SUCCESS';
   if (normalized === 'NO_DATA') return 'NO_DATA';
+  if (normalized === 'ERROR') return 'ERROR';
+  return 'NOT_PROCESSED';
+};
+
+const normalizeConsolidacaoProfessionalStatusFilter = (
+  value: unknown
+): RepasseConsolidacaoProfessionalListFilters['status'] => {
+  const raw = clean(value).toLowerCase();
+  if (
+    raw === 'success' ||
+    raw === 'no_data' ||
+    raw === 'skipped' ||
+    raw === 'error' ||
+    raw === 'not_processed' ||
+    raw === 'all'
+  ) {
+    return raw;
+  }
+  return 'all';
+};
+
+const mapConsolidacaoProfessionalStatus = (
+  rowStatus: string | null | undefined
+): RepasseConsolidacaoProfessionalStatus => {
+  const normalized = clean(rowStatus).toUpperCase();
+  if (normalized === 'SUCCESS') return 'SUCCESS';
+  if (normalized === 'NO_DATA') return 'NO_DATA';
+  if (normalized === 'SKIPPED_NOT_IN_FILTER' || normalized === 'SKIPPED_AMBIGUOUS_NAME') {
+    return 'SKIPPED';
+  }
   if (normalized === 'ERROR') return 'ERROR';
   return 'NOT_PROCESSED';
 };
@@ -435,6 +500,196 @@ const loadRepasseProfessionalSummaries = async (
   return { items, stats };
 };
 
+const loadRepasseConsolidacaoProfessionalSummaries = async (
+  db: DbInterface,
+  input: { periodRef: string; search: string }
+): Promise<{
+  items: RepasseConsolidacaoProfessionalListResult['items'];
+  stats: RepasseConsolidacaoProfessionalListResult['stats'];
+}> => {
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const search = clean(input.search);
+
+  const where: string[] = ['is_active = 1'];
+  const whereParams: any[] = [];
+  if (search) {
+    where.push('UPPER(name) LIKE ?');
+    whereParams.push(`%${search.toUpperCase()}%`);
+  }
+
+  const professionals = await db.query(
+    `
+    SELECT id, name, payment_minimum_text
+    FROM professionals
+    WHERE ${where.join(' AND ')}
+    ORDER BY name ASC
+    `,
+    whereParams
+  );
+
+  const repasseWhere: string[] = ['period_ref = ?', 'is_active = 1'];
+  const repasseWhereParams: any[] = [periodRef];
+  if (search) {
+    repasseWhere.push('UPPER(professional_name) LIKE ?');
+    repasseWhereParams.push(`%${search.toUpperCase()}%`);
+  }
+  const repasseProfessionals = await db.query(
+    `
+    SELECT DISTINCT professional_id, professional_name
+    FROM feegow_repasse_a_conferir
+    WHERE ${repasseWhere.join(' AND ')}
+    `,
+    repasseWhereParams
+  );
+
+  const professionalMap = new Map<string, string>();
+  const paymentMinimumByProfessional = new Map<string, string | null>();
+  for (const row of professionals) {
+    const id = clean((row as any).id);
+    const name = clean((row as any).name);
+    if (!id || !name) continue;
+    professionalMap.set(id, name);
+    paymentMinimumByProfessional.set(id, clean((row as any).payment_minimum_text) || null);
+  }
+  for (const row of repasseProfessionals) {
+    const id = clean((row as any).professional_id);
+    const name = clean((row as any).professional_name);
+    if (!id || !name || professionalMap.has(id)) continue;
+    professionalMap.set(id, name);
+  }
+
+  const professionalPairs = Array.from(professionalMap.entries()).map(([id, name]) => ({ id, name }));
+  professionalPairs.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
+  const professionalIds = professionalPairs.map((pair) => pair.id);
+
+  const aggregateByProfessional = new Map<string, { rowsCount: number; totalValue: number }>();
+  const latestByProfessional = new Map<
+    string,
+    { status: RepasseConsolidacaoProfessionalStatus; errorMessage: string | null; updatedAt: string | null }
+  >();
+  const noteByProfessional = new Map<string, { note: string | null; internalNote: string | null }>();
+
+  if (professionalIds.length > 0) {
+    const placeholders = professionalIds.map(() => '?').join(', ');
+
+    const aggregateRows = await db.query(
+      `
+      SELECT professional_id, COUNT(*) as rows_count, COALESCE(SUM(detail_repasse_value), 0) as total_value
+      FROM feegow_repasse_a_conferir
+      WHERE period_ref = ?
+        AND is_active = 1
+        AND professional_id IN (${placeholders})
+      GROUP BY professional_id
+      `,
+      [periodRef, ...professionalIds]
+    );
+    for (const row of aggregateRows) {
+      const id = clean((row as any).professional_id);
+      if (!id) continue;
+      aggregateByProfessional.set(id, {
+        rowsCount: Number((row as any).rows_count) || 0,
+        totalValue: Number((row as any).total_value) || 0,
+      });
+    }
+
+    const latestRows = await db.query(
+      `
+      SELECT
+        i.professional_id,
+        i.status,
+        i.error_message,
+        i.updated_at,
+        j.created_at as job_created_at
+      FROM repasse_consolidacao_job_items i
+      INNER JOIN repasse_consolidacao_jobs j ON j.id = i.job_id
+      WHERE j.period_ref = ?
+        AND i.professional_id IN (${placeholders})
+      ORDER BY j.created_at DESC, i.updated_at DESC
+      `,
+      [periodRef, ...professionalIds]
+    );
+    for (const row of latestRows) {
+      const id = clean((row as any).professional_id);
+      if (!id || latestByProfessional.has(id)) continue;
+      latestByProfessional.set(id, {
+        status: mapConsolidacaoProfessionalStatus((row as any).status),
+        errorMessage: clean((row as any).error_message) || null,
+        updatedAt: clean((row as any).updated_at) || null,
+      });
+    }
+
+    const noteRows = await db.query(
+      `
+      SELECT professional_id, note, internal_note
+      FROM repasse_consolidacao_notes
+      WHERE period_ref = ?
+        AND professional_id IN (${placeholders})
+      `,
+      [periodRef, ...professionalIds]
+    );
+    for (const row of noteRows) {
+      noteByProfessional.set(clean((row as any).professional_id), {
+        note: clean((row as any).note) || null,
+        internalNote: clean((row as any).internal_note) || null,
+      });
+    }
+  }
+
+  const items = professionalPairs.map((pair) => {
+    const professionalId = pair.id;
+    const professionalName = pair.name;
+    const aggregate = aggregateByProfessional.get(professionalId) || {
+      rowsCount: 0,
+      totalValue: 0,
+    };
+    const latest = latestByProfessional.get(professionalId);
+
+    const status = latest?.status
+      ? latest.status
+      : aggregate.rowsCount > 0
+        ? 'SUCCESS'
+        : 'NOT_PROCESSED';
+
+    return {
+      professionalId,
+      professionalName,
+      status,
+      rowsCount: aggregate.rowsCount,
+      totalValue: aggregate.totalValue,
+      lastProcessedAt: latest?.updatedAt || null,
+      errorMessage: status === 'ERROR' ? latest?.errorMessage || null : null,
+      note: noteByProfessional.get(professionalId)?.note || null,
+      internalNote: noteByProfessional.get(professionalId)?.internalNote || null,
+      paymentMinimumText: paymentMinimumByProfessional.get(professionalId) || null,
+    };
+  });
+
+  const stats = items.reduce(
+    (acc, item) => {
+      acc.totalRows += item.rowsCount;
+      acc.totalValue += item.totalValue;
+      if (item.status === 'SUCCESS') acc.success += 1;
+      else if (item.status === 'NO_DATA') acc.noData += 1;
+      else if (item.status === 'SKIPPED') acc.skipped += 1;
+      else if (item.status === 'ERROR') acc.error += 1;
+      else acc.notProcessed += 1;
+      return acc;
+    },
+    {
+      totalProfessionals: items.length,
+      success: 0,
+      noData: 0,
+      skipped: 0,
+      error: 0,
+      notProcessed: 0,
+      totalRows: 0,
+      totalValue: 0,
+    }
+  );
+
+  return { items, stats };
+};
+
 export const ensureRepasseTables = async (db: DbInterface) => {
   if (repasseTablesEnsured) return;
 
@@ -619,6 +874,199 @@ export const ensureRepasseTables = async (db: DbInterface) => {
   );
 
   repasseTablesEnsured = true;
+};
+
+export const ensureRepasseConsolidacaoTables = async (db: DbInterface) => {
+  if (repasseConsolidacaoTablesEnsured) return;
+
+  const ensureMysqlColumnDefinition = async (
+    tableName: string,
+    columnName: string,
+    definitionSql: string
+  ) => {
+    if (!isMysqlProvider()) return;
+    const rows = await db.query(
+      `
+      SELECT DATA_TYPE as data_type, COLUMN_TYPE as column_type
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+        AND column_name = ?
+      LIMIT 1
+      `,
+      [tableName, columnName]
+    );
+    const row = rows?.[0] as any;
+    if (!row) return;
+    const dataType = clean(row.data_type).toLowerCase();
+    const currentType = clean(row.column_type).toLowerCase();
+    const targetType = clean(definitionSql).toLowerCase();
+    if (currentType === targetType) return;
+    if (textTypes.has(dataType) || !currentType.startsWith(targetType.split(' ')[0])) {
+      await db.execute(`ALTER TABLE ${tableName} MODIFY COLUMN ${columnName} ${definitionSql}`);
+    }
+  };
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS feegow_repasse_a_conferir (
+      id VARCHAR(64) PRIMARY KEY,
+      period_ref VARCHAR(7) NOT NULL,
+      professional_id VARCHAR(64) NOT NULL,
+      professional_name VARCHAR(180) NOT NULL,
+      invoice_id VARCHAR(64),
+      execution_date VARCHAR(32),
+      patient_name VARCHAR(180),
+      unit_name VARCHAR(120),
+      account_date VARCHAR(32),
+      requester_name VARCHAR(180),
+      specialty_name VARCHAR(180),
+      procedure_name VARCHAR(255),
+      attendance_value DECIMAL(14,2) NOT NULL,
+      detail_status VARCHAR(32),
+      detail_status_text VARCHAR(255),
+      role_code VARCHAR(32),
+      role_name VARCHAR(120),
+      detail_professional_name VARCHAR(180),
+      detail_repasse_value DECIMAL(14,2) NOT NULL,
+      executante_option_value VARCHAR(64),
+      executante_option_title VARCHAR(255),
+      source_row_hash VARCHAR(64) NOT NULL UNIQUE,
+      is_active INTEGER NOT NULL,
+      last_job_id VARCHAR(64),
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_conferir_period_prof ON feegow_repasse_a_conferir(period_ref, professional_id)`
+  );
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_conferir_exec_date ON feegow_repasse_a_conferir(execution_date)`
+  );
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_conferir_status ON feegow_repasse_a_conferir(detail_status)`
+  );
+  await ensureMysqlColumnDefinition('feegow_repasse_a_conferir', 'id', 'VARCHAR(64) NOT NULL');
+  await ensureMysqlColumnDefinition(
+    'feegow_repasse_a_conferir',
+    'professional_id',
+    'VARCHAR(64) NOT NULL'
+  );
+  await ensureMysqlColumnDefinition(
+    'feegow_repasse_a_conferir',
+    'source_row_hash',
+    'VARCHAR(64) NOT NULL'
+  );
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_consolidacao_jobs (
+      id VARCHAR(64) PRIMARY KEY,
+      period_ref VARCHAR(7) NOT NULL,
+      scope VARCHAR(20) NOT NULL,
+      professional_ids_json LONGTEXT,
+      status VARCHAR(20) NOT NULL,
+      requested_by VARCHAR(64) NOT NULL,
+      started_at VARCHAR(32),
+      finished_at VARCHAR(32),
+      error TEXT,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_consolidacao_jobs_period ON repasse_consolidacao_jobs(period_ref)`
+  );
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_consolidacao_jobs_status ON repasse_consolidacao_jobs(status)`
+  );
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_consolidacao_jobs_created ON repasse_consolidacao_jobs(created_at)`
+  );
+  await safeExecute(
+    db,
+    `ALTER TABLE repasse_consolidacao_jobs ADD COLUMN scope VARCHAR(20) NOT NULL DEFAULT 'all'`
+  );
+  await safeExecute(
+    db,
+    `ALTER TABLE repasse_consolidacao_jobs ADD COLUMN professional_ids_json TEXT`
+  );
+  await ensureMysqlColumnDefinition('repasse_consolidacao_jobs', 'id', 'VARCHAR(64) NOT NULL');
+  await ensureMysqlColumnDefinition('repasse_consolidacao_jobs', 'scope', 'VARCHAR(20) NOT NULL');
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_consolidacao_job_items (
+      id VARCHAR(64) PRIMARY KEY,
+      job_id VARCHAR(64) NOT NULL,
+      professional_id VARCHAR(64) NOT NULL,
+      professional_name VARCHAR(180) NOT NULL,
+      status VARCHAR(40) NOT NULL,
+      rows_count INTEGER NOT NULL,
+      total_value DECIMAL(14,2) NOT NULL,
+      error_message TEXT,
+      duration_ms INTEGER,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_consolidacao_items_job ON repasse_consolidacao_job_items(job_id)`
+  );
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_consolidacao_items_prof ON repasse_consolidacao_job_items(professional_id)`
+  );
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_consolidacao_items_status ON repasse_consolidacao_job_items(status)`
+  );
+  await ensureMysqlColumnDefinition(
+    'repasse_consolidacao_job_items',
+    'id',
+    'VARCHAR(64) NOT NULL'
+  );
+  await ensureMysqlColumnDefinition(
+    'repasse_consolidacao_job_items',
+    'job_id',
+    'VARCHAR(64) NOT NULL'
+  );
+  await ensureMysqlColumnDefinition(
+    'repasse_consolidacao_job_items',
+    'professional_id',
+    'VARCHAR(64) NOT NULL'
+  );
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_consolidacao_notes (
+      period_ref VARCHAR(7) NOT NULL,
+      professional_id VARCHAR(64) NOT NULL,
+      note TEXT,
+      internal_note TEXT,
+      updated_by VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL,
+      PRIMARY KEY (period_ref, professional_id)
+    )
+  `);
+
+  await safeExecute(
+    db,
+    `ALTER TABLE repasse_consolidacao_notes ADD COLUMN internal_note TEXT NULL`
+  );
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_consolidacao_notes_prof ON repasse_consolidacao_notes(professional_id)`
+  );
+
+  repasseConsolidacaoTablesEnsured = true;
 };
 
 export const createRepasseSyncJob = async (
@@ -1337,4 +1785,358 @@ export const getRepassePdfArtifactById = async (
   );
   if (!rows.length) return null;
   return mapPdfArtifact(rows[0]);
+};
+
+export const createRepasseConsolidacaoJob = async (
+  db: DbInterface,
+  input: RepasseConsolidacaoJobInput,
+  actorUserId: string
+): Promise<RepasseConsolidacaoJob> => {
+  await ensureRepasseConsolidacaoTables(db);
+
+  const periodRef = normalizePeriodRef(input?.periodRef);
+  const professionalIds = normalizeProfessionalIds(input?.professionalIds);
+  const scope = normalizeConsolidacaoScope(input?.scope, professionalIds.length > 0);
+
+  if ((scope === 'single' || scope === 'multi') && professionalIds.length === 0) {
+    throw new RepasseValidationError('Informe ao menos um profissional para o escopo selecionado.');
+  }
+  if (scope === 'single' && professionalIds.length !== 1) {
+    throw new RepasseValidationError('Escopo single exige exatamente um profissional.');
+  }
+
+  const now = nowIso();
+  const id = randomUUID();
+
+  await db.execute(
+    `
+    INSERT INTO repasse_consolidacao_jobs (
+      id, period_ref, scope, professional_ids_json, status, requested_by, started_at, finished_at, error, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      id,
+      periodRef,
+      scope,
+      professionalIds.length ? JSON.stringify(professionalIds) : null,
+      'PENDING',
+      actorUserId,
+      null,
+      null,
+      null,
+      now,
+      now,
+    ]
+  );
+
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM repasse_consolidacao_jobs
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [id]
+  );
+
+  return mapConsolidacaoJob(rows[0]);
+};
+
+export const listRepasseConsolidacaoJobs = async (
+  db: DbInterface,
+  filters: RepasseJobListFilters = {}
+): Promise<{ items: RepasseConsolidacaoJob[]; total: number }> => {
+  await ensureRepasseConsolidacaoTables(db);
+
+  const where: string[] = ['1=1'];
+  const params: any[] = [];
+  const periodRef = clean(filters.periodRef);
+  const limit = normalizeLimit(filters.limit, 20);
+
+  if (periodRef) {
+    where.push('j.period_ref = ?');
+    params.push(periodRef);
+  }
+  const userJoinCondition = buildRequestedByUserJoin('j');
+
+  const rows = await db.query(
+    `
+    SELECT
+      j.*,
+      COALESCE(u.name, u.email, j.requested_by) as requested_by_display
+    FROM repasse_consolidacao_jobs j
+    LEFT JOIN users u ON ${userJoinCondition}
+    WHERE ${where.join(' AND ')}
+    ORDER BY j.created_at DESC
+    LIMIT ?
+    `,
+    [...params, limit]
+  );
+
+  const countRows = await db.query(
+    `
+    SELECT COUNT(*) as total
+    FROM repasse_consolidacao_jobs j
+    WHERE ${where.join(' AND ')}
+    `,
+    params
+  );
+
+  return {
+    items: rows.map(mapConsolidacaoJob),
+    total: readCount(countRows[0]),
+  };
+};
+
+export const listRepasseConsolidacaoProfessionalSummaries = async (
+  db: DbInterface,
+  filters: RepasseConsolidacaoProfessionalListFilters = {}
+): Promise<RepasseConsolidacaoProfessionalListResult> => {
+  await ensureRepasseConsolidacaoTables(db);
+
+  const periodRef = normalizePeriodRef(filters.periodRef);
+  const search = clean(filters.search);
+  const statusFilter = normalizeConsolidacaoProfessionalStatusFilter(filters.status);
+  const page = normalizePage(filters.page);
+  const pageSize = normalizeLimit(filters.pageSize, 50);
+
+  const loaded = await loadRepasseConsolidacaoProfessionalSummaries(db, { periodRef, search });
+  const allItems = loaded.items;
+  const stats = loaded.stats;
+
+  const filteredItems =
+    statusFilter === 'all'
+      ? allItems
+      : allItems.filter((item) => item.status.toLowerCase() === statusFilter);
+
+  const total = filteredItems.length;
+  const start = (page - 1) * pageSize;
+  const end = start + pageSize;
+  const items = filteredItems.slice(start, end);
+
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    stats,
+  };
+};
+
+export const listRepasseConsolidacaoProfessionalIds = async (
+  db: DbInterface,
+  filters: Pick<RepasseConsolidacaoProfessionalListFilters, 'periodRef' | 'search' | 'status'> = {}
+): Promise<string[]> => {
+  await ensureRepasseConsolidacaoTables(db);
+
+  const periodRef = normalizePeriodRef(filters.periodRef);
+  const search = clean(filters.search);
+  const statusFilter = normalizeConsolidacaoProfessionalStatusFilter(filters.status);
+
+  const loaded = await loadRepasseConsolidacaoProfessionalSummaries(db, { periodRef, search });
+  const filteredItems =
+    statusFilter === 'all'
+      ? loaded.items
+      : loaded.items.filter((item) => item.status.toLowerCase() === statusFilter);
+  return filteredItems.map((item) => item.professionalId);
+};
+
+export const listRepasseConsolidacaoProfessionalOptions = async (
+  db: DbInterface,
+  input: { search?: string; limit?: number } = {}
+): Promise<RepasseProfessionalOption[]> => {
+  await ensureRepasseConsolidacaoTables(db);
+
+  const search = clean(input.search);
+  const limit = normalizeOptionLimit(input.limit, 500);
+  const searchPattern = `%${search.toUpperCase()}%`;
+
+  const rows = await db.query(
+    `
+    SELECT professional_id, professional_name
+    FROM (
+      SELECT id as professional_id, name as professional_name
+      FROM professionals
+      WHERE is_active = 1
+        AND (? = '' OR UPPER(name) LIKE ?)
+      UNION
+      SELECT professional_id, professional_name
+      FROM feegow_repasse_a_conferir
+      WHERE is_active = 1
+        AND (? = '' OR UPPER(professional_name) LIKE ?)
+    ) unioned
+    ORDER BY professional_name ASC
+    LIMIT ?
+    `,
+    [search, searchPattern, search, searchPattern, limit]
+  );
+
+  return rows
+    .map((row) => ({
+      professionalId: clean((row as any).professional_id),
+      professionalName: clean((row as any).professional_name),
+    }))
+    .filter((row) => row.professionalId && row.professionalName);
+};
+
+export const listRepasseAConferirLinesByProfessional = async (
+  db: DbInterface,
+  periodRefRaw: string,
+  professionalIdRaw: string
+): Promise<RepasseAConferirLine[]> => {
+  await ensureRepasseConsolidacaoTables(db);
+
+  const periodRef = normalizePeriodRef(periodRefRaw);
+  const professionalId = clean(professionalIdRaw);
+  if (!professionalId) return [];
+
+  const rows = await db.query(
+    `
+    SELECT
+      invoice_id,
+      execution_date,
+      patient_name,
+      unit_name,
+      account_date,
+      requester_name,
+      specialty_name,
+      procedure_name,
+      attendance_value,
+      detail_status,
+      detail_status_text,
+      role_code,
+      role_name,
+      detail_professional_name,
+      detail_repasse_value
+    FROM feegow_repasse_a_conferir
+    WHERE period_ref = ?
+      AND professional_id = ?
+      AND is_active = 1
+    ORDER BY execution_date DESC, patient_name ASC
+    `,
+    [periodRef, professionalId]
+  );
+
+  return rows.map((row) => ({
+    invoiceId: clean((row as any).invoice_id),
+    executionDate: clean((row as any).execution_date),
+    patientName: clean((row as any).patient_name),
+    unitName: clean((row as any).unit_name),
+    accountDate: clean((row as any).account_date),
+    requesterName: clean((row as any).requester_name),
+    specialtyName: clean((row as any).specialty_name),
+    procedureName: clean((row as any).procedure_name),
+    attendanceValue: Number((row as any).attendance_value) || 0,
+    detailStatus: clean((row as any).detail_status),
+    detailStatusText: clean((row as any).detail_status_text),
+    roleCode: clean((row as any).role_code),
+    roleName: clean((row as any).role_name),
+    detailProfessionalName: clean((row as any).detail_professional_name),
+    detailRepasseValue: Number((row as any).detail_repasse_value) || 0,
+  }));
+};
+
+export const upsertRepasseConsolidacaoNote = async (
+  db: DbInterface,
+  input: {
+    periodRef?: string;
+    professionalId: string;
+    note?: string | null;
+    internalNote?: string | null;
+  },
+  actorUserId: string
+): Promise<{
+  periodRef: string;
+  professionalId: string;
+  note: string | null;
+  internalNote: string | null;
+  updatedAt: string;
+}> => {
+  await ensureRepasseConsolidacaoTables(db);
+
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalId = clean(input.professionalId);
+  if (!professionalId) {
+    throw new RepasseValidationError('Profissional invalido para salvar observacao.');
+  }
+
+  const hasNote = Object.prototype.hasOwnProperty.call(input, 'note');
+  const hasInternalNote = Object.prototype.hasOwnProperty.call(input, 'internalNote');
+  if (!hasNote && !hasInternalNote) {
+    throw new RepasseValidationError(
+      'Informe ao menos um campo para atualizacao (note ou internalNote).'
+    );
+  }
+
+  const currentRows = await db.query(
+    `
+    SELECT note, internal_note
+    FROM repasse_consolidacao_notes
+    WHERE period_ref = ?
+      AND professional_id = ?
+    LIMIT 1
+    `,
+    [periodRef, professionalId]
+  );
+  const current = (currentRows?.[0] as any) || null;
+  const currentNote = current ? clean(current.note) || null : null;
+  const currentInternalNote = current ? clean(current.internal_note) || null : null;
+
+  const note = hasNote ? clean(input.note) || null : currentNote;
+  const internalNote = hasInternalNote ? clean(input.internalNote) || null : currentInternalNote;
+  const now = nowIso();
+
+  await db.execute(
+    `
+    INSERT INTO repasse_consolidacao_notes (
+      period_ref, professional_id, note, internal_note, updated_by, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      note = ?,
+      internal_note = ?,
+      updated_by = ?,
+      updated_at = ?
+    `,
+    [
+      periodRef,
+      professionalId,
+      note,
+      internalNote,
+      clean(actorUserId),
+      now,
+      note,
+      internalNote,
+      clean(actorUserId),
+      now,
+    ]
+  );
+
+  return { periodRef, professionalId, note, internalNote, updatedAt: now };
+};
+
+export const getRepasseConsolidacaoNote = async (
+  db: DbInterface,
+  input: { periodRef?: string; professionalId: string }
+): Promise<{ note: string | null; internalNote: string | null }> => {
+  await ensureRepasseConsolidacaoTables(db);
+
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalId = clean(input.professionalId);
+  if (!professionalId) return { note: null, internalNote: null };
+
+  const rows = await db.query(
+    `
+    SELECT note, internal_note
+    FROM repasse_consolidacao_notes
+    WHERE period_ref = ?
+      AND professional_id = ?
+    LIMIT 1
+    `,
+    [periodRef, professionalId]
+  );
+  if (!rows?.length) return { note: null, internalNote: null };
+  return {
+    note: clean((rows[0] as any).note) || null,
+    internalNote: clean((rows[0] as any).internal_note) || null,
+  };
 };

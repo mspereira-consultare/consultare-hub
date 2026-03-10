@@ -2,6 +2,25 @@ export type RepasseJobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 
 export type RepasseJobItemStatus = 'SUCCESS' | 'NO_DATA' | 'ERROR';
 export type RepassePdfScope = 'single' | 'multi' | 'all_with_data';
 export type RepasseSyncScope = 'all' | 'single' | 'multi';
+export type RepasseConsolidacaoJobStatus =
+  | 'PENDING'
+  | 'RUNNING'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'PARTIAL';
+export type RepasseConsolidacaoJobItemStatus =
+  | 'SUCCESS'
+  | 'NO_DATA'
+  | 'SKIPPED_NOT_IN_FILTER'
+  | 'SKIPPED_AMBIGUOUS_NAME'
+  | 'ERROR';
+export type RepasseConsolidacaoScope = 'all' | 'single' | 'multi';
+export type RepasseConsolidacaoProfessionalStatus =
+  | 'SUCCESS'
+  | 'NO_DATA'
+  | 'SKIPPED'
+  | 'ERROR'
+  | 'NOT_PROCESSED';
 
 export type RepasseSyncJob = {
   id: string;
@@ -98,6 +117,92 @@ export type RepasseProfessionalListResult = {
   page: number;
   pageSize: number;
   stats: RepasseProfessionalStats;
+};
+
+export type RepasseConsolidacaoJob = {
+  id: string;
+  periodRef: string;
+  scope: RepasseConsolidacaoScope;
+  professionalIds: string[];
+  status: RepasseConsolidacaoJobStatus;
+  requestedBy: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RepasseConsolidacaoJobInput = {
+  periodRef?: string;
+  scope?: RepasseConsolidacaoScope;
+  professionalIds?: string[];
+};
+
+export type RepasseConsolidacaoProfessionalStatusFilter =
+  | 'all'
+  | 'success'
+  | 'no_data'
+  | 'skipped'
+  | 'error'
+  | 'not_processed';
+
+export type RepasseConsolidacaoProfessionalSummary = {
+  professionalId: string;
+  professionalName: string;
+  status: RepasseConsolidacaoProfessionalStatus;
+  rowsCount: number;
+  totalValue: number;
+  lastProcessedAt: string | null;
+  errorMessage: string | null;
+  note: string | null;
+  internalNote: string | null;
+  paymentMinimumText: string | null;
+};
+
+export type RepasseConsolidacaoProfessionalStats = {
+  totalProfessionals: number;
+  success: number;
+  noData: number;
+  skipped: number;
+  error: number;
+  notProcessed: number;
+  totalRows: number;
+  totalValue: number;
+};
+
+export type RepasseConsolidacaoProfessionalListResult = {
+  items: RepasseConsolidacaoProfessionalSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+  stats: RepasseConsolidacaoProfessionalStats;
+};
+
+export type RepasseConsolidacaoProfessionalListFilters = {
+  periodRef?: string;
+  search?: string;
+  status?: RepasseConsolidacaoProfessionalStatusFilter;
+  page?: number;
+  pageSize?: number;
+};
+
+export type RepasseAConferirLine = {
+  invoiceId: string;
+  executionDate: string;
+  patientName: string;
+  unitName: string;
+  accountDate: string;
+  requesterName: string;
+  specialtyName: string;
+  procedureName: string;
+  attendanceValue: number;
+  detailStatus: string;
+  detailStatusText: string;
+  roleCode: string;
+  roleName: string;
+  detailProfessionalName: string;
+  detailRepasseValue: number;
 };
 
 export type RepassePdfArtifact = {
