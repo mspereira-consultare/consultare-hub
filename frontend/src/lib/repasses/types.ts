@@ -159,6 +159,11 @@ export type RepasseConsolidacaoProfessionalSummary = {
   professionalId: string;
   professionalName: string;
   status: RepasseConsolidacaoProfessionalStatus;
+  execucaoQty: number;
+  execucaoValue: number;
+  execucaoPending: boolean;
+  producaoQty: number;
+  producaoValue: number;
   rowsCount: number;
   totalValue: number;
   consolidadoQty: number;
@@ -171,11 +176,18 @@ export type RepasseConsolidacaoProfessionalSummary = {
   repasseTotalConsolidadoAConferir: number;
   hasDivergencia: boolean;
   divergenciaValue: number;
+  repasseFinalValue: number;
+  produtividadeValue: number;
+  percentualProdutividadeValue: number;
+  totalFinalValue: number;
+  hasRepasseFinalOverride: boolean;
   lastProcessedAt: string | null;
   errorMessage: string | null;
   note: string | null;
   internalNote: string | null;
   paymentMinimumText: string | null;
+  lastPdfAt: string | null;
+  lastPdfArtifactId: string | null;
 };
 
 export type RepasseConsolidacaoProfessionalStats = {
@@ -254,6 +266,17 @@ export type RepasseConsolidacaoMarkLegend = {
   green: string;
   yellow: string;
   red: string;
+};
+
+export type RepasseConsolidacaoFinancialInput = {
+  periodRef: string;
+  professionalId: string;
+  repasseFinalValue: number | null;
+  produtividadeValue: number | null;
+  percentualProdutividadeValue: number;
+  totalFinalValue: number;
+  hasRepasseFinalOverride: boolean;
+  updatedAt: string;
 };
 
 export type RepassePdfArtifact = {

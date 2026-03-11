@@ -343,3 +343,29 @@ Status atual:
   - marcações por cor com autosave (debounce) e salvamento manual
   - legenda de cores customizavel por usuario
   - observacao do relatorio e observacao interna.
+
+## 21. Atualizacao - Tabela de fechamento com calculo final (2026-03-11)
+- Nova tabela de apoio para fechamento manual por periodo/profissional:
+  - `repasse_fechamento_manual`
+  - campos: `repasse_final_value`, `produtividade_value`, `updated_by`, `updated_at`.
+- Resumo de profissionais em `/api/admin/repasses/consolidacao/professionals` passou a incluir:
+  - bloco de execucao (placeholder): `execucaoQty`, `execucaoValue`, `execucaoPending`
+  - bloco de producao Feegow: `producaoQty`, `producaoValue`
+  - calculo financeiro final:
+    - `repasseFinalValue`
+    - `produtividadeValue`
+    - `percentualProdutividadeValue` (= produtividade * 5%)
+    - `totalFinalValue`
+    - `hasRepasseFinalOverride`
+  - ultimo PDF por profissional no periodo:
+    - `lastPdfAt`, `lastPdfArtifactId`
+- Nova API para edicao inline dos campos financeiros:
+  - `PUT /api/admin/repasses/consolidacao/financial-inputs`
+  - payload: `{ periodRef, professionalId, repasseFinalValue?, produtividadeValue? }`
+  - update parcial permitido; valores salvos globalmente por periodo+profissional.
+- Tabela principal de profissionais em `/repasses` foi reorganizada por blocos:
+  - Execucao, Producao, Consolidacao, Calculo final e Controle.
+- Coluna de PDF restaurada na tabela principal:
+  - acao de `Visualizar`/`Baixar` + data do ultimo artefato.
+- PDF de fechamento passou a incluir resumo financeiro no cabecalho:
+  - Producao Feegow, Repasse Final, Produtividade, 5% da Produtividade e Total Final.

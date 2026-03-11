@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import type {
   RepasseAConferirLine,
+  RepasseConsolidacaoFinancialInput,
   RepasseConsolidacaoBooleanFilter,
   RepasseConsolidacaoJob,
   RepasseConsolidacaoJobInput,
@@ -301,6 +302,18 @@ const normalizeIsoDate = (value: unknown): string | null => {
   return `${m[1]}-${m[2]}-${m[3]}`;
 };
 
+const normalizeNullableMoneyValue = (value: unknown): number | null => {
+  if (value === null || value === undefined) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const n = Number(raw.replace(/\./g, '').replace(',', '.'));
+  if (!Number.isFinite(n)) {
+    throw new RepasseValidationError('Valor monetario invalido.');
+  }
+  return Math.round(n * 100) / 100;
+};
+
 const normalizeTextKey = (value: unknown): string =>
   clean(value)
     .normalize('NFD')
@@ -587,6 +600,9 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
   items: RepasseConsolidacaoProfessionalListResult['items'];
   stats: RepasseConsolidacaoProfessionalListResult['stats'];
 }> => {
+  await ensureRepasseTables(db);
+  await ensureRepasseConsolidacaoTables(db);
+
   const periodRef = normalizePeriodRef(input.periodRef);
   const search = clean(input.search);
   const hasPaymentMinimumFilter = normalizeBooleanFilter(input.hasPaymentMinimum);
@@ -736,6 +752,14 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
     { status: RepasseConsolidacaoProfessionalStatus; errorMessage: string | null; updatedAt: string | null }
   >();
   const noteByProfessional = new Map<string, { note: string | null; internalNote: string | null }>();
+  const manualByProfessional = new Map<
+    string,
+    { repasseFinalValue: number | null; produtividadeValue: number | null }
+  >();
+  const latestPdfByProfessional = new Map<
+    string,
+    { createdAt: string | null; artifactId: string | null }
+  >();
 
   if (professionalIds.length > 0) {
     const placeholders = professionalIds.map(() => '?').join(', ');
@@ -871,6 +895,56 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
         internalNote: clean((row as any).internal_note) || null,
       });
     }
+
+    const manualRows = await db.query(
+      `
+      SELECT professional_id, repasse_final_value, produtividade_value
+      FROM repasse_fechamento_manual
+      WHERE period_ref = ?
+        AND professional_id IN (${placeholders})
+      `,
+      [periodRef, ...professionalIds]
+    );
+    for (const row of manualRows) {
+      const id = clean((row as any).professional_id);
+      if (!id) continue;
+      manualByProfessional.set(id, {
+        repasseFinalValue:
+          (row as any).repasse_final_value === null || (row as any).repasse_final_value === undefined
+            ? null
+            : Number((row as any).repasse_final_value),
+        produtividadeValue:
+          (row as any).produtividade_value === null || (row as any).produtividade_value === undefined
+            ? null
+            : Number((row as any).produtividade_value),
+      });
+    }
+
+    const latestPdfRows = await db.query(
+      `
+      SELECT a.professional_id, a.id as artifact_id, a.created_at
+      FROM repasse_pdf_artifacts a
+      INNER JOIN (
+        SELECT professional_id, MAX(created_at) as max_created_at
+        FROM repasse_pdf_artifacts
+        WHERE period_ref = ?
+          AND professional_id IN (${placeholders})
+        GROUP BY professional_id
+      ) latest
+        ON latest.professional_id = a.professional_id
+       AND latest.max_created_at = a.created_at
+      WHERE a.period_ref = ?
+      `,
+      [periodRef, ...professionalIds, periodRef]
+    );
+    for (const row of latestPdfRows) {
+      const id = clean((row as any).professional_id);
+      if (!id || latestPdfByProfessional.has(id)) continue;
+      latestPdfByProfessional.set(id, {
+        createdAt: clean((row as any).created_at) || null,
+        artifactId: clean((row as any).artifact_id) || null,
+      });
+    }
   }
 
   const items = professionalPairs.map((pair) => {
@@ -901,11 +975,28 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
     const repasseTotalConsolidadoAConferir = aggregate.consolidadoValue;
     const divergenciaValue = repasseTotalConsolidadoTabela - repasseTotalConsolidadoAConferir;
     const hasDivergencia = Math.abs(divergenciaValue) > 0.01;
+    const manual = manualByProfessional.get(professionalId);
+    const repasseFinalOverride =
+      manual?.repasseFinalValue === null || manual?.repasseFinalValue === undefined
+        ? null
+        : Number(manual.repasseFinalValue) || 0;
+    const produtividadeValue =
+      manual?.produtividadeValue === null || manual?.produtividadeValue === undefined
+        ? 0
+        : Number(manual.produtividadeValue) || 0;
+    const repasseFinalValue = repasseFinalOverride === null ? consolidadoTotals.totalValue : repasseFinalOverride;
+    const percentualProdutividadeValue = produtividadeValue * 0.05;
+    const totalFinalValue = repasseFinalValue + produtividadeValue + percentualProdutividadeValue;
 
     return {
       professionalId,
       professionalName,
       status,
+      execucaoQty: 0,
+      execucaoValue: 0,
+      execucaoPending: true,
+      producaoQty: consolidadoTotals.rowsCount,
+      producaoValue: consolidadoTotals.totalValue,
       rowsCount: consolidadoTotals.rowsCount,
       totalValue: consolidadoTotals.totalValue,
       consolidadoQty: aggregate.consolidadoQty,
@@ -918,11 +1009,18 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       repasseTotalConsolidadoAConferir,
       hasDivergencia,
       divergenciaValue,
+      repasseFinalValue,
+      produtividadeValue,
+      percentualProdutividadeValue,
+      totalFinalValue,
+      hasRepasseFinalOverride: repasseFinalOverride !== null,
       lastProcessedAt: latest?.updatedAt || null,
       errorMessage: status === 'ERROR' ? latest?.errorMessage || null : null,
       note: noteByProfessional.get(professionalId)?.note || null,
       internalNote: noteByProfessional.get(professionalId)?.internalNote || null,
       paymentMinimumText: paymentMinimumByProfessional.get(professionalId) || null,
+      lastPdfAt: latestPdfByProfessional.get(professionalId)?.createdAt || null,
+      lastPdfArtifactId: latestPdfByProfessional.get(professionalId)?.artifactId || null,
     };
   });
 
@@ -1361,6 +1459,22 @@ export const ensureRepasseConsolidacaoTables = async (db: DbInterface) => {
   await safeExecute(
     db,
     `CREATE INDEX idx_repasse_consolidacao_notes_prof ON repasse_consolidacao_notes(professional_id)`
+  );
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_fechamento_manual (
+      period_ref VARCHAR(7) NOT NULL,
+      professional_id VARCHAR(64) NOT NULL,
+      repasse_final_value DECIMAL(14,2) NULL,
+      produtividade_value DECIMAL(14,2) NULL,
+      updated_by VARCHAR(64) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL,
+      PRIMARY KEY (period_ref, professional_id)
+    )
+  `);
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_fechamento_manual_prof ON repasse_fechamento_manual(professional_id)`
   );
 
   await db.execute(`
@@ -2735,6 +2849,201 @@ export const getRepasseConsolidacaoNote = async (
   return {
     note: clean((rows[0] as any).note) || null,
     internalNote: clean((rows[0] as any).internal_note) || null,
+  };
+};
+
+export const getRepasseConsolidacaoFinancialInput = async (
+  db: DbInterface,
+  input: { periodRef?: string; professionalId: string }
+): Promise<{ repasseFinalValue: number | null; produtividadeValue: number | null; updatedAt: string | null }> => {
+  await ensureRepasseConsolidacaoTables(db);
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalId = clean(input.professionalId);
+  if (!professionalId) {
+    return { repasseFinalValue: null, produtividadeValue: null, updatedAt: null };
+  }
+
+  const rows = await db.query(
+    `
+    SELECT repasse_final_value, produtividade_value, updated_at
+    FROM repasse_fechamento_manual
+    WHERE period_ref = ?
+      AND professional_id = ?
+    LIMIT 1
+    `,
+    [periodRef, professionalId]
+  );
+  if (!rows?.length) {
+    return { repasseFinalValue: null, produtividadeValue: null, updatedAt: null };
+  }
+  const row = rows[0] as any;
+  return {
+    repasseFinalValue:
+      row.repasse_final_value === null || row.repasse_final_value === undefined
+        ? null
+        : Number(row.repasse_final_value) || 0,
+    produtividadeValue:
+      row.produtividade_value === null || row.produtividade_value === undefined
+        ? null
+        : Number(row.produtividade_value) || 0,
+    updatedAt: clean(row.updated_at) || null,
+  };
+};
+
+export const getRepasseConsolidacaoFinancialBreakdown = async (
+  db: DbInterface,
+  input: { periodRef?: string; professionalId: string }
+): Promise<{
+  producaoQty: number;
+  producaoValue: number;
+  repasseFinalValue: number;
+  produtividadeValue: number;
+  percentualProdutividadeValue: number;
+  totalFinalValue: number;
+  hasRepasseFinalOverride: boolean;
+}> => {
+  await ensureRepasseConsolidacaoTables(db);
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalId = clean(input.professionalId);
+  if (!professionalId) {
+    return {
+      producaoQty: 0,
+      producaoValue: 0,
+      repasseFinalValue: 0,
+      produtividadeValue: 0,
+      percentualProdutividadeValue: 0,
+      totalFinalValue: 0,
+      hasRepasseFinalOverride: false,
+    };
+  }
+
+  const rows = await db.query(
+    `
+    SELECT
+      COUNT(*) as producao_qty,
+      COALESCE(SUM(repasse_value), 0) as producao_value
+    FROM feegow_repasse_consolidado
+    WHERE period_ref = ?
+      AND professional_id = ?
+      AND is_active = 1
+    `,
+    [periodRef, professionalId]
+  );
+  const producaoQty = Number((rows?.[0] as any)?.producao_qty) || 0;
+  const producaoValue = Number((rows?.[0] as any)?.producao_value) || 0;
+  const manual = await getRepasseConsolidacaoFinancialInput(db, { periodRef, professionalId });
+
+  const repasseFinalValue =
+    manual.repasseFinalValue === null || manual.repasseFinalValue === undefined
+      ? producaoValue
+      : Number(manual.repasseFinalValue) || 0;
+  const produtividadeValue =
+    manual.produtividadeValue === null || manual.produtividadeValue === undefined
+      ? 0
+      : Number(manual.produtividadeValue) || 0;
+  const percentualProdutividadeValue = produtividadeValue * 0.05;
+  const totalFinalValue = repasseFinalValue + produtividadeValue + percentualProdutividadeValue;
+
+  return {
+    producaoQty,
+    producaoValue,
+    repasseFinalValue,
+    produtividadeValue,
+    percentualProdutividadeValue,
+    totalFinalValue,
+    hasRepasseFinalOverride: manual.repasseFinalValue !== null,
+  };
+};
+
+export const upsertRepasseConsolidacaoFinancialInput = async (
+  db: DbInterface,
+  input: {
+    periodRef?: string;
+    professionalId: string;
+    repasseFinalValue?: number | string | null;
+    produtividadeValue?: number | string | null;
+  },
+  actorUserId: string
+): Promise<RepasseConsolidacaoFinancialInput> => {
+  await ensureRepasseConsolidacaoTables(db);
+
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalId = clean(input.professionalId);
+  if (!professionalId) {
+    throw new RepasseValidationError('Profissional invalido para salvar fechamento manual.');
+  }
+
+  const hasRepasseFinal = Object.prototype.hasOwnProperty.call(input, 'repasseFinalValue');
+  const hasProdutividade = Object.prototype.hasOwnProperty.call(input, 'produtividadeValue');
+  if (!hasRepasseFinal && !hasProdutividade) {
+    throw new RepasseValidationError(
+      'Informe ao menos um campo para atualizacao (repasseFinalValue ou produtividadeValue).'
+    );
+  }
+
+  const current = await getRepasseConsolidacaoFinancialInput(db, { periodRef, professionalId });
+  const repasseFinalValue = hasRepasseFinal
+    ? normalizeNullableMoneyValue((input as any).repasseFinalValue)
+    : current.repasseFinalValue;
+  const produtividadeValue = hasProdutividade
+    ? normalizeNullableMoneyValue((input as any).produtividadeValue)
+    : current.produtividadeValue;
+
+  const now = nowIso();
+  await db.execute(
+    `
+    INSERT INTO repasse_fechamento_manual (
+      period_ref, professional_id, repasse_final_value, produtividade_value, updated_by, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    ON DUPLICATE KEY UPDATE
+      repasse_final_value = ?,
+      produtividade_value = ?,
+      updated_by = ?,
+      updated_at = ?
+    `,
+    [
+      periodRef,
+      professionalId,
+      repasseFinalValue,
+      produtividadeValue,
+      clean(actorUserId),
+      now,
+      repasseFinalValue,
+      produtividadeValue,
+      clean(actorUserId),
+      now,
+    ]
+  );
+
+  const rows = await db.query(
+    `
+    SELECT
+      COUNT(*) as producao_qty,
+      COALESCE(SUM(repasse_value), 0) as producao_value
+    FROM feegow_repasse_consolidado
+    WHERE period_ref = ?
+      AND professional_id = ?
+      AND is_active = 1
+    `,
+    [periodRef, professionalId]
+  );
+  const producaoValue = Number((rows?.[0] as any)?.producao_value) || 0;
+  const effectiveRepasseFinal =
+    repasseFinalValue === null || repasseFinalValue === undefined ? producaoValue : repasseFinalValue;
+  const effectiveProdutividade =
+    produtividadeValue === null || produtividadeValue === undefined ? 0 : produtividadeValue;
+  const percentualProdutividadeValue = effectiveProdutividade * 0.05;
+  const totalFinalValue = effectiveRepasseFinal + effectiveProdutividade + percentualProdutividadeValue;
+
+  return {
+    periodRef,
+    professionalId,
+    repasseFinalValue,
+    produtividadeValue,
+    percentualProdutividadeValue,
+    totalFinalValue,
+    hasRepasseFinalOverride: repasseFinalValue !== null,
+    updatedAt: now,
   };
 };
 

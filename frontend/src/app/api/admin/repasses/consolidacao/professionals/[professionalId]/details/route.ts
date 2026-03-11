@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireRepassesPermission } from '@/lib/repasses/auth';
 import {
+  getRepasseConsolidacaoFinancialBreakdown,
   getRepasseConsolidacaoNote,
   getRepasseProfessionalPaymentMinimum,
   listRepasseAConferirLinesByProfessional,
@@ -33,10 +34,11 @@ export async function GET(request: Request, context: ParamsContext) {
       return NextResponse.json({ error: 'Profissional invalido.' }, { status: 400 });
     }
 
-    const [rows, notes, paymentMinimumText] = await Promise.all([
+    const [rows, notes, paymentMinimumText, financial] = await Promise.all([
       listRepasseAConferirLinesByProfessional(auth.db, periodRef || '', professionalId),
       getRepasseConsolidacaoNote(auth.db, { periodRef, professionalId }),
       getRepasseProfessionalPaymentMinimum(auth.db, professionalId),
+      getRepasseConsolidacaoFinancialBreakdown(auth.db, { periodRef, professionalId }),
     ]);
 
     return NextResponse.json({
@@ -46,6 +48,7 @@ export async function GET(request: Request, context: ParamsContext) {
         note: notes.note,
         internalNote: notes.internalNote,
         paymentMinimumText: paymentMinimumText || null,
+        financial,
       },
     });
   } catch (error: any) {

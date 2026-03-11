@@ -3,8 +3,10 @@ import type { DbInterface } from '@/lib/db';
 import {
   deleteRepassePdfArtifactsByIds,
   createRepassePdfArtifact,
+  ensureRepasseConsolidacaoTables,
   ensureRepasseTables,
-  getRepasseProfessionalNote,
+  getRepasseConsolidacaoFinancialBreakdown,
+  getRepasseConsolidacaoNote,
   getNextPendingRepassePdfJob,
   listRepasseConsolidatedLinesByProfessional,
   listRepassePdfArtifactsByPeriodProfessional,
@@ -92,6 +94,13 @@ type RenderPayload = {
   professionalName: string;
   rows: RepasseConsolidatedLine[];
   note?: string | null;
+  financial: {
+    producaoValue: number;
+    repasseFinalValue: number;
+    produtividadeValue: number;
+    percentualProdutividadeValue: number;
+    totalFinalValue: number;
+  };
 };
 
 const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
@@ -185,11 +194,40 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
     drawInfoCard(tableLeft + cardWidth + cardsGap, 'GERADO EM', generatedAt);
     drawInfoCard(
       tableLeft + (cardWidth + cardsGap) * 2,
-      'TOTAL DE REPASSE',
-      toCurrency(totalValue)
+      'PRODUÇÃO FEEGOW',
+      toCurrency(payload.financial.producaoValue)
     );
 
-    y = cardTop - cardHeight - 10;
+    const summaryTop = cardTop - cardHeight - 6;
+    const summaryHeight = 24;
+    page.drawRectangle({
+      x: tableLeft,
+      y: summaryTop - summaryHeight,
+      width: tableWidth,
+      height: summaryHeight,
+      color: rgb(0.96, 0.98, 0.93),
+      borderColor: rgb(0.83, 0.90, 0.76),
+      borderWidth: 1,
+    });
+    page.drawText(
+      `Repasse final: ${toCurrency(payload.financial.repasseFinalValue)} | Produtividade: ${toCurrency(payload.financial.produtividadeValue)} | 5%: ${toCurrency(payload.financial.percentualProdutividadeValue)}`,
+      {
+        x: tableLeft + 5,
+        y: summaryTop - 10,
+        size: 7.2,
+        font: fontRegular,
+        color: rgb(0.16, 0.25, 0.11),
+      }
+    );
+    page.drawText(`Total final: ${toCurrency(payload.financial.totalFinalValue)}`, {
+      x: tableLeft + 5,
+      y: summaryTop - 20,
+      size: 8,
+      font: fontBold,
+      color: rgb(0.12, 0.37, 0.11),
+    });
+
+    y = summaryTop - summaryHeight - 8;
   };
 
   const drawTableHeader = () => {
@@ -436,6 +474,7 @@ export const processPendingRepassePdfJobs = async (
   options?: { maxJobs?: number }
 ): Promise<RepassePdfProcessSummary> => {
   await ensureRepasseTables(db);
+  await ensureRepasseConsolidacaoTables(db);
 
   const maxJobs = Math.max(1, Math.min(20, Math.floor(Number(options?.maxJobs) || 1)));
   const summary = defaultSummary();
@@ -498,16 +537,29 @@ export const processPendingRepassePdfJobs = async (
             );
           }
 
-          const notes = await getRepasseProfessionalNote(db, {
-            periodRef: job.periodRef,
-            professionalId: target.professionalId,
-          });
+          const [notes, financial] = await Promise.all([
+            getRepasseConsolidacaoNote(db, {
+              periodRef: job.periodRef,
+              professionalId: target.professionalId,
+            }),
+            getRepasseConsolidacaoFinancialBreakdown(db, {
+              periodRef: job.periodRef,
+              professionalId: target.professionalId,
+            }),
+          ]);
 
           const pdf = await renderRepassePdf({
             periodRef: job.periodRef,
             professionalName: target.professionalName,
             rows: lines,
             note: notes.note,
+            financial: {
+              producaoValue: financial.producaoValue,
+              repasseFinalValue: financial.repasseFinalValue,
+              produtividadeValue: financial.produtividadeValue,
+              percentualProdutividadeValue: financial.percentualProdutividadeValue,
+              totalFinalValue: financial.totalFinalValue,
+            },
           });
 
           const stamp = nowIso().replace(/[^0-9]/g, '').slice(0, 14);

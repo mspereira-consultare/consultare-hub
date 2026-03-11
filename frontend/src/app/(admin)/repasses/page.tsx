@@ -36,6 +36,11 @@ type ProfessionalSummary = {
   professionalId: string;
   professionalName: string;
   status: "SUCCESS" | "NO_DATA" | "SKIPPED" | "ERROR" | "NOT_PROCESSED";
+  execucaoQty: number;
+  execucaoValue: number;
+  execucaoPending: boolean;
+  producaoQty: number;
+  producaoValue: number;
   rowsCount: number;
   totalValue: number;
   consolidadoQty: number;
@@ -48,11 +53,18 @@ type ProfessionalSummary = {
   repasseTotalConsolidadoAConferir: number;
   hasDivergencia: boolean;
   divergenciaValue: number;
+  repasseFinalValue: number;
+  produtividadeValue: number;
+  percentualProdutividadeValue: number;
+  totalFinalValue: number;
+  hasRepasseFinalOverride: boolean;
   lastProcessedAt: string | null;
   errorMessage: string | null;
   note: string | null;
   internalNote: string | null;
   paymentMinimumText: string | null;
+  lastPdfAt: string | null;
+  lastPdfArtifactId: string | null;
 };
 
 type RepasseLine = {
@@ -517,6 +529,74 @@ export default function RepassesPage() {
     }
   };
 
+  const saveFinancialInput = useCallback(
+    async (
+      professionalId: string,
+      patch: { repasseFinalValue?: number | null; produtividadeValue?: number | null }
+    ): Promise<{ ok: boolean; error?: string }> => {
+      if (!canEdit) return { ok: false, error: "Sem permissao para editar." };
+      if (!professionalId) return { ok: false, error: "Profissional invalido." };
+
+      try {
+        const res = await fetch("/api/admin/repasses/consolidacao/financial-inputs", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            periodRef,
+            professionalId,
+            ...patch,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const msg = String(data?.error || "Falha ao salvar dados financeiros.");
+          setError(msg);
+          return { ok: false, error: msg };
+        }
+
+        const item = data?.data?.item || {};
+        const repasseFinalValue = Number(item?.repasseFinalValue) || 0;
+        const produtividadeValue = Number(item?.produtividadeValue) || 0;
+        const percentualProdutividadeValue = Number(item?.percentualProdutividadeValue) || 0;
+        const totalFinalValue = Number(item?.totalFinalValue) || 0;
+        const hasRepasseFinalOverride = Boolean(item?.hasRepasseFinalOverride);
+
+        setItems((prev) =>
+          prev.map((row) =>
+            row.professionalId === professionalId
+              ? {
+                  ...row,
+                  repasseFinalValue,
+                  produtividadeValue,
+                  percentualProdutividadeValue,
+                  totalFinalValue,
+                  hasRepasseFinalOverride,
+                }
+              : row
+          )
+        );
+        setDetailsItem((prev) =>
+          prev && prev.professionalId === professionalId
+            ? {
+                ...prev,
+                repasseFinalValue,
+                produtividadeValue,
+                percentualProdutividadeValue,
+                totalFinalValue,
+                hasRepasseFinalOverride,
+              }
+            : prev
+        );
+        return { ok: true };
+      } catch (e: any) {
+        const msg = e?.message || "Erro ao salvar dados financeiros.";
+        setError(msg);
+        return { ok: false, error: msg };
+      }
+    },
+    [canEdit, periodRef]
+  );
+
   const loadDetails = async (item: ProfessionalSummary) => {
     const qs = new URLSearchParams({ periodRef }).toString();
     const [detailsRes, marksRes, legendRes] = await Promise.all([
@@ -551,6 +631,12 @@ export default function RepassesPage() {
       paymentMinimumTextRaw === null || paymentMinimumTextRaw === undefined
         ? null
         : String(paymentMinimumTextRaw).trim() || null;
+    const financial = detailsData?.data?.financial || {};
+    const repasseFinalValue = Number(financial?.repasseFinalValue);
+    const produtividadeValue = Number(financial?.produtividadeValue);
+    const percentualProdutividadeValue = Number(financial?.percentualProdutividadeValue);
+    const totalFinalValue = Number(financial?.totalFinalValue);
+    const hasRepasseFinalOverride = Boolean(financial?.hasRepasseFinalOverride);
 
     const marksArray = Array.isArray(marksData?.data?.items) ? marksData.data.items : [];
     const marksMap: Record<string, RepasseConsolidacaoLineMarkColor | null> = {};
@@ -580,6 +666,22 @@ export default function RepassesPage() {
               note: note || null,
               internalNote: internalNote || null,
               paymentMinimumText,
+              repasseFinalValue: Number.isFinite(repasseFinalValue)
+                ? repasseFinalValue
+                : current.repasseFinalValue,
+              produtividadeValue: Number.isFinite(produtividadeValue)
+                ? produtividadeValue
+                : current.produtividadeValue,
+              percentualProdutividadeValue: Number.isFinite(percentualProdutividadeValue)
+                ? percentualProdutividadeValue
+                : current.percentualProdutividadeValue,
+              totalFinalValue: Number.isFinite(totalFinalValue)
+                ? totalFinalValue
+                : current.totalFinalValue,
+              hasRepasseFinalOverride:
+                Number.isFinite(repasseFinalValue) || Number.isFinite(produtividadeValue)
+                  ? hasRepasseFinalOverride
+                  : current.hasRepasseFinalOverride,
             }
           : current
       )
@@ -591,6 +693,22 @@ export default function RepassesPage() {
             note: note || null,
             internalNote: internalNote || null,
             paymentMinimumText,
+            repasseFinalValue: Number.isFinite(repasseFinalValue)
+              ? repasseFinalValue
+              : current.repasseFinalValue,
+            produtividadeValue: Number.isFinite(produtividadeValue)
+              ? produtividadeValue
+              : current.produtividadeValue,
+            percentualProdutividadeValue: Number.isFinite(percentualProdutividadeValue)
+              ? percentualProdutividadeValue
+              : current.percentualProdutividadeValue,
+            totalFinalValue: Number.isFinite(totalFinalValue)
+              ? totalFinalValue
+              : current.totalFinalValue,
+            hasRepasseFinalOverride:
+              Number.isFinite(repasseFinalValue) || Number.isFinite(produtividadeValue)
+                ? hasRepasseFinalOverride
+                : current.hasRepasseFinalOverride,
           }
         : current
     );
@@ -936,12 +1054,14 @@ export default function RepassesPage() {
         page={page}
         pageSize={pageSize}
         total={total}
+        canEdit={canEdit}
         onPageChange={setPage}
         selectedIds={selectedIds}
         selectedCount={selectedCount}
         onToggleRow={toggleRowSelection}
         onToggleVisible={toggleVisibleSelection}
         onOpenDetails={openProfessionalDetails}
+        onSaveFinancialInput={saveFinancialInput}
       />
 
       <ProfessionalDetailsModal
