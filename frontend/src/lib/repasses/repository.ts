@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import type {
   RepasseAConferirLine,
@@ -42,6 +42,7 @@ let repasseConsolidacaoTablesEnsured = false;
 
 const nowIso = () => new Date().toISOString();
 const clean = (value: unknown) => String(value ?? '').trim();
+const stableHash64 = (value: string) => createHash('sha256').update(value).digest('hex');
 const textTypes = new Set(['tinytext', 'text', 'mediumtext', 'longtext']);
 const isMysqlProvider = () => {
   const provider = clean(process.env.DB_PROVIDER).toLowerCase();
@@ -643,6 +644,32 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
     `,
     repasseWhereParams
   );
+  const consolidadoWhere: string[] = ['period_ref = ?', 'is_active = 1'];
+  const consolidadoWhereParams: any[] = [periodRef];
+  if (search) {
+    consolidadoWhere.push('UPPER(professional_name) LIKE ?');
+    consolidadoWhereParams.push(`%${search.toUpperCase()}%`);
+  }
+  if (patientName) {
+    consolidadoWhere.push('UPPER(paciente) LIKE ?');
+    consolidadoWhereParams.push(`%${patientName.toUpperCase()}%`);
+  }
+  if (attendanceDateStart) {
+    consolidadoWhere.push(`${getDateExpr('data_exec')} >= ?`);
+    consolidadoWhereParams.push(attendanceDateStart);
+  }
+  if (attendanceDateEnd) {
+    consolidadoWhere.push(`${getDateExpr('data_exec')} <= ?`);
+    consolidadoWhereParams.push(attendanceDateEnd);
+  }
+  const consolidadoProfessionals = await db.query(
+    `
+    SELECT DISTINCT professional_id, professional_name
+    FROM feegow_repasse_consolidado
+    WHERE ${consolidadoWhere.join(' AND ')}
+    `,
+    consolidadoWhereParams
+  );
 
   const professionalMap = new Map<string, string>();
   const paymentMinimumByProfessional = new Map<string, string | null>();
@@ -659,15 +686,25 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
     if (!id || !name || professionalMap.has(id)) continue;
     professionalMap.set(id, name);
   }
+  for (const row of consolidadoProfessionals) {
+    const id = clean((row as any).professional_id);
+    const name = clean((row as any).professional_name);
+    if (!id || !name || professionalMap.has(id)) continue;
+    professionalMap.set(id, name);
+  }
 
   let professionalPairs = Array.from(professionalMap.entries()).map(([id, name]) => ({ id, name }));
   const hasLineFilter = Boolean(patientName || attendanceDateStart || attendanceDateEnd);
   if (hasLineFilter) {
-    const eligibleByLine = new Set(
-      repasseProfessionals
-        .map((row) => clean((row as any).professional_id))
-        .filter(Boolean)
-    );
+    const eligibleByLine = new Set<string>();
+    for (const row of repasseProfessionals) {
+      const id = clean((row as any).professional_id);
+      if (id) eligibleByLine.add(id);
+    }
+    for (const row of consolidadoProfessionals) {
+      const id = clean((row as any).professional_id);
+      if (id) eligibleByLine.add(id);
+    }
     professionalPairs = professionalPairs.filter((pair) => eligibleByLine.has(pair.id));
   }
   professionalPairs.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
@@ -684,6 +721,13 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       naoConsolidadoValue: number;
       naoRecebidoQty: number;
       naoRecebidoValue: number;
+    }
+  >();
+  const consolidadoTotalsByProfessional = new Map<
+    string,
+    {
+      rowsCount: number;
+      totalValue: number;
     }
   >();
   const totalConsolidadoTabelaByProfessional = new Map<string, number>();
@@ -765,6 +809,7 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       `
       SELECT
         professional_id,
+        COUNT(*) as rows_count,
         COALESCE(SUM(repasse_value), 0) as total_consolidado
       FROM feegow_repasse_consolidado
       WHERE period_ref = ?
@@ -779,6 +824,10 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       const id = clean((row as any).professional_id);
       if (!id) continue;
       totalConsolidadoTabelaByProfessional.set(id, Number((row as any).total_consolidado) || 0);
+      consolidadoTotalsByProfessional.set(id, {
+        rowsCount: Number((row as any).rows_count) || 0,
+        totalValue: Number((row as any).total_consolidado) || 0,
+      });
     }
 
     const latestRows = await db.query(
@@ -837,11 +886,15 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       naoRecebidoQty: 0,
       naoRecebidoValue: 0,
     };
+    const consolidadoTotals = consolidadoTotalsByProfessional.get(professionalId) || {
+      rowsCount: 0,
+      totalValue: 0,
+    };
     const latest = latestByProfessional.get(professionalId);
 
     const status = latest?.status
       ? latest.status
-      : aggregate.rowsCount > 0
+      : consolidadoTotals.rowsCount > 0 || aggregate.rowsCount > 0
         ? 'SUCCESS'
         : 'NOT_PROCESSED';
     const repasseTotalConsolidadoTabela = totalConsolidadoTabelaByProfessional.get(professionalId) || 0;
@@ -853,8 +906,8 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       professionalId,
       professionalName,
       status,
-      rowsCount: aggregate.rowsCount,
-      totalValue: aggregate.totalValue,
+      rowsCount: consolidadoTotals.rowsCount,
+      totalValue: consolidadoTotals.totalValue,
       consolidadoQty: aggregate.consolidadoQty,
       consolidadoValue: aggregate.consolidadoValue,
       naoConsolidadoQty: aggregate.naoConsolidadoQty,
@@ -2354,7 +2407,26 @@ export const listRepasseAConferirLinesByProfessional = async (
   const professionalId = clean(professionalIdRaw);
   if (!professionalId) return [];
 
-  const rows = await db.query(
+  const consolidadoRows = await db.query(
+    `
+    SELECT
+      source_row_hash,
+      data_exec,
+      paciente,
+      descricao,
+      funcao,
+      convenio,
+      repasse_value
+    FROM feegow_repasse_consolidado
+    WHERE period_ref = ?
+      AND professional_id = ?
+      AND is_active = 1
+    ORDER BY ${getDateExpr('data_exec')} DESC, paciente ASC
+    `,
+    [periodRef, professionalId]
+  );
+
+  const aConferirRows = await db.query(
     `
     SELECT
       source_row_hash,
@@ -2377,52 +2449,188 @@ export const listRepasseAConferirLinesByProfessional = async (
     WHERE period_ref = ?
       AND professional_id = ?
       AND is_active = 1
-    ORDER BY execution_date DESC, patient_name ASC
+    ORDER BY ${getDateExpr('execution_date')} DESC, patient_name ASC
     `,
     [periodRef, professionalId]
   );
 
-  const consolidatedRows = await db.query(
-    `
-    SELECT data_exec, paciente, descricao
-    FROM feegow_repasse_consolidado
-    WHERE period_ref = ?
-      AND professional_id = ?
-      AND is_active = 1
-    `,
-    [periodRef, professionalId]
-  );
-  const consolidatedKeys = new Set(
-    consolidatedRows.map((row) =>
-      buildConsolidadoMatchKey((row as any).data_exec, (row as any).paciente, (row as any).descricao)
-    )
-  );
+  const classifyStatus = (value: unknown): 'CONSOLIDADO' | 'NAO_RECEBIDO' | 'NAO_CONSOLIDADO' => {
+    const normalized = clean(value).toUpperCase();
+    if (normalized === 'CONSOLIDADO') return 'CONSOLIDADO';
+    if (normalized === 'NAO_RECEBIDO') return 'NAO_RECEBIDO';
+    if (normalized === 'OUTRO' || normalized === 'SEM_DETALHE') return 'NAO_CONSOLIDADO';
+    return 'NAO_CONSOLIDADO';
+  };
 
-  return rows.map((row) => ({
-    sourceRowHash: clean((row as any).source_row_hash),
-    invoiceId: clean((row as any).invoice_id),
-    executionDate: clean((row as any).execution_date),
-    patientName: clean((row as any).patient_name),
-    unitName: clean((row as any).unit_name),
-    accountDate: clean((row as any).account_date),
-    requesterName: clean((row as any).requester_name),
-    specialtyName: clean((row as any).specialty_name),
-    procedureName: clean((row as any).procedure_name),
-    attendanceValue: Number((row as any).attendance_value) || 0,
-    detailStatus: clean((row as any).detail_status),
-    detailStatusText: clean((row as any).detail_status_text),
-    roleCode: clean((row as any).role_code),
-    roleName: clean((row as any).role_name),
-    detailProfessionalName: clean((row as any).detail_professional_name),
-    detailRepasseValue: Number((row as any).detail_repasse_value) || 0,
-    isInConsolidado: consolidatedKeys.has(
-      buildConsolidadoMatchKey(
-        (row as any).execution_date,
-        (row as any).patient_name,
-        (row as any).procedure_name
-      )
-    ),
-  }));
+  const groupedAConferir = new Map<
+    string,
+    {
+      unitName: string;
+      accountDate: string;
+      requesterName: string;
+      specialtyName: string;
+      roleCode: string;
+      roleName: string;
+      detailProfessionalName: string;
+      attendanceValue: number;
+      repasseValue: number;
+      consolidadoCount: number;
+      naoRecebidoCount: number;
+      naoConsolidadoCount: number;
+      rows: RepasseAConferirLine[];
+    }
+  >();
+
+  for (const row of aConferirRows) {
+    const key = buildConsolidadoMatchKey(
+      (row as any).execution_date,
+      (row as any).patient_name,
+      (row as any).procedure_name
+    );
+    const statusGroup = classifyStatus((row as any).detail_status);
+    const current =
+      groupedAConferir.get(key) ||
+      ({
+        unitName: clean((row as any).unit_name),
+        accountDate: clean((row as any).account_date),
+        requesterName: clean((row as any).requester_name),
+        specialtyName: clean((row as any).specialty_name),
+        roleCode: clean((row as any).role_code),
+        roleName: clean((row as any).role_name),
+        detailProfessionalName: clean((row as any).detail_professional_name),
+        attendanceValue: 0,
+        repasseValue: 0,
+        consolidadoCount: 0,
+        naoRecebidoCount: 0,
+        naoConsolidadoCount: 0,
+        rows: [],
+      } as {
+        unitName: string;
+        accountDate: string;
+        requesterName: string;
+        specialtyName: string;
+        roleCode: string;
+        roleName: string;
+        detailProfessionalName: string;
+        attendanceValue: number;
+        repasseValue: number;
+        consolidadoCount: number;
+        naoRecebidoCount: number;
+        naoConsolidadoCount: number;
+        rows: RepasseAConferirLine[];
+      });
+
+    current.attendanceValue += Number((row as any).attendance_value) || 0;
+    current.repasseValue += Number((row as any).detail_repasse_value) || 0;
+    if (statusGroup === 'CONSOLIDADO') current.consolidadoCount += 1;
+    else if (statusGroup === 'NAO_RECEBIDO') current.naoRecebidoCount += 1;
+    else current.naoConsolidadoCount += 1;
+
+    current.rows.push({
+      sourceRowHash: clean((row as any).source_row_hash),
+      invoiceId: clean((row as any).invoice_id),
+      executionDate: clean((row as any).execution_date),
+      patientName: clean((row as any).patient_name),
+      unitName: clean((row as any).unit_name),
+      accountDate: clean((row as any).account_date),
+      requesterName: clean((row as any).requester_name),
+      specialtyName: clean((row as any).specialty_name),
+      procedureName: clean((row as any).procedure_name),
+      attendanceValue: Number((row as any).attendance_value) || 0,
+      detailStatus: clean((row as any).detail_status),
+      detailStatusText: clean((row as any).detail_status_text),
+      roleCode: clean((row as any).role_code),
+      roleName: clean((row as any).role_name),
+      detailProfessionalName: clean((row as any).detail_professional_name),
+      detailRepasseValue: Number((row as any).detail_repasse_value) || 0,
+      isInConsolidado: false,
+      convenio: '',
+      funcao: clean((row as any).role_name),
+      origin: 'a_conferir',
+    });
+    groupedAConferir.set(key, current);
+  }
+
+  const resolveGroupedStatus = (
+    grouped?: {
+      consolidadoCount: number;
+      naoRecebidoCount: number;
+      naoConsolidadoCount: number;
+    } | null
+  ) => {
+    if (!grouped) return { code: 'NAO_CONSOLIDADO', text: 'Não consolidado' };
+    if (grouped.consolidadoCount > 0) return { code: 'CONSOLIDADO', text: 'Consolidado' };
+    if (grouped.naoRecebidoCount > 0) return { code: 'NAO_RECEBIDO', text: 'Não recebido' };
+    if (grouped.naoConsolidadoCount > 0) return { code: 'NAO_CONSOLIDADO', text: 'Não consolidado' };
+    return { code: 'NAO_CONSOLIDADO', text: 'Não consolidado' };
+  };
+
+  const consumedKeys = new Set<string>();
+  const mergedRows: RepasseAConferirLine[] = [];
+
+  for (const row of consolidadoRows) {
+    const key = buildConsolidadoMatchKey((row as any).data_exec, (row as any).paciente, (row as any).descricao);
+    const grouped = groupedAConferir.get(key);
+    const status = resolveGroupedStatus(grouped);
+    const sourceRowHash =
+      clean((row as any).source_row_hash) ||
+      stableHash64(
+        `${periodRef}|${professionalId}|${clean((row as any).data_exec)}|${clean((row as any).paciente)}|${clean((row as any).descricao)}|${clean((row as any).funcao)}|${Number((row as any).repasse_value) || 0}`
+      );
+
+    mergedRows.push({
+      sourceRowHash,
+      invoiceId: '',
+      executionDate: clean((row as any).data_exec),
+      patientName: clean((row as any).paciente),
+      unitName: grouped?.unitName || '',
+      accountDate: grouped?.accountDate || '',
+      requesterName: grouped?.requesterName || '',
+      specialtyName: grouped?.specialtyName || '',
+      procedureName: clean((row as any).descricao),
+      attendanceValue: Number((row as any).repasse_value) || 0,
+      detailStatus: status.code,
+      detailStatusText: status.text,
+      roleCode: grouped?.roleCode || '',
+      roleName: clean((row as any).funcao) || grouped?.roleName || '',
+      detailProfessionalName: grouped?.detailProfessionalName || '',
+      detailRepasseValue: grouped ? grouped.repasseValue : Number((row as any).repasse_value) || 0,
+      isInConsolidado: true,
+      convenio: clean((row as any).convenio),
+      funcao: clean((row as any).funcao),
+      origin: 'consolidado',
+    });
+    consumedKeys.add(key);
+  }
+
+  for (const [key, grouped] of groupedAConferir.entries()) {
+    if (consumedKeys.has(key)) continue;
+    for (const line of grouped.rows) {
+      mergedRows.push({
+        ...line,
+        isInConsolidado: false,
+        origin: 'a_conferir',
+      });
+    }
+  }
+
+  const parseDateForSort = (value: string) => {
+    const raw = clean(value);
+    const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+    const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+    return '0000-00-00';
+  };
+
+  mergedRows.sort((a, b) => {
+    const da = parseDateForSort(a.executionDate);
+    const dbs = parseDateForSort(b.executionDate);
+    if (da !== dbs) return dbs.localeCompare(da);
+    return a.patientName.localeCompare(b.patientName, 'pt-BR');
+  });
+
+  return mergedRows;
 };
 
 export const upsertRepasseConsolidacaoNote = async (

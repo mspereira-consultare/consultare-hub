@@ -236,6 +236,9 @@ export type RepasseAConferirLine = {
   detailProfessionalName: string;
   detailRepasseValue: number;
   isInConsolidado: boolean;
+  convenio?: string;
+  funcao?: string;
+  origin?: 'consolidado' | 'a_conferir';
 };
 
 export type RepasseConsolidacaoLineMarkColor = 'green' | 'yellow' | 'red';

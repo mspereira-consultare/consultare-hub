@@ -49,6 +49,74 @@ ITEM_SKIPPED_AMBIGUOUS_NAME = "SKIPPED_AMBIGUOUS_NAME"
 ITEM_ERROR = "ERROR"
 
 
+def _enable_readonly_safety(page):
+    """
+    Hard-lock de segurança: impede qualquer ação de consolidar/desconsolidar/marcar.
+    O worker deve atuar apenas em modo leitura (filtro + buscar + parse).
+    """
+    page.evaluate(
+        """
+        () => {
+          const DANGEROUS_RE = /(desconsolidar|\\bconsolidar\\b|marcar\\s+pagos|marcar\\s+nao\\s+pagos|marcar\\s+não\\s+pagos|marcar\\s+consolidados)/i;
+          const SAFE_RE = /\\bbuscar\\b/i;
+
+          const textOf = (el) => {
+            if (!el || !(el instanceof Element)) return '';
+            const chunks = [
+              el.textContent || '',
+              el.getAttribute('title') || '',
+              el.getAttribute('aria-label') || '',
+              el.getAttribute('value') || '',
+              (el instanceof HTMLInputElement) ? (el.value || '') : '',
+            ];
+            return chunks.join(' ').replace(/\\s+/g, ' ').trim();
+          };
+
+          const isDangerous = (el) => {
+            const txt = textOf(el);
+            if (!txt) return false;
+            if (SAFE_RE.test(txt)) return false;
+            return DANGEROUS_RE.test(txt);
+          };
+
+          const disableDangerousElements = () => {
+            const list = Array.from(document.querySelectorAll('button, a, input[type=\"button\"], input[type=\"submit\"], label'));
+            for (const el of list) {
+              if (!isDangerous(el)) continue;
+              try {
+                if (el instanceof HTMLButtonElement || el instanceof HTMLInputElement) {
+                  el.disabled = true;
+                }
+                el.setAttribute('data-readonly-blocked', '1');
+                el.style.pointerEvents = 'none';
+                el.style.opacity = '0.45';
+              } catch (_) {}
+            }
+          };
+
+          disableDangerousElements();
+
+          if (!window.__repasseReadOnlySafetyBound) {
+            window.__repasseReadOnlySafetyBound = true;
+            document.addEventListener('click', (ev) => {
+              const path = (ev.composedPath && ev.composedPath()) || [];
+              for (const node of path) {
+                if (!(node instanceof Element)) continue;
+                if (isDangerous(node)) {
+                  ev.preventDefault();
+                  ev.stopPropagation();
+                  ev.stopImmediatePropagation();
+                  return false;
+                }
+              }
+              return true;
+            }, true);
+          }
+        }
+        """
+    )
+
+
 def _now_ts() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -717,6 +785,7 @@ def _open_consolidacao_screen(page):
     page.wait_for_selector("#De", timeout=30000)
     page.wait_for_selector("#Ate", timeout=30000)
     page.wait_for_selector("#BtnBuscar", timeout=30000)
+    _enable_readonly_safety(page)
 
 def _set_multiselect_values(page, select_id: str, target_values: List[str]) -> Tuple[int, int, List[str]]:
     payload = page.evaluate(
@@ -976,6 +1045,8 @@ def _select_professional_by_name(page, prof: Dict) -> Tuple[str, Optional[Dict[s
 
 
 def _click_search(page, run_id: str, debug: bool):
+    _enable_readonly_safety(page)
+
     btn = page.locator("#BtnBuscar")
     if btn.count() == 0:
         alt = page.locator("button:has-text('Buscar')")
@@ -1006,6 +1077,7 @@ def _click_search(page, run_id: str, debug: bool):
         raise RuntimeError("timeout aguardando retorno da busca.")
 
     page.wait_for_timeout(500)
+    _enable_readonly_safety(page)
 
 def _find_target_table(soup: BeautifulSoup):
     candidates = soup.find_all("table")

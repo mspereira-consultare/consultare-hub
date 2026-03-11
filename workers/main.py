@@ -59,6 +59,7 @@ try:
     from worker_faturamento_scraping import run_scraper
     from worker_contracts import run_worker_contracts
     from worker_repasse_consolidado import run_repasse_sync_loop, process_pending_repasse_jobs_once
+    from worker_consolidacao_profissionais import process_pending_consolidacao_jobs_once
     from worker_agenda_ocupacao import process_pending_agenda_occupancy_jobs_once
     from worker_auth import FeegowTokenRenewer
     from worker_auth_clinia import CliniaCookieRenewer
@@ -132,6 +133,7 @@ KNOWN_ACTIONS = {
     'faturamento', # Receita bruta analítica
     'comercial', # Propostas (API)
     'repasses', # Repasses consolidados (scraping)
+    'repasse_consolidacao', # Repasses a consolidar (scraping)
     'contratos', # Cartão de Benefícios (API)
     'auth', # Obtém cookies e x-access-token Feegow
     'auth_clinia', # Obtém cookie Clinia
@@ -176,6 +178,10 @@ ALIAS_ACTION_MAP = {
     'repasse': 'repasses',
     'repasse_sync': 'repasses',
     'worker_repasse_consolidado': 'repasses',
+    'repasse_consolidacao': 'repasse_consolidacao',
+    'consolidacao_repasses': 'repasse_consolidacao',
+    'consolidacao': 'repasse_consolidacao',
+    'worker_consolidacao_profissionais': 'repasse_consolidacao',
     'contratos': 'contratos',
     'contratos_api': 'contratos',
     'cartao_de_beneficios_api': 'contratos',
@@ -199,6 +205,7 @@ CANONICAL_NAME = {
     'faturamento': 'Faturamento (Scraping)',
     'comercial': 'Propostas (API)',
     'repasses': 'Repasses Consolidados (Scraping)',
+    'repasse_consolidacao': 'Repasses A Consolidar (Scraping)',
     'contratos': 'Cartão de Beneficios (API)',
     'auth': 'Auth Feegow',
     'auth_clinia': 'Auth Clinia',
@@ -324,6 +331,12 @@ def run_service(key: str):
             process_pending_repasse_jobs_once(
                 auto_enqueue_if_empty=True,
                 requested_by='system_status',
+            )
+        elif action == 'repasse_consolidacao':
+            process_pending_consolidacao_jobs_once(
+                auto_enqueue_if_empty=True,
+                requested_by='system_status',
+                headless=True,
             )
         elif action == 'contratos':
             run_worker_contracts()
@@ -468,6 +481,26 @@ def run_clinia_safe():
             time.sleep(60) 
         else:
             time.sleep(1800)
+
+
+def run_repasse_consolidacao_loop():
+    poll_interval = max(10, int(os.getenv("REPASSE_CONSOLIDACAO_POLL_SEC", "30")))
+    print(f"[INFO] Worker repasse_consolidacao iniciado. poll={poll_interval}s")
+    while True:
+        try:
+            process_pending_consolidacao_jobs_once(
+                auto_enqueue_if_empty=False,
+                requested_by="system_status",
+                headless=True,
+            )
+        except Exception as e:
+            try:
+                db = DatabaseManager()
+                db.update_heartbeat("repasse_consolidacao", "ERROR", f"loop_error={e}")
+            except Exception:
+                pass
+            print(f"[WARN] Loop repasse_consolidacao erro: {e}")
+        time.sleep(poll_interval)
 
 def run_scheduler():
     print("⏰ Scheduler Diário iniciado.")
@@ -658,6 +691,7 @@ def start_orchestrator():
         threading.Thread(target=run_monitor_medico_safe, name="MonMed", daemon=True),
         threading.Thread(target=run_clinia_safe, name="Clinia", daemon=True),
         threading.Thread(target=run_repasse_sync_loop, name="RepasseSync", daemon=True),
+        threading.Thread(target=run_repasse_consolidacao_loop, name="RepasseConsol", daemon=True),
         threading.Thread(target=run_watchdog, name="Watchdog", daemon=True),
     ]
 

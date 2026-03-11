@@ -26,6 +26,9 @@ type RepasseLine = {
   detailProfessionalName: string;
   detailRepasseValue: number;
   isInConsolidado: boolean;
+  convenio?: string;
+  funcao?: string;
+  origin?: 'consolidado' | 'a_conferir';
 };
 
 type ProfessionalSummary = {
@@ -146,7 +149,7 @@ export function ProfessionalDetailsModal({
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
-      <div className="h-[92vh] w-full max-w-[1600px] overflow-hidden rounded-xl bg-white shadow-xl">
+      <div className="flex h-[92vh] min-h-0 w-full max-w-[1600px] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
         <div className="flex items-start justify-between border-b px-4 py-3">
           <div>
             <h3 className="text-sm font-semibold text-slate-800">Detalhes do profissional</h3>
@@ -195,20 +198,27 @@ export function ProfessionalDetailsModal({
           </div>
         </div>
 
-        <div className="grid h-[calc(92vh-176px)] grid-cols-1 gap-3 px-4 py-3 xl:grid-cols-[1fr_430px]">
-          <div className="rounded-lg border">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto px-4 py-3 xl:grid-cols-[minmax(0,1fr)_430px] xl:overflow-hidden">
+          <div className="flex min-h-0 flex-col rounded-lg border">
             <div className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
               Atendimentos do período
             </div>
-            <div className="max-h-[calc(92vh-250px)] overflow-auto">
-              <table className="w-full min-w-[1360px] text-xs">
+            <div className="min-h-0 flex-1 overflow-auto">
+              <table className="w-full min-w-[2200px] text-xs">
                 <thead className="sticky top-0 bg-white text-[10px] uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="px-2 py-2 text-left">Data Exec.</th>
                     <th className="px-2 py-2 text-left">Paciente</th>
+                    <th className="px-2 py-2 text-left">Unidade</th>
+                    <th className="px-2 py-2 text-left">Data conta</th>
+                    <th className="px-2 py-2 text-left">Solicitante</th>
+                    <th className="px-2 py-2 text-left">Especialidade</th>
                     <th className="px-2 py-2 text-left">Procedimento</th>
+                    <th className="px-2 py-2 text-left">Convênio</th>
+                    <th className="px-2 py-2 text-left">Função</th>
+                    <th className="px-2 py-2 text-left">Profissional detalhe</th>
                     <th className="px-2 py-2 text-left">Status</th>
-                    <th className="px-2 py-2 text-left">No consolidado</th>
+                    <th className="px-2 py-2 text-left">Origem</th>
                     <th className="px-2 py-2 text-right">Atendimento</th>
                     <th className="px-2 py-2 text-right">Repasse</th>
                     <th className="px-2 py-2 text-center">Marcação</th>
@@ -217,7 +227,7 @@ export function ProfessionalDetailsModal({
                 <tbody>
                   {loadingRows ? (
                     <tr>
-                      <td colSpan={8} className="px-2 py-8 text-center text-slate-500">
+                      <td colSpan={15} className="px-2 py-8 text-center text-slate-500">
                         <span className="inline-flex items-center gap-2">
                           <Loader2 size={14} className="animate-spin" />
                           Carregando atendimentos...
@@ -226,13 +236,13 @@ export function ProfessionalDetailsModal({
                     </tr>
                   ) : rowsError ? (
                     <tr>
-                      <td colSpan={8} className="px-2 py-8 text-center text-rose-700">
+                      <td colSpan={15} className="px-2 py-8 text-center text-rose-700">
                         {rowsError}
                       </td>
                     </tr>
                   ) : rows.length === 0 ? (
                     <tr>
-                      <td colSpan={8} className="px-2 py-8 text-center text-slate-500">
+                      <td colSpan={15} className="px-2 py-8 text-center text-slate-500">
                         Sem atendimentos para este profissional no período.
                       </td>
                     </tr>
@@ -246,20 +256,27 @@ export function ProfessionalDetailsModal({
                         >
                           <td className="px-2 py-1.5">{toBrDate(row.executionDate)}</td>
                           <td className="px-2 py-1.5">{row.patientName || '-'}</td>
+                          <td className="px-2 py-1.5">{row.unitName || '-'}</td>
+                          <td className="px-2 py-1.5">{toBrDate(row.accountDate)}</td>
+                          <td className="px-2 py-1.5">{row.requesterName || '-'}</td>
+                          <td className="px-2 py-1.5">{row.specialtyName || '-'}</td>
                           <td className="px-2 py-1.5">{row.procedureName || '-'}</td>
+                          <td className="px-2 py-1.5">{row.convenio || '-'}</td>
+                          <td className="px-2 py-1.5">{row.funcao || row.roleName || '-'}</td>
+                          <td className="px-2 py-1.5">{row.detailProfessionalName || '-'}</td>
                           <td className="px-2 py-1.5">
                             <span className="rounded border bg-white px-2 py-0.5 text-[11px] font-semibold">
                               {row.detailStatusText || row.detailStatus || '-'}
                             </span>
                           </td>
                           <td className="px-2 py-1.5">
-                            {row.isInConsolidado ? (
+                            {row.origin === 'consolidado' ? (
                               <span className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                                Sim
+                                Consolidado
                               </span>
                             ) : (
                               <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                                Não
+                                A conferir
                               </span>
                             )}
                           </td>
@@ -293,7 +310,7 @@ export function ProfessionalDetailsModal({
             </div>
           </div>
 
-          <div className="space-y-3 overflow-auto pr-1">
+          <div className="min-h-0 space-y-3 overflow-y-auto pr-1">
             <ManualMarkingPanel
               rows={rows}
               marks={marksByRowHash}
