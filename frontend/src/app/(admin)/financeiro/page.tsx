@@ -24,6 +24,7 @@ import { ComparisonHistoryChart } from './components/ComparisonHistoryChart';
 import { ComparisonHistoryTable } from './components/ComparisonHistoryTable';
 import { GroupComparisonList } from './components/GroupComparisonList';
 import { GeneralReportModal } from './components/GeneralReportModal';
+import { JobQueueHeartbeat } from '@/components/JobQueueHeartbeat';
 
 type SelectOption = { name: string; label?: string };
 type DateRange = { start: string; end: string };
@@ -484,15 +485,12 @@ export default function FinancialPage() {
           </div>
 
           <div className="flex items-center gap-4">
-            {heartbeat && (
-              <div className="hidden sm:flex flex-col items-end text-xs border-r border-slate-200 pr-4">
-                <span className="font-bold uppercase text-slate-400 tracking-wider mb-0.5">Ultima Sincronizacao</span>
-                <div className="flex items-center gap-1.5">
-                  <div className={`w-2 h-2 rounded-full ${isUpdating ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
-                  <span className="font-medium text-slate-600">{formatLastUpdate(heartbeat.last_run)}</span>
-                </div>
-              </div>
-            )}
+            <JobQueueHeartbeat
+              services={['faturamento']}
+              fallbackLastSyncAt={heartbeat?.last_run || null}
+              label="Sincronização"
+              className="hidden sm:flex items-end border-r border-slate-200 pr-4"
+            />
 
             <button
               onClick={handleManualUpdate}

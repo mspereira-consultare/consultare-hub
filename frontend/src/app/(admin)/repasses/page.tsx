@@ -13,6 +13,7 @@ import { JobHistoryTable } from "./components/JobHistoryTable";
 import { ProfessionalDetailsModal } from "./components/ProfessionalDetailsModal";
 import { ProfessionalSummaryTable } from "./components/ProfessionalSummaryTable";
 import { RepassesFiltersPanel } from "./components/RepassesFiltersPanel";
+import { JobQueueHeartbeat } from "@/components/JobQueueHeartbeat";
 
 type JobRow = {
   id: string;
@@ -203,6 +204,22 @@ export default function RepassesPage() {
 
   const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
   const selectedCount = selectedIdsArray.length;
+  const repasseLastSyncAt = useMemo(() => {
+    const allJobs = [...syncJobs, ...consolidacaoJobs];
+    if (!allJobs.length) return null;
+    const ranked = allJobs
+      .map((job) => {
+        const raw = job.finishedAt || job.createdAt || job.startedAt || "";
+        const ts = new Date(String(raw).replace(" ", "T")).getTime();
+        return {
+          raw,
+          ts: Number.isFinite(ts) ? ts : 0,
+        };
+      })
+      .filter((item) => item.raw);
+    ranked.sort((a, b) => b.ts - a.ts);
+    return ranked[0]?.raw || null;
+  }, [syncJobs, consolidacaoJobs]);
 
   const buildCommonFilters = useCallback(() => {
     return {
@@ -853,6 +870,13 @@ export default function RepassesPage() {
           <span className="text-xs text-slate-500">
             Período: {periodLabel} | Selecionados: {selectedCount}
           </span>
+
+          <JobQueueHeartbeat
+            services={["repasses", "repasse_consolidacao"]}
+            fallbackLastSyncAt={repasseLastSyncAt}
+            label="Sincronização"
+            className="ml-auto hidden md:flex"
+          />
         </div>
       </header>
 

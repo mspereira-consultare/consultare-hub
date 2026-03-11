@@ -255,9 +255,25 @@ Status atual:
   - `Gerar relatorios`
 - Observacoes por profissional e periodo:
   - tabela nova `repasse_professional_notes` (PK: `period_ref + professional_id`)
-  - API nova `PUT /api/admin/repasses/notes`
-  - coluna Observacao na tabela com edicao e salvamento por linha
-  - observacao inclu?da no PDF gerado do profissional
+- API nova `PUT /api/admin/repasses/notes`
+- coluna Observacao na tabela com edicao e salvamento por linha
+- observacao inclu?da no PDF gerado do profissional
+
+## 18. Atualizacao - Heartbeat com fila global serial (2026-03-11)
+- Novo endpoint: `GET /api/admin/jobs/serial-queue-status?services=faturamento,repasses,repasse_consolidacao`
+- Fonte: `system_status` com leitura dos estados `RUNNING`, `QUEUED`, `PENDING`.
+- Regra de posicao:
+  - `RUNNING` sempre aparece como posicao `1`.
+  - `QUEUED` e `PENDING` aparecem em seguida, ordenados por `last_run` ascendente.
+- Resposta:
+  - `data.global` com tamanho da fila e ordem de servicos.
+  - `data.services[]` com `position`, `queueSize`, `isRunning`, `isQueued`, `lastRun`, `details`.
+- Componente reutilizavel: `src/components/JobQueueHeartbeat.tsx`
+  - Mostra "Processando agora" ou "Na fila" quando houver servico ativo.
+  - Quando nao houver fila ativa, mostra apenas "Ultima sincronizacao".
+- Integracao inicial:
+  - pagina `financeiro`: servico `faturamento`.
+  - pagina `repasses`: servicos `repasses` e `repasse_consolidacao`.
 - Substituicao de relatorios por periodo/profissional:
   - antes de gravar novo PDF, artefatos antigos do mesmo periodo/profissional sao removidos (storage + banco).
 
