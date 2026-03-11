@@ -2,11 +2,16 @@ import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import type {
   RepasseAConferirLine,
+  RepasseConsolidacaoBooleanFilter,
   RepasseConsolidacaoJob,
   RepasseConsolidacaoJobInput,
+  RepasseConsolidacaoLineMark,
+  RepasseConsolidacaoLineMarkColor,
+  RepasseConsolidacaoMarkLegend,
   RepasseConsolidacaoProfessionalListFilters,
   RepasseConsolidacaoProfessionalListResult,
   RepasseConsolidacaoProfessionalStatus,
+  RepasseConsolidacaoStatusFilter,
   RepasseConsolidacaoScope,
   RepasseJobListFilters,
   RepassePdfArtifact,
@@ -264,6 +269,65 @@ const normalizeConsolidacaoProfessionalStatusFilter = (
   return 'all';
 };
 
+const normalizeConsolidacaoStatusFilter = (
+  value: unknown
+): RepasseConsolidacaoStatusFilter => {
+  const raw = clean(value).toLowerCase();
+  if (
+    raw === 'all' ||
+    raw === 'consolidado' ||
+    raw === 'nao_consolidado' ||
+    raw === 'nao_recebido'
+  ) {
+    return raw;
+  }
+  return 'all';
+};
+
+const normalizeBooleanFilter = (value: unknown): RepasseConsolidacaoBooleanFilter => {
+  const raw = clean(value).toLowerCase();
+  if (raw === 'yes' || raw === 'no' || raw === 'all') return raw;
+  return 'all';
+};
+
+const normalizeIsoDate = (value: unknown): string | null => {
+  const raw = clean(value);
+  if (!raw) return null;
+  const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) {
+    throw new RepasseValidationError('Data invalida. Use o formato YYYY-MM-DD.');
+  }
+  return `${m[1]}-${m[2]}-${m[3]}`;
+};
+
+const normalizeTextKey = (value: unknown): string =>
+  clean(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .toUpperCase();
+
+const normalizeBrDate = (value: unknown): string => {
+  const raw = clean(value);
+  if (!raw) return '';
+  const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  if (br) return `${br[1]}/${br[2]}/${br[3]}`;
+  const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (iso) return `${iso[3]}/${iso[2]}/${iso[1]}`;
+  return raw;
+};
+
+const buildConsolidadoMatchKey = (
+  executionDate: unknown,
+  patientName: unknown,
+  procedureName: unknown
+): string => `${normalizeBrDate(executionDate)}|${normalizeTextKey(patientName)}|${normalizeTextKey(procedureName)}`;
+
+const getDateExpr = (column: string): string =>
+  isMysqlProvider()
+    ? `STR_TO_DATE(${column}, '%d/%m/%Y')`
+    : `date(substr(${column}, 7, 4) || '-' || substr(${column}, 4, 2) || '-' || substr(${column}, 1, 2))`;
+
 const mapConsolidacaoProfessionalStatus = (
   rowStatus: string | null | undefined
 ): RepasseConsolidacaoProfessionalStatus => {
@@ -275,6 +339,12 @@ const mapConsolidacaoProfessionalStatus = (
   }
   if (normalized === 'ERROR') return 'ERROR';
   return 'NOT_PROCESSED';
+};
+
+const normalizeLineMarkColor = (value: unknown): RepasseConsolidacaoLineMarkColor | null => {
+  const raw = clean(value).toLowerCase();
+  if (raw === 'green' || raw === 'yellow' || raw === 'red') return raw;
+  return null;
 };
 
 const loadRepasseProfessionalSummaries = async (
@@ -502,13 +572,32 @@ const loadRepasseProfessionalSummaries = async (
 
 const loadRepasseConsolidacaoProfessionalSummaries = async (
   db: DbInterface,
-  input: { periodRef: string; search: string }
+  input: {
+    periodRef: string;
+    search: string;
+    hasPaymentMinimum: RepasseConsolidacaoBooleanFilter;
+    consolidacaoStatus: RepasseConsolidacaoStatusFilter;
+    hasDivergence: RepasseConsolidacaoBooleanFilter;
+    attendanceDateStart: string | null;
+    attendanceDateEnd: string | null;
+    patientName: string;
+  }
 ): Promise<{
   items: RepasseConsolidacaoProfessionalListResult['items'];
   stats: RepasseConsolidacaoProfessionalListResult['stats'];
 }> => {
   const periodRef = normalizePeriodRef(input.periodRef);
   const search = clean(input.search);
+  const hasPaymentMinimumFilter = normalizeBooleanFilter(input.hasPaymentMinimum);
+  const consolidacaoStatusFilter = normalizeConsolidacaoStatusFilter(input.consolidacaoStatus);
+  const hasDivergenceFilter = normalizeBooleanFilter(input.hasDivergence);
+  const attendanceDateStart = input.attendanceDateStart ? normalizeIsoDate(input.attendanceDateStart) : null;
+  const attendanceDateEnd = input.attendanceDateEnd ? normalizeIsoDate(input.attendanceDateEnd) : null;
+  const patientName = clean(input.patientName);
+
+  if (attendanceDateStart && attendanceDateEnd && attendanceDateStart > attendanceDateEnd) {
+    throw new RepasseValidationError('Data inicial maior que a data final nos filtros.');
+  }
 
   const where: string[] = ['is_active = 1'];
   const whereParams: any[] = [];
@@ -533,6 +622,19 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
     repasseWhere.push('UPPER(professional_name) LIKE ?');
     repasseWhereParams.push(`%${search.toUpperCase()}%`);
   }
+  if (patientName) {
+    repasseWhere.push('UPPER(patient_name) LIKE ?');
+    repasseWhereParams.push(`%${patientName.toUpperCase()}%`);
+  }
+  if (attendanceDateStart) {
+    repasseWhere.push(`${getDateExpr('execution_date')} >= ?`);
+    repasseWhereParams.push(attendanceDateStart);
+  }
+  if (attendanceDateEnd) {
+    repasseWhere.push(`${getDateExpr('execution_date')} <= ?`);
+    repasseWhereParams.push(attendanceDateEnd);
+  }
+
   const repasseProfessionals = await db.query(
     `
     SELECT DISTINCT professional_id, professional_name
@@ -558,11 +660,33 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
     professionalMap.set(id, name);
   }
 
-  const professionalPairs = Array.from(professionalMap.entries()).map(([id, name]) => ({ id, name }));
+  let professionalPairs = Array.from(professionalMap.entries()).map(([id, name]) => ({ id, name }));
+  const hasLineFilter = Boolean(patientName || attendanceDateStart || attendanceDateEnd);
+  if (hasLineFilter) {
+    const eligibleByLine = new Set(
+      repasseProfessionals
+        .map((row) => clean((row as any).professional_id))
+        .filter(Boolean)
+    );
+    professionalPairs = professionalPairs.filter((pair) => eligibleByLine.has(pair.id));
+  }
   professionalPairs.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   const professionalIds = professionalPairs.map((pair) => pair.id);
 
-  const aggregateByProfessional = new Map<string, { rowsCount: number; totalValue: number }>();
+  const aggregateByProfessional = new Map<
+    string,
+    {
+      rowsCount: number;
+      totalValue: number;
+      consolidadoQty: number;
+      consolidadoValue: number;
+      naoConsolidadoQty: number;
+      naoConsolidadoValue: number;
+      naoRecebidoQty: number;
+      naoRecebidoValue: number;
+    }
+  >();
+  const totalConsolidadoTabelaByProfessional = new Map<string, number>();
   const latestByProfessional = new Map<
     string,
     { status: RepasseConsolidacaoProfessionalStatus; errorMessage: string | null; updatedAt: string | null }
@@ -571,17 +695,41 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
 
   if (professionalIds.length > 0) {
     const placeholders = professionalIds.map(() => '?').join(', ');
+    const lineFilterClauses: string[] = [];
+    const lineFilterParams: any[] = [];
+    if (patientName) {
+      lineFilterClauses.push('UPPER(patient_name) LIKE ?');
+      lineFilterParams.push(`%${patientName.toUpperCase()}%`);
+    }
+    if (attendanceDateStart) {
+      lineFilterClauses.push(`${getDateExpr('execution_date')} >= ?`);
+      lineFilterParams.push(attendanceDateStart);
+    }
+    if (attendanceDateEnd) {
+      lineFilterClauses.push(`${getDateExpr('execution_date')} <= ?`);
+      lineFilterParams.push(attendanceDateEnd);
+    }
 
     const aggregateRows = await db.query(
       `
-      SELECT professional_id, COUNT(*) as rows_count, COALESCE(SUM(detail_repasse_value), 0) as total_value
+      SELECT
+        professional_id,
+        COUNT(*) as rows_count,
+        COALESCE(SUM(detail_repasse_value), 0) as total_value,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) = 'CONSOLIDADO' THEN 1 ELSE 0 END), 0) as consolidado_qty,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) = 'CONSOLIDADO' THEN detail_repasse_value ELSE 0 END), 0) as consolidado_value,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) IN ('OUTRO', 'SEM_DETALHE') THEN 1 ELSE 0 END), 0) as nao_consolidado_qty,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) IN ('OUTRO', 'SEM_DETALHE') THEN detail_repasse_value ELSE 0 END), 0) as nao_consolidado_value,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) = 'NAO_RECEBIDO' THEN 1 ELSE 0 END), 0) as nao_recebido_qty,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) = 'NAO_RECEBIDO' THEN detail_repasse_value ELSE 0 END), 0) as nao_recebido_value
       FROM feegow_repasse_a_conferir
       WHERE period_ref = ?
         AND is_active = 1
         AND professional_id IN (${placeholders})
+        ${lineFilterClauses.length ? `AND ${lineFilterClauses.join(' AND ')}` : ''}
       GROUP BY professional_id
       `,
-      [periodRef, ...professionalIds]
+      [periodRef, ...professionalIds, ...lineFilterParams]
     );
     for (const row of aggregateRows) {
       const id = clean((row as any).professional_id);
@@ -589,7 +737,48 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       aggregateByProfessional.set(id, {
         rowsCount: Number((row as any).rows_count) || 0,
         totalValue: Number((row as any).total_value) || 0,
+        consolidadoQty: Number((row as any).consolidado_qty) || 0,
+        consolidadoValue: Number((row as any).consolidado_value) || 0,
+        naoConsolidadoQty: Number((row as any).nao_consolidado_qty) || 0,
+        naoConsolidadoValue: Number((row as any).nao_consolidado_value) || 0,
+        naoRecebidoQty: Number((row as any).nao_recebido_qty) || 0,
+        naoRecebidoValue: Number((row as any).nao_recebido_value) || 0,
       });
+    }
+
+    const consolidadoWhereClauses: string[] = [];
+    const consolidadoWhereParams: any[] = [];
+    if (patientName) {
+      consolidadoWhereClauses.push('UPPER(paciente) LIKE ?');
+      consolidadoWhereParams.push(`%${patientName.toUpperCase()}%`);
+    }
+    if (attendanceDateStart) {
+      consolidadoWhereClauses.push(`${getDateExpr('data_exec')} >= ?`);
+      consolidadoWhereParams.push(attendanceDateStart);
+    }
+    if (attendanceDateEnd) {
+      consolidadoWhereClauses.push(`${getDateExpr('data_exec')} <= ?`);
+      consolidadoWhereParams.push(attendanceDateEnd);
+    }
+
+    const totalConsolidadoRows = await db.query(
+      `
+      SELECT
+        professional_id,
+        COALESCE(SUM(repasse_value), 0) as total_consolidado
+      FROM feegow_repasse_consolidado
+      WHERE period_ref = ?
+        AND is_active = 1
+        AND professional_id IN (${placeholders})
+        ${consolidadoWhereClauses.length ? `AND ${consolidadoWhereClauses.join(' AND ')}` : ''}
+      GROUP BY professional_id
+      `,
+      [periodRef, ...professionalIds, ...consolidadoWhereParams]
+    );
+    for (const row of totalConsolidadoRows) {
+      const id = clean((row as any).professional_id);
+      if (!id) continue;
+      totalConsolidadoTabelaByProfessional.set(id, Number((row as any).total_consolidado) || 0);
     }
 
     const latestRows = await db.query(
@@ -641,6 +830,12 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
     const aggregate = aggregateByProfessional.get(professionalId) || {
       rowsCount: 0,
       totalValue: 0,
+      consolidadoQty: 0,
+      consolidadoValue: 0,
+      naoConsolidadoQty: 0,
+      naoConsolidadoValue: 0,
+      naoRecebidoQty: 0,
+      naoRecebidoValue: 0,
     };
     const latest = latestByProfessional.get(professionalId);
 
@@ -649,6 +844,10 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       : aggregate.rowsCount > 0
         ? 'SUCCESS'
         : 'NOT_PROCESSED';
+    const repasseTotalConsolidadoTabela = totalConsolidadoTabelaByProfessional.get(professionalId) || 0;
+    const repasseTotalConsolidadoAConferir = aggregate.consolidadoValue;
+    const divergenciaValue = repasseTotalConsolidadoTabela - repasseTotalConsolidadoAConferir;
+    const hasDivergencia = Math.abs(divergenciaValue) > 0.01;
 
     return {
       professionalId,
@@ -656,6 +855,16 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       status,
       rowsCount: aggregate.rowsCount,
       totalValue: aggregate.totalValue,
+      consolidadoQty: aggregate.consolidadoQty,
+      consolidadoValue: aggregate.consolidadoValue,
+      naoConsolidadoQty: aggregate.naoConsolidadoQty,
+      naoConsolidadoValue: aggregate.naoConsolidadoValue,
+      naoRecebidoQty: aggregate.naoRecebidoQty,
+      naoRecebidoValue: aggregate.naoRecebidoValue,
+      repasseTotalConsolidadoTabela,
+      repasseTotalConsolidadoAConferir,
+      hasDivergencia,
+      divergenciaValue,
       lastProcessedAt: latest?.updatedAt || null,
       errorMessage: status === 'ERROR' ? latest?.errorMessage || null : null,
       note: noteByProfessional.get(professionalId)?.note || null,
@@ -664,10 +873,38 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
     };
   });
 
-  const stats = items.reduce(
+  let filteredItems = items;
+  if (hasPaymentMinimumFilter === 'yes') {
+    filteredItems = filteredItems.filter((item) => Boolean(clean(item.paymentMinimumText)));
+  } else if (hasPaymentMinimumFilter === 'no') {
+    filteredItems = filteredItems.filter((item) => !clean(item.paymentMinimumText));
+  }
+
+  if (consolidacaoStatusFilter === 'consolidado') {
+    filteredItems = filteredItems.filter((item) => item.consolidadoQty > 0);
+  } else if (consolidacaoStatusFilter === 'nao_consolidado') {
+    filteredItems = filteredItems.filter((item) => item.naoConsolidadoQty > 0);
+  } else if (consolidacaoStatusFilter === 'nao_recebido') {
+    filteredItems = filteredItems.filter((item) => item.naoRecebidoQty > 0);
+  }
+
+  if (hasDivergenceFilter === 'yes') {
+    filteredItems = filteredItems.filter((item) => item.hasDivergencia);
+  } else if (hasDivergenceFilter === 'no') {
+    filteredItems = filteredItems.filter((item) => !item.hasDivergencia);
+  }
+
+  const stats = filteredItems.reduce(
     (acc, item) => {
       acc.totalRows += item.rowsCount;
       acc.totalValue += item.totalValue;
+      acc.consolidadoQty += item.consolidadoQty;
+      acc.consolidadoValue += item.consolidadoValue;
+      acc.naoConsolidadoQty += item.naoConsolidadoQty;
+      acc.naoConsolidadoValue += item.naoConsolidadoValue;
+      acc.naoRecebidoQty += item.naoRecebidoQty;
+      acc.naoRecebidoValue += item.naoRecebidoValue;
+      if (item.hasDivergencia) acc.divergenceCount += 1;
       if (item.status === 'SUCCESS') acc.success += 1;
       else if (item.status === 'NO_DATA') acc.noData += 1;
       else if (item.status === 'SKIPPED') acc.skipped += 1;
@@ -676,7 +913,7 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       return acc;
     },
     {
-      totalProfessionals: items.length,
+      totalProfessionals: filteredItems.length,
       success: 0,
       noData: 0,
       skipped: 0,
@@ -684,10 +921,17 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       notProcessed: 0,
       totalRows: 0,
       totalValue: 0,
+      consolidadoQty: 0,
+      consolidadoValue: 0,
+      naoConsolidadoQty: 0,
+      naoConsolidadoValue: 0,
+      naoRecebidoQty: 0,
+      naoRecebidoValue: 0,
+      divergenceCount: 0,
     }
   );
 
-  return { items, stats };
+  return { items: filteredItems, stats };
 };
 
 export const ensureRepasseTables = async (db: DbInterface) => {
@@ -1064,6 +1308,41 @@ export const ensureRepasseConsolidacaoTables = async (db: DbInterface) => {
   await safeExecute(
     db,
     `CREATE INDEX idx_repasse_consolidacao_notes_prof ON repasse_consolidacao_notes(professional_id)`
+  );
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_consolidacao_line_marks (
+      period_ref VARCHAR(7) NOT NULL,
+      professional_id VARCHAR(64) NOT NULL,
+      source_row_hash VARCHAR(64) NOT NULL,
+      user_id VARCHAR(64) NOT NULL,
+      color_key VARCHAR(16) NOT NULL,
+      note TEXT,
+      updated_at VARCHAR(32) NOT NULL,
+      PRIMARY KEY (period_ref, professional_id, source_row_hash, user_id)
+    )
+  `);
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_consolidacao_line_marks_user ON repasse_consolidacao_line_marks(user_id, updated_at)`
+  );
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_consolidacao_line_marks_period_prof ON repasse_consolidacao_line_marks(period_ref, professional_id)`
+  );
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_consolidacao_mark_legends (
+      user_id VARCHAR(64) NOT NULL,
+      color_key VARCHAR(16) NOT NULL,
+      label VARCHAR(120) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL,
+      PRIMARY KEY (user_id, color_key)
+    )
+  `);
+  await safeExecute(
+    db,
+    `CREATE INDEX idx_repasse_consolidacao_legends_updated ON repasse_consolidacao_mark_legends(updated_at)`
   );
 
   repasseConsolidacaoTablesEnsured = true;
@@ -1897,10 +2176,27 @@ export const listRepasseConsolidacaoProfessionalSummaries = async (
   const periodRef = normalizePeriodRef(filters.periodRef);
   const search = clean(filters.search);
   const statusFilter = normalizeConsolidacaoProfessionalStatusFilter(filters.status);
+  const hasPaymentMinimum = normalizeBooleanFilter(filters.hasPaymentMinimum);
+  const consolidacaoStatus = normalizeConsolidacaoStatusFilter(filters.consolidacaoStatus);
+  const hasDivergence = normalizeBooleanFilter(filters.hasDivergence);
+  const attendanceDateStart = filters.attendanceDateStart
+    ? normalizeIsoDate(filters.attendanceDateStart)
+    : null;
+  const attendanceDateEnd = filters.attendanceDateEnd ? normalizeIsoDate(filters.attendanceDateEnd) : null;
+  const patientName = clean(filters.patientName);
   const page = normalizePage(filters.page);
   const pageSize = normalizeLimit(filters.pageSize, 50);
 
-  const loaded = await loadRepasseConsolidacaoProfessionalSummaries(db, { periodRef, search });
+  const loaded = await loadRepasseConsolidacaoProfessionalSummaries(db, {
+    periodRef,
+    search,
+    hasPaymentMinimum,
+    consolidacaoStatus,
+    hasDivergence,
+    attendanceDateStart,
+    attendanceDateEnd,
+    patientName,
+  });
   const allItems = loaded.items;
   const stats = loaded.stats;
 
@@ -1908,6 +2204,46 @@ export const listRepasseConsolidacaoProfessionalSummaries = async (
     statusFilter === 'all'
       ? allItems
       : allItems.filter((item) => item.status.toLowerCase() === statusFilter);
+
+  const resolvedStats =
+    statusFilter === 'all'
+      ? stats
+      : filteredItems.reduce(
+          (acc, item) => {
+            acc.totalRows += item.rowsCount;
+            acc.totalValue += item.totalValue;
+            acc.consolidadoQty += item.consolidadoQty;
+            acc.consolidadoValue += item.consolidadoValue;
+            acc.naoConsolidadoQty += item.naoConsolidadoQty;
+            acc.naoConsolidadoValue += item.naoConsolidadoValue;
+            acc.naoRecebidoQty += item.naoRecebidoQty;
+            acc.naoRecebidoValue += item.naoRecebidoValue;
+            if (item.hasDivergencia) acc.divergenceCount += 1;
+            if (item.status === 'SUCCESS') acc.success += 1;
+            else if (item.status === 'NO_DATA') acc.noData += 1;
+            else if (item.status === 'SKIPPED') acc.skipped += 1;
+            else if (item.status === 'ERROR') acc.error += 1;
+            else acc.notProcessed += 1;
+            return acc;
+          },
+          {
+            totalProfessionals: filteredItems.length,
+            success: 0,
+            noData: 0,
+            skipped: 0,
+            error: 0,
+            notProcessed: 0,
+            totalRows: 0,
+            totalValue: 0,
+            consolidadoQty: 0,
+            consolidadoValue: 0,
+            naoConsolidadoQty: 0,
+            naoConsolidadoValue: 0,
+            naoRecebidoQty: 0,
+            naoRecebidoValue: 0,
+            divergenceCount: 0,
+          }
+        );
 
   const total = filteredItems.length;
   const start = (page - 1) * pageSize;
@@ -1919,21 +2255,49 @@ export const listRepasseConsolidacaoProfessionalSummaries = async (
     total,
     page,
     pageSize,
-    stats,
+    stats: resolvedStats,
   };
 };
 
 export const listRepasseConsolidacaoProfessionalIds = async (
   db: DbInterface,
-  filters: Pick<RepasseConsolidacaoProfessionalListFilters, 'periodRef' | 'search' | 'status'> = {}
+  filters: Pick<
+    RepasseConsolidacaoProfessionalListFilters,
+    | 'periodRef'
+    | 'search'
+    | 'status'
+    | 'hasPaymentMinimum'
+    | 'consolidacaoStatus'
+    | 'hasDivergence'
+    | 'attendanceDateStart'
+    | 'attendanceDateEnd'
+    | 'patientName'
+  > = {}
 ): Promise<string[]> => {
   await ensureRepasseConsolidacaoTables(db);
 
   const periodRef = normalizePeriodRef(filters.periodRef);
   const search = clean(filters.search);
   const statusFilter = normalizeConsolidacaoProfessionalStatusFilter(filters.status);
+  const hasPaymentMinimum = normalizeBooleanFilter(filters.hasPaymentMinimum);
+  const consolidacaoStatus = normalizeConsolidacaoStatusFilter(filters.consolidacaoStatus);
+  const hasDivergence = normalizeBooleanFilter(filters.hasDivergence);
+  const attendanceDateStart = filters.attendanceDateStart
+    ? normalizeIsoDate(filters.attendanceDateStart)
+    : null;
+  const attendanceDateEnd = filters.attendanceDateEnd ? normalizeIsoDate(filters.attendanceDateEnd) : null;
+  const patientName = clean(filters.patientName);
 
-  const loaded = await loadRepasseConsolidacaoProfessionalSummaries(db, { periodRef, search });
+  const loaded = await loadRepasseConsolidacaoProfessionalSummaries(db, {
+    periodRef,
+    search,
+    hasPaymentMinimum,
+    consolidacaoStatus,
+    hasDivergence,
+    attendanceDateStart,
+    attendanceDateEnd,
+    patientName,
+  });
   const filteredItems =
     statusFilter === 'all'
       ? loaded.items
@@ -1993,6 +2357,7 @@ export const listRepasseAConferirLinesByProfessional = async (
   const rows = await db.query(
     `
     SELECT
+      source_row_hash,
       invoice_id,
       execution_date,
       patient_name,
@@ -2017,7 +2382,24 @@ export const listRepasseAConferirLinesByProfessional = async (
     [periodRef, professionalId]
   );
 
+  const consolidatedRows = await db.query(
+    `
+    SELECT data_exec, paciente, descricao
+    FROM feegow_repasse_consolidado
+    WHERE period_ref = ?
+      AND professional_id = ?
+      AND is_active = 1
+    `,
+    [periodRef, professionalId]
+  );
+  const consolidatedKeys = new Set(
+    consolidatedRows.map((row) =>
+      buildConsolidadoMatchKey((row as any).data_exec, (row as any).paciente, (row as any).descricao)
+    )
+  );
+
   return rows.map((row) => ({
+    sourceRowHash: clean((row as any).source_row_hash),
     invoiceId: clean((row as any).invoice_id),
     executionDate: clean((row as any).execution_date),
     patientName: clean((row as any).patient_name),
@@ -2033,6 +2415,13 @@ export const listRepasseAConferirLinesByProfessional = async (
     roleName: clean((row as any).role_name),
     detailProfessionalName: clean((row as any).detail_professional_name),
     detailRepasseValue: Number((row as any).detail_repasse_value) || 0,
+    isInConsolidado: consolidatedKeys.has(
+      buildConsolidadoMatchKey(
+        (row as any).execution_date,
+        (row as any).patient_name,
+        (row as any).procedure_name
+      )
+    ),
   }));
 };
 
@@ -2139,4 +2528,182 @@ export const getRepasseConsolidacaoNote = async (
     note: clean((rows[0] as any).note) || null,
     internalNote: clean((rows[0] as any).internal_note) || null,
   };
+};
+
+const defaultConsolidacaoLegend: RepasseConsolidacaoMarkLegend = {
+  green: 'OK',
+  yellow: 'Revisar',
+  red: 'Problema',
+};
+
+export const getRepasseConsolidacaoMarkLegend = async (
+  db: DbInterface,
+  userIdRaw: string
+): Promise<RepasseConsolidacaoMarkLegend> => {
+  await ensureRepasseConsolidacaoTables(db);
+  const userId = clean(userIdRaw);
+  if (!userId) return { ...defaultConsolidacaoLegend };
+
+  const rows = await db.query(
+    `
+    SELECT color_key, label
+    FROM repasse_consolidacao_mark_legends
+    WHERE user_id = ?
+    `,
+    [userId]
+  );
+
+  const legend: RepasseConsolidacaoMarkLegend = { ...defaultConsolidacaoLegend };
+  for (const row of rows) {
+    const color = normalizeLineMarkColor((row as any).color_key);
+    if (!color) continue;
+    const label = clean((row as any).label);
+    legend[color] = label || defaultConsolidacaoLegend[color];
+  }
+  return legend;
+};
+
+export const upsertRepasseConsolidacaoMarkLegend = async (
+  db: DbInterface,
+  userIdRaw: string,
+  input: Partial<RepasseConsolidacaoMarkLegend>
+): Promise<RepasseConsolidacaoMarkLegend> => {
+  await ensureRepasseConsolidacaoTables(db);
+  const userId = clean(userIdRaw);
+  if (!userId) throw new RepasseValidationError('Usuario invalido para salvar legenda.');
+  const now = nowIso();
+
+  const entries = (Object.keys(defaultConsolidacaoLegend) as Array<keyof RepasseConsolidacaoMarkLegend>)
+    .filter((color) => Object.prototype.hasOwnProperty.call(input, color))
+    .map((color) => [color, clean(input[color]) || defaultConsolidacaoLegend[color]] as const);
+
+  if (!entries.length) {
+    throw new RepasseValidationError('Informe ao menos uma legenda para atualizar.');
+  }
+
+  for (const [color, label] of entries) {
+    await db.execute(
+      `
+      INSERT INTO repasse_consolidacao_mark_legends (user_id, color_key, label, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        label = ?,
+        updated_at = ?
+      `,
+      [userId, color, label, now, label, now]
+    );
+  }
+
+  return getRepasseConsolidacaoMarkLegend(db, userId);
+};
+
+export const listRepasseConsolidacaoLineMarks = async (
+  db: DbInterface,
+  input: {
+    periodRef?: string;
+    professionalId: string;
+    userId: string;
+  }
+): Promise<RepasseConsolidacaoLineMark[]> => {
+  await ensureRepasseConsolidacaoTables(db);
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalId = clean(input.professionalId);
+  const userId = clean(input.userId);
+  if (!professionalId || !userId) return [];
+
+  const rows = await db.query(
+    `
+    SELECT source_row_hash, color_key, note, updated_at
+    FROM repasse_consolidacao_line_marks
+    WHERE period_ref = ?
+      AND professional_id = ?
+      AND user_id = ?
+    `,
+    [periodRef, professionalId, userId]
+  );
+
+  return rows
+    .map((row) => {
+      const color = normalizeLineMarkColor((row as any).color_key);
+      if (!color) return null;
+      return {
+        sourceRowHash: clean((row as any).source_row_hash),
+        colorKey: color,
+        note: clean((row as any).note) || null,
+        updatedAt: clean((row as any).updated_at),
+      } as RepasseConsolidacaoLineMark;
+    })
+    .filter((row): row is RepasseConsolidacaoLineMark => Boolean(row && row.sourceRowHash));
+};
+
+export const upsertRepasseConsolidacaoLineMarks = async (
+  db: DbInterface,
+  input: {
+    periodRef?: string;
+    professionalId: string;
+    userId: string;
+    marks: Array<{
+      sourceRowHash: string;
+      colorKey?: RepasseConsolidacaoLineMarkColor | null;
+      note?: string | null;
+    }>;
+  }
+): Promise<RepasseConsolidacaoLineMark[]> => {
+  await ensureRepasseConsolidacaoTables(db);
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalId = clean(input.professionalId);
+  const userId = clean(input.userId);
+  if (!professionalId || !userId) {
+    throw new RepasseValidationError('Profissional/usuario invalido para salvar marcacoes.');
+  }
+  if (!Array.isArray(input.marks) || input.marks.length === 0) {
+    throw new RepasseValidationError('Nenhuma marcacao informada.');
+  }
+
+  const now = nowIso();
+  for (const entry of input.marks) {
+    const sourceRowHash = clean(entry?.sourceRowHash);
+    if (!sourceRowHash) continue;
+    const color = normalizeLineMarkColor(entry?.colorKey);
+    const note = clean(entry?.note) || null;
+    if (!color) {
+      await db.execute(
+        `
+        DELETE FROM repasse_consolidacao_line_marks
+        WHERE period_ref = ?
+          AND professional_id = ?
+          AND user_id = ?
+          AND source_row_hash = ?
+        `,
+        [periodRef, professionalId, userId, sourceRowHash]
+      );
+      continue;
+    }
+
+    await db.execute(
+      `
+      INSERT INTO repasse_consolidacao_line_marks (
+        period_ref, professional_id, source_row_hash, user_id, color_key, note, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        color_key = ?,
+        note = ?,
+        updated_at = ?
+      `,
+      [
+        periodRef,
+        professionalId,
+        sourceRowHash,
+        userId,
+        color,
+        note,
+        now,
+        color,
+        note,
+        now,
+      ]
+    );
+  }
+
+  return listRepasseConsolidacaoLineMarks(db, { periodRef, professionalId, userId });
 };

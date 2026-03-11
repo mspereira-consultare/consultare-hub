@@ -147,12 +147,30 @@ export type RepasseConsolidacaoProfessionalStatusFilter =
   | 'error'
   | 'not_processed';
 
+export type RepasseConsolidacaoStatusFilter =
+  | 'all'
+  | 'consolidado'
+  | 'nao_consolidado'
+  | 'nao_recebido';
+
+export type RepasseConsolidacaoBooleanFilter = 'all' | 'yes' | 'no';
+
 export type RepasseConsolidacaoProfessionalSummary = {
   professionalId: string;
   professionalName: string;
   status: RepasseConsolidacaoProfessionalStatus;
   rowsCount: number;
   totalValue: number;
+  consolidadoQty: number;
+  consolidadoValue: number;
+  naoConsolidadoQty: number;
+  naoConsolidadoValue: number;
+  naoRecebidoQty: number;
+  naoRecebidoValue: number;
+  repasseTotalConsolidadoTabela: number;
+  repasseTotalConsolidadoAConferir: number;
+  hasDivergencia: boolean;
+  divergenciaValue: number;
   lastProcessedAt: string | null;
   errorMessage: string | null;
   note: string | null;
@@ -169,6 +187,13 @@ export type RepasseConsolidacaoProfessionalStats = {
   notProcessed: number;
   totalRows: number;
   totalValue: number;
+  consolidadoQty: number;
+  consolidadoValue: number;
+  naoConsolidadoQty: number;
+  naoConsolidadoValue: number;
+  naoRecebidoQty: number;
+  naoRecebidoValue: number;
+  divergenceCount: number;
 };
 
 export type RepasseConsolidacaoProfessionalListResult = {
@@ -183,11 +208,18 @@ export type RepasseConsolidacaoProfessionalListFilters = {
   periodRef?: string;
   search?: string;
   status?: RepasseConsolidacaoProfessionalStatusFilter;
+  hasPaymentMinimum?: RepasseConsolidacaoBooleanFilter;
+  consolidacaoStatus?: RepasseConsolidacaoStatusFilter;
+  hasDivergence?: RepasseConsolidacaoBooleanFilter;
+  attendanceDateStart?: string;
+  attendanceDateEnd?: string;
+  patientName?: string;
   page?: number;
   pageSize?: number;
 };
 
 export type RepasseAConferirLine = {
+  sourceRowHash: string;
   invoiceId: string;
   executionDate: string;
   patientName: string;
@@ -203,6 +235,22 @@ export type RepasseAConferirLine = {
   roleName: string;
   detailProfessionalName: string;
   detailRepasseValue: number;
+  isInConsolidado: boolean;
+};
+
+export type RepasseConsolidacaoLineMarkColor = 'green' | 'yellow' | 'red';
+
+export type RepasseConsolidacaoLineMark = {
+  sourceRowHash: string;
+  colorKey: RepasseConsolidacaoLineMarkColor;
+  note: string | null;
+  updatedAt: string;
+};
+
+export type RepasseConsolidacaoMarkLegend = {
+  green: string;
+  yellow: string;
+  red: string;
 };
 
 export type RepassePdfArtifact = {

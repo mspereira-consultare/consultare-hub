@@ -5,11 +5,16 @@ import { useSession } from "next-auth/react";
 import { AlertCircle, FileText, Loader2, RefreshCw, Users } from "lucide-react";
 import { hasPermission } from "@/lib/permissions";
 import { isRepassesModuleEnabledClient } from "@/lib/repasses/feature";
+import type {
+  RepasseConsolidacaoLineMarkColor,
+  RepasseConsolidacaoMarkLegend,
+} from "@/lib/repasses/types";
 import { JobHistoryTable } from "./components/JobHistoryTable";
 import { ProfessionalDetailsModal } from "./components/ProfessionalDetailsModal";
 import { ProfessionalSummaryTable } from "./components/ProfessionalSummaryTable";
+import { RepassesFiltersPanel } from "./components/RepassesFiltersPanel";
 
-type SyncJob = {
+type JobRow = {
   id: string;
   periodRef: string;
   scope?: "all" | "single" | "multi";
@@ -22,51 +27,75 @@ type SyncJob = {
   error: string | null;
 };
 
-type PdfJob = {
-  id: string;
-  periodRef: string;
-  scope: string;
-  status: string;
-  requestedBy: string;
-  createdAt: string;
-  startedAt: string | null;
-  finishedAt: string | null;
-  error: string | null;
-};
-
-type ProfessionalStatusFilter = "all" | "success" | "no_data" | "error" | "not_processed";
+type ProfessionalStatusFilter = "all" | "success" | "no_data" | "skipped" | "error" | "not_processed";
+type BooleanFilter = "all" | "yes" | "no";
+type ConsolidacaoStatusFilter = "all" | "consolidado" | "nao_consolidado" | "nao_recebido";
 
 type ProfessionalSummary = {
   professionalId: string;
   professionalName: string;
-  status: "SUCCESS" | "NO_DATA" | "ERROR" | "NOT_PROCESSED";
+  status: "SUCCESS" | "NO_DATA" | "SKIPPED" | "ERROR" | "NOT_PROCESSED";
   rowsCount: number;
   totalValue: number;
+  consolidadoQty: number;
+  consolidadoValue: number;
+  naoConsolidadoQty: number;
+  naoConsolidadoValue: number;
+  naoRecebidoQty: number;
+  naoRecebidoValue: number;
+  repasseTotalConsolidadoTabela: number;
+  repasseTotalConsolidadoAConferir: number;
+  hasDivergencia: boolean;
+  divergenciaValue: number;
   lastProcessedAt: string | null;
   errorMessage: string | null;
   note: string | null;
+  internalNote: string | null;
   paymentMinimumText: string | null;
-  lastPdfAt: string | null;
-  lastPdfArtifactId: string | null;
 };
 
 type RepasseLine = {
-  dataExec: string;
-  paciente: string;
-  descricao: string;
-  funcao: string;
-  convenio: string;
-  repasseValue: number;
+  sourceRowHash: string;
+  invoiceId: string;
+  executionDate: string;
+  patientName: string;
+  unitName: string;
+  accountDate: string;
+  requesterName: string;
+  specialtyName: string;
+  procedureName: string;
+  attendanceValue: number;
+  detailStatus: string;
+  detailStatusText: string;
+  roleCode: string;
+  roleName: string;
+  detailProfessionalName: string;
+  detailRepasseValue: number;
+  isInConsolidado: boolean;
 };
 
 type ProfessionalStats = {
   totalProfessionals: number;
   success: number;
   noData: number;
+  skipped: number;
   error: number;
   notProcessed: number;
   totalRows: number;
   totalValue: number;
+  consolidadoQty: number;
+  consolidadoValue: number;
+  naoConsolidadoQty: number;
+  naoConsolidadoValue: number;
+  naoRecebidoQty: number;
+  naoRecebidoValue: number;
+  divergenceCount: number;
+};
+
+const defaultLegend: RepasseConsolidacaoMarkLegend = {
+  green: "OK",
+  yellow: "Revisar",
+  red: "Problema",
 };
 
 const previousMonthRef = () => {
@@ -85,16 +114,6 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   });
 
-const statusOptions: Array<{ value: ProfessionalStatusFilter; label: string }> = [
-  { value: "all", label: "Todos" },
-  { value: "success", label: "Com dados" },
-  { value: "no_data", label: "Sem produção" },
-  { value: "error", label: "Com erro" },
-  { value: "not_processed", label: "Não processados" },
-];
-
-const pageSizeOptions = [100, 200, 300, 500];
-
 export default function RepassesPage() {
   const moduleEnabled = isRepassesModuleEnabledClient();
   const { data: session } = useSession();
@@ -106,18 +125,27 @@ export default function RepassesPage() {
 
   const [periodRef, setPeriodRef] = useState(previousMonthRef());
   const [statusFilter, setStatusFilter] = useState<ProfessionalStatusFilter>("all");
+  const [hasPaymentMinimum, setHasPaymentMinimum] = useState<BooleanFilter>("all");
+  const [consolidacaoStatus, setConsolidacaoStatus] = useState<ConsolidacaoStatusFilter>("all");
+  const [hasDivergence, setHasDivergence] = useState<BooleanFilter>("all");
+  const [attendanceDateStart, setAttendanceDateStart] = useState("");
+  const [attendanceDateEnd, setAttendanceDateEnd] = useState("");
   const [searchDraft, setSearchDraft] = useState("");
   const [search, setSearch] = useState("");
+  const [patientNameDraft, setPatientNameDraft] = useState("");
+  const [patientName, setPatientName] = useState("");
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(300);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectingAll, setSelectingAll] = useState(false);
-  const [showSyncHistoryModal, setShowSyncHistoryModal] = useState(false);
+  const [showRefreshHistoryModal, setShowRefreshHistoryModal] = useState(false);
   const [showPdfHistoryModal, setShowPdfHistoryModal] = useState(false);
 
-  const [syncJobs, setSyncJobs] = useState<SyncJob[]>([]);
-  const [pdfJobs, setPdfJobs] = useState<PdfJob[]>([]);
+  const [syncJobs, setSyncJobs] = useState<JobRow[]>([]);
+  const [consolidacaoJobs, setConsolidacaoJobs] = useState<JobRow[]>([]);
+  const [pdfJobs, setPdfJobs] = useState<JobRow[]>([]);
 
   const [items, setItems] = useState<ProfessionalSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -125,23 +153,44 @@ export default function RepassesPage() {
     totalProfessionals: 0,
     success: 0,
     noData: 0,
+    skipped: 0,
     error: 0,
     notProcessed: 0,
     totalRows: 0,
     totalValue: 0,
+    consolidadoQty: 0,
+    consolidadoValue: 0,
+    naoConsolidadoQty: 0,
+    naoConsolidadoValue: 0,
+    naoRecebidoQty: 0,
+    naoRecebidoValue: 0,
+    divergenceCount: 0,
   });
+
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [internalNoteDrafts, setInternalNoteDrafts] = useState<Record<string, string>>({});
   const [savingNoteById, setSavingNoteById] = useState<Record<string, boolean>>({});
+
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsItem, setDetailsItem] = useState<ProfessionalSummary | null>(null);
   const [detailRows, setDetailRows] = useState<RepasseLine[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
 
+  const [legend, setLegend] = useState<RepasseConsolidacaoMarkLegend>({ ...defaultLegend });
+  const [legendDirty, setLegendDirty] = useState(false);
+  const [savingLegend, setSavingLegend] = useState(false);
+  const [marksByRowHash, setMarksByRowHash] = useState<
+    Record<string, RepasseConsolidacaoLineMarkColor | null>
+  >({});
+  const [markChanges, setMarkChanges] = useState<
+    Record<string, { sourceRowHash: string; colorKey: RepasseConsolidacaoLineMarkColor | null }>
+  >({});
+  const [savingMarks, setSavingMarks] = useState(false);
+
   const [loadingJobs, setLoadingJobs] = useState(false);
   const [loadingProfessionals, setLoadingProfessionals] = useState(false);
-  const [creatingSync, setCreatingSync] = useState(false);
+  const [creatingRefresh, setCreatingRefresh] = useState(false);
   const [creatingPdf, setCreatingPdf] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -155,23 +204,55 @@ export default function RepassesPage() {
   const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
   const selectedCount = selectedIdsArray.length;
 
+  const buildCommonFilters = useCallback(() => {
+    return {
+      periodRef,
+      search,
+      status: statusFilter,
+      hasPaymentMinimum,
+      consolidacaoStatus,
+      hasDivergence,
+      attendanceDateStart,
+      attendanceDateEnd,
+      patientName,
+    };
+  }, [
+    periodRef,
+    search,
+    statusFilter,
+    hasPaymentMinimum,
+    consolidacaoStatus,
+    hasDivergence,
+    attendanceDateStart,
+    attendanceDateEnd,
+    patientName,
+  ]);
+
   const fetchJobs = useCallback(async () => {
     if (!canView) return;
     setLoadingJobs(true);
     try {
       const qs = new URLSearchParams({ periodRef, limit: "30" }).toString();
-      const [syncRes, pdfRes] = await Promise.all([
+      const [syncRes, consolidacaoRes, pdfRes] = await Promise.all([
         fetch(`/api/admin/repasses/jobs?${qs}`, { cache: "no-store" }),
+        fetch(`/api/admin/repasses/consolidacao/jobs?${qs}`, { cache: "no-store" }),
         fetch(`/api/admin/repasses/pdf-jobs?${qs}`, { cache: "no-store" }),
       ]);
 
       const syncData = await syncRes.json().catch(() => ({}));
+      const consolidacaoData = await consolidacaoRes.json().catch(() => ({}));
       const pdfData = await pdfRes.json().catch(() => ({}));
 
       if (!syncRes.ok) throw new Error(syncData?.error || "Falha ao carregar histórico de atualização.");
+      if (!consolidacaoRes.ok) {
+        throw new Error(consolidacaoData?.error || "Falha ao carregar histórico de consolidação.");
+      }
       if (!pdfRes.ok) throw new Error(pdfData?.error || "Falha ao carregar histórico de relatórios.");
 
       setSyncJobs(Array.isArray(syncData?.data?.items) ? syncData.data.items : []);
+      setConsolidacaoJobs(
+        Array.isArray(consolidacaoData?.data?.items) ? consolidacaoData.data.items : []
+      );
       setPdfJobs(Array.isArray(pdfData?.data?.items) ? pdfData.data.items : []);
     } finally {
       setLoadingJobs(false);
@@ -183,14 +264,14 @@ export default function RepassesPage() {
     setLoadingProfessionals(true);
     try {
       const qs = new URLSearchParams({
-        periodRef,
-        search,
-        status: statusFilter,
+        ...buildCommonFilters(),
         page: String(page),
         pageSize: String(pageSize),
       }).toString();
 
-      const res = await fetch(`/api/admin/repasses/professionals?${qs}`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/repasses/consolidacao/professionals?${qs}`, {
+        cache: "no-store",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Falha ao carregar resumo por profissional.");
 
@@ -202,18 +283,33 @@ export default function RepassesPage() {
           totalProfessionals: 0,
           success: 0,
           noData: 0,
+          skipped: 0,
           error: 0,
           notProcessed: 0,
           totalRows: 0,
           totalValue: 0,
+          consolidadoQty: 0,
+          consolidadoValue: 0,
+          naoConsolidadoQty: 0,
+          naoConsolidadoValue: 0,
+          naoRecebidoQty: 0,
+          naoRecebidoValue: 0,
+          divergenceCount: 0,
         }
       );
 
       setNoteDrafts((prev) => {
         const next = { ...prev };
         for (const item of loadedItems) {
+          if (next[item.professionalId] === undefined) next[item.professionalId] = item.note || "";
+        }
+        return next;
+      });
+      setInternalNoteDrafts((prev) => {
+        const next = { ...prev };
+        for (const item of loadedItems) {
           if (next[item.professionalId] === undefined) {
-            next[item.professionalId] = item.note || "";
+            next[item.professionalId] = item.internalNote || "";
           }
         }
         return next;
@@ -221,7 +317,7 @@ export default function RepassesPage() {
     } finally {
       setLoadingProfessionals(false);
     }
-  }, [canView, page, pageSize, periodRef, search, statusFilter]);
+  }, [buildCommonFilters, canView, page, pageSize]);
 
   const refreshAll = useCallback(async () => {
     setError("");
@@ -236,6 +332,7 @@ export default function RepassesPage() {
   const applySearch = () => {
     setPage(1);
     setSearch(searchDraft.trim());
+    setPatientName(patientNameDraft.trim());
   };
 
   const toggleRowSelection = (professionalId: string, checked: boolean) => {
@@ -269,11 +366,11 @@ export default function RepassesPage() {
     try {
       const qs = new URLSearchParams({
         mode: "ids",
-        periodRef,
-        search,
-        status: statusFilter,
+        ...buildCommonFilters(),
       }).toString();
-      const res = await fetch(`/api/admin/repasses/professionals?${qs}`, { cache: "no-store" });
+      const res = await fetch(`/api/admin/repasses/consolidacao/professionals?${qs}`, {
+        cache: "no-store",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Falha ao selecionar profissionais.");
       const ids = Array.isArray(data?.data?.items)
@@ -288,41 +385,43 @@ export default function RepassesPage() {
     }
   };
 
-  const createSyncJob = async () => {
+  const createRefreshJobs = async () => {
     if (!canRefresh) return;
     if (selectedCount < 1) {
       setError("Selecione ao menos 1 profissional para atualizar.");
       return;
     }
-    setCreatingSync(true);
+    setCreatingRefresh(true);
     setError("");
     setNotice("");
     try {
-      const scope = selectedCount === 1 ? "single" : "multi";
-      const res = await fetch("/api/admin/repasses/jobs", {
+      const res = await fetch("/api/admin/repasses/refresh", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           periodRef,
-          scope,
           professionalIds: selectedIdsArray,
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao iniciar atualização de repasses.");
-      setNotice(`Atualização de repasses solicitada para ${selectedCount} profissional(is).`);
+      if (!res.ok) throw new Error(data?.error || "Falha ao solicitar atualização de repasses.");
+      const syncId = String(data?.data?.syncJob?.id || "-");
+      const consolidacaoId = String(data?.data?.consolidacaoJob?.id || "-");
+      setNotice(
+        `Atualização solicitada para ${selectedCount} profissional(is). Jobs: sincronização ${syncId} | consolidação ${consolidacaoId}.`
+      );
       await fetchJobs();
     } catch (e: any) {
-      setError(e?.message || "Erro ao criar job de atualização.");
+      setError(e?.message || "Erro ao criar jobs de atualização.");
     } finally {
-      setCreatingSync(false);
+      setCreatingRefresh(false);
     }
   };
 
   const createPdfJob = async () => {
     if (!canEdit) return;
     if (selectedCount < 1) {
-      setError("Selecione ao menos 1 profissional para gerar relatorio.");
+      setError("Selecione ao menos 1 profissional para gerar relatório.");
       return;
     }
     setCreatingPdf(true);
@@ -340,7 +439,7 @@ export default function RepassesPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao criar job de relatorio.");
+      if (!res.ok) throw new Error(data?.error || "Falha ao criar job de relatório.");
 
       const processRes = await fetch("/api/admin/repasses/pdf-jobs/process", {
         method: "POST",
@@ -348,25 +447,15 @@ export default function RepassesPage() {
         body: JSON.stringify({ maxJobs: 1 }),
       });
       const processData = await processRes.json().catch(() => ({}));
-      if (!processRes.ok) {
-        throw new Error(processData?.error || "Falha ao gerar relatorio.");
-      }
+      if (!processRes.ok) throw new Error(processData?.error || "Falha ao gerar relatório.");
 
       const generated = Number(processData?.data?.generatedFiles || 0);
       const processed = Number(processData?.data?.processedJobs || 0);
       const failed = Number(processData?.data?.failedJobs || 0);
-      const details = Array.isArray(processData?.data?.details) ? processData.data.details : [];
-      if (failed > 0) {
-        setError(
-          `Falha na geracao de ${failed} job(s). ${
-            details.length ? String(details[0]) : "Verifique o historico de jobs."
-          }`
-        );
-      }
-      setNotice(`Geracao concluida. Jobs: ${processed} | Arquivos: ${generated} | Falhas: ${failed}.`);
-      await refreshAll();
+      setNotice(`Geração concluída. Jobs: ${processed} | Arquivos: ${generated} | Falhas: ${failed}.`);
+      await fetchJobs();
     } catch (e: any) {
-      setError(e?.message || "Erro ao gerar relatorio.");
+      setError(e?.message || "Erro ao gerar relatório.");
     } finally {
       setCreatingPdf(false);
     }
@@ -379,7 +468,7 @@ export default function RepassesPage() {
     setSavingNoteById((prev) => ({ ...prev, [professionalId]: true }));
     setError("");
     try {
-      const res = await fetch("/api/admin/repasses/notes", {
+      const res = await fetch("/api/admin/repasses/consolidacao/notes", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -390,7 +479,7 @@ export default function RepassesPage() {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao salvar observacoes.");
+      if (!res.ok) throw new Error(data?.error || "Falha ao salvar observações.");
 
       setItems((prev) =>
         prev.map((item) =>
@@ -398,16 +487,100 @@ export default function RepassesPage() {
             ? {
                 ...item,
                 note: note.trim() || null,
+                internalNote: internalNote.trim() || null,
               }
             : item
         )
       );
-      setNotice("Observacoes salvas.");
+      setNotice("Observações salvas.");
     } catch (e: any) {
-      setError(e?.message || "Erro ao salvar observacoes.");
+      setError(e?.message || "Erro ao salvar observações.");
     } finally {
       setSavingNoteById((prev) => ({ ...prev, [professionalId]: false }));
     }
+  };
+
+  const loadDetails = async (item: ProfessionalSummary) => {
+    const qs = new URLSearchParams({ periodRef }).toString();
+    const [detailsRes, marksRes, legendRes] = await Promise.all([
+      fetch(`/api/admin/repasses/consolidacao/professionals/${encodeURIComponent(item.professionalId)}/details?${qs}`, {
+        cache: "no-store",
+      }),
+      fetch(
+        `/api/admin/repasses/consolidacao/marks?${new URLSearchParams({
+          periodRef,
+          professionalId: item.professionalId,
+        }).toString()}`,
+        { cache: "no-store" }
+      ),
+      fetch("/api/admin/repasses/consolidacao/legend", { cache: "no-store" }),
+    ]);
+
+    const detailsData = await detailsRes.json().catch(() => ({}));
+    const marksData = await marksRes.json().catch(() => ({}));
+    const legendData = await legendRes.json().catch(() => ({}));
+
+    if (!detailsRes.ok) {
+      throw new Error(detailsData?.error || "Falha ao carregar detalhes do profissional.");
+    }
+    if (!marksRes.ok) throw new Error(marksData?.error || "Falha ao carregar marcações.");
+    if (!legendRes.ok) throw new Error(legendData?.error || "Falha ao carregar legenda.");
+
+    const rows: RepasseLine[] = Array.isArray(detailsData?.data?.rows) ? detailsData.data.rows : [];
+    const note = String(detailsData?.data?.note || "");
+    const internalNote = String(detailsData?.data?.internalNote || "");
+    const paymentMinimumTextRaw = detailsData?.data?.paymentMinimumText;
+    const paymentMinimumText =
+      paymentMinimumTextRaw === null || paymentMinimumTextRaw === undefined
+        ? null
+        : String(paymentMinimumTextRaw).trim() || null;
+
+    const marksArray = Array.isArray(marksData?.data?.items) ? marksData.data.items : [];
+    const marksMap: Record<string, RepasseConsolidacaoLineMarkColor | null> = {};
+    for (const mark of marksArray) {
+      const hash = String(mark?.sourceRowHash || "").trim();
+      const color = String(mark?.colorKey || "").trim() as RepasseConsolidacaoLineMarkColor;
+      if (!hash) continue;
+      if (color === "green" || color === "yellow" || color === "red") {
+        marksMap[hash] = color;
+      }
+    }
+
+    const loadedLegend: RepasseConsolidacaoMarkLegend = {
+      green: String(legendData?.data?.green || defaultLegend.green),
+      yellow: String(legendData?.data?.yellow || defaultLegend.yellow),
+      red: String(legendData?.data?.red || defaultLegend.red),
+    };
+
+    setDetailRows(rows);
+    setNoteDrafts((prev) => ({ ...prev, [item.professionalId]: note }));
+    setInternalNoteDrafts((prev) => ({ ...prev, [item.professionalId]: internalNote }));
+    setItems((prev) =>
+      prev.map((current) =>
+        current.professionalId === item.professionalId
+          ? {
+              ...current,
+              note: note || null,
+              internalNote: internalNote || null,
+              paymentMinimumText,
+            }
+          : current
+      )
+    );
+    setDetailsItem((current) =>
+      current && current.professionalId === item.professionalId
+        ? {
+            ...current,
+            note: note || null,
+            internalNote: internalNote || null,
+            paymentMinimumText,
+          }
+        : current
+    );
+    setMarksByRowHash(marksMap);
+    setMarkChanges({});
+    setLegend(loadedLegend);
+    setLegendDirty(false);
   };
 
   const openProfessionalDetails = async (item: ProfessionalSummary) => {
@@ -416,37 +589,7 @@ export default function RepassesPage() {
     setDetailLoading(true);
     setDetailError("");
     try {
-      const qs = new URLSearchParams({ periodRef }).toString();
-      const res = await fetch(
-        `/api/admin/repasses/professionals/${encodeURIComponent(item.professionalId)}/details?${qs}`,
-        { cache: "no-store" }
-      );
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Falha ao carregar detalhes do profissional.");
-
-      const rows: RepasseLine[] = Array.isArray(data?.data?.rows) ? data.data.rows : [];
-      const note = String(data?.data?.note || "");
-      const internalNote = String(data?.data?.internalNote || "");
-      const paymentMinimumTextRaw = data?.data?.paymentMinimumText;
-      const paymentMinimumText =
-        paymentMinimumTextRaw === null || paymentMinimumTextRaw === undefined
-          ? null
-          : String(paymentMinimumTextRaw).trim() || null;
-      setDetailRows(rows);
-      setNoteDrafts((prev) => ({ ...prev, [item.professionalId]: note }));
-      setInternalNoteDrafts((prev) => ({ ...prev, [item.professionalId]: internalNote }));
-      setItems((prev) =>
-        prev.map((current) =>
-          current.professionalId === item.professionalId
-            ? { ...current, note: note || null, paymentMinimumText }
-            : current
-        )
-      );
-      setDetailsItem((current) =>
-        current && current.professionalId === item.professionalId
-          ? { ...current, note: note || null, paymentMinimumText }
-          : current
-      );
+      await loadDetails(item);
     } catch (e: any) {
       setDetailRows([]);
       setDetailError(e?.message || "Erro ao carregar detalhes do profissional.");
@@ -454,6 +597,96 @@ export default function RepassesPage() {
       setDetailLoading(false);
     }
   };
+
+  const saveMarks = useCallback(
+    async (withNotice: boolean) => {
+      if (!canEdit || !detailsItem) return true;
+      const entries = Object.values(markChanges);
+      if (entries.length === 0) return true;
+
+      setSavingMarks(true);
+      try {
+        const res = await fetch("/api/admin/repasses/consolidacao/marks", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            periodRef,
+            professionalId: detailsItem.professionalId,
+            marks: entries,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || "Falha ao salvar marcações.");
+
+        const savedItems = Array.isArray(data?.data?.items) ? data.data.items : [];
+        const nextMap: Record<string, RepasseConsolidacaoLineMarkColor | null> = {};
+        for (const item of savedItems) {
+          const hash = String(item?.sourceRowHash || "").trim();
+          const color = String(item?.colorKey || "").trim() as RepasseConsolidacaoLineMarkColor;
+          if (!hash) continue;
+          if (color === "green" || color === "yellow" || color === "red") nextMap[hash] = color;
+        }
+        setMarksByRowHash(nextMap);
+        setMarkChanges({});
+        if (withNotice) setNotice("Marcações salvas.");
+        return true;
+      } catch (e: any) {
+        setError(e?.message || "Erro ao salvar marcações.");
+        return false;
+      } finally {
+        setSavingMarks(false);
+      }
+    },
+    [canEdit, detailsItem, markChanges, periodRef]
+  );
+
+  const saveLegend = useCallback(
+    async (withNotice: boolean) => {
+      if (!canEdit || !legendDirty) return true;
+      setSavingLegend(true);
+      try {
+        const res = await fetch("/api/admin/repasses/consolidacao/legend", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(legend),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || "Falha ao salvar legenda.");
+        setLegend({
+          green: String(data?.data?.green || legend.green || defaultLegend.green),
+          yellow: String(data?.data?.yellow || legend.yellow || defaultLegend.yellow),
+          red: String(data?.data?.red || legend.red || defaultLegend.red),
+        });
+        setLegendDirty(false);
+        if (withNotice) setNotice("Legenda salva.");
+        return true;
+      } catch (e: any) {
+        setError(e?.message || "Erro ao salvar legenda.");
+        return false;
+      } finally {
+        setSavingLegend(false);
+      }
+    },
+    [canEdit, legend, legendDirty]
+  );
+
+  useEffect(() => {
+    if (!detailsOpen || !canEdit) return;
+    if (Object.keys(markChanges).length === 0) return;
+    const timer = setTimeout(() => {
+      void saveMarks(false);
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [canEdit, detailsOpen, markChanges, saveMarks]);
+
+  useEffect(() => {
+    if (!detailsOpen || !canEdit) return;
+    if (!legendDirty) return;
+    const timer = setTimeout(() => {
+      void saveLegend(false);
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [canEdit, detailsOpen, legendDirty, saveLegend]);
 
   useEffect(() => {
     if (!moduleEnabled || !canView) return;
@@ -473,7 +706,7 @@ export default function RepassesPage() {
     return (
       <div className="mx-auto max-w-[1600px] p-8">
         <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-          Módulo de repasses em desenvolvimento. Acesso temporariamente desabilitado.
+          Módulo de repasses desabilitado.
         </div>
       </div>
     );
@@ -490,96 +723,76 @@ export default function RepassesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[1800px] space-y-4 p-6">
+    <div className="mx-auto max-w-[1900px] space-y-4 p-6">
       <header className="rounded-xl border bg-white p-4">
         <div className="flex flex-col gap-3">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
-            <div className="min-w-0 xl:pr-3">
-              <h1 className="text-xl font-bold text-slate-800">Fechamento de repasses</h1>
-              <p className="text-xs text-slate-500">
-                Selecione profissionais na tabela para atualizar dados e gerar relatórios.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-[170px_170px_130px_116px] xl:items-end">
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Período
-                </label>
-                <input
-                  type="month"
-                  value={periodRef}
-                  onChange={(e) => {
-                    setPeriodRef(e.target.value);
-                    setPage(1);
-                    setSelectedIds(new Set());
-                    setNoteDrafts({});
-                    setInternalNoteDrafts({});
-                  }}
-                  className="h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Status
-                </label>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => {
-                    setStatusFilter(e.target.value as ProfessionalStatusFilter);
-                    setPage(1);
-                  }}
-                  className="h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm"
-                >
-                  {statusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                  Linhas
-                </label>
-                <select
-                  value={pageSize}
-                  onChange={(e) => {
-                    setPageSize(Number(e.target.value) || 100);
-                    setPage(1);
-                  }}
-                  className="h-10 w-full rounded-lg border bg-white px-3 py-2 text-sm"
-                >
-                  {pageSizeOptions.map((n) => (
-                    <option key={n} value={n}>
-                      {n}/página
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <button
-                type="button"
-                onClick={refreshAll}
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm"
-              >
-                <RefreshCw size={14} />
-                Atualizar
-              </button>
-            </div>
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-slate-800">Fechamento de repasses</h1>
+            <p className="text-xs text-slate-500">
+              Visão comparativa entre repasses fechados e itens de consolidação para conferência operacional.
+            </p>
           </div>
+
+          <RepassesFiltersPanel
+            periodRef={periodRef}
+            statusFilter={statusFilter}
+            pageSize={pageSize}
+            searchDraft={searchDraft}
+            hasPaymentMinimum={hasPaymentMinimum}
+            consolidacaoStatus={consolidacaoStatus}
+            hasDivergence={hasDivergence}
+            attendanceDateStart={attendanceDateStart}
+            attendanceDateEnd={attendanceDateEnd}
+            patientName={patientNameDraft}
+            advancedOpen={advancedFiltersOpen}
+            onPeriodRefChange={(value) => {
+              setPeriodRef(value);
+              setPage(1);
+              setSelectedIds(new Set());
+            }}
+            onStatusFilterChange={(value) => {
+              setStatusFilter(value);
+              setPage(1);
+            }}
+            onPageSizeChange={(value) => {
+              setPageSize(value);
+              setPage(1);
+            }}
+            onSearchDraftChange={setSearchDraft}
+            onApplySearch={applySearch}
+            onHasPaymentMinimumChange={(value) => {
+              setHasPaymentMinimum(value);
+              setPage(1);
+            }}
+            onConsolidacaoStatusChange={(value) => {
+              setConsolidacaoStatus(value);
+              setPage(1);
+            }}
+            onHasDivergenceChange={(value) => {
+              setHasDivergence(value);
+              setPage(1);
+            }}
+            onAttendanceDateStartChange={(value) => {
+              setAttendanceDateStart(value);
+              setPage(1);
+            }}
+            onAttendanceDateEndChange={(value) => {
+              setAttendanceDateEnd(value);
+              setPage(1);
+            }}
+            onPatientNameChange={setPatientNameDraft}
+            onToggleAdvanced={() => setAdvancedFiltersOpen((prev) => !prev)}
+          />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3">
           <button
             type="button"
-            onClick={createSyncJob}
-            disabled={!canRefresh || creatingSync || selectedCount === 0}
+            onClick={createRefreshJobs}
+            disabled={!canRefresh || creatingRefresh || selectedCount === 0}
             className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
           >
-            {creatingSync ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            {creatingRefresh ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             Atualizar dados de repasse
           </button>
 
@@ -595,7 +808,16 @@ export default function RepassesPage() {
 
           <button
             type="button"
-            onClick={() => setShowSyncHistoryModal(true)}
+            onClick={refreshAll}
+            className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+          >
+            <RefreshCw size={14} />
+            Recarregar painel
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowRefreshHistoryModal(true)}
             className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
           >
             Histórico de atualizações
@@ -647,7 +869,7 @@ export default function RepassesPage() {
         </div>
       )}
 
-      <section className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-7">
+      <section className="grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-8">
         <div className="rounded-lg border bg-white px-3 py-2">
           <p className="text-[10px] uppercase tracking-wide text-slate-500">Profissionais</p>
           <p className="text-lg font-bold text-slate-800">{stats.totalProfessionals}</p>
@@ -657,16 +879,8 @@ export default function RepassesPage() {
           <p className="text-lg font-bold text-emerald-700">{stats.success}</p>
         </div>
         <div className="rounded-lg border bg-white px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wide text-slate-500">Sem produção</p>
-          <p className="text-lg font-bold text-violet-700">{stats.noData}</p>
-        </div>
-        <div className="rounded-lg border bg-white px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wide text-slate-500">Com erro</p>
-          <p className="text-lg font-bold text-rose-700">{stats.error}</p>
-        </div>
-        <div className="rounded-lg border bg-white px-3 py-2">
-          <p className="text-[10px] uppercase tracking-wide text-slate-500">Não processados</p>
-          <p className="text-lg font-bold text-slate-700">{stats.notProcessed}</p>
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Com divergência</p>
+          <p className="text-lg font-bold text-rose-700">{stats.divergenceCount}</p>
         </div>
         <div className="rounded-lg border bg-white px-3 py-2">
           <p className="text-[10px] uppercase tracking-wide text-slate-500">Atendimentos</p>
@@ -675,6 +889,18 @@ export default function RepassesPage() {
         <div className="rounded-lg border bg-white px-3 py-2">
           <p className="text-[10px] uppercase tracking-wide text-slate-500">Total repasse</p>
           <p className="text-base font-bold text-slate-800">{formatCurrency(stats.totalValue)}</p>
+        </div>
+        <div className="rounded-lg border bg-white px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Consolidado</p>
+          <p className="text-base font-bold text-emerald-700">{formatCurrency(stats.consolidadoValue)}</p>
+        </div>
+        <div className="rounded-lg border bg-white px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Não consolidado</p>
+          <p className="text-base font-bold text-amber-700">{formatCurrency(stats.naoConsolidadoValue)}</p>
+        </div>
+        <div className="rounded-lg border bg-white px-3 py-2">
+          <p className="text-[10px] uppercase tracking-wide text-slate-500">Não recebido</p>
+          <p className="text-base font-bold text-rose-700">{formatCurrency(stats.naoRecebidoValue)}</p>
         </div>
       </section>
 
@@ -689,9 +915,6 @@ export default function RepassesPage() {
         selectedCount={selectedCount}
         onToggleRow={toggleRowSelection}
         onToggleVisible={toggleVisibleSelection}
-        searchDraft={searchDraft}
-        onSearchDraftChange={setSearchDraft}
-        onApplySearch={applySearch}
         onOpenDetails={openProfessionalDetails}
       />
 
@@ -703,14 +926,24 @@ export default function RepassesPage() {
         loadingRows={detailLoading}
         rowsError={detailError}
         noteValue={detailsItem ? noteDrafts[detailsItem.professionalId] ?? detailsItem.note ?? "" : ""}
-        internalNoteValue={detailsItem ? internalNoteDrafts[detailsItem.professionalId] ?? "" : ""}
+        internalNoteValue={
+          detailsItem ? internalNoteDrafts[detailsItem.professionalId] ?? detailsItem.internalNote ?? "" : ""
+        }
         canEdit={canEdit}
         savingNote={detailsItem ? !!savingNoteById[detailsItem.professionalId] : false}
+        marksByRowHash={marksByRowHash}
+        savingMarks={savingMarks}
+        legend={legend}
+        savingLegend={savingLegend}
         onClose={() => {
           setDetailsOpen(false);
           setDetailsItem(null);
           setDetailRows([]);
           setDetailError("");
+          setMarksByRowHash({});
+          setMarkChanges({});
+          setLegend({ ...defaultLegend });
+          setLegendDirty(false);
         }}
         onNoteChange={(value) => {
           if (!detailsItem) return;
@@ -722,24 +955,54 @@ export default function RepassesPage() {
         }}
         onSaveNote={() => {
           if (!detailsItem) return;
-          saveProfessionalNotes(detailsItem.professionalId);
+          void saveProfessionalNotes(detailsItem.professionalId);
+        }}
+        onMarkChange={(sourceRowHash, color) => {
+          setMarksByRowHash((prev) => ({ ...prev, [sourceRowHash]: color }));
+          setMarkChanges((prev) => ({
+            ...prev,
+            [sourceRowHash]: { sourceRowHash, colorKey: color },
+          }));
+        }}
+        onSaveMarks={() => {
+          void saveMarks(true);
+        }}
+        onLegendChange={(next) => {
+          setLegend(next);
+          setLegendDirty(true);
+        }}
+        onSaveLegend={() => {
+          void saveLegend(true);
         }}
       />
 
-      {showSyncHistoryModal && (
+      {showRefreshHistoryModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-5xl rounded-xl bg-white p-4 shadow-xl">
+          <div className="w-full max-w-6xl rounded-xl bg-white p-4 shadow-xl">
             <div className="mb-3 flex items-center justify-between">
               <h3 className="text-sm font-semibold text-slate-800">Histórico de atualizações</h3>
               <button
                 type="button"
-                onClick={() => setShowSyncHistoryModal(false)}
+                onClick={() => setShowRefreshHistoryModal(false)}
                 className="rounded border px-3 py-1 text-xs"
               >
                 Fechar
               </button>
             </div>
-            <JobHistoryTable title="Histórico de atualizações" jobs={syncJobs} loading={loadingJobs} mode="sync" />
+            <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+              <JobHistoryTable
+                title="Sincronização de repasses"
+                jobs={syncJobs}
+                loading={loadingJobs}
+                mode="sync"
+              />
+              <JobHistoryTable
+                title="Consolidação (a conferir)"
+                jobs={consolidacaoJobs}
+                loading={loadingJobs}
+                mode="sync"
+              />
+            </div>
           </div>
         </div>
       )}
@@ -757,7 +1020,12 @@ export default function RepassesPage() {
                 Fechar
               </button>
             </div>
-            <JobHistoryTable title="Histórico de jobs de relatório" jobs={pdfJobs} loading={loadingJobs} mode="pdf" />
+            <JobHistoryTable
+              title="Histórico de jobs de relatório"
+              jobs={pdfJobs}
+              loading={loadingJobs}
+              mode="pdf"
+            />
           </div>
         </div>
       )}

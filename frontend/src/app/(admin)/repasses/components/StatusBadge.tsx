@@ -11,6 +11,7 @@ const CLASS_BY_STATUS: Record<string, string> = {
   PARTIAL: 'bg-amber-100 text-amber-700',
   PENDING: 'bg-slate-100 text-slate-700',
   NO_DATA: 'bg-violet-100 text-violet-700',
+  SKIPPED: 'bg-amber-100 text-amber-700',
   NOT_PROCESSED: 'bg-slate-100 text-slate-700',
 };
 
@@ -23,6 +24,7 @@ const LABEL_BY_STATUS: Record<string, string> = {
   PARTIAL: 'Parcial',
   PENDING: 'Pendente',
   NO_DATA: 'Sem produção',
+  SKIPPED: 'Ignorado',
   NOT_PROCESSED: 'Não processado',
 };
 

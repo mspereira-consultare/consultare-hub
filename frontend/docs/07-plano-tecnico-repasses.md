@@ -294,3 +294,36 @@ Status atual:
     - `ERROR`, `NO_DATA`, `SKIPPED`, `SUCCESS`, `NOT_PROCESSED`
 - Permissoes reutilizadas: `repasses` com `view`, `refresh`, `edit`.
 - Compatibilidade: nenhuma rota antiga de `/api/admin/repasses/*` foi removida ou alterada.
+
+## 20. Atualizacao - Comparativo Consolidado x A Consolidar (2026-03-10)
+- A página `/repasses` passou a usar como fonte principal o namespace de consolidacao:
+  - `GET /api/admin/repasses/consolidacao/professionals`
+  - `GET /api/admin/repasses/consolidacao/professionals/[professionalId]/details`
+  - `PUT /api/admin/repasses/consolidacao/notes`
+- Novos campos agregados por profissional no resumo:
+  - `consolidadoQty`, `consolidadoValue`
+  - `naoConsolidadoQty`, `naoConsolidadoValue`
+  - `naoRecebidoQty`, `naoRecebidoValue`
+  - `repasseTotalConsolidadoTabela` (fonte: `feegow_repasse_consolidado`)
+  - `repasseTotalConsolidadoAConferir` (fonte: `feegow_repasse_a_conferir`, status `CONSOLIDADO`)
+  - `hasDivergencia`, `divergenciaValue` (tolerancia `0.01`)
+- Regra de status operacional:
+  - `NAO_CONSOLIDADO = OUTRO + SEM_DETALHE`
+  - `NAO_RECEBIDO` permanece separado
+- Filtros novos no endpoint de profissionais:
+  - `hasPaymentMinimum`, `consolidacaoStatus`, `hasDivergence`
+  - `attendanceDateStart`, `attendanceDateEnd`, `patientName`
+- Atualizacao dupla em endpoint unico:
+  - `POST /api/admin/repasses/refresh`
+  - cria simultaneamente jobs em `repasse_sync_jobs` e `repasse_consolidacao_jobs`.
+- Persistencia de conferencia manual por usuario:
+  - `repasse_consolidacao_line_marks` (chave: `period_ref + professional_id + source_row_hash + user_id`)
+  - `repasse_consolidacao_mark_legends` (chave: `user_id + color_key`)
+  - APIs:
+    - `GET|PUT /api/admin/repasses/consolidacao/marks`
+    - `GET|PUT /api/admin/repasses/consolidacao/legend`
+- Modal de detalhes do profissional:
+  - mostra status de consolidacao por atendimento (`detailStatus*` e `isInConsolidado`)
+  - marcações por cor com autosave (debounce) e salvamento manual
+  - legenda de cores customizavel por usuario
+  - observacao do relatorio e observacao interna.

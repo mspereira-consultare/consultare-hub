@@ -6,7 +6,11 @@ import {
   listRepasseConsolidacaoProfessionalSummaries,
 } from '@/lib/repasses/repository';
 import { isRepassesModuleEnabledServer } from '@/lib/repasses/feature';
-import type { RepasseConsolidacaoProfessionalStatusFilter } from '@/lib/repasses/types';
+import type {
+  RepasseConsolidacaoBooleanFilter,
+  RepasseConsolidacaoProfessionalStatusFilter,
+  RepasseConsolidacaoStatusFilter,
+} from '@/lib/repasses/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,6 +43,15 @@ export async function GET(request: Request) {
         periodRef: String(searchParams.get('periodRef') || '').trim() || undefined,
         search: String(searchParams.get('search') || '').trim() || undefined,
         status: (statusRaw || undefined) as RepasseConsolidacaoProfessionalStatusFilter | undefined,
+        hasPaymentMinimum: (String(searchParams.get('hasPaymentMinimum') || '').trim() ||
+          undefined) as RepasseConsolidacaoBooleanFilter | undefined,
+        consolidacaoStatus: (String(searchParams.get('consolidacaoStatus') || '').trim() ||
+          undefined) as RepasseConsolidacaoStatusFilter | undefined,
+        hasDivergence: (String(searchParams.get('hasDivergence') || '').trim() ||
+          undefined) as RepasseConsolidacaoBooleanFilter | undefined,
+        attendanceDateStart: String(searchParams.get('attendanceDateStart') || '').trim() || undefined,
+        attendanceDateEnd: String(searchParams.get('attendanceDateEnd') || '').trim() || undefined,
+        patientName: String(searchParams.get('patientName') || '').trim() || undefined,
       });
       return NextResponse.json({ status: 'success', data: { items: ids } });
     }
@@ -47,6 +60,15 @@ export async function GET(request: Request) {
       periodRef: String(searchParams.get('periodRef') || '').trim() || undefined,
       search: String(searchParams.get('search') || '').trim() || undefined,
       status: (statusRaw || undefined) as RepasseConsolidacaoProfessionalStatusFilter | undefined,
+      hasPaymentMinimum: (String(searchParams.get('hasPaymentMinimum') || '').trim() ||
+        undefined) as RepasseConsolidacaoBooleanFilter | undefined,
+      consolidacaoStatus: (String(searchParams.get('consolidacaoStatus') || '').trim() ||
+        undefined) as RepasseConsolidacaoStatusFilter | undefined,
+      hasDivergence: (String(searchParams.get('hasDivergence') || '').trim() ||
+        undefined) as RepasseConsolidacaoBooleanFilter | undefined,
+      attendanceDateStart: String(searchParams.get('attendanceDateStart') || '').trim() || undefined,
+      attendanceDateEnd: String(searchParams.get('attendanceDateEnd') || '').trim() || undefined,
+      patientName: String(searchParams.get('patientName') || '').trim() || undefined,
       page: Number(searchParams.get('page') || 1),
       pageSize: Number(searchParams.get('pageSize') || 50),
     });
