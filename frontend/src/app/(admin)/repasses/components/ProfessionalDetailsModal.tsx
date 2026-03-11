@@ -264,23 +264,53 @@ export function ProfessionalDetailsModal({
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto px-4 py-3 xl:grid-cols-[minmax(0,1fr)_430px] xl:overflow-hidden">
           <div className="flex min-h-0 flex-col rounded-lg border">
             <div className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Atendimentos do per?odo
+              Atendimentos do período
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full min-w-[1650px] text-xs">
                 <thead className="sticky top-0 bg-white text-[10px] uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="w-10 px-2 py-2 text-center">+</th>
-                    <th className="px-2 py-2 text-left">Data execução</th>
+                    <th
+                      className="cursor-help px-2 py-2 text-left"
+                      title="Data de execução do procedimento"
+                    >
+                      Data execução
+                    </th>
                     <th className="px-2 py-2 text-left">Paciente</th>
                     <th className="px-2 py-2 text-left">Unidade</th>
                     <th className="px-2 py-2 text-left">Procedimento</th>
                     <th className="px-2 py-2 text-left">Especialidade</th>
-                    <th className="px-2 py-2 text-left">Data da conta</th>
-                    <th className="px-2 py-2 text-right">Repasse consolidado</th>
-                    <th className="px-2 py-2 text-right">Repasse a conferir</th>
-                    <th className="px-2 py-2 text-left">Status consolidação</th>
-                    <th className="px-2 py-2 text-left">Vínculo</th>
+                    <th
+                      className="cursor-help px-2 py-2 text-left"
+                      title="Fonte: Feegow > Financeiro > Repasses > Consolidação"
+                    >
+                      Data da conta
+                    </th>
+                    <th
+                      className="cursor-help px-2 py-2 text-right"
+                      title="Fonte: Feegow > Financeiro > Repasses > Repasse Consolidado"
+                    >
+                      Repasse consolidado
+                    </th>
+                    <th
+                      className="cursor-help px-2 py-2 text-right"
+                      title="Valor de repasse em Feegow > Financeiro > Repasses > Consolidação"
+                    >
+                      Repasse a conferir
+                    </th>
+                    <th
+                      className="cursor-help px-2 py-2 text-left"
+                      title="Indica se repasse foi consolidado em Feegow > Financeiro > Repasses > Consolidação"
+                    >
+                      Status consolidação
+                    </th>
+                    <th
+                      className="cursor-help px-2 py-2 text-left"
+                      title="Indica a confiabilidade do cruzamento do procedimento entre os relatórios de Consolidação e Repasses Consolidados do Feegow."
+                    >
+                      Vínculo
+                    </th>
                     <th className="px-2 py-2 text-center">Classificação</th>
                   </tr>
                 </thead>
@@ -303,7 +333,7 @@ export function ProfessionalDetailsModal({
                   ) : mainRows.length === 0 ? (
                     <tr>
                       <td colSpan={12} className="px-2 py-8 text-center text-slate-500">
-                        Sem atendimentos para este profissional no per?odo.
+                        Sem atendimentos para este profissional no período.
                       </td>
                     </tr>
                   ) : (
@@ -383,7 +413,12 @@ export function ProfessionalDetailsModal({
                                         <th className="px-2 py-2 text-left">Requisitante</th>
                                         <th className="px-2 py-2 text-left">Convênio</th>
                                         <th className="px-2 py-2 text-left">Recibo</th>
-                                        <th className="px-2 py-2 text-right">Valor (conta)</th>
+                                        <th
+                                          className="cursor-help px-2 py-2 text-right"
+                                          title="Valor cobrado pelo atendimento."
+                                        >
+                                          Valor (conta)
+                                        </th>
                                         <th className="px-2 py-2 text-right">Repasse item</th>
                                         <th className="px-2 py-2 text-left">Detalhe consolidação</th>
                                       </tr>
