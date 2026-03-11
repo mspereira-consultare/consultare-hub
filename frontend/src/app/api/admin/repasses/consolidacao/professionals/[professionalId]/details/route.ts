@@ -34,7 +34,7 @@ export async function GET(request: Request, context: ParamsContext) {
       return NextResponse.json({ error: 'Profissional invalido.' }, { status: 400 });
     }
 
-    const [rows, notes, paymentMinimumText, financial] = await Promise.all([
+    const [details, notes, paymentMinimumText, financial] = await Promise.all([
       listRepasseAConferirLinesByProfessional(auth.db, periodRef || '', professionalId),
       getRepasseConsolidacaoNote(auth.db, { periodRef, professionalId }),
       getRepasseProfessionalPaymentMinimum(auth.db, professionalId),
@@ -44,7 +44,9 @@ export async function GET(request: Request, context: ParamsContext) {
     return NextResponse.json({
       status: 'success',
       data: {
-        rows,
+        summary: details.summary,
+        attendimentos: details.attendimentos,
+        rows: details.rows,
         note: notes.note,
         internalNote: notes.internalNote,
         paymentMinimumText: paymentMinimumText || null,

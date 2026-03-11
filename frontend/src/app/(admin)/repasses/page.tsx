@@ -85,6 +85,29 @@ type RepasseLine = {
   detailProfessionalName: string;
   detailRepasseValue: number;
   isInConsolidado: boolean;
+  origem?: "consolidado" | "a_conferir";
+  origin?: "consolidado" | "a_conferir";
+};
+
+type RepasseAttendanceSummary = {
+  attendanceKey: string;
+  executionDate: string;
+  patientName: string;
+  unitName: string;
+  accountDate: string;
+  procedureLabel: string;
+  producaoValue: number;
+  consolidadoQty: number;
+  consolidadoValue: number;
+  naoConsolidadoQty: number;
+  naoConsolidadoValue: number;
+  naoRecebidoQty: number;
+  naoRecebidoValue: number;
+  hasDivergenceAtendimento: boolean;
+  divergenceValueAtendimento: number;
+  matchRule: "PATIENT_DATE_PROCEDURE" | "PATIENT_DATE";
+  matchConfidence: "HIGH" | "LOW";
+  details: RepasseLine[];
 };
 
 type ProfessionalStats = {
@@ -186,6 +209,7 @@ export default function RepassesPage() {
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsItem, setDetailsItem] = useState<ProfessionalSummary | null>(null);
+  const [detailAttendimentos, setDetailAttendimentos] = useState<RepasseAttendanceSummary[]>([]);
   const [detailRows, setDetailRows] = useState<RepasseLine[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
@@ -643,6 +667,33 @@ export default function RepassesPage() {
     if (!legendRes.ok) throw new Error(legendData?.error || "Falha ao carregar legenda.");
 
     const rows: RepasseLine[] = Array.isArray(detailsData?.data?.rows) ? detailsData.data.rows : [];
+    const attendimentosRaw: RepasseAttendanceSummary[] = Array.isArray(detailsData?.data?.attendimentos)
+      ? detailsData.data.attendimentos
+      : [];
+    const attendimentos: RepasseAttendanceSummary[] =
+      attendimentosRaw.length > 0
+        ? attendimentosRaw
+        : rows.map((row, index) => ({
+            attendanceKey: row.sourceRowHash || `${row.patientName}-${row.executionDate}-${index}`,
+            executionDate: row.executionDate,
+            patientName: row.patientName,
+            unitName: row.unitName,
+            accountDate: row.accountDate,
+            procedureLabel: row.procedureName,
+            producaoValue: row.origin === "consolidado" ? Number(row.attendanceValue || 0) : 0,
+            consolidadoQty: row.detailStatus === "CONSOLIDADO" ? 1 : 0,
+            consolidadoValue: row.detailStatus === "CONSOLIDADO" ? Number(row.detailRepasseValue || 0) : 0,
+            naoConsolidadoQty: row.detailStatus === "NAO_CONSOLIDADO" ? 1 : 0,
+            naoConsolidadoValue:
+              row.detailStatus === "NAO_CONSOLIDADO" ? Number(row.detailRepasseValue || 0) : 0,
+            naoRecebidoQty: row.detailStatus === "NAO_RECEBIDO" ? 1 : 0,
+            naoRecebidoValue: row.detailStatus === "NAO_RECEBIDO" ? Number(row.detailRepasseValue || 0) : 0,
+            hasDivergenceAtendimento: false,
+            divergenceValueAtendimento: 0,
+            matchRule: "PATIENT_DATE_PROCEDURE",
+            matchConfidence: "HIGH",
+            details: [row],
+          }));
     const note = String(detailsData?.data?.note || "");
     const internalNote = String(detailsData?.data?.internalNote || "");
     const paymentMinimumTextRaw = detailsData?.data?.paymentMinimumText;
@@ -674,6 +725,7 @@ export default function RepassesPage() {
       red: String(legendData?.data?.red || defaultLegend.red),
     };
 
+    setDetailAttendimentos(attendimentos);
     setDetailRows(rows);
     setNoteDrafts((prev) => ({ ...prev, [item.professionalId]: note }));
     setInternalNoteDrafts((prev) => ({ ...prev, [item.professionalId]: internalNote }));
@@ -745,6 +797,7 @@ export default function RepassesPage() {
     try {
       await loadDetails(item);
     } catch (e: any) {
+      setDetailAttendimentos([]);
       setDetailRows([]);
       setDetailError(e?.message || "Erro ao carregar detalhes do profissional.");
     } finally {
@@ -1088,6 +1141,7 @@ export default function RepassesPage() {
         open={detailsOpen}
         item={detailsItem}
         periodRef={periodRef}
+        attendimentos={detailAttendimentos}
         rows={detailRows}
         loadingRows={detailLoading}
         rowsError={detailError}
@@ -1104,6 +1158,7 @@ export default function RepassesPage() {
         onClose={() => {
           setDetailsOpen(false);
           setDetailsItem(null);
+          setDetailAttendimentos([]);
           setDetailRows([]);
           setDetailError("");
           setMarksByRowHash({});

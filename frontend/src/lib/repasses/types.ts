@@ -253,6 +253,47 @@ export type RepasseAConferirLine = {
   origin?: 'consolidado' | 'a_conferir';
 };
 
+export type RepasseAConferirAttendanceMatchRule = 'PATIENT_DATE_PROCEDURE' | 'PATIENT_DATE';
+export type RepasseAConferirAttendanceMatchConfidence = 'HIGH' | 'LOW';
+
+export type RepasseAConferirAttendance = {
+  attendanceKey: string;
+  executionDate: string;
+  patientName: string;
+  unitName: string;
+  accountDate: string;
+  procedureLabel: string;
+  producaoValue: number;
+  consolidadoQty: number;
+  consolidadoValue: number;
+  naoConsolidadoQty: number;
+  naoConsolidadoValue: number;
+  naoRecebidoQty: number;
+  naoRecebidoValue: number;
+  hasDivergenceAtendimento: boolean;
+  divergenceValueAtendimento: number;
+  matchRule: RepasseAConferirAttendanceMatchRule;
+  matchConfidence: RepasseAConferirAttendanceMatchConfidence;
+  details: RepasseAConferirLine[];
+};
+
+export type RepasseAConferirDetailsSummary = {
+  rowsCount: number;
+  producaoValue: number;
+  consolidadoQty: number;
+  consolidadoValue: number;
+  naoConsolidadoQty: number;
+  naoConsolidadoValue: number;
+  naoRecebidoQty: number;
+  naoRecebidoValue: number;
+};
+
+export type RepasseAConferirDetailsResult = {
+  attendimentos: RepasseAConferirAttendance[];
+  rows: RepasseAConferirLine[];
+  summary: RepasseAConferirDetailsSummary;
+};
+
 export type RepasseConsolidacaoLineMarkColor = 'green' | 'yellow' | 'red';
 
 export type RepasseConsolidacaoLineMark = {

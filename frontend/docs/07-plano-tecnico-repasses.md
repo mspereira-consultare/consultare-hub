@@ -369,3 +369,19 @@ Status atual:
   - acao de `Visualizar`/`Baixar` + data do ultimo artefato.
 - PDF de fechamento passou a incluir resumo financeiro no cabecalho:
   - Producao Feegow, Repasse Final, Produtividade, 5% da Produtividade e Total Final.
+
+## 22. Atualizacao - Modal por atendimento com expansao (2026-03-11)
+- Endpoint `GET /api/admin/repasses/consolidacao/professionals/[professionalId]/details` passou a retornar:
+  - `summary` (resumo agregado dos detalhes no período)
+  - `attendimentos[]` (visão principal por atendimento)
+  - `rows[]` (itens detalhados, mantidos para compatibilidade e marcações)
+  - `note`, `internalNote`, `paymentMinimumText`, `financial`
+- Vínculo entre `feegow_repasse_consolidado` e `feegow_repasse_a_conferir` no backend:
+  - regra principal: `paciente + data_execucao + procedimento`
+  - fallback: `paciente + data_execucao`
+  - fallback é sinalizado no frontend como baixa confiabilidade (`LOW`).
+- Modal de detalhes em `/repasses`:
+  - tabela principal agora mostra resumo por atendimento
+  - cada linha possui expandir/recolher para exibir os itens detalhados daquele atendimento
+  - badges de vínculo (`Alta confiança` / `Fallback`) e divergência por atendimento
+  - marcações por cor continuam no nível de item detalhado (`sourceRowHash`) com persistência por usuário.
