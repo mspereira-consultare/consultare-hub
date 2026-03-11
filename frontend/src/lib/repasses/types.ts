@@ -253,28 +253,40 @@ export type RepasseAConferirLine = {
   origin?: 'consolidado' | 'a_conferir';
 };
 
-export type RepasseAConferirAttendanceMatchRule = 'PATIENT_DATE_PROCEDURE' | 'PATIENT_DATE';
-export type RepasseAConferirAttendanceMatchConfidence = 'HIGH' | 'LOW';
+export type RepasseAConferirMatchRule = 'PATIENT_DATE_PROCEDURE' | 'PATIENT_DATE';
+export type RepasseAConferirMatchConfidence = 'HIGH' | 'LOW';
+export type RepasseAConferirMainStatus =
+  | 'CONSOLIDADO'
+  | 'NAO_CONSOLIDADO'
+  | 'NAO_RECEBIDO'
+  | 'SEM_CORRESPONDENCIA';
 
-export type RepasseAConferirAttendance = {
-  attendanceKey: string;
+export type RepasseAConferirExpandedItem = {
+  specialtyName: string;
+  requesterName: string;
+  convenio: string;
+  invoiceId: string;
+  attendanceValue: number;
+  detailRepasseValue: number;
+  detailStatusText: string;
+};
+
+export type RepasseAConferirMainRow = {
+  rowKey: string;
   executionDate: string;
   patientName: string;
   unitName: string;
+  specialtyName: string;
   accountDate: string;
-  procedureLabel: string;
-  producaoValue: number;
-  consolidadoQty: number;
-  consolidadoValue: number;
-  naoConsolidadoQty: number;
-  naoConsolidadoValue: number;
-  naoRecebidoQty: number;
-  naoRecebidoValue: number;
-  hasDivergenceAtendimento: boolean;
-  divergenceValueAtendimento: number;
-  matchRule: RepasseAConferirAttendanceMatchRule;
-  matchConfidence: RepasseAConferirAttendanceMatchConfidence;
-  details: RepasseAConferirLine[];
+  procedureName: string;
+  repasseConsolidadoValue: number;
+  repasseAConferirValue: number;
+  detailStatus: RepasseAConferirMainStatus;
+  detailStatusText: string;
+  hasMatch: boolean;
+  matchRule: RepasseAConferirMatchRule;
+  matchConfidence: RepasseAConferirMatchConfidence;
+  expandedItems: RepasseAConferirExpandedItem[];
 };
 
 export type RepasseAConferirDetailsSummary = {
@@ -289,7 +301,7 @@ export type RepasseAConferirDetailsSummary = {
 };
 
 export type RepasseAConferirDetailsResult = {
-  attendimentos: RepasseAConferirAttendance[];
+  mainRows: RepasseAConferirMainRow[];
   rows: RepasseAConferirLine[];
   summary: RepasseAConferirDetailsSummary;
 };

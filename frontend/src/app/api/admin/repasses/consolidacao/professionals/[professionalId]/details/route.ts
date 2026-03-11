@@ -45,7 +45,7 @@ export async function GET(request: Request, context: ParamsContext) {
       status: 'success',
       data: {
         summary: details.summary,
-        attendimentos: details.attendimentos,
+        mainRows: details.mainRows,
         rows: details.rows,
         note: notes.note,
         internalNote: notes.internalNote,

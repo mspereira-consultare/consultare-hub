@@ -1,9 +1,10 @@
 import { createHash, randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import type {
-  RepasseAConferirAttendance,
+  RepasseAConferirExpandedItem,
   RepasseAConferirDetailsResult,
   RepasseAConferirLine,
+  RepasseAConferirMainRow,
   RepasseConsolidacaoFinancialInput,
   RepasseConsolidacaoBooleanFilter,
   RepasseConsolidacaoJob,
@@ -2526,7 +2527,7 @@ export const listRepasseAConferirLinesByProfessional = async (
   const professionalId = clean(professionalIdRaw);
   if (!professionalId) {
     return {
-      attendimentos: [],
+      mainRows: [],
       rows: [],
       summary: {
         rowsCount: 0,
@@ -2596,31 +2597,32 @@ export const listRepasseAConferirLinesByProfessional = async (
     return 'NAO_CONSOLIDADO';
   };
 
-  type AConferirGroup = {
-    unitName: string;
-    accountDate: string;
-    requesterName: string;
-    specialtyName: string;
-    roleCode: string;
-    roleName: string;
-    detailProfessionalName: string;
-    procedureName: string;
-    attendanceValue: number;
-    repasseValue: number;
-    consolidadoCount: number;
-    consolidadoValue: number;
-    naoRecebidoCount: number;
-    naoRecebidoValue: number;
-    naoConsolidadoCount: number;
-    naoConsolidadoValue: number;
-    rows: RepasseAConferirLine[];
+  const statusLabel: Record<string, string> = {
+    CONSOLIDADO: 'Consolidado',
+    NAO_CONSOLIDADO: 'Não consolidado',
+    NAO_RECEBIDO: 'Não recebido',
+    SEM_CORRESPONDENCIA: 'Sem correspondência',
   };
 
-  const groupedAConferir = new Map<string, AConferirGroup>();
-  const groupKeysByPatientDate = new Map<string, Set<string>>();
+  type AConferirGroup = {
+    details: RepasseAConferirLine[];
+    expandedItems: RepasseAConferirExpandedItem[];
+    unitNames: Set<string>;
+    specialtyNames: Set<string>;
+    accountDates: Set<string>;
+    detailRepasseValueTotal: number;
+    statusCounts: {
+      consolidado: number;
+      naoConsolidado: number;
+      naoRecebido: number;
+    };
+  };
+
+  const groupByFullKey = new Map<string, AConferirGroup>();
+  const fullKeysByPatientDate = new Map<string, Set<string>>();
 
   for (const row of aConferirRows) {
-    const key = buildConsolidadoMatchKey(
+    const fullKey = buildConsolidadoMatchKey(
       (row as any).execution_date,
       (row as any).patient_name,
       (row as any).procedure_name
@@ -2628,42 +2630,33 @@ export const listRepasseAConferirLinesByProfessional = async (
     const patientDateKey = buildPatientDateMatchKey((row as any).execution_date, (row as any).patient_name);
     const statusGroup = classifyStatus((row as any).detail_status);
     const current =
-      groupedAConferir.get(key) ||
+      groupByFullKey.get(fullKey) ||
       ({
-        unitName: clean((row as any).unit_name),
-        accountDate: clean((row as any).account_date),
-        requesterName: clean((row as any).requester_name),
-        specialtyName: clean((row as any).specialty_name),
-        roleCode: clean((row as any).role_code),
-        roleName: clean((row as any).role_name),
-        detailProfessionalName: clean((row as any).detail_professional_name),
-        procedureName: clean((row as any).procedure_name),
-        attendanceValue: 0,
-        repasseValue: 0,
-        consolidadoCount: 0,
-        consolidadoValue: 0,
-        naoRecebidoCount: 0,
-        naoRecebidoValue: 0,
-        naoConsolidadoCount: 0,
-        naoConsolidadoValue: 0,
-        rows: [],
+        details: [],
+        expandedItems: [],
+        unitNames: new Set<string>(),
+        specialtyNames: new Set<string>(),
+        accountDates: new Set<string>(),
+        detailRepasseValueTotal: 0,
+        statusCounts: {
+          consolidado: 0,
+          naoConsolidado: 0,
+          naoRecebido: 0,
+        },
       } as AConferirGroup);
 
+    const attendanceValue = Number((row as any).attendance_value) || 0;
     const detailRepasseValue = Number((row as any).detail_repasse_value) || 0;
-    current.attendanceValue += Number((row as any).attendance_value) || 0;
-    current.repasseValue += detailRepasseValue;
+    current.detailRepasseValueTotal += detailRepasseValue;
     if (statusGroup === 'CONSOLIDADO') {
-      current.consolidadoCount += 1;
-      current.consolidadoValue += detailRepasseValue;
+      current.statusCounts.consolidado += 1;
     } else if (statusGroup === 'NAO_RECEBIDO') {
-      current.naoRecebidoCount += 1;
-      current.naoRecebidoValue += detailRepasseValue;
+      current.statusCounts.naoRecebido += 1;
     } else {
-      current.naoConsolidadoCount += 1;
-      current.naoConsolidadoValue += detailRepasseValue;
+      current.statusCounts.naoConsolidado += 1;
     }
 
-    current.rows.push({
+    const detailLine: RepasseAConferirLine = {
       sourceRowHash: clean((row as any).source_row_hash),
       invoiceId: clean((row as any).invoice_id),
       executionDate: clean((row as any).execution_date),
@@ -2684,150 +2677,111 @@ export const listRepasseAConferirLinesByProfessional = async (
       convenio: '',
       funcao: clean((row as any).role_name),
       origin: 'a_conferir',
+    };
+    current.details.push(detailLine);
+    current.expandedItems.push({
+      specialtyName: clean((row as any).specialty_name),
+      requesterName: clean((row as any).requester_name),
+      convenio: '',
+      invoiceId: clean((row as any).invoice_id),
+      attendanceValue,
+      detailRepasseValue,
+      detailStatusText: clean((row as any).detail_status_text),
     });
-    groupedAConferir.set(key, current);
+    if (clean((row as any).unit_name)) current.unitNames.add(clean((row as any).unit_name));
+    if (clean((row as any).specialty_name)) current.specialtyNames.add(clean((row as any).specialty_name));
+    if (clean((row as any).account_date)) current.accountDates.add(clean((row as any).account_date));
+    groupByFullKey.set(fullKey, current);
 
-    const keySet = groupKeysByPatientDate.get(patientDateKey) || new Set<string>();
-    keySet.add(key);
-    groupKeysByPatientDate.set(patientDateKey, keySet);
+    const fullKeys = fullKeysByPatientDate.get(patientDateKey) || new Set<string>();
+    fullKeys.add(fullKey);
+    fullKeysByPatientDate.set(patientDateKey, fullKeys);
   }
 
-  const consumedKeys = new Set<string>();
-  const attendimentos: RepasseAConferirAttendance[] = [];
+  const toDisplayValue = (values: string[], empty = ''): string => {
+    const uniq = values.filter(Boolean);
+    if (uniq.length === 0) return empty;
+    if (uniq.length === 1) return uniq[0];
+    return 'Múltiplas';
+  };
+
+  const resolveMainStatus = (group: AConferirGroup | null): { code: RepasseAConferirMainRow['detailStatus']; text: string } => {
+    if (!group) return { code: 'SEM_CORRESPONDENCIA', text: statusLabel.SEM_CORRESPONDENCIA };
+    if (group.statusCounts.naoRecebido > 0) return { code: 'NAO_RECEBIDO', text: statusLabel.NAO_RECEBIDO };
+    if (group.statusCounts.naoConsolidado > 0) {
+      return { code: 'NAO_CONSOLIDADO', text: statusLabel.NAO_CONSOLIDADO };
+    }
+    if (group.statusCounts.consolidado > 0) return { code: 'CONSOLIDADO', text: statusLabel.CONSOLIDADO };
+    return { code: 'NAO_CONSOLIDADO', text: statusLabel.NAO_CONSOLIDADO };
+  };
+
+  const mainRows: RepasseAConferirMainRow[] = [];
 
   for (const row of consolidadoRows) {
-    const key = buildConsolidadoMatchKey((row as any).data_exec, (row as any).paciente, (row as any).descricao);
+    const fullKey = buildConsolidadoMatchKey((row as any).data_exec, (row as any).paciente, (row as any).descricao);
     const patientDateKey = buildPatientDateMatchKey((row as any).data_exec, (row as any).paciente);
-    const exactGroup = groupedAConferir.get(key);
-    let matchedKeys: string[] = [];
-    let matchRule: 'PATIENT_DATE_PROCEDURE' | 'PATIENT_DATE' = 'PATIENT_DATE_PROCEDURE';
-    let matchConfidence: 'HIGH' | 'LOW' = 'HIGH';
+    const directMatch = groupByFullKey.get(fullKey) || null;
+    const fallbackKeys = directMatch ? [] : Array.from(fullKeysByPatientDate.get(patientDateKey) || []);
+    const fallbackGroups = fallbackKeys
+      .map((key) => groupByFullKey.get(key))
+      .filter((g): g is AConferirGroup => Boolean(g));
 
-    if (exactGroup) {
-      matchedKeys = [key];
-    } else {
-      matchRule = 'PATIENT_DATE';
-      matchConfidence = 'LOW';
-      const candidates = groupKeysByPatientDate.get(patientDateKey);
-      matchedKeys = candidates ? Array.from(candidates) : [];
-    }
+    const mergedGroup: AConferirGroup | null =
+      directMatch ||
+      (fallbackGroups.length > 0
+        ? ({
+            details: fallbackGroups.flatMap((g) => g.details),
+            expandedItems: fallbackGroups.flatMap((g) => g.expandedItems),
+            unitNames: new Set(fallbackGroups.flatMap((g) => Array.from(g.unitNames))),
+            specialtyNames: new Set(fallbackGroups.flatMap((g) => Array.from(g.specialtyNames))),
+            accountDates: new Set(fallbackGroups.flatMap((g) => Array.from(g.accountDates))),
+            detailRepasseValueTotal: fallbackGroups.reduce((sum, g) => sum + g.detailRepasseValueTotal, 0),
+            statusCounts: fallbackGroups.reduce(
+              (acc, g) => {
+                acc.consolidado += g.statusCounts.consolidado;
+                acc.naoConsolidado += g.statusCounts.naoConsolidado;
+                acc.naoRecebido += g.statusCounts.naoRecebido;
+                return acc;
+              },
+              { consolidado: 0, naoConsolidado: 0, naoRecebido: 0 }
+            ),
+          } as AConferirGroup)
+        : null);
 
-    for (const matchedKey of matchedKeys) {
-      consumedKeys.add(matchedKey);
-    }
-
-    const matchedGroups = matchedKeys
-      .map((matchedKey) => groupedAConferir.get(matchedKey))
-      .filter((group): group is AConferirGroup => Boolean(group));
-
-    const sourceRowHash =
+    const matchRule: RepasseAConferirMainRow['matchRule'] = directMatch
+      ? 'PATIENT_DATE_PROCEDURE'
+      : 'PATIENT_DATE';
+    const matchConfidence: RepasseAConferirMainRow['matchConfidence'] = directMatch ? 'HIGH' : 'LOW';
+    const hasMatch = Boolean(mergedGroup);
+    const status = resolveMainStatus(mergedGroup);
+    const rowKey =
       clean((row as any).source_row_hash) ||
       stableHash64(
-        `${periodRef}|${professionalId}|${clean((row as any).data_exec)}|${clean((row as any).paciente)}|${clean((row as any).descricao)}|${clean((row as any).funcao)}|${Number((row as any).repasse_value) || 0}`
+        `${periodRef}|${professionalId}|${clean((row as any).data_exec)}|${clean((row as any).paciente)}|${clean((row as any).descricao)}|${Number((row as any).repasse_value) || 0}`
       );
 
-    const consolidatedDetail: RepasseAConferirLine = {
-      sourceRowHash,
-      invoiceId: '',
+    const baseConvenio = clean((row as any).convenio);
+    const expandedItems = (mergedGroup?.expandedItems || []).map((entry) => ({
+      ...entry,
+      convenio: entry.convenio || baseConvenio,
+    }));
+
+    mainRows.push({
+      rowKey,
       executionDate: clean((row as any).data_exec),
       patientName: clean((row as any).paciente),
-      unitName: matchedGroups[0]?.unitName || '',
-      accountDate: matchedGroups[0]?.accountDate || '',
-      requesterName: matchedGroups[0]?.requesterName || '',
-      specialtyName: matchedGroups[0]?.specialtyName || '',
+      unitName: toDisplayValue(Array.from(mergedGroup?.unitNames || []), '-'),
+      specialtyName: toDisplayValue(Array.from(mergedGroup?.specialtyNames || []), '-'),
+      accountDate: toDisplayValue(Array.from(mergedGroup?.accountDates || []), '-'),
       procedureName: clean((row as any).descricao),
-      attendanceValue: Number((row as any).repasse_value) || 0,
-      detailStatus: 'CONSOLIDADO',
-      detailStatusText: 'Produção consolidada',
-      roleCode: matchedGroups[0]?.roleCode || '',
-      roleName: clean((row as any).funcao) || matchedGroups[0]?.roleName || '',
-      detailProfessionalName: matchedGroups[0]?.detailProfessionalName || '',
-      detailRepasseValue: Number((row as any).repasse_value) || 0,
-      isInConsolidado: true,
-      convenio: clean((row as any).convenio),
-      funcao: clean((row as any).funcao),
-      origin: 'consolidado',
-    };
-
-    const matchedDetails: RepasseAConferirLine[] = matchedGroups.flatMap((group) =>
-      group.rows.map((line) => ({
-        ...line,
-        isInConsolidado: true,
-        origin: 'a_conferir',
-      }))
-    );
-
-    const consolidatedQty = matchedGroups.reduce((sum, group) => sum + group.consolidadoCount, 0);
-    const consolidatedValue = matchedGroups.reduce((sum, group) => sum + group.consolidadoValue, 0);
-    const naoRecebidoQty = matchedGroups.reduce((sum, group) => sum + group.naoRecebidoCount, 0);
-    const naoRecebidoValue = matchedGroups.reduce((sum, group) => sum + group.naoRecebidoValue, 0);
-    const naoConsolidadoQty = matchedGroups.reduce((sum, group) => sum + group.naoConsolidadoCount, 0);
-    const naoConsolidadoValue = matchedGroups.reduce((sum, group) => sum + group.naoConsolidadoValue, 0);
-
-    const producaoValue = Number((row as any).repasse_value) || 0;
-    const divergenceValueAtendimento = Number((producaoValue - consolidatedValue).toFixed(2));
-    const hasDivergenceAtendimento = Math.abs(divergenceValueAtendimento) > 0.01;
-
-    const details = [consolidatedDetail, ...matchedDetails];
-    const attendanceKey =
-      clean((row as any).source_row_hash) ||
-      stableHash64(`${periodRef}|${professionalId}|cons|${key}|${producaoValue}`);
-
-    attendimentos.push({
-      attendanceKey,
-      executionDate: clean((row as any).data_exec),
-      patientName: clean((row as any).paciente),
-      unitName: matchedGroups[0]?.unitName || '',
-      accountDate: matchedGroups[0]?.accountDate || '',
-      procedureLabel:
-        clean((row as any).descricao) || matchedGroups[0]?.procedureName || matchedDetails[0]?.procedureName || '',
-      producaoValue,
-      consolidadoQty: consolidatedQty,
-      consolidadoValue: consolidatedValue,
-      naoConsolidadoQty,
-      naoConsolidadoValue,
-      naoRecebidoQty,
-      naoRecebidoValue,
-      hasDivergenceAtendimento,
-      divergenceValueAtendimento,
+      repasseConsolidadoValue: Number((row as any).repasse_value) || 0,
+      repasseAConferirValue: Number(mergedGroup?.detailRepasseValueTotal || 0),
+      detailStatus: status.code,
+      detailStatusText: status.text,
+      hasMatch,
       matchRule,
       matchConfidence,
-      details,
-    });
-  }
-
-  for (const [key, grouped] of groupedAConferir.entries()) {
-    if (consumedKeys.has(key)) continue;
-    const details = grouped.rows.map((line) => ({
-      ...line,
-      isInConsolidado: false,
-      origin: 'a_conferir' as const,
-    }));
-    const consolidatedValue = grouped.consolidadoValue;
-    const divergenceValueAtendimento = Number((0 - consolidatedValue).toFixed(2));
-    const hasDivergenceAtendimento = Math.abs(divergenceValueAtendimento) > 0.01;
-    const attendanceKey =
-      grouped.rows[0]?.sourceRowHash || stableHash64(`${periodRef}|${professionalId}|aconferir|${key}`);
-
-    attendimentos.push({
-      attendanceKey,
-      executionDate: grouped.rows[0]?.executionDate || '',
-      patientName: grouped.rows[0]?.patientName || '',
-      unitName: grouped.unitName,
-      accountDate: grouped.accountDate,
-      procedureLabel: grouped.procedureName || grouped.rows[0]?.procedureName || '',
-      producaoValue: 0,
-      consolidadoQty: grouped.consolidadoCount,
-      consolidadoValue: grouped.consolidadoValue,
-      naoConsolidadoQty: grouped.naoConsolidadoCount,
-      naoConsolidadoValue: grouped.naoConsolidadoValue,
-      naoRecebidoQty: grouped.naoRecebidoCount,
-      naoRecebidoValue: grouped.naoRecebidoValue,
-      hasDivergenceAtendimento,
-      divergenceValueAtendimento,
-      matchRule: 'PATIENT_DATE_PROCEDURE',
-      matchConfidence: 'HIGH',
-      details,
+      expandedItems,
     });
   }
 
@@ -2840,24 +2794,50 @@ export const listRepasseAConferirLinesByProfessional = async (
     return '0000-00-00';
   };
 
-  attendimentos.sort((a, b) => {
+  mainRows.sort((a, b) => {
     const da = parseDateForSort(a.executionDate);
     const dbs = parseDateForSort(b.executionDate);
     if (da !== dbs) return dbs.localeCompare(da);
     return a.patientName.localeCompare(b.patientName, 'pt-BR');
   });
 
-  const rows = attendimentos.flatMap((attendance) => attendance.details);
-  const summary = attendimentos.reduce(
-    (acc, attendance) => {
-      acc.rowsCount += attendance.details.length;
-      acc.producaoValue += attendance.producaoValue;
-      acc.consolidadoQty += attendance.consolidadoQty;
-      acc.consolidadoValue += attendance.consolidadoValue;
-      acc.naoConsolidadoQty += attendance.naoConsolidadoQty;
-      acc.naoConsolidadoValue += attendance.naoConsolidadoValue;
-      acc.naoRecebidoQty += attendance.naoRecebidoQty;
-      acc.naoRecebidoValue += attendance.naoRecebidoValue;
+  const rows = mainRows.map((row) => ({
+    sourceRowHash: row.rowKey,
+    invoiceId: '',
+    executionDate: row.executionDate,
+    patientName: row.patientName,
+    unitName: row.unitName,
+    accountDate: row.accountDate === 'Múltiplas' ? '' : row.accountDate,
+    requesterName: '',
+    specialtyName: row.specialtyName === 'Múltiplas' ? '' : row.specialtyName,
+    procedureName: row.procedureName,
+    attendanceValue: row.repasseConsolidadoValue,
+    detailStatus: row.detailStatus,
+    detailStatusText: row.detailStatusText,
+    roleCode: '',
+    roleName: '',
+    detailProfessionalName: '',
+    detailRepasseValue: row.repasseConsolidadoValue,
+    isInConsolidado: true,
+    convenio: '',
+    funcao: '',
+    origin: 'consolidado' as const,
+  }));
+
+  const summary = mainRows.reduce(
+    (acc, row) => {
+      acc.rowsCount += 1;
+      acc.producaoValue += row.repasseConsolidadoValue;
+      if (row.detailStatus === 'CONSOLIDADO') {
+        acc.consolidadoQty += 1;
+        acc.consolidadoValue += row.repasseAConferirValue;
+      } else if (row.detailStatus === 'NAO_RECEBIDO') {
+        acc.naoRecebidoQty += 1;
+        acc.naoRecebidoValue += row.repasseAConferirValue;
+      } else {
+        acc.naoConsolidadoQty += 1;
+        acc.naoConsolidadoValue += row.repasseAConferirValue;
+      }
       return acc;
     },
     {
@@ -2873,7 +2853,7 @@ export const listRepasseAConferirLinesByProfessional = async (
   );
 
   return {
-    attendimentos,
+    mainRows,
     rows,
     summary,
   };

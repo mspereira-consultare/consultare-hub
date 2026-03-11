@@ -3,6 +3,7 @@
 import { Fragment, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, Loader2, MessageSquareText, Save, X } from 'lucide-react';
 import type {
+  RepasseAConferirMainRow,
   RepasseConsolidacaoLineMarkColor,
   RepasseConsolidacaoMarkLegend,
 } from '@/lib/repasses/types';
@@ -31,27 +32,6 @@ type RepasseLine = {
   convenio?: string;
   funcao?: string;
   origin?: 'consolidado' | 'a_conferir';
-};
-
-type RepasseAttendanceSummary = {
-  attendanceKey: string;
-  executionDate: string;
-  patientName: string;
-  unitName: string;
-  accountDate: string;
-  procedureLabel: string;
-  producaoValue: number;
-  consolidadoQty: number;
-  consolidadoValue: number;
-  naoConsolidadoQty: number;
-  naoConsolidadoValue: number;
-  naoRecebidoQty: number;
-  naoRecebidoValue: number;
-  hasDivergenceAtendimento: boolean;
-  divergenceValueAtendimento: number;
-  matchRule: 'PATIENT_DATE_PROCEDURE' | 'PATIENT_DATE';
-  matchConfidence: 'HIGH' | 'LOW';
-  details: RepasseLine[];
 };
 
 type ProfessionalSummary = {
@@ -93,7 +73,7 @@ type ProfessionalDetailsModalProps = {
   open: boolean;
   item: ProfessionalSummary | null;
   periodRef: string;
-  attendimentos: RepasseAttendanceSummary[];
+  mainRows: RepasseAConferirMainRow[];
   rows: RepasseLine[];
   loadingRows: boolean;
   rowsError: string;
@@ -157,11 +137,18 @@ const markButtonClass = (active: boolean, color: RepasseConsolidacaoLineMarkColo
   }`;
 };
 
+const statusBadgeClass: Record<RepasseAConferirMainRow['detailStatus'], string> = {
+  CONSOLIDADO: 'border-emerald-300 bg-emerald-50 text-emerald-700',
+  NAO_CONSOLIDADO: 'border-amber-300 bg-amber-50 text-amber-700',
+  NAO_RECEBIDO: 'border-rose-300 bg-rose-50 text-rose-700',
+  SEM_CORRESPONDENCIA: 'border-slate-300 bg-slate-100 text-slate-700',
+};
+
 export function ProfessionalDetailsModal({
   open,
   item,
   periodRef,
-  attendimentos,
+  mainRows,
   rows,
   loadingRows,
   rowsError,
@@ -182,17 +169,17 @@ export function ProfessionalDetailsModal({
   onLegendChange,
   onSaveLegend,
 }: ProfessionalDetailsModalProps) {
-  const [expandedByAttendance, setExpandedByAttendance] = useState<Record<string, boolean>>({});
+  const [expandedByRow, setExpandedByRow] = useState<Record<string, boolean>>({});
 
-  const rowsForManualControl = useMemo(() => {
-    if (attendimentos.length > 0) return attendimentos.flatMap((attendance) => attendance.details || []);
-    return rows;
-  }, [attendimentos, rows]);
+  const rowsForManualControl = useMemo(
+    () => mainRows.map((row) => ({ sourceRowHash: row.rowKey, detailRepasseValue: row.repasseConsolidadoValue })),
+    [mainRows]
+  );
 
-  const toggleAttendance = (attendanceKey: string) => {
-    setExpandedByAttendance((prev) => ({
+  const toggleRow = (rowKey: string) => {
+    setExpandedByRow((prev) => ({
       ...prev,
-      [attendanceKey]: !prev[attendanceKey],
+      [rowKey]: !prev[rowKey],
     }));
   };
 
@@ -205,7 +192,7 @@ export function ProfessionalDetailsModal({
           <div>
             <h3 className="text-sm font-semibold text-slate-800">Detalhes do profissional</h3>
             <p className="text-xs text-slate-500">
-              {item.professionalName} | Per?odo: {periodRef}
+              {item.professionalName} | Período: {periodRef}
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded border px-2 py-1 text-xs text-slate-700">
@@ -218,13 +205,13 @@ export function ProfessionalDetailsModal({
 
         <div className="grid grid-cols-1 gap-2 border-b bg-slate-50 px-4 py-3 md:grid-cols-10">
           <div className="rounded border bg-white px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">Execu??o</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">Execução</div>
             <div className="text-sm font-semibold text-slate-700">
               {item.execucaoPending ? 'N/D' : `${item.execucaoQty} | ${formatCurrency(item.execucaoValue)}`}
             </div>
           </div>
           <div className="rounded border bg-white px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">Produ??o (Feegow)</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">Produção (Feegow)</div>
             <div className="text-sm font-semibold text-slate-800">
               {item.producaoQty} | {formatCurrency(item.producaoValue)}
             </div>
@@ -244,13 +231,13 @@ export function ProfessionalDetailsModal({
             </div>
           </div>
           <div className="rounded border bg-white px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">N?o consolidado</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">Não consolidado</div>
             <div className="text-sm font-semibold text-amber-700">
               {item.naoConsolidadoQty} | {formatCurrency(item.naoConsolidadoValue)}
             </div>
           </div>
           <div className="rounded border bg-white px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">N?o recebido</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">Não recebido</div>
             <div className="text-sm font-semibold text-rose-700">
               {item.naoRecebidoQty} | {formatCurrency(item.naoRecebidoValue)}
             </div>
@@ -269,7 +256,7 @@ export function ProfessionalDetailsModal({
             <div className="text-sm font-bold text-emerald-700">{formatCurrency(item.totalFinalValue)}</div>
           </div>
           <div className="rounded border bg-white px-3 py-2 md:col-span-10">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">Pagamento m?nimo</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">Pagamento mínimo</div>
             <div className="text-sm font-semibold text-slate-700">{item.paymentMinimumText || '-'}</div>
           </div>
         </div>
@@ -277,29 +264,30 @@ export function ProfessionalDetailsModal({
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto px-4 py-3 xl:grid-cols-[minmax(0,1fr)_430px] xl:overflow-hidden">
           <div className="flex min-h-0 flex-col rounded-lg border">
             <div className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Resumo de atendimentos
+              Atendimentos do per?odo
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
-              <table className="w-full min-w-[1500px] text-xs">
+              <table className="w-full min-w-[1650px] text-xs">
                 <thead className="sticky top-0 bg-white text-[10px] uppercase tracking-wide text-slate-500">
                   <tr>
                     <th className="w-10 px-2 py-2 text-center">+</th>
-                    <th className="px-2 py-2 text-left">Data exec.</th>
+                    <th className="px-2 py-2 text-left">Data execução</th>
                     <th className="px-2 py-2 text-left">Paciente</th>
                     <th className="px-2 py-2 text-left">Unidade</th>
                     <th className="px-2 py-2 text-left">Procedimento</th>
-                    <th className="px-2 py-2 text-right">Produ??o</th>
-                    <th className="px-2 py-2 text-right">Cons. qtd/valor</th>
-                    <th className="px-2 py-2 text-right">N?o cons. qtd/valor</th>
-                    <th className="px-2 py-2 text-right">N?o receb. qtd/valor</th>
-                    <th className="px-2 py-2 text-right">Diverg?ncia</th>
-                    <th className="px-2 py-2 text-left">V?nculo</th>
+                    <th className="px-2 py-2 text-left">Especialidade</th>
+                    <th className="px-2 py-2 text-left">Data da conta</th>
+                    <th className="px-2 py-2 text-right">Repasse consolidado</th>
+                    <th className="px-2 py-2 text-right">Repasse a conferir</th>
+                    <th className="px-2 py-2 text-left">Status consolidação</th>
+                    <th className="px-2 py-2 text-left">Vínculo</th>
+                    <th className="px-2 py-2 text-center">Classificação</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loadingRows ? (
                     <tr>
-                      <td colSpan={11} className="px-2 py-8 text-center text-slate-500">
+                      <td colSpan={12} className="px-2 py-8 text-center text-slate-500">
                         <span className="inline-flex items-center gap-2">
                           <Loader2 size={14} className="animate-spin" />
                           Carregando atendimentos...
@@ -308,136 +296,119 @@ export function ProfessionalDetailsModal({
                     </tr>
                   ) : rowsError ? (
                     <tr>
-                      <td colSpan={11} className="px-2 py-8 text-center text-rose-700">
+                      <td colSpan={12} className="px-2 py-8 text-center text-rose-700">
                         {rowsError}
                       </td>
                     </tr>
-                  ) : attendimentos.length === 0 ? (
+                  ) : mainRows.length === 0 ? (
                     <tr>
-                      <td colSpan={11} className="px-2 py-8 text-center text-slate-500">
+                      <td colSpan={12} className="px-2 py-8 text-center text-slate-500">
                         Sem atendimentos para este profissional no per?odo.
                       </td>
                     </tr>
                   ) : (
-                    attendimentos.map((attendance) => {
-                      const isExpanded = Boolean(expandedByAttendance[attendance.attendanceKey]);
+                    mainRows.map((row) => {
+                      const isExpanded = Boolean(expandedByRow[row.rowKey]);
+                      const mark = marksByRowHash[row.rowKey] || null;
                       return (
-                        <Fragment key={attendance.attendanceKey}>
-                          <tr
-                            className={`border-t text-slate-700 ${attendance.hasDivergenceAtendimento ? 'bg-rose-50/40' : ''}`}
-                          >
+                        <Fragment key={row.rowKey}>
+                          <tr className={`border-t text-slate-700 ${markRowClass(mark)}`}>
                             <td className="px-2 py-1.5 text-center">
                               <button
                                 type="button"
                                 className="inline-flex items-center justify-center rounded border p-1 text-slate-600 hover:bg-slate-100"
-                                onClick={() => toggleAttendance(attendance.attendanceKey)}
+                                onClick={() => toggleRow(row.rowKey)}
                               >
                                 {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                               </button>
                             </td>
-                            <td className="px-2 py-1.5">{toBrDate(attendance.executionDate)}</td>
-                            <td className="px-2 py-1.5">{attendance.patientName || '-'}</td>
-                            <td className="px-2 py-1.5">{attendance.unitName || '-'}</td>
-                            <td className="px-2 py-1.5">{attendance.procedureLabel || '-'}</td>
+                            <td className="px-2 py-1.5">{toBrDate(row.executionDate)}</td>
+                            <td className="px-2 py-1.5">{row.patientName || '-'}</td>
+                            <td className="px-2 py-1.5">{row.unitName || '-'}</td>
+                            <td className="px-2 py-1.5">{row.procedureName || '-'}</td>
+                            <td className="px-2 py-1.5">{row.specialtyName || '-'}</td>
+                            <td className="px-2 py-1.5">{toBrDate(row.accountDate)}</td>
                             <td className="px-2 py-1.5 text-right font-semibold text-slate-800">
-                              {formatCurrency(attendance.producaoValue)}
+                              {formatCurrency(row.repasseConsolidadoValue)}
                             </td>
-                            <td className="px-2 py-1.5 text-right text-emerald-700">
-                              {attendance.consolidadoQty} | {formatCurrency(attendance.consolidadoValue)}
-                            </td>
-                            <td className="px-2 py-1.5 text-right text-amber-700">
-                              {attendance.naoConsolidadoQty} | {formatCurrency(attendance.naoConsolidadoValue)}
-                            </td>
-                            <td className="px-2 py-1.5 text-right text-rose-700">
-                              {attendance.naoRecebidoQty} | {formatCurrency(attendance.naoRecebidoValue)}
-                            </td>
-                            <td className="px-2 py-1.5 text-right font-semibold">
-                              {attendance.hasDivergenceAtendimento
-                                ? formatCurrency(attendance.divergenceValueAtendimento)
-                                : formatCurrency(0)}
+                            <td className="px-2 py-1.5 text-right font-semibold text-slate-700">
+                              {formatCurrency(row.repasseAConferirValue)}
                             </td>
                             <td className="px-2 py-1.5">
-                              {attendance.matchConfidence === 'HIGH' ? (
-                                <span className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                                  Alta confian?a
-                                </span>
+                              <span className={`rounded border px-2 py-0.5 text-[11px] font-semibold ${statusBadgeClass[row.detailStatus]}`}>
+                                {row.detailStatusText || row.detailStatus}
+                              </span>
+                            </td>
+                            <td className="px-2 py-1.5">
+                              {row.hasMatch ? (
+                                row.matchConfidence === 'HIGH' ? (
+                                  <span className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                    Alta confiança
+                                  </span>
+                                ) : (
+                                  <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                                    Fallback
+                                  </span>
+                                )
                               ) : (
-                                <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                                  Fallback
+                                <span className="rounded border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                                  Sem correspondência
                                 </span>
                               )}
                             </td>
+                            <td className="px-2 py-1.5">
+                              <div className="flex items-center justify-center gap-1">
+                                {(['green', 'yellow', 'red'] as RepasseConsolidacaoLineMarkColor[]).map((color) => (
+                                  <button
+                                    key={color}
+                                    type="button"
+                                    onClick={() => onMarkChange(row.rowKey, mark === color ? null : color)}
+                                    className={markButtonClass(mark === color, color)}
+                                    title={legend[color]}
+                                  >
+                                    {legend[color]}
+                                  </button>
+                                ))}
+                              </div>
+                            </td>
                           </tr>
+
                           {isExpanded ? (
                             <tr className="border-t bg-slate-50/50">
-                              <td colSpan={11} className="px-3 py-3">
+                              <td colSpan={12} className="px-3 py-3">
                                 <div className="overflow-auto rounded border bg-white">
-                                  <table className="w-full min-w-[1700px] text-xs">
+                                  <table className="w-full min-w-[980px] text-xs">
                                     <thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500">
                                       <tr>
-                                        <th className="px-2 py-2 text-left">Origem</th>
-                                        <th className="px-2 py-2 text-left">Data conta</th>
-                                        <th className="px-2 py-2 text-left">Solicitante</th>
-                                        <th className="px-2 py-2 text-left">Especialidade</th>
-                                        <th className="px-2 py-2 text-left">Procedimento</th>
-                                        <th className="px-2 py-2 text-left">Conv?nio</th>
-                                        <th className="px-2 py-2 text-left">Fun??o</th>
-                                        <th className="px-2 py-2 text-left">Profissional detalhe</th>
-                                        <th className="px-2 py-2 text-left">Status</th>
-                                        <th className="px-2 py-2 text-right">Atendimento</th>
-                                        <th className="px-2 py-2 text-right">Repasse</th>
-                                        <th className="px-2 py-2 text-center">Marca??o</th>
+                                        <th className="px-2 py-2 text-left">Requisitante</th>
+                                        <th className="px-2 py-2 text-left">Convênio</th>
+                                        <th className="px-2 py-2 text-left">Recibo</th>
+                                        <th className="px-2 py-2 text-right">Valor (conta)</th>
+                                        <th className="px-2 py-2 text-right">Repasse item</th>
+                                        <th className="px-2 py-2 text-left">Detalhe consolidação</th>
                                       </tr>
                                     </thead>
                                     <tbody>
-                                      {attendance.details.map((row, idx) => {
-                                        const mark = marksByRowHash[row.sourceRowHash] || null;
-                                        const source = row.origin || row.origem || 'a_conferir';
-                                        return (
-                                          <tr key={`${attendance.attendanceKey}-${row.sourceRowHash}-${idx}`} className={`border-t ${markRowClass(mark)}`}>
-                                            <td className="px-2 py-1.5">
-                                              {source === 'consolidado' ? (
-                                                <span className="rounded border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                                                  Consolidado
-                                                </span>
-                                              ) : (
-                                                <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                                                  A conferir
-                                                </span>
-                                              )}
+                                      {row.expandedItems.length === 0 ? (
+                                        <tr>
+                                          <td colSpan={6} className="px-2 py-3 text-center text-slate-500">
+                                            Sem detalhes de consolidação para esta linha.
+                                          </td>
+                                        </tr>
+                                      ) : (
+                                        row.expandedItems.map((detail, idx) => (
+                                          <tr key={`${row.rowKey}-${idx}`} className="border-t text-slate-700">
+                                            <td className="px-2 py-1.5">{detail.requesterName || '-'}</td>
+                                            <td className="px-2 py-1.5">{detail.convenio || '-'}</td>
+                                            <td className="px-2 py-1.5">{detail.invoiceId || '-'}</td>
+                                            <td className="px-2 py-1.5 text-right">{formatCurrency(detail.attendanceValue)}</td>
+                                            <td className="px-2 py-1.5 text-right font-medium">
+                                              {formatCurrency(detail.detailRepasseValue)}
                                             </td>
-                                            <td className="px-2 py-1.5">{toBrDate(row.accountDate)}</td>
-                                            <td className="px-2 py-1.5">{row.requesterName || '-'}</td>
-                                            <td className="px-2 py-1.5">{row.specialtyName || '-'}</td>
-                                            <td className="px-2 py-1.5">{row.procedureName || '-'}</td>
-                                            <td className="px-2 py-1.5">{row.convenio || '-'}</td>
-                                            <td className="px-2 py-1.5">{row.funcao || row.roleName || '-'}</td>
-                                            <td className="px-2 py-1.5">{row.detailProfessionalName || '-'}</td>
-                                            <td className="px-2 py-1.5">
-                                              <span className="rounded border bg-white px-2 py-0.5 text-[11px] font-semibold">
-                                                {row.detailStatusText || row.detailStatus || '-'}
-                                              </span>
-                                            </td>
-                                            <td className="px-2 py-1.5 text-right">{formatCurrency(row.attendanceValue)}</td>
-                                            <td className="px-2 py-1.5 text-right font-medium">{formatCurrency(row.detailRepasseValue)}</td>
-                                            <td className="px-2 py-1.5">
-                                              <div className="flex items-center justify-center gap-1">
-                                                {(['green', 'yellow', 'red'] as RepasseConsolidacaoLineMarkColor[]).map((color) => (
-                                                  <button
-                                                    key={color}
-                                                    type="button"
-                                                    onClick={() => onMarkChange(row.sourceRowHash, mark === color ? null : color)}
-                                                    className={markButtonClass(mark === color, color)}
-                                                    title={legend[color]}
-                                                  >
-                                                    {legend[color]}
-                                                  </button>
-                                                ))}
-                                              </div>
-                                            </td>
+                                            <td className="px-2 py-1.5">{detail.detailStatusText || '-'}</td>
                                           </tr>
-                                        );
-                                      })}
+                                        ))
+                                      )}
                                     </tbody>
                                   </table>
                                 </div>
@@ -464,7 +435,7 @@ export function ProfessionalDetailsModal({
                 className="inline-flex items-center gap-2 rounded border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
               >
                 {savingMarks ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Salvar marca??es
+                Salvar marcações
               </button>
             </div>
 
@@ -479,12 +450,12 @@ export function ProfessionalDetailsModal({
             <div className="rounded-lg border bg-slate-50 p-3">
               <div className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
                 <MessageSquareText size={14} />
-                Observa??o do relat?rio
+                Observação do relatório
               </div>
               <textarea
                 value={noteValue}
                 onChange={(e) => onNoteChange(e.target.value)}
-                placeholder="Este texto ser? inclu?do no relat?rio."
+                placeholder="Este texto será incluído no relatório."
                 className="min-h-[120px] w-full resize-y rounded border bg-white px-3 py-2 text-sm outline-none"
                 disabled={!canEdit}
               />
@@ -492,12 +463,12 @@ export function ProfessionalDetailsModal({
 
             <div className="rounded-lg border bg-slate-50 p-3">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Observa??o interna
+                Observação interna
               </div>
               <textarea
                 value={internalNoteValue}
                 onChange={(e) => onInternalNoteChange(e.target.value)}
-                placeholder="Anota??o interna (n?o vai para o relat?rio)."
+                placeholder="Anotação interna (não vai para o relatório)."
                 className="min-h-[110px] w-full resize-y rounded border bg-white px-3 py-2 text-sm outline-none"
                 disabled={!canEdit}
               />
@@ -511,7 +482,7 @@ export function ProfessionalDetailsModal({
                 className="inline-flex items-center gap-2 rounded border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
               >
                 {savingNote ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Salvar observa??es
+                Salvar observações
               </button>
             </div>
           </div>
