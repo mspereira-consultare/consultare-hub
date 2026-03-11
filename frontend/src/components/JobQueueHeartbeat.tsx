@@ -38,7 +38,7 @@ type JobQueueHeartbeatProps = {
 const SERVICE_LABEL: Record<QueueServiceName, string> = {
   faturamento: 'Faturamento',
   repasses: 'Repasses',
-  repasse_consolidacao: 'Consolidação',
+  repasse_consolidacao: 'Consolidacao',
 };
 
 const statusBadgeClass = (running: boolean, queued: boolean) => {
@@ -47,19 +47,30 @@ const statusBadgeClass = (running: boolean, queued: boolean) => {
   return 'bg-slate-100 text-slate-600';
 };
 
+const parseDbTimestamp = (value?: string | null): Date | null => {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+
+  const isoLike = raw.includes('T') ? raw : raw.replace(' ', 'T');
+  const hasTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(isoLike);
+  const normalized = hasTimezone ? isoLike : `${isoLike}Z`;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+};
+
 const toBrDateTime = (value?: string | null) => {
   const raw = String(value || '').trim();
-  if (!raw) return 'Sem sincronização registrada';
-  const isoLike = raw.includes('T') ? raw : raw.replace(' ', 'T');
-  const date = new Date(isoLike);
-  if (Number.isNaN(date.getTime())) return raw;
-  return date.toLocaleString('pt-BR');
+  if (!raw) return 'Sem sincronizacao registrada';
+  const date = parseDbTimestamp(raw);
+  if (!date) return raw;
+  return date.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 };
 
 export function JobQueueHeartbeat({
   services,
   fallbackLastSyncAt = null,
-  label = 'Sincronização',
+  label = 'Sincronizacao',
   className = '',
   pollMs = 8_000,
 }: JobQueueHeartbeatProps) {
@@ -127,7 +138,7 @@ export function JobQueueHeartbeat({
     const dates = items
       .map((item) => item.lastRun)
       .filter(Boolean)
-      .map((raw) => ({ raw: String(raw), ts: new Date(String(raw).replace(' ', 'T')).getTime() }))
+      .map((raw) => ({ raw: String(raw), ts: parseDbTimestamp(raw)?.getTime() || 0 }))
       .filter((item) => Number.isFinite(item.ts))
       .sort((a, b) => b.ts - a.ts);
     return dates[0]?.raw || null;
@@ -141,16 +152,14 @@ export function JobQueueHeartbeat({
     return (
       <div className={`flex flex-col text-xs ${className}`.trim()}>
         <span className="font-bold uppercase tracking-wider text-slate-400">{label}</span>
-        <span className="font-medium text-slate-600">
-          Última sincronização: {toBrDateTime(finalFallback)}
-        </span>
+        <span className="font-medium text-slate-600">Ultima sincronizacao: {toBrDateTime(finalFallback)}</span>
       </div>
     );
   }
 
   const message = primaryItem.isRunning
-    ? `Processando agora (posição ${primaryItem.position || 1} de ${primaryItem.queueSize || 1})`
-    : `Na fila (posição ${primaryItem.position || '-'} de ${primaryItem.queueSize || '-'})`;
+    ? `Processando agora (posicao ${primaryItem.position || 1} de ${primaryItem.queueSize || 1})`
+    : `Na fila (posicao ${primaryItem.position || '-'} de ${primaryItem.queueSize || '-'})`;
 
   return (
     <div className={`flex flex-col text-xs ${className}`.trim()}>
@@ -167,10 +176,9 @@ export function JobQueueHeartbeat({
         <span className="font-medium text-slate-700">{message}</span>
       </div>
       <span className="text-[11px] text-slate-500">
-        Última atualização: {toBrDateTime(primaryItem.lastRun || finalFallback)}
-        {loading ? ' • atualizando...' : ''}
+        Ultima atualizacao: {toBrDateTime(primaryItem.lastRun || finalFallback)}
+        {loading ? ' - atualizando...' : ''}
       </span>
     </div>
   );
 }
-

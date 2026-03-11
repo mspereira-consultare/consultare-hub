@@ -743,11 +743,20 @@ export default function RepassesPage() {
     <div className="mx-auto max-w-[1900px] space-y-4 p-6">
       <header className="rounded-xl border bg-white p-4">
         <div className="flex flex-col gap-3">
-          <div className="min-w-0">
-            <h1 className="text-xl font-bold text-slate-800">Fechamento de repasses</h1>
-            <p className="text-xs text-slate-500">
-              Visão comparativa entre repasses fechados e itens de consolidação para conferência operacional.
-            </p>
+          <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-slate-800">Fechamento de repasses</h1>
+              <p className="text-xs text-slate-500">
+                Visao comparativa entre repasses fechados e itens de consolidacao para conferencia operacional.
+              </p>
+            </div>
+
+            <JobQueueHeartbeat
+              services={["repasses", "repasse_consolidacao"]}
+              fallbackLastSyncAt={repasseLastSyncAt}
+              label="Sincronizacao"
+              className="self-start md:items-end md:text-right"
+            />
           </div>
 
           <RepassesFiltersPanel
@@ -870,13 +879,6 @@ export default function RepassesPage() {
           <span className="text-xs text-slate-500">
             Período: {periodLabel} | Selecionados: {selectedCount}
           </span>
-
-          <JobQueueHeartbeat
-            services={["repasses", "repasse_consolidacao"]}
-            fallbackLastSyncAt={repasseLastSyncAt}
-            label="Sincronização"
-            className="ml-auto hidden md:flex"
-          />
         </div>
       </header>
 
