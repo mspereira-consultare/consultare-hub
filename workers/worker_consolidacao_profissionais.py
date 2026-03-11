@@ -762,6 +762,8 @@ def _login_feegow(page):
                 continue
 
     page.wait_for_timeout(1600)
+    _handle_concurrent_session_prompt(page)
+    page.wait_for_timeout(500)
     still_user = page.locator("input[name='User']").count() > 0
     still_pass = page.locator("input[name='password']").count() > 0
     still_email = False
@@ -785,6 +787,7 @@ def _open_consolidacao_screen(page):
     page.wait_for_selector("#De", timeout=30000)
     page.wait_for_selector("#Ate", timeout=30000)
     page.wait_for_selector("#BtnBuscar", timeout=30000)
+    page.wait_for_selector("#searchAccountID", timeout=30000)
     _enable_readonly_safety(page)
 
 def _set_multiselect_values(page, select_id: str, target_values: List[str]) -> Tuple[int, int, List[str]]:
@@ -860,6 +863,13 @@ def _set_dates(page, date_from: str, date_to: str):
     if page.locator("#De").count() == 0 or page.locator("#Ate").count() == 0:
         raise RuntimeError("campos de data De/Ate nao encontrados.")
 
+    def _validate():
+        de_val = _clean_ws(page.locator("#De").input_value())
+        ate_val = _clean_ws(page.locator("#Ate").input_value())
+        if de_val == date_from and ate_val == date_to:
+            return True, de_val, ate_val
+        return False, de_val, ate_val
+
     for selector, value in (("#De", date_from), ("#Ate", date_to)):
         page.click(selector, force=True)
         page.keyboard.press("Control+a")
@@ -867,9 +877,38 @@ def _set_dates(page, date_from: str, date_to: str):
         page.locator(selector).blur()
         page.wait_for_timeout(120)
 
-    de_val = _clean_ws(page.locator("#De").input_value())
-    ate_val = _clean_ws(page.locator("#Ate").input_value())
-    if de_val != date_from or ate_val != date_to:
+    ok, de_val, ate_val = _validate()
+    if ok:
+        return
+
+    page.evaluate(
+        """
+        ({ de, ate }) => {
+          const deInput = document.querySelector('#De');
+          const ateInput = document.querySelector('#Ate');
+          if (!deInput || !ateInput) return;
+          deInput.value = String(de || '');
+          ateInput.value = String(ate || '');
+          const fire = (el) => {
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.dispatchEvent(new Event('blur', { bubbles: true }));
+          };
+          fire(deInput);
+          fire(ateInput);
+          if (window.$ && typeof window.$ === 'function') {
+            try {
+              window.$(deInput).trigger('change');
+              window.$(ateInput).trigger('change');
+            } catch (e) {}
+          }
+        }
+        """,
+        {"de": date_from, "ate": date_to},
+    )
+    page.wait_for_timeout(180)
+    ok, de_val, ate_val = _validate()
+    if not ok:
         raise RuntimeError(f"datas nao aplicadas: De={de_val} Ate={ate_val}")
 
 
@@ -892,6 +931,84 @@ def _apply_fixed_filters(page, date_from: str, date_to: str):
         raise RuntimeError(
             f"unidades divergentes. esperado={sorted(expected_units)} obtido={sorted(selected_units)}"
         )
+
+
+def _looks_like_login_screen(page) -> bool:
+    if "login" in (page.url or "").lower():
+        return True
+    try:
+        if page.locator("input[name='User']").count() > 0:
+            return True
+        if page.locator("input[name='password']").count() > 0:
+            return True
+        if page.locator("input[type='password']").count() > 0 and page.locator("input[type='email']").count() > 0:
+            return True
+    except Exception:
+        return True
+    return False
+
+
+def _has_required_screen_elements(page) -> bool:
+    required = ("#De", "#Ate", "#BtnBuscar", "#searchAccountID")
+    for selector in required:
+        try:
+            if page.locator(selector).count() == 0:
+                return False
+        except Exception:
+            return False
+    return True
+
+
+def _handle_concurrent_session_prompt(page):
+    # Aceita prompts/modal de sessão concorrente quando aparecerem.
+    try:
+        page.evaluate(
+            """
+            () => {
+              const candidates = Array.from(document.querySelectorAll('.modal button, .swal2-container button, .bootbox button, button'));
+              const wanted = /(derrubar|encerrar|continuar|confirmar|ok|sim)/i;
+              for (const btn of candidates) {
+                const txt = String(btn.textContent || '').trim();
+                if (!txt) continue;
+                if (wanted.test(txt)) {
+                  const inDangerArea = /(consolidar|desconsolidar|marcar pagos|marcar nao pagos|marcar não pagos)/i.test(txt);
+                  if (inDangerArea) continue;
+                  try {
+                    btn.click();
+                    return true;
+                  } catch (e) {}
+                }
+              }
+              return false;
+            }
+            """
+        )
+    except Exception:
+        pass
+
+
+def _recover_session_and_screen(page, date_from: str, date_to: str):
+    _handle_concurrent_session_prompt(page)
+    _login_feegow(page)
+    _open_consolidacao_screen(page)
+    _apply_fixed_filters(page, date_from, date_to)
+
+
+def _ensure_ready_for_professional(page, date_from: str, date_to: str):
+    _handle_concurrent_session_prompt(page)
+
+    if _looks_like_login_screen(page):
+        raise RuntimeError("sessao invalida: tela de login detectada")
+
+    if "RepassesAConferir" not in (page.url or ""):
+        _open_consolidacao_screen(page)
+
+    if not _has_required_screen_elements(page):
+        raise RuntimeError("tela invalida: elementos obrigatorios ausentes")
+
+    _set_date_type_execucao(page)
+    _set_dates(page, date_from, date_to)
+    _enable_readonly_safety(page)
 
 
 def _extract_name_from_candidate_title(title: str) -> str:
@@ -1326,6 +1443,10 @@ def _process_professional(
     for attempt in range(1, DEFAULT_RETRY_ATTEMPTS + 1):
         try:
             if heartbeat_cb:
+                heartbeat_cb("validacao", prof.get("name"))
+            _ensure_ready_for_professional(page, date_from, date_to)
+
+            if heartbeat_cb:
                 heartbeat_cb("executante", prof.get("name"))
             select_status, chosen_candidate = _select_professional_by_name(page, prof)
             if select_status != "OK":
@@ -1380,8 +1501,10 @@ def _process_professional(
         except Exception as exc:
             last_error = exc
             if attempt < DEFAULT_RETRY_ATTEMPTS:
-                _open_consolidacao_screen(page)
-                _apply_fixed_filters(page, date_from, date_to)
+                try:
+                    _recover_session_and_screen(page, date_from, date_to)
+                except Exception as recover_exc:
+                    last_error = RuntimeError(f"{exc} | recovery_failed={recover_exc}")
                 continue
             return (
                 "ERROR",
@@ -1550,6 +1673,7 @@ def _process_job(
         browser = p.chromium.launch(headless=headless)
         context = browser.new_context(ignore_https_errors=True)
         page = context.new_page()
+        page.on("dialog", lambda dialog: dialog.accept())
         try:
             _hb(db, "RUNNING", job_id, "login")
             _login_feegow(page)
@@ -1561,7 +1685,7 @@ def _process_job(
                 t0 = time.time()
 
                 def _stage_cb(stage: str, prof_name: str = ""):
-                    if stage in ("executante", "buscar", "parse"):
+                    if stage in ("validacao", "executante", "buscar", "parse"):
                         suffix = f"profissional={prof_name}" if prof_name else ""
                         _hb(db, "RUNNING", job_id, stage, suffix)
 

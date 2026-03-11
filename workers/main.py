@@ -3,10 +3,12 @@ import time
 import os
 import sys
 import datetime
+import uuid
 import schedule
 import builtins
 import re
 import unicodedata
+from collections import deque
 
 # --- TIMEZONE (Railway normalmente roda em UTC) ---
 WORK_TZ_NAME = os.getenv("WORK_TZ", "America/Sao_Paulo")
@@ -58,7 +60,7 @@ try:
     from worker_proposals import update_proposals
     from worker_faturamento_scraping import run_scraper
     from worker_contracts import run_worker_contracts
-    from worker_repasse_consolidado import run_repasse_sync_loop, process_pending_repasse_jobs_once
+    from worker_repasse_consolidado import process_pending_repasse_jobs_once
     from worker_consolidacao_profissionais import process_pending_consolidacao_jobs_once
     from worker_agenda_ocupacao import process_pending_agenda_occupancy_jobs_once
     from worker_auth import FeegowTokenRenewer
@@ -126,6 +128,16 @@ def is_working_hours():
 
 # --- EXECUTOR SEGURO POR SERVIÇO (evita concorrência entre agendador e trigger manual) ---
 service_locks = {}
+
+SERIALIZED_SCRAPER_SERVICES = {"faturamento", "repasses", "repasse_consolidacao"}
+SERIAL_QUEUE_POLL_SEC = max(1, int(os.getenv("FEGOW_SERIAL_QUEUE_POLL_SEC", "5")))
+REPASSE_JOB_DISPATCH_POLL_SEC = max(5, int(os.getenv("REPASSE_JOB_DISPATCH_POLL_SEC", "20")))
+REPASSE_JOB_STALE_MINUTES = max(5, int(os.getenv("REPASSE_JOB_STALE_MINUTES", "20")))
+
+_serial_queue = deque()
+_serial_queue_lock = threading.Lock()
+_serial_queue_actions = set()
+_serial_running_action = None
 
 KNOWN_ACTIONS = {
     'appointments',
@@ -298,17 +310,43 @@ def normalize_system_status_rows():
         conn.close()
 
 
-def run_service(key: str):
-    """Executa um worker mapeado por `key` (ou seu alias), sem concorrência.
-    Resolve um nome canônico para logs e usa locks por ação. Heartbeat usa a ação (service_name)."""
-    action, display_name = canonicalize(key)
-    raw_key = str(key).strip() if key is not None else ''
+def _enqueue_serial_service(action: str, display_name: str, reason: str, raw_key: str = "") -> bool:
+    global _serial_running_action
+    with _serial_queue_lock:
+        if action == _serial_running_action or action in _serial_queue_actions:
+            return False
+        _serial_queue.append(
+            {
+                "action": action,
+                "display_name": display_name,
+                "raw_key": raw_key or action,
+                "reason": reason,
+                "queued_at": time.time(),
+            }
+        )
+        _serial_queue_actions.add(action)
+
+    details = f"Fila serial ({reason})"
+    try:
+        db = DatabaseManager()
+        db.update_heartbeat(action, "QUEUED", details)
+        if raw_key and raw_key != action:
+            db.update_heartbeat(raw_key, "QUEUED", details)
+    except Exception:
+        pass
+
+    print(f"📥 Enfileirado na fila serial: {display_name} | motivo={reason}")
+    return True
+
+
+def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
     lock = service_locks.setdefault(action, threading.Lock())
     if not lock.acquire(blocking=False):
         print(f"⏭️ Serviço já em execução: {display_name} — pulando execução.")
         return
 
     db = DatabaseManager()
+
     def _update_status(status: str, details: str):
         db.update_heartbeat(action, status, details)
         if raw_key and raw_key != action:
@@ -318,35 +356,40 @@ def run_service(key: str):
         _update_status("RUNNING", "Agendado/executando...")
         start = time.time()
 
-        if action == 'appointments':
+        if action == "appointments":
             update_appointments_data()
-        elif action == 'procedures_catalog':
+        elif action == "procedures_catalog":
             update_procedures_catalog()
-        elif action == 'faturamento':
-            # Scraper específico
+        elif action == "faturamento":
             run_scraper()
-        elif action == 'comercial':
+        elif action == "comercial":
             update_proposals()
-        elif action == 'repasses':
-            process_pending_repasse_jobs_once(
-                auto_enqueue_if_empty=True,
-                requested_by='system_status',
-            )
-        elif action == 'repasse_consolidacao':
-            process_pending_consolidacao_jobs_once(
-                auto_enqueue_if_empty=True,
-                requested_by='system_status',
+        elif action == "repasses":
+            drained = 0
+            while process_pending_repasse_jobs_once(
+                auto_enqueue_if_empty=False,
+                requested_by="system_status",
+            ):
+                drained += 1
+            print(f"🔁 Repasses: jobs drenados={drained}")
+        elif action == "repasse_consolidacao":
+            drained = 0
+            while process_pending_consolidacao_jobs_once(
+                auto_enqueue_if_empty=False,
+                requested_by="system_status",
                 headless=True,
-            )
-        elif action == 'contratos':
+            ):
+                drained += 1
+            print(f"🔁 Repasse consolidação: jobs drenados={drained}")
+        elif action == "contratos":
             run_worker_contracts()
-        elif action == 'auth':
+        elif action == "auth":
             run_token_renewal()
-        elif action == 'auth_clinia':
+        elif action == "auth_clinia":
             run_clinia_token_renewal()
-        elif action == 'clinia':
+        elif action == "clinia":
             clinia_cycle()
-        elif action == 'agenda_occupancy':
+        elif action == "agenda_occupancy":
             process_pending_agenda_occupancy_jobs_once()
         else:
             print(f"⚠️ Ação desconhecida solicitada: {action}")
@@ -362,6 +405,21 @@ def run_service(key: str):
             lock.release()
         except RuntimeError:
             pass
+
+
+def run_service(key: str):
+    """Executa/agenda worker por chave mapeada.
+    Serviços de scraping de lote que fazem login Feegow são serializados em fila dedicada."""
+    action, display_name = canonicalize(key)
+    raw_key = str(key).strip() if key is not None else ""
+
+    if action in SERIALIZED_SCRAPER_SERVICES:
+        enqueued = _enqueue_serial_service(action, display_name, "run_service", raw_key)
+        if not enqueued:
+            print(f"⏭️ Serviço já na fila serial/em execução: {display_name}")
+        return
+
+    _run_service_direct(action, display_name, raw_key)
 
 def run_hourly_workers():
     """Executa todos os workers não real-time uma vez (usa run_service)."""
@@ -482,26 +540,6 @@ def run_clinia_safe():
         else:
             time.sleep(1800)
 
-
-def run_repasse_consolidacao_loop():
-    poll_interval = max(10, int(os.getenv("REPASSE_CONSOLIDACAO_POLL_SEC", "30")))
-    print(f"[INFO] Worker repasse_consolidacao iniciado. poll={poll_interval}s")
-    while True:
-        try:
-            process_pending_consolidacao_jobs_once(
-                auto_enqueue_if_empty=False,
-                requested_by="system_status",
-                headless=True,
-            )
-        except Exception as e:
-            try:
-                db = DatabaseManager()
-                db.update_heartbeat("repasse_consolidacao", "ERROR", f"loop_error={e}")
-            except Exception:
-                pass
-            print(f"[WARN] Loop repasse_consolidacao erro: {e}")
-        time.sleep(poll_interval)
-
 def run_scheduler():
     print("⏰ Scheduler Diário iniciado.")
     
@@ -575,6 +613,192 @@ def _parse_db_datetime(raw_value):
         return dt.replace(tzinfo=WORK_TZ)
 
     return dt.astimezone(WORK_TZ)
+
+
+def _now_db_ts():
+    now = _now_work_tz()
+    if now.tzinfo is not None:
+        now = now.astimezone(WORK_TZ) if WORK_TZ is not None else now
+    return now.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _run_serial_queue_executor():
+    global _serial_running_action
+    print(
+        f"📦 Fila serial de scrapers iniciada | services={sorted(SERIALIZED_SCRAPER_SERVICES)} "
+        f"poll={SERIAL_QUEUE_POLL_SEC}s"
+    )
+    while True:
+        task = None
+        with _serial_queue_lock:
+            if _serial_queue:
+                task = _serial_queue.popleft()
+                _serial_queue_actions.discard(task["action"])
+                _serial_running_action = task["action"]
+
+        if not task:
+            time.sleep(SERIAL_QUEUE_POLL_SEC)
+            continue
+
+        action = task["action"]
+        display_name = task.get("display_name") or CANONICAL_NAME.get(action, action)
+        raw_key = task.get("raw_key") or action
+        reason = task.get("reason") or "queue"
+
+        try:
+            wait_sec = max(0, time.time() - float(task.get("queued_at") or time.time()))
+            print(f"🚚 Executando da fila serial: {display_name} | wait={wait_sec:.1f}s | reason={reason}")
+            _run_service_direct(action, display_name, raw_key)
+        finally:
+            with _serial_queue_lock:
+                if _serial_running_action == action:
+                    _serial_running_action = None
+
+
+def _query_pending_count(db: "DatabaseManager", table_name: str) -> int:
+    conn = db.get_connection()
+    try:
+        rs = conn.execute(
+            f"SELECT COUNT(1) AS cnt FROM {table_name} WHERE status = ?",
+            ("PENDING",),
+        )
+        rows = rs.fetchall() if hasattr(rs, "fetchall") else []
+    except Exception:
+        return 0
+    finally:
+        conn.close()
+
+    if not rows:
+        return 0
+    row = rows[0]
+    if isinstance(row, (tuple, list)):
+        return int(row[0] or 0)
+    try:
+        return int(getattr(row, "cnt", None) or row.get("cnt") or row.get("COUNT(1)") or 0)
+    except Exception:
+        return 0
+
+
+def _recover_stale_jobs(
+    db: "DatabaseManager",
+    table_name: str,
+    service_action: str,
+    stale_minutes: int,
+) -> int:
+    conn = db.get_connection()
+    try:
+        rs = conn.execute(
+            f"""
+            SELECT id, period_ref, scope, professional_ids_json, requested_by, started_at, updated_at
+            FROM {table_name}
+            WHERE status = ?
+            ORDER BY updated_at ASC
+            """,
+            ("RUNNING",),
+        )
+        rows = rs.fetchall() if hasattr(rs, "fetchall") else []
+    except Exception:
+        return 0
+    finally:
+        conn.close()
+
+    if not rows:
+        return 0
+
+    now_dt = _now_work_tz()
+    now_ts = _now_db_ts()
+    recovered = 0
+
+    def _val(row, idx, key):
+        if isinstance(row, (tuple, list)):
+            return row[idx] if idx < len(row) else None
+        if hasattr(row, key):
+            return getattr(row, key)
+        try:
+            return row.get(key)
+        except Exception:
+            return None
+
+    for row in rows:
+        job_id = str(_val(row, 0, "id") or "").strip()
+        period_ref = str(_val(row, 1, "period_ref") or "").strip()
+        scope = str(_val(row, 2, "scope") or "all").strip() or "all"
+        prof_json = _val(row, 3, "professional_ids_json")
+        requested_by = str(_val(row, 4, "requested_by") or "auto_recovery").strip() or "auto_recovery"
+        started_at = _val(row, 5, "started_at")
+        updated_at = _val(row, 6, "updated_at")
+        ref_dt = _parse_db_datetime(updated_at) or _parse_db_datetime(started_at)
+        if not ref_dt:
+            continue
+
+        age_min = (now_dt - ref_dt).total_seconds() / 60.0
+        if age_min <= stale_minutes:
+            continue
+
+        error_msg = f"auto-recovery: stale ({age_min:.1f}m > {stale_minutes}m)"
+        db.execute_query(
+            f"""
+            UPDATE {table_name}
+            SET status = ?, finished_at = ?, error = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            ("FAILED", now_ts, error_msg, now_ts, job_id),
+        )
+
+        new_job_id = uuid.uuid4().hex
+        db.execute_query(
+            f"""
+            INSERT INTO {table_name} (
+              id, period_ref, scope, professional_ids_json, status, requested_by,
+              started_at, finished_at, error, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)
+            """,
+            (new_job_id, period_ref, scope, prof_json, "PENDING", requested_by, now_ts, now_ts),
+        )
+
+        recovered += 1
+        print(
+            f"♻️ Auto-recovery {table_name}: stale job={job_id} "
+            f"period={period_ref} -> new_pending={new_job_id}"
+        )
+        try:
+            db.update_heartbeat(
+                service_action,
+                "WARNING",
+                f"stale recovered old={job_id} new={new_job_id} period={period_ref}",
+            )
+        except Exception:
+            pass
+
+    return recovered
+
+
+def _run_repasse_job_dispatcher():
+    print(
+        f"🧭 Dispatcher de jobs de repasse iniciado | poll={REPASSE_JOB_DISPATCH_POLL_SEC}s "
+        f"stale={REPASSE_JOB_STALE_MINUTES}min"
+    )
+    db = DatabaseManager()
+    while True:
+        try:
+            _recover_stale_jobs(db, "repasse_sync_jobs", "repasses", REPASSE_JOB_STALE_MINUTES)
+            _recover_stale_jobs(db, "repasse_consolidacao_jobs", "repasse_consolidacao", REPASSE_JOB_STALE_MINUTES)
+
+            pending_sync = _query_pending_count(db, "repasse_sync_jobs")
+            if pending_sync > 0:
+                _enqueue_serial_service("repasses", CANONICAL_NAME["repasses"], f"dispatcher pending={pending_sync}")
+
+            pending_consol = _query_pending_count(db, "repasse_consolidacao_jobs")
+            if pending_consol > 0:
+                _enqueue_serial_service(
+                    "repasse_consolidacao",
+                    CANONICAL_NAME["repasse_consolidacao"],
+                    f"dispatcher pending={pending_consol}",
+                )
+        except Exception as e:
+            print(f"⚠️ Dispatcher de repasses erro: {e}")
+
+        time.sleep(REPASSE_JOB_DISPATCH_POLL_SEC)
 
 WATCHDOG_ENABLED = str(os.getenv("WATCHDOG_ENABLED", "1")).strip().lower() in ("1", "true", "yes", "on")
 WATCHDOG_INTERVAL_SEC = max(10, int(os.getenv("WATCHDOG_INTERVAL_SEC", "60")))
@@ -690,8 +914,8 @@ def start_orchestrator():
         threading.Thread(target=run_monitor_recepcao_safe, name="MonRec", daemon=True),
         threading.Thread(target=run_monitor_medico_safe, name="MonMed", daemon=True),
         threading.Thread(target=run_clinia_safe, name="Clinia", daemon=True),
-        threading.Thread(target=run_repasse_sync_loop, name="RepasseSync", daemon=True),
-        threading.Thread(target=run_repasse_consolidacao_loop, name="RepasseConsol", daemon=True),
+        threading.Thread(target=_run_serial_queue_executor, name="SerialQueue", daemon=True),
+        threading.Thread(target=_run_repasse_job_dispatcher, name="RepasseDispatch", daemon=True),
         threading.Thread(target=run_watchdog, name="Watchdog", daemon=True),
     ]
 
