@@ -30,6 +30,7 @@ type RepassesFiltersPanelProps = {
   onAttendanceDateEndChange: (value: string) => void;
   onPatientNameChange: (value: string) => void;
   onToggleAdvanced: () => void;
+  onResetFilters: () => void;
 };
 
 const statusOptions: Array<{ value: StatusFilter; label: string }> = [
@@ -67,6 +68,7 @@ export function RepassesFiltersPanel({
   onAttendanceDateEndChange,
   onPatientNameChange,
   onToggleAdvanced,
+  onResetFilters,
 }: RepassesFiltersPanelProps) {
   return (
     <div className="space-y-3">
@@ -144,13 +146,22 @@ export function RepassesFiltersPanel({
       </div>
 
       <div>
-        <button
-          type="button"
-          onClick={onToggleAdvanced}
-          className="text-xs font-semibold text-[#17407E] hover:underline"
-        >
-          {advancedOpen ? 'Ocultar filtros avançados' : 'Mostrar filtros avançados'}
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={onToggleAdvanced}
+            className="text-xs font-semibold text-[#17407E] hover:underline"
+          >
+            {advancedOpen ? 'Ocultar filtros avançados' : 'Mostrar filtros avançados'}
+          </button>
+          <button
+            type="button"
+            onClick={onResetFilters}
+            className="rounded border px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            Redefinir filtros
+          </button>
+        </div>
       </div>
 
       {advancedOpen ? (

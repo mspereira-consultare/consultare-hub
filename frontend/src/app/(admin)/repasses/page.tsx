@@ -388,6 +388,25 @@ export default function RepassesPage() {
     setSelectedIds(new Set());
   };
 
+  const resetTableFilters = () => {
+    setStatusFilter("all");
+    setHasPaymentMinimum("all");
+    setConsolidacaoStatus("all");
+    setHasDivergence("all");
+    setAttendanceDateStart("");
+    setAttendanceDateEnd("");
+    setSearchDraft("");
+    setSearch("");
+    setPatientNameDraft("");
+    setPatientName("");
+    setPageSize(300);
+    setPage(1);
+    setAdvancedFiltersOpen(false);
+    setSelectedIds(new Set());
+    setError("");
+    setNotice("");
+  };
+
   const selectAllFiltered = async () => {
     if (!canView || total === 0) return;
     setSelectingAll(true);
@@ -534,8 +553,8 @@ export default function RepassesPage() {
       professionalId: string,
       patch: { repasseFinalValue?: number | null; produtividadeValue?: number | null }
     ): Promise<{ ok: boolean; error?: string }> => {
-      if (!canEdit) return { ok: false, error: "Sem permissao para editar." };
-      if (!professionalId) return { ok: false, error: "Profissional invalido." };
+      if (!canEdit) return { ok: false, error: "Sem permissão para editar." };
+      if (!professionalId) return { ok: false, error: "Profissional inválido." };
 
       try {
         const res = await fetch("/api/admin/repasses/consolidacao/financial-inputs", {
@@ -865,7 +884,7 @@ export default function RepassesPage() {
             <div className="min-w-0">
               <h1 className="text-xl font-bold text-slate-800">Fechamento de repasses</h1>
               <p className="text-xs text-slate-500">
-                Visao comparativa entre repasses fechados e itens de consolidacao para conferencia operacional.
+                Visão comparativa entre repasses fechados e itens de consolidação para conferência operacional.
               </p>
             </div>
 
@@ -926,6 +945,7 @@ export default function RepassesPage() {
             }}
             onPatientNameChange={setPatientNameDraft}
             onToggleAdvanced={() => setAdvancedFiltersOpen((prev) => !prev)}
+            onResetFilters={resetTableFilters}
           />
         </div>
 

@@ -92,7 +92,7 @@ const parseMoneyInput = (raw: string): number | null => {
   if (!value) return null;
   const normalized = value.replace(/\./g, '').replace(',', '.');
   const parsed = Number(normalized);
-  if (!Number.isFinite(parsed)) throw new Error('Valor invalido');
+  if (!Number.isFinite(parsed)) throw new Error('Valor inválido');
   return Math.round(parsed * 100) / 100;
 };
 
@@ -108,7 +108,7 @@ function EditableMoneyCell({
   value,
   disabled,
   title,
-  placeholder = 'padrao',
+  placeholder = 'padrão',
   onCommit,
 }: EditableMoneyCellProps) {
   const [draft, setDraft] = useState(formatMoneyInput(value));
@@ -127,7 +127,7 @@ function EditableMoneyCell({
       next = parseMoneyInput(draft);
       setError(null);
     } catch {
-      setError('Valor invalido');
+      setError('Valor inválido');
       return;
     }
 
@@ -166,7 +166,7 @@ function EditableMoneyCell({
         }}
         placeholder={placeholder}
         title={title}
-        className={`h-8 w-[120px] rounded border px-2 text-right text-xs tabular-nums outline-none ${
+        className={`h-7 w-[104px] rounded border px-1.5 text-right text-[11px] tabular-nums outline-none ${
           error ? 'border-rose-400 bg-rose-50' : 'border-slate-300 bg-white'
         }`}
       />
@@ -210,7 +210,7 @@ export function ProfessionalSummaryTable({
       <header className="flex items-center justify-between border-b bg-slate-50 px-3 py-2">
         <div>
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-700">
-            Profissionais (conferencia de fechamento)
+            Profissionais (conferência de fechamento)
           </h3>
           <div className="text-[11px] text-slate-500">
             {start}-{end} de {total} | Selecionados: {selectedCount}
@@ -219,7 +219,7 @@ export function ProfessionalSummaryTable({
       </header>
 
       <div className="max-h-[860px] overflow-auto">
-        <table className="w-full min-w-[2800px] text-xs">
+        <table className="w-full min-w-[2480px] text-xs">
           <thead className="sticky top-0 z-10 bg-white text-[10px] uppercase tracking-wide text-slate-500">
             <tr>
               <th rowSpan={2} className="w-10 px-2 py-2 text-center">
@@ -231,38 +231,38 @@ export function ProfessionalSummaryTable({
                   className="h-4 w-4 rounded border-slate-300"
                 />
               </th>
-              <th rowSpan={2} className="px-2 py-2 text-left">Profissional</th>
-              <th rowSpan={2} className="px-2 py-2 text-left">Status</th>
+              <th rowSpan={2} className="px-1.5 py-2 text-left">Profissional</th>
+              <th rowSpan={2} className="px-1.5 py-2 text-left">Status</th>
 
-              <th colSpan={2} className="border-l px-2 py-2 text-center">Execucao</th>
-              <th colSpan={2} className="border-l px-2 py-2 text-center">Producao (Feegow)</th>
-              <th colSpan={6} className="border-l px-2 py-2 text-center">Consolidacao (A conferir)</th>
-              <th colSpan={4} className="border-l px-2 py-2 text-center">Calculo final</th>
-              <th colSpan={4} className="border-l px-2 py-2 text-center">Controle</th>
+              <th colSpan={2} className="border-l-2 border-slate-200 bg-sky-50/70 px-1.5 py-2 text-center">Execução</th>
+              <th colSpan={2} className="border-l-2 border-slate-200 bg-indigo-50/70 px-1.5 py-2 text-center">Produção (Feegow)</th>
+              <th colSpan={6} className="border-l-2 border-slate-200 bg-violet-50/70 px-1.5 py-2 text-center">Consolidação (A conferir)</th>
+              <th colSpan={4} className="border-l-2 border-slate-200 bg-emerald-50/70 px-1.5 py-2 text-center">Cálculo final</th>
+              <th colSpan={4} className="border-l-2 border-slate-200 bg-amber-50/70 px-1.5 py-2 text-center">Controle</th>
             </tr>
             <tr>
-              <th className="border-l px-2 py-2 text-right">Qtd</th>
-              <th className="px-2 py-2 text-right">Valor</th>
+              <th className="border-l-2 border-slate-200 bg-sky-50/40 px-1.5 py-2 text-right">Qtd.</th>
+              <th className="bg-sky-50/40 px-1.5 py-2 text-right">Valor</th>
 
-              <th className="border-l px-2 py-2 text-right">Atend.</th>
-              <th className="px-2 py-2 text-right">Valor</th>
+              <th className="border-l-2 border-slate-200 bg-indigo-50/40 px-1.5 py-2 text-right">Atend.</th>
+              <th className="bg-indigo-50/40 px-1.5 py-2 text-right">Valor</th>
 
-              <th className="border-l px-2 py-2 text-right">Cons. qtd</th>
-              <th className="px-2 py-2 text-right">Cons. valor</th>
-              <th className="px-2 py-2 text-right">Nao cons. qtd</th>
-              <th className="px-2 py-2 text-right">Nao cons. valor</th>
-              <th className="px-2 py-2 text-right">Nao receb. qtd</th>
-              <th className="px-2 py-2 text-right">Nao receb. valor</th>
+              <th className="border-l-2 border-slate-200 bg-violet-50/40 px-1.5 py-2 text-right">Cons. qtd.</th>
+              <th className="bg-violet-50/40 px-1.5 py-2 text-right">Cons. valor</th>
+              <th className="bg-violet-50/40 px-1.5 py-2 text-right">Não cons. qtd.</th>
+              <th className="bg-violet-50/40 px-1.5 py-2 text-right">Não cons. valor</th>
+              <th className="bg-violet-50/40 px-1.5 py-2 text-right">Não receb. qtd.</th>
+              <th className="bg-violet-50/40 px-1.5 py-2 text-right">Não receb. valor</th>
 
-              <th className="border-l px-2 py-2 text-right">Repasse final</th>
-              <th className="px-2 py-2 text-right">Produtividade</th>
-              <th className="px-2 py-2 text-right">5% produt.</th>
-              <th className="px-2 py-2 text-right">Total</th>
+              <th className="border-l-2 border-slate-200 bg-emerald-50/40 px-1.5 py-2 text-right">Repasse final</th>
+              <th className="bg-emerald-50/40 px-1.5 py-2 text-right">Produtividade</th>
+              <th className="bg-emerald-50/40 px-1.5 py-2 text-right">5% produt.</th>
+              <th className="bg-emerald-50/40 px-1.5 py-2 text-right">Total</th>
 
-              <th className="border-l px-2 py-2 text-left">Divergencia</th>
-              <th className="px-2 py-2 text-left">Ultimo proc.</th>
-              <th className="px-2 py-2 text-left">PDF</th>
-              <th className="w-[100px] px-2 py-2 text-center">Indicadores</th>
+              <th className="border-l-2 border-slate-200 bg-amber-50/40 px-1.5 py-2 text-left">Divergência</th>
+              <th className="bg-amber-50/40 px-1.5 py-2 text-left">Último proc.</th>
+              <th className="bg-amber-50/40 px-1.5 py-2 text-left">PDF</th>
+              <th className="w-[92px] bg-amber-50/40 px-1.5 py-2 text-center">Indicadores</th>
             </tr>
           </thead>
           <tbody>
@@ -291,7 +291,7 @@ export function ProfessionalSummaryTable({
                   onDoubleClick={() => onOpenDetails(item)}
                   title="Duplo clique para abrir detalhes"
                 >
-                  <td className="px-2 py-1.5 text-center">
+                  <td className="px-1.5 py-1 text-center">
                     <input
                       type="checkbox"
                       checked={selectedIds.has(item.professionalId)}
@@ -299,7 +299,7 @@ export function ProfessionalSummaryTable({
                       className="h-4 w-4 rounded border-slate-300"
                     />
                   </td>
-                  <td className="max-w-[320px] truncate px-2 py-1.5" title={item.professionalName}>
+                  <td className="max-w-[260px] truncate px-1.5 py-1" title={item.professionalName}>
                     <button
                       type="button"
                       onClick={() => onOpenDetails(item)}
@@ -308,7 +308,7 @@ export function ProfessionalSummaryTable({
                       {item.professionalName}
                     </button>
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-1.5 py-1">
                     <StatusBadge status={item.status} />
                     {item.status === 'ERROR' && item.errorMessage ? (
                       <div
@@ -321,24 +321,24 @@ export function ProfessionalSummaryTable({
                     ) : null}
                   </td>
 
-                  <td className="border-l px-2 py-1.5 text-right tabular-nums">
+                  <td className="border-l-2 border-slate-200 px-1.5 py-1 text-right tabular-nums">
                     {item.execucaoPending ? 'N/D' : item.execucaoQty}
                   </td>
-                  <td className="px-2 py-1.5 text-right font-medium tabular-nums">
+                  <td className="px-1.5 py-1 text-right font-medium tabular-nums">
                     {item.execucaoPending ? 'N/D' : currency(item.execucaoValue)}
                   </td>
 
-                  <td className="border-l px-2 py-1.5 text-right tabular-nums">{item.producaoQty}</td>
-                  <td className="px-2 py-1.5 text-right font-medium tabular-nums">{currency(item.producaoValue)}</td>
+                  <td className="border-l-2 border-slate-200 px-1.5 py-1 text-right tabular-nums">{item.producaoQty}</td>
+                  <td className="px-1.5 py-1 text-right font-medium tabular-nums">{currency(item.producaoValue)}</td>
 
-                  <td className="border-l px-2 py-1.5 text-right tabular-nums">{item.consolidadoQty}</td>
-                  <td className="px-2 py-1.5 text-right font-medium tabular-nums">{currency(item.consolidadoValue)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{item.naoConsolidadoQty}</td>
-                  <td className="px-2 py-1.5 text-right font-medium tabular-nums">{currency(item.naoConsolidadoValue)}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums">{item.naoRecebidoQty}</td>
-                  <td className="px-2 py-1.5 text-right font-medium tabular-nums">{currency(item.naoRecebidoValue)}</td>
+                  <td className="border-l-2 border-slate-200 px-1.5 py-1 text-right tabular-nums">{item.consolidadoQty}</td>
+                  <td className="px-1.5 py-1 text-right font-medium tabular-nums">{currency(item.consolidadoValue)}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{item.naoConsolidadoQty}</td>
+                  <td className="px-1.5 py-1 text-right font-medium tabular-nums">{currency(item.naoConsolidadoValue)}</td>
+                  <td className="px-1.5 py-1 text-right tabular-nums">{item.naoRecebidoQty}</td>
+                  <td className="px-1.5 py-1 text-right font-medium tabular-nums">{currency(item.naoRecebidoValue)}</td>
 
-                  <td className="border-l px-2 py-1.5 text-right">
+                  <td className="border-l-2 border-slate-200 px-1.5 py-1 text-right">
                     <EditableMoneyCell
                       value={item.hasRepasseFinalOverride ? item.repasseFinalValue : null}
                       disabled={!canEdit}
@@ -351,7 +351,7 @@ export function ProfessionalSummaryTable({
                       }
                     />
                   </td>
-                  <td className="px-2 py-1.5 text-right">
+                  <td className="px-1.5 py-1 text-right">
                     <EditableMoneyCell
                       value={item.produtividadeValue}
                       disabled={!canEdit}
@@ -364,21 +364,21 @@ export function ProfessionalSummaryTable({
                       }
                     />
                   </td>
-                  <td className="px-2 py-1.5 text-right font-medium tabular-nums">
+                  <td className="px-1.5 py-1 text-right font-medium tabular-nums">
                     {currency(item.percentualProdutividadeValue)}
                   </td>
-                  <td className="px-2 py-1.5 text-right font-semibold tabular-nums text-emerald-700">
+                  <td className="px-1.5 py-1 text-right font-semibold tabular-nums text-emerald-700">
                     {currency(item.totalFinalValue)}
                   </td>
 
-                  <td className="border-l px-2 py-1.5">
+                  <td className="border-l-2 border-slate-200 px-1.5 py-1">
                     <RepassesDivergenceBadge
                       hasDivergencia={item.hasDivergencia}
                       divergenciaValue={item.divergenciaValue}
                     />
                   </td>
-                  <td className="px-2 py-1.5">{toBrDateTime(item.lastProcessedAt)}</td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-1.5 py-1">{toBrDateTime(item.lastProcessedAt)}</td>
+                  <td className="px-1.5 py-1">
                     {item.lastPdfArtifactId ? (
                       <div className="space-y-1">
                         <div className="inline-flex items-center gap-2">
@@ -405,7 +405,7 @@ export function ProfessionalSummaryTable({
                       <span className="text-slate-400">-</span>
                     )}
                   </td>
-                  <td className="px-2 py-1.5 text-center">
+                  <td className="px-1.5 py-1 text-center">
                     {item.note || item.paymentMinimumText ? (
                       <div className="inline-flex items-center justify-center gap-1">
                         {item.note ? (
@@ -438,7 +438,7 @@ export function ProfessionalSummaryTable({
 
       <footer className="flex items-center justify-between border-t px-3 py-2 text-xs text-slate-600">
         <span>
-          Pagina {page} de {totalPages}
+          Página {page} de {totalPages}
         </span>
         <div className="flex items-center gap-2">
           <button
@@ -455,7 +455,7 @@ export function ProfessionalSummaryTable({
             disabled={page >= totalPages || loading}
             className="rounded border px-2 py-1 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Proxima
+            Próxima
           </button>
         </div>
       </footer>

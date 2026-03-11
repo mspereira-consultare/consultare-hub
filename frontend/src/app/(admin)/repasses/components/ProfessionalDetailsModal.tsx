@@ -166,7 +166,7 @@ export function ProfessionalDetailsModal({
           <div>
             <h3 className="text-sm font-semibold text-slate-800">Detalhes do profissional</h3>
             <p className="text-xs text-slate-500">
-              {item.professionalName} | Periodo: {periodRef}
+              {item.professionalName} | Período: {periodRef}
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded border px-2 py-1 text-xs text-slate-700">
@@ -179,13 +179,13 @@ export function ProfessionalDetailsModal({
 
         <div className="grid grid-cols-1 gap-2 border-b bg-slate-50 px-4 py-3 md:grid-cols-10">
           <div className="rounded border bg-white px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">Execucao</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">Execução</div>
             <div className="text-sm font-semibold text-slate-700">
               {item.execucaoPending ? 'N/D' : `${item.execucaoQty} | ${formatCurrency(item.execucaoValue)}`}
             </div>
           </div>
           <div className="rounded border bg-white px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">Producao (Feegow)</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">Produção (Feegow)</div>
             <div className="text-sm font-semibold text-slate-800">
               {item.producaoQty} | {formatCurrency(item.producaoValue)}
             </div>
@@ -205,13 +205,13 @@ export function ProfessionalDetailsModal({
             </div>
           </div>
           <div className="rounded border bg-white px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">Nao consolidado</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">Não consolidado</div>
             <div className="text-sm font-semibold text-amber-700">
               {item.naoConsolidadoQty} | {formatCurrency(item.naoConsolidadoValue)}
             </div>
           </div>
           <div className="rounded border bg-white px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">Nao recebido</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">Não recebido</div>
             <div className="text-sm font-semibold text-rose-700">
               {item.naoRecebidoQty} | {formatCurrency(item.naoRecebidoValue)}
             </div>
@@ -230,7 +230,7 @@ export function ProfessionalDetailsModal({
             <div className="text-sm font-bold text-emerald-700">{formatCurrency(item.totalFinalValue)}</div>
           </div>
           <div className="rounded border bg-white px-3 py-2 md:col-span-10">
-            <div className="text-[10px] uppercase tracking-wide text-slate-500">Pagamento minimo</div>
+            <div className="text-[10px] uppercase tracking-wide text-slate-500">Pagamento mínimo</div>
             <div className="text-sm font-semibold text-slate-700">{item.paymentMinimumText || '-'}</div>
           </div>
         </div>
@@ -238,7 +238,7 @@ export function ProfessionalDetailsModal({
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-y-auto px-4 py-3 xl:grid-cols-[minmax(0,1fr)_430px] xl:overflow-hidden">
           <div className="flex min-h-0 flex-col rounded-lg border">
             <div className="border-b px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              Atendimentos do periodo
+              Atendimentos do período
             </div>
             <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full min-w-[2200px] text-xs">
@@ -251,14 +251,14 @@ export function ProfessionalDetailsModal({
                     <th className="px-2 py-2 text-left">Solicitante</th>
                     <th className="px-2 py-2 text-left">Especialidade</th>
                     <th className="px-2 py-2 text-left">Procedimento</th>
-                    <th className="px-2 py-2 text-left">Convenio</th>
-                    <th className="px-2 py-2 text-left">Funcao</th>
+                    <th className="px-2 py-2 text-left">Convênio</th>
+                    <th className="px-2 py-2 text-left">Função</th>
                     <th className="px-2 py-2 text-left">Profissional detalhe</th>
                     <th className="px-2 py-2 text-left">Status</th>
                     <th className="px-2 py-2 text-left">Origem</th>
                     <th className="px-2 py-2 text-right">Atendimento</th>
                     <th className="px-2 py-2 text-right">Repasse</th>
-                    <th className="px-2 py-2 text-center">Marcacao</th>
+                    <th className="px-2 py-2 text-center">Marcação</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -280,7 +280,7 @@ export function ProfessionalDetailsModal({
                   ) : rows.length === 0 ? (
                     <tr>
                       <td colSpan={15} className="px-2 py-8 text-center text-slate-500">
-                        Sem atendimentos para este profissional no periodo.
+                        Sem atendimentos para este profissional no período.
                       </td>
                     </tr>
                   ) : (
@@ -358,7 +358,7 @@ export function ProfessionalDetailsModal({
                 className="inline-flex items-center gap-2 rounded border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
               >
                 {savingMarks ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Salvar marcacoes
+                Salvar marcações
               </button>
             </div>
 
@@ -373,12 +373,12 @@ export function ProfessionalDetailsModal({
             <div className="rounded-lg border bg-slate-50 p-3">
               <div className="mb-2 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
                 <MessageSquareText size={14} />
-                Observacao do relatorio
+                Observação do relatório
               </div>
               <textarea
                 value={noteValue}
                 onChange={(e) => onNoteChange(e.target.value)}
-                placeholder="Este texto sera incluido no relatorio."
+                placeholder="Este texto será incluído no relatório."
                 className="min-h-[120px] w-full resize-y rounded border bg-white px-3 py-2 text-sm outline-none"
                 disabled={!canEdit}
               />
@@ -386,12 +386,12 @@ export function ProfessionalDetailsModal({
 
             <div className="rounded-lg border bg-slate-50 p-3">
               <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Observacao interna
+                Observação interna
               </div>
               <textarea
                 value={internalNoteValue}
                 onChange={(e) => onInternalNoteChange(e.target.value)}
-                placeholder="Anotacao interna (nao vai para o relatorio)."
+                placeholder="Anotação interna (não vai para o relatório)."
                 className="min-h-[110px] w-full resize-y rounded border bg-white px-3 py-2 text-sm outline-none"
                 disabled={!canEdit}
               />
@@ -405,7 +405,7 @@ export function ProfessionalDetailsModal({
                 className="inline-flex items-center gap-2 rounded border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
               >
                 {savingNote ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Salvar observacoes
+                Salvar observações
               </button>
             </div>
           </div>
