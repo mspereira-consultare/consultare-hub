@@ -164,6 +164,13 @@ const formatDateBr = (isoDate: string | null | undefined) => {
   return `${m[3]}/${m[2]}/${m[1]}`;
 };
 
+const formatDateTime = (value: string | null | undefined) => {
+  const raw = String(value || '').trim();
+  if (!raw) return '-';
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) return raw.slice(0, 19).replace('T', ' ');
+  return raw;
+};
+
 const parseMoneyInput = (value: string | number | null | undefined) => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   const raw = String(value || '').trim();
@@ -260,6 +267,8 @@ export default function ProfessionalsPage() {
   >('unknown');
   const [procedureWorkerStatus, setProcedureWorkerStatus] = useState<ServiceStatus | null>(null);
   const [procedureWorkerRefreshing, setProcedureWorkerRefreshing] = useState(false);
+  const [professionalsSyncStatus, setProfessionalsSyncStatus] = useState<ServiceStatus | null>(null);
+  const [professionalsSyncRefreshing, setProfessionalsSyncRefreshing] = useState(false);
   const [selectedProcedureId, setSelectedProcedureId] = useState('');
   const [procedureRates, setProcedureRates] = useState<FormProcedureRate[]>([]);
 
@@ -499,6 +508,68 @@ export default function ProfessionalsPage() {
       return st === 'pending' || st === 'running';
     } catch {
       return false;
+    }
+  };
+
+  const loadProfessionalsSyncWorkerStatus = async (forceFresh = false) => {
+    try {
+      const refreshQ = forceFresh ? `?refresh=${Date.now()}` : '';
+      const res = await fetch(`/api/admin/status${refreshQ}`, { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data)) return false;
+
+      const normalize = (v: string) => String(v || '').trim().toLowerCase();
+      const row = (data as ServiceStatus[]).find((item) =>
+        [
+          'professionals_sync',
+          'profissionais_sync',
+          'worker_feegow_professionals_sync',
+          'feegow_professionals_sync',
+        ].includes(normalize(item.service_name))
+      );
+      setProfessionalsSyncStatus(row || null);
+      const st = normalize(String(row?.status || ''));
+      return st === 'pending' || st === 'queued' || st === 'running';
+    } catch {
+      return false;
+    }
+  };
+
+  const triggerProfessionalsSyncRefresh = async () => {
+    if (!canRefresh) {
+      setError('Sem permissao para atualizar profissionais via Feegow.');
+      return;
+    }
+    setProfessionalsSyncRefreshing(true);
+    setError('');
+    try {
+      const refreshRes = await fetch('/api/admin/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service: 'professionals_sync' }),
+      });
+      const refreshData = await refreshRes.json().catch(() => ({}));
+      if (!refreshRes.ok) {
+        throw new Error(refreshData?.error || 'Falha ao acionar sincronizacao de profissionais.');
+      }
+
+      let attempts = 0;
+      const maxAttempts = 50;
+      while (attempts < maxAttempts) {
+        attempts += 1;
+        const stillRunning = await loadProfessionalsSyncWorkerStatus(true);
+        if (!stillRunning) break;
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+      }
+
+      await fetchList(1);
+      setPage(1);
+      await fetchSpecialties();
+      await loadProfessionalsSyncWorkerStatus(true);
+    } catch (e: any) {
+      setError(e?.message || 'Falha ao sincronizar profissionais via Feegow.');
+    } finally {
+      setProfessionalsSyncRefreshing(false);
     }
   };
 
@@ -753,6 +824,15 @@ export default function ProfessionalsPage() {
     loadProceduresWorkerStatus().catch(() => null);
   }, [isModalOpen, modalTab]);
 
+  useEffect(() => {
+    loadProfessionalsSyncWorkerStatus().catch(() => null);
+    const interval = setInterval(() => {
+      loadProfessionalsSyncWorkerStatus().catch(() => null);
+    }, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const openCreate = () => {
     setEditingId(null);
     setForm(emptyForm());
@@ -877,9 +957,34 @@ export default function ProfessionalsPage() {
           <h1 className="text-2xl font-bold text-slate-800">Gestão de Profissionais</h1>
           <p className="text-slate-500">Cadastro de médicos, pendências documentais e contratos.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => fetchList()} className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2"><RefreshCw size={14} />Atualizar</button>
-          {canEdit && <button onClick={openCreate} className="px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm flex items-center gap-2"><Plus size={14} />Novo profissional</button>}
+        <div className="flex flex-col items-stretch gap-1 md:items-end">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={triggerProfessionalsSyncRefresh}
+              disabled={!canRefresh || professionalsSyncRefreshing}
+              className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2 disabled:opacity-60"
+            >
+              {professionalsSyncRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {professionalsSyncRefreshing ? 'Sincronizando...' : 'Atualizar (Feegow)'}
+            </button>
+            <button
+              onClick={() => fetchList()}
+              className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2"
+            >
+              <RefreshCw size={14} />
+              Recarregar lista
+            </button>
+            {canEdit && <button onClick={openCreate} className="px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm flex items-center gap-2"><Plus size={14} />Novo profissional</button>}
+          </div>
+          {professionalsSyncStatus && (
+            <p className="text-[11px] text-slate-500 text-right max-w-[680px]">
+              Sync Feegow: <span className="font-semibold">{String(professionalsSyncStatus.status || '-')}</span>
+              {' '}| Ultima execucao: {formatDateTime(professionalsSyncStatus.last_run)}
+              {String(professionalsSyncStatus.details || '').trim()
+                ? ` | ${String(professionalsSyncStatus.details).trim()}`
+                : ''}
+            </p>
+          )}
         </div>
       </div>
 

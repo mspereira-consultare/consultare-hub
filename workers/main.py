@@ -57,6 +57,7 @@ try:
     # Workers (Execução única)
     from worker_feegow_appointments import update_appointments_data
     from worker_feegow_procedures import update_procedures_catalog
+    from worker_feegow_professionals_sync import run_sync as run_professionals_sync
     from worker_proposals import update_proposals
     from worker_faturamento_scraping import run_scraper
     from worker_contracts import run_worker_contracts
@@ -142,6 +143,7 @@ _serial_running_action = None
 KNOWN_ACTIONS = {
     'appointments',
     'procedures_catalog',
+    'professionals_sync',
     'faturamento', # Receita bruta analítica
     'comercial', # Propostas (API)
     'repasses', # Repasses consolidados (scraping)
@@ -179,6 +181,10 @@ ALIAS_ACTION_MAP = {
     'catalogo_procedimentos': 'procedures_catalog',
     'feegow_procedures': 'procedures_catalog',
     'worker_feegow_procedures': 'procedures_catalog',
+    'professionals_sync': 'professionals_sync',
+    'profissionais_sync': 'professionals_sync',
+    'feegow_professionals_sync': 'professionals_sync',
+    'worker_feegow_professionals_sync': 'professionals_sync',
     'faturamento': 'faturamento',
     'faturamento_scraping': 'faturamento',
     'faturamento_scraper': 'faturamento',
@@ -214,6 +220,7 @@ ALIAS_ACTION_MAP = {
 CANONICAL_NAME = {
     'appointments': 'Appointments (Feegow API)',
     'procedures_catalog': 'Catalogo de Procedimentos (Feegow API)',
+    'professionals_sync': 'Profissionais (Feegow API)',
     'faturamento': 'Faturamento (Scraping)',
     'comercial': 'Propostas (API)',
     'repasses': 'Repasses Consolidados (Scraping)',
@@ -360,6 +367,8 @@ def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
             update_appointments_data()
         elif action == "procedures_catalog":
             update_procedures_catalog()
+        elif action == "professionals_sync":
+            run_professionals_sync(dry_run=False)
         elif action == "faturamento":
             run_scraper()
         elif action == "comercial":
