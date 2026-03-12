@@ -56,8 +56,11 @@ export async function GET(request: Request) {
             COALESCE(SUM(total_value), 0) as valor,
             COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) IN (${wonInSql}) THEN 1 ELSE 0 END), 0) as won_qtd,
             COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) IN (${wonInSql}) THEN total_value ELSE 0 END), 0) as won_value,
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'aguardando aprovação do cliente' THEN 1 ELSE 0 END), 0) as awaiting_client_approval_qtd,
             COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'aguardando aprovação do cliente' THEN total_value ELSE 0 END), 0) as awaiting_client_approval_value,
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'aprovada pelo cliente' THEN 1 ELSE 0 END), 0) as approved_by_client_qtd,
             COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'aprovada pelo cliente' THEN total_value ELSE 0 END), 0) as approved_by_client_value,
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'rejeitada pelo cliente' THEN 1 ELSE 0 END), 0) as rejected_by_client_qtd,
             COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'rejeitada pelo cliente' THEN total_value ELSE 0 END), 0) as rejected_by_client_value
           FROM feegow_proposals
           ${summaryBase.where}
@@ -71,8 +74,11 @@ export async function GET(request: Request) {
         valor: parseNumber(rawSummary.valor),
         wonValue: parseNumber(rawSummary.won_value),
         wonQtd: parseNumber(rawSummary.won_qtd),
+        awaitingClientApprovalQtd: parseNumber(rawSummary.awaiting_client_approval_qtd),
         awaitingClientApprovalValue: parseNumber(rawSummary.awaiting_client_approval_value),
+        approvedByClientQtd: parseNumber(rawSummary.approved_by_client_qtd),
         approvedByClientValue: parseNumber(rawSummary.approved_by_client_value),
+        rejectedByClientQtd: parseNumber(rawSummary.rejected_by_client_qtd),
         rejectedByClientValue: parseNumber(rawSummary.rejected_by_client_value),
         lostValue: parseNumber(rawSummary.rejected_by_client_value),
       };

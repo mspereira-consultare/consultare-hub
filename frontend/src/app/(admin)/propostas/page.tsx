@@ -3,11 +3,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  Building2,
+  ChevronDown,
+  ChevronRight,
   Briefcase,
   Calendar,
   CheckCircle2,
   Clock,
   DollarSign,
+  FilterX,
   FileText,
   Loader2,
   PieChart,
@@ -33,8 +37,11 @@ type Summary = {
   wonQtd: number;
   lostValue: number;
   conversionRate: number;
+  awaitingClientApprovalQtd: number;
   awaitingClientApprovalValue: number;
+  approvedByClientQtd: number;
   approvedByClientValue: number;
+  rejectedByClientQtd: number;
   rejectedByClientValue: number;
 };
 
@@ -66,8 +73,11 @@ const EMPTY_SUMMARY: Summary = {
   wonQtd: 0,
   lostValue: 0,
   conversionRate: 0,
+  awaitingClientApprovalQtd: 0,
   awaitingClientApprovalValue: 0,
+  approvedByClientQtd: 0,
   approvedByClientValue: 0,
+  rejectedByClientQtd: 0,
   rejectedByClientValue: 0,
 };
 
@@ -93,6 +103,7 @@ export default function ProposalsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUnit, setSelectedUnit] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
     key: 'valor',
     direction: 'desc',
@@ -114,7 +125,7 @@ export default function ProposalsPage() {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const avgTicket = summary.qtd > 0 ? summary.valor / summary.qtd : 0;
-  const lostRate = summary.valor > 0 ? (summary.lostValue / summary.valor) * 100 : 0;
+  const percentageOfTotal = (value: number) => (summary.valor > 0 ? (value / summary.valor) * 100 : 0);
 
   const processUnitData = (rows: UnitRow[]) => {
     const grouped = new Map<string, GroupedUnit>();
@@ -165,8 +176,11 @@ export default function ProposalsPage() {
       const wonVal = toNumber(data.summary?.wonValue);
       const wonQtd = toNumber(data.summary?.wonQtd);
       const lostVal = toNumber(data.summary?.lostValue);
+      const awaitingClientApprovalQtd = toNumber(data.summary?.awaitingClientApprovalQtd);
       const awaitingClientApprovalValue = toNumber(data.summary?.awaitingClientApprovalValue);
+      const approvedByClientQtd = toNumber(data.summary?.approvedByClientQtd);
       const approvedByClientValue = toNumber(data.summary?.approvedByClientValue);
+      const rejectedByClientQtd = toNumber(data.summary?.rejectedByClientQtd);
       const rejectedByClientValue = toNumber(data.summary?.rejectedByClientValue);
 
       setSummary({
@@ -176,8 +190,11 @@ export default function ProposalsPage() {
         wonQtd,
         lostValue: lostVal,
         conversionRate: totalVal > 0 ? (wonVal / totalVal) * 100 : 0,
+        awaitingClientApprovalQtd,
         awaitingClientApprovalValue,
+        approvedByClientQtd,
         approvedByClientValue,
+        rejectedByClientQtd,
         rejectedByClientValue,
       });
 
@@ -274,101 +291,146 @@ export default function ProposalsPage() {
   };
 
   return (
-    <div className="p-8 max-w-[1600px] mx-auto min-h-screen bg-slate-50/50">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <FileText className="w-6 h-6 text-blue-600" />
-            Gestão de Propostas
-          </h1>
-          <p className="text-slate-500 mt-1">Acompanhamento comercial e conversão.</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
-          {heartbeat && (
-            <div className="hidden md:flex flex-col items-end mr-2">
-              <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Última sincronização</span>
-              <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
-                <Clock size={12} />
-                {formatLastUpdate(heartbeat.last_run)}
-                {heartbeat.status === 'ERROR' && <span className="text-red-500 font-bold ml-1">Erro</span>}
-              </div>
+    <div className="p-6 bg-slate-50 min-h-screen flex flex-col gap-6">
+      <div className="bg-white rounded-xl border border-slate-200 shadow-sm z-20 relative">
+        <div className="p-6 flex items-center justify-between border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-blue-900 rounded-xl text-white shadow-md">
+              <FileText size={24} />
             </div>
-          )}
-
-          <button
-            onClick={handleManualUpdate}
-            disabled={isUpdating}
-            className={`
-              flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all shadow-sm
-              ${
-                isUpdating
-                  ? 'bg-blue-100 text-blue-700 cursor-wait'
-                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-blue-600'
-              }
-            `}
-          >
-            {isUpdating ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
-            {isUpdating ? 'Sincronizando...' : 'Atualizar dados'}
-          </button>
-
-          <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-slate-200 shadow-sm">
-            <Calendar size={16} className="text-slate-400" />
-            <input
-              type="date"
-              value={dateRange.start}
-              onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
-              className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer"
-            />
-            <span className="text-slate-300">|</span>
-            <input
-              type="date"
-              value={dateRange.end}
-              onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
-              className="text-sm border-none focus:ring-0 text-slate-600 bg-transparent outline-none cursor-pointer"
-            />
+            <div>
+              <h1 className="text-xl font-bold text-slate-800">Propostas</h1>
+              <p className="text-slate-500 text-xs">Acompanhamento comercial e conversão.</p>
+            </div>
           </div>
 
-          <select
-            value={selectedUnit}
-            onChange={(e) => setSelectedUnit(e.target.value)}
-            className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-sm"
-          >
-            <option value="all">Todas as unidades</option>
-            {availableUnits.map((unit) => (
-              <option key={unit} value={unit}>
-                {unit}
-              </option>
-            ))}
-          </select>
+          <div className="flex items-center gap-4">
+            {heartbeat && (
+              <div className="hidden sm:flex flex-col items-end border-r border-slate-200 pr-4">
+                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Última sincronização</span>
+                <div className="flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                  <Clock size={12} />
+                  {formatLastUpdate(heartbeat.last_run)}
+                  {heartbeat.status === 'ERROR' && <span className="text-red-500 font-bold ml-1">Erro</span>}
+                </div>
+              </div>
+            )}
 
-          <select
-            value={selectedStatus}
-            onChange={(e) => setSelectedStatus(e.target.value)}
-            className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500 cursor-pointer shadow-sm min-w-[240px]"
-          >
-            <option value="all">Todos os status</option>
-            {availableStatuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
+            <button
+              onClick={handleManualUpdate}
+              disabled={isUpdating}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all border whitespace-nowrap ${
+                isUpdating
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-wait'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-blue-600'
+              }`}
+            >
+              {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+              {isUpdating ? 'Sincronizando...' : 'Atualizar'}
+            </button>
+
+            <button
+              onClick={() => setFiltersExpanded((prev) => !prev)}
+              className="p-2 hover:bg-slate-50 rounded-lg transition text-slate-600"
+              title={filtersExpanded ? 'Recolher filtros' : 'Expandir filtros'}
+            >
+              {filtersExpanded ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+            </button>
+          </div>
         </div>
+
+        {filtersExpanded && (
+          <div className="p-6 border-t border-slate-100">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-end">
+              <div>
+                <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block flex items-center gap-2">
+                  <Calendar size={14} />
+                  Período
+                </label>
+                <div className="flex items-center gap-2 bg-slate-50 px-3 py-2.5 rounded-lg border border-slate-200">
+                  <input
+                    type="date"
+                    value={dateRange.start}
+                    onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
+                    className="bg-transparent text-sm text-slate-700 outline-none flex-1"
+                  />
+                  <span className="text-slate-300">→</span>
+                  <input
+                    type="date"
+                    value={dateRange.end}
+                    onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
+                    className="bg-transparent text-sm text-slate-700 outline-none flex-1"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block flex items-center gap-2">
+                  <Building2 size={14} />
+                  Unidade
+                </label>
+                <select
+                  value={selectedUnit}
+                  onChange={(e) => setSelectedUnit(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="all">Todas as unidades</option>
+                  {availableUnits.map((unit) => (
+                    <option key={unit} value={unit}>
+                      {unit}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Status da proposta</label>
+                <select
+                  value={selectedStatus}
+                  onChange={(e) => setSelectedStatus(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500 cursor-pointer"
+                >
+                  <option value="all">Todos os status</option>
+                  {availableStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                {(selectedUnit !== 'all' || selectedStatus !== 'all') && (
+                  <button
+                    onClick={() => {
+                      setSelectedUnit('all');
+                      setSelectedStatus('all');
+                    }}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-lg border border-red-200 hover:bg-red-100 transition font-medium text-sm"
+                    title="Limpar filtros"
+                  >
+                    <FilterX size={16} />
+                    Limpar filtros
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      <div className="mb-8">
+      <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">Visão geral</h2>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
             <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Total propostas</p>
             <h3 className="text-2xl font-bold text-slate-800">{summary.qtd}</h3>
             <div className="mt-2 flex items-center gap-1 text-xs text-blue-600 font-medium">
               <FileText size={12} />
-              <span>Volume no período</span>
+              <span>100% do volume</span>
             </div>
           </div>
 
@@ -377,7 +439,7 @@ export default function ProposalsPage() {
             <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(summary.valor)}</h3>
             <div className="mt-2 flex items-center gap-1 text-xs text-emerald-600 font-medium">
               <DollarSign size={12} />
-              <span>Bruto estimado</span>
+              <span>{summary.qtd} propostas · 100% do valor</span>
             </div>
           </div>
 
@@ -386,16 +448,9 @@ export default function ProposalsPage() {
             <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(summary.wonValue)}</h3>
             <div className="mt-2 flex items-center gap-1 text-xs text-purple-600 font-medium">
               <TrendingUp size={12} />
-              <span>Executado</span>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Valor perdido</p>
-            <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(summary.lostValue)}</h3>
-            <div className="mt-2 flex items-center gap-1 text-xs text-red-600 font-medium">
-              <AlertCircle size={12} />
-              <span>{lostRate.toFixed(1)}% do total</span>
+              <span>
+                {summary.wonQtd} propostas · {percentageOfTotal(summary.wonValue).toFixed(1)}%
+              </span>
             </div>
           </div>
 
@@ -404,7 +459,9 @@ export default function ProposalsPage() {
             <h3 className="text-2xl font-bold text-slate-800">{summary.conversionRate.toFixed(1)}%</h3>
             <div className="mt-2 flex items-center gap-1 text-xs text-amber-600 font-medium">
               <PieChart size={12} />
-              <span>Eficiência</span>
+              <span>
+                {summary.wonQtd} de {summary.qtd} propostas
+              </span>
             </div>
           </div>
 
@@ -413,13 +470,13 @@ export default function ProposalsPage() {
             <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(avgTicket)}</h3>
             <div className="mt-2 flex items-center gap-1 text-xs text-slate-600 font-medium">
               <DollarSign size={12} />
-              <span>Média por proposta</span>
+              <span>{summary.qtd} propostas no cálculo</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="mb-8">
+      <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">Status do funil (cliente)</h2>
         </div>
@@ -428,6 +485,9 @@ export default function ProposalsPage() {
           <div className="bg-amber-50/70 border border-amber-100 rounded-xl px-4 py-3 shadow-sm">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-amber-700">Aguardando aprovação do cliente</p>
             <div className="mt-1 text-xl font-semibold text-amber-900">{formatCurrency(summary.awaitingClientApprovalValue)}</div>
+            <div className="mt-1 text-xs text-amber-800/80">
+              {summary.awaitingClientApprovalQtd} propostas · {percentageOfTotal(summary.awaitingClientApprovalValue).toFixed(1)}% do valor
+            </div>
           </div>
 
           <div className="bg-emerald-50/70 border border-emerald-100 rounded-xl px-4 py-3 shadow-sm">
@@ -436,11 +496,20 @@ export default function ProposalsPage() {
               <CheckCircle2 size={16} />
               {formatCurrency(summary.approvedByClientValue)}
             </div>
+            <div className="mt-1 text-xs text-emerald-800/80">
+              {summary.approvedByClientQtd} propostas · {percentageOfTotal(summary.approvedByClientValue).toFixed(1)}% do valor
+            </div>
           </div>
 
           <div className="bg-rose-50/70 border border-rose-100 rounded-xl px-4 py-3 shadow-sm sm:col-span-2 xl:col-span-1">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-rose-700">Rejeitada pelo cliente</p>
-            <div className="mt-1 text-xl font-semibold text-rose-900">{formatCurrency(summary.rejectedByClientValue)}</div>
+            <div className="mt-1 text-xl font-semibold text-rose-900 flex items-center gap-2">
+              <AlertCircle size={16} />
+              {formatCurrency(summary.rejectedByClientValue)}
+            </div>
+            <div className="mt-1 text-xs text-rose-800/80">
+              {summary.rejectedByClientQtd} propostas · {percentageOfTotal(summary.rejectedByClientValue).toFixed(1)}% do valor
+            </div>
           </div>
         </div>
       </div>
