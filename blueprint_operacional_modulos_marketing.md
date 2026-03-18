@@ -919,3 +919,93 @@ Regras:
 - https://developers.facebook.com/docs/instagram-platform/insights/
 - https://learn.microsoft.com/en-us/linkedin/marketing/community-management/organizations/share-statistics
 - https://developer.semrush.com/api/v3/projects/site-audit/
+
+## 19. Decisões congeladas — `/marketing/funil` V1 (Google-first)
+
+Decisões fechadas para execução imediata:
+
+- escopo V1: `Google Ads + GA4` com entrega de pipeline + página `/marketing/funil`;
+- autenticação Google: `OAuth + refresh token`;
+- escopo de contas: multi-conta por marca;
+- regra de atribuição V1: última origem válida por campanha;
+- etapas de agendamento e receita: placeholder explícito no V1 (`Em integração`), sem estimativa artificial;
+- execução operacional: atualização manual por botão + sincronização agendada diária.
+
+## 20. Arquitetura operacional V1 do funil
+
+Fluxo definido para o V1:
+
+1. ingestão (`workers`)  
+   coleta diária em `Google Ads` e `GA4` por conta/período.
+2. normalização  
+   padroniza campanha, origem, data e mapeamento de marca/unidade/especialidade.
+3. persistência  
+   grava tabelas `raw_*` para auditoria e `fact_marketing_funnel_daily` para consumo.
+4. serviço de leitura (`/api/admin/marketing/funil/*`)  
+   monta cards e tabelas do painel.
+5. interface (`/marketing/funil`)  
+   renderiza indicadores, ranking de campanhas, filtros e exportações.
+
+Princípios obrigatórios:
+
+- idempotência por chave natural + data;
+- upsert no fato diário;
+- rastreabilidade por `sync_runs/jobs`;
+- heartbeat no `system_status`.
+
+## 21. Pré-requisitos de credenciais (checklist)
+
+Checklist mínimo antes do primeiro sync:
+
+- projeto no Google Cloud com OAuth habilitado;
+- `client_id` e `client_secret` válidos;
+- `refresh_token` com escopos de Ads e Analytics;
+- IDs de conta/property mapeados por marca:
+  - Google Ads `customer_id`;
+  - GA4 `property_id`;
+- permissão de leitura confirmada nas contas;
+- validação de conectividade por endpoint de teste.
+
+Sem esses itens, o worker deve:
+
+- registrar erro explícito em `sync_runs/jobs`;
+- atualizar heartbeat para `ERROR`;
+- não gravar dados parciais silenciosamente.
+
+## 22. Roadmap de execução do módulo `/marketing/funil` (V1)
+
+### Sprint S0 — Setup e conexão (1 dia)
+
+- criar estrutura de configuração de contas por marca;
+- registrar contrato de variáveis de ambiente;
+- implementar teste de conectividade para Ads e GA4.
+
+### Sprint S1 — Ingestão e mart (2 a 3 dias)
+
+- criar tabelas `raw` de Ads e GA4;
+- criar tabela fato `fact_marketing_funnel_daily`;
+- implementar worker Google-first com `--once`, `--period`, `--start/--end`;
+- incluir idempotência, retry curto e heartbeat.
+
+### Sprint S2 — APIs e UI `/marketing/funil` (2 dias)
+
+- endpoints `summary`, `campaigns`, `jobs/latest`, `refresh`, `export`;
+- página com cards de mídia/leads + tabela por campanha + filtros;
+- exibir agendamento/receita como `Em integração`.
+
+### Sprint S3 — Hardening operacional (1 dia)
+
+- melhorar observabilidade e mensagens de erro;
+- validar backfill por período;
+- revisar performance de queries e índices.
+
+## 23. Critérios de aceite do V1 (`/marketing/funil`)
+
+O V1 será considerado pronto quando:
+
+- sincronização diária executar sem duplicação;
+- dados de Ads e GA4 estiverem auditáveis em `raw` e no fato diário;
+- filtros por período, marca, unidade, canal e campanha funcionarem corretamente;
+- tela `/marketing/funil` exibir cards e tabela com dados consistentes;
+- placeholders de agendamento/receita estiverem explícitos e sem cálculos fictícios;
+- refresh manual + agendado diário funcionarem com heartbeat claro.

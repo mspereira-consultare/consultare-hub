@@ -8,6 +8,7 @@ export type PageKey =
   | 'contratos'
   | 'propostas'
   | 'repasses'
+  | 'marketing_funil'
   | 'agenda_ocupacao'
   | 'metas_dashboard'
   | 'metas'
@@ -39,6 +40,7 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'contratos', label: 'ResolveSaude', path: '/contratos' },
   { key: 'propostas', label: 'Propostas', path: '/propostas' },
   { key: 'repasses', label: 'Fechamento de Repasses', path: '/repasses' },
+  { key: 'marketing_funil', label: 'Marketing - Funil', path: '/marketing/funil' },
   { key: 'agenda_ocupacao', label: 'Ocupacao de Agenda', path: '/agenda-ocupacao' },
   { key: 'metas_dashboard', label: 'Painel de Metas', path: '/metas/dashboard' },
   { key: 'metas', label: 'Gestao de Metas', path: '/metas' },
@@ -148,6 +150,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/contratos') return 'contratos';
   if (path === '/propostas') return 'propostas';
   if (path === '/repasses') return 'repasses';
+  if (path === '/marketing/funil') return 'marketing_funil';
   if (path === '/agenda-ocupacao') return 'agenda_ocupacao';
   if (path === '/produtividade') return 'produtividade';
   if (path === '/agendamentos') return 'agendamentos';
@@ -168,6 +171,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/contratos')) return 'contratos';
   if (path.startsWith('/api/admin/propostas')) return 'propostas';
   if (path.startsWith('/api/admin/repasses')) return 'repasses';
+  if (path.startsWith('/api/admin/marketing/funil')) return 'marketing_funil';
   if (path.startsWith('/api/admin/agenda-ocupacao')) return 'agenda_ocupacao';
   if (path.startsWith('/api/admin/produtividade')) return 'produtividade';
   if (path.startsWith('/api/admin/user-teams')) return 'produtividade';

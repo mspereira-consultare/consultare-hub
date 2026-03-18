@@ -53,6 +53,10 @@ const SERVICE_ALIASES: Record<string, string> = {
   agenda_occupancy: 'agenda_occupancy',
   agenda_ocupacao: 'agenda_occupancy',
   ocupacao_agenda: 'agenda_occupancy',
+  marketing_funnel: 'marketing_funnel',
+  marketing_funil: 'marketing_funnel',
+  funil_marketing: 'marketing_funnel',
+  worker_marketing_funnel_google: 'marketing_funnel',
 };
 
 const normalizeService = (serviceRaw: string) => {
@@ -72,6 +76,7 @@ const SERVICE_PAGE_MAP: Record<string, PageKey> = {
   faturamento: 'financeiro',
   comercial: 'propostas',
   contratos: 'contratos',
+  marketing_funnel: 'marketing_funil',
   monitor_medico: 'monitor',
   monitor_recepcao: 'monitor',
   agenda_occupancy: 'agenda_ocupacao',
@@ -90,6 +95,7 @@ const SERVICE_REFRESH_PAGES: Record<string, PageKey[]> = {
   faturamento: ['financeiro', 'dashboard', 'checklist_recepcao'],
   comercial: ['propostas', 'checklist_recepcao'],
   contratos: ['contratos'],
+  marketing_funnel: ['marketing_funil'],
   clinia: ['monitor', 'checklist_crc'],
   monitor_medico: ['monitor'],
   monitor_recepcao: ['monitor'],

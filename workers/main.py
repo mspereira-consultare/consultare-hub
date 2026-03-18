@@ -64,6 +64,7 @@ try:
     from worker_repasse_consolidado import process_pending_repasse_jobs_once
     from worker_consolidacao_profissionais import process_pending_consolidacao_jobs_once
     from worker_agenda_ocupacao import process_pending_agenda_occupancy_jobs_once
+    from worker_marketing_funnel_google import process_pending_marketing_funnel_jobs_once
     from worker_auth import FeegowTokenRenewer
     from worker_auth_clinia import CliniaCookieRenewer
     
@@ -155,6 +156,7 @@ KNOWN_ACTIONS = {
     'monitor_medico', # Espera para atendimento médico
     'monitor_recepcao', # Espera para atendimento recepção
     'agenda_occupancy', # Ocupacao da agenda por especialidade
+    'marketing_funnel', # Funil de Marketing (Google Ads + GA4)
 }
 
 def _normalize_service_key(service_raw: str) -> str:
@@ -214,6 +216,10 @@ ALIAS_ACTION_MAP = {
     'agenda_occupancy': 'agenda_occupancy',
     'agenda_ocupacao': 'agenda_occupancy',
     'ocupacao_agenda': 'agenda_occupancy',
+    'marketing_funnel': 'marketing_funnel',
+    'marketing_funil': 'marketing_funnel',
+    'funil_marketing': 'marketing_funnel',
+    'worker_marketing_funnel_google': 'marketing_funnel',
 }
 
 # Mapeia ação para nome canônico no `system_status`
@@ -232,6 +238,7 @@ CANONICAL_NAME = {
     'monitor_medico': 'Monitor Médico',
     'monitor_recepcao': 'Monitor Recepção',
     'agenda_occupancy': 'Agenda Ocupacao (Feegow API)',
+    'marketing_funnel': 'Marketing Funil (Google API)',
 }
 
 def canonicalize(service_raw: str):
@@ -400,6 +407,14 @@ def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
             clinia_cycle()
         elif action == "agenda_occupancy":
             process_pending_agenda_occupancy_jobs_once()
+        elif action == "marketing_funnel":
+            drained = 0
+            while process_pending_marketing_funnel_jobs_once(
+                auto_enqueue_if_empty=False,
+                requested_by="system_status",
+            ):
+                drained += 1
+            print(f"Marketing funil: jobs drenados={drained}")
         else:
             print(f"⚠️ Ação desconhecida solicitada: {action}")
 
@@ -571,12 +586,14 @@ def run_scheduler():
     schedule.every().day.at("05:00").do(run_token_renewal)
     schedule.every().day.at("05:10").do(run_clinia_token_renewal)
     schedule.every().day.at("05:20").do(lambda: run_service('procedures_catalog'))
+    schedule.every().day.at("05:40").do(lambda: run_service('marketing_funnel'))
 
     schedule.every().day.at("12:00").do(lambda: run_service('contratos'))
 
     schedule.every().day.at("12:00").do(run_token_renewal)
     schedule.every().day.at("12:10").do(run_clinia_token_renewal)
     schedule.every().day.at("12:20").do(lambda: run_service('procedures_catalog'))
+    schedule.every().day.at("18:10").do(lambda: run_service('marketing_funnel'))
     # Pré-aquecimento de sessão do monitor médico antes da abertura (08:00)
     schedule.every().day.at("07:40").do(run_medico_prewarm_job)
     schedule.every().day.at("07:45").do(run_medico_prewarm_job)
