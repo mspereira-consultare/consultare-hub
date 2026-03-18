@@ -97,6 +97,35 @@ class FeegowSystem:
         ]
         return sum(1 for m in markers if m in lower)
 
+    @staticmethod
+    def _looks_like_empty_queue_html(html_text: str) -> bool:
+        if not html_text:
+            return False
+        lower = str(html_text).lower()
+        empty_markers = [
+            "nenhum paciente aguardando para ser atendido",
+            "nenhum paciente aguardando",
+            "$(\"#total-pacientes\").html(\"\")",
+            "$('#total-pacientes').html('')",
+        ]
+        return any(marker in lower for marker in empty_markers)
+
+    @classmethod
+    def is_valid_queue_html(cls, html_text: str) -> bool:
+        """
+        Considera a resposta confiavel quando:
+        - nao e tela de login; e
+        - contem tabela de fila; ou
+        - contem o estado vazio explicito do Feegow.
+        """
+        if not html_text:
+            return False
+        if cls._looks_like_login_html(html_text):
+            return False
+
+        lower = str(html_text).lower()
+        return "<table" in lower or cls._looks_like_empty_queue_html(html_text)
+
     def login(self):
         """Realiza o login via POST e valida a sessão"""
         url = f"{self.base_url}/main/?P=Login&U=&Partner=&qs="

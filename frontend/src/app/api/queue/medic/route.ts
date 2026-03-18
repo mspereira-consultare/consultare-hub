@@ -9,6 +9,48 @@ const ACTIVE_MAX_AGE_HOURS = Math.max(
   Number.parseInt(process.env.MEDIC_API_ACTIVE_MAX_AGE_HOURS || '12', 10) || 12
 );
 
+function getSaoPauloNow() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date());
+
+  const part = (type: string) => parts.find((item) => item.type === type)?.value || '00';
+  return {
+    year: Number(part('year')),
+    month: Number(part('month')),
+    day: Number(part('day')),
+    hour: Number(part('hour')),
+    minute: Number(part('minute')),
+    second: Number(part('second')),
+  };
+}
+
+function computeCurrentWaitMinutes(arrivalRaw: string, fallbackMinutes: number) {
+  const arrival = String(arrivalRaw || '').trim();
+  const match = arrival.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return fallbackMinutes;
+
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return fallbackMinutes;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return fallbackMinutes;
+
+  const now = getSaoPauloNow();
+  const currentMinutes = now.hour * 60 + now.minute;
+  const arrivalMinutes = hour * 60 + minute;
+  const diff = currentMinutes - arrivalMinutes;
+
+  if (!Number.isFinite(diff) || diff < 0) return fallbackMinutes;
+  return diff;
+}
+
 function normalizeUnitId(dbName: string): string { 
   const upper = (dbName || '').toUpperCase(); 
   if (upper.includes("OURO")) return "Ouro Verde"; 
@@ -70,7 +112,8 @@ export async function GET() {
         const isService = status.includes('ATENDIMENTO') || status.includes('SALA');
 
         const waitTimeRaw = Number(row.espera_minutos);
-        const waitTime = Number.isFinite(waitTimeRaw) && waitTimeRaw >= 0 ? waitTimeRaw : 0;
+        const fallbackWaitTime = Number.isFinite(waitTimeRaw) && waitTimeRaw >= 0 ? waitTimeRaw : 0;
+        const waitTime = computeCurrentWaitMinutes(row.chegada, fallbackWaitTime);
 
         targetUnit.patients.push({
           id: row.hash_id,

@@ -321,7 +321,7 @@ def run_monitor_medico():
 
                 qtd_unidade = 0
                 coleta_vazia = df.empty
-                coleta_confiavel = bool(html and "<table" in str(html).lower())
+                coleta_confiavel = bool(html and sistema.is_valid_queue_html(str(html)))
 
                 if not df.empty:
                     qtd_unidade = len(df)
@@ -354,7 +354,7 @@ def run_monitor_medico():
                 if not coleta_confiavel:
                     warn_throttled(
                         f"coleta_inconfiavel_{nome_unidade}",
-                        f"[{timestamp}] [WARN] {nome_unidade}: coleta sem tabela confiavel; finalizacao pausada por seguranca.",
+                        f"[{timestamp}] [WARN] {nome_unidade}: coleta sem resposta confiavel; finalizacao pausada por seguranca.",
                         f"{nome_unidade}: coleta inconfiavel",
                     )
                 else:
