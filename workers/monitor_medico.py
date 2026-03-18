@@ -3,6 +3,7 @@ import sys
 import os
 import hashlib
 import threading
+import uuid
 from datetime import datetime
 from queue import Queue, Empty
 from concurrent.futures import TimeoutError as FutureTimeoutError
@@ -36,6 +37,10 @@ ACTIVITY_WINDOW_END = os.getenv("MEDICO_ACTIVITY_WINDOW_END", "22:00")
 WARN_THROTTLE_SECONDS = max(30, int(os.getenv("MEDICO_WARN_THROTTLE_SECONDS", "120")))
 MIDNIGHT_FINALIZE_ENABLED = str(os.getenv("MEDICO_MIDNIGHT_FINALIZE_ENABLED", "1")).strip().lower() in ("1", "true", "yes")
 HARD_STALE_MINUTES = max(120, int(os.getenv("MEDICO_HARD_STALE_MINUTES", "360")))
+MONITOR_CYCLE_LOG_RETENTION_DAYS = max(1, int(os.getenv("MONITOR_MEDICO_CYCLE_LOG_RETENTION_DAYS", "30")))
+MONITOR_EVENT_LOG_RETENTION_DAYS = max(1, int(os.getenv("MONITOR_MEDICO_EVENT_LOG_RETENTION_DAYS", "60")))
+MONITOR_LOG_INCLUDE_HTML_SNIPPET = str(os.getenv("MONITOR_MEDICO_LOG_INCLUDE_HTML_SNIPPET", "0")).strip().lower() in ("1", "true", "yes")
+MONITOR_LOG_HTML_SNIPPET_MAX_CHARS = max(80, int(os.getenv("MONITOR_MEDICO_LOG_HTML_SNIPPET_MAX_CHARS", "400")))
 
 UNIDADES = [
     ("Ouro Verde", 2),
@@ -105,6 +110,20 @@ def _format_fetch_meta(meta):
         f"status={status} reason={reason} markers={markers} "
         f"len={size} url={final_url}"
     )
+
+
+def _make_log_id(prefix):
+    return f"{prefix}_{uuid.uuid4().hex}"
+
+
+def _serialize_fetch_meta(meta, html=None):
+    payload = dict(meta or {})
+    if html:
+        payload["html_hash"] = hashlib.sha1(str(html).encode("utf-8", errors="ignore")).hexdigest()
+        if MONITOR_LOG_INCLUDE_HTML_SNIPPET:
+            snippet = " ".join(str(html).split())
+            payload["html_snippet"] = snippet[:MONITOR_LOG_HTML_SNIPPET_MAX_CHARS]
+    return payload
 
 
 def _parse_html_with_timeout(sistema, html, nome_unidade, timeout_sec):
@@ -205,6 +224,38 @@ def run_monitor_medico():
     unit_missing_tracker = {nome: {} for nome, _ in UNIDADES}
     last_midnight_finalize_date = None
 
+    def log_event(cycle_id, unit_name, unit_id, event_type, severity="info", payload=None, patient_hash_id=None, patient_name=None):
+        try:
+            db.insert_monitor_medico_event_log({
+                "id": _make_log_id("mmev"),
+                "cycle_id": cycle_id,
+                "unit_name": unit_name,
+                "unit_id": unit_id,
+                "event_type": event_type,
+                "severity": severity,
+                "patient_hash_id": patient_hash_id,
+                "patient_name": patient_name,
+                "payload_json": payload or {},
+            })
+        except Exception:
+            pass
+
+    def create_unit_cycle_log(cycle_id, cycle_started_at, unit_name, unit_id, session_was_active, login_performed=False, login_success=False):
+        log_id = _make_log_id("mmcy")
+        db.create_monitor_medico_cycle_log({
+            "id": log_id,
+            "cycle_id": cycle_id,
+            "cycle_started_at": cycle_started_at,
+            "unit_name": unit_name,
+            "unit_id": unit_id,
+            "session_was_active": session_was_active,
+            "login_performed": login_performed,
+            "login_success": login_success,
+            "created_at": cycle_started_at,
+            "updated_at": cycle_started_at,
+        })
+        return log_id
+
     def warn_throttled(key, message, heartbeat_detail=None):
         now_ts_local = time.time()
         last = warning_last_by_key.get(key, 0)
@@ -217,6 +268,10 @@ def run_monitor_medico():
     while True:
         try:
             db.update_heartbeat("monitor_medico", "RUNNING", "Iniciando ciclo...")
+            cycle_started_at = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+            cycle_id = _make_log_id("mmc")
+            login_performed_this_cycle = False
+            login_success_this_cycle = False
 
             now_local = datetime.now(tz)
             if MIDNIGHT_FINALIZE_ENABLED:
@@ -226,6 +281,14 @@ def run_monitor_medico():
                     last_midnight_finalize_date = current_date
                     if closed_prev_day > 0:
                         print(f"   [CLEANUP] Virada de dia: {closed_prev_day} registro(s) finalizado(s).")
+                        log_event(
+                            cycle_id,
+                            None,
+                            None,
+                            "midnight_finalize",
+                            "info",
+                            {"finalized_count": int(closed_prev_day)},
+                        )
 
             if sessao_ativa:
                 force_reauth = None
@@ -237,23 +300,39 @@ def run_monitor_medico():
                         force_reauth = f"renovacao preventiva ({int(age_min)} min)"
                 if force_reauth:
                     print(f"   [AUTH] Reautenticando por {force_reauth}...")
+                    log_event(
+                        cycle_id,
+                        None,
+                        None,
+                        "forced_reauth_by_day_turn" if "virada de dia" in force_reauth else "forced_reauth_by_refresh_window",
+                        "info",
+                        {"reason": force_reauth},
+                    )
                     sessao_ativa = False
 
             if not sessao_ativa:
                 print("   [AUTH] Realizando login...")
+                log_event(cycle_id, None, None, "login_started", "info", {"reason": "session_inactive"})
+                login_performed_this_cycle = True
                 if sistema.login():
                     sessao_ativa = True
+                    login_success_this_cycle = True
                     last_login_ts = time.time()
                     last_login_date = datetime.now(tz).date()
                 else:
                     print("   [AUTH] Falha no login. Retentando em 30s...")
                     db.update_heartbeat("monitor_medico", "WARNING", "Falha no login Feegow")
+                    log_event(cycle_id, None, None, "login_failed", "error", {"reason": "initial_login_failed"})
                     time.sleep(30)
                     continue
 
             now_ts = time.time()
             if CLEANUP_INTERVAL_SEC <= 0 or (now_ts - last_cleanup_ts) >= CLEANUP_INTERVAL_SEC:
                 db.limpar_dias_anteriores()
+                db.limpar_logs_monitor_medico(
+                    cycle_retention_days=MONITOR_CYCLE_LOG_RETENTION_DAYS,
+                    event_retention_days=MONITOR_EVENT_LOG_RETENTION_DAYS,
+                )
                 last_cleanup_ts = now_ts
 
             timestamp = datetime.now(tz).strftime("%H:%M:%S")
@@ -263,16 +342,60 @@ def run_monitor_medico():
 
             for nome_unidade, uid in UNIDADES:
                 db.update_heartbeat("monitor_medico", "RUNNING", f"Coletando {nome_unidade}...")
+                unit_cycle_log_id = create_unit_cycle_log(
+                    cycle_id,
+                    cycle_started_at,
+                    nome_unidade,
+                    uid,
+                    sessao_ativa,
+                    login_performed=login_performed_this_cycle,
+                    login_success=login_success_this_cycle,
+                )
 
                 if not sistema.trocar_unidade(uid):
                     print(f"[{timestamp}] Falha ao trocar para {nome_unidade} ({uid})")
+                    db.update_monitor_medico_cycle_log(
+                        unit_cycle_log_id,
+                        {
+                            "cycle_result": "skipped",
+                            "message": f"Falha ao trocar unidade {uid}",
+                        },
+                    )
+                    log_event(
+                        cycle_id,
+                        nome_unidade,
+                        uid,
+                        "queue_untrusted_response",
+                        "warning",
+                        {"reason": "trocar_unidade_failed"},
+                    )
                     continue
                 unidades_processadas += 1
 
                 time.sleep(1.0)
                 html = sistema.obter_fila_raw()
+                fetch_meta = _serialize_fetch_meta(getattr(sistema, "last_queue_fetch_meta", {}), html)
+                queue_fetch_status = str(fetch_meta.get("reason") or "ok")
+                if html is not None and sistema._looks_like_empty_queue_html(str(html)):
+                    queue_fetch_status = "empty_valid"
+
+                db.update_monitor_medico_cycle_log(
+                    unit_cycle_log_id,
+                    {
+                        "queue_fetch_status": queue_fetch_status,
+                        "queue_fetch_meta_json": fetch_meta,
+                    },
+                )
                 if html is None:
                     meta_info = _format_fetch_meta(getattr(sistema, "last_queue_fetch_meta", {}))
+                    log_event(
+                        cycle_id,
+                        nome_unidade,
+                        uid,
+                        "session_invalid_detected",
+                        "warning",
+                        {"fetch_meta": fetch_meta},
+                    )
                     warn_throttled(
                         f"sessao_{nome_unidade}",
                         f"[{timestamp}] [WARN] Sessao invalida em {nome_unidade}. Re-login imediato. {meta_info}",
@@ -280,16 +403,52 @@ def run_monitor_medico():
                     )
                     sessao_ativa = False
 
+                    db.update_monitor_medico_cycle_log(
+                        unit_cycle_log_id,
+                        {
+                            "session_was_active": False,
+                            "login_performed": True,
+                        },
+                    )
+
                     if sistema.login():
                         sessao_ativa = True
                         last_login_ts = time.time()
                         last_login_date = datetime.now(tz).date()
+                        log_event(
+                            cycle_id,
+                            nome_unidade,
+                            uid,
+                            "relogin_success",
+                            "info",
+                            {"reason": "session_invalid"},
+                        )
                         if sistema.trocar_unidade(uid):
                             time.sleep(0.8)
                             html = sistema.obter_fila_raw()
+                            fetch_meta = _serialize_fetch_meta(getattr(sistema, "last_queue_fetch_meta", {}), html)
+                            queue_fetch_status = str(fetch_meta.get("reason") or "ok")
+                            if html is not None and sistema._looks_like_empty_queue_html(str(html)):
+                                queue_fetch_status = "empty_valid"
+                            db.update_monitor_medico_cycle_log(
+                                unit_cycle_log_id,
+                                {
+                                    "login_success": True,
+                                    "queue_fetch_status": queue_fetch_status,
+                                    "queue_fetch_meta_json": fetch_meta,
+                                },
+                            )
                         else:
                             html = None
                     else:
+                        log_event(
+                            cycle_id,
+                            nome_unidade,
+                            uid,
+                            "relogin_failed",
+                            "error",
+                            {"reason": "session_invalid"},
+                        )
                         html = None
 
                     if html is None:
@@ -300,22 +459,65 @@ def run_monitor_medico():
                             f"[{timestamp}] [WARN] Re-login falhou em {nome_unidade}; encerrando ciclo para retry. {meta_info}",
                             f"Re-login falhou em {nome_unidade}; ciclo interrompido",
                         )
+                        db.update_monitor_medico_cycle_log(
+                            unit_cycle_log_id,
+                            {
+                                "cycle_result": "auth_retry",
+                                "message": "Re-login falhou; ciclo interrompido",
+                            },
+                        )
                         break
 
                 try:
                     df = _parse_html_with_timeout(sistema, html, nome_unidade, PARSE_TIMEOUT_SEC)
+                    db.update_monitor_medico_cycle_log(
+                        unit_cycle_log_id,
+                        {"parse_status": "ok"},
+                    )
                 except FutureTimeoutError:
+                    log_event(
+                        cycle_id,
+                        nome_unidade,
+                        uid,
+                        "parse_timeout",
+                        "warning",
+                        {"timeout_sec": PARSE_TIMEOUT_SEC},
+                    )
                     warn_throttled(
                         f"timeout_parse_{nome_unidade}",
                         f"[{timestamp}] [WARN] {nome_unidade}: parse_html excedeu {PARSE_TIMEOUT_SEC}s; unidade ignorada no ciclo.",
                         f"Timeout parse {nome_unidade} ({PARSE_TIMEOUT_SEC}s)",
                     )
+                    db.update_monitor_medico_cycle_log(
+                        unit_cycle_log_id,
+                        {
+                            "parse_status": "timeout",
+                            "cycle_result": "warning",
+                            "message": f"Timeout no parse ({PARSE_TIMEOUT_SEC}s)",
+                        },
+                    )
                     continue
                 except Exception as parse_err:
+                    log_event(
+                        cycle_id,
+                        nome_unidade,
+                        uid,
+                        "parse_error",
+                        "error",
+                        {"error": str(parse_err)},
+                    )
                     warn_throttled(
                         f"erro_parse_{nome_unidade}",
                         f"[{timestamp}] [WARN] {nome_unidade}: erro no parse_html: {parse_err}",
                         f"Erro parse {nome_unidade}",
+                    )
+                    db.update_monitor_medico_cycle_log(
+                        unit_cycle_log_id,
+                        {
+                            "parse_status": "error",
+                            "cycle_result": "error",
+                            "message": f"Erro no parse: {parse_err}",
+                        },
                     )
                     continue
 
@@ -340,11 +542,48 @@ def run_monitor_medico():
                 else:
                     hash_ids_atuais = set()
 
+                db.update_monitor_medico_cycle_log(
+                    unit_cycle_log_id,
+                    {
+                        "patients_detected_count": qtd_unidade,
+                        "hashes_detected_count": len(hash_ids_atuais),
+                        "coleta_confiavel": coleta_confiavel,
+                        "coleta_vazia": coleta_vazia,
+                        "queue_fetch_status": "empty_valid" if coleta_vazia and coleta_confiavel else queue_fetch_status,
+                        "queue_fetch_meta_json": fetch_meta,
+                    },
+                )
+
+                if coleta_vazia and coleta_confiavel:
+                    log_event(
+                        cycle_id,
+                        nome_unidade,
+                        uid,
+                        "queue_empty_valid",
+                        "info",
+                        {"fetch_meta": fetch_meta},
+                    )
+
                 if not df.empty and not hash_ids_atuais:
+                    log_event(
+                        cycle_id,
+                        nome_unidade,
+                        uid,
+                        "hash_missing_safety_pause",
+                        "warning",
+                        {"patients_detected_count": qtd_unidade},
+                    )
                     warn_throttled(
                         f"hash_vazio_{nome_unidade}",
                         f"[{timestamp}] [WARN] {nome_unidade}: sem hash_ids_atuais; finalizacao pausada por seguranca.",
                         f"{nome_unidade}: hash_ids ausentes",
+                    )
+                    db.update_monitor_medico_cycle_log(
+                        unit_cycle_log_id,
+                        {
+                            "cycle_result": "warning",
+                            "message": "hash_ids ausentes; finalização pausada por segurança",
+                        },
                     )
                     if last_unit_counts.get(nome_unidade) != qtd_unidade or qtd_unidade > 0:
                         print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
@@ -352,10 +591,25 @@ def run_monitor_medico():
                     continue
 
                 if not coleta_confiavel:
+                    log_event(
+                        cycle_id,
+                        nome_unidade,
+                        uid,
+                        "queue_untrusted_response",
+                        "warning",
+                        {"fetch_meta": fetch_meta},
+                    )
                     warn_throttled(
                         f"coleta_inconfiavel_{nome_unidade}",
                         f"[{timestamp}] [WARN] {nome_unidade}: coleta sem resposta confiavel; finalizacao pausada por seguranca.",
                         f"{nome_unidade}: coleta inconfiavel",
+                    )
+                    db.update_monitor_medico_cycle_log(
+                        unit_cycle_log_id,
+                        {
+                            "cycle_result": "warning",
+                            "message": "Coleta sem resposta confiável; finalização pausada",
+                        },
                     )
                 else:
                     rows_ativos_local = db.execute_query(
@@ -371,6 +625,7 @@ def run_monitor_medico():
                     ids_para_finalizar = []
                     active_hashes_local = set()
                     unit_tracker = unit_missing_tracker.setdefault(nome_unidade, {})
+                    missing_candidates_count = 0
 
                     for row in rows_ativos_local:
                         hash_id = str(row[0]) if row and row[0] is not None else ""
@@ -383,16 +638,34 @@ def run_monitor_medico():
                             unit_tracker.pop(hash_id, None)
                             continue
 
+                        missing_candidates_count += 1
                         last_seen_dt = _parse_db_datetime(updated_at)
                         if last_seen_dt is None:
                             mins_absente = ABSENCE_CONFIRM_MINUTES + 1
                         else:
                             mins_absente = max(0.0, (agora_dt - last_seen_dt).total_seconds() / 60.0)
 
-                        tracker_entry = unit_tracker.get(hash_id, {"cycles": 0, "mins": 0.0})
+                        tracker_entry = unit_tracker.get(hash_id, {"cycles": 0, "mins": 0.0, "patient_name": None})
                         tracker_entry["cycles"] = int(tracker_entry.get("cycles", 0)) + 1
                         tracker_entry["mins"] = float(mins_absente)
+                        tracker_entry["patient_name"] = tracker_entry.get("patient_name") or None
                         unit_tracker[hash_id] = tracker_entry
+
+                        event_type = "absence_tracking_started" if tracker_entry["cycles"] == 1 else "absence_tracking_progress"
+                        log_event(
+                            cycle_id,
+                            nome_unidade,
+                            uid,
+                            event_type,
+                            "info",
+                            {
+                                "cycles": tracker_entry["cycles"],
+                                "mins_absente": round(mins_absente, 2),
+                                "threshold_cycles": ABSENCE_CONFIRM_CYCLES,
+                                "threshold_minutes": ABSENCE_CONFIRM_MINUTES,
+                            },
+                            patient_hash_id=hash_id,
+                        )
 
                         if (
                             tracker_entry["cycles"] >= ABSENCE_CONFIRM_CYCLES
@@ -405,6 +678,7 @@ def run_monitor_medico():
                         if tracked_hash not in active_hashes_local:
                             unit_tracker.pop(tracked_hash, None)
 
+                    finalized_absence_count = 0
                     if ids_para_finalizar:
                         finalized_count = db.finalizar_medicos_por_hash(
                             nome_unidade,
@@ -412,8 +686,21 @@ def run_monitor_medico():
                             motivo="Ausencia Confirmada",
                         )
                         for hash_id in ids_para_finalizar:
+                            log_event(
+                                cycle_id,
+                                nome_unidade,
+                                uid,
+                                "absence_confirmed_finalize",
+                                "info",
+                                {
+                                    "threshold_cycles": ABSENCE_CONFIRM_CYCLES,
+                                    "threshold_minutes": ABSENCE_CONFIRM_MINUTES,
+                                },
+                                patient_hash_id=hash_id,
+                            )
                             unit_tracker.pop(hash_id, None)
                         if finalized_count > 0:
+                            finalized_absence_count = finalized_count
                             print(
                                 f"   [FINALIZACAO] {nome_unidade}: {finalized_count} paciente(s) finalizado(s) por ausencia confirmada."
                             )
@@ -427,12 +714,48 @@ def run_monitor_medico():
                             f"{nome_unidade}: coleta vazia em confirmacao",
                         )
 
+                    db.update_monitor_medico_cycle_log(
+                        unit_cycle_log_id,
+                        {
+                            "active_rows_before_count": len(rows_ativos_local),
+                            "missing_candidates_count": missing_candidates_count,
+                            "absence_tracking_count": len(unit_tracker),
+                            "finalized_absence_count": finalized_absence_count,
+                            "cycle_result": "ok" if coleta_confiavel else "warning",
+                            "message": (
+                                f"Coleta ok; detectados={qtd_unidade}; ativos_antes={len(rows_ativos_local)}; "
+                                f"ausentes={missing_candidates_count}; confirmacao={len(unit_tracker)}"
+                            ),
+                        },
+                    )
+
                 # Fallback de limpeza de casos muito antigos (seguranca operacional).
                 if (
                     not auth_issue_detected
                     and (FINALIZE_INTERVAL_SEC <= 0 or (time.time() - last_finalize_ts) >= FINALIZE_INTERVAL_SEC)
                 ):
-                    db.finalizar_expirados_medicos(nome_unidade, minutos=HARD_STALE_MINUTES)
+                    finalized_hard_stale_count = db.finalizar_expirados_medicos(
+                        nome_unidade,
+                        minutos=HARD_STALE_MINUTES,
+                    )
+                    if finalized_hard_stale_count > 0:
+                        log_event(
+                            cycle_id,
+                            nome_unidade,
+                            uid,
+                            "hard_stale_finalize",
+                            "warning",
+                            {
+                                "finalized_count": int(finalized_hard_stale_count),
+                                "minutes": HARD_STALE_MINUTES,
+                            },
+                        )
+                        db.update_monitor_medico_cycle_log(
+                            unit_cycle_log_id,
+                            {
+                                "finalized_hard_stale_count": finalized_hard_stale_count,
+                            },
+                        )
 
                 if last_unit_counts.get(nome_unidade) != qtd_unidade or qtd_unidade > 0:
                     print(f"   -> {nome_unidade}: {qtd_unidade} pacientes.")
@@ -448,12 +771,29 @@ def run_monitor_medico():
                     "WARNING",
                     "Falha de autenticacao/sessao invalida durante o ciclo; aguardando novo login.",
                 )
+                log_event(
+                    cycle_id,
+                    None,
+                    None,
+                    "session_invalid_detected",
+                    "warning",
+                    {"scope": "cycle", "message": "Falha de autenticacao/sessao invalida durante o ciclo"},
+                )
             elif sessao_ativa:
                 msg = f"Ciclo concluido. Total detectado: {total_detectado_ciclo}"
 
                 if total_detectado_ciclo == 0:
                     if unidades_processadas == len(UNIDADES) and _is_activity_window(datetime.now(tz)):
                         consecutive_zero_cycles += 1
+                        if consecutive_zero_cycles == 1:
+                            log_event(
+                                cycle_id,
+                                None,
+                                None,
+                                "suspicious_zero_cycle",
+                                "warning",
+                                {"count": consecutive_zero_cycles, "units_processed": unidades_processadas},
+                            )
                         if consecutive_zero_cycles >= EMPTY_RELOGIN_CYCLES:
                             warn_msg = (
                                 f"Coleta vazia suspeita por {consecutive_zero_cycles} ciclo(s); "
@@ -461,6 +801,18 @@ def run_monitor_medico():
                             )
                             print(f"[{timestamp}] [WARN] {warn_msg}")
                             db.update_heartbeat("monitor_medico", "WARNING", warn_msg)
+                            log_event(
+                                cycle_id,
+                                None,
+                                None,
+                                "suspicious_zero_cycle",
+                                "warning",
+                                {
+                                    "count": consecutive_zero_cycles,
+                                    "units_processed": unidades_processadas,
+                                    "action": "force_relogin_next_cycle",
+                                },
+                            )
                             sessao_ativa = False
                             consecutive_zero_cycles = 0
                         else:
@@ -479,6 +831,14 @@ def run_monitor_medico():
             print(f"\n[ERRO CRITICO] Monitor Medico: {e}")
             try:
                 db.update_heartbeat("monitor_medico", "ERROR", str(e))
+                log_event(
+                    locals().get("cycle_id"),
+                    None,
+                    None,
+                    "critical_loop_error",
+                    "error",
+                    {"scope": "critical_loop", "error": str(e)},
+                )
             except Exception:
                 pass
             sessao_ativa = False

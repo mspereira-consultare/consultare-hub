@@ -5,6 +5,7 @@ import logging
 import pandas as pd
 import traceback
 import hashlib
+import json
 import pytz
 import time
 import threading
@@ -409,6 +410,45 @@ class DatabaseManager:
                     status TEXT,
                     dia_referencia TEXT,
                     updated_at TEXT
+                )""",
+                # Observabilidade estruturada do monitor médico
+                """CREATE TABLE IF NOT EXISTS monitor_medico_cycle_log (
+                    id VARCHAR(64) PRIMARY KEY,
+                    cycle_id VARCHAR(64) NOT NULL,
+                    cycle_started_at TEXT NOT NULL,
+                    unit_name VARCHAR(80) NOT NULL,
+                    unit_id INTEGER,
+                    session_was_active INTEGER DEFAULT 0,
+                    login_performed INTEGER DEFAULT 0,
+                    login_success INTEGER DEFAULT 0,
+                    queue_fetch_status VARCHAR(40),
+                    queue_fetch_meta_json LONGTEXT,
+                    parse_status VARCHAR(20),
+                    patients_detected_count INTEGER DEFAULT 0,
+                    hashes_detected_count INTEGER DEFAULT 0,
+                    coleta_confiavel INTEGER DEFAULT 0,
+                    coleta_vazia INTEGER DEFAULT 0,
+                    active_rows_before_count INTEGER DEFAULT 0,
+                    missing_candidates_count INTEGER DEFAULT 0,
+                    absence_tracking_count INTEGER DEFAULT 0,
+                    finalized_absence_count INTEGER DEFAULT 0,
+                    finalized_hard_stale_count INTEGER DEFAULT 0,
+                    cycle_result VARCHAR(20),
+                    message TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )""",
+                """CREATE TABLE IF NOT EXISTS monitor_medico_event_log (
+                    id VARCHAR(64) PRIMARY KEY,
+                    cycle_id VARCHAR(64) NOT NULL,
+                    unit_name VARCHAR(80),
+                    unit_id INTEGER,
+                    event_type VARCHAR(80) NOT NULL,
+                    severity VARCHAR(20) NOT NULL,
+                    patient_hash_id VARCHAR(64),
+                    patient_name TEXT,
+                    payload_json LONGTEXT,
+                    created_at TEXT NOT NULL
                 )"""
             ]
 
@@ -538,6 +578,17 @@ class DatabaseManager:
             limite = (datetime.now(tz) - timedelta(minutes=minutos)).strftime('%Y-%m-%d %H:%M:%S')
             limite_delete = (datetime.now(tz) - timedelta(hours=72)).strftime('%Y-%m-%d %H:%M:%S')
 
+            sql_count = """
+                SELECT COUNT(*)
+                FROM espera_medica
+                WHERE unidade = ?
+                AND (status IS NULL OR status NOT LIKE ?)
+                AND updated_at < ?
+            """
+            count_rs = conn.execute(sql_count, (nome_unidade, "Finalizado%", limite))
+            count_row = count_rs.fetchone() if hasattr(count_rs, "fetchone") else None
+            total_to_finalize = int(count_row[0]) if count_row and count_row[0] is not None else 0
+
             # Remove registros ativos muito antigos (ruido de sessoes passadas).
             sql_delete = """
                 DELETE FROM espera_medica
@@ -562,9 +613,11 @@ class DatabaseManager:
 
             # Sem invalidar esse cache, pacientes podem ficar presos como finalizados.
             _clear_espera_cache()
+            return total_to_finalize
 
         except Exception as e:
             print(f"Erro finalizar expirados medicos: {e}")
+            return 0
         finally:
             conn.close()
 
@@ -781,6 +834,192 @@ class DatabaseManager:
             _clear_espera_cache_hashes(hash_ids)
         else:
             _clear_espera_cache()
+
+    def _json_dumps(self, payload):
+        if payload is None:
+            return None
+        try:
+            return json.dumps(payload, ensure_ascii=False, default=str, separators=(',', ':'))
+        except Exception:
+            return json.dumps({"raw": str(payload)}, ensure_ascii=False, default=str, separators=(',', ':'))
+
+    def create_monitor_medico_cycle_log(self, payload):
+        conn = self.get_connection()
+        try:
+            agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+            sql = """
+                INSERT INTO monitor_medico_cycle_log (
+                    id, cycle_id, cycle_started_at, unit_name, unit_id,
+                    session_was_active, login_performed, login_success,
+                    queue_fetch_status, queue_fetch_meta_json, parse_status,
+                    patients_detected_count, hashes_detected_count,
+                    coleta_confiavel, coleta_vazia, active_rows_before_count,
+                    missing_candidates_count, absence_tracking_count,
+                    finalized_absence_count, finalized_hard_stale_count,
+                    cycle_result, message, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            params = (
+                str(payload.get('id') or ''),
+                str(payload.get('cycle_id') or ''),
+                str(payload.get('cycle_started_at') or agora),
+                str(payload.get('unit_name') or ''),
+                payload.get('unit_id'),
+                1 if payload.get('session_was_active') else 0,
+                1 if payload.get('login_performed') else 0,
+                1 if payload.get('login_success') else 0,
+                payload.get('queue_fetch_status'),
+                self._json_dumps(payload.get('queue_fetch_meta_json')),
+                payload.get('parse_status'),
+                int(payload.get('patients_detected_count') or 0),
+                int(payload.get('hashes_detected_count') or 0),
+                1 if payload.get('coleta_confiavel') else 0,
+                1 if payload.get('coleta_vazia') else 0,
+                int(payload.get('active_rows_before_count') or 0),
+                int(payload.get('missing_candidates_count') or 0),
+                int(payload.get('absence_tracking_count') or 0),
+                int(payload.get('finalized_absence_count') or 0),
+                int(payload.get('finalized_hard_stale_count') or 0),
+                payload.get('cycle_result'),
+                payload.get('message'),
+                str(payload.get('created_at') or agora),
+                str(payload.get('updated_at') or agora),
+            )
+            conn.execute(sql, params)
+            if not self.use_turso:
+                conn.commit()
+        except Exception as e:
+            print(f"Erro create monitor_medico_cycle_log: {e}")
+        finally:
+            conn.close()
+
+    def update_monitor_medico_cycle_log(self, log_id, updates):
+        if not log_id or not updates:
+            return
+        conn = self.get_connection()
+        try:
+            allowed = {
+                'session_was_active',
+                'login_performed',
+                'login_success',
+                'queue_fetch_status',
+                'queue_fetch_meta_json',
+                'parse_status',
+                'patients_detected_count',
+                'hashes_detected_count',
+                'coleta_confiavel',
+                'coleta_vazia',
+                'active_rows_before_count',
+                'missing_candidates_count',
+                'absence_tracking_count',
+                'finalized_absence_count',
+                'finalized_hard_stale_count',
+                'cycle_result',
+                'message',
+            }
+            set_parts = []
+            params = []
+            for key, value in updates.items():
+                if key not in allowed:
+                    continue
+                if key == 'queue_fetch_meta_json':
+                    value = self._json_dumps(value)
+                elif key in {
+                    'session_was_active',
+                    'login_performed',
+                    'login_success',
+                    'coleta_confiavel',
+                    'coleta_vazia',
+                }:
+                    value = 1 if value else 0
+                elif key in {
+                    'patients_detected_count',
+                    'hashes_detected_count',
+                    'active_rows_before_count',
+                    'missing_candidates_count',
+                    'absence_tracking_count',
+                    'finalized_absence_count',
+                    'finalized_hard_stale_count',
+                }:
+                    value = int(value or 0)
+
+                set_parts.append(f"{key} = ?")
+                params.append(value)
+
+            if not set_parts:
+                return
+
+            set_parts.append("updated_at = ?")
+            params.append(datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S'))
+            params.append(str(log_id))
+
+            sql = f"""
+                UPDATE monitor_medico_cycle_log
+                SET {', '.join(set_parts)}
+                WHERE id = ?
+            """
+            conn.execute(sql, tuple(params))
+            if not self.use_turso:
+                conn.commit()
+        except Exception as e:
+            print(f"Erro update monitor_medico_cycle_log: {e}")
+        finally:
+            conn.close()
+
+    def insert_monitor_medico_event_log(self, payload):
+        conn = self.get_connection()
+        try:
+            agora = datetime.now(tz).strftime('%Y-%m-%d %H:%M:%S')
+            sql = """
+                INSERT INTO monitor_medico_event_log (
+                    id, cycle_id, unit_name, unit_id, event_type, severity,
+                    patient_hash_id, patient_name, payload_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """
+            params = (
+                str(payload.get('id') or ''),
+                str(payload.get('cycle_id') or ''),
+                payload.get('unit_name'),
+                payload.get('unit_id'),
+                payload.get('event_type'),
+                payload.get('severity') or 'info',
+                payload.get('patient_hash_id'),
+                payload.get('patient_name'),
+                self._json_dumps(payload.get('payload_json')),
+                str(payload.get('created_at') or agora),
+            )
+            conn.execute(sql, params)
+            if not self.use_turso:
+                conn.commit()
+        except Exception as e:
+            print(f"Erro insert monitor_medico_event_log: {e}")
+        finally:
+            conn.close()
+
+    def limpar_logs_monitor_medico(self, cycle_retention_days=30, event_retention_days=60):
+        conn = self.get_connection()
+        try:
+            cycle_limit = (
+                datetime.now(tz) - timedelta(days=max(1, int(cycle_retention_days)))
+            ).strftime('%Y-%m-%d %H:%M:%S')
+            event_limit = (
+                datetime.now(tz) - timedelta(days=max(1, int(event_retention_days)))
+            ).strftime('%Y-%m-%d %H:%M:%S')
+
+            conn.execute(
+                "DELETE FROM monitor_medico_cycle_log WHERE created_at < ?",
+                (cycle_limit,),
+            )
+            conn.execute(
+                "DELETE FROM monitor_medico_event_log WHERE created_at < ?",
+                (event_limit,),
+            )
+            if not self.use_turso:
+                conn.commit()
+        except Exception as e:
+            print(f"Erro limpar_logs_monitor_medico: {e}")
+        finally:
+            conn.close()
 
     def obter_credenciais_feegow(self):
         """Retorna (username, password) da tabela integrations_config"""
