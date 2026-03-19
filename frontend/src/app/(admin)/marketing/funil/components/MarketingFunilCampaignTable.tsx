@@ -26,7 +26,7 @@ export function MarketingFunilCampaignTable({
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-900">Campanhas</h2>
@@ -41,7 +41,7 @@ export function MarketingFunilCampaignTable({
             onChange={(event) => onPageSizeChange(Number(event.target.value))}
             className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none"
           >
-            {[25, 50, 100].map((value) => (
+            {[10, 25, 50].map((value) => (
               <option key={value} value={value}>
                 {value}/página
               </option>
@@ -50,10 +50,10 @@ export function MarketingFunilCampaignTable({
         </div>
       </div>
 
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 max-h-[34rem] overflow-auto rounded-2xl border border-slate-200">
         <table className="min-w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
+          <thead className="sticky top-0 z-10 bg-white">
+            <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
               <th className="px-3 py-3 font-semibold">Campanha</th>
               <th className="px-3 py-3 font-semibold">Source / Medium</th>
               <th className="px-3 py-3 font-semibold">Canal</th>
@@ -83,7 +83,7 @@ export function MarketingFunilCampaignTable({
               </tr>
             ) : (
               items.map((item) => (
-                <tr key={item.campaignKey} className="border-b border-slate-100 align-top text-slate-700">
+                <tr key={item.campaignKey} className="border-b border-slate-100 align-top text-slate-700 last:border-b-0">
                   <td className="px-3 py-3">
                     <div className="min-w-[220px]">
                       <div className="font-semibold text-slate-900">{item.campaignName}</div>

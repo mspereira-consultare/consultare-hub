@@ -22,50 +22,50 @@ export function MarketingFunilFunnelVisual({ summary }: MarketingFunilFunnelVisu
       tone: 'border-l-slate-500 bg-slate-50',
     },
     {
-      label: 'Sess?es',
+      label: 'Sessões',
       value: formatNumber(summary?.sessions || 0),
       helper: 'GA4',
-      tone: 'border-l-blue-500 bg-white',
+      tone: 'border-l-sky-500 bg-slate-50/70',
     },
     {
       label: 'Leads digitais',
       value: formatNumber(summary?.leads || 0),
       helper: 'GA4 key events',
-      tone: 'border-l-emerald-500 bg-white',
+      tone: 'border-l-emerald-500 bg-slate-50/70',
     },
     {
       label: 'Leads CRM CRC',
       value: formatNumber(summary?.crm.leadsCreatedCount || 0),
       helper: 'Clinia CRM',
-      tone: 'border-l-cyan-500 bg-white',
+      tone: 'border-l-cyan-500 bg-slate-50/70',
     },
     {
       label: 'Pipeline CRC',
       value: formatNumber(summary?.crm.pipelineItemsCount || 0),
       helper: summary?.crm.pipelineSnapshotDate ? `Snapshot ${summary.crm.pipelineSnapshotDate}` : 'Clinia CRM',
-      tone: 'border-l-violet-500 bg-white',
+      tone: 'border-l-violet-500 bg-slate-50/70',
     },
     {
       label: 'Agendamentos',
-      value: 'Em integra??o',
-      helper: 'Feegow / pr?xima etapa',
+      value: 'Em integração',
+      helper: 'Feegow / próxima etapa',
       tone: 'border-l-amber-400 border-dashed bg-slate-50',
     },
     {
       label: 'Faturamento',
-      value: 'Em integra??o',
+      value: 'Em integração',
       helper: 'Resultado real',
       tone: 'border-l-rose-400 border-dashed bg-slate-50',
     },
   ];
 
   return (
-    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-slate-900">Funil Integrado</h2>
           <p className="text-sm text-slate-500">
-            Fluxo atual entre m?dia digital e CRM. Agendamentos, faturamento e ocupa??o entram na pr?xima camada.
+            Fluxo atual entre mídia digital e CRM. Agendamentos, faturamento e ocupação entram na próxima camada.
           </p>
         </div>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">

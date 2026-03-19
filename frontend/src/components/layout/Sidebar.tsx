@@ -186,7 +186,7 @@ const menuItems: MenuItem[] = [
     href: "/marketing/funil",
     label: "Marketing - Funil",
     icon: BarChart3,
-    group: "INTELIGÊNCIA",
+    group: "MARKETING",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "marketing_funil",
   },
@@ -224,7 +224,7 @@ const menuItems: MenuItem[] = [
   },
 ];
 
-const GROUP_ORDER = ["PRINCIPAL", "OPERAÇÕES", "QUALIDADE", "FINANCEIRO", "INTELIGÊNCIA", "SISTEMA"];
+const GROUP_ORDER = ["PRINCIPAL", "OPERAÇÕES", "QUALIDADE", "FINANCEIRO", "INTELIGÊNCIA", "MARKETING", "SISTEMA"];
 const STORAGE_KEY = "consultare_sidebar_expanded_groups_v1";
 
 const ROLE_LABEL: Record<UserRole, string> = {

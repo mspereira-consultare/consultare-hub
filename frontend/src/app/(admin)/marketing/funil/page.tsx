@@ -62,6 +62,9 @@ const BRAND_OPTIONS = [
   { value: 'franquia', label: 'Franquia' },
 ] as const;
 
+const filterInputClassName =
+  'w-full rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:bg-white disabled:bg-slate-100 disabled:text-slate-400';
+
 const getDefaultFilters = (): FilterFormState => {
   const periodRef = getCurrentPeriodRef();
   const range = getDateRangeFromPeriod(periodRef);
@@ -145,7 +148,7 @@ export default function MarketingFunilPage() {
   const [filters, setFilters] = useState<FilterFormState>(defaults);
   const [appliedFilters, setAppliedFilters] = useState<FilterFormState>(defaults);
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(25);
+  const [pageSize, setPageSize] = useState(10);
 
   const [summary, setSummary] = useState<MarketingFunilSummary | null>(null);
   const [campaigns, setCampaigns] = useState<MarketingFunilCampaignList | null>(null);
@@ -259,7 +262,7 @@ export default function MarketingFunilPage() {
     setFilters(reset);
     setAppliedFilters(reset);
     setPage(1);
-    setPageSize(25);
+    setPageSize(10);
     setNotice('');
     setError('');
   };
@@ -310,208 +313,212 @@ export default function MarketingFunilPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex-1">
-            <div className="flex items-start gap-3">
-              <div className="rounded-2xl border border-slate-200 bg-slate-100 p-3 text-slate-700 shadow-sm">
-                <BarChart3 size={20} />
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900">Marketing / Funil</h1>
-                <p className="mt-1 max-w-3xl text-sm text-slate-600">
-                  Cruzamento Google Ads + GA4 + CRM CRC para leitura executiva do topo e meio do funil, com
-                  próximos blocos preparados para agenda, faturamento e ocupação.
-                </p>
-              </div>
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-slate-100 p-6 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md">
+              <BarChart3 size={20} />
             </div>
-
-            <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <label className="space-y-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Marca</span>
-                <select
-                  value={filters.brand}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, brand: event.target.value as FilterFormState['brand'] }))}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-300"
-                >
-                  {BRAND_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Mês</span>
-                <input
-                  type="month"
-                  value={filters.periodRef}
-                  disabled={filters.useCustomRange}
-                  onChange={(event) => {
-                    const periodRef = event.target.value;
-                    const range = getDateRangeFromPeriod(periodRef);
-                    setFilters((prev) => ({
-                      ...prev,
-                      periodRef,
-                      startDate: range.startDate,
-                      endDate: range.endDate,
-                    }));
-                  }}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition disabled:bg-slate-100"
-                />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Data inicial</span>
-                <input
-                  type="date"
-                  value={filters.startDate}
-                  disabled={!filters.useCustomRange}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, startDate: event.target.value }))}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition disabled:bg-slate-100"
-                />
-              </label>
-
-              <label className="space-y-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Data final</span>
-                <input
-                  type="date"
-                  value={filters.endDate}
-                  disabled={!filters.useCustomRange}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, endDate: event.target.value }))}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition disabled:bg-slate-100"
-                />
-              </label>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <label className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={filters.useCustomRange}
-                  onChange={(event) =>
-                    setFilters((prev) => {
-                      const checked = event.target.checked;
-                      if (!checked) {
-                        const range = getDateRangeFromPeriod(prev.periodRef);
-                        return { ...prev, useCustomRange: false, startDate: range.startDate, endDate: range.endDate };
-                      }
-                      return { ...prev, useCustomRange: true };
-                    })
-                  }
-                />
-                <CalendarRange size={16} className="text-slate-500" />
-                Usar intervalo personalizado
-              </label>
-
-              <button
-                type="button"
-                onClick={() => setFiltersExpanded((prev) => !prev)}
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                <ChevronDown size={16} className={`transition ${filtersExpanded ? 'rotate-180' : ''}`} />
-                Filtros avançados
-              </button>
-            </div>
-
-            {filtersExpanded ? (
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <label className="space-y-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Campanha</span>
-                  <input
-                    type="text"
-                    value={filters.campaign}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, campaign: event.target.value }))}
-                    placeholder="Buscar por nome"
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-300"
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Source</span>
-                  <input
-                    type="text"
-                    value={filters.source}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, source: event.target.value }))}
-                    placeholder="google, instagram..."
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-300"
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Medium</span>
-                  <input
-                    type="text"
-                    value={filters.medium}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, medium: event.target.value }))}
-                    placeholder="cpc, paid..."
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-300"
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Grupo de canal</span>
-                  <input
-                    type="text"
-                    value={filters.channelGroup}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, channelGroup: event.target.value }))}
-                    placeholder="Paid Search, Direct..."
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-slate-300"
-                  />
-                </label>
-              </div>
-            ) : null}
-
-            <div className="mt-5 flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={onApplyFilters}
-                className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-              >
-                <Search size={16} />
-                Aplicar filtros
-              </button>
-              <button
-                type="button"
-                onClick={() => loadAllData()}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                <RefreshCw size={16} />
-                Recarregar painel
-              </button>
-              <button
-                type="button"
-                onClick={onRefresh}
-                disabled={!canRefresh || refreshing}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {refreshing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                Atualizar dados Google
-              </button>
-              <button
-                type="button"
-                disabled
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-400"
-              >
-                <Sparkles size={16} />
-                Exportar em integração
-              </button>
-              <button
-                type="button"
-                onClick={onClearFilters}
-                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-              >
-                <FilterX size={16} />
-                Limpar filtros
-              </button>
+            <div>
+              <h1 className="text-xl font-bold text-slate-800">Marketing / Funil</h1>
+              <p className="mt-1 max-w-3xl text-xs text-slate-500">
+                Cruzamento Google Ads + GA4 + CRM CRC para leitura executiva do topo e meio do funil, com próximos
+                blocos preparados para agenda, faturamento e ocupação.
+              </p>
             </div>
           </div>
 
-          <div className="xl:pt-1">
+          <div className="xl:border-l xl:border-slate-200 xl:pl-4">
             <MarketingFunilSyncStatus
               latestJob={latestJob}
               googleLastSyncAt={summary?.lastSyncAt || null}
               crmLastSyncAt={summary?.crm.lastSyncAt || null}
               refreshing={refreshing}
             />
+          </div>
+        </div>
+
+        <div className="space-y-4 p-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <label className="space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Marca</span>
+              <select
+                value={filters.brand}
+                onChange={(event) => setFilters((prev) => ({ ...prev, brand: event.target.value as FilterFormState['brand'] }))}
+                className={filterInputClassName}
+              >
+                {BRAND_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Mês</span>
+              <input
+                type="month"
+                value={filters.periodRef}
+                disabled={filters.useCustomRange}
+                onChange={(event) => {
+                  const periodRef = event.target.value;
+                  const range = getDateRangeFromPeriod(periodRef);
+                  setFilters((prev) => ({
+                    ...prev,
+                    periodRef,
+                    startDate: range.startDate,
+                    endDate: range.endDate,
+                  }));
+                }}
+                className={filterInputClassName}
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Data inicial</span>
+              <input
+                type="date"
+                value={filters.startDate}
+                disabled={!filters.useCustomRange}
+                onChange={(event) => setFilters((prev) => ({ ...prev, startDate: event.target.value }))}
+                className={filterInputClassName}
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Data final</span>
+              <input
+                type="date"
+                value={filters.endDate}
+                disabled={!filters.useCustomRange}
+                onChange={(event) => setFilters((prev) => ({ ...prev, endDate: event.target.value }))}
+                className={filterInputClassName}
+              />
+            </label>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+              <input
+                type="checkbox"
+                checked={filters.useCustomRange}
+                onChange={(event) =>
+                  setFilters((prev) => {
+                    const checked = event.target.checked;
+                    if (!checked) {
+                      const range = getDateRangeFromPeriod(prev.periodRef);
+                      return { ...prev, useCustomRange: false, startDate: range.startDate, endDate: range.endDate };
+                    }
+                    return { ...prev, useCustomRange: true };
+                  })
+                }
+              />
+              <CalendarRange size={16} className="text-slate-500" />
+              Usar intervalo personalizado
+            </label>
+
+            <button
+              type="button"
+              onClick={() => setFiltersExpanded((prev) => !prev)}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <ChevronDown size={16} className={`transition ${filtersExpanded ? 'rotate-180' : ''}`} />
+              Filtros avançados
+            </button>
+          </div>
+
+          {filtersExpanded ? (
+            <div className="grid gap-4 border-t border-slate-100 pt-4 md:grid-cols-2 xl:grid-cols-4">
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Campanha</span>
+                <input
+                  type="text"
+                  value={filters.campaign}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, campaign: event.target.value }))}
+                  placeholder="Buscar por nome"
+                  className={filterInputClassName}
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Source</span>
+                <input
+                  type="text"
+                  value={filters.source}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, source: event.target.value }))}
+                  placeholder="google, instagram..."
+                  className={filterInputClassName}
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Medium</span>
+                <input
+                  type="text"
+                  value={filters.medium}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, medium: event.target.value }))}
+                  placeholder="cpc, paid..."
+                  className={filterInputClassName}
+                />
+              </label>
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Grupo de canal</span>
+                <input
+                  type="text"
+                  value={filters.channelGroup}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, channelGroup: event.target.value }))}
+                  placeholder="Paid Search, Direct..."
+                  className={filterInputClassName}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={onApplyFilters}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-blue-600"
+            >
+              <Search size={16} />
+              Aplicar filtros
+            </button>
+            <button
+              type="button"
+              onClick={() => loadAllData()}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <RefreshCw size={16} />
+              Recarregar painel
+            </button>
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={!canRefresh || refreshing}
+              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                refreshing
+                  ? 'border-blue-200 bg-blue-50 text-blue-700'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-blue-600'
+              } disabled:cursor-not-allowed disabled:opacity-60`}
+            >
+              {refreshing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+              {refreshing ? 'Sincronizando...' : 'Atualizar dados Google'}
+            </button>
+            <button
+              type="button"
+              disabled
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-400"
+            >
+              <Sparkles size={16} />
+              Exportar em integração
+            </button>
+            <button
+              type="button"
+              onClick={onClearFilters}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <FilterX size={16} />
+              Limpar filtros
+            </button>
           </div>
         </div>
       </section>
@@ -528,7 +535,7 @@ export default function MarketingFunilPage() {
       <MarketingFunilFunnelVisual summary={summary} />
 
       <div className="grid gap-6 2xl:grid-cols-[1.4fr_1fr]">
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <SectionHeader
             title="Canais"
             description="Leitura por grupo de canal com sessões, usuários, leads e eventos."
@@ -573,7 +580,7 @@ export default function MarketingFunilPage() {
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <SectionHeader
             title="CRM CRC"
             description="Resumo do quadro CRC usado pela gestora neste módulo."
@@ -634,16 +641,16 @@ export default function MarketingFunilPage() {
         onOpenDetails={openCampaignDrawer}
       />
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <SectionHeader
           title="Pipeline CRC por estágio"
           description="Snapshot atual do quadro CRC com recortes por estágio, origem CRM e serviço."
           badge={crmPipeline?.snapshotDate ? `Snapshot ${formatDate(crmPipeline.snapshotDate)}` : 'Sem snapshot'}
         />
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-4 max-h-[30rem] overflow-auto rounded-2xl border border-slate-200">
           <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
+            <thead className="sticky top-0 z-10 bg-white">
+              <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
                 <th className="px-3 py-3 font-semibold">Estágio</th>
                 <th className="px-3 py-3 font-semibold">Origem CRM</th>
                 <th className="px-3 py-3 font-semibold">Serviço</th>
@@ -666,7 +673,7 @@ export default function MarketingFunilPage() {
                   </td>
                 </tr>
               ) : (
-                crmPipeline.items.slice(0, 80).map((item) => (
+                crmPipeline.items.map((item) => (
                   <tr key={`${item.columnId}-${item.crmSourceKey}-${item.serviceKey}`} className="border-b border-slate-100 last:border-b-0">
                     <td className="px-3 py-3 font-medium text-slate-900">{item.columnTitle}</td>
                     <td className="px-3 py-3 text-slate-600">{item.crmSourceKey || 'unknown'}</td>
@@ -682,7 +689,7 @@ export default function MarketingFunilPage() {
         </div>
       </section>
 
-      <section className="rounded-3xl border border-dashed border-slate-300 bg-white/70 p-5 shadow-sm">
+      <section className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-5 shadow-sm">
         <SectionHeader
           title="Próximas conexões"
           description="Blocos já previstos para completar o fluxo resultado real da campanha."
