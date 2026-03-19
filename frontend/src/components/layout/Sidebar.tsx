@@ -27,6 +27,7 @@ import {
   Search,
   Stethoscope,
   FileText,
+  BarChart3,
 } from "lucide-react";
 import { hasPermission, type PageKey } from "@/lib/permissions";
 
@@ -180,6 +181,14 @@ const menuItems: MenuItem[] = [
     group: "INTELIGÊNCIA",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "agenda_ocupacao",
+  },
+  {
+    href: "/marketing/funil",
+    label: "Marketing - Funil",
+    icon: BarChart3,
+    group: "INTELIGÊNCIA",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "marketing_funil",
   },
   {
     href: "/users",
