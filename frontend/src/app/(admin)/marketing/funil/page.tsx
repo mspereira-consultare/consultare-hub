@@ -310,11 +310,11 @@ export default function MarketingFunilPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[28px] border border-slate-200 bg-gradient-to-br from-white via-slate-50 to-emerald-50/40 p-5 shadow-sm">
+      <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="flex-1">
             <div className="flex items-start gap-3">
-              <div className="rounded-2xl bg-slate-900 p-3 text-white shadow-lg">
+              <div className="rounded-2xl border border-slate-200 bg-slate-100 p-3 text-slate-700 shadow-sm">
                 <BarChart3 size={20} />
               </div>
               <div>
@@ -481,7 +481,7 @@ export default function MarketingFunilPage() {
                 type="button"
                 onClick={onRefresh}
                 disabled={!canRefresh || refreshing}
-                className="inline-flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {refreshing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
                 Atualizar dados Google

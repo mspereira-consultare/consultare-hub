@@ -16,14 +16,14 @@ type MarketingFunilKpisProps = {
 };
 
 const kpiTone = [
-  'from-slate-900 via-slate-800 to-slate-700 text-white',
-  'from-sky-100 via-white to-sky-50 text-sky-900',
-  'from-cyan-100 via-white to-cyan-50 text-cyan-900',
-  'from-blue-100 via-white to-blue-50 text-blue-900',
-  'from-emerald-100 via-white to-emerald-50 text-emerald-900',
-  'from-violet-100 via-white to-violet-50 text-violet-900',
-  'from-amber-100 via-white to-amber-50 text-amber-900',
-  'from-rose-100 via-white to-rose-50 text-rose-900',
+  { border: 'border-t-slate-700', chip: 'bg-slate-100 text-slate-700' },
+  { border: 'border-t-sky-600', chip: 'bg-sky-50 text-sky-700' },
+  { border: 'border-t-cyan-600', chip: 'bg-cyan-50 text-cyan-700' },
+  { border: 'border-t-blue-600', chip: 'bg-blue-50 text-blue-700' },
+  { border: 'border-t-emerald-600', chip: 'bg-emerald-50 text-emerald-700' },
+  { border: 'border-t-violet-600', chip: 'bg-violet-50 text-violet-700' },
+  { border: 'border-t-amber-600', chip: 'bg-amber-50 text-amber-700' },
+  { border: 'border-t-rose-600', chip: 'bg-rose-50 text-rose-700' },
 ];
 
 export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
@@ -82,21 +82,22 @@ export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item, index) => {
         const Icon = item.icon;
+        const tone = kpiTone[index % kpiTone.length];
         return (
           <article
             key={item.label}
-            className={`rounded-3xl border border-slate-200 bg-gradient-to-br p-4 shadow-sm ${kpiTone[index % kpiTone.length]}`}
+            className={`rounded-3xl border border-slate-200 border-t-4 bg-white p-4 shadow-sm ${tone.border}`}
           >
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] opacity-70">{item.label}</p>
-                <p className="mt-3 text-2xl font-bold">{item.value}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
+                <p className="mt-3 text-2xl font-bold text-slate-900">{item.value}</p>
               </div>
-              <div className="rounded-2xl bg-white/20 p-3">
+              <div className={`rounded-2xl p-3 ${tone.chip}`}>
                 <Icon size={18} />
               </div>
             </div>
-            <p className="mt-3 text-xs opacity-80">{item.helper}</p>
+            <p className="mt-3 text-xs text-slate-500">{item.helper}</p>
           </article>
         );
       })}
