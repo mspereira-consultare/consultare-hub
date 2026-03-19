@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireMarketingFunilPermission } from '@/lib/marketing_funil/auth';
 import {
-  getMarketingFunnelSummary,
+  getMarketingFunilCrmSummary,
   MarketingFunilValidationError,
   type MarketingFunilFilters,
 } from '@/lib/marketing_funil/repository';
@@ -16,10 +16,6 @@ const getFilters = (request: Request): MarketingFunilFilters => {
     startDate: searchParams.get('startDate') || undefined,
     endDate: searchParams.get('endDate') || undefined,
     brand: searchParams.get('brand') || undefined,
-    campaign: searchParams.get('campaign') || undefined,
-    source: searchParams.get('source') || undefined,
-    medium: searchParams.get('medium') || undefined,
-    channelGroup: searchParams.get('channelGroup') || undefined,
     crmBoard: searchParams.get('crmBoard') || undefined,
     crmSource: searchParams.get('crmSource') || undefined,
     crmService: searchParams.get('crmService') || undefined,
@@ -33,11 +29,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const data = await getMarketingFunnelSummary(auth.db, getFilters(request));
+    const data = await getMarketingFunilCrmSummary(auth.db, getFilters(request));
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
     const status = error instanceof MarketingFunilValidationError ? error.status : 500;
-    console.error('Erro API marketing/funil summary:', error);
+    console.error('Erro API marketing/funil crm/summary:', error);
     const message = error instanceof Error ? error.message : 'Erro interno.';
     return NextResponse.json({ error: message }, { status });
   }

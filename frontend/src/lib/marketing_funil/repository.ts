@@ -29,11 +29,16 @@ export type MarketingFunilFilters = {
   channelGroup?: unknown;
   device?: unknown;
   landingPage?: unknown;
+  crmBoard?: unknown;
+  crmSource?: unknown;
+  crmService?: unknown;
   page?: unknown;
   pageSize?: unknown;
 };
 
 let tablesEnsured = false;
+// Regra de negocio atual do modulo: para marketing/funil, considerar somente o quadro CRC.
+const CRM_DEFAULT_BOARD_KEYS = ['crc'] as const;
 
 const clean = (value: unknown) => String(value ?? '').trim();
 
@@ -411,6 +416,60 @@ export const ensureMarketingFunilTables = async (db: DbInterface) => {
   );
   await safeExecute(db, 'CREATE INDEX idx_fact_mkt_channel_date_brand ON fact_marketing_funnel_daily_channel(date_ref, brand_slug)');
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS clinia_crm_boards (
+      id VARCHAR(64) PRIMARY KEY,
+      brand_id VARCHAR(64),
+      title VARCHAR(255) NOT NULL,
+      board_key VARCHAR(160) NOT NULL,
+      is_deleted INTEGER NOT NULL DEFAULT 0,
+      columns_count INTEGER NOT NULL DEFAULT 0,
+      payload_json LONGTEXT,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+  await safeExecute(db, 'CREATE INDEX idx_clinia_crm_boards_key ON clinia_crm_boards(board_key)');
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS fact_clinia_crm_pipeline_daily (
+      id VARCHAR(64) PRIMARY KEY,
+      snapshot_date VARCHAR(10) NOT NULL,
+      board_id VARCHAR(64) NOT NULL,
+      board_title VARCHAR(255),
+      column_id VARCHAR(64) NOT NULL,
+      column_title VARCHAR(255),
+      crm_source_key VARCHAR(120) NOT NULL,
+      service_key VARCHAR(160) NOT NULL,
+      open_items_count INTEGER NOT NULL DEFAULT 0,
+      open_items_value DECIMAL(14,2) NOT NULL DEFAULT 0,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+  await safeExecute(
+    db,
+    'CREATE UNIQUE INDEX ux_fact_clinia_crm_pipeline_daily ON fact_clinia_crm_pipeline_daily(snapshot_date, board_id, column_id, crm_source_key, service_key)'
+  );
+  await safeExecute(db, 'CREATE INDEX idx_fact_clinia_crm_pipeline_board_day ON fact_clinia_crm_pipeline_daily(snapshot_date, board_id)');
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS fact_clinia_crm_lead_created_daily (
+      id VARCHAR(64) PRIMARY KEY,
+      created_date VARCHAR(10) NOT NULL,
+      board_id VARCHAR(64) NOT NULL,
+      board_title VARCHAR(255),
+      crm_source_key VARCHAR(120) NOT NULL,
+      service_key VARCHAR(160) NOT NULL,
+      items_created_count INTEGER NOT NULL DEFAULT 0,
+      items_created_value DECIMAL(14,2) NOT NULL DEFAULT 0,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+  await safeExecute(
+    db,
+    'CREATE UNIQUE INDEX ux_fact_clinia_crm_lead_created_daily ON fact_clinia_crm_lead_created_daily(created_date, board_id, crm_source_key, service_key)'
+  );
+  await safeExecute(db, 'CREATE INDEX idx_fact_clinia_crm_lead_created_board_day ON fact_clinia_crm_lead_created_daily(created_date, board_id)');
+
   if (isMysqlProvider()) {
     await safeExecute(db, 'ALTER TABLE marketing_funnel_jobs MODIFY COLUMN id VARCHAR(64) NOT NULL');
   }
@@ -442,6 +501,94 @@ const buildCampaignAggregationSelect = () => `
     MAX(source_last_sync_at) AS source_last_sync_at
   FROM fact_marketing_funnel_daily
 `;
+
+type CrmBoardScopeItem = {
+  boardId: string;
+  boardTitle: string;
+  boardKey: string;
+};
+
+const isConsultareBrandScope = (brandRaw: unknown) => {
+  const brand = normalizeTextFilter(brandRaw).toLowerCase();
+  return !brand || brand === 'consultare';
+};
+
+const getCrmBoardScope = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  if (!isConsultareBrandScope(filters.brand)) {
+    return [] as CrmBoardScopeItem[];
+  }
+
+  const crmBoard = normalizeTextFilter(filters.crmBoard).toLowerCase();
+  const where = [`LOWER(board_key) IN (${CRM_DEFAULT_BOARD_KEYS.map(() => '?').join(', ')})`];
+  const params: unknown[] = [...CRM_DEFAULT_BOARD_KEYS];
+
+  if (crmBoard) {
+    where.push('(LOWER(id) = ? OR LOWER(board_key) = ? OR LOWER(title) LIKE ?)');
+    params.push(crmBoard, crmBoard, `%${crmBoard}%`);
+  }
+
+  const rows = await db.query(
+    `
+    SELECT id, title, board_key
+    FROM clinia_crm_boards
+    WHERE ${where.join(' AND ')}
+    ORDER BY title ASC
+    `,
+    params
+  );
+
+  return (rows || []).map((raw) => {
+    const row = raw as Record<string, unknown>;
+    return {
+      boardId: clean(row.id),
+      boardTitle: clean(row.title),
+      boardKey: clean(row.board_key),
+    };
+  });
+};
+
+const buildCrmWhere = (
+  alias: string,
+  boardScope: CrmBoardScopeItem[],
+  filters: MarketingFunilFilters,
+  options: { dateField?: string; snapshotDate?: string | null } = {}
+) => {
+  const where: string[] = [];
+  const params: unknown[] = [];
+
+  if (options.dateField) {
+    const range = normalizeDateRange(filters);
+    where.push(`${alias}.${options.dateField} >= ?`, `${alias}.${options.dateField} <= ?`);
+    params.push(range.startDate, range.endDate);
+  }
+
+  if (options.snapshotDate) {
+    where.push(`${alias}.snapshot_date = ?`);
+    params.push(options.snapshotDate);
+  }
+
+  if (!boardScope.length) {
+    where.push('1 = 0');
+    return { where, params };
+  }
+
+  where.push(`${alias}.board_id IN (${boardScope.map(() => '?').join(', ')})`);
+  params.push(...boardScope.map((item) => item.boardId));
+
+  const crmSource = normalizeTextFilter(filters.crmSource).toLowerCase();
+  if (crmSource) {
+    where.push(`LOWER(${alias}.crm_source_key) LIKE ?`);
+    params.push(`%${crmSource}%`);
+  }
+
+  const crmService = normalizeTextFilter(filters.crmService).toLowerCase();
+  if (crmService) {
+    where.push(`LOWER(${alias}.service_key) LIKE ?`);
+    params.push(`%${crmService}%`);
+  }
+
+  return { where, params };
+};
 
 const toDerivedMetrics = (row: Record<string, unknown>) => {
   const spend = safeNum(row.spend);
@@ -540,6 +687,89 @@ export const getLatestMarketingFunnelJob = async (
   return null;
 };
 
+export const getMarketingFunilCrmSummary = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  await ensureMarketingFunilTables(db);
+  const boardScope = await getCrmBoardScope(db, filters);
+  const range = normalizeDateRange(filters);
+
+  if (!boardScope.length) {
+    return {
+      periodRef: range.periodRef,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      boardScope: [],
+      leadsCreatedCount: 0,
+      leadsCreatedValue: 0,
+      pipelineSnapshotDate: null,
+      pipelineItemsCount: 0,
+      pipelineItemsValue: 0,
+      lastSyncAt: null,
+    };
+  }
+
+  const leadWhere = buildCrmWhere('f', boardScope, filters, { dateField: 'created_date' });
+  const leadRows = await db.query(
+    `
+    SELECT
+      SUM(items_created_count) AS leads_created_count,
+      SUM(items_created_value) AS leads_created_value,
+      MAX(updated_at) AS last_sync_at
+    FROM fact_clinia_crm_lead_created_daily f
+    WHERE ${leadWhere.where.join(' AND ')}
+    `,
+    leadWhere.params
+  );
+  const leadBase = (leadRows?.[0] as Record<string, unknown>) || {};
+
+  const snapshotWhere = buildCrmWhere('f', boardScope, filters);
+  const snapshotRows = await db.query(
+    `
+    SELECT MAX(snapshot_date) AS snapshot_date
+    FROM fact_clinia_crm_pipeline_daily f
+    WHERE ${snapshotWhere.where.join(' AND ')}
+      AND f.snapshot_date <= ?
+    `,
+    [...snapshotWhere.params, range.endDate]
+  );
+  const pipelineSnapshotDate = clean((snapshotRows?.[0] as Record<string, unknown>)?.snapshot_date) || null;
+
+  let pipelineItemsCount = 0;
+  let pipelineItemsValue = 0;
+  let pipelineLastSyncAt: string | null = null;
+
+  if (pipelineSnapshotDate) {
+    const pipelineWhere = buildCrmWhere('f', boardScope, filters, { snapshotDate: pipelineSnapshotDate });
+    const pipelineRows = await db.query(
+      `
+      SELECT
+        SUM(open_items_count) AS pipeline_items_count,
+        SUM(open_items_value) AS pipeline_items_value,
+        MAX(updated_at) AS last_sync_at
+      FROM fact_clinia_crm_pipeline_daily f
+      WHERE ${pipelineWhere.where.join(' AND ')}
+      `,
+      pipelineWhere.params
+    );
+    const pipelineBase = (pipelineRows?.[0] as Record<string, unknown>) || {};
+    pipelineItemsCount = safeInt(pipelineBase.pipeline_items_count);
+    pipelineItemsValue = safeNum(pipelineBase.pipeline_items_value);
+    pipelineLastSyncAt = clean(pipelineBase.last_sync_at) || null;
+  }
+
+  return {
+    periodRef: range.periodRef,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    boardScope,
+    leadsCreatedCount: safeInt(leadBase.leads_created_count),
+    leadsCreatedValue: safeNum(leadBase.leads_created_value),
+    pipelineSnapshotDate,
+    pipelineItemsCount,
+    pipelineItemsValue,
+    lastSyncAt: pipelineLastSyncAt || clean(leadBase.last_sync_at) || null,
+  };
+};
+
 export const getMarketingFunnelSummary = async (db: DbInterface, filters: MarketingFunilFilters) => {
   await ensureMarketingFunilTables(db);
   const { range, where, params } = buildMainWhere(filters);
@@ -571,6 +801,7 @@ export const getMarketingFunnelSummary = async (db: DbInterface, filters: Market
 
   const base = ((rows?.[0] as Record<string, unknown>) || {});
   const derived = toDerivedMetrics(base);
+  const crm = await getMarketingFunilCrmSummary(db, filters);
 
   return {
     periodRef: range.periodRef,
@@ -597,6 +828,7 @@ export const getMarketingFunnelSummary = async (db: DbInterface, filters: Market
     conversionsValue: safeNum(base.conversions_value),
     costPerConversion: derived.costPerConversion,
     lastSyncAt: clean(base.last_sync_at) || null,
+    crm,
   };
 };
 
@@ -714,6 +946,195 @@ export const listMarketingFunnelChannels = async (db: DbInterface, filters: Mark
         users: safeInt(row.users),
         leads: safeInt(row.leads),
         eventCount: safeInt(row.event_count),
+        lastSyncAt: clean(row.last_sync_at) || null,
+      };
+    }),
+  };
+};
+
+export const listMarketingFunilCrmBoards = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  await ensureMarketingFunilTables(db);
+  const range = normalizeDateRange(filters);
+  const boardScope = await getCrmBoardScope(db, filters);
+
+  if (!boardScope.length) {
+    return {
+      periodRef: range.periodRef,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      pipelineSnapshotDate: null,
+      items: [],
+    };
+  }
+
+  const leadWhere = buildCrmWhere('f', boardScope, filters, { dateField: 'created_date' });
+  const leadRows = await db.query(
+    `
+    SELECT
+      f.board_id,
+      MAX(COALESCE(NULLIF(TRIM(b.title), ''), NULLIF(TRIM(f.board_title), ''), 'Sem board')) AS board_title,
+      MAX(COALESCE(NULLIF(TRIM(b.board_key), ''), 'unknown')) AS board_key,
+      SUM(f.items_created_count) AS leads_created_count,
+      SUM(f.items_created_value) AS leads_created_value,
+      MAX(f.updated_at) AS last_sync_at
+    FROM fact_clinia_crm_lead_created_daily f
+    LEFT JOIN clinia_crm_boards b ON b.id = f.board_id
+    WHERE ${leadWhere.where.join(' AND ')}
+    GROUP BY f.board_id
+    `,
+    leadWhere.params
+  );
+
+  const snapshotWhere = buildCrmWhere('f', boardScope, filters);
+  const snapshotRows = await db.query(
+    `
+    SELECT MAX(snapshot_date) AS snapshot_date
+    FROM fact_clinia_crm_pipeline_daily f
+    WHERE ${snapshotWhere.where.join(' AND ')}
+      AND f.snapshot_date <= ?
+    `,
+    [...snapshotWhere.params, range.endDate]
+  );
+  const pipelineSnapshotDate = clean((snapshotRows?.[0] as Record<string, unknown>)?.snapshot_date) || null;
+
+  let pipelineByBoard = new Map<string, Record<string, unknown>>();
+  if (pipelineSnapshotDate) {
+    const pipelineWhere = buildCrmWhere('f', boardScope, filters, { snapshotDate: pipelineSnapshotDate });
+    const pipelineRows = await db.query(
+      `
+      SELECT
+        f.board_id,
+        MAX(COALESCE(NULLIF(TRIM(b.title), ''), NULLIF(TRIM(f.board_title), ''), 'Sem board')) AS board_title,
+        MAX(COALESCE(NULLIF(TRIM(b.board_key), ''), 'unknown')) AS board_key,
+        SUM(f.open_items_count) AS pipeline_items_count,
+        SUM(f.open_items_value) AS pipeline_items_value,
+        MAX(f.updated_at) AS last_sync_at
+      FROM fact_clinia_crm_pipeline_daily f
+      LEFT JOIN clinia_crm_boards b ON b.id = f.board_id
+      WHERE ${pipelineWhere.where.join(' AND ')}
+      GROUP BY f.board_id
+      `,
+      pipelineWhere.params
+    );
+    pipelineByBoard = new Map(
+      (pipelineRows || []).map((raw) => {
+        const row = raw as Record<string, unknown>;
+        return [clean(row.board_id), row];
+      })
+    );
+  }
+
+  const leadByBoard = new Map(
+    (leadRows || []).map((raw) => {
+      const row = raw as Record<string, unknown>;
+      return [clean(row.board_id), row];
+    })
+  );
+
+  const items = boardScope.map((board) => {
+    const leadRow = leadByBoard.get(board.boardId) || {};
+    const pipelineRow = pipelineByBoard.get(board.boardId) || {};
+    return {
+      boardId: board.boardId,
+      boardTitle: clean((leadRow as Record<string, unknown>).board_title || (pipelineRow as Record<string, unknown>).board_title) || board.boardTitle,
+      boardKey: clean((leadRow as Record<string, unknown>).board_key || (pipelineRow as Record<string, unknown>).board_key) || board.boardKey,
+      leadsCreatedCount: safeInt((leadRow as Record<string, unknown>).leads_created_count),
+      leadsCreatedValue: safeNum((leadRow as Record<string, unknown>).leads_created_value),
+      pipelineItemsCount: safeInt((pipelineRow as Record<string, unknown>).pipeline_items_count),
+      pipelineItemsValue: safeNum((pipelineRow as Record<string, unknown>).pipeline_items_value),
+      lastSyncAt:
+        clean((pipelineRow as Record<string, unknown>).last_sync_at) ||
+        clean((leadRow as Record<string, unknown>).last_sync_at) ||
+        null,
+    };
+  });
+
+  return {
+    periodRef: range.periodRef,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    pipelineSnapshotDate,
+    items,
+  };
+};
+
+export const listMarketingFunilCrmPipeline = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  await ensureMarketingFunilTables(db);
+  const range = normalizeDateRange(filters);
+  const boardScope = await getCrmBoardScope(db, filters);
+
+  if (!boardScope.length) {
+    return {
+      periodRef: range.periodRef,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      snapshotDate: null,
+      items: [],
+    };
+  }
+
+  const snapshotWhere = buildCrmWhere('f', boardScope, filters);
+  const snapshotRows = await db.query(
+    `
+    SELECT MAX(snapshot_date) AS snapshot_date
+    FROM fact_clinia_crm_pipeline_daily f
+    WHERE ${snapshotWhere.where.join(' AND ')}
+      AND f.snapshot_date <= ?
+    `,
+    [...snapshotWhere.params, range.endDate]
+  );
+  const snapshotDate = clean((snapshotRows?.[0] as Record<string, unknown>)?.snapshot_date) || null;
+
+  if (!snapshotDate) {
+    return {
+      periodRef: range.periodRef,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      snapshotDate: null,
+      items: [],
+    };
+  }
+
+  const pipelineWhere = buildCrmWhere('f', boardScope, filters, { snapshotDate });
+  const rows = await db.query(
+    `
+    SELECT
+      f.board_id,
+      MAX(COALESCE(NULLIF(TRIM(b.title), ''), NULLIF(TRIM(f.board_title), ''), 'Sem board')) AS board_title,
+      MAX(COALESCE(NULLIF(TRIM(b.board_key), ''), 'unknown')) AS board_key,
+      f.column_id,
+      MAX(COALESCE(NULLIF(TRIM(f.column_title), ''), 'Sem coluna')) AS column_title,
+      f.crm_source_key,
+      f.service_key,
+      SUM(f.open_items_count) AS pipeline_items_count,
+      SUM(f.open_items_value) AS pipeline_items_value,
+      MAX(f.updated_at) AS last_sync_at
+    FROM fact_clinia_crm_pipeline_daily f
+    LEFT JOIN clinia_crm_boards b ON b.id = f.board_id
+    WHERE ${pipelineWhere.where.join(' AND ')}
+    GROUP BY f.board_id, f.column_id, f.crm_source_key, f.service_key
+    ORDER BY pipeline_items_count DESC, board_title ASC, column_title ASC
+    `,
+    pipelineWhere.params
+  );
+
+  return {
+    periodRef: range.periodRef,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    snapshotDate,
+    items: (rows || []).map((raw) => {
+      const row = raw as Record<string, unknown>;
+      return {
+        boardId: clean(row.board_id),
+        boardTitle: clean(row.board_title),
+        boardKey: clean(row.board_key),
+        columnId: clean(row.column_id),
+        columnTitle: clean(row.column_title),
+        crmSourceKey: clean(row.crm_source_key) || 'unknown',
+        serviceKey: clean(row.service_key) || 'unknown',
+        pipelineItemsCount: safeInt(row.pipeline_items_count),
+        pipelineItemsValue: safeNum(row.pipeline_items_value),
         lastSyncAt: clean(row.last_sync_at) || null,
       };
     }),

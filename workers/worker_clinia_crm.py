@@ -48,7 +48,7 @@ RETRY_BACKOFF = max(0.1, float(os.getenv("CLINIA_CRM_RETRY_BACKOFF_SEC", "0.5"))
 POLL_SEC = max(10, int(os.getenv("CLINIA_CRM_SYNC_POLL_SEC", "120")))
 PAGE_SIZE = 20
 DB_BATCH_SIZE = max(50, int(os.getenv("CLINIA_CRM_DB_BATCH_SIZE", "250")))
-MAX_PAGES_PER_COLUMN = max(10, int(os.getenv("CLINIA_CRM_MAX_PAGES_PER_COLUMN", "500")))
+MAX_PAGES_PER_COLUMN = max(10, int(os.getenv("CLINIA_CRM_MAX_PAGES_PER_COLUMN", "2000")))
 EMPTY_PAGES_STOP = max(1, int(os.getenv("CLINIA_CRM_EMPTY_PAGES_STOP", "1")))
 
 
@@ -111,11 +111,16 @@ def _normalize_text(value: str) -> str:
     return raw
 
 
-def _normalize_key(value: str) -> str:
+def _normalize_key(value: str, max_len: int = 160) -> str:
     raw = _normalize_text(value)
     raw = re.sub(r"[^a-z0-9]+", "_", raw)
     raw = re.sub(r"_+", "_", raw).strip("_")
-    return raw or "unknown"
+    raw = raw or "unknown"
+    if len(raw) <= max_len:
+        return raw
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+    prefix_len = max(8, max_len - len(digest) - 1)
+    return f"{raw[:prefix_len].rstrip('_')}_{digest}"
 
 
 def _stable_hash(*parts: str) -> str:
