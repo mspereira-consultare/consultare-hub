@@ -264,9 +264,20 @@ def _fetch_google_ads_rows(
         segments.date,
         campaign.id,
         campaign.name,
+        campaign.status,
+        campaign.advertising_channel_type,
+        campaign.start_date,
+        campaign.end_date,
         metrics.impressions,
         metrics.clicks,
-        metrics.cost_micros
+        metrics.cost_micros,
+        metrics.ctr,
+        metrics.average_cpc,
+        metrics.interactions,
+        metrics.conversions,
+        metrics.all_conversions,
+        metrics.conversions_value,
+        metrics.cost_per_conversion
       FROM campaign
       WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'
     """.strip()
@@ -289,10 +300,21 @@ def _fetch_google_ads_rows(
             date_ref = str(seg.get("date") or "").strip()
             campaign_id = str(camp.get("id") or "").strip()
             campaign_name = str(camp.get("name") or "").strip()
+            campaign_status = str(camp.get("status") or "").strip()
+            advertising_channel_type = str(camp.get("advertisingChannelType") or "").strip()
+            campaign_start_date = str(camp.get("startDate") or "").strip()
+            campaign_end_date = str(camp.get("endDate") or "").strip()
             impressions = _to_int(metrics.get("impressions"), 0)
             clicks = _to_int(metrics.get("clicks"), 0)
             cost_micros = _to_decimal(metrics.get("costMicros"), "0")
             spend = cost_micros / Decimal("1000000")
+            ctr = _to_decimal(metrics.get("ctr"), "0")
+            average_cpc = _to_decimal(metrics.get("averageCpc"), "0") / Decimal("1000000")
+            interactions = _to_int(metrics.get("interactions"), 0)
+            conversions = _to_decimal(metrics.get("conversions"), "0")
+            all_conversions = _to_decimal(metrics.get("allConversions"), "0")
+            conversions_value = _to_decimal(metrics.get("conversionsValue"), "0")
+            cost_per_conversion = _to_decimal(metrics.get("costPerConversion"), "0") / Decimal("1000000")
 
             if not date_ref:
                 continue
@@ -301,9 +323,80 @@ def _fetch_google_ads_rows(
                     "date_ref": date_ref,
                     "campaign_id": campaign_id,
                     "campaign_name": campaign_name,
+                    "campaign_status": campaign_status,
+                    "advertising_channel_type": advertising_channel_type,
+                    "campaign_start_date": campaign_start_date,
+                    "campaign_end_date": campaign_end_date,
                     "impressions": impressions,
                     "clicks": clicks,
                     "spend": spend,
+                    "ctr": ctr,
+                    "average_cpc": average_cpc,
+                    "interactions": interactions,
+                    "conversions": conversions,
+                    "all_conversions": all_conversions,
+                    "conversions_value": conversions_value,
+                    "cost_per_conversion": cost_per_conversion,
+                    "payload": result,
+                }
+            )
+    return rows
+
+
+def _fetch_google_ads_device_rows(
+    session: requests.Session,
+    access_token: str,
+    ads_customer_id: str,
+    start_date: str,
+    end_date: str,
+) -> List[Dict]:
+    customer_id = str(ads_customer_id or "").replace("-", "").strip()
+    if not customer_id:
+        return []
+
+    query = f"""
+      SELECT
+        segments.date,
+        segments.device,
+        campaign.id,
+        campaign.name,
+        metrics.impressions,
+        metrics.clicks,
+        metrics.cost_micros,
+        metrics.conversions,
+        metrics.all_conversions
+      FROM campaign
+      WHERE segments.date BETWEEN '{start_date}' AND '{end_date}'
+    """.strip()
+
+    url = GOOGLE_ADS_SEARCH_STREAM_URL.format(customer_id=customer_id)
+    headers = _ads_headers(access_token)
+    resp = session.post(url, headers=headers, json={"query": query}, timeout=API_TIMEOUT_SEC)
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Google Ads device searchStream falhou ({resp.status_code}): {resp.text[:400]}")
+
+    payload = resp.json() if resp.content else []
+    rows: List[Dict] = []
+    for chunk in payload if isinstance(payload, list) else []:
+        for result in chunk.get("results", []) or []:
+            seg = result.get("segments", {}) or {}
+            camp = result.get("campaign", {}) or {}
+            metrics = result.get("metrics", {}) or {}
+
+            date_ref = str(seg.get("date") or "").strip()
+            if not date_ref:
+                continue
+            rows.append(
+                {
+                    "date_ref": date_ref,
+                    "device": str(seg.get("device") or "").strip() or "UNKNOWN",
+                    "campaign_id": str(camp.get("id") or "").strip(),
+                    "campaign_name": str(camp.get("name") or "").strip(),
+                    "impressions": _to_int(metrics.get("impressions"), 0),
+                    "clicks": _to_int(metrics.get("clicks"), 0),
+                    "spend": _to_decimal(metrics.get("costMicros"), "0") / Decimal("1000000"),
+                    "conversions": _to_decimal(metrics.get("conversions"), "0"),
+                    "all_conversions": _to_decimal(metrics.get("allConversions"), "0"),
                     "payload": result,
                 }
             )
@@ -349,10 +442,17 @@ def _fetch_ga4_rows(
                 {"name": "sessionCampaignName"},
                 {"name": "sessionSource"},
                 {"name": "sessionMedium"},
+                {"name": "sessionDefaultChannelGroup"},
             ],
             "metrics": [
                 {"name": "sessions"},
                 {"name": "totalUsers"},
+                {"name": "newUsers"},
+                {"name": "engagedSessions"},
+                {"name": "engagementRate"},
+                {"name": "averageSessionDuration"},
+                {"name": "screenPageViews"},
+                {"name": "eventCount"},
                 {"name": "keyEvents"},
             ],
             "limit": str(limit),
@@ -375,9 +475,16 @@ def _fetch_ga4_rows(
             campaign_name = str((dims[1] or {}).get("value") if len(dims) > 1 else "").strip()
             source = str((dims[2] or {}).get("value") if len(dims) > 2 else "").strip()
             medium = str((dims[3] or {}).get("value") if len(dims) > 3 else "").strip()
+            session_default_channel_group = str((dims[4] or {}).get("value") if len(dims) > 4 else "").strip()
             sessions = _to_int((mets[0] or {}).get("value") if len(mets) > 0 else 0, 0)
             total_users = _to_int((mets[1] or {}).get("value") if len(mets) > 1 else 0, 0)
-            key_events = _to_int((mets[2] or {}).get("value") if len(mets) > 2 else 0, 0)
+            new_users = _to_int((mets[2] or {}).get("value") if len(mets) > 2 else 0, 0)
+            engaged_sessions = _to_int((mets[3] or {}).get("value") if len(mets) > 3 else 0, 0)
+            engagement_rate = _to_decimal((mets[4] or {}).get("value") if len(mets) > 4 else 0, "0")
+            average_session_duration = _to_decimal((mets[5] or {}).get("value") if len(mets) > 5 else 0, "0")
+            screen_page_views = _to_int((mets[6] or {}).get("value") if len(mets) > 6 else 0, 0)
+            event_count = _to_int((mets[7] or {}).get("value") if len(mets) > 7 else 0, 0)
+            key_events = _to_int((mets[8] or {}).get("value") if len(mets) > 8 else 0, 0)
             all_rows.append(
                 {
                     "date_ref": date_ref,
@@ -386,6 +493,13 @@ def _fetch_ga4_rows(
                     "medium": medium,
                     "sessions": sessions,
                     "total_users": total_users,
+                    "new_users": new_users,
+                    "engaged_sessions": engaged_sessions,
+                    "engagement_rate": engagement_rate,
+                    "average_session_duration": average_session_duration,
+                    "screen_page_views": screen_page_views,
+                    "event_count": event_count,
+                    "session_default_channel_group": session_default_channel_group,
                     "leads": key_events,
                     "payload": row,
                 }
@@ -395,6 +509,141 @@ def _fetch_ga4_rows(
             break
         offset += limit
     return all_rows
+
+
+def _fetch_ga4_secondary_rows(
+    session: requests.Session,
+    access_token: str,
+    ga4_property_id: str,
+    start_date: str,
+    end_date: str,
+    dimensions: List[str],
+    metrics: List[str],
+    error_label: str,
+) -> List[Dict]:
+    property_id = str(ga4_property_id or "").strip()
+    if not property_id:
+        return []
+
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    url = GA4_RUN_REPORT_URL.format(property_id=property_id)
+    offset = 0
+    limit = 100000
+    all_rows: List[Dict] = []
+
+    while True:
+        body = {
+            "dateRanges": [{"startDate": start_date, "endDate": end_date}],
+            "dimensions": [{"name": item} for item in dimensions],
+            "metrics": [{"name": item} for item in metrics],
+            "limit": str(limit),
+            "offset": str(offset),
+        }
+        resp = session.post(url, headers=headers, json=body, timeout=API_TIMEOUT_SEC)
+        if resp.status_code >= 400:
+            raise RuntimeError(f"{error_label} falhou ({resp.status_code}): {resp.text[:400]}")
+        payload = resp.json() if resp.content else {}
+        rows = payload.get("rows", []) or []
+        if not rows:
+            break
+
+        for row in rows:
+            dims = row.get("dimensionValues", []) or []
+            mets = row.get("metricValues", []) or []
+            dim_data: Dict[str, str] = {}
+            met_data: Dict[str, str] = {}
+            for idx, dim_name in enumerate(dimensions):
+                dim_data[dim_name] = str((dims[idx] or {}).get("value") if len(dims) > idx else "").strip()
+            for idx, metric_name in enumerate(metrics):
+                met_data[metric_name] = str((mets[idx] or {}).get("value") if len(mets) > idx else "").strip()
+            date_ref = _format_ga4_date(dim_data.get("date"))
+            if not date_ref:
+                continue
+            all_rows.append({"date_ref": date_ref, "dimensions": dim_data, "metrics": met_data, "payload": row})
+
+        if len(rows) < limit:
+            break
+        offset += limit
+    return all_rows
+
+
+def _fetch_ga4_landing_page_rows(
+    session: requests.Session,
+    access_token: str,
+    ga4_property_id: str,
+    start_date: str,
+    end_date: str,
+) -> List[Dict]:
+    rows = _fetch_ga4_secondary_rows(
+        session,
+        access_token,
+        ga4_property_id,
+        start_date,
+        end_date,
+        dimensions=["date", "sessionCampaignName", "sessionSource", "sessionMedium", "landingPagePlusQueryString"],
+        metrics=["sessions", "totalUsers", "newUsers", "engagedSessions", "keyEvents", "eventCount"],
+        error_label="GA4 landingPage runReport",
+    )
+    output: List[Dict] = []
+    for row in rows:
+        dims = row["dimensions"]
+        mets = row["metrics"]
+        output.append(
+            {
+                "date_ref": row["date_ref"],
+                "campaign_name": dims.get("sessionCampaignName", ""),
+                "source": dims.get("sessionSource", ""),
+                "medium": dims.get("sessionMedium", ""),
+                "landing_page": dims.get("landingPagePlusQueryString", ""),
+                "sessions": _to_int(mets.get("sessions"), 0),
+                "total_users": _to_int(mets.get("totalUsers"), 0),
+                "new_users": _to_int(mets.get("newUsers"), 0),
+                "engaged_sessions": _to_int(mets.get("engagedSessions"), 0),
+                "key_events": _to_int(mets.get("keyEvents"), 0),
+                "event_count": _to_int(mets.get("eventCount"), 0),
+                "payload": row["payload"],
+            }
+        )
+    return output
+
+
+def _fetch_ga4_channel_rows(
+    session: requests.Session,
+    access_token: str,
+    ga4_property_id: str,
+    start_date: str,
+    end_date: str,
+) -> List[Dict]:
+    rows = _fetch_ga4_secondary_rows(
+        session,
+        access_token,
+        ga4_property_id,
+        start_date,
+        end_date,
+        dimensions=["date", "sessionCampaignName", "sessionDefaultChannelGroup"],
+        metrics=["sessions", "totalUsers", "keyEvents", "eventCount"],
+        error_label="GA4 channel runReport",
+    )
+    output: List[Dict] = []
+    for row in rows:
+        dims = row["dimensions"]
+        mets = row["metrics"]
+        output.append(
+            {
+                "date_ref": row["date_ref"],
+                "campaign_name": dims.get("sessionCampaignName", ""),
+                "channel_group": dims.get("sessionDefaultChannelGroup", ""),
+                "users": _to_int(mets.get("totalUsers"), 0),
+                "sessions": _to_int(mets.get("sessions"), 0),
+                "key_events": _to_int(mets.get("keyEvents"), 0),
+                "event_count": _to_int(mets.get("eventCount"), 0),
+                "payload": row["payload"],
+            }
+        )
+    return output
 
 
 def _ensure_index(db: "DatabaseManager", conn, table_name: str, index_name: str, columns_sql: str):
@@ -439,6 +688,35 @@ def _ensure_unique_index(db: "DatabaseManager", conn, table_name: str, index_nam
             conn.execute(f"CREATE UNIQUE INDEX {index_name} ON {table_name} ({columns_sql})")
         return
     conn.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns_sql})")
+
+
+def _ensure_column(db: "DatabaseManager", conn, table_name: str, column_name: str, column_def_sql: str):
+    if db.use_mysql:
+        rs = conn.execute(
+            """
+            SELECT COUNT(1)
+            FROM information_schema.columns
+            WHERE table_schema = DATABASE()
+              AND table_name = ?
+              AND column_name = ?
+            """,
+            (table_name, column_name),
+        )
+        rows = _fetch_rows(rs)
+        count_val = 0
+        if rows:
+            count_val = int(_row_get(rows[0], 0, "COUNT(1)") or _row_get(rows[0], 0, "count(1)") or 0)
+        if count_val == 0:
+            conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def_sql}")
+        return
+
+    rs = conn.execute(f"PRAGMA table_info({table_name})")
+    rows = _fetch_rows(rs)
+    for row in rows:
+        existing_name = str(_row_get(row, 1, "name") or "").strip().lower()
+        if existing_name == column_name.lower():
+            return
+    conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_def_sql}")
 
 
 def ensure_marketing_funnel_tables(db: "DatabaseManager"):
@@ -542,6 +820,17 @@ def ensure_marketing_funnel_tables(db: "DatabaseManager"):
             )
             """
         )
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "campaign_status", "VARCHAR(40)")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "advertising_channel_type", "VARCHAR(60)")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "campaign_start_date", "VARCHAR(10)")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "campaign_end_date", "VARCHAR(10)")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "ctr", "DECIMAL(10,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "average_cpc", "DECIMAL(14,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "interactions", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "conversions", "DECIMAL(14,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "all_conversions", "DECIMAL(14,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "conversions_value", "DECIMAL(14,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "cost_per_conversion", "DECIMAL(14,4) NOT NULL DEFAULT 0")
         _ensure_unique_index(db, conn, "raw_google_ads_campaign_daily", "ux_raw_ads_row_hash", "row_hash")
         _ensure_index(db, conn, "raw_google_ads_campaign_daily", "idx_raw_ads_date_brand", "date_ref, brand_slug")
 
@@ -567,8 +856,96 @@ def ensure_marketing_funnel_tables(db: "DatabaseManager"):
             )
             """
         )
+        _ensure_column(db, conn, "raw_ga4_campaign_daily", "new_users", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_ga4_campaign_daily", "engaged_sessions", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_ga4_campaign_daily", "engagement_rate", "DECIMAL(10,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_ga4_campaign_daily", "average_session_duration", "DECIMAL(14,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_ga4_campaign_daily", "screen_page_views", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_ga4_campaign_daily", "event_count", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_ga4_campaign_daily", "session_default_channel_group", "VARCHAR(120)")
         _ensure_unique_index(db, conn, "raw_ga4_campaign_daily", "ux_raw_ga4_row_hash", "row_hash")
         _ensure_index(db, conn, "raw_ga4_campaign_daily", "idx_raw_ga4_date_brand", "date_ref, brand_slug")
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS raw_google_ads_campaign_device_daily (
+              id VARCHAR(64) PRIMARY KEY,
+              row_hash VARCHAR(64) NOT NULL,
+              sync_job_id VARCHAR(64) NOT NULL,
+              date_ref VARCHAR(10) NOT NULL,
+              brand_slug VARCHAR(64) NOT NULL,
+              ads_customer_id VARCHAR(64) NOT NULL,
+              campaign_id VARCHAR(64),
+              campaign_name VARCHAR(255),
+              device VARCHAR(60) NOT NULL,
+              impressions INTEGER NOT NULL DEFAULT 0,
+              clicks INTEGER NOT NULL DEFAULT 0,
+              spend DECIMAL(14,2) NOT NULL DEFAULT 0,
+              conversions DECIMAL(14,4) NOT NULL DEFAULT 0,
+              all_conversions DECIMAL(14,4) NOT NULL DEFAULT 0,
+              payload_json TEXT,
+              payload_hash VARCHAR(64),
+              collected_at VARCHAR(32) NOT NULL,
+              updated_at VARCHAR(32) NOT NULL
+            )
+            """
+        )
+        _ensure_unique_index(db, conn, "raw_google_ads_campaign_device_daily", "ux_raw_ads_device_row_hash", "row_hash")
+        _ensure_index(db, conn, "raw_google_ads_campaign_device_daily", "idx_raw_ads_device_date_brand", "date_ref, brand_slug")
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS raw_ga4_landing_page_daily (
+              id VARCHAR(64) PRIMARY KEY,
+              row_hash VARCHAR(64) NOT NULL,
+              sync_job_id VARCHAR(64) NOT NULL,
+              date_ref VARCHAR(10) NOT NULL,
+              brand_slug VARCHAR(64) NOT NULL,
+              ga4_property_id VARCHAR(64) NOT NULL,
+              campaign_name VARCHAR(255),
+              source VARCHAR(120),
+              medium VARCHAR(120),
+              landing_page TEXT,
+              sessions INTEGER NOT NULL DEFAULT 0,
+              total_users INTEGER NOT NULL DEFAULT 0,
+              new_users INTEGER NOT NULL DEFAULT 0,
+              engaged_sessions INTEGER NOT NULL DEFAULT 0,
+              key_events INTEGER NOT NULL DEFAULT 0,
+              event_count INTEGER NOT NULL DEFAULT 0,
+              payload_json TEXT,
+              payload_hash VARCHAR(64),
+              collected_at VARCHAR(32) NOT NULL,
+              updated_at VARCHAR(32) NOT NULL
+            )
+            """
+        )
+        _ensure_unique_index(db, conn, "raw_ga4_landing_page_daily", "ux_raw_ga4_landing_row_hash", "row_hash")
+        _ensure_index(db, conn, "raw_ga4_landing_page_daily", "idx_raw_ga4_landing_date_brand", "date_ref, brand_slug")
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS raw_ga4_channel_daily (
+              id VARCHAR(64) PRIMARY KEY,
+              row_hash VARCHAR(64) NOT NULL,
+              sync_job_id VARCHAR(64) NOT NULL,
+              date_ref VARCHAR(10) NOT NULL,
+              brand_slug VARCHAR(64) NOT NULL,
+              ga4_property_id VARCHAR(64) NOT NULL,
+              campaign_name VARCHAR(255),
+              channel_group VARCHAR(120),
+              sessions INTEGER NOT NULL DEFAULT 0,
+              users INTEGER NOT NULL DEFAULT 0,
+              key_events INTEGER NOT NULL DEFAULT 0,
+              event_count INTEGER NOT NULL DEFAULT 0,
+              payload_json TEXT,
+              payload_hash VARCHAR(64),
+              collected_at VARCHAR(32) NOT NULL,
+              updated_at VARCHAR(32) NOT NULL
+            )
+            """
+        )
+        _ensure_unique_index(db, conn, "raw_ga4_channel_daily", "ux_raw_ga4_channel_row_hash", "row_hash")
+        _ensure_index(db, conn, "raw_ga4_channel_daily", "idx_raw_ga4_channel_date_brand", "date_ref, brand_slug")
 
         conn.execute(
             """
@@ -599,6 +976,20 @@ def ensure_marketing_funnel_tables(db: "DatabaseManager"):
             )
             """
         )
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "sessions", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "total_users", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "new_users", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "engaged_sessions", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "engagement_rate", "DECIMAL(10,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "avg_session_duration_sec", "DECIMAL(14,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "page_views", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "event_count", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "session_default_channel_group", "VARCHAR(120)")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "interactions", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "conversions", "DECIMAL(14,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "all_conversions", "DECIMAL(14,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "conversions_value", "DECIMAL(14,4) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "fact_marketing_funnel_daily", "cost_per_conversion", "DECIMAL(14,4) NOT NULL DEFAULT 0")
         _ensure_unique_index(
             db,
             conn,
@@ -607,6 +998,85 @@ def ensure_marketing_funnel_tables(db: "DatabaseManager"):
             "date_ref, brand_slug, unit_key, specialty_key, channel_key, campaign_key",
         )
         _ensure_index(db, conn, "fact_marketing_funnel_daily", "idx_fact_mkt_date_brand", "date_ref, brand_slug")
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS fact_marketing_funnel_daily_device (
+              id VARCHAR(64) PRIMARY KEY,
+              date_ref VARCHAR(10) NOT NULL,
+              brand_slug VARCHAR(64) NOT NULL,
+              campaign_key VARCHAR(160) NOT NULL,
+              campaign_name VARCHAR(255),
+              device VARCHAR(60) NOT NULL,
+              spend DECIMAL(14,2) NOT NULL DEFAULT 0,
+              impressions INTEGER NOT NULL DEFAULT 0,
+              clicks INTEGER NOT NULL DEFAULT 0,
+              conversions DECIMAL(14,4) NOT NULL DEFAULT 0,
+              all_conversions DECIMAL(14,4) NOT NULL DEFAULT 0,
+              source_last_sync_at VARCHAR(32) NOT NULL,
+              updated_at VARCHAR(32) NOT NULL
+            )
+            """
+        )
+        _ensure_unique_index(
+            db,
+            conn,
+            "fact_marketing_funnel_daily_device",
+            "ux_fact_mkt_device_key",
+            "date_ref, brand_slug, campaign_key, device",
+        )
+        _ensure_index(db, conn, "fact_marketing_funnel_daily_device", "idx_fact_mkt_device_date_brand", "date_ref, brand_slug")
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS fact_marketing_funnel_daily_landing_page (
+              id VARCHAR(64) PRIMARY KEY,
+              date_ref VARCHAR(10) NOT NULL,
+              brand_slug VARCHAR(64) NOT NULL,
+              campaign_key VARCHAR(160) NOT NULL,
+              campaign_name VARCHAR(255),
+              source VARCHAR(120),
+              medium VARCHAR(120),
+              landing_page TEXT NOT NULL,
+              sessions INTEGER NOT NULL DEFAULT 0,
+              total_users INTEGER NOT NULL DEFAULT 0,
+              new_users INTEGER NOT NULL DEFAULT 0,
+              engaged_sessions INTEGER NOT NULL DEFAULT 0,
+              leads INTEGER NOT NULL DEFAULT 0,
+              event_count INTEGER NOT NULL DEFAULT 0,
+              source_last_sync_at VARCHAR(32) NOT NULL,
+              updated_at VARCHAR(32) NOT NULL
+            )
+            """
+        )
+        _ensure_index(db, conn, "fact_marketing_funnel_daily_landing_page", "idx_fact_mkt_landing_date_brand", "date_ref, brand_slug")
+
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS fact_marketing_funnel_daily_channel (
+              id VARCHAR(64) PRIMARY KEY,
+              date_ref VARCHAR(10) NOT NULL,
+              brand_slug VARCHAR(64) NOT NULL,
+              campaign_key VARCHAR(160) NOT NULL,
+              campaign_name VARCHAR(255),
+              channel_group VARCHAR(120) NOT NULL,
+              sessions INTEGER NOT NULL DEFAULT 0,
+              users INTEGER NOT NULL DEFAULT 0,
+              leads INTEGER NOT NULL DEFAULT 0,
+              event_count INTEGER NOT NULL DEFAULT 0,
+              source_last_sync_at VARCHAR(32) NOT NULL,
+              updated_at VARCHAR(32) NOT NULL
+            )
+            """
+        )
+        _ensure_unique_index(
+            db,
+            conn,
+            "fact_marketing_funnel_daily_channel",
+            "ux_fact_mkt_channel_key",
+            "date_ref, brand_slug, campaign_key, channel_group",
+        )
+        _ensure_index(db, conn, "fact_marketing_funnel_daily_channel", "idx_fact_mkt_channel_date_brand", "date_ref, brand_slug")
 
         if not db.use_turso:
             conn.commit()
@@ -710,9 +1180,23 @@ def _merge_ads_ga4_rows(
                 "campaign_name": campaign_name,
                 "source": "",
                 "medium": "",
+                "session_default_channel_group": "",
                 "spend": Decimal("0"),
                 "impressions": 0,
                 "clicks": 0,
+                "sessions": 0,
+                "total_users": 0,
+                "new_users": 0,
+                "engaged_sessions": 0,
+                "engagement_rate": Decimal("0"),
+                "average_session_duration": Decimal("0"),
+                "screen_page_views": 0,
+                "event_count": 0,
+                "interactions": 0,
+                "conversions": Decimal("0"),
+                "all_conversions": Decimal("0"),
+                "conversions_value": Decimal("0"),
+                "cost_per_conversion": Decimal("0"),
                 "leads": 0,
                 "unit_key": "nd",
                 "specialty_key": "nd",
@@ -724,8 +1208,15 @@ def _merge_ads_ga4_rows(
         item["spend"] += _to_decimal(row.get("spend"), "0")
         item["impressions"] += _to_int(row.get("impressions"), 0)
         item["clicks"] += _to_int(row.get("clicks"), 0)
+        item["interactions"] += _to_int(row.get("interactions"), 0)
+        item["conversions"] += _to_decimal(row.get("conversions"), "0")
+        item["all_conversions"] += _to_decimal(row.get("all_conversions"), "0")
+        item["conversions_value"] += _to_decimal(row.get("conversions_value"), "0")
         if not item["campaign_name"] and campaign_name:
             item["campaign_name"] = campaign_name
+        item["ctr"] = _to_decimal(row.get("ctr"), "0")
+        item["average_cpc"] = _to_decimal(row.get("average_cpc"), "0")
+        item["cost_per_conversion"] = _to_decimal(row.get("cost_per_conversion"), "0")
 
     for row in ga4_rows:
         date_ref = str(row.get("date_ref") or "").strip()
@@ -741,9 +1232,23 @@ def _merge_ads_ga4_rows(
                 "campaign_name": campaign_name,
                 "source": "",
                 "medium": "",
+                "session_default_channel_group": "",
                 "spend": Decimal("0"),
                 "impressions": 0,
                 "clicks": 0,
+                "sessions": 0,
+                "total_users": 0,
+                "new_users": 0,
+                "engaged_sessions": 0,
+                "engagement_rate": Decimal("0"),
+                "average_session_duration": Decimal("0"),
+                "screen_page_views": 0,
+                "event_count": 0,
+                "interactions": 0,
+                "conversions": Decimal("0"),
+                "all_conversions": Decimal("0"),
+                "conversions_value": Decimal("0"),
+                "cost_per_conversion": Decimal("0"),
                 "leads": 0,
                 "unit_key": "nd",
                 "specialty_key": "nd",
@@ -753,12 +1258,23 @@ def _merge_ads_ga4_rows(
             }
             merged[key] = item
         item["leads"] += _to_int(row.get("leads"), 0)
+        item["sessions"] += _to_int(row.get("sessions"), 0)
+        item["total_users"] += _to_int(row.get("total_users"), 0)
+        item["new_users"] += _to_int(row.get("new_users"), 0)
+        item["engaged_sessions"] += _to_int(row.get("engaged_sessions"), 0)
+        item["screen_page_views"] += _to_int(row.get("screen_page_views"), 0)
+        item["event_count"] += _to_int(row.get("event_count"), 0)
+        item["engagement_rate"] = _to_decimal(row.get("engagement_rate"), "0")
+        item["average_session_duration"] = _to_decimal(row.get("average_session_duration"), "0")
         source = str(row.get("source") or "").strip()
         medium = str(row.get("medium") or "").strip()
+        session_default_channel_group = str(row.get("session_default_channel_group") or "").strip()
         if source and not item.get("source"):
             item["source"] = source
         if medium and not item.get("medium"):
             item["medium"] = medium
+        if session_default_channel_group and not item.get("session_default_channel_group"):
+            item["session_default_channel_group"] = session_default_channel_group
         if not item["campaign_name"] and campaign_name:
             item["campaign_name"] = campaign_name
 
@@ -769,9 +1285,13 @@ def _merge_ads_ga4_rows(
         specialty_key = str(mapping.get("specialty_key") or "").strip()
         channel_key = str(mapping.get("channel_key") or "").strip()
         if not channel_key:
+            channel_group = str(item.get("session_default_channel_group") or "").strip()
             source = str(item.get("source") or "").strip()
             medium = str(item.get("medium") or "").strip()
-            channel_key = _normalize_key(f"{source}/{medium}") if (source or medium) else "unknown"
+            if channel_group:
+                channel_key = _normalize_key(channel_group)
+            else:
+                channel_key = _normalize_key(f"{source}/{medium}") if (source or medium) else "unknown"
 
         impressions = int(item["impressions"])
         clicks = int(item["clicks"])
@@ -798,10 +1318,24 @@ def _merge_ads_ga4_rows(
                 "campaign_name": item.get("campaign_name") or "",
                 "source": item.get("source") or "",
                 "medium": item.get("medium") or "",
+                "session_default_channel_group": item.get("session_default_channel_group") or "",
                 "attribution_rule": ATTRIBUTION_RULE,
                 "spend": spend,
                 "impressions": impressions,
                 "clicks": clicks,
+                "sessions": int(item["sessions"]),
+                "total_users": int(item["total_users"]),
+                "new_users": int(item["new_users"]),
+                "engaged_sessions": int(item["engaged_sessions"]),
+                "engagement_rate": _to_decimal(item.get("engagement_rate"), "0"),
+                "average_session_duration": _to_decimal(item.get("average_session_duration"), "0"),
+                "screen_page_views": int(item["screen_page_views"]),
+                "event_count": int(item["event_count"]),
+                "interactions": int(item["interactions"]),
+                "conversions": _to_decimal(item.get("conversions"), "0"),
+                "all_conversions": _to_decimal(item.get("all_conversions"), "0"),
+                "conversions_value": _to_decimal(item.get("conversions_value"), "0"),
+                "cost_per_conversion": _to_decimal(item.get("cost_per_conversion"), "0"),
                 "ctr": ctr,
                 "cpc": cpc,
                 "leads": leads,
@@ -862,9 +1396,20 @@ def _persist_raw_ads(db: "DatabaseManager", sync_job_id: str, brand_slug: str, a
                 ads_customer_id,
                 row.get("campaign_id"),
                 row.get("campaign_name"),
+                row.get("campaign_status"),
+                row.get("advertising_channel_type"),
+                row.get("campaign_start_date"),
+                row.get("campaign_end_date"),
                 int(row.get("impressions") or 0),
                 int(row.get("clicks") or 0),
                 _to_float2(_to_decimal(row.get("spend"), "0")),
+                float(_to_decimal(row.get("ctr"), "0")),
+                float(_to_decimal(row.get("average_cpc"), "0")),
+                int(row.get("interactions") or 0),
+                float(_to_decimal(row.get("conversions"), "0")),
+                float(_to_decimal(row.get("all_conversions"), "0")),
+                float(_to_decimal(row.get("conversions_value"), "0")),
+                float(_to_decimal(row.get("cost_per_conversion"), "0")),
                 payload_json,
                 payload_hash,
                 now_ts,
@@ -876,13 +1421,26 @@ def _persist_raw_ads(db: "DatabaseManager", sync_job_id: str, brand_slug: str, a
         """
         INSERT INTO raw_google_ads_campaign_daily (
           id, row_hash, sync_job_id, date_ref, brand_slug, ads_customer_id, campaign_id, campaign_name,
-          impressions, clicks, spend, payload_json, payload_hash, collected_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          campaign_status, advertising_channel_type, campaign_start_date, campaign_end_date,
+          impressions, clicks, spend, ctr, average_cpc, interactions, conversions, all_conversions,
+          conversions_value, cost_per_conversion, payload_json, payload_hash, collected_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(row_hash) DO UPDATE SET
           sync_job_id = excluded.sync_job_id,
+          campaign_status = excluded.campaign_status,
+          advertising_channel_type = excluded.advertising_channel_type,
+          campaign_start_date = excluded.campaign_start_date,
+          campaign_end_date = excluded.campaign_end_date,
           impressions = excluded.impressions,
           clicks = excluded.clicks,
           spend = excluded.spend,
+          ctr = excluded.ctr,
+          average_cpc = excluded.average_cpc,
+          interactions = excluded.interactions,
+          conversions = excluded.conversions,
+          all_conversions = excluded.all_conversions,
+          conversions_value = excluded.conversions_value,
+          cost_per_conversion = excluded.cost_per_conversion,
           payload_json = excluded.payload_json,
           payload_hash = excluded.payload_hash,
           updated_at = excluded.updated_at
@@ -923,6 +1481,13 @@ def _persist_raw_ga4(db: "DatabaseManager", sync_job_id: str, brand_slug: str, g
                 row.get("campaign_name"),
                 int(row.get("sessions") or 0),
                 int(row.get("total_users") or 0),
+                int(row.get("new_users") or 0),
+                int(row.get("engaged_sessions") or 0),
+                float(_to_decimal(row.get("engagement_rate"), "0")),
+                float(_to_decimal(row.get("average_session_duration"), "0")),
+                int(row.get("screen_page_views") or 0),
+                int(row.get("event_count") or 0),
+                row.get("session_default_channel_group"),
                 int(row.get("leads") or 0),
                 payload_json,
                 payload_hash,
@@ -935,13 +1500,230 @@ def _persist_raw_ga4(db: "DatabaseManager", sync_job_id: str, brand_slug: str, g
         """
         INSERT INTO raw_ga4_campaign_daily (
           id, row_hash, sync_job_id, date_ref, brand_slug, ga4_property_id, source, medium, campaign_name,
-          sessions, total_users, leads, payload_json, payload_hash, collected_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          sessions, total_users, new_users, engaged_sessions, engagement_rate, average_session_duration,
+          screen_page_views, event_count, session_default_channel_group, leads,
+          payload_json, payload_hash, collected_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(row_hash) DO UPDATE SET
           sync_job_id = excluded.sync_job_id,
           sessions = excluded.sessions,
           total_users = excluded.total_users,
+          new_users = excluded.new_users,
+          engaged_sessions = excluded.engaged_sessions,
+          engagement_rate = excluded.engagement_rate,
+          average_session_duration = excluded.average_session_duration,
+          screen_page_views = excluded.screen_page_views,
+          event_count = excluded.event_count,
+          session_default_channel_group = excluded.session_default_channel_group,
           leads = excluded.leads,
+          payload_json = excluded.payload_json,
+          payload_hash = excluded.payload_hash,
+          updated_at = excluded.updated_at
+        """,
+        params_rows,
+    )
+
+
+def _persist_raw_ads_device(
+    db: "DatabaseManager",
+    sync_job_id: str,
+    brand_slug: str,
+    ads_customer_id: str,
+    rows: List[Dict],
+) -> int:
+    if not rows:
+        return 0
+    now_ts = _now_ts()
+    params_rows: List[Tuple] = []
+    for row in rows:
+        row_hash = _stable_hash(
+            "ads-device",
+            brand_slug,
+            ads_customer_id,
+            row.get("date_ref"),
+            row.get("campaign_id"),
+            row.get("device"),
+            row.get("impressions"),
+            row.get("clicks"),
+            _to_float2(_to_decimal(row.get("spend"), "0")),
+        )
+        payload_json = _json_dump(row.get("payload") or {})
+        payload_hash = _stable_hash(payload_json)
+        params_rows.append(
+            (
+                uuid.uuid4().hex,
+                row_hash,
+                sync_job_id,
+                row.get("date_ref"),
+                brand_slug,
+                ads_customer_id,
+                row.get("campaign_id"),
+                row.get("campaign_name"),
+                row.get("device"),
+                int(row.get("impressions") or 0),
+                int(row.get("clicks") or 0),
+                _to_float2(_to_decimal(row.get("spend"), "0")),
+                float(_to_decimal(row.get("conversions"), "0")),
+                float(_to_decimal(row.get("all_conversions"), "0")),
+                payload_json,
+                payload_hash,
+                now_ts,
+                now_ts,
+            )
+        )
+
+    return _execute_batch(
+        db,
+        """
+        INSERT INTO raw_google_ads_campaign_device_daily (
+          id, row_hash, sync_job_id, date_ref, brand_slug, ads_customer_id, campaign_id, campaign_name,
+          device, impressions, clicks, spend, conversions, all_conversions,
+          payload_json, payload_hash, collected_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(row_hash) DO UPDATE SET
+          sync_job_id = excluded.sync_job_id,
+          impressions = excluded.impressions,
+          clicks = excluded.clicks,
+          spend = excluded.spend,
+          conversions = excluded.conversions,
+          all_conversions = excluded.all_conversions,
+          payload_json = excluded.payload_json,
+          payload_hash = excluded.payload_hash,
+          updated_at = excluded.updated_at
+        """,
+        params_rows,
+    )
+
+
+def _persist_raw_ga4_landing(
+    db: "DatabaseManager",
+    sync_job_id: str,
+    brand_slug: str,
+    ga4_property_id: str,
+    rows: List[Dict],
+) -> int:
+    if not rows:
+        return 0
+    now_ts = _now_ts()
+    params_rows: List[Tuple] = []
+    for row in rows:
+        row_hash = _stable_hash(
+            "ga4-landing",
+            brand_slug,
+            ga4_property_id,
+            row.get("date_ref"),
+            row.get("campaign_name"),
+            row.get("source"),
+            row.get("medium"),
+            row.get("landing_page"),
+        )
+        payload_json = _json_dump(row.get("payload") or {})
+        payload_hash = _stable_hash(payload_json)
+        params_rows.append(
+            (
+                uuid.uuid4().hex,
+                row_hash,
+                sync_job_id,
+                row.get("date_ref"),
+                brand_slug,
+                ga4_property_id,
+                row.get("campaign_name"),
+                row.get("source"),
+                row.get("medium"),
+                row.get("landing_page"),
+                int(row.get("sessions") or 0),
+                int(row.get("total_users") or 0),
+                int(row.get("new_users") or 0),
+                int(row.get("engaged_sessions") or 0),
+                int(row.get("key_events") or 0),
+                int(row.get("event_count") or 0),
+                payload_json,
+                payload_hash,
+                now_ts,
+                now_ts,
+            )
+        )
+
+    return _execute_batch(
+        db,
+        """
+        INSERT INTO raw_ga4_landing_page_daily (
+          id, row_hash, sync_job_id, date_ref, brand_slug, ga4_property_id, campaign_name, source, medium,
+          landing_page, sessions, total_users, new_users, engaged_sessions, key_events, event_count,
+          payload_json, payload_hash, collected_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(row_hash) DO UPDATE SET
+          sync_job_id = excluded.sync_job_id,
+          sessions = excluded.sessions,
+          total_users = excluded.total_users,
+          new_users = excluded.new_users,
+          engaged_sessions = excluded.engaged_sessions,
+          key_events = excluded.key_events,
+          event_count = excluded.event_count,
+          payload_json = excluded.payload_json,
+          payload_hash = excluded.payload_hash,
+          updated_at = excluded.updated_at
+        """,
+        params_rows,
+    )
+
+
+def _persist_raw_ga4_channel(
+    db: "DatabaseManager",
+    sync_job_id: str,
+    brand_slug: str,
+    ga4_property_id: str,
+    rows: List[Dict],
+) -> int:
+    if not rows:
+        return 0
+    now_ts = _now_ts()
+    params_rows: List[Tuple] = []
+    for row in rows:
+        row_hash = _stable_hash(
+            "ga4-channel",
+            brand_slug,
+            ga4_property_id,
+            row.get("date_ref"),
+            row.get("campaign_name"),
+            row.get("channel_group"),
+        )
+        payload_json = _json_dump(row.get("payload") or {})
+        payload_hash = _stable_hash(payload_json)
+        params_rows.append(
+            (
+                uuid.uuid4().hex,
+                row_hash,
+                sync_job_id,
+                row.get("date_ref"),
+                brand_slug,
+                ga4_property_id,
+                row.get("campaign_name"),
+                row.get("channel_group"),
+                int(row.get("sessions") or 0),
+                int(row.get("users") or 0),
+                int(row.get("key_events") or 0),
+                int(row.get("event_count") or 0),
+                payload_json,
+                payload_hash,
+                now_ts,
+                now_ts,
+            )
+        )
+
+    return _execute_batch(
+        db,
+        """
+        INSERT INTO raw_ga4_channel_daily (
+          id, row_hash, sync_job_id, date_ref, brand_slug, ga4_property_id, campaign_name, channel_group,
+          sessions, users, key_events, event_count, payload_json, payload_hash, collected_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(row_hash) DO UPDATE SET
+          sync_job_id = excluded.sync_job_id,
+          sessions = excluded.sessions,
+          users = excluded.users,
+          key_events = excluded.key_events,
+          event_count = excluded.event_count,
           payload_json = excluded.payload_json,
           payload_hash = excluded.payload_hash,
           updated_at = excluded.updated_at
@@ -976,10 +1758,24 @@ def _persist_fact_rows(db: "DatabaseManager", rows: List[Dict]) -> int:
                 row.get("campaign_name"),
                 row.get("source"),
                 row.get("medium"),
+                row.get("session_default_channel_group"),
                 row.get("attribution_rule"),
                 _to_float2(_to_decimal(row.get("spend"), "0")),
                 int(row.get("impressions") or 0),
                 int(row.get("clicks") or 0),
+                int(row.get("sessions") or 0),
+                int(row.get("total_users") or 0),
+                int(row.get("new_users") or 0),
+                int(row.get("engaged_sessions") or 0),
+                float(_to_decimal(row.get("engagement_rate"), "0")),
+                float(_to_decimal(row.get("average_session_duration"), "0")),
+                int(row.get("screen_page_views") or 0),
+                int(row.get("event_count") or 0),
+                int(row.get("interactions") or 0),
+                float(_to_decimal(row.get("conversions"), "0")),
+                float(_to_decimal(row.get("all_conversions"), "0")),
+                float(_to_decimal(row.get("conversions_value"), "0")),
+                float(_to_decimal(row.get("cost_per_conversion"), "0")),
                 float(_to_decimal(row.get("ctr"), "0")),
                 float(_to_decimal(row.get("cpc"), "0")),
                 int(row.get("leads") or 0),
@@ -993,21 +1789,293 @@ def _persist_fact_rows(db: "DatabaseManager", rows: List[Dict]) -> int:
         """
         INSERT INTO fact_marketing_funnel_daily (
           id, date_ref, brand_slug, unit_key, specialty_key, channel_key, campaign_key, campaign_name,
-          source, medium, attribution_rule, spend, impressions, clicks, ctr, cpc, leads, cpl,
+          source, medium, session_default_channel_group, attribution_rule, spend, impressions, clicks,
+          sessions, total_users, new_users, engaged_sessions, engagement_rate, avg_session_duration_sec,
+          page_views, event_count, interactions, conversions, all_conversions, conversions_value,
+          cost_per_conversion, ctr, cpc, leads, cpl,
           appointments, revenue, show_rate, source_last_sync_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)
         ON CONFLICT(date_ref, brand_slug, unit_key, specialty_key, channel_key, campaign_key) DO UPDATE SET
           campaign_name = excluded.campaign_name,
           source = excluded.source,
           medium = excluded.medium,
+          session_default_channel_group = excluded.session_default_channel_group,
           attribution_rule = excluded.attribution_rule,
           spend = excluded.spend,
           impressions = excluded.impressions,
           clicks = excluded.clicks,
+          sessions = excluded.sessions,
+          total_users = excluded.total_users,
+          new_users = excluded.new_users,
+          engaged_sessions = excluded.engaged_sessions,
+          engagement_rate = excluded.engagement_rate,
+          avg_session_duration_sec = excluded.avg_session_duration_sec,
+          page_views = excluded.page_views,
+          event_count = excluded.event_count,
+          interactions = excluded.interactions,
+          conversions = excluded.conversions,
+          all_conversions = excluded.all_conversions,
+          conversions_value = excluded.conversions_value,
+          cost_per_conversion = excluded.cost_per_conversion,
           ctr = excluded.ctr,
           cpc = excluded.cpc,
           leads = excluded.leads,
           cpl = excluded.cpl,
+          source_last_sync_at = excluded.source_last_sync_at,
+          updated_at = excluded.updated_at
+        """,
+        params_rows,
+    )
+
+
+def _build_device_fact_rows(brand_slug: str, rows: List[Dict], sync_ts: str) -> List[Dict]:
+    merged: Dict[Tuple[str, str, str], Dict] = {}
+    for row in rows:
+        date_ref = str(row.get("date_ref") or "").strip()
+        campaign_name = str(row.get("campaign_name") or "").strip()
+        campaign_key = _normalize_key(campaign_name)
+        device = str(row.get("device") or "").strip() or "UNKNOWN"
+        key = (date_ref, campaign_key, device)
+        item = merged.get(key)
+        if not item:
+            item = {
+                "date_ref": date_ref,
+                "brand_slug": brand_slug,
+                "campaign_key": campaign_key,
+                "campaign_name": campaign_name,
+                "device": device,
+                "spend": Decimal("0"),
+                "impressions": 0,
+                "clicks": 0,
+                "conversions": Decimal("0"),
+                "all_conversions": Decimal("0"),
+                "source_last_sync_at": sync_ts,
+            }
+            merged[key] = item
+        item["spend"] += _to_decimal(row.get("spend"), "0")
+        item["impressions"] += _to_int(row.get("impressions"), 0)
+        item["clicks"] += _to_int(row.get("clicks"), 0)
+        item["conversions"] += _to_decimal(row.get("conversions"), "0")
+        item["all_conversions"] += _to_decimal(row.get("all_conversions"), "0")
+    return list(merged.values())
+
+
+def _build_landing_fact_rows(brand_slug: str, rows: List[Dict], sync_ts: str) -> List[Dict]:
+    merged: Dict[Tuple[str, str, str, str, str], Dict] = {}
+    for row in rows:
+        date_ref = str(row.get("date_ref") or "").strip()
+        campaign_name = str(row.get("campaign_name") or "").strip()
+        campaign_key = _normalize_key(campaign_name)
+        source = str(row.get("source") or "").strip()
+        medium = str(row.get("medium") or "").strip()
+        landing_page = str(row.get("landing_page") or "").strip()
+        key = (date_ref, campaign_key, source, medium, landing_page)
+        item = merged.get(key)
+        if not item:
+            item = {
+                "date_ref": date_ref,
+                "brand_slug": brand_slug,
+                "campaign_key": campaign_key,
+                "campaign_name": campaign_name,
+                "source": source,
+                "medium": medium,
+                "landing_page": landing_page,
+                "sessions": 0,
+                "total_users": 0,
+                "new_users": 0,
+                "engaged_sessions": 0,
+                "leads": 0,
+                "event_count": 0,
+                "source_last_sync_at": sync_ts,
+            }
+            merged[key] = item
+        item["sessions"] += _to_int(row.get("sessions"), 0)
+        item["total_users"] += _to_int(row.get("total_users"), 0)
+        item["new_users"] += _to_int(row.get("new_users"), 0)
+        item["engaged_sessions"] += _to_int(row.get("engaged_sessions"), 0)
+        item["leads"] += _to_int(row.get("key_events"), 0)
+        item["event_count"] += _to_int(row.get("event_count"), 0)
+    return list(merged.values())
+
+
+def _build_channel_fact_rows(brand_slug: str, rows: List[Dict], sync_ts: str) -> List[Dict]:
+    merged: Dict[Tuple[str, str, str], Dict] = {}
+    for row in rows:
+        date_ref = str(row.get("date_ref") or "").strip()
+        campaign_name = str(row.get("campaign_name") or "").strip()
+        campaign_key = _normalize_key(campaign_name)
+        channel_group = str(row.get("channel_group") or "").strip() or "unknown"
+        key = (date_ref, campaign_key, channel_group)
+        item = merged.get(key)
+        if not item:
+            item = {
+                "date_ref": date_ref,
+                "brand_slug": brand_slug,
+                "campaign_key": campaign_key,
+                "campaign_name": campaign_name,
+                "channel_group": channel_group,
+                "sessions": 0,
+                "users": 0,
+                "leads": 0,
+                "event_count": 0,
+                "source_last_sync_at": sync_ts,
+            }
+            merged[key] = item
+        item["sessions"] += _to_int(row.get("sessions"), 0)
+        item["users"] += _to_int(row.get("users"), 0)
+        item["leads"] += _to_int(row.get("key_events"), 0)
+        item["event_count"] += _to_int(row.get("event_count"), 0)
+    return list(merged.values())
+
+
+def _persist_fact_device_rows(db: "DatabaseManager", rows: List[Dict]) -> int:
+    if not rows:
+        return 0
+    now_ts = _now_ts()
+    params_rows: List[Tuple] = []
+    for row in rows:
+        pk_hash = _stable_hash(
+            row.get("date_ref"),
+            row.get("brand_slug"),
+            row.get("campaign_key"),
+            row.get("device"),
+        )
+        params_rows.append(
+            (
+                pk_hash,
+                row.get("date_ref"),
+                row.get("brand_slug"),
+                row.get("campaign_key"),
+                row.get("campaign_name"),
+                row.get("device"),
+                _to_float2(_to_decimal(row.get("spend"), "0")),
+                int(row.get("impressions") or 0),
+                int(row.get("clicks") or 0),
+                float(_to_decimal(row.get("conversions"), "0")),
+                float(_to_decimal(row.get("all_conversions"), "0")),
+                row.get("source_last_sync_at") or now_ts,
+                now_ts,
+            )
+        )
+    return _execute_batch(
+        db,
+        """
+        INSERT INTO fact_marketing_funnel_daily_device (
+          id, date_ref, brand_slug, campaign_key, campaign_name, device, spend, impressions, clicks,
+          conversions, all_conversions, source_last_sync_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date_ref, brand_slug, campaign_key, device) DO UPDATE SET
+          campaign_name = excluded.campaign_name,
+          spend = excluded.spend,
+          impressions = excluded.impressions,
+          clicks = excluded.clicks,
+          conversions = excluded.conversions,
+          all_conversions = excluded.all_conversions,
+          source_last_sync_at = excluded.source_last_sync_at,
+          updated_at = excluded.updated_at
+        """,
+        params_rows,
+    )
+
+
+def _persist_fact_landing_rows(db: "DatabaseManager", rows: List[Dict]) -> int:
+    if not rows:
+        return 0
+    now_ts = _now_ts()
+    params_rows: List[Tuple] = []
+    for row in rows:
+        pk_hash = _stable_hash(
+            row.get("date_ref"),
+            row.get("brand_slug"),
+            row.get("campaign_key"),
+            row.get("source"),
+            row.get("medium"),
+            row.get("landing_page"),
+        )
+        params_rows.append(
+            (
+                pk_hash,
+                row.get("date_ref"),
+                row.get("brand_slug"),
+                row.get("campaign_key"),
+                row.get("campaign_name"),
+                row.get("source"),
+                row.get("medium"),
+                row.get("landing_page"),
+                int(row.get("sessions") or 0),
+                int(row.get("total_users") or 0),
+                int(row.get("new_users") or 0),
+                int(row.get("engaged_sessions") or 0),
+                int(row.get("leads") or 0),
+                int(row.get("event_count") or 0),
+                row.get("source_last_sync_at") or now_ts,
+                now_ts,
+            )
+        )
+    return _execute_batch(
+        db,
+        """
+        INSERT INTO fact_marketing_funnel_daily_landing_page (
+          id, date_ref, brand_slug, campaign_key, campaign_name, source, medium, landing_page,
+          sessions, total_users, new_users, engaged_sessions, leads, event_count,
+          source_last_sync_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          campaign_name = excluded.campaign_name,
+          sessions = excluded.sessions,
+          total_users = excluded.total_users,
+          new_users = excluded.new_users,
+          engaged_sessions = excluded.engaged_sessions,
+          leads = excluded.leads,
+          event_count = excluded.event_count,
+          source_last_sync_at = excluded.source_last_sync_at,
+          updated_at = excluded.updated_at
+        """,
+        params_rows,
+    )
+
+
+def _persist_fact_channel_rows(db: "DatabaseManager", rows: List[Dict]) -> int:
+    if not rows:
+        return 0
+    now_ts = _now_ts()
+    params_rows: List[Tuple] = []
+    for row in rows:
+        pk_hash = _stable_hash(
+            row.get("date_ref"),
+            row.get("brand_slug"),
+            row.get("campaign_key"),
+            row.get("channel_group"),
+        )
+        params_rows.append(
+            (
+                pk_hash,
+                row.get("date_ref"),
+                row.get("brand_slug"),
+                row.get("campaign_key"),
+                row.get("campaign_name"),
+                row.get("channel_group"),
+                int(row.get("sessions") or 0),
+                int(row.get("users") or 0),
+                int(row.get("leads") or 0),
+                int(row.get("event_count") or 0),
+                row.get("source_last_sync_at") or now_ts,
+                now_ts,
+            )
+        )
+    return _execute_batch(
+        db,
+        """
+        INSERT INTO fact_marketing_funnel_daily_channel (
+          id, date_ref, brand_slug, campaign_key, campaign_name, channel_group, sessions, users, leads,
+          event_count, source_last_sync_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(date_ref, brand_slug, campaign_key, channel_group) DO UPDATE SET
+          campaign_name = excluded.campaign_name,
+          sessions = excluded.sessions,
+          users = excluded.users,
+          leads = excluded.leads,
+          event_count = excluded.event_count,
           source_last_sync_at = excluded.source_last_sync_at,
           updated_at = excluded.updated_at
         """,
@@ -1197,6 +2265,7 @@ def _run_job(db: "DatabaseManager", job: Dict) -> Dict:
 
     ok_count = 0
     err_count = 0
+    warn_count = 0
     skipped_count = 0
     total_read = 0
     total_written = 0
@@ -1230,38 +2299,114 @@ def _run_job(db: "DatabaseManager", job: Dict) -> Dict:
         )
         try:
             ads_rows: List[Dict] = []
+            ads_device_rows: List[Dict] = []
             ga4_rows: List[Dict] = []
+            ga4_landing_rows: List[Dict] = []
+            ga4_channel_rows: List[Dict] = []
+            warning_messages: List[str] = []
+            write_count = 0
 
             if ads_customer_id:
                 ads_rows = _fetch_google_ads_rows(session, access_token, ads_customer_id, start_date, end_date)
                 _heartbeat(
                     db,
                     STATUS_RUNNING,
-                    f"job={job_id} brand={brand_slug} ads fetched={len(ads_rows)} persistindo raw ads",
+                    f"job={job_id} stage=ads-main brand={brand_slug} fetched={len(ads_rows)} persistindo raw ads",
                 )
                 raw_ads_written = _persist_raw_ads(db, job_id, brand_slug, ads_customer_id, ads_rows)
                 print(f"[{idx}/{len(accounts)}] marketing_funnel {brand_slug} raw_ads={raw_ads_written}")
+
+                try:
+                    ads_device_rows = _fetch_google_ads_device_rows(session, access_token, ads_customer_id, start_date, end_date)
+                    _heartbeat(
+                        db,
+                        STATUS_RUNNING,
+                        f"job={job_id} stage=ads-device brand={brand_slug} fetched={len(ads_device_rows)} persistindo raw ads device",
+                    )
+                    raw_ads_device_written = _persist_raw_ads_device(db, job_id, brand_slug, ads_customer_id, ads_device_rows)
+                    device_fact_rows = _build_device_fact_rows(brand_slug, ads_device_rows, sync_ts)
+                    device_fact_written = _persist_fact_device_rows(db, device_fact_rows)
+                    write_count += raw_ads_device_written + device_fact_written
+                    print(
+                        f"[{idx}/{len(accounts)}] marketing_funnel {brand_slug} "
+                        f"raw_ads_device={raw_ads_device_written} fact_device={device_fact_written}"
+                    )
+                except Exception as aux_exc:
+                    warning_messages.append(f"ads-device: {str(aux_exc)[:220]}")
+                    print(f"[{idx}/{len(accounts)}] AVISO marketing_funnel {brand_slug} ads-device: {aux_exc}")
+
             if ga4_property_id:
                 ga4_rows = _fetch_ga4_rows(session, access_token, ga4_property_id, start_date, end_date)
                 _heartbeat(
                     db,
                     STATUS_RUNNING,
-                    f"job={job_id} brand={brand_slug} ga4 fetched={len(ga4_rows)} persistindo raw ga4",
+                    f"job={job_id} stage=ga4-main brand={brand_slug} fetched={len(ga4_rows)} persistindo raw ga4",
                 )
                 raw_ga4_written = _persist_raw_ga4(db, job_id, brand_slug, ga4_property_id, ga4_rows)
                 print(f"[{idx}/{len(accounts)}] marketing_funnel {brand_slug} raw_ga4={raw_ga4_written}")
+
+                try:
+                    ga4_landing_rows = _fetch_ga4_landing_page_rows(session, access_token, ga4_property_id, start_date, end_date)
+                    _heartbeat(
+                        db,
+                        STATUS_RUNNING,
+                        f"job={job_id} stage=ga4-landing brand={brand_slug} fetched={len(ga4_landing_rows)} persistindo raw ga4 landing",
+                    )
+                    raw_ga4_landing_written = _persist_raw_ga4_landing(db, job_id, brand_slug, ga4_property_id, ga4_landing_rows)
+                    landing_fact_rows = _build_landing_fact_rows(brand_slug, ga4_landing_rows, sync_ts)
+                    landing_fact_written = _persist_fact_landing_rows(db, landing_fact_rows)
+                    write_count += raw_ga4_landing_written + landing_fact_written
+                    print(
+                        f"[{idx}/{len(accounts)}] marketing_funnel {brand_slug} "
+                        f"raw_ga4_landing={raw_ga4_landing_written} fact_landing={landing_fact_written}"
+                    )
+                except Exception as aux_exc:
+                    warning_messages.append(f"ga4-landing: {str(aux_exc)[:220]}")
+                    print(f"[{idx}/{len(accounts)}] AVISO marketing_funnel {brand_slug} ga4-landing: {aux_exc}")
+
+                try:
+                    ga4_channel_rows = _fetch_ga4_channel_rows(session, access_token, ga4_property_id, start_date, end_date)
+                    _heartbeat(
+                        db,
+                        STATUS_RUNNING,
+                        f"job={job_id} stage=ga4-channel brand={brand_slug} fetched={len(ga4_channel_rows)} persistindo raw ga4 channel",
+                    )
+                    raw_ga4_channel_written = _persist_raw_ga4_channel(db, job_id, brand_slug, ga4_property_id, ga4_channel_rows)
+                    channel_fact_rows = _build_channel_fact_rows(brand_slug, ga4_channel_rows, sync_ts)
+                    channel_fact_written = _persist_fact_channel_rows(db, channel_fact_rows)
+                    write_count += raw_ga4_channel_written + channel_fact_written
+                    print(
+                        f"[{idx}/{len(accounts)}] marketing_funnel {brand_slug} "
+                        f"raw_ga4_channel={raw_ga4_channel_written} fact_channel={channel_fact_written}"
+                    )
+                except Exception as aux_exc:
+                    warning_messages.append(f"ga4-channel: {str(aux_exc)[:220]}")
+                    print(f"[{idx}/{len(accounts)}] AVISO marketing_funnel {brand_slug} ga4-channel: {aux_exc}")
 
             merged_rows = _merge_ads_ga4_rows(brand_slug, ads_rows, ga4_rows, mappings, sync_ts)
             _heartbeat(
                 db,
                 STATUS_RUNNING,
-                f"job={job_id} brand={brand_slug} fact_rows={len(merged_rows)} persistindo fato",
+                f"job={job_id} stage=merge-main brand={brand_slug} fact_rows={len(merged_rows)}",
+            )
+            _heartbeat(
+                db,
+                STATUS_RUNNING,
+                f"job={job_id} stage=persist-main brand={brand_slug} fact_rows={len(merged_rows)} persistindo fato",
             )
             fact_written = _persist_fact_rows(db, merged_rows)
+            write_count += raw_ads_written if ads_customer_id else 0
+            write_count += raw_ga4_written if ga4_property_id else 0
+            write_count += fact_written
             print(f"[{idx}/{len(accounts)}] marketing_funnel {brand_slug} fact_rows={fact_written}")
 
-            read_count = len(ads_rows) + len(ga4_rows)
-            write_count = fact_written
+            read_count = (
+                len(ads_rows)
+                + len(ga4_rows)
+                + len(ads_device_rows)
+                + len(ga4_landing_rows)
+                + len(ga4_channel_rows)
+            )
             total_read += read_count
             total_written += write_count
 
@@ -1274,13 +2419,17 @@ def _run_job(db: "DatabaseManager", job: Dict) -> Dict:
                 ITEM_SUCCESS,
                 read_count,
                 write_count,
-                None,
+                " | ".join(warning_messages) if warning_messages else None,
                 int((time.time() - t0) * 1000),
             )
             ok_count += 1
+            if warning_messages:
+                warn_count += 1
             print(
                 f"[{idx}/{len(accounts)}] OK marketing_funnel {brand_slug} "
-                f"ads_rows={len(ads_rows)} ga4_rows={len(ga4_rows)} fact_upsert={write_count}"
+                f"ads_rows={len(ads_rows)} ga4_rows={len(ga4_rows)} "
+                f"ads_device_rows={len(ads_device_rows)} ga4_landing_rows={len(ga4_landing_rows)} "
+                f"ga4_channel_rows={len(ga4_channel_rows)} upsert={write_count}"
             )
         except Exception as exc:
             err_count += 1
@@ -1299,12 +2448,17 @@ def _run_job(db: "DatabaseManager", job: Dict) -> Dict:
             )
             print(f"[{idx}/{len(accounts)}] ERRO marketing_funnel {brand_slug}: {msg}")
 
-    if err_count == 0:
+    if err_count == 0 and warn_count == 0:
         final_status = STATUS_COMPLETED
         final_error = None
+    elif err_count == 0 and warn_count > 0:
+        final_status = STATUS_PARTIAL
+        final_error = f"partial: ok={ok_count} warnings={warn_count} skip={skipped_count} erro={err_count}"
     elif ok_count > 0 or skipped_count > 0:
         final_status = STATUS_PARTIAL
-        final_error = f"partial: ok={ok_count} skip={skipped_count} erro={err_count}"
+        final_error = (
+            f"partial: ok={ok_count} warnings={warn_count} skip={skipped_count} erro={err_count}"
+        )
     else:
         final_status = STATUS_FAILED
         final_error = f"failed: erro={err_count}"
@@ -1313,12 +2467,14 @@ def _run_job(db: "DatabaseManager", job: Dict) -> Dict:
     _heartbeat(
         db,
         final_status if final_status != STATUS_PARTIAL else "WARNING",
-        f"job={job_id} done status={final_status} ok={ok_count} skip={skipped_count} erro={err_count} "
+        f"job={job_id} done status={final_status} ok={ok_count} warnings={warn_count} "
+        f"skip={skipped_count} erro={err_count} "
         f"read={total_read} written={total_written}",
     )
     return {
         "status": final_status,
         "ok": ok_count,
+        "warnings": warn_count,
         "skip": skipped_count,
         "error": err_count,
         "read": total_read,
