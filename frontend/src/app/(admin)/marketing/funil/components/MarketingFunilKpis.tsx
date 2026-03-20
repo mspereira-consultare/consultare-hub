@@ -86,18 +86,18 @@ export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
         return (
           <article
             key={item.label}
-            className={`rounded-3xl border border-slate-200 border-t-4 bg-white p-4 shadow-sm ${tone.border}`}
+            className={`rounded-xl border border-slate-200 border-t-[3px] bg-white px-4 py-3.5 shadow-sm ${tone.border}`}
           >
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
-                <p className="mt-3 text-2xl font-bold text-slate-900">{item.value}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
+                <p className="mt-2.5 text-[1.95rem] font-bold leading-none text-slate-900">{item.value}</p>
               </div>
-              <div className={`rounded-2xl p-3 ${tone.chip}`}>
-                <Icon size={18} />
+              <div className={`rounded-xl p-2.5 ${tone.chip}`}>
+                <Icon size={16} />
               </div>
             </div>
-            <p className="mt-3 text-xs text-slate-500">{item.helper}</p>
+            <p className="mt-2.5 text-[11px] text-slate-500">{item.helper}</p>
           </article>
         );
       })}

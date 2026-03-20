@@ -314,17 +314,201 @@ export default function MarketingFunilPage() {
   return (
     <div className="space-y-6">
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-4 border-b border-slate-100 p-6 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md">
-              <BarChart3 size={20} />
+        <div className="grid gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_304px] xl:items-start">
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md">
+                <BarChart3 size={20} />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-800">Marketing / Funil</h1>
+                <p className="mt-1 max-w-3xl text-xs text-slate-500">
+                  Cruzamento Google Ads + GA4 + CRM CRC para leitura executiva do topo e meio do funil, com próximos
+                  blocos preparados para agenda, faturamento e ocupação.
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-800">Marketing / Funil</h1>
-              <p className="mt-1 max-w-3xl text-xs text-slate-500">
-                Cruzamento Google Ads + GA4 + CRM CRC para leitura executiva do topo e meio do funil, com próximos
-                blocos preparados para agenda, faturamento e ocupação.
-              </p>
+
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Marca</span>
+                <select
+                  value={filters.brand}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, brand: event.target.value as FilterFormState['brand'] }))}
+                  className={filterInputClassName}
+                >
+                  {BRAND_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Mês</span>
+                <input
+                  type="month"
+                  value={filters.periodRef}
+                  disabled={filters.useCustomRange}
+                  onChange={(event) => {
+                    const periodRef = event.target.value;
+                    const range = getDateRangeFromPeriod(periodRef);
+                    setFilters((prev) => ({
+                      ...prev,
+                      periodRef,
+                      startDate: range.startDate,
+                      endDate: range.endDate,
+                    }));
+                  }}
+                  className={filterInputClassName}
+                />
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Data inicial</span>
+                <input
+                  type="date"
+                  value={filters.startDate}
+                  disabled={!filters.useCustomRange}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, startDate: event.target.value }))}
+                  className={filterInputClassName}
+                />
+              </label>
+
+              <label className="space-y-2">
+                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Data final</span>
+                <input
+                  type="date"
+                  value={filters.endDate}
+                  disabled={!filters.useCustomRange}
+                  onChange={(event) => setFilters((prev) => ({ ...prev, endDate: event.target.value }))}
+                  className={filterInputClassName}
+                />
+              </label>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={filters.useCustomRange}
+                  onChange={(event) =>
+                    setFilters((prev) => {
+                      const checked = event.target.checked;
+                      if (!checked) {
+                        const range = getDateRangeFromPeriod(prev.periodRef);
+                        return { ...prev, useCustomRange: false, startDate: range.startDate, endDate: range.endDate };
+                      }
+                      return { ...prev, useCustomRange: true };
+                    })
+                  }
+                />
+                <CalendarRange size={16} className="text-slate-500" />
+                Usar intervalo personalizado
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setFiltersExpanded((prev) => !prev)}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                <ChevronDown size={16} className={`transition ${filtersExpanded ? 'rotate-180' : ''}`} />
+                Filtros avançados
+              </button>
+            </div>
+
+            {filtersExpanded ? (
+              <div className="grid gap-4 border-t border-slate-100 pt-4 md:grid-cols-2 xl:grid-cols-4">
+                <label className="space-y-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Campanha</span>
+                  <input
+                    type="text"
+                    value={filters.campaign}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, campaign: event.target.value }))}
+                    placeholder="Buscar por nome"
+                    className={filterInputClassName}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Source</span>
+                  <input
+                    type="text"
+                    value={filters.source}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, source: event.target.value }))}
+                    placeholder="google, instagram..."
+                    className={filterInputClassName}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Medium</span>
+                  <input
+                    type="text"
+                    value={filters.medium}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, medium: event.target.value }))}
+                    placeholder="cpc, paid..."
+                    className={filterInputClassName}
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Grupo de canal</span>
+                  <input
+                    type="text"
+                    value={filters.channelGroup}
+                    onChange={(event) => setFilters((prev) => ({ ...prev, channelGroup: event.target.value }))}
+                    placeholder="Paid Search, Direct..."
+                    className={filterInputClassName}
+                  />
+                </label>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={onApplyFilters}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-blue-600"
+              >
+                <Search size={16} />
+                Aplicar filtros
+              </button>
+              <button
+                type="button"
+                onClick={() => loadAllData()}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                <RefreshCw size={16} />
+                Recarregar painel
+              </button>
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={!canRefresh || refreshing}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                  refreshing
+                    ? 'border-blue-200 bg-blue-50 text-blue-700'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-blue-600'
+                } disabled:cursor-not-allowed disabled:opacity-60`}
+              >
+                {refreshing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                {refreshing ? 'Sincronizando...' : 'Atualizar dados Google'}
+              </button>
+              <button
+                type="button"
+                disabled
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-400"
+              >
+                <Sparkles size={16} />
+                Exportar em integração
+              </button>
+              <button
+                type="button"
+                onClick={onClearFilters}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                <FilterX size={16} />
+                Limpar filtros
+              </button>
             </div>
           </div>
 
@@ -335,190 +519,6 @@ export default function MarketingFunilPage() {
               crmLastSyncAt={summary?.crm.lastSyncAt || null}
               refreshing={refreshing}
             />
-          </div>
-        </div>
-
-        <div className="space-y-4 p-6">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <label className="space-y-2">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Marca</span>
-              <select
-                value={filters.brand}
-                onChange={(event) => setFilters((prev) => ({ ...prev, brand: event.target.value as FilterFormState['brand'] }))}
-                className={filterInputClassName}
-              >
-                {BRAND_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Mês</span>
-              <input
-                type="month"
-                value={filters.periodRef}
-                disabled={filters.useCustomRange}
-                onChange={(event) => {
-                  const periodRef = event.target.value;
-                  const range = getDateRangeFromPeriod(periodRef);
-                  setFilters((prev) => ({
-                    ...prev,
-                    periodRef,
-                    startDate: range.startDate,
-                    endDate: range.endDate,
-                  }));
-                }}
-                className={filterInputClassName}
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Data inicial</span>
-              <input
-                type="date"
-                value={filters.startDate}
-                disabled={!filters.useCustomRange}
-                onChange={(event) => setFilters((prev) => ({ ...prev, startDate: event.target.value }))}
-                className={filterInputClassName}
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Data final</span>
-              <input
-                type="date"
-                value={filters.endDate}
-                disabled={!filters.useCustomRange}
-                onChange={(event) => setFilters((prev) => ({ ...prev, endDate: event.target.value }))}
-                className={filterInputClassName}
-              />
-            </label>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={filters.useCustomRange}
-                onChange={(event) =>
-                  setFilters((prev) => {
-                    const checked = event.target.checked;
-                    if (!checked) {
-                      const range = getDateRangeFromPeriod(prev.periodRef);
-                      return { ...prev, useCustomRange: false, startDate: range.startDate, endDate: range.endDate };
-                    }
-                    return { ...prev, useCustomRange: true };
-                  })
-                }
-              />
-              <CalendarRange size={16} className="text-slate-500" />
-              Usar intervalo personalizado
-            </label>
-
-            <button
-              type="button"
-              onClick={() => setFiltersExpanded((prev) => !prev)}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              <ChevronDown size={16} className={`transition ${filtersExpanded ? 'rotate-180' : ''}`} />
-              Filtros avançados
-            </button>
-          </div>
-
-          {filtersExpanded ? (
-            <div className="grid gap-4 border-t border-slate-100 pt-4 md:grid-cols-2 xl:grid-cols-4">
-              <label className="space-y-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Campanha</span>
-                <input
-                  type="text"
-                  value={filters.campaign}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, campaign: event.target.value }))}
-                  placeholder="Buscar por nome"
-                  className={filterInputClassName}
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Source</span>
-                <input
-                  type="text"
-                  value={filters.source}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, source: event.target.value }))}
-                  placeholder="google, instagram..."
-                  className={filterInputClassName}
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Medium</span>
-                <input
-                  type="text"
-                  value={filters.medium}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, medium: event.target.value }))}
-                  placeholder="cpc, paid..."
-                  className={filterInputClassName}
-                />
-              </label>
-              <label className="space-y-2">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Grupo de canal</span>
-                <input
-                  type="text"
-                  value={filters.channelGroup}
-                  onChange={(event) => setFilters((prev) => ({ ...prev, channelGroup: event.target.value }))}
-                  placeholder="Paid Search, Direct..."
-                  className={filterInputClassName}
-                />
-              </label>
-            </div>
-          ) : null}
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={onApplyFilters}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 hover:text-blue-600"
-            >
-              <Search size={16} />
-              Aplicar filtros
-            </button>
-            <button
-              type="button"
-              onClick={() => loadAllData()}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              <RefreshCw size={16} />
-              Recarregar painel
-            </button>
-            <button
-              type="button"
-              onClick={onRefresh}
-              disabled={!canRefresh || refreshing}
-              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
-                refreshing
-                  ? 'border-blue-200 bg-blue-50 text-blue-700'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:text-blue-600'
-              } disabled:cursor-not-allowed disabled:opacity-60`}
-            >
-              {refreshing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-              {refreshing ? 'Sincronizando...' : 'Atualizar dados Google'}
-            </button>
-            <button
-              type="button"
-              disabled
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-400"
-            >
-              <Sparkles size={16} />
-              Exportar em integração
-            </button>
-            <button
-              type="button"
-              onClick={onClearFilters}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-            >
-              <FilterX size={16} />
-              Limpar filtros
-            </button>
           </div>
         </div>
       </section>
