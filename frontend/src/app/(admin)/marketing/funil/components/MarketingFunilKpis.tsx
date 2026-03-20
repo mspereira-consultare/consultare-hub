@@ -27,6 +27,9 @@ const kpiTone = [
 ];
 
 export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
+  const getAppointmentCount = (statusId: number) =>
+    summary?.appointments.byStatus.find((item) => item.statusId === statusId)?.count || 0;
+
   const items = [
     {
       label: 'Investimento',
@@ -65,10 +68,22 @@ export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
       icon: Target,
     },
     {
+      label: 'Agendamentos',
+      value: formatNumber(summary?.appointments.totalValid || 0),
+      helper: `Atendido: ${formatNumber(getAppointmentCount(3))} | Confirmado: ${formatNumber(getAppointmentCount(7))}`,
+      icon: Workflow,
+    },
+    {
+      label: 'Faturamento',
+      value: formatCurrency(summary?.revenue.total || 0),
+      helper: `Base: ${summary?.revenue.dateBasis || 'data de referência'}`,
+      icon: BarChart3,
+    },
+    {
       label: 'Leads CRM CRC',
       value: formatNumber(summary?.crm.leadsCreatedCount || 0),
       helper: summary ? formatCompactCurrency(summary.crm.leadsCreatedValue || 0) : formatCompactCurrency(0),
-      icon: BarChart3,
+      icon: Send,
     },
     {
       label: 'Pipeline CRC',
@@ -79,7 +94,7 @@ export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
   ];
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
       {items.map((item, index) => {
         const Icon = item.icon;
         const tone = kpiTone[index % kpiTone.length];

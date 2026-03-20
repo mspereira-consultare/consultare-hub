@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireMarketingFunilPermission } from '@/lib/marketing_funil/auth';
 import {
-  listMarketingFunnelChannels,
+  listMarketingFunnelFilterOptions,
   MarketingFunilValidationError,
   type MarketingFunilFilters,
 } from '@/lib/marketing_funil/repository';
@@ -30,11 +30,11 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const data = await listMarketingFunnelChannels(auth.db, getFilters(request));
+    const data = await listMarketingFunnelFilterOptions(auth.db, getFilters(request));
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
     const status = error instanceof MarketingFunilValidationError ? error.status : 500;
-    console.error('Erro API marketing/funil channels:', error);
+    console.error('Erro API marketing/funil filter-options:', error);
     const message = error instanceof Error ? error.message : 'Erro interno.';
     return NextResponse.json({ error: message }, { status });
   }

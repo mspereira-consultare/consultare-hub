@@ -14,6 +14,9 @@ type FunnelStage = {
 };
 
 export function MarketingFunilFunnelVisual({ summary }: MarketingFunilFunnelVisualProps) {
+  const attendedAppointments =
+    summary?.appointments.byStatus.find((item) => item.statusId === 3)?.count || 0;
+
   const stages: FunnelStage[] = [
     {
       label: 'Investimento',
@@ -47,15 +50,15 @@ export function MarketingFunilFunnelVisual({ summary }: MarketingFunilFunnelVisu
     },
     {
       label: 'Agendamentos',
-      value: 'Em integração',
-      helper: 'Feegow / próxima etapa',
-      tone: 'border-l-amber-400 border-dashed bg-slate-50',
+      value: formatNumber(summary?.appointments.totalValid || 0),
+      helper: `Atendido: ${formatNumber(attendedAppointments)}`,
+      tone: 'border-l-amber-500 bg-slate-50/70',
     },
     {
       label: 'Faturamento',
-      value: 'Em integração',
-      helper: 'Resultado real',
-      tone: 'border-l-rose-400 border-dashed bg-slate-50',
+      value: formatCompactCurrency(summary?.revenue.total || 0),
+      helper: 'Base: data de referência',
+      tone: 'border-l-rose-500 bg-slate-50/70',
     },
   ];
 
@@ -65,7 +68,7 @@ export function MarketingFunilFunnelVisual({ summary }: MarketingFunilFunnelVisu
         <div>
           <h2 className="text-lg font-bold text-slate-900">Funil Integrado</h2>
           <p className="text-sm text-slate-500">
-            Fluxo atual entre mídia digital e CRM. Agendamentos, faturamento e ocupação entram na próxima camada.
+            Fluxo atual entre mídia digital, CRM, agendamentos válidos e faturamento por competência.
           </p>
         </div>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">

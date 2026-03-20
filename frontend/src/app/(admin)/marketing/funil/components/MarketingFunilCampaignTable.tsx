@@ -55,7 +55,7 @@ export function MarketingFunilCampaignTable({
           <thead className="sticky top-0 z-10 bg-white">
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
               <th className="px-3 py-3 font-semibold">Campanha</th>
-              <th className="px-3 py-3 font-semibold">Source / Medium</th>
+              <th className="px-3 py-3 font-semibold">Origem / Mídia</th>
               <th className="px-3 py-3 font-semibold">Canal</th>
               <th className="px-3 py-3 text-right font-semibold">Investimento</th>
               <th className="px-3 py-3 text-right font-semibold">Impressões</th>

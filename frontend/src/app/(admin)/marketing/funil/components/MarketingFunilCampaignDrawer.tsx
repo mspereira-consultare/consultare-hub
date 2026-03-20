@@ -146,7 +146,7 @@ export function MarketingFunilCampaignDrawer({
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
                     <th className="px-4 py-3 font-semibold">Landing page</th>
-                    <th className="px-4 py-3 font-semibold">Source / Medium</th>
+                    <th className="px-4 py-3 font-semibold">Origem / Mídia</th>
                     <th className="px-4 py-3 text-right font-semibold">Sessões</th>
                     <th className="px-4 py-3 text-right font-semibold">Usuários</th>
                     <th className="px-4 py-3 text-right font-semibold">Novos usuários</th>

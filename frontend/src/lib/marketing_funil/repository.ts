@@ -36,6 +36,13 @@ export type MarketingFunilFilters = {
   pageSize?: unknown;
 };
 
+type MarketingFunilFilterKey = 'brand' | 'campaign' | 'source' | 'medium' | 'channelGroup';
+
+type MarketingFunilFilterOption = {
+  value: string;
+  label: string;
+};
+
 let tablesEnsured = false;
 // Regra de negocio atual do modulo: para marketing/funil, considerar somente o quadro CRC.
 const CRM_DEFAULT_BOARD_KEYS = ['crc'] as const;
@@ -54,6 +61,16 @@ const safeInt = (value: unknown) => {
 };
 
 const nowIso = () => new Date().toISOString();
+
+const MARKETING_VALID_APPOINTMENT_STATUSES = [1, 2, 3, 4, 7] as const;
+
+const MARKETING_APPOINTMENT_STATUS_LABELS: Record<number, string> = {
+  1: 'Marcado - não confirmado',
+  2: 'Em andamento',
+  3: 'Atendido',
+  4: 'Em atendimento/aguardando',
+  7: 'Marcado - confirmado',
+};
 
 const isMysqlProvider = () => {
   const provider = clean(process.env.DB_PROVIDER).toLowerCase();
@@ -199,6 +216,12 @@ const normalizePageSize = (value: unknown) => {
 
 const normalizeTextFilter = (value: unknown) => clean(value);
 
+const quoteIdentifier = (value: string) => {
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) return value;
+  const escaped = value.replace(/[`"]/g, '');
+  return isMysqlProvider() ? `\`${escaped}\`` : `"${escaped.replace(/"/g, '""')}"`;
+};
+
 const mapJob = (row: Record<string, unknown>) => {
   let scope: Record<string, unknown> = {};
   try {
@@ -223,42 +246,95 @@ const mapJob = (row: Record<string, unknown>) => {
   };
 };
 
-const buildMainWhere = (filters: MarketingFunilFilters) => {
+const buildFactWhere = (
+  filters: MarketingFunilFilters,
+  options: {
+    alias?: string;
+    ignoreKeys?: MarketingFunilFilterKey[];
+    exactMatch?: boolean;
+  } = {}
+) => {
   const range = normalizeDateRange(filters);
-  const where = ['date_ref >= ?', 'date_ref <= ?'];
+  const alias = options.alias ? `${options.alias}.` : '';
+  const ignoreKeys = new Set(options.ignoreKeys || []);
+  const useExactMatch = options.exactMatch ?? true;
+  const where = [`${alias}date_ref >= ?`, `${alias}date_ref <= ?`];
   const params: unknown[] = [range.startDate, range.endDate];
 
   const brand = normalizeTextFilter(filters.brand);
-  if (brand) {
-    where.push('brand_slug = ?');
+  if (brand && !ignoreKeys.has('brand')) {
+    where.push(`${alias}brand_slug = ?`);
     params.push(brand.toLowerCase());
   }
 
   const campaign = normalizeTextFilter(filters.campaign);
-  if (campaign) {
-    where.push('LOWER(campaign_name) LIKE ?');
-    params.push(`%${campaign.toLowerCase()}%`);
+  if (campaign && !ignoreKeys.has('campaign')) {
+    where.push(
+      useExactMatch
+        ? `LOWER(COALESCE(${alias}campaign_name, '')) = ?`
+        : `LOWER(COALESCE(${alias}campaign_name, '')) LIKE ?`
+    );
+    params.push(useExactMatch ? campaign.toLowerCase() : `%${campaign.toLowerCase()}%`);
   }
 
   const source = normalizeTextFilter(filters.source);
-  if (source) {
-    where.push('LOWER(source) LIKE ?');
-    params.push(`%${source.toLowerCase()}%`);
+  if (source && !ignoreKeys.has('source')) {
+    where.push(
+      useExactMatch
+        ? `LOWER(COALESCE(${alias}source, '')) = ?`
+        : `LOWER(COALESCE(${alias}source, '')) LIKE ?`
+    );
+    params.push(useExactMatch ? source.toLowerCase() : `%${source.toLowerCase()}%`);
   }
 
   const medium = normalizeTextFilter(filters.medium);
-  if (medium) {
-    where.push('LOWER(medium) LIKE ?');
-    params.push(`%${medium.toLowerCase()}%`);
+  if (medium && !ignoreKeys.has('medium')) {
+    where.push(
+      useExactMatch
+        ? `LOWER(COALESCE(${alias}medium, '')) = ?`
+        : `LOWER(COALESCE(${alias}medium, '')) LIKE ?`
+    );
+    params.push(useExactMatch ? medium.toLowerCase() : `%${medium.toLowerCase()}%`);
   }
 
   const channelGroup = normalizeTextFilter(filters.channelGroup);
-  if (channelGroup) {
-    where.push('LOWER(session_default_channel_group) LIKE ?');
-    params.push(`%${channelGroup.toLowerCase()}%`);
+  if (channelGroup && !ignoreKeys.has('channelGroup')) {
+    where.push(
+      useExactMatch
+        ? `LOWER(COALESCE(${alias}session_default_channel_group, '')) = ?`
+        : `LOWER(COALESCE(${alias}session_default_channel_group, '')) LIKE ?`
+    );
+    params.push(useExactMatch ? channelGroup.toLowerCase() : `%${channelGroup.toLowerCase()}%`);
   }
 
   return { range, where, params };
+};
+
+const buildMainWhere = (filters: MarketingFunilFilters) => buildFactWhere(filters);
+
+const listDistinctFactOptions = async (
+  db: DbInterface,
+  filters: MarketingFunilFilters,
+  columnName: string,
+  ignoreKeys: MarketingFunilFilterKey[]
+): Promise<MarketingFunilFilterOption[]> => {
+  const { where, params } = buildFactWhere(filters, { alias: 'f', ignoreKeys });
+  const identifier = quoteIdentifier(columnName);
+  const rows = await db.query(
+    `
+    SELECT DISTINCT TRIM(COALESCE(f.${identifier}, '')) AS option_value
+    FROM fact_marketing_funnel_daily f
+    WHERE ${where.join(' AND ')}
+      AND TRIM(COALESCE(f.${identifier}, '')) <> ''
+    ORDER BY LOWER(TRIM(COALESCE(f.${identifier}, ''))) ASC
+    `,
+    params
+  );
+
+  return (rows || [])
+    .map((raw) => clean((raw as Record<string, unknown>).option_value))
+    .filter(Boolean)
+    .map((value) => ({ value, label: value }));
 };
 
 export const ensureMarketingFunilTables = async (db: DbInterface) => {
@@ -511,6 +587,77 @@ type CrmBoardScopeItem = {
 const isConsultareBrandScope = (brandRaw: unknown) => {
   const brand = normalizeTextFilter(brandRaw).toLowerCase();
   return !brand || brand === 'consultare';
+};
+
+const getMarketingFunilAppointmentsSummary = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  if (!isConsultareBrandScope(filters.brand)) {
+    return {
+      totalValid: 0,
+      byStatus: MARKETING_VALID_APPOINTMENT_STATUSES.map((statusId) => ({
+        statusId,
+        statusLabel: MARKETING_APPOINTMENT_STATUS_LABELS[statusId],
+        count: 0,
+      })),
+    };
+  }
+
+  const range = normalizeDateRange(filters);
+  const rows = await db.query(
+    `
+    SELECT
+      status_id,
+      COUNT(DISTINCT appointment_id) AS total
+    FROM feegow_appointments
+    WHERE SUBSTR(scheduled_at, 1, 10) >= ?
+      AND SUBSTR(scheduled_at, 1, 10) <= ?
+      AND status_id IN (${MARKETING_VALID_APPOINTMENT_STATUSES.map(() => '?').join(', ')})
+    GROUP BY status_id
+    `,
+    [range.startDate, range.endDate, ...MARKETING_VALID_APPOINTMENT_STATUSES]
+  );
+
+  const byStatusMap = new Map<number, number>();
+  for (const raw of rows || []) {
+    const row = raw as Record<string, unknown>;
+    byStatusMap.set(safeInt(row.status_id), safeInt(row.total));
+  }
+
+  const byStatus = MARKETING_VALID_APPOINTMENT_STATUSES.map((statusId) => ({
+    statusId,
+    statusLabel: MARKETING_APPOINTMENT_STATUS_LABELS[statusId],
+    count: byStatusMap.get(statusId) || 0,
+  }));
+
+  return {
+    totalValid: byStatus.reduce((acc, item) => acc + item.count, 0),
+    byStatus,
+  };
+};
+
+const getMarketingFunilRevenueSummary = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  if (!isConsultareBrandScope(filters.brand)) {
+    return {
+      total: 0,
+      dateBasis: 'data_de_referência',
+    };
+  }
+
+  const range = normalizeDateRange(filters);
+  const referenceColumn = quoteIdentifier('data_de_referência');
+  const rows = await db.query(
+    `
+    SELECT COALESCE(SUM(total_pago), 0) AS total
+    FROM faturamento_analitico
+    WHERE SUBSTR(${referenceColumn}, 1, 10) >= ?
+      AND SUBSTR(${referenceColumn}, 1, 10) <= ?
+    `,
+    [range.startDate, range.endDate]
+  );
+
+  return {
+    total: safeNum((rows?.[0] as Record<string, unknown>)?.total),
+    dateBasis: 'data_de_referência',
+  };
 };
 
 const getCrmBoardScope = async (db: DbInterface, filters: MarketingFunilFilters) => {
@@ -801,7 +948,11 @@ export const getMarketingFunnelSummary = async (db: DbInterface, filters: Market
 
   const base = ((rows?.[0] as Record<string, unknown>) || {});
   const derived = toDerivedMetrics(base);
-  const crm = await getMarketingFunilCrmSummary(db, filters);
+  const [crm, appointments, revenue] = await Promise.all([
+    getMarketingFunilCrmSummary(db, filters),
+    getMarketingFunilAppointmentsSummary(db, filters),
+    getMarketingFunilRevenueSummary(db, filters),
+  ]);
 
   return {
     periodRef: range.periodRef,
@@ -828,6 +979,8 @@ export const getMarketingFunnelSummary = async (db: DbInterface, filters: Market
     conversionsValue: safeNum(base.conversions_value),
     costPerConversion: derived.costPerConversion,
     lastSyncAt: clean(base.last_sync_at) || null,
+    appointments,
+    revenue,
     crm,
   };
 };
@@ -895,41 +1048,22 @@ export const listMarketingFunnelCampaigns = async (db: DbInterface, filters: Mar
 
 export const listMarketingFunnelChannels = async (db: DbInterface, filters: MarketingFunilFilters) => {
   await ensureMarketingFunilTables(db);
-  const range = normalizeDateRange(filters);
-  const where = ['date_ref >= ?', 'date_ref <= ?'];
-  const params: unknown[] = [range.startDate, range.endDate];
-
-  const brand = normalizeTextFilter(filters.brand).toLowerCase();
-  if (brand) {
-    where.push('brand_slug = ?');
-    params.push(brand);
-  }
-
-  const campaign = normalizeTextFilter(filters.campaign);
-  if (campaign) {
-    where.push('LOWER(campaign_name) LIKE ?');
-    params.push(`%${campaign.toLowerCase()}%`);
-  }
-
-  const channelGroup = normalizeTextFilter(filters.channelGroup);
-  if (channelGroup) {
-    where.push('LOWER(channel_group) LIKE ?');
-    params.push(`%${channelGroup.toLowerCase()}%`);
-  }
+  const { range, where, params } = buildMainWhere(filters);
 
   const rows = await db.query(
     `
     SELECT
-      channel_group,
+      session_default_channel_group AS channel_group,
       SUM(sessions) AS sessions,
-      SUM(users) AS users,
+      SUM(total_users) AS users,
       SUM(leads) AS leads,
       SUM(event_count) AS event_count,
       MAX(source_last_sync_at) AS last_sync_at
-    FROM fact_marketing_funnel_daily_channel
+    FROM fact_marketing_funnel_daily
     WHERE ${where.join(' AND ')}
-    GROUP BY channel_group
-    ORDER BY sessions DESC, channel_group ASC
+      AND TRIM(COALESCE(session_default_channel_group, '')) <> ''
+    GROUP BY session_default_channel_group
+    ORDER BY sessions DESC, session_default_channel_group ASC
     `,
     params
   );
@@ -949,6 +1083,28 @@ export const listMarketingFunnelChannels = async (db: DbInterface, filters: Mark
         lastSyncAt: clean(row.last_sync_at) || null,
       };
     }),
+  };
+};
+
+export const listMarketingFunnelFilterOptions = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  await ensureMarketingFunilTables(db);
+  const range = normalizeDateRange(filters);
+
+  const [campaigns, sources, media, channelGroups] = await Promise.all([
+    listDistinctFactOptions(db, filters, 'campaign_name', ['campaign']),
+    listDistinctFactOptions(db, filters, 'source', ['source']),
+    listDistinctFactOptions(db, filters, 'medium', ['medium']),
+    listDistinctFactOptions(db, filters, 'session_default_channel_group', ['channelGroup']),
+  ]);
+
+  return {
+    periodRef: range.periodRef,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    campaigns,
+    sources,
+    media,
+    channelGroups,
   };
 };
 

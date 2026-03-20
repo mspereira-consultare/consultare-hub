@@ -17,6 +17,7 @@ import { MarketingFunilCampaignDrawer } from './components/MarketingFunilCampaig
 import { MarketingFunilCampaignTable } from './components/MarketingFunilCampaignTable';
 import { MarketingFunilFunnelVisual } from './components/MarketingFunilFunnelVisual';
 import { MarketingFunilKpis } from './components/MarketingFunilKpis';
+import { MarketingFunilSearchableSelect } from './components/MarketingFunilSearchableSelect';
 import { MarketingFunilSyncStatus } from './components/MarketingFunilSyncStatus';
 import {
   formatCurrency,
@@ -33,6 +34,7 @@ import type {
   MarketingFunilCrmBoardList,
   MarketingFunilCrmPipelineList,
   MarketingFunilDeviceList,
+  MarketingFunilFilterOptions,
   MarketingFunilLandingList,
   MarketingFunilLatestJob,
   MarketingFunilSummary,
@@ -79,6 +81,16 @@ const getDefaultFilters = (): FilterFormState => {
     medium: '',
     channelGroup: '',
   };
+};
+
+const emptyFilterOptions: MarketingFunilFilterOptions = {
+  periodRef: '',
+  startDate: '',
+  endDate: '',
+  campaigns: [],
+  sources: [],
+  media: [],
+  channelGroups: [],
 };
 
 const buildParams = (filters: FilterFormState, options?: { page?: number; pageSize?: number }) => {
@@ -151,6 +163,7 @@ export default function MarketingFunilPage() {
   const [pageSize, setPageSize] = useState(10);
 
   const [summary, setSummary] = useState<MarketingFunilSummary | null>(null);
+  const [filterOptions, setFilterOptions] = useState<MarketingFunilFilterOptions>(emptyFilterOptions);
   const [campaigns, setCampaigns] = useState<MarketingFunilCampaignList | null>(null);
   const [channels, setChannels] = useState<MarketingFunilChannelList | null>(null);
   const [crmBoards, setCrmBoards] = useState<MarketingFunilCrmBoardList | null>(null);
@@ -174,6 +187,7 @@ export default function MarketingFunilPage() {
   );
 
   const baseQueryString = useMemo(() => buildParams(appliedFilters), [appliedFilters]);
+  const filterOptionsQueryString = useMemo(() => buildParams(filters), [filters]);
 
   const loadDrawerDetails = useCallback(
     async (campaign: MarketingFunilCampaign) => {
@@ -231,9 +245,25 @@ export default function MarketingFunilPage() {
     }
   }, [baseQueryString, canView, queryString]);
 
+  const loadFilterOptions = useCallback(async () => {
+    if (!canView) return;
+    try {
+      const data = await fetchApi<MarketingFunilFilterOptions>(
+        `/api/admin/marketing/funil/filter-options?${filterOptionsQueryString}`
+      );
+      setFilterOptions(data);
+    } catch (optionsError) {
+      console.error('Erro ao carregar opções de filtro do marketing/funil:', optionsError);
+    }
+  }, [canView, filterOptionsQueryString]);
+
   useEffect(() => {
     loadAllData();
   }, [loadAllData]);
+
+  useEffect(() => {
+    loadFilterOptions();
+  }, [loadFilterOptions]);
 
   useEffect(() => {
     if (!isJobRunning(latestJob)) return;
@@ -253,6 +283,17 @@ export default function MarketingFunilPage() {
 
   const onApplyFilters = () => {
     setAppliedFilters(filters);
+    setPage(1);
+    setNotice('');
+  };
+
+  const applyAdvancedFilter = (
+    field: 'campaign' | 'source' | 'medium' | 'channelGroup',
+    value: string
+  ) => {
+    const next = { ...filters, [field]: value };
+    setFilters(next);
+    setAppliedFilters(next);
     setPage(1);
     setNotice('');
   };
@@ -313,7 +354,7 @@ export default function MarketingFunilPage() {
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="grid gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_304px] xl:items-start">
           <div className="space-y-4">
             <div className="flex items-start gap-3">
@@ -323,8 +364,8 @@ export default function MarketingFunilPage() {
               <div>
                 <h1 className="text-xl font-bold text-slate-800">Marketing / Funil</h1>
                 <p className="mt-1 max-w-3xl text-xs text-slate-500">
-                  Cruzamento Google Ads + GA4 + CRM CRC para leitura executiva do topo e meio do funil, com próximos
-                  blocos preparados para agenda, faturamento e ocupação.
+                  Cruzamento Google Ads + GA4 + CRM CRC com leitura executiva do topo e meio do funil, agora também
+                  com agendamentos válidos e faturamento por competência.
                 </p>
               </div>
             </div>
@@ -420,46 +461,38 @@ export default function MarketingFunilPage() {
 
             {filtersExpanded ? (
               <div className="grid gap-4 border-t border-slate-100 pt-4 md:grid-cols-2 xl:grid-cols-4">
-                <label className="space-y-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Campanha</span>
-                  <input
-                    type="text"
-                    value={filters.campaign}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, campaign: event.target.value }))}
-                    placeholder="Buscar por nome"
-                    className={filterInputClassName}
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Source</span>
-                  <input
-                    type="text"
-                    value={filters.source}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, source: event.target.value }))}
-                    placeholder="google, instagram..."
-                    className={filterInputClassName}
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Medium</span>
-                  <input
-                    type="text"
-                    value={filters.medium}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, medium: event.target.value }))}
-                    placeholder="cpc, paid..."
-                    className={filterInputClassName}
-                  />
-                </label>
-                <label className="space-y-2">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Grupo de canal</span>
-                  <input
-                    type="text"
-                    value={filters.channelGroup}
-                    onChange={(event) => setFilters((prev) => ({ ...prev, channelGroup: event.target.value }))}
-                    placeholder="Paid Search, Direct..."
-                    className={filterInputClassName}
-                  />
-                </label>
+                <MarketingFunilSearchableSelect
+                  label="Campanha"
+                  value={filters.campaign}
+                  options={filterOptions.campaigns}
+                  placeholder="Todas as campanhas"
+                  allLabel="Todas as campanhas"
+                  onChange={(value) => applyAdvancedFilter('campaign', value)}
+                />
+                <MarketingFunilSearchableSelect
+                  label="Origem (Source)"
+                  value={filters.source}
+                  options={filterOptions.sources}
+                  placeholder="Todas as origens"
+                  allLabel="Todas as origens"
+                  onChange={(value) => applyAdvancedFilter('source', value)}
+                />
+                <MarketingFunilSearchableSelect
+                  label="Mídia (Medium)"
+                  value={filters.medium}
+                  options={filterOptions.media}
+                  placeholder="Todas as mídias"
+                  allLabel="Todas as mídias"
+                  onChange={(value) => applyAdvancedFilter('medium', value)}
+                />
+                <MarketingFunilSearchableSelect
+                  label="Grupo de canal"
+                  value={filters.channelGroup}
+                  options={filterOptions.channelGroups}
+                  placeholder="Todos os grupos"
+                  allLabel="Todos os grupos"
+                  onChange={(value) => applyAdvancedFilter('channelGroup', value)}
+                />
               </div>
             ) : null}
 
@@ -691,22 +724,22 @@ export default function MarketingFunilPage() {
 
       <section className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-5 shadow-sm">
         <SectionHeader
-          title="Próximas conexões"
-          description="Blocos já previstos para completar o fluxo resultado real da campanha."
+          title="Próximas camadas"
+          description="Os próximos blocos deixam o painel mais acionável, agora que agenda e faturamento já entraram no agregado."
         />
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {[
             {
-              title: 'Agendamentos',
-              description: 'Cruzar campanhas e CRM com agendamentos reais do Feegow.',
-            },
-            {
-              title: 'Faturamento',
-              description: 'Levar o resultado financeiro real para ROAS e visão executiva.',
+              title: 'Atribuição por campanha',
+              description: 'Distribuir agendamentos e faturamento entre campanhas com uma regra transparente de atribuição.',
             },
             {
               title: 'Ocupação da agenda',
               description: 'Conectar capacidade e ocupação para leitura operacional do crescimento.',
+            },
+            {
+              title: 'Especialidades e unidades',
+              description: 'Abrir cortes por unidade e especialidade para uma leitura comercial mais fina.',
             },
           ].map((item) => (
             <article key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">

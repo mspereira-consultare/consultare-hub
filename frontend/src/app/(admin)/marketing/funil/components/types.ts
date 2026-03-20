@@ -25,6 +25,18 @@ export type MarketingFunilSummary = {
   conversionsValue: number;
   costPerConversion: number;
   lastSyncAt: string | null;
+  appointments: {
+    totalValid: number;
+    byStatus: Array<{
+      statusId: number;
+      statusLabel: string;
+      count: number;
+    }>;
+  };
+  revenue: {
+    total: number;
+    dateBasis: string;
+  };
   crm: {
     periodRef: string;
     startDate: string;
@@ -41,6 +53,21 @@ export type MarketingFunilSummary = {
     pipelineItemsValue: number;
     lastSyncAt: string | null;
   };
+};
+
+export type MarketingFunilFilterOption = {
+  value: string;
+  label: string;
+};
+
+export type MarketingFunilFilterOptions = {
+  periodRef: string;
+  startDate: string;
+  endDate: string;
+  campaigns: MarketingFunilFilterOption[];
+  sources: MarketingFunilFilterOption[];
+  media: MarketingFunilFilterOption[];
+  channelGroups: MarketingFunilFilterOption[];
 };
 
 export type MarketingFunilCampaign = {
