@@ -16,6 +16,9 @@ type FunnelStage = {
 export function MarketingFunilFunnelVisual({ summary }: MarketingFunilFunnelVisualProps) {
   const attendedAppointments =
     summary?.appointments.byStatus.find((item) => item.statusId === 3)?.count || 0;
+  const futureConfirmedAppointments =
+    summary?.appointments.byStatus.find((item) => item.statusId === 7)?.count || 0;
+  const confirmedAppointments = attendedAppointments + futureConfirmedAppointments;
 
   const stages: FunnelStage[] = [
     {
@@ -51,7 +54,7 @@ export function MarketingFunilFunnelVisual({ summary }: MarketingFunilFunnelVisu
     {
       label: 'Agendamentos',
       value: formatNumber(summary?.appointments.totalValid || 0),
-      helper: `Atendido: ${formatNumber(attendedAppointments)}`,
+      helper: `Confirmados/realizados: ${formatNumber(confirmedAppointments)}`,
       tone: 'border-l-amber-500 bg-slate-50/70',
     },
     {

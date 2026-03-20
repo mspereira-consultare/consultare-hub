@@ -29,6 +29,7 @@ const kpiTone = [
 export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
   const getAppointmentCount = (statusId: number) =>
     summary?.appointments.byStatus.find((item) => item.statusId === statusId)?.count || 0;
+  const confirmedAppointments = getAppointmentCount(3) + getAppointmentCount(7);
 
   const items = [
     {
@@ -70,13 +71,13 @@ export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
     {
       label: 'Agendamentos',
       value: formatNumber(summary?.appointments.totalValid || 0),
-      helper: `Atendido: ${formatNumber(getAppointmentCount(3))} | Confirmado: ${formatNumber(getAppointmentCount(7))}`,
+      helper: `Confirmados/realizados: ${formatNumber(confirmedAppointments)}`,
       icon: Workflow,
     },
     {
       label: 'Faturamento',
       value: formatCurrency(summary?.revenue.total || 0),
-      helper: `Base: ${summary?.revenue.dateBasis || 'data de referência'}`,
+      helper: 'Base: Faturamento Bruto Analítico',
       icon: BarChart3,
     },
     {

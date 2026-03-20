@@ -72,6 +72,14 @@ const MARKETING_APPOINTMENT_STATUS_LABELS: Record<number, string> = {
   7: 'Marcado - confirmado',
 };
 
+const getAnalyticsDateExpr = (columnName: string) => {
+  const identifier = quoteIdentifier(columnName);
+  if (isMysqlProvider()) {
+    return `(CASE WHEN INSTR(${identifier}, '/') > 0 THEN CONCAT(SUBSTR(${identifier}, 7, 4), '-', SUBSTR(${identifier}, 4, 2), '-', SUBSTR(${identifier}, 1, 2)) ELSE SUBSTR(${identifier}, 1, 10) END)`;
+  }
+  return `(CASE WHEN instr(${identifier}, '/') > 0 THEN substr(${identifier}, 7, 4) || '-' || substr(${identifier}, 4, 2) || '-' || substr(${identifier}, 1, 2) ELSE substr(${identifier}, 1, 10) END)`;
+};
+
 const isMysqlProvider = () => {
   const provider = clean(process.env.DB_PROVIDER).toLowerCase();
   if (provider === 'mysql') return true;
@@ -322,11 +330,14 @@ const listDistinctFactOptions = async (
   const identifier = quoteIdentifier(columnName);
   const rows = await db.query(
     `
-    SELECT DISTINCT TRIM(COALESCE(f.${identifier}, '')) AS option_value
-    FROM fact_marketing_funnel_daily f
-    WHERE ${where.join(' AND ')}
-      AND TRIM(COALESCE(f.${identifier}, '')) <> ''
-    ORDER BY LOWER(TRIM(COALESCE(f.${identifier}, ''))) ASC
+    SELECT option_value
+    FROM (
+      SELECT DISTINCT TRIM(COALESCE(f.${identifier}, '')) AS option_value
+      FROM fact_marketing_funnel_daily f
+      WHERE ${where.join(' AND ')}
+        AND TRIM(COALESCE(f.${identifier}, '')) <> ''
+    ) options
+    ORDER BY LOWER(option_value) ASC
     `,
     params
   );
@@ -643,13 +654,13 @@ const getMarketingFunilRevenueSummary = async (db: DbInterface, filters: Marketi
   }
 
   const range = normalizeDateRange(filters);
-  const referenceColumn = quoteIdentifier('data_de_referência');
+  const referenceDateExpr = getAnalyticsDateExpr('data_de_referência');
   const rows = await db.query(
     `
     SELECT COALESCE(SUM(total_pago), 0) AS total
     FROM faturamento_analitico
-    WHERE SUBSTR(${referenceColumn}, 1, 10) >= ?
-      AND SUBSTR(${referenceColumn}, 1, 10) <= ?
+    WHERE ${referenceDateExpr} >= ?
+      AND ${referenceDateExpr} <= ?
     `,
     [range.startDate, range.endDate]
   );
