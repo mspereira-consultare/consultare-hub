@@ -10,6 +10,7 @@ import {
   EMPLOYEE_UNITS,
   EMPLOYMENT_REGIMES,
   LIFE_INSURANCE_STATUSES,
+  LOCKER_KEY_STATUSES,
   MARITAL_STATUSES,
   MAX_PAGE_SIZE,
   UNIFORM_DELIVERY_TYPES,
@@ -19,6 +20,7 @@ import {
   type EmployeeStatus,
   type EmploymentRegime,
   type LifeInsuranceStatus,
+  type LockerKeyStatus,
   type MaritalStatus,
   type UniformDeliveryType,
   type UniformItemStatus,
@@ -36,6 +38,8 @@ import type {
   EmployeeFilters,
   EmployeeInput,
   EmployeeListItem,
+  EmployeeLockerAssignment,
+  EmployeeLockerAssignmentInput,
   EmployeeRecessPeriod,
   EmployeeRecessPeriodInput,
   EmployeeUniformItem,
@@ -70,6 +74,7 @@ const allowedLifeInsurance = new Set(LIFE_INSURANCE_STATUSES.map((item) => item.
 const allowedMaritalStatuses = new Set(MARITAL_STATUSES.map((item) => item.value));
 const allowedUniformDeliveryTypes = new Set(UNIFORM_DELIVERY_TYPES.map((item) => item.value));
 const allowedUniformStatuses = new Set(UNIFORM_ITEM_STATUSES.map((item) => item.value));
+const allowedLockerKeyStatuses = new Set(LOCKER_KEY_STATUSES.map((item) => item.value));
 const allowedEducationLevels = new Set(['MEDIO', 'TECNICO', 'SUPERIOR']);
 
 const parseDate = (value: any): string | null => {
@@ -202,6 +207,14 @@ const normalizeUniformStatus = (value: any): UniformItemStatus => {
   }
   return normalized as UniformItemStatus;
 };
+
+const normalizeLockerKeyStatus = (value: any): LockerKeyStatus => {
+  const normalized = upper(value || 'COLABORADOR');
+  if (!allowedLockerKeyStatuses.has(normalized as LockerKeyStatus)) {
+    throw new EmployeeValidationError('Status da chave do armario invalido.');
+  }
+  return normalized as LockerKeyStatus;
+};
 const mapEmployee = (row: any): Employee => ({
   id: clean(row.id),
   fullName: clean(row.full_name),
@@ -292,6 +305,22 @@ const mapUniformItem = (row: any): EmployeeUniformItem => ({
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
+
+const mapLockerAssignment = (row: any): EmployeeLockerAssignment => ({
+  id: clean(row.id),
+  employeeId: clean(row.employee_id),
+  unitName: clean(row.unit_name),
+  lockerCode: clean(row.locker_code),
+  locationDetail: clean(row.location_detail) || null,
+  keyStatus: upper(row.key_status || 'COLABORADOR') as LockerKeyStatus,
+  assignedAt: parseDate(row.assigned_at),
+  returnedAt: parseDate(row.returned_at),
+  notes: clean(row.notes) || null,
+  isActive: bool(row.is_active),
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
 
 const addDays = (dateIso: string, days: number) => {
   const date = new Date(`${dateIso}T00:00:00Z`);
@@ -640,6 +669,23 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS employee_locker_assignments (
+      id VARCHAR(64) PRIMARY KEY,
+      employee_id VARCHAR(64) NOT NULL,
+      unit_name VARCHAR(180) NOT NULL,
+      locker_code VARCHAR(120) NOT NULL,
+      location_detail VARCHAR(180) NULL,
+      key_status VARCHAR(30) NOT NULL,
+      assigned_at DATE NULL,
+      returned_at DATE NULL,
+      notes TEXT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS employee_recess_periods (
       id VARCHAR(64) PRIMARY KEY,
       employee_id VARCHAR(64) NOT NULL,
@@ -678,11 +724,17 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN bank_account VARCHAR(80) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN pix_key VARCHAR(180) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN notes TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN location_detail VARCHAR(180) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN notes TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN returned_at DATE NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1`);
 
   await safeCreateIndex(db, `CREATE INDEX idx_employees_full_name ON employees (full_name)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employees_status ON employees (status)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_documents_employee ON employee_documents (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_uniform_items_employee ON employee_uniform_items (employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_locker_assignments_employee ON employee_locker_assignments (employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_locker_assignments_active ON employee_locker_assignments (unit_name, locker_code, is_active)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_recess_periods_employee ON employee_recess_periods (employee_id)`);
 
   tablesEnsured = true;
@@ -1085,6 +1137,39 @@ const normalizeUniformItemInput = (payload: any): EmployeeUniformItemInput => {
   };
 };
 
+
+const normalizeLockerAssignmentInput = (payload: any): EmployeeLockerAssignmentInput => {
+  const unitName = upper(payload?.unitName || payload?.unit_name);
+  if (!unitName || !allowedUnits.has(unitName as (typeof EMPLOYEE_UNITS)[number])) {
+    throw new EmployeeValidationError('Unidade do armario invalida.');
+  }
+
+  const lockerCode = upper(payload?.lockerCode || payload?.locker_code);
+  if (!lockerCode) {
+    throw new EmployeeValidationError('Informe o numero ou codigo do armario.');
+  }
+
+  const assignedAt = parseDate(payload?.assignedAt || payload?.assigned_at);
+  const returnedAt = parseDate(payload?.returnedAt || payload?.returned_at);
+  if (assignedAt && returnedAt && returnedAt < assignedAt) {
+    throw new EmployeeValidationError('A devolucao do armario nao pode ser anterior a entrega.');
+  }
+
+  const isActiveInput = payload?.isActive ?? payload?.is_active;
+  const isActive = returnedAt ? false : isActiveInput === undefined ? true : bool(isActiveInput);
+
+  return {
+    unitName,
+    lockerCode,
+    locationDetail: clean(payload?.locationDetail || payload?.location_detail) || null,
+    keyStatus: normalizeLockerKeyStatus(payload?.keyStatus || payload?.key_status || 'COLABORADOR'),
+    assignedAt,
+    returnedAt,
+    notes: clean(payload?.notes) || null,
+    isActive,
+  };
+};
+
 export const listEmployeeUniformItems = async (db: DbInterface, employeeId: string): Promise<EmployeeUniformItem[]> => {
   await ensureEmployeesTables(db);
   await ensureEmployeeExists(db, employeeId);
@@ -1182,6 +1267,144 @@ export const deleteEmployeeUniformItem = async (
   await db.execute(`DELETE FROM employee_uniform_items WHERE id = ? AND employee_id = ?`, [entryId, employeeId]);
   await insertAudit(db, 'EMPLOYEE_UNIFORM_DELETED', actorUserId, employeeId, { entryId });
   return listEmployeeUniformItems(db, employeeId);
+};
+
+
+export const listEmployeeLockerAssignments = async (
+  db: DbInterface,
+  employeeId: string
+): Promise<EmployeeLockerAssignment[]> => {
+  await ensureEmployeesTables(db);
+  await ensureEmployeeExists(db, employeeId);
+
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM employee_locker_assignments
+    WHERE employee_id = ?
+    ORDER BY is_active DESC, assigned_at DESC, created_at DESC
+    `,
+    [employeeId]
+  );
+  return rows.map(mapLockerAssignment);
+};
+
+export const saveEmployeeLockerAssignment = async (
+  db: DbInterface,
+  employeeId: string,
+  payload: any,
+  actorUserId: string,
+  entryId?: string
+) => {
+  await ensureEmployeesTables(db);
+  await ensureEmployeeExists(db, employeeId);
+
+  const input = normalizeLockerAssignmentInput(payload);
+  const now = NOW();
+
+  const conflictingLockerRows = await db.query(
+    `
+    SELECT id, employee_id
+    FROM employee_locker_assignments
+    WHERE unit_name = ?
+      AND locker_code = ?
+      AND is_active = 1
+      AND employee_id <> ?
+      ${entryId ? 'AND id <> ?' : ''}
+    LIMIT 1
+    `,
+    entryId ? [input.unitName, input.lockerCode, employeeId, entryId] : [input.unitName, input.lockerCode, employeeId]
+  );
+
+  if (input.isActive && conflictingLockerRows[0]) {
+    throw new EmployeeValidationError('Este armario ja esta ativo para outro colaborador.');
+  }
+
+  if (input.isActive) {
+    await db.execute(
+      `
+      UPDATE employee_locker_assignments
+      SET is_active = 0, updated_at = ?
+      WHERE employee_id = ?
+        AND is_active = 1
+        ${entryId ? 'AND id <> ?' : ''}
+      `,
+      entryId ? [now, employeeId, entryId] : [now, employeeId]
+    );
+  }
+
+  if (entryId) {
+    const rows = await db.query(
+      `SELECT id FROM employee_locker_assignments WHERE id = ? AND employee_id = ? LIMIT 1`,
+      [entryId, employeeId]
+    );
+    if (!rows[0]) {
+      throw new EmployeeValidationError('Registro de armario nao encontrado.', 404);
+    }
+
+    await db.execute(
+      `
+      UPDATE employee_locker_assignments
+      SET unit_name = ?, locker_code = ?, location_detail = ?, key_status = ?,
+          assigned_at = ?, returned_at = ?, notes = ?, is_active = ?, updated_at = ?
+      WHERE id = ? AND employee_id = ?
+      `,
+      [
+        input.unitName,
+        input.lockerCode,
+        input.locationDetail,
+        input.keyStatus,
+        input.assignedAt,
+        input.returnedAt,
+        input.notes,
+        input.isActive ? 1 : 0,
+        now,
+        entryId,
+        employeeId,
+      ]
+    );
+    await insertAudit(db, 'EMPLOYEE_LOCKER_UPDATED', actorUserId, employeeId, { entryId });
+  } else {
+    const id = randomUUID();
+    await db.execute(
+      `
+      INSERT INTO employee_locker_assignments (
+        id, employee_id, unit_name, locker_code, location_detail, key_status,
+        assigned_at, returned_at, notes, is_active, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        id,
+        employeeId,
+        input.unitName,
+        input.lockerCode,
+        input.locationDetail,
+        input.keyStatus,
+        input.assignedAt,
+        input.returnedAt,
+        input.notes,
+        input.isActive ? 1 : 0,
+        now,
+        now,
+      ]
+    );
+    await insertAudit(db, 'EMPLOYEE_LOCKER_CREATED', actorUserId, employeeId, { entryId: id });
+  }
+
+  return listEmployeeLockerAssignments(db, employeeId);
+};
+
+export const deleteEmployeeLockerAssignment = async (
+  db: DbInterface,
+  employeeId: string,
+  entryId: string,
+  actorUserId: string
+) => {
+  await ensureEmployeesTables(db);
+  await ensureEmployeeExists(db, employeeId);
+  await db.execute(`DELETE FROM employee_locker_assignments WHERE id = ? AND employee_id = ?`, [entryId, employeeId]);
+  await insertAudit(db, 'EMPLOYEE_LOCKER_DELETED', actorUserId, employeeId, { entryId });
+  return listEmployeeLockerAssignments(db, employeeId);
 };
 
 const normalizeRecessInput = (payload: any): EmployeeRecessPeriodInput => {
@@ -1337,6 +1560,7 @@ export const getEmployeesOptions = async (db: DbInterface) => {
     lifeInsuranceStatuses: LIFE_INSURANCE_STATUSES,
     uniformDeliveryTypes: UNIFORM_DELIVERY_TYPES,
     uniformItemStatuses: UNIFORM_ITEM_STATUSES,
+    lockerKeyStatuses: LOCKER_KEY_STATUSES,
     documentTypes: EMPLOYEE_DOCUMENT_TYPES.map((item) => ({
       value: item.code,
       label: item.label,

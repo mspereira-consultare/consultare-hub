@@ -5,6 +5,7 @@ import type {
   EmployeeStatus,
   EmploymentRegime,
   LifeInsuranceStatus,
+  LockerKeyStatus,
   MaritalStatus,
   RecessSituation,
   UniformDeliveryType,
@@ -89,6 +90,21 @@ export type EmployeeUniformItem = {
   deliveryType: UniformDeliveryType;
   deliveredBy: string | null;
   status: UniformItemStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmployeeLockerAssignment = {
+  id: string;
+  employeeId: string;
+  unitName: string;
+  lockerCode: string;
+  locationDetail: string | null;
+  keyStatus: LockerKeyStatus;
+  assignedAt: string | null;
+  returnedAt: string | null;
+  notes: string | null;
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -202,6 +218,17 @@ export type EmployeeUniformItemInput = {
   deliveryType?: UniformDeliveryType;
   deliveredBy?: string | null;
   status?: UniformItemStatus;
+};
+
+export type EmployeeLockerAssignmentInput = {
+  unitName: string;
+  lockerCode: string;
+  locationDetail?: string | null;
+  keyStatus?: LockerKeyStatus;
+  assignedAt?: string | null;
+  returnedAt?: string | null;
+  notes?: string | null;
+  isActive?: boolean;
 };
 
 export type EmployeeRecessPeriodInput = {

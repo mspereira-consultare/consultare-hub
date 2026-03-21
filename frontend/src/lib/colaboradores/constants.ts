@@ -6,6 +6,7 @@ export type MaritalStatus = 'SOLTEIRO' | 'CASADO' | 'UNIAO_ESTAVEL' | 'DIVORCIAD
 export type LifeInsuranceStatus = 'ATIVO' | 'INATIVO';
 export type UniformDeliveryType = 'PRIMEIRA_ENTREGA' | 'REPOSICAO' | 'TROCA';
 export type UniformItemStatus = 'ATIVO' | 'DEVOLVIDO' | 'PENDENTE';
+export type LockerKeyStatus = 'COLABORADOR' | 'RH_DP' | 'PERDIDA';
 export type RecessSituation = 'QUITADAS' | 'VENCIDAS' | 'EM_ABERTO';
 
 export type EmployeeDocumentTypeCode =
@@ -96,6 +97,12 @@ export const UNIFORM_ITEM_STATUSES: Array<{ value: UniformItemStatus; label: str
   { value: 'ATIVO', label: 'Ativo' },
   { value: 'DEVOLVIDO', label: 'Devolvido' },
   { value: 'PENDENTE', label: 'Pendente' },
+];
+
+export const LOCKER_KEY_STATUSES: Array<{ value: LockerKeyStatus; label: string }> = [
+  { value: 'COLABORADOR', label: 'Em posse do colaborador' },
+  { value: 'RH_DP', label: 'No RH/DP' },
+  { value: 'PERDIDA', label: 'Perdida' },
 ];
 
 export const ASO_STATUSES: Array<{ value: AsoStatus; label: string }> = [

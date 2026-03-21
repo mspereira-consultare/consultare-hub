@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
@@ -32,6 +32,7 @@ import {
   EMPLOYEE_UNITS,
   EMPLOYMENT_REGIMES,
   LIFE_INSURANCE_STATUSES,
+  LOCKER_KEY_STATUSES,
   MARITAL_STATUSES,
   UNIFORM_DELIVERY_TYPES,
   UNIFORM_ITEM_STATUSES,
@@ -47,6 +48,7 @@ import {
 } from '@/lib/colaboradores/status';
 import type {
   EmployeeDocument,
+  EmployeeLockerAssignment,
   EmployeeListItem,
   EmployeeRecessPeriod,
   EmployeeUniformItem,
@@ -69,6 +71,7 @@ type EmployeesOptionsPayload = {
   lifeInsuranceStatuses: SelectOption[];
   uniformDeliveryTypes: SelectOption[];
   uniformItemStatuses: SelectOption[];
+  lockerKeyStatuses: SelectOption[];
   documentTypes: DocumentOption[];
   supervisors: string[];
   departments: string[];
@@ -142,6 +145,17 @@ type UniformFormState = {
   status: string;
 };
 
+type LockerFormState = {
+  unitName: string;
+  lockerCode: string;
+  locationDetail: string;
+  keyStatus: string;
+  assignedAt: string;
+  returnedAt: string;
+  notes: string;
+  isActive: boolean;
+};
+
 type RecessFormState = {
   acquisitionStartDate: string;
   acquisitionEndDate: string;
@@ -189,6 +203,7 @@ const emptyOptions: EmployeesOptionsPayload = {
   lifeInsuranceStatuses: LIFE_INSURANCE_STATUSES,
   uniformDeliveryTypes: UNIFORM_DELIVERY_TYPES,
   uniformItemStatuses: UNIFORM_ITEM_STATUSES,
+  lockerKeyStatuses: LOCKER_KEY_STATUSES,
   documentTypes: EMPLOYEE_DOCUMENT_TYPES.map((item) => ({
     value: item.code,
     label: item.label,
@@ -268,6 +283,17 @@ const emptyUniformForm = (): UniformFormState => ({
   deliveryType: 'PRIMEIRA_ENTREGA',
   deliveredBy: '',
   status: 'ATIVO',
+});
+
+const emptyLockerForm = (): LockerFormState => ({
+  unitName: '',
+  lockerCode: '',
+  locationDetail: '',
+  keyStatus: 'COLABORADOR',
+  assignedAt: '',
+  returnedAt: '',
+  notes: '',
+  isActive: true,
 });
 
 const emptyRecessForm = (): RecessFormState => ({
@@ -372,6 +398,17 @@ const mapEmployeeToForm = (employee: EmployeeListItem): EmployeeFormState => ({
   bankAccount: employee.bankAccount || '',
   pixKey: employee.pixKey || '',
   notes: employee.notes || '',
+});
+
+const mapLockerToForm = (item: EmployeeLockerAssignment): LockerFormState => ({
+  unitName: item.unitName || '',
+  lockerCode: item.lockerCode || '',
+  locationDetail: item.locationDetail || '',
+  keyStatus: item.keyStatus || 'COLABORADOR',
+  assignedAt: item.assignedAt || '',
+  returnedAt: item.returnedAt || '',
+  notes: item.notes || '',
+  isActive: item.isActive,
 });
 
 const mapAsoBadge = (status: string) => {
@@ -481,12 +518,16 @@ export default function ColaboradoresPage() {
   const [form, setForm] = useState<EmployeeFormState>(emptyEmployeeForm());
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
   const [uniformItems, setUniformItems] = useState<EmployeeUniformItem[]>([]);
+  const [lockerItems, setLockerItems] = useState<EmployeeLockerAssignment[]>([]);
   const [recessItems, setRecessItems] = useState<EmployeeRecessPeriod[]>([]);
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [uploadingDocuments, setUploadingDocuments] = useState(false);
   const [uniformForm, setUniformForm] = useState<UniformFormState>(emptyUniformForm());
   const [uniformEditingId, setUniformEditingId] = useState<string | null>(null);
   const [uniformSaving, setUniformSaving] = useState(false);
+  const [lockerForm, setLockerForm] = useState<LockerFormState>(emptyLockerForm());
+  const [lockerEditingId, setLockerEditingId] = useState<string | null>(null);
+  const [lockerSaving, setLockerSaving] = useState(false);
   const [recessForm, setRecessForm] = useState<RecessFormState>(emptyRecessForm());
   const [recessEditingId, setRecessEditingId] = useState<string | null>(null);
   const [recessSaving, setRecessSaving] = useState(false);
@@ -525,6 +566,11 @@ export default function ColaboradoresPage() {
     const aso = computeAsoStatus(docs);
     return { progress, missing, aso };
   }, [documents, form.employmentRegime, form.maritalStatus, form.hasChildren]);
+
+  const activeLocker = useMemo(
+    () => lockerItems.find((item) => item.isActive) || null,
+    [lockerItems]
+  );
 
   const buildListQuery = useCallback((pageNumber: number, currentFilters: FiltersState) => {
     const params = new URLSearchParams();
@@ -573,12 +619,15 @@ export default function ColaboradoresPage() {
   );
 
   const loadEmployeeResources = useCallback(async (employeeId: string) => {
-    const [documentsPayload, uniformsPayload, recessPayload] = await Promise.all([
+    const [documentsPayload, uniformsPayload, lockersPayload, recessPayload] = await Promise.all([
       fetchJson<{ status: string; data: EmployeeDocument[] }>(
         `/api/admin/colaboradores/${encodeURIComponent(employeeId)}/documentos`
       ),
       fetchJson<{ status: string; data: EmployeeUniformItem[] }>(
         `/api/admin/colaboradores/${encodeURIComponent(employeeId)}/uniformes`
+      ),
+      fetchJson<{ status: string; data: EmployeeLockerAssignment[] }>(
+        `/api/admin/colaboradores/${encodeURIComponent(employeeId)}/armarios`
       ),
       fetchJson<{ status: string; data: EmployeeRecessPeriod[] }>(
         `/api/admin/colaboradores/${encodeURIComponent(employeeId)}/recessos`
@@ -587,6 +636,7 @@ export default function ColaboradoresPage() {
 
     setDocuments(documentsPayload.data || []);
     setUniformItems(uniformsPayload.data || []);
+    setLockerItems(lockersPayload.data || []);
     setRecessItems(recessPayload.data || []);
   }, []);
 
@@ -605,10 +655,13 @@ export default function ColaboradoresPage() {
     setForm(emptyEmployeeForm());
     setDocuments([]);
     setUniformItems([]);
+    setLockerItems([]);
     setRecessItems([]);
     setPendingUploads([]);
     setUniformForm(emptyUniformForm());
     setUniformEditingId(null);
+    setLockerForm(emptyLockerForm());
+    setLockerEditingId(null);
     setRecessForm(emptyRecessForm());
     setRecessEditingId(null);
     setModalError('');
@@ -653,6 +706,13 @@ export default function ColaboradoresPage() {
             optional: item.optional,
           })),
     [options.documentTypes]
+  );
+  const currentLockerKeyStatuses = useMemo(
+    () =>
+      options.lockerKeyStatuses && options.lockerKeyStatuses.length > 0
+        ? options.lockerKeyStatuses
+        : LOCKER_KEY_STATUSES,
+    [options.lockerKeyStatuses]
   );
 
   const submitEmployee = async () => {
@@ -743,6 +803,49 @@ export default function ColaboradoresPage() {
       setModalNotice('Registro de uniforme removido.');
     } catch (uniformError: any) {
       setModalError(uniformError?.message || 'Falha ao remover uniforme.');
+    }
+  };
+
+  const submitLocker = async () => {
+    if (!currentEmployeeId) return;
+    setLockerSaving(true);
+    setModalError('');
+    try {
+      const payload = await fetchJson<{ status: string; data: EmployeeLockerAssignment[] }>(
+        lockerEditingId
+          ? `/api/admin/colaboradores/${encodeURIComponent(currentEmployeeId)}/armarios/${encodeURIComponent(lockerEditingId)}`
+          : `/api/admin/colaboradores/${encodeURIComponent(currentEmployeeId)}/armarios`,
+        {
+          method: lockerEditingId ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(lockerForm),
+        }
+      );
+      setLockerItems(payload.data || []);
+      setLockerForm(emptyLockerForm());
+      setLockerEditingId(null);
+      setModalNotice('ArmÃ¡rio salvo com sucesso.');
+    } catch (lockerError: any) {
+      console.error('Erro ao salvar arm?rio:', lockerError);
+      setModalError(lockerError?.message || 'Falha ao salvar arm?rio.');
+    } finally {
+      setLockerSaving(false);
+    }
+  };
+
+  const deleteLocker = async (entryId: string) => {
+    if (!currentEmployeeId || !canEdit) return;
+    try {
+      const payload = await fetchJson<{ status: string; data: EmployeeLockerAssignment[] }>(
+        `/api/admin/colaboradores/${encodeURIComponent(currentEmployeeId)}/armarios/${encodeURIComponent(entryId)}`,
+        { method: 'DELETE' }
+      );
+      setLockerItems(payload.data || []);
+      setLockerForm(emptyLockerForm());
+      setLockerEditingId(null);
+      setModalNotice('Registro de arm?rio removido.');
+    } catch (lockerError: any) {
+      setModalError(lockerError?.message || 'Falha ao remover arm?rio.');
     }
   };
 
@@ -1437,58 +1540,206 @@ export default function ColaboradoresPage() {
                   ) : null}
 
                   {modalTab === 'uniforme' ? (
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px,1fr]">
-                      <SectionCard title="Novo registro" description="Retiradas, trocas e devoluções de uniforme." icon={Shirt}>
-                        <div className="space-y-3">
-                          <div>
-                            <label className={fieldLabelClassName}>Data de retirada</label>
-                            <input disabled={currentEmployeeReadOnly} type="date" value={uniformForm.withdrawalDate} onChange={(event) => setUniformForm((prev) => ({ ...prev, withdrawalDate: event.target.value }))} className={filterInputClassName} />
-                          </div>
-                          <div>
-                            <label className={fieldLabelClassName}>Descrição do item</label>
-                            <input disabled={currentEmployeeReadOnly} value={uniformForm.itemDescription} onChange={(event) => setUniformForm((prev) => ({ ...prev, itemDescription: event.target.value }))} className={filterInputClassName} />
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px,1fr]">
+                        <SectionCard title="Novo registro de uniforme" description="Retiradas, trocas e devoluÃ§Ãµes de uniforme." icon={Shirt}>
+                          <div className="space-y-3">
                             <div>
-                              <label className={fieldLabelClassName}>Quantidade</label>
-                              <input disabled={currentEmployeeReadOnly} value={uniformForm.quantity} onChange={(event) => setUniformForm((prev) => ({ ...prev, quantity: event.target.value.replace(/\D/g, '') }))} className={filterInputClassName} />
+                              <label className={fieldLabelClassName}>Data de retirada</label>
+                              <input disabled={currentEmployeeReadOnly} type="date" value={uniformForm.withdrawalDate} onChange={(event) => setUniformForm((prev) => ({ ...prev, withdrawalDate: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <div>
-                              <label className={fieldLabelClassName}>Status</label>
-                              <select disabled={currentEmployeeReadOnly} value={uniformForm.status} onChange={(event) => setUniformForm((prev) => ({ ...prev, status: event.target.value }))} className={filterInputClassName}>
-                                {UNIFORM_ITEM_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                              <label className={fieldLabelClassName}>DescriÃ§Ã£o do item</label>
+                              <input disabled={currentEmployeeReadOnly} value={uniformForm.itemDescription} onChange={(event) => setUniformForm((prev) => ({ ...prev, itemDescription: event.target.value }))} className={filterInputClassName} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className={fieldLabelClassName}>Quantidade</label>
+                                <input disabled={currentEmployeeReadOnly} value={uniformForm.quantity} onChange={(event) => setUniformForm((prev) => ({ ...prev, quantity: event.target.value.replace(/\D/g, '') }))} className={filterInputClassName} />
+                              </div>
+                              <div>
+                                <label className={fieldLabelClassName}>Status</label>
+                                <select disabled={currentEmployeeReadOnly} value={uniformForm.status} onChange={(event) => setUniformForm((prev) => ({ ...prev, status: event.target.value }))} className={filterInputClassName}>
+                                  {UNIFORM_ITEM_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                                </select>
+                              </div>
+                            </div>
+                            <div>
+                              <label className={fieldLabelClassName}>Tipo de entrega</label>
+                              <select disabled={currentEmployeeReadOnly} value={uniformForm.deliveryType} onChange={(event) => setUniformForm((prev) => ({ ...prev, deliveryType: event.target.value }))} className={filterInputClassName}>
+                                {UNIFORM_DELIVERY_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                               </select>
                             </div>
-                          </div>
-                          <div>
-                            <label className={fieldLabelClassName}>Tipo de entrega</label>
-                            <select disabled={currentEmployeeReadOnly} value={uniformForm.deliveryType} onChange={(event) => setUniformForm((prev) => ({ ...prev, deliveryType: event.target.value }))} className={filterInputClassName}>
-                              {UNIFORM_DELIVERY_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label className={fieldLabelClassName}>Responsável pela entrega</label>
-                            <input disabled={currentEmployeeReadOnly} value={uniformForm.deliveredBy} onChange={(event) => setUniformForm((prev) => ({ ...prev, deliveredBy: event.target.value }))} className={filterInputClassName} />
-                          </div>
-                          <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                            <input disabled={currentEmployeeReadOnly} type="checkbox" checked={uniformForm.signedReceipt} onChange={(event) => setUniformForm((prev) => ({ ...prev, signedReceipt: event.target.checked }))} />
-                            Assinou documento de retirada
-                          </label>
-                          {canEdit ? (
-                            <div className="flex flex-wrap gap-2 pt-2">
-                              <button type="button" disabled={uniformSaving} onClick={submitUniform} className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
-                                {uniformSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                                {uniformEditingId ? 'Atualizar registro' : 'Adicionar registro'}
-                              </button>
-                              <button type="button" onClick={() => { setUniformForm(emptyUniformForm()); setUniformEditingId(null); }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
-                                Limpar
-                              </button>
+                            <div>
+                              <label className={fieldLabelClassName}>ResponsÃ¡vel pela entrega</label>
+                              <input disabled={currentEmployeeReadOnly} value={uniformForm.deliveredBy} onChange={(event) => setUniformForm((prev) => ({ ...prev, deliveredBy: event.target.value }))} className={filterInputClassName} />
                             </div>
-                          ) : null}
-                        </div>
-                      </SectionCard>
+                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                              <input disabled={currentEmployeeReadOnly} type="checkbox" checked={uniformForm.signedReceipt} onChange={(event) => setUniformForm((prev) => ({ ...prev, signedReceipt: event.target.checked }))} />
+                              Assinou documento de retirada
+                            </label>
+                            {canEdit ? (
+                              <div className="flex flex-wrap gap-2 pt-2">
+                                <button type="button" disabled={uniformSaving} onClick={submitUniform} className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
+                                  {uniformSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                  {uniformEditingId ? 'Atualizar registro' : 'Adicionar registro'}
+                                </button>
+                                <button type="button" onClick={() => { setUniformForm(emptyUniformForm()); setUniformEditingId(null); }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
+                                  Limpar
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        </SectionCard>
 
-                      <SectionCard title="Histórico de uniforme" description="Controle de itens ativos, devolvidos e pendentes." icon={FileText}>
+                        <div className="grid grid-cols-1 gap-4">
+                          <SectionCard title="ArmÃ¡rio atual" description="VÃ­nculo de armÃ¡rio e controle da chave do colaborador." icon={Briefcase}>
+                            <div className="space-y-3">
+                              {activeLocker ? (
+                                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div>
+                                      <div className="font-semibold">ArmÃ¡rio ativo</div>
+                                      <div className="mt-1">{EMPLOYEE_UNIT_LABELS[activeLocker.unitName as keyof typeof EMPLOYEE_UNIT_LABELS] || activeLocker.unitName} - {activeLocker.lockerCode}</div>
+                                      <div className="mt-1 text-xs text-emerald-700">
+                                        Chave: {currentLockerKeyStatuses.find((option) => option.value === activeLocker.keyStatus)?.label || activeLocker.keyStatus}
+                                        {activeLocker.locationDetail ? ` - ${activeLocker.locationDetail}` : ''}
+                                      </div>
+                                    </div>
+                                    {canEdit ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => {
+                                          setLockerEditingId(activeLocker.id);
+                                          setLockerForm(mapLockerToForm(activeLocker));
+                                        }}
+                                        className="rounded-md border border-emerald-200 bg-white px-2 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-100"
+                                      >
+                                        Editar atual
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-3 text-sm text-slate-500">
+                                  Nenhum armÃ¡rio ativo cadastrado para este colaborador.
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                <div>
+                                  <label className={fieldLabelClassName}>Unidade</label>
+                                  <select disabled={currentEmployeeReadOnly} value={lockerForm.unitName} onChange={(event) => setLockerForm((prev) => ({ ...prev, unitName: event.target.value }))} className={filterInputClassName}>
+                                    <option value="">Selecione</option>
+                                    {options.units.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className={fieldLabelClassName}>NÃºmero / cÃ³digo do armÃ¡rio</label>
+                                  <input disabled={currentEmployeeReadOnly} value={lockerForm.lockerCode} onChange={(event) => setLockerForm((prev) => ({ ...prev, lockerCode: event.target.value.toUpperCase() }))} className={filterInputClassName} />
+                                </div>
+                                <div>
+                                  <label className={fieldLabelClassName}>LocalizaÃ§Ã£o</label>
+                                  <input disabled={currentEmployeeReadOnly} value={lockerForm.locationDetail} onChange={(event) => setLockerForm((prev) => ({ ...prev, locationDetail: event.target.value }))} className={filterInputClassName} placeholder="Ex.: VestiÃ¡rio feminino" />
+                                </div>
+                                <div>
+                                  <label className={fieldLabelClassName}>Status da chave</label>
+                                  <select disabled={currentEmployeeReadOnly} value={lockerForm.keyStatus} onChange={(event) => setLockerForm((prev) => ({ ...prev, keyStatus: event.target.value }))} className={filterInputClassName}>
+                                    {currentLockerKeyStatuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className={fieldLabelClassName}>Data de entrega</label>
+                                  <input disabled={currentEmployeeReadOnly} type="date" value={lockerForm.assignedAt} onChange={(event) => setLockerForm((prev) => ({ ...prev, assignedAt: event.target.value }))} className={filterInputClassName} />
+                                </div>
+                                <div>
+                                  <label className={fieldLabelClassName}>Data de devoluÃ§Ã£o</label>
+                                  <input disabled={currentEmployeeReadOnly} type="date" value={lockerForm.returnedAt} onChange={(event) => setLockerForm((prev) => ({ ...prev, returnedAt: event.target.value, isActive: event.target.value ? false : prev.isActive }))} className={filterInputClassName} />
+                                </div>
+                                <div className="md:col-span-2">
+                                  <label className={fieldLabelClassName}>ObservaÃ§Ãµes</label>
+                                  <textarea disabled={currentEmployeeReadOnly} rows={3} value={lockerForm.notes} onChange={(event) => setLockerForm((prev) => ({ ...prev, notes: event.target.value }))} className={filterInputClassName} />
+                                </div>
+                              </div>
+
+                              <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                                <input
+                                  disabled={currentEmployeeReadOnly || Boolean(lockerForm.returnedAt)}
+                                  type="checkbox"
+                                  checked={lockerForm.isActive}
+                                  onChange={(event) => setLockerForm((prev) => ({ ...prev, isActive: event.target.checked, returnedAt: event.target.checked ? '' : prev.returnedAt }))}
+                                />
+                                ArmÃ¡rio ativo
+                              </label>
+
+                              {canEdit ? (
+                                <div className="flex flex-wrap gap-2 pt-2">
+                                  <button type="button" disabled={lockerSaving} onClick={submitLocker} className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
+                                    {lockerSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                    {lockerEditingId ? 'Atualizar armÃ¡rio' : 'Salvar armÃ¡rio'}
+                                  </button>
+                                  <button type="button" onClick={() => { setLockerForm(emptyLockerForm()); setLockerEditingId(null); }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
+                                    Limpar
+                                  </button>
+                                </div>
+                              ) : null}
+                            </div>
+                          </SectionCard>
+
+                          <SectionCard title="HistÃ³rico de armÃ¡rios" description="Trocas, devoluÃ§Ãµes e vÃ­nculos anteriores." icon={FileText}>
+                            <div className="overflow-x-auto">
+                              <table className="min-w-[860px] w-full text-sm">
+                                <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
+                                  <tr>
+                                    <th className="px-2 py-2">Per?odo</th>
+                                    <th className="px-2 py-2">Unidade</th>
+                                    <th className="px-2 py-2">ArmÃ¡rio</th>
+                                    <th className="px-2 py-2">LocalizaÃ§Ã£o</th>
+                                    <th className="px-2 py-2">Chave</th>
+                                    <th className="px-2 py-2">Status</th>
+                                    <th className="px-2 py-2">ObservaÃ§Ãµes</th>
+                                    <th className="px-2 py-2">AÃ§Ãµes</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {lockerItems.length === 0 ? (
+                                    <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-500">Nenhum armÃ¡rio cadastrado.</td></tr>
+                                  ) : lockerItems.map((item) => (
+                                    <tr key={item.id} className="border-t border-slate-100 align-top">
+                                      <td className="px-2 py-2">
+                                        {formatDateBr(item.assignedAt)}
+                                        <div className="text-xs text-slate-500">{item.returnedAt ? `At? ${formatDateBr(item.returnedAt)}` : 'At? o momento'}</div>
+                                      </td>
+                                      <td className="px-2 py-2">{EMPLOYEE_UNIT_LABELS[item.unitName as keyof typeof EMPLOYEE_UNIT_LABELS] || item.unitName}</td>
+                                      <td className="px-2 py-2 font-medium text-slate-700">{item.lockerCode}</td>
+                                      <td className="px-2 py-2">{item.locationDetail || '-'}</td>
+                                      <td className="px-2 py-2">{currentLockerKeyStatuses.find((option) => option.value === item.keyStatus)?.label || item.keyStatus}</td>
+                                      <td className="px-2 py-2">
+                                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${item.isActive ? 'border-emerald-200 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
+                                          {item.isActive ? 'Ativo' : 'HistÃ³rico'}
+                                        </span>
+                                      </td>
+                                      <td className="px-2 py-2 text-xs text-slate-600">{item.notes || '-'}</td>
+                                      <td className="px-2 py-2">
+                                        <div className="flex items-center gap-2">
+                                          {canEdit ? (
+                                            <>
+                                              <button type="button" onClick={() => { setLockerEditingId(item.id); setLockerForm(mapLockerToForm(item)); }} className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Editar</button>
+                                              <button type="button" onClick={() => deleteLocker(item.id)} className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Excluir</button>
+                                            </>
+                                          ) : <span className="text-xs text-slate-400">Somente leitura</span>}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </SectionCard>
+                        </div>
+                      </div>
+
+                      <SectionCard title="HistÃ³rico de uniforme" description="Controle de itens ativos, devolvidos e pendentes." icon={FileText}>
                         <div className="overflow-x-auto">
                           <table className="min-w-[760px] w-full text-sm">
                             <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
@@ -1498,9 +1749,9 @@ export default function ColaboradoresPage() {
                                 <th className="px-2 py-2">Qtd.</th>
                                 <th className="px-2 py-2">Entrega</th>
                                 <th className="px-2 py-2">Status</th>
-                                <th className="px-2 py-2">Responsável</th>
+                                <th className="px-2 py-2">ResponsÃ¡vel</th>
                                 <th className="px-2 py-2">Assinado</th>
-                                <th className="px-2 py-2">Ações</th>
+                                <th className="px-2 py-2">AÃ§Ãµes</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1514,7 +1765,7 @@ export default function ColaboradoresPage() {
                                   <td className="px-2 py-2">{UNIFORM_DELIVERY_TYPES.find((option) => option.value === item.deliveryType)?.label || item.deliveryType}</td>
                                   <td className="px-2 py-2">{UNIFORM_ITEM_STATUSES.find((option) => option.value === item.status)?.label || item.status}</td>
                                   <td className="px-2 py-2">{item.deliveredBy || '-'}</td>
-                                  <td className="px-2 py-2">{item.signedReceipt ? 'Sim' : 'Não'}</td>
+                                  <td className="px-2 py-2">{item.signedReceipt ? 'Sim' : 'NÃ£o'}</td>
                                   <td className="px-2 py-2">
                                     <div className="flex items-center gap-2">
                                       {canEdit ? (
