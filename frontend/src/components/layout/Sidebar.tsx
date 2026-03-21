@@ -98,7 +98,7 @@ const menuItems: MenuItem[] = [
     href: "/profissionais",
     label: "Gestão de Profissionais",
     icon: Stethoscope,
-    group: "GESTÃO DE PESSOAS",
+    group: "OPERAÇÕES",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "profissionais",
   },
@@ -232,6 +232,7 @@ const menuItems: MenuItem[] = [
   },
 ];
 
+const FIRST_GROUP = "PRINCIPAL";
 const LAST_GROUP = "SISTEMA";
 const STORAGE_KEY = "consultare_sidebar_expanded_groups_v1";
 
@@ -268,6 +269,8 @@ export function Sidebar() {
   const groupsOrdered = useMemo(() => {
     const set = new Set(authorizedItems.map((item) => item.group));
     return Array.from(set).sort((a, b) => {
+      if (a === FIRST_GROUP) return -1;
+      if (b === FIRST_GROUP) return 1;
       if (a === LAST_GROUP) return 1;
       if (b === LAST_GROUP) return -1;
       return a.localeCompare(b, "pt-BR", { sensitivity: "base" });

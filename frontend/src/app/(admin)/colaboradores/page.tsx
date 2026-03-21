@@ -1352,53 +1352,62 @@ export default function ColaboradoresPage() {
                         </SectionCard>
                       ) : null}
 
-                      <SectionCard title="Dados bancários e desligamento" description="Informações de pagamento, observações e encerramento de contrato." icon={Wallet}>
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-                          <div className="md:col-span-4">
-                            <label className={fieldLabelClassName}>Banco</label>
-                            <input disabled={currentEmployeeReadOnly} value={form.bankName} onChange={(event) => setForm((prev) => ({ ...prev, bankName: event.target.value }))} className={filterInputClassName} />
+                      <div className="xl:col-span-2 grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        <SectionCard title="Dados banc?rios" description="Informa??es de pagamento do colaborador." icon={Wallet}>
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+                            <div className="md:col-span-4">
+                              <label className={fieldLabelClassName}>Banco</label>
+                              <input disabled={currentEmployeeReadOnly} value={form.bankName} onChange={(event) => setForm((prev) => ({ ...prev, bankName: event.target.value }))} className={filterInputClassName} />
+                            </div>
+                            <div className="md:col-span-4">
+                              <label className={fieldLabelClassName}>Ag?ncia</label>
+                              <input disabled={currentEmployeeReadOnly} value={form.bankAgency} onChange={(event) => setForm((prev) => ({ ...prev, bankAgency: event.target.value }))} className={filterInputClassName} />
+                            </div>
+                            <div className="md:col-span-4">
+                              <label className={fieldLabelClassName}>Conta</label>
+                              <input disabled={currentEmployeeReadOnly} value={form.bankAccount} onChange={(event) => setForm((prev) => ({ ...prev, bankAccount: event.target.value }))} className={filterInputClassName} />
+                            </div>
+                            <div className="md:col-span-6">
+                              <label className={fieldLabelClassName}>Chave PIX</label>
+                              <input disabled={currentEmployeeReadOnly} value={form.pixKey} onChange={(event) => setForm((prev) => ({ ...prev, pixKey: event.target.value }))} className={filterInputClassName} />
+                            </div>
                           </div>
-                          <div className="md:col-span-4">
-                            <label className={fieldLabelClassName}>Agencia</label>
-                            <input disabled={currentEmployeeReadOnly} value={form.bankAgency} onChange={(event) => setForm((prev) => ({ ...prev, bankAgency: event.target.value }))} className={filterInputClassName} />
-                          </div>
-                          <div className="md:col-span-4">
-                            <label className={fieldLabelClassName}>Conta</label>
-                            <input disabled={currentEmployeeReadOnly} value={form.bankAccount} onChange={(event) => setForm((prev) => ({ ...prev, bankAccount: event.target.value }))} className={filterInputClassName} />
-                          </div>
-                          <div className="md:col-span-6">
-                            <label className={fieldLabelClassName}>Chave PIX</label>
-                            <input disabled={currentEmployeeReadOnly} value={form.pixKey} onChange={(event) => setForm((prev) => ({ ...prev, pixKey: event.target.value }))} className={filterInputClassName} />
-                          </div>
-                          <div className="md:col-span-12">
-                            <label className={fieldLabelClassName}>Observações gerais</label>
+                        </SectionCard>
+
+                        <SectionCard title="Observa??es gerais" description="Anota??es internas complementares do cadastro." icon={FileText}>
+                          <div>
+                            <label className={fieldLabelClassName}>Observa??es gerais</label>
                             <textarea
                               disabled={currentEmployeeReadOnly}
                               value={form.notes}
                               onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
-                              rows={3}
+                              rows={6}
                               className={filterInputClassName}
                             />
                           </div>
-                        </div>
+                        </SectionCard>
 
                         {form.status === 'DESLIGADO' ? (
-                          <div className="mt-4 grid grid-cols-1 gap-3 border-t border-slate-200 pt-4 md:grid-cols-12">
-                            <div className="md:col-span-4">
-                              <label className={fieldLabelClassName}>Data de demissão</label>
-                              <input disabled={currentEmployeeReadOnly} type="date" value={form.terminationDate} onChange={(event) => setForm((prev) => ({ ...prev, terminationDate: event.target.value }))} className={filterInputClassName} />
-                            </div>
-                            <div className="md:col-span-8">
-                              <label className={fieldLabelClassName}>Motivo da demissão</label>
-                              <input disabled={currentEmployeeReadOnly} value={form.terminationReason} onChange={(event) => setForm((prev) => ({ ...prev, terminationReason: event.target.value }))} className={filterInputClassName} />
-                            </div>
-                            <div className="md:col-span-12">
-                              <label className={fieldLabelClassName}>Observações</label>
-                              <textarea disabled={currentEmployeeReadOnly} value={form.terminationNotes} onChange={(event) => setForm((prev) => ({ ...prev, terminationNotes: event.target.value }))} rows={3} className={filterInputClassName} />
-                            </div>
+                          <div className="xl:col-span-2">
+                            <SectionCard title="Desligamento" description="Informa??es de encerramento do v?nculo." icon={AlertCircle}>
+                              <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+                                <div className="md:col-span-4">
+                                  <label className={fieldLabelClassName}>Data de demiss?o</label>
+                                  <input disabled={currentEmployeeReadOnly} type="date" value={form.terminationDate} onChange={(event) => setForm((prev) => ({ ...prev, terminationDate: event.target.value }))} className={filterInputClassName} />
+                                </div>
+                                <div className="md:col-span-8">
+                                  <label className={fieldLabelClassName}>Motivo da demiss?o</label>
+                                  <input disabled={currentEmployeeReadOnly} value={form.terminationReason} onChange={(event) => setForm((prev) => ({ ...prev, terminationReason: event.target.value }))} className={filterInputClassName} />
+                                </div>
+                                <div className="md:col-span-12">
+                                  <label className={fieldLabelClassName}>Observa??es</label>
+                                  <textarea disabled={currentEmployeeReadOnly} value={form.terminationNotes} onChange={(event) => setForm((prev) => ({ ...prev, terminationNotes: event.target.value }))} rows={3} className={filterInputClassName} />
+                                </div>
+                              </div>
+                            </SectionCard>
                           </div>
                         ) : null}
-                      </SectionCard>
+                      </div>
                     </div>
                   ) : null}
 
