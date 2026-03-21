@@ -824,10 +824,10 @@ export default function ColaboradoresPage() {
       setLockerItems(payload.data || []);
       setLockerForm(emptyLockerForm());
       setLockerEditingId(null);
-      setModalNotice('ArmÃ¡rio salvo com sucesso.');
+      setModalNotice('Armário salvo com sucesso.');
     } catch (lockerError: any) {
-      console.error('Erro ao salvar arm?rio:', lockerError);
-      setModalError(lockerError?.message || 'Falha ao salvar arm?rio.');
+      console.error('Erro ao salvar armário:', lockerError);
+      setModalError(lockerError?.message || 'Falha ao salvar armário.');
     } finally {
       setLockerSaving(false);
     }
@@ -843,9 +843,9 @@ export default function ColaboradoresPage() {
       setLockerItems(payload.data || []);
       setLockerForm(emptyLockerForm());
       setLockerEditingId(null);
-      setModalNotice('Registro de arm?rio removido.');
+      setModalNotice('Registro de armário removido.');
     } catch (lockerError: any) {
-      setModalError(lockerError?.message || 'Falha ao remover arm?rio.');
+      setModalError(lockerError?.message || 'Falha ao remover armário.');
     }
   };
 
@@ -1542,14 +1542,14 @@ export default function ColaboradoresPage() {
                   {modalTab === 'uniforme' ? (
                     <div className="space-y-4">
                       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px,1fr]">
-                        <SectionCard title="Novo registro de uniforme" description="Retiradas, trocas e devoluÃ§Ãµes de uniforme." icon={Shirt}>
+                        <SectionCard title="Novo registro de uniforme" description="Retiradas, trocas e devoluções de uniforme." icon={Shirt}>
                           <div className="space-y-3">
                             <div>
                               <label className={fieldLabelClassName}>Data de retirada</label>
                               <input disabled={currentEmployeeReadOnly} type="date" value={uniformForm.withdrawalDate} onChange={(event) => setUniformForm((prev) => ({ ...prev, withdrawalDate: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <div>
-                              <label className={fieldLabelClassName}>DescriÃ§Ã£o do item</label>
+                              <label className={fieldLabelClassName}>Descrição do item</label>
                               <input disabled={currentEmployeeReadOnly} value={uniformForm.itemDescription} onChange={(event) => setUniformForm((prev) => ({ ...prev, itemDescription: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <div className="grid grid-cols-2 gap-3">
@@ -1571,7 +1571,7 @@ export default function ColaboradoresPage() {
                               </select>
                             </div>
                             <div>
-                              <label className={fieldLabelClassName}>ResponsÃ¡vel pela entrega</label>
+                              <label className={fieldLabelClassName}>Responsável pela entrega</label>
                               <input disabled={currentEmployeeReadOnly} value={uniformForm.deliveredBy} onChange={(event) => setUniformForm((prev) => ({ ...prev, deliveredBy: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <label className="inline-flex items-center gap-2 text-sm text-slate-700">
@@ -1593,13 +1593,13 @@ export default function ColaboradoresPage() {
                         </SectionCard>
 
                         <div className="grid grid-cols-1 gap-4">
-                          <SectionCard title="ArmÃ¡rio atual" description="VÃ­nculo de armÃ¡rio e controle da chave do colaborador." icon={Briefcase}>
+                          <SectionCard title="Armário atual" description="Vínculo de armário e controle da chave do colaborador." icon={Briefcase}>
                             <div className="space-y-3">
                               {activeLocker ? (
                                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-3 text-sm text-emerald-900">
                                   <div className="flex flex-wrap items-start justify-between gap-2">
                                     <div>
-                                      <div className="font-semibold">ArmÃ¡rio ativo</div>
+                                      <div className="font-semibold">Armário ativo</div>
                                       <div className="mt-1">{EMPLOYEE_UNIT_LABELS[activeLocker.unitName as keyof typeof EMPLOYEE_UNIT_LABELS] || activeLocker.unitName} - {activeLocker.lockerCode}</div>
                                       <div className="mt-1 text-xs text-emerald-700">
                                         Chave: {currentLockerKeyStatuses.find((option) => option.value === activeLocker.keyStatus)?.label || activeLocker.keyStatus}
@@ -1622,7 +1622,7 @@ export default function ColaboradoresPage() {
                                 </div>
                               ) : (
                                 <div className="rounded-lg border border-dashed border-slate-300 bg-white px-3 py-3 text-sm text-slate-500">
-                                  Nenhum armÃ¡rio ativo cadastrado para este colaborador.
+                                  Nenhum armário ativo cadastrado para este colaborador.
                                 </div>
                               )}
 
@@ -1635,12 +1635,12 @@ export default function ColaboradoresPage() {
                                   </select>
                                 </div>
                                 <div>
-                                  <label className={fieldLabelClassName}>NÃºmero / cÃ³digo do armÃ¡rio</label>
+                                  <label className={fieldLabelClassName}>Número / código do armário</label>
                                   <input disabled={currentEmployeeReadOnly} value={lockerForm.lockerCode} onChange={(event) => setLockerForm((prev) => ({ ...prev, lockerCode: event.target.value.toUpperCase() }))} className={filterInputClassName} />
                                 </div>
                                 <div>
-                                  <label className={fieldLabelClassName}>LocalizaÃ§Ã£o</label>
-                                  <input disabled={currentEmployeeReadOnly} value={lockerForm.locationDetail} onChange={(event) => setLockerForm((prev) => ({ ...prev, locationDetail: event.target.value }))} className={filterInputClassName} placeholder="Ex.: VestiÃ¡rio feminino" />
+                                  <label className={fieldLabelClassName}>Localização</label>
+                                  <input disabled={currentEmployeeReadOnly} value={lockerForm.locationDetail} onChange={(event) => setLockerForm((prev) => ({ ...prev, locationDetail: event.target.value }))} className={filterInputClassName} placeholder="Ex.: Vestiário feminino" />
                                 </div>
                                 <div>
                                   <label className={fieldLabelClassName}>Status da chave</label>
@@ -1653,11 +1653,11 @@ export default function ColaboradoresPage() {
                                   <input disabled={currentEmployeeReadOnly} type="date" value={lockerForm.assignedAt} onChange={(event) => setLockerForm((prev) => ({ ...prev, assignedAt: event.target.value }))} className={filterInputClassName} />
                                 </div>
                                 <div>
-                                  <label className={fieldLabelClassName}>Data de devoluÃ§Ã£o</label>
+                                  <label className={fieldLabelClassName}>Data de devolução</label>
                                   <input disabled={currentEmployeeReadOnly} type="date" value={lockerForm.returnedAt} onChange={(event) => setLockerForm((prev) => ({ ...prev, returnedAt: event.target.value, isActive: event.target.value ? false : prev.isActive }))} className={filterInputClassName} />
                                 </div>
                                 <div className="md:col-span-2">
-                                  <label className={fieldLabelClassName}>ObservaÃ§Ãµes</label>
+                                  <label className={fieldLabelClassName}>Observações</label>
                                   <textarea disabled={currentEmployeeReadOnly} rows={3} value={lockerForm.notes} onChange={(event) => setLockerForm((prev) => ({ ...prev, notes: event.target.value }))} className={filterInputClassName} />
                                 </div>
                               </div>
@@ -1669,14 +1669,14 @@ export default function ColaboradoresPage() {
                                   checked={lockerForm.isActive}
                                   onChange={(event) => setLockerForm((prev) => ({ ...prev, isActive: event.target.checked, returnedAt: event.target.checked ? '' : prev.returnedAt }))}
                                 />
-                                ArmÃ¡rio ativo
+                                Armário ativo
                               </label>
 
                               {canEdit ? (
                                 <div className="flex flex-wrap gap-2 pt-2">
                                   <button type="button" disabled={lockerSaving} onClick={submitLocker} className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
                                     {lockerSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                                    {lockerEditingId ? 'Atualizar armÃ¡rio' : 'Salvar armÃ¡rio'}
+                                    {lockerEditingId ? 'Atualizar armário' : 'Salvar armário'}
                                   </button>
                                   <button type="button" onClick={() => { setLockerForm(emptyLockerForm()); setLockerEditingId(null); }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
                                     Limpar
@@ -1686,24 +1686,24 @@ export default function ColaboradoresPage() {
                             </div>
                           </SectionCard>
 
-                          <SectionCard title="HistÃ³rico de armÃ¡rios" description="Trocas, devoluÃ§Ãµes e vÃ­nculos anteriores." icon={FileText}>
+                          <SectionCard title="Histórico de armários" description="Trocas, devoluções e vínculos anteriores." icon={FileText}>
                             <div className="overflow-x-auto">
                               <table className="min-w-[860px] w-full text-sm">
                                 <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
                                   <tr>
                                     <th className="px-2 py-2">Per?odo</th>
                                     <th className="px-2 py-2">Unidade</th>
-                                    <th className="px-2 py-2">ArmÃ¡rio</th>
-                                    <th className="px-2 py-2">LocalizaÃ§Ã£o</th>
+                                    <th className="px-2 py-2">Armário</th>
+                                    <th className="px-2 py-2">Localização</th>
                                     <th className="px-2 py-2">Chave</th>
                                     <th className="px-2 py-2">Status</th>
-                                    <th className="px-2 py-2">ObservaÃ§Ãµes</th>
-                                    <th className="px-2 py-2">AÃ§Ãµes</th>
+                                    <th className="px-2 py-2">Observações</th>
+                                    <th className="px-2 py-2">Ações</th>
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {lockerItems.length === 0 ? (
-                                    <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-500">Nenhum armÃ¡rio cadastrado.</td></tr>
+                                    <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-500">Nenhum armário cadastrado.</td></tr>
                                   ) : lockerItems.map((item) => (
                                     <tr key={item.id} className="border-t border-slate-100 align-top">
                                       <td className="px-2 py-2">
@@ -1716,7 +1716,7 @@ export default function ColaboradoresPage() {
                                       <td className="px-2 py-2">{currentLockerKeyStatuses.find((option) => option.value === item.keyStatus)?.label || item.keyStatus}</td>
                                       <td className="px-2 py-2">
                                         <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${item.isActive ? 'border-emerald-200 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-600'}`}>
-                                          {item.isActive ? 'Ativo' : 'HistÃ³rico'}
+                                          {item.isActive ? 'Ativo' : 'Histórico'}
                                         </span>
                                       </td>
                                       <td className="px-2 py-2 text-xs text-slate-600">{item.notes || '-'}</td>
@@ -1739,7 +1739,7 @@ export default function ColaboradoresPage() {
                         </div>
                       </div>
 
-                      <SectionCard title="HistÃ³rico de uniforme" description="Controle de itens ativos, devolvidos e pendentes." icon={FileText}>
+                      <SectionCard title="Histórico de uniforme" description="Controle de itens ativos, devolvidos e pendentes." icon={FileText}>
                         <div className="overflow-x-auto">
                           <table className="min-w-[760px] w-full text-sm">
                             <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
@@ -1749,9 +1749,9 @@ export default function ColaboradoresPage() {
                                 <th className="px-2 py-2">Qtd.</th>
                                 <th className="px-2 py-2">Entrega</th>
                                 <th className="px-2 py-2">Status</th>
-                                <th className="px-2 py-2">ResponsÃ¡vel</th>
+                                <th className="px-2 py-2">Responsável</th>
                                 <th className="px-2 py-2">Assinado</th>
-                                <th className="px-2 py-2">AÃ§Ãµes</th>
+                                <th className="px-2 py-2">Ações</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1765,7 +1765,7 @@ export default function ColaboradoresPage() {
                                   <td className="px-2 py-2">{UNIFORM_DELIVERY_TYPES.find((option) => option.value === item.deliveryType)?.label || item.deliveryType}</td>
                                   <td className="px-2 py-2">{UNIFORM_ITEM_STATUSES.find((option) => option.value === item.status)?.label || item.status}</td>
                                   <td className="px-2 py-2">{item.deliveredBy || '-'}</td>
-                                  <td className="px-2 py-2">{item.signedReceipt ? 'Sim' : 'NÃ£o'}</td>
+                                  <td className="px-2 py-2">{item.signedReceipt ? 'Sim' : 'Não'}</td>
                                   <td className="px-2 py-2">
                                     <div className="flex items-center gap-2">
                                       {canEdit ? (
