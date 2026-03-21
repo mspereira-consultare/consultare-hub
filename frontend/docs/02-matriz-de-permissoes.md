@@ -246,3 +246,31 @@ Implementacao:
   - `POST /api/admin/agenda-ocupacao/refresh`
   - `GET /api/admin/agenda-ocupacao/jobs/latest`
   - `GET /api/admin/agenda-ocupacao/export`
+
+## Atualizacao: modulo `colaboradores`
+
+### Rota
+
+- `/colaboradores`
+- APIs relacionadas: `/api/admin/colaboradores*`
+
+### Defaults atuais
+
+| Perfil | view | edit | refresh |
+|---|---:|---:|---:|
+| ADMIN | sim | sim | sim |
+| GESTOR | sim | sim | sim |
+| OPERADOR | sim | sim | sim |
+
+### Regra de autorizacao
+
+- Listagem, detalhe e downloads (`GET`): exige `view`.
+- Criacao/edicao (`POST`/`PUT`): exige `edit`.
+- Remocoes de uniforme/recesso (`DELETE`): exige `edit`.
+- `refresh` permanece no modelo de permissao, mas nao aciona worker especifico no V1.
+
+Implementacao:
+- `frontend/src/lib/permissions.ts`
+- `frontend/src/lib/colaboradores/auth.ts`
+- `frontend/src/app/api/admin/colaboradores/route.ts`
+- `frontend/src/app/api/admin/colaboradores/[id]/route.ts`

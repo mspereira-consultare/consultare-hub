@@ -103,6 +103,14 @@ const menuItems: MenuItem[] = [
     pageKey: "profissionais",
   },
   {
+    href: "/colaboradores",
+    label: "Colaboradores",
+    icon: Users,
+    group: "PESSOAL",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "colaboradores",
+  },
+  {
     href: "/qualidade/documentos",
     label: "Documentos",
     icon: FileText,

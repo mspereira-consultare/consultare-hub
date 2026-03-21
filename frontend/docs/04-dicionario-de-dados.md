@@ -798,3 +798,106 @@ Campos principais:
 - Fila manual de processamento para atualizacao de ocupacao.
 - Status: `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`.
 - Origem de solicitacao: `/api/admin/agenda-ocupacao/refresh`.
+
+## Atualizacao adicional - Modulo de Colaboradores
+
+### `employees`
+
+Finalidade:
+- cadastro principal do colaborador para o Departamento Pessoal.
+
+Campos principais:
+- `id` (PK)
+- `full_name`
+- `employment_regime` (`CLT`, `PJ`, `ESTAGIO`)
+- `status` (`ATIVO`, `DESLIGADO`)
+- `rg`, `cpf`, `email`, `phone`, `birth_date`
+- `street`, `street_number`, `address_complement`, `district`, `city`, `state_uf`, `zip_code`
+- `education_institution`, `education_level`, `course_name`, `current_semester`
+- `work_schedule`, `salary_amount`, `contract_duration_text`
+- `admission_date`, `contract_end_date`
+- `termination_date`, `termination_reason`, `termination_notes`
+- `units_json`, `job_title`, `department`, `supervisor_name`, `cost_center`
+- `insalubrity_percent`, `transport_voucher_per_day`, `meal_voucher_per_day`, `life_insurance_status`
+- `marital_status`, `has_children`, `children_count`
+- `bank_name`, `bank_agency`, `bank_account`, `pix_key`
+- `created_at`, `updated_at`
+
+Escrita: APIs `/api/admin/colaboradores`.
+
+### `employee_documents`
+
+Finalidade:
+- armazenar metadados dos documentos anexados ao colaborador.
+
+Campos principais:
+- `id` (PK)
+- `employee_id`
+- `doc_type`
+- `storage_provider`, `storage_bucket`, `storage_key`
+- `original_name`, `mime_type`, `size_bytes`
+- `issue_date`, `expires_at`, `notes`
+- `is_active`
+- `uploaded_by`, `created_at`
+
+Observacao:
+- o tipo `ASO` usa `issue_date` e `expires_at` para calculo de status.
+- uploads novos do mesmo `doc_type` desativam os anteriores.
+
+Escrita: `POST /api/admin/colaboradores/:id/documentos`.
+
+### `employee_uniform_items`
+
+Finalidade:
+- controlar entregas e devolucoes de uniforme/armario.
+
+Campos principais:
+- `id` (PK)
+- `employee_id`
+- `withdrawal_date`
+- `item_description`
+- `quantity`
+- `signed_receipt`
+- `delivery_type`
+- `delivered_by`
+- `status`
+- `created_at`, `updated_at`
+
+Escrita: APIs `/api/admin/colaboradores/:id/uniformes*`.
+
+### `employee_recess_periods`
+
+Finalidade:
+- controlar periodos aquisitivos e planejamento de ferias/recessos.
+
+Campos principais:
+- `id` (PK)
+- `employee_id`
+- `acquisition_start_date`, `acquisition_end_date`
+- `days_due`, `days_paid`
+- `leave_deadline_date`
+- `vacation_start_date`, `vacation_duration_days`
+- `sell_ten_days`, `thirteenth_on_vacation`
+- `created_at`, `updated_at`
+
+Campos derivados em leitura:
+- `balance`
+- `vacationEndDate`
+- `situation`
+
+Escrita: APIs `/api/admin/colaboradores/:id/recessos*`.
+
+### `employee_audit_log`
+
+Finalidade:
+- trilha de auditoria de criacao, edicao e operacoes acessorias do modulo.
+
+Campos principais:
+- `id` (PK)
+- `employee_id`
+- `action`
+- `actor_user_id`
+- `payload_json`
+- `created_at`
+
+Escrita: repositorio do modulo em toda mutacao relevante.

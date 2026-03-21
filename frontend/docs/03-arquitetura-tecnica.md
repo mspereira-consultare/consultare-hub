@@ -409,3 +409,52 @@ Detalhes tecnicos:
 - Orquestrador (`workers/main.py`) processa o servico `agenda_occupancy` sob demanda via `system_status`.
 - Worker `workers/worker_agenda_ocupacao.py` coleta API Feegow e grava snapshot em `agenda_occupancy_daily`.
 - Exportacoes (`xlsx`/`pdf`) leem apenas o snapshot no banco (sem chamada online a API Feegow).
+
+## Atualizacao adicional - Modulo de Colaboradores
+
+### Componentes novos
+
+- Pagina: `frontend/src/app/(admin)/colaboradores/page.tsx`
+- APIs:
+  - `GET/POST /api/admin/colaboradores`
+  - `GET/PUT /api/admin/colaboradores/:id`
+  - `GET /api/admin/colaboradores/options`
+  - `GET/POST /api/admin/colaboradores/:id/documentos`
+  - `GET /api/admin/colaboradores/documentos/:documentId/download`
+  - `GET/POST /api/admin/colaboradores/:id/uniformes`
+  - `PUT/DELETE /api/admin/colaboradores/:id/uniformes/:entryId`
+  - `GET/POST /api/admin/colaboradores/:id/recessos`
+  - `PUT/DELETE /api/admin/colaboradores/:id/recessos/:entryId`
+- Dominio:
+  - `frontend/src/lib/colaboradores/repository.ts`
+  - `frontend/src/lib/colaboradores/status.ts`
+  - `frontend/src/lib/colaboradores/constants.ts`
+  - `frontend/src/lib/colaboradores/auth.ts`
+  - `frontend/src/lib/colaboradores/types.ts`
+
+### Banco
+
+O modulo garante as tabelas abaixo em runtime:
+- `employees`
+- `employee_documents`
+- `employee_uniform_items`
+- `employee_recess_periods`
+- `employee_audit_log`
+
+### Fluxo tecnico
+
+1. Usuario abre `/colaboradores`.
+2. Frontend chama `GET /api/admin/colaboradores` e `GET /api/admin/colaboradores/options`.
+3. API valida permissao `view` e garante schema do modulo.
+4. Repositorio calcula status do ASO e pendencias documentais a partir de `employee_documents`.
+5. Em criacao/edicao, o frontend envia `POST` ou `PUT` para o colaborador principal.
+6. Abas de `Uniforme`, `Recesso` e `Documentos` usam rotas especificas por colaborador.
+7. Toda mutacao grava trilha em `employee_audit_log`.
+
+### Regras operacionais
+
+- `DESLIGADO` exige `termination_date` e `termination_reason`.
+- `ESTAGIO` exige campos de instituicao, nivel e curso.
+- `ASO` e tratado como tipo documental proprio com `issue_date` e `expires_at`.
+- O upload em massa de documentos e orquestrado no frontend, reaproveitando o endpoint de upload unitario.
+- Nao ha worker dedicado; o modulo e CRUD puro sobre MySQL + storage.
