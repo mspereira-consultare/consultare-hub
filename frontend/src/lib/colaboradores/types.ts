@@ -56,6 +56,7 @@ export type Employee = {
   bankAgency: string | null;
   bankAccount: string | null;
   pixKey: string | null;
+  notes: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -165,6 +166,7 @@ export type EmployeeInput = {
   bankAgency?: string | null;
   bankAccount?: string | null;
   pixKey?: string | null;
+  notes?: string | null;
 };
 
 export type EmployeeDocumentUploadInput = {

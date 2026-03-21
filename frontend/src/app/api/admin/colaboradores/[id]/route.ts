@@ -22,7 +22,7 @@ export async function GET(_: Request, context: ParamsContext) {
     const { id } = await context.params;
     const employee = await getEmployeeById(auth.db, String(id || ''));
     if (!employee) {
-      return NextResponse.json({ error: 'Colaborador nao encontrado.' }, { status: 404 });
+      return NextResponse.json({ error: 'Colaborador não encontrado.' }, { status: 404 });
     }
 
     return NextResponse.json({ status: 'success', data: employee });

@@ -51,13 +51,13 @@ export async function POST(request: Request, context: ParamsContext) {
     const { id } = await context.params;
     const employeeId = String(id || '').trim();
     if (!employeeId) {
-      return NextResponse.json({ error: 'ID do colaborador invalido.' }, { status: 400 });
+      return NextResponse.json({ error: 'ID do colaborador inválido.' }, { status: 400 });
     }
 
     const formData = await request.formData();
     const filePart = formData.get('file');
     if (!(filePart instanceof File)) {
-      return NextResponse.json({ error: 'Arquivo nao enviado.' }, { status: 400 });
+      return NextResponse.json({ error: 'Arquivo não enviado.' }, { status: 400 });
     }
 
     const docType = String(formData.get('docType') || '').trim().toUpperCase();

@@ -14,9 +14,9 @@ export async function GET() {
     const data = await getEmployeesOptions(auth.db);
     return NextResponse.json({ status: 'success', data });
   } catch (error: any) {
-    console.error('Erro ao carregar opcoes de colaboradores:', error);
+    console.error('Erro ao carregar opções de colaboradores:', error);
     return NextResponse.json(
-      { error: error?.message || 'Erro interno ao carregar opcoes.' },
+      { error: error?.message || 'Erro interno ao carregar opções.' },
       { status: Number(error?.status) || 500 }
     );
   }

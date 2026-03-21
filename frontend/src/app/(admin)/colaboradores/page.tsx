@@ -24,6 +24,7 @@ import {
 import { hasPermission } from '@/lib/permissions';
 import {
   ASO_STATUSES,
+  BRAZIL_UFS,
   EDUCATION_LEVELS,
   EMPLOYEE_DOCUMENT_TYPES,
   EMPLOYEE_STATUSES,
@@ -128,6 +129,7 @@ type EmployeeFormState = {
   bankAgency: string;
   bankAccount: string;
   pixKey: string;
+  notes: string;
 };
 
 type UniformFormState = {
@@ -255,6 +257,7 @@ const emptyEmployeeForm = (): EmployeeFormState => ({
   bankAgency: '',
   bankAccount: '',
   pixKey: '',
+  notes: '',
 });
 
 const emptyUniformForm = (): UniformFormState => ({
@@ -368,6 +371,7 @@ const mapEmployeeToForm = (employee: EmployeeListItem): EmployeeFormState => ({
   bankAgency: employee.bankAgency || '',
   bankAccount: employee.bankAccount || '',
   pixKey: employee.pixKey || '',
+  notes: employee.notes || '',
 });
 
 const mapAsoBadge = (status: string) => {
@@ -541,8 +545,8 @@ export default function ColaboradoresPage() {
       const payload = await fetchJson<{ status: string; data: EmployeesOptionsPayload }>('/api/admin/colaboradores/options');
       setOptions(payload.data || emptyOptions);
     } catch (optionsError: any) {
-      console.error('Erro ao carregar opcoes de colaboradores:', optionsError);
-      setError(optionsError?.message || 'Falha ao carregar opcoes do modulo.');
+      console.error('Erro ao carregar opções de colaboradores:', optionsError);
+      setError(optionsError?.message || 'Falha ao carregar opções do módulo.');
     } finally {
       setOptionsLoading(false);
     }
@@ -684,7 +688,7 @@ export default function ColaboradoresPage() {
       setModalNotice(
         currentEmployeeId
           ? 'Cadastro atualizado com sucesso.'
-          : 'Colaborador criado com sucesso. Agora voce pode registrar documentos, uniforme e recessos.'
+          : 'Colaborador criado com sucesso. Agora você pode registrar documentos, uniforme e recessos.'
       );
       setPagination((prev) => ({ ...prev, page: createdNow ? 1 : prev.page }));
       await loadList(createdNow ? 1 : pagination.page, appliedFilters);
@@ -760,7 +764,7 @@ export default function ColaboradoresPage() {
       setRecessItems(payload.data || []);
       setRecessForm(emptyRecessForm());
       setRecessEditingId(null);
-      setModalNotice('Periodo de recesso salvo com sucesso.');
+      setModalNotice('Período de recesso salvo com sucesso.');
     } catch (recessError: any) {
       console.error('Erro ao salvar recesso:', recessError);
       setModalError(recessError?.message || 'Falha ao salvar recesso.');
@@ -779,7 +783,7 @@ export default function ColaboradoresPage() {
       setRecessItems(payload.data || []);
       setRecessForm(emptyRecessForm());
       setRecessEditingId(null);
-      setModalNotice('Periodo de recesso removido.');
+      setModalNotice('Período de recesso removido.');
     } catch (recessError: any) {
       setModalError(recessError?.message || 'Falha ao remover recesso.');
     }
@@ -842,8 +846,8 @@ export default function ColaboradoresPage() {
     <div className="mx-auto max-w-[1700px] p-8">
       <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Gestao de Colaboradores</h1>
-          <p className="text-slate-500">Cadastro, beneficios, documentos, uniforme e recessos do Departamento Pessoal.</p>
+          <h1 className="text-2xl font-bold text-slate-800">Gestão de Colaboradores</h1>
+          <p className="text-slate-500">Cadastro, benefícios, documentos, uniforme e recessos do Departamento Pessoal.</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -961,15 +965,15 @@ export default function ColaboradoresPage() {
             </select>
           </div>
           <div>
-            <label className={fieldLabelClassName}>Documentacao</label>
+            <label className={fieldLabelClassName}>Documentação</label>
             <select value={filters.pendencyStatus} onChange={(event) => setFilters((prev) => ({ ...prev, pendencyStatus: event.target.value as any }))} className={filterInputClassName}>
               <option value="all">Todos</option>
-              <option value="pending">Com pendencia</option>
+              <option value="pending">Com pendência</option>
               <option value="complete">Completo</option>
             </select>
           </div>
           <div className="flex items-end justify-end text-xs text-slate-500">
-            {optionsLoading ? 'Atualizando opcoes...' : `${pagination.total} colaborador(es) encontrado(s)`}
+            {optionsLoading ? 'Atualizando opções...' : `${pagination.total} colaborador(es) encontrado(s)`}
           </div>
         </div>
       </div>
@@ -983,11 +987,11 @@ export default function ColaboradoresPage() {
                 <th className="px-4 py-3">Regime</th>
                 <th className="px-4 py-3">Cargo / Setor</th>
                 <th className="px-4 py-3">Unidades</th>
-                <th className="px-4 py-3">Admissao</th>
+                <th className="px-4 py-3">Admissão</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">ASO</th>
                 <th className="px-4 py-3">Documentos</th>
-                <th className="px-4 py-3">Acoes</th>
+                <th className="px-4 py-3">Ações</th>
               </tr>
             </thead>
             <tbody>
@@ -1017,7 +1021,7 @@ export default function ColaboradoresPage() {
                     <td className="px-4 py-3">{EMPLOYMENT_REGIMES.find((regime) => regime.value === item.employmentRegime)?.label || item.employmentRegime}</td>
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-700">{item.jobTitle || '-'}</div>
-                      <div className="text-xs text-slate-500">{item.department || 'Setor nao informado'}</div>
+                      <div className="text-xs text-slate-500">{item.department || 'Setor não informado'}</div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1.5">
@@ -1049,7 +1053,7 @@ export default function ColaboradoresPage() {
                     <td className="px-4 py-3">
                       <div className="font-medium text-slate-700">{item.requiredDocsDone}/{item.requiredDocsTotal}</div>
                       <div className="mt-1 text-xs text-slate-500">
-                        {item.pendingDocuments ? 'Ha pendencias documentais' : 'Checklist completo'}
+                        {item.pendingDocuments ? 'Há pendências documentais' : 'Checklist completo'}
                       </div>
                     </td>
                     <td className="px-4 py-3">
@@ -1098,7 +1102,7 @@ export default function ColaboradoresPage() {
             }}
             className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Proxima
+            Próxima
           </button>
         </div>
       </div>
@@ -1109,7 +1113,7 @@ export default function ColaboradoresPage() {
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h2 className="text-lg font-semibold text-slate-800">{currentEmployeeId ? 'Editar colaborador' : 'Novo colaborador'}</h2>
-                <p className="text-sm text-slate-500">Modal em abas para cadastro, beneficios, uniforme, recesso e documentos.</p>
+                <p className="text-sm text-slate-500">Modal em abas para cadastro, benefícios, uniforme, recesso e documentos.</p>
               </div>
               <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
                 <X size={18} />
@@ -1119,8 +1123,8 @@ export default function ColaboradoresPage() {
             <div className="border-b border-slate-200 px-5 py-3">
               <div className="inline-flex flex-wrap rounded-xl border border-slate-200 bg-slate-50 p-1">
                 <TabButton active={modalTab === 'cadastro'} onClick={() => setModalTab('cadastro')}>Cadastro</TabButton>
-                <TabButton active={modalTab === 'beneficios'} onClick={() => setModalTab('beneficios')}>Beneficios</TabButton>
-                <TabButton active={modalTab === 'uniforme'} disabled={!currentEmployeeId} onClick={() => setModalTab('uniforme')}>Uniforme & Armario</TabButton>
+                <TabButton active={modalTab === 'beneficios'} onClick={() => setModalTab('beneficios')}>Benefícios</TabButton>
+                <TabButton active={modalTab === 'uniforme'} disabled={!currentEmployeeId} onClick={() => setModalTab('uniforme')}>Uniforme & Armário</TabButton>
                 <TabButton active={modalTab === 'recesso'} disabled={!currentEmployeeId} onClick={() => setModalTab('recesso')}>Recesso</TabButton>
                 <TabButton active={modalTab === 'documentos'} disabled={!currentEmployeeId} onClick={() => setModalTab('documentos')}>Documentos</TabButton>
               </div>
@@ -1151,7 +1155,7 @@ export default function ColaboradoresPage() {
 
                   {modalTab === 'cadastro' ? (
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                      <SectionCard title="Identificacao" description="Dados pessoais e status do colaborador." icon={UserRound}>
+                      <SectionCard title="Identificação" description="Dados pessoais e status do colaborador." icon={UserRound}>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
                           <div className="md:col-span-8">
                             <label className={fieldLabelClassName}>Nome completo *</label>
@@ -1184,7 +1188,7 @@ export default function ColaboradoresPage() {
                           <div className="md:col-span-4">
                             <label className={fieldLabelClassName}>Estado civil</label>
                             <select disabled={currentEmployeeReadOnly} value={form.maritalStatus} onChange={(event) => setForm((prev) => ({ ...prev, maritalStatus: event.target.value }))} className={filterInputClassName}>
-                              <option value="">Nao informado</option>
+                              <option value="">Não informado</option>
                               {MARITAL_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                             </select>
                           </div>
@@ -1199,7 +1203,7 @@ export default function ColaboradoresPage() {
                         </div>
                       </SectionCard>
 
-                      <SectionCard title="Contato" description="Canais de contato e endereco residencial." icon={Briefcase}>
+                      <SectionCard title="Contato" description="Canais de contato e endereço residencial." icon={Briefcase}>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
                           <div className="md:col-span-6">
                             <label className={fieldLabelClassName}>E-mail</label>
@@ -1214,7 +1218,7 @@ export default function ColaboradoresPage() {
                             <input disabled={currentEmployeeReadOnly} value={form.street} onChange={(event) => setForm((prev) => ({ ...prev, street: event.target.value }))} className={filterInputClassName} />
                           </div>
                           <div className="md:col-span-4">
-                            <label className={fieldLabelClassName}>Numero</label>
+                            <label className={fieldLabelClassName}>Número</label>
                             <input disabled={currentEmployeeReadOnly} value={form.streetNumber} onChange={(event) => setForm((prev) => ({ ...prev, streetNumber: event.target.value }))} className={filterInputClassName} />
                           </div>
                           <div className="md:col-span-5">
@@ -1235,15 +1239,26 @@ export default function ColaboradoresPage() {
                           </div>
                           <div className="md:col-span-2">
                             <label className={fieldLabelClassName}>UF</label>
-                            <input disabled={currentEmployeeReadOnly} value={form.stateUf} maxLength={2} onChange={(event) => setForm((prev) => ({ ...prev, stateUf: event.target.value.toUpperCase() }))} className={filterInputClassName} />
+                            <select
+                              disabled={currentEmployeeReadOnly}
+                              value={form.stateUf}
+                              onChange={(event) => setForm((prev) => ({ ...prev, stateUf: event.target.value }))}
+                              className={filterInputClassName}
+                            >
+                              {BRAZIL_UFS.map((uf) => (
+                                <option key={uf} value={uf}>
+                                  {uf}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         </div>
                       </SectionCard>
 
-                      <SectionCard title="Vinculo contratual" description="Informacoes de contrato, jornada e vigencia." icon={Wallet}>
+                      <SectionCard title="Vínculo contratual" description="Informações de contrato, jornada e vigência." icon={Wallet}>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
                           <div className="md:col-span-6">
-                            <label className={fieldLabelClassName}>Data de admissao *</label>
+                            <label className={fieldLabelClassName}>Data de admissão *</label>
                             <input disabled={currentEmployeeReadOnly} type="date" value={form.admissionDate} onChange={(event) => setForm((prev) => ({ ...prev, admissionDate: event.target.value }))} className={filterInputClassName} />
                           </div>
                           <div className="md:col-span-6">
@@ -1255,17 +1270,17 @@ export default function ColaboradoresPage() {
                             <textarea disabled={currentEmployeeReadOnly} value={form.workSchedule} onChange={(event) => setForm((prev) => ({ ...prev, workSchedule: event.target.value }))} rows={3} className={filterInputClassName} />
                           </div>
                           <div className="md:col-span-4">
-                            <label className={fieldLabelClassName}>Salario / Bolsa</label>
+                            <label className={fieldLabelClassName}>Salário / Bolsa</label>
                             <input disabled={currentEmployeeReadOnly} value={form.salaryAmount} onChange={(event) => setForm((prev) => ({ ...prev, salaryAmount: event.target.value }))} className={filterInputClassName} placeholder="0,00" />
                           </div>
                           <div className="md:col-span-6">
-                            <label className={fieldLabelClassName}>Duracao do contrato</label>
+                            <label className={fieldLabelClassName}>Duração do contrato</label>
                             <input disabled={currentEmployeeReadOnly} value={form.contractDurationText} onChange={(event) => setForm((prev) => ({ ...prev, contractDurationText: event.target.value }))} className={filterInputClassName} placeholder="Ex.: 12 meses" />
                           </div>
                         </div>
                       </SectionCard>
 
-                      <SectionCard title="Lotacao e gestao" description="Unidades, cargo, setor e lideranca." icon={Briefcase}>
+                      <SectionCard title="Lotação e gestão" description="Unidades, cargo, setor e liderança." icon={Briefcase}>
                         <div className="space-y-3">
                           <div>
                             <label className={fieldLabelClassName}>Unidades</label>
@@ -1292,7 +1307,7 @@ export default function ColaboradoresPage() {
                           </div>
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
                             <div className="md:col-span-6">
-                              <label className={fieldLabelClassName}>Cargo / Funcao</label>
+                              <label className={fieldLabelClassName}>Cargo / Função</label>
                               <input list="employee-job-titles" disabled={currentEmployeeReadOnly} value={form.jobTitle} onChange={(event) => setForm((prev) => ({ ...prev, jobTitle: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <div className="md:col-span-6">
@@ -1312,14 +1327,14 @@ export default function ColaboradoresPage() {
                       </SectionCard>
 
                       {form.employmentRegime === 'ESTAGIO' ? (
-                        <SectionCard title="Estagio" description="Dados academicos obrigatorios para estagiarios." icon={CalendarClock}>
+                        <SectionCard title="Estágio" description="Dados acadêmicos obrigatórios para estagiários." icon={CalendarClock}>
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
                             <div className="md:col-span-6">
-                              <label className={fieldLabelClassName}>Instituicao de ensino</label>
+                              <label className={fieldLabelClassName}>Instituição de ensino</label>
                               <input disabled={currentEmployeeReadOnly} value={form.educationInstitution} onChange={(event) => setForm((prev) => ({ ...prev, educationInstitution: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <div className="md:col-span-3">
-                              <label className={fieldLabelClassName}>Nivel</label>
+                              <label className={fieldLabelClassName}>Nível</label>
                               <select disabled={currentEmployeeReadOnly} value={form.educationLevel} onChange={(event) => setForm((prev) => ({ ...prev, educationLevel: event.target.value }))} className={filterInputClassName}>
                                 <option value="">Selecione</option>
                                 {EDUCATION_LEVELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
@@ -1337,7 +1352,7 @@ export default function ColaboradoresPage() {
                         </SectionCard>
                       ) : null}
 
-                      <SectionCard title="Dados bancarios e desligamento" description="Informacoes de pagamento e encerramento de contrato." icon={Wallet}>
+                      <SectionCard title="Dados bancários e desligamento" description="Informações de pagamento, observações e encerramento de contrato." icon={Wallet}>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
                           <div className="md:col-span-4">
                             <label className={fieldLabelClassName}>Banco</label>
@@ -1355,20 +1370,30 @@ export default function ColaboradoresPage() {
                             <label className={fieldLabelClassName}>Chave PIX</label>
                             <input disabled={currentEmployeeReadOnly} value={form.pixKey} onChange={(event) => setForm((prev) => ({ ...prev, pixKey: event.target.value }))} className={filterInputClassName} />
                           </div>
+                          <div className="md:col-span-12">
+                            <label className={fieldLabelClassName}>Observações gerais</label>
+                            <textarea
+                              disabled={currentEmployeeReadOnly}
+                              value={form.notes}
+                              onChange={(event) => setForm((prev) => ({ ...prev, notes: event.target.value }))}
+                              rows={3}
+                              className={filterInputClassName}
+                            />
+                          </div>
                         </div>
 
                         {form.status === 'DESLIGADO' ? (
                           <div className="mt-4 grid grid-cols-1 gap-3 border-t border-slate-200 pt-4 md:grid-cols-12">
                             <div className="md:col-span-4">
-                              <label className={fieldLabelClassName}>Data de demissao</label>
+                              <label className={fieldLabelClassName}>Data de demissão</label>
                               <input disabled={currentEmployeeReadOnly} type="date" value={form.terminationDate} onChange={(event) => setForm((prev) => ({ ...prev, terminationDate: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <div className="md:col-span-8">
-                              <label className={fieldLabelClassName}>Motivo da demissao</label>
+                              <label className={fieldLabelClassName}>Motivo da demissão</label>
                               <input disabled={currentEmployeeReadOnly} value={form.terminationReason} onChange={(event) => setForm((prev) => ({ ...prev, terminationReason: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <div className="md:col-span-12">
-                              <label className={fieldLabelClassName}>Observacoes</label>
+                              <label className={fieldLabelClassName}>Observações</label>
                               <textarea disabled={currentEmployeeReadOnly} value={form.terminationNotes} onChange={(event) => setForm((prev) => ({ ...prev, terminationNotes: event.target.value }))} rows={3} className={filterInputClassName} />
                             </div>
                           </div>
@@ -1378,7 +1403,7 @@ export default function ColaboradoresPage() {
                   ) : null}
 
                   {modalTab === 'beneficios' ? (
-                    <SectionCard title="Beneficios" description="Beneficios financeiros e adicionais do colaborador." icon={Wallet}>
+                    <SectionCard title="Benefícios" description="Benefícios financeiros e adicionais do colaborador." icon={Wallet}>
                       <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
                         <div className="md:col-span-3">
                           <label className={fieldLabelClassName}>Insalubridade (%)</label>
@@ -1389,7 +1414,7 @@ export default function ColaboradoresPage() {
                           <input disabled={currentEmployeeReadOnly} value={form.transportVoucherPerDay} onChange={(event) => setForm((prev) => ({ ...prev, transportVoucherPerDay: event.target.value }))} className={filterInputClassName} placeholder="0,00" />
                         </div>
                         <div className="md:col-span-3">
-                          <label className={fieldLabelClassName}>Vale refeicao (R$/dia)</label>
+                          <label className={fieldLabelClassName}>Vale refeição (R$/dia)</label>
                           <input disabled={currentEmployeeReadOnly} value={form.mealVoucherPerDay} onChange={(event) => setForm((prev) => ({ ...prev, mealVoucherPerDay: event.target.value }))} className={filterInputClassName} placeholder="0,00" />
                         </div>
                         <div className="md:col-span-3">
@@ -1404,14 +1429,14 @@ export default function ColaboradoresPage() {
 
                   {modalTab === 'uniforme' ? (
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[380px,1fr]">
-                      <SectionCard title="Novo registro" description="Retiradas, trocas e devolucoes de uniforme." icon={Shirt}>
+                      <SectionCard title="Novo registro" description="Retiradas, trocas e devoluções de uniforme." icon={Shirt}>
                         <div className="space-y-3">
                           <div>
                             <label className={fieldLabelClassName}>Data de retirada</label>
                             <input disabled={currentEmployeeReadOnly} type="date" value={uniformForm.withdrawalDate} onChange={(event) => setUniformForm((prev) => ({ ...prev, withdrawalDate: event.target.value }))} className={filterInputClassName} />
                           </div>
                           <div>
-                            <label className={fieldLabelClassName}>Descricao do item</label>
+                            <label className={fieldLabelClassName}>Descrição do item</label>
                             <input disabled={currentEmployeeReadOnly} value={uniformForm.itemDescription} onChange={(event) => setUniformForm((prev) => ({ ...prev, itemDescription: event.target.value }))} className={filterInputClassName} />
                           </div>
                           <div className="grid grid-cols-2 gap-3">
@@ -1433,7 +1458,7 @@ export default function ColaboradoresPage() {
                             </select>
                           </div>
                           <div>
-                            <label className={fieldLabelClassName}>Responsavel pela entrega</label>
+                            <label className={fieldLabelClassName}>Responsável pela entrega</label>
                             <input disabled={currentEmployeeReadOnly} value={uniformForm.deliveredBy} onChange={(event) => setUniformForm((prev) => ({ ...prev, deliveredBy: event.target.value }))} className={filterInputClassName} />
                           </div>
                           <label className="inline-flex items-center gap-2 text-sm text-slate-700">
@@ -1454,7 +1479,7 @@ export default function ColaboradoresPage() {
                         </div>
                       </SectionCard>
 
-                      <SectionCard title="Historico de uniforme" description="Controle de itens ativos, devolvidos e pendentes." icon={FileText}>
+                      <SectionCard title="Histórico de uniforme" description="Controle de itens ativos, devolvidos e pendentes." icon={FileText}>
                         <div className="overflow-x-auto">
                           <table className="min-w-[760px] w-full text-sm">
                             <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
@@ -1464,9 +1489,9 @@ export default function ColaboradoresPage() {
                                 <th className="px-2 py-2">Qtd.</th>
                                 <th className="px-2 py-2">Entrega</th>
                                 <th className="px-2 py-2">Status</th>
-                                <th className="px-2 py-2">Responsavel</th>
+                                <th className="px-2 py-2">Responsável</th>
                                 <th className="px-2 py-2">Assinado</th>
-                                <th className="px-2 py-2">Acoes</th>
+                                <th className="px-2 py-2">Ações</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1480,7 +1505,7 @@ export default function ColaboradoresPage() {
                                   <td className="px-2 py-2">{UNIFORM_DELIVERY_TYPES.find((option) => option.value === item.deliveryType)?.label || item.deliveryType}</td>
                                   <td className="px-2 py-2">{UNIFORM_ITEM_STATUSES.find((option) => option.value === item.status)?.label || item.status}</td>
                                   <td className="px-2 py-2">{item.deliveredBy || '-'}</td>
-                                  <td className="px-2 py-2">{item.signedReceipt ? 'Sim' : 'Nao'}</td>
+                                  <td className="px-2 py-2">{item.signedReceipt ? 'Sim' : 'Não'}</td>
                                   <td className="px-2 py-2">
                                     <div className="flex items-center gap-2">
                                       {canEdit ? (
@@ -1502,15 +1527,15 @@ export default function ColaboradoresPage() {
 
                   {modalTab === 'recesso' ? (
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[420px,1fr]">
-                      <SectionCard title="Novo periodo" description="Cadastro de periodos aquisitivos e ferias." icon={CalendarClock}>
+                      <SectionCard title="Novo período" description="Cadastro de períodos aquisitivos e férias." icon={CalendarClock}>
                         <div className="space-y-3">
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className={fieldLabelClassName}>Periodo aquisitivo inicial</label>
+                              <label className={fieldLabelClassName}>Período aquisitivo inicial</label>
                               <input disabled={currentEmployeeReadOnly} type="date" value={recessForm.acquisitionStartDate} onChange={(event) => setRecessForm((prev) => ({ ...prev, acquisitionStartDate: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <div>
-                              <label className={fieldLabelClassName}>Periodo aquisitivo final</label>
+                              <label className={fieldLabelClassName}>Período aquisitivo final</label>
                               <input disabled={currentEmployeeReadOnly} type="date" value={recessForm.acquisitionEndDate} onChange={(event) => setRecessForm((prev) => ({ ...prev, acquisitionEndDate: event.target.value }))} className={filterInputClassName} />
                             </div>
                           </div>
@@ -1530,11 +1555,11 @@ export default function ColaboradoresPage() {
                           </div>
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className={fieldLabelClassName}>Inicio das ferias</label>
+                              <label className={fieldLabelClassName}>Início das férias</label>
                               <input disabled={currentEmployeeReadOnly} type="date" value={recessForm.vacationStartDate} onChange={(event) => setRecessForm((prev) => ({ ...prev, vacationStartDate: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <div>
-                              <label className={fieldLabelClassName}>Duracao (dias)</label>
+                              <label className={fieldLabelClassName}>Duração (dias)</label>
                               <input disabled={currentEmployeeReadOnly} value={recessForm.vacationDurationDays} onChange={(event) => setRecessForm((prev) => ({ ...prev, vacationDurationDays: event.target.value.replace(/\D/g, '') }))} className={filterInputClassName} />
                             </div>
                           </div>
@@ -1545,14 +1570,14 @@ export default function ColaboradoresPage() {
                             </label>
                             <label className="inline-flex items-center gap-2 text-sm text-slate-700">
                               <input disabled={currentEmployeeReadOnly} type="checkbox" checked={recessForm.thirteenthOnVacation} onChange={(event) => setRecessForm((prev) => ({ ...prev, thirteenthOnVacation: event.target.checked }))} />
-                              13o nas ferias
+                              13º nas férias
                             </label>
                           </div>
                           {canEdit ? (
                             <div className="flex flex-wrap gap-2 pt-2">
                               <button type="button" disabled={recessSaving} onClick={submitRecess} className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
                                 {recessSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                                {recessEditingId ? 'Atualizar periodo' : 'Adicionar periodo'}
+                                {recessEditingId ? 'Atualizar período' : 'Adicionar período'}
                               </button>
                               <button type="button" onClick={() => { setRecessForm(emptyRecessForm()); setRecessEditingId(null); }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
                                 Limpar
@@ -1562,24 +1587,24 @@ export default function ColaboradoresPage() {
                         </div>
                       </SectionCard>
 
-                      <SectionCard title="Historico de recessos" description="Saldos, situacao e programacao de ferias." icon={FileText}>
+                      <SectionCard title="Histórico de recessos" description="Saldos, situação e programação de férias." icon={FileText}>
                         <div className="overflow-x-auto">
                           <table className="min-w-[860px] w-full text-sm">
                             <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
                               <tr>
-                                <th className="px-2 py-2">Periodo</th>
+                                <th className="px-2 py-2">Período</th>
                                 <th className="px-2 py-2">Dias</th>
                                 <th className="px-2 py-2">Saldo</th>
-                                <th className="px-2 py-2">Situacao</th>
+                                <th className="px-2 py-2">Situação</th>
                                 <th className="px-2 py-2">Limite</th>
-                                <th className="px-2 py-2">Ferias</th>
-                                <th className="px-2 py-2">Beneficios</th>
-                                <th className="px-2 py-2">Acoes</th>
+                                <th className="px-2 py-2">Férias</th>
+                                <th className="px-2 py-2">Benefícios</th>
+                                <th className="px-2 py-2">Ações</th>
                               </tr>
                             </thead>
                             <tbody>
                               {recessItems.length === 0 ? (
-                                <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-500">Nenhum periodo de recesso cadastrado.</td></tr>
+                                <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-500">Nenhum período de recesso cadastrado.</td></tr>
                               ) : recessItems.map((item) => (
                                 <tr key={item.id} className="border-t border-slate-100 align-top">
                                   <td className="px-2 py-2">{formatDateBr(item.acquisitionStartDate)} - {formatDateBr(item.acquisitionEndDate)}</td>
@@ -1587,8 +1612,8 @@ export default function ColaboradoresPage() {
                                   <td className="px-2 py-2 font-medium">{item.balance}</td>
                                   <td className="px-2 py-2">{item.situation}</td>
                                   <td className="px-2 py-2">{formatDateBr(item.leaveDeadlineDate)}</td>
-                                  <td className="px-2 py-2">{formatDateBr(item.vacationStartDate)}<br /><span className="text-xs text-slate-500">Ate {formatDateBr(item.vacationEndDate)}</span></td>
-                                  <td className="px-2 py-2 text-xs text-slate-600">Venda 10 dias: {item.sellTenDays ? 'Sim' : 'Nao'}<br />13o nas ferias: {item.thirteenthOnVacation ? 'Sim' : 'Nao'}</td>
+                                  <td className="px-2 py-2">{formatDateBr(item.vacationStartDate)}<br /><span className="text-xs text-slate-500">Até {formatDateBr(item.vacationEndDate)}</span></td>
+                                  <td className="px-2 py-2 text-xs text-slate-600">Venda 10 dias: {item.sellTenDays ? 'Sim' : 'Não'}<br />13º nas férias: {item.thirteenthOnVacation ? 'Sim' : 'Não'}</td>
                                   <td className="px-2 py-2">
                                     <div className="flex items-center gap-2">
                                       {canEdit ? (
@@ -1610,7 +1635,7 @@ export default function ColaboradoresPage() {
 
                   {modalTab === 'documentos' ? (
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[420px,1fr]">
-                      <SectionCard title="Upload em massa" description="Selecione varios arquivos e classifique o tipo antes de salvar." icon={FileUp}>
+                      <SectionCard title="Upload em massa" description="Selecione vários arquivos e classifique o tipo antes de salvar." icon={FileUp}>
                         <div className="space-y-3">
                           <input
                             type="file"
@@ -1636,10 +1661,10 @@ export default function ColaboradoresPage() {
                           />
                           <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600">
                             <div className="font-semibold text-slate-700">Resumo documental</div>
-                            <div className="mt-2">Obrigatorios entregues: {documentSummary.progress.done}/{documentSummary.progress.total}</div>
+                            <div className="mt-2">Obrigatórios entregues: {documentSummary.progress.done}/{documentSummary.progress.total}</div>
                             <div>ASO: <span className="font-semibold">{documentSummary.aso.status}</span>{documentSummary.aso.expiresAt ? ` (vence em ${formatDateBr(documentSummary.aso.expiresAt)})` : ''}</div>
                             <div className="mt-2 text-slate-500">
-                              Faltando: {documentSummary.missing.length > 0 ? documentSummary.missing.map(getDocumentTypeLabel).join(', ') : 'Nenhum documento obrigatorio pendente'}
+                              Faltando: {documentSummary.missing.length > 0 ? documentSummary.missing.map(getDocumentTypeLabel).join(', ') : 'Nenhum documento obrigatório pendente'}
                             </div>
                           </div>
 
@@ -1666,7 +1691,7 @@ export default function ColaboradoresPage() {
                                         </select>
                                       </div>
                                       <div>
-                                        <label className={fieldLabelClassName}>Data de emissao</label>
+                                        <label className={fieldLabelClassName}>Data de emissão</label>
                                         <input disabled={currentEmployeeReadOnly || !selectedType?.hasIssueDate} type="date" value={draft.issueDate} onChange={(event) => setPendingUploads((prev) => prev.map((item) => item.localId === draft.localId ? { ...item, issueDate: event.target.value } : item))} className={filterInputClassName} />
                                       </div>
                                       <div>
@@ -1674,7 +1699,7 @@ export default function ColaboradoresPage() {
                                         <input disabled={currentEmployeeReadOnly || !selectedType?.hasExpiration} type="date" value={draft.expiresAt} onChange={(event) => setPendingUploads((prev) => prev.map((item) => item.localId === draft.localId ? { ...item, expiresAt: event.target.value } : item))} className={filterInputClassName} />
                                       </div>
                                       <div className="md:col-span-2">
-                                        <label className={fieldLabelClassName}>Observacoes</label>
+                                        <label className={fieldLabelClassName}>Observações</label>
                                         <input disabled={currentEmployeeReadOnly} value={draft.notes} onChange={(event) => setPendingUploads((prev) => prev.map((item) => item.localId === draft.localId ? { ...item, notes: event.target.value } : item))} className={filterInputClassName} />
                                       </div>
                                     </div>
@@ -1690,24 +1715,24 @@ export default function ColaboradoresPage() {
                             </div>
                           ) : (
                             <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                              Nenhum arquivo em fila. Selecione um ou varios documentos para classificar antes do upload.
+                              Nenhum arquivo em fila. Selecione um ou vários documentos para classificar antes do upload.
                             </div>
                           )}
                         </div>
                       </SectionCard>
 
-                      <SectionCard title="Documentos enviados" description="Arquivos ativos e historico documental do colaborador." icon={FileText}>
+                      <SectionCard title="Documentos enviados" description="Arquivos ativos e histórico documental do colaborador." icon={FileText}>
                         <div className="overflow-x-auto">
                           <table className="min-w-[900px] w-full text-sm">
                             <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
                               <tr>
                                 <th className="px-2 py-2">Tipo</th>
                                 <th className="px-2 py-2">Arquivo</th>
-                                <th className="px-2 py-2">Emissao</th>
+                                <th className="px-2 py-2">Emissão</th>
                                 <th className="px-2 py-2">Vencimento</th>
                                 <th className="px-2 py-2">Status</th>
                                 <th className="px-2 py-2">Upload</th>
-                                <th className="px-2 py-2">Acoes</th>
+                                <th className="px-2 py-2">Ações</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -1724,7 +1749,7 @@ export default function ColaboradoresPage() {
                                   <td className="px-2 py-2">{formatDateBr(doc.expiresAt)}</td>
                                   <td className="px-2 py-2">
                                     <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${doc.isActive ? 'border-emerald-200 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-500'}`}>
-                                      {doc.isActive ? 'Ativo' : 'Historico'}
+                                      {doc.isActive ? 'Ativo' : 'Histórico'}
                                     </span>
                                   </td>
                                   <td className="px-2 py-2 text-xs text-slate-500">{formatDateTime(doc.createdAt)}</td>
@@ -1761,7 +1786,7 @@ export default function ColaboradoresPage() {
                 {canEdit ? (
                   <button type="button" onClick={submitEmployee} disabled={modalSaving || modalLoading} className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
                     {modalSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                    {currentEmployeeId ? 'Salvar alteracoes' : 'Salvar colaborador'}
+                    {currentEmployeeId ? 'Salvar alterações' : 'Salvar colaborador'}
                   </button>
                 ) : null}
               </div>

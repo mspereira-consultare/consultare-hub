@@ -26,7 +26,7 @@ export async function GET(request: Request, context: ParamsContext) {
     const inline = searchParams.get('inline') === '1';
     const document = await getEmployeeDocumentById(auth.db, String(documentId || ''));
     if (!document) {
-      return NextResponse.json({ error: 'Documento nao encontrado.' }, { status: 404 });
+      return NextResponse.json({ error: 'Documento não encontrado.' }, { status: 404 });
     }
 
     const provider = getStorageProviderByName(document.storageProvider);

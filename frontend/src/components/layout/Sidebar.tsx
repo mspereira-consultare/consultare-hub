@@ -98,7 +98,7 @@ const menuItems: MenuItem[] = [
     href: "/profissionais",
     label: "Gestão de Profissionais",
     icon: Stethoscope,
-    group: "OPERAÇÕES",
+    group: "GESTÃO DE PESSOAS",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "profissionais",
   },
@@ -106,7 +106,7 @@ const menuItems: MenuItem[] = [
     href: "/colaboradores",
     label: "Colaboradores",
     icon: Users,
-    group: "PESSOAL",
+    group: "GESTÃO DE PESSOAS",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "colaboradores",
   },
@@ -232,7 +232,7 @@ const menuItems: MenuItem[] = [
   },
 ];
 
-const GROUP_ORDER = ["PRINCIPAL", "OPERAÇÕES", "QUALIDADE", "FINANCEIRO", "INTELIGÊNCIA", "MARKETING", "SISTEMA"];
+const LAST_GROUP = "SISTEMA";
 const STORAGE_KEY = "consultare_sidebar_expanded_groups_v1";
 
 const ROLE_LABEL: Record<UserRole, string> = {
@@ -267,11 +267,11 @@ export function Sidebar() {
 
   const groupsOrdered = useMemo(() => {
     const set = new Set(authorizedItems.map((item) => item.group));
-    const ordered = GROUP_ORDER.filter((g) => set.has(g));
-    const rest = Array.from(set)
-      .filter((g) => !GROUP_ORDER.includes(g))
-      .sort((a, b) => a.localeCompare(b));
-    return [...ordered, ...rest];
+    return Array.from(set).sort((a, b) => {
+      if (a === LAST_GROUP) return 1;
+      if (b === LAST_GROUP) return -1;
+      return a.localeCompare(b, "pt-BR", { sensitivity: "base" });
+    });
   }, [authorizedItems]);
 
   const isItemActive = (item: MenuItem) => {

@@ -129,7 +129,7 @@ const normalizePhone = (value: any): string | null => {
   const digits = clean(value).replace(/\D/g, '').slice(0, 11);
   if (!digits) return null;
   if (digits.length < 10) {
-    throw new EmployeeValidationError('Telefone invalido. Use DDD + numero.');
+    throw new EmployeeValidationError('Telefone inválido. Use DDD + número.');
   }
   return digits;
 };
@@ -148,7 +148,7 @@ const normalizeUnits = (value: any): string[] => {
 const normalizeEmploymentRegime = (value: any): EmploymentRegime => {
   const normalized = upper(value);
   if (!allowedRegimes.has(normalized as EmploymentRegime)) {
-    throw new EmployeeValidationError('Regime contratual invalido.');
+    throw new EmployeeValidationError('Regime contratual inválido.');
   }
   return normalized as EmploymentRegime;
 };
@@ -156,7 +156,7 @@ const normalizeEmploymentRegime = (value: any): EmploymentRegime => {
 const normalizeEmployeeStatus = (value: any): EmployeeStatus => {
   const normalized = upper(value || 'ATIVO');
   if (!allowedStatuses.has(normalized as EmployeeStatus)) {
-    throw new EmployeeValidationError('Status do colaborador invalido.');
+    throw new EmployeeValidationError('Status do colaborador inválido.');
   }
   return normalized as EmployeeStatus;
 };
@@ -165,7 +165,7 @@ const normalizeEducationLevel = (value: any): EducationLevel | null => {
   const normalized = upper(value);
   if (!normalized) return null;
   if (!allowedEducationLevels.has(normalized)) {
-    throw new EmployeeValidationError('Nivel de escolaridade invalido.');
+    throw new EmployeeValidationError('Nível de escolaridade inválido.');
   }
   return normalized as EducationLevel;
 };
@@ -174,7 +174,7 @@ const normalizeMaritalStatus = (value: any): MaritalStatus | null => {
   const normalized = upper(value);
   if (!normalized) return null;
   if (!allowedMaritalStatuses.has(normalized as MaritalStatus)) {
-    throw new EmployeeValidationError('Estado civil invalido.');
+    throw new EmployeeValidationError('Estado civil inválido.');
   }
   return normalized as MaritalStatus;
 };
@@ -182,7 +182,7 @@ const normalizeMaritalStatus = (value: any): MaritalStatus | null => {
 const normalizeLifeInsuranceStatus = (value: any): LifeInsuranceStatus => {
   const normalized = upper(value || 'INATIVO');
   if (!allowedLifeInsurance.has(normalized as LifeInsuranceStatus)) {
-    throw new EmployeeValidationError('Status do seguro de vida invalido.');
+    throw new EmployeeValidationError('Status do seguro de vida inválido.');
   }
   return normalized as LifeInsuranceStatus;
 };
@@ -190,7 +190,7 @@ const normalizeLifeInsuranceStatus = (value: any): LifeInsuranceStatus => {
 const normalizeUniformDeliveryType = (value: any): UniformDeliveryType => {
   const normalized = upper(value || 'PRIMEIRA_ENTREGA');
   if (!allowedUniformDeliveryTypes.has(normalized as UniformDeliveryType)) {
-    throw new EmployeeValidationError('Tipo de entrega do uniforme invalido.');
+    throw new EmployeeValidationError('Tipo de entrega do uniforme inválido.');
   }
   return normalized as UniformDeliveryType;
 };
@@ -198,7 +198,7 @@ const normalizeUniformDeliveryType = (value: any): UniformDeliveryType => {
 const normalizeUniformStatus = (value: any): UniformItemStatus => {
   const normalized = upper(value || 'ATIVO');
   if (!allowedUniformStatuses.has(normalized as UniformItemStatus)) {
-    throw new EmployeeValidationError('Status do item de uniforme invalido.');
+    throw new EmployeeValidationError('Status do item de uniforme inválido.');
   }
   return normalized as UniformItemStatus;
 };
@@ -256,6 +256,7 @@ const mapEmployee = (row: any): Employee => ({
   bankAgency: clean(row.bank_agency) || null,
   bankAccount: clean(row.bank_account) || null,
   pixKey: clean(row.pix_key) || null,
+  notes: clean(row.notes) || null,
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
@@ -402,40 +403,41 @@ const safeCreateIndex = async (db: DbInterface, sql: string) => {
 const ensureEmployeeExists = async (db: DbInterface, employeeId: string) => {
   const rows = await db.query(`SELECT id FROM employees WHERE id = ? LIMIT 1`, [employeeId]);
   if (!rows[0]) {
-    throw new EmployeeValidationError('Colaborador nao encontrado.', 404);
+    throw new EmployeeValidationError('Colaborador não encontrado.', 404);
   }
 };
 
 const normalizeInput = (payload: any): EmployeeInput => {
   const fullName = clean(payload?.fullName || payload?.full_name);
-  if (!fullName) throw new EmployeeValidationError('Nome completo e obrigatorio.');
+  if (!fullName) throw new EmployeeValidationError('Nome completo é obrigatório.');
 
   const employmentRegime = normalizeEmploymentRegime(payload?.employmentRegime || payload?.employment_regime || 'CLT');
   const status = normalizeEmployeeStatus(payload?.status || 'ATIVO');
   const cpf = normalizeCpf(payload?.cpf);
-  if (!cpf) throw new EmployeeValidationError('CPF e obrigatorio.');
+  if (!cpf) throw new EmployeeValidationError('CPF é obrigatório.');
 
   const email = clean(payload?.email) || null;
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw new EmployeeValidationError('Email invalido.');
+    throw new EmployeeValidationError('Email inválido.');
   }
 
   const admissionDate = parseDate(payload?.admissionDate || payload?.admission_date);
   if (!admissionDate) {
-    throw new EmployeeValidationError('Data de admissao e obrigatoria.');
+    throw new EmployeeValidationError('Data de admissão é obrigatória.');
   }
 
   const contractEndDate = parseDate(payload?.contractEndDate || payload?.contract_end_date);
   if (contractEndDate && contractEndDate < admissionDate) {
-    throw new EmployeeValidationError('Data de fim nao pode ser menor que a data de admissao.');
+    throw new EmployeeValidationError('Data de fim não pode ser menor que a data de admissão.');
   }
 
   const terminationDate = parseDate(payload?.terminationDate || payload?.termination_date);
   const terminationReason = clean(payload?.terminationReason || payload?.termination_reason) || null;
   const terminationNotes = clean(payload?.terminationNotes || payload?.termination_notes) || null;
+  const notes = clean(payload?.notes) || null;
   if (status === 'DESLIGADO') {
-    if (!terminationDate) throw new EmployeeValidationError('Informe a data de demissao.');
-    if (!terminationReason) throw new EmployeeValidationError('Informe o motivo da demissao.');
+    if (!terminationDate) throw new EmployeeValidationError('Informe a data de demissão.');
+    if (!terminationReason) throw new EmployeeValidationError('Informe o motivo da demissão.');
   }
 
   const maritalStatus = normalizeMaritalStatus(payload?.maritalStatus || payload?.marital_status);
@@ -486,6 +488,7 @@ const normalizeInput = (payload: any): EmployeeInput => {
     bankAgency: clean(payload?.bankAgency || payload?.bank_agency) || null,
     bankAccount: clean(payload?.bankAccount || payload?.bank_account) || null,
     pixKey: clean(payload?.pixKey || payload?.pix_key) || null,
+    notes,
   };
 
   if (employmentRegime !== 'ESTAGIO') {
@@ -494,9 +497,9 @@ const normalizeInput = (payload: any): EmployeeInput => {
     input.courseName = null;
     input.currentSemester = null;
   } else {
-    if (!input.educationInstitution) throw new EmployeeValidationError('Instituicao de ensino e obrigatoria para estagio.');
-    if (!input.educationLevel) throw new EmployeeValidationError('Nivel e obrigatorio para estagio.');
-    if (!input.courseName) throw new EmployeeValidationError('Curso e obrigatorio para estagio.');
+    if (!input.educationInstitution) throw new EmployeeValidationError('Instituição de ensino é obrigatória para estágio.');
+    if (!input.educationLevel) throw new EmployeeValidationError('Nível é obrigatório para estágio.');
+    if (!input.courseName) throw new EmployeeValidationError('Curso é obrigatório para estágio.');
   }
 
   if (status !== 'DESLIGADO') {
@@ -594,6 +597,7 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
       bank_agency VARCHAR(80) NULL,
       bank_account VARCHAR(80) NULL,
       pix_key VARCHAR(180) NULL,
+      notes TEXT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -673,6 +677,7 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN bank_agency VARCHAR(80) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN bank_account VARCHAR(80) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN pix_key VARCHAR(180) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN notes TEXT NULL`);
 
   await safeCreateIndex(db, `CREATE INDEX idx_employees_full_name ON employees (full_name)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employees_status ON employees (status)`);
@@ -763,8 +768,8 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
       termination_date, termination_reason, termination_notes, units_json, job_title, department,
       supervisor_name, cost_center, insalubrity_percent, transport_voucher_per_day,
       meal_voucher_per_day, life_insurance_status, marital_status, has_children, children_count,
-      bank_name, bank_agency, bank_account, pix_key, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      bank_name, bank_agency, bank_account, pix_key, notes, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -811,6 +816,7 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
       input.bankAgency,
       input.bankAccount,
       input.pixKey,
+      input.notes,
       now,
       now,
     ]
@@ -831,7 +837,7 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
 export const updateEmployee = async (db: DbInterface, employeeId: string, payload: any, actorUserId: string) => {
   await ensureEmployeesTables(db);
   const existing = await getEmployeeById(db, employeeId);
-  if (!existing) throw new EmployeeValidationError('Colaborador nao encontrado.', 404);
+  if (!existing) throw new EmployeeValidationError('Colaborador não encontrado.', 404);
 
   const input = normalizeInput(payload);
   const now = NOW();
@@ -883,6 +889,7 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
       bank_agency = ?,
       bank_account = ?,
       pix_key = ?,
+      notes = ?,
       updated_at = ?
     WHERE id = ?
     `,
@@ -930,6 +937,7 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
       input.bankAgency,
       input.bankAccount,
       input.pixKey,
+      input.notes,
       now,
       employeeId,
     ]
@@ -988,7 +996,7 @@ export const createEmployeeDocumentRecord = async (
 
   const docType = upper(input.docType) as EmployeeDocumentTypeCode;
   if (!allowedDocTypes.has(docType)) {
-    throw new EmployeeValidationError('Tipo de documento invalido.');
+    throw new EmployeeValidationError('Tipo de documento inválido.');
   }
 
   const issueDate = parseDate(input.issueDate);
@@ -1064,7 +1072,7 @@ export const registerEmployeeDocumentDownloadAudit = async (
 const normalizeUniformItemInput = (payload: any): EmployeeUniformItemInput => {
   const itemDescription = clean(payload?.itemDescription || payload?.item_description);
   if (!itemDescription) {
-    throw new EmployeeValidationError('Descricao do item e obrigatoria.');
+    throw new EmployeeValidationError('Descrição do item é obrigatória.');
   }
   return {
     withdrawalDate: parseDate(payload?.withdrawalDate || payload?.withdrawal_date),
@@ -1111,7 +1119,7 @@ export const saveEmployeeUniformItem = async (
       [entryId, employeeId]
     );
     if (!rows[0]) {
-      throw new EmployeeValidationError('Registro de uniforme nao encontrado.', 404);
+      throw new EmployeeValidationError('Registro de uniforme não encontrado.', 404);
     }
     await db.execute(
       `
@@ -1180,7 +1188,7 @@ const normalizeRecessInput = (payload: any): EmployeeRecessPeriodInput => {
   const daysDue = parsePositiveInt(payload?.daysDue || payload?.days_due, 0);
   const daysPaid = parsePositiveInt(payload?.daysPaid || payload?.days_paid, 0);
   if (daysPaid > daysDue) {
-    throw new EmployeeValidationError('Dias quitados nao podem ser maiores que os dias devidos.');
+    throw new EmployeeValidationError('Dias quitados não podem ser maiores que os dias devidos.');
   }
   return {
     acquisitionStartDate: parseDate(payload?.acquisitionStartDate || payload?.acquisition_start_date),
@@ -1229,7 +1237,7 @@ export const saveEmployeeRecessPeriod = async (
       [entryId, employeeId]
     );
     if (!rows[0]) {
-      throw new EmployeeValidationError('Registro de recesso nao encontrado.', 404);
+      throw new EmployeeValidationError('Registro de recesso não encontrado.', 404);
     }
     await db.execute(
       `
