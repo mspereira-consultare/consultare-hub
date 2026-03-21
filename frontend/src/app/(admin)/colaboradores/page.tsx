@@ -1353,14 +1353,14 @@ export default function ColaboradoresPage() {
                       ) : null}
 
                       <div className="xl:col-span-2 grid grid-cols-1 gap-4 xl:grid-cols-2">
-                        <SectionCard title="Dados banc?rios" description="Informa??es de pagamento do colaborador." icon={Wallet}>
+                        <SectionCard title="Dados bancários" description="Informações de pagamento do colaborador." icon={Wallet}>
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
                             <div className="md:col-span-4">
                               <label className={fieldLabelClassName}>Banco</label>
                               <input disabled={currentEmployeeReadOnly} value={form.bankName} onChange={(event) => setForm((prev) => ({ ...prev, bankName: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <div className="md:col-span-4">
-                              <label className={fieldLabelClassName}>Ag?ncia</label>
+                              <label className={fieldLabelClassName}>Agência</label>
                               <input disabled={currentEmployeeReadOnly} value={form.bankAgency} onChange={(event) => setForm((prev) => ({ ...prev, bankAgency: event.target.value }))} className={filterInputClassName} />
                             </div>
                             <div className="md:col-span-4">
@@ -1374,9 +1374,9 @@ export default function ColaboradoresPage() {
                           </div>
                         </SectionCard>
 
-                        <SectionCard title="Observa??es gerais" description="Anota??es internas complementares do cadastro." icon={FileText}>
+                        <SectionCard title="Observações gerais" description="Anotações internas complementares do cadastro." icon={FileText}>
                           <div>
-                            <label className={fieldLabelClassName}>Observa??es gerais</label>
+                            <label className={fieldLabelClassName}>Observações gerais</label>
                             <textarea
                               disabled={currentEmployeeReadOnly}
                               value={form.notes}
@@ -1389,18 +1389,18 @@ export default function ColaboradoresPage() {
 
                         {form.status === 'DESLIGADO' ? (
                           <div className="xl:col-span-2">
-                            <SectionCard title="Desligamento" description="Informa??es de encerramento do v?nculo." icon={AlertCircle}>
+                            <SectionCard title="Desligamento" description="Informações de encerramento do vínculo." icon={AlertCircle}>
                               <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
                                 <div className="md:col-span-4">
-                                  <label className={fieldLabelClassName}>Data de demiss?o</label>
+                                  <label className={fieldLabelClassName}>Data de demissão</label>
                                   <input disabled={currentEmployeeReadOnly} type="date" value={form.terminationDate} onChange={(event) => setForm((prev) => ({ ...prev, terminationDate: event.target.value }))} className={filterInputClassName} />
                                 </div>
                                 <div className="md:col-span-8">
-                                  <label className={fieldLabelClassName}>Motivo da demiss?o</label>
+                                  <label className={fieldLabelClassName}>Motivo da demissão</label>
                                   <input disabled={currentEmployeeReadOnly} value={form.terminationReason} onChange={(event) => setForm((prev) => ({ ...prev, terminationReason: event.target.value }))} className={filterInputClassName} />
                                 </div>
                                 <div className="md:col-span-12">
-                                  <label className={fieldLabelClassName}>Observa??es</label>
+                                  <label className={fieldLabelClassName}>Observações</label>
                                   <textarea disabled={currentEmployeeReadOnly} value={form.terminationNotes} onChange={(event) => setForm((prev) => ({ ...prev, terminationNotes: event.target.value }))} rows={3} className={filterInputClassName} />
                                 </div>
                               </div>
