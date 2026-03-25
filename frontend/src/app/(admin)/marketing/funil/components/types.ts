@@ -37,22 +37,6 @@ export type MarketingFunilSummary = {
     total: number;
     dateBasis: string;
   };
-  crm: {
-    periodRef: string;
-    startDate: string;
-    endDate: string;
-    boardScope: Array<{
-      boardId: string;
-      boardTitle: string;
-      boardKey: string;
-    }>;
-    leadsCreatedCount: number;
-    leadsCreatedValue: number;
-    pipelineSnapshotDate: string | null;
-    pipelineItemsCount: number;
-    pipelineItemsValue: number;
-    lastSyncAt: string | null;
-  };
 };
 
 export type MarketingFunilFilterOption = {
@@ -122,46 +106,6 @@ export type MarketingFunilChannelList = {
   startDate: string;
   endDate: string;
   items: MarketingFunilChannelRow[];
-};
-
-export type MarketingFunilCrmBoardRow = {
-  boardId: string;
-  boardTitle: string;
-  boardKey: string;
-  leadsCreatedCount: number;
-  leadsCreatedValue: number;
-  pipelineItemsCount: number;
-  pipelineItemsValue: number;
-  lastSyncAt: string | null;
-};
-
-export type MarketingFunilCrmBoardList = {
-  periodRef: string;
-  startDate: string;
-  endDate: string;
-  pipelineSnapshotDate: string | null;
-  items: MarketingFunilCrmBoardRow[];
-};
-
-export type MarketingFunilCrmPipelineRow = {
-  boardId: string;
-  boardTitle: string;
-  boardKey: string;
-  columnId: string;
-  columnTitle: string;
-  crmSourceKey: string;
-  serviceKey: string;
-  pipelineItemsCount: number;
-  pipelineItemsValue: number;
-  lastSyncAt: string | null;
-};
-
-export type MarketingFunilCrmPipelineList = {
-  periodRef: string;
-  startDate: string;
-  endDate: string;
-  snapshotDate: string | null;
-  items: MarketingFunilCrmPipelineRow[];
 };
 
 export type MarketingFunilDeviceRow = {

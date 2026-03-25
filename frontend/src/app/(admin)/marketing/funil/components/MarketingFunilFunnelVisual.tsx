@@ -14,10 +14,8 @@ type FunnelStage = {
 };
 
 export function MarketingFunilFunnelVisual({ summary }: MarketingFunilFunnelVisualProps) {
-  const attendedAppointments =
-    summary?.appointments.byStatus.find((item) => item.statusId === 3)?.count || 0;
-  const futureConfirmedAppointments =
-    summary?.appointments.byStatus.find((item) => item.statusId === 7)?.count || 0;
+  const attendedAppointments = summary?.appointments.byStatus.find((item) => item.statusId === 3)?.count || 0;
+  const futureConfirmedAppointments = summary?.appointments.byStatus.find((item) => item.statusId === 7)?.count || 0;
   const confirmedAppointments = attendedAppointments + futureConfirmedAppointments;
 
   const stages: FunnelStage[] = [
@@ -34,22 +32,10 @@ export function MarketingFunilFunnelVisual({ summary }: MarketingFunilFunnelVisu
       tone: 'border-l-sky-500 bg-slate-50/70',
     },
     {
-      label: 'Leads digitais',
+      label: 'Leads (WhatsApp)',
       value: formatNumber(summary?.leads || 0),
-      helper: 'GA4 key events',
+      helper: 'Cliques em WhatsApp',
       tone: 'border-l-emerald-500 bg-slate-50/70',
-    },
-    {
-      label: 'Leads CRM CRC',
-      value: formatNumber(summary?.crm.leadsCreatedCount || 0),
-      helper: 'Clinia CRM',
-      tone: 'border-l-cyan-500 bg-slate-50/70',
-    },
-    {
-      label: 'Pipeline CRC',
-      value: formatNumber(summary?.crm.pipelineItemsCount || 0),
-      helper: summary?.crm.pipelineSnapshotDate ? `Snapshot ${summary.crm.pipelineSnapshotDate}` : 'Clinia CRM',
-      tone: 'border-l-violet-500 bg-slate-50/70',
     },
     {
       label: 'Agendamentos',
@@ -60,7 +46,7 @@ export function MarketingFunilFunnelVisual({ summary }: MarketingFunilFunnelVisu
     {
       label: 'Faturamento',
       value: formatCompactCurrency(summary?.revenue.total || 0),
-      helper: 'Base: data de referência',
+      helper: 'Base: Faturamento Bruto Analítico',
       tone: 'border-l-rose-500 bg-slate-50/70',
     },
   ];
@@ -71,11 +57,11 @@ export function MarketingFunilFunnelVisual({ summary }: MarketingFunilFunnelVisu
         <div>
           <h2 className="text-lg font-bold text-slate-900">Funil Integrado</h2>
           <p className="text-sm text-slate-500">
-            Fluxo atual entre mídia digital, CRM, agendamentos válidos e faturamento por competência.
+            Fluxo atual entre mídia digital, intenção por WhatsApp, agendamentos válidos e faturamento por competência.
           </p>
         </div>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-          Google-first + CRC
+          Google-first
         </span>
       </div>
 

@@ -1,9 +1,5 @@
 import { ExternalLink, Loader2, X } from 'lucide-react';
-import type {
-  MarketingFunilCampaign,
-  MarketingFunilDeviceRow,
-  MarketingFunilLandingRow,
-} from './types';
+import type { MarketingFunilCampaign, MarketingFunilDeviceRow, MarketingFunilLandingRow } from './types';
 import { formatCurrency, formatDateTime, formatNumber, formatPercent } from './formatters';
 
 type TabKey = 'devices' | 'landing';
@@ -61,7 +57,7 @@ export function MarketingFunilCampaignDrawer({
             {[
               { label: 'Investimento', value: formatCurrency(campaign.spend) },
               { label: 'Sessões', value: formatNumber(campaign.sessions) },
-              { label: 'Leads', value: formatNumber(campaign.leads) },
+              { label: 'Leads (WhatsApp)', value: formatNumber(campaign.leads) },
               { label: 'Conversões', value: formatNumber(campaign.conversions) },
             ].map((item) => (
               <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -151,7 +147,7 @@ export function MarketingFunilCampaignDrawer({
                     <th className="px-4 py-3 text-right font-semibold">Usuários</th>
                     <th className="px-4 py-3 text-right font-semibold">Novos usuários</th>
                     <th className="px-4 py-3 text-right font-semibold">Engajamento</th>
-                    <th className="px-4 py-3 text-right font-semibold">Leads</th>
+                    <th className="px-4 py-3 text-right font-semibold">Leads (WhatsApp)</th>
                   </tr>
                 </thead>
                 <tbody>

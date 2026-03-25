@@ -45,6 +45,8 @@ GOOGLE_ADS_SEARCH_STREAM_URL = (
 GA4_RUN_REPORT_URL = "https://analyticsdata.googleapis.com/v1beta/properties/{property_id}:runReport"
 
 ATTRIBUTION_RULE = "LAST_VALID_SOURCE_CAMPAIGN"
+WHATSAPP_LEAD_LABEL = "whatsapp_click"
+WHATSAPP_URL_MATCHERS = ("whatsapp.com", "wa.me")
 
 API_TIMEOUT_SEC = max(15, int(os.getenv("MARKETING_FUNNEL_API_TIMEOUT_SEC", "60")))
 RETRY_TOTAL = max(1, int(os.getenv("MARKETING_FUNNEL_RETRY_TOTAL", "3")))
@@ -499,8 +501,9 @@ def _fetch_ga4_rows(
                     "average_session_duration": average_session_duration,
                     "screen_page_views": screen_page_views,
                     "event_count": event_count,
+                    "key_events": key_events,
                     "session_default_channel_group": session_default_channel_group,
-                    "leads": key_events,
+                    "leads": 0,
                     "payload": row,
                 }
             )
@@ -520,6 +523,7 @@ def _fetch_ga4_secondary_rows(
     dimensions: List[str],
     metrics: List[str],
     error_label: str,
+    dimension_filter: Optional[Dict] = None,
 ) -> List[Dict]:
     property_id = str(ga4_property_id or "").strip()
     if not property_id:
@@ -542,6 +546,8 @@ def _fetch_ga4_secondary_rows(
             "limit": str(limit),
             "offset": str(offset),
         }
+        if dimension_filter:
+            body["dimensionFilter"] = dimension_filter
         resp = session.post(url, headers=headers, json=body, timeout=API_TIMEOUT_SEC)
         if resp.status_code >= 400:
             raise RuntimeError(f"{error_label} falhou ({resp.status_code}): {resp.text[:400]}")
@@ -568,6 +574,120 @@ def _fetch_ga4_secondary_rows(
             break
         offset += limit
     return all_rows
+
+
+def _build_ga4_whatsapp_click_filter() -> Dict:
+    return {
+        "andGroup": {
+            "expressions": [
+                {
+                    "filter": {
+                        "fieldName": "eventName",
+                        "stringFilter": {"matchType": "EXACT", "value": "click"},
+                    }
+                },
+                {
+                    "orGroup": {
+                        "expressions": [
+                            {
+                                "filter": {
+                                    "fieldName": "linkUrl",
+                                    "stringFilter": {"matchType": "CONTAINS", "value": matcher},
+                                }
+                            }
+                            for matcher in WHATSAPP_URL_MATCHERS
+                        ]
+                    }
+                },
+            ]
+        }
+    }
+
+
+def _merge_ga4_lead_counts(
+    base_rows: List[Dict],
+    lead_rows: List[Dict],
+    key_fields: List[str],
+) -> List[Dict]:
+    merged: Dict[Tuple[str, ...], Dict] = {}
+
+    def build_key(row: Dict) -> Tuple[str, ...]:
+        return tuple(str(row.get(field) or "").strip() for field in key_fields)
+
+    for row in base_rows:
+        item = dict(row)
+        item["leads"] = _to_int(item.get("leads"), 0)
+        merged[build_key(item)] = item
+
+    for row in lead_rows:
+        key = build_key(row)
+        item = merged.get(key)
+        if not item:
+            item = {field: row.get(field) for field in key_fields}
+            item["date_ref"] = row.get("date_ref")
+            item["campaign_name"] = row.get("campaign_name", "")
+            item["source"] = row.get("source", "")
+            item["medium"] = row.get("medium", "")
+            item["session_default_channel_group"] = row.get("session_default_channel_group", "")
+            item["landing_page"] = row.get("landing_page", "")
+            item["channel_group"] = row.get("channel_group", "")
+            item["sessions"] = 0
+            item["total_users"] = 0
+            item["new_users"] = 0
+            item["engaged_sessions"] = 0
+            item["engagement_rate"] = Decimal("0")
+            item["average_session_duration"] = Decimal("0")
+            item["screen_page_views"] = 0
+            item["event_count"] = 0
+            item["users"] = 0
+            item["leads"] = 0
+            item["payload"] = row.get("payload")
+            merged[key] = item
+        item["leads"] = _to_int(item.get("leads"), 0) + _to_int(row.get("leads"), 0)
+
+    return list(merged.values())
+
+
+def _fetch_ga4_whatsapp_lead_rows(
+    session: requests.Session,
+    access_token: str,
+    ga4_property_id: str,
+    start_date: str,
+    end_date: str,
+) -> List[Dict]:
+    rows = _fetch_ga4_secondary_rows(
+        session,
+        access_token,
+        ga4_property_id,
+        start_date,
+        end_date,
+        dimensions=[
+            "date",
+            "sessionCampaignName",
+            "sessionSource",
+            "sessionMedium",
+            "sessionDefaultChannelGroup",
+        ],
+        metrics=["eventCount"],
+        error_label="GA4 WhatsApp leads runReport",
+        dimension_filter=_build_ga4_whatsapp_click_filter(),
+    )
+    output: List[Dict] = []
+    for row in rows:
+        dims = row["dimensions"]
+        mets = row["metrics"]
+        output.append(
+            {
+                "date_ref": row["date_ref"],
+                "campaign_name": dims.get("sessionCampaignName", ""),
+                "source": dims.get("sessionSource", ""),
+                "medium": dims.get("sessionMedium", ""),
+                "session_default_channel_group": dims.get("sessionDefaultChannelGroup", ""),
+                "leads": _to_int(mets.get("eventCount"), 0),
+                "payload": row["payload"],
+            }
+        )
+    return output
 
 
 def _fetch_ga4_landing_page_rows(
@@ -604,6 +724,43 @@ def _fetch_ga4_landing_page_rows(
                 "engaged_sessions": _to_int(mets.get("engagedSessions"), 0),
                 "key_events": _to_int(mets.get("keyEvents"), 0),
                 "event_count": _to_int(mets.get("eventCount"), 0),
+                "leads": 0,
+                "payload": row["payload"],
+            }
+        )
+    return output
+
+
+def _fetch_ga4_whatsapp_landing_page_rows(
+    session: requests.Session,
+    access_token: str,
+    ga4_property_id: str,
+    start_date: str,
+    end_date: str,
+) -> List[Dict]:
+    rows = _fetch_ga4_secondary_rows(
+        session,
+        access_token,
+        ga4_property_id,
+        start_date,
+        end_date,
+        dimensions=["date", "sessionCampaignName", "sessionSource", "sessionMedium", "landingPagePlusQueryString"],
+        metrics=["eventCount"],
+        error_label="GA4 WhatsApp landingPage runReport",
+        dimension_filter=_build_ga4_whatsapp_click_filter(),
+    )
+    output: List[Dict] = []
+    for row in rows:
+        dims = row["dimensions"]
+        mets = row["metrics"]
+        output.append(
+            {
+                "date_ref": row["date_ref"],
+                "campaign_name": dims.get("sessionCampaignName", ""),
+                "source": dims.get("sessionSource", ""),
+                "medium": dims.get("sessionMedium", ""),
+                "landing_page": dims.get("landingPagePlusQueryString", ""),
+                "leads": _to_int(mets.get("eventCount"), 0),
                 "payload": row["payload"],
             }
         )
@@ -640,6 +797,41 @@ def _fetch_ga4_channel_rows(
                 "sessions": _to_int(mets.get("sessions"), 0),
                 "key_events": _to_int(mets.get("keyEvents"), 0),
                 "event_count": _to_int(mets.get("eventCount"), 0),
+                "leads": 0,
+                "payload": row["payload"],
+            }
+        )
+    return output
+
+
+def _fetch_ga4_whatsapp_channel_rows(
+    session: requests.Session,
+    access_token: str,
+    ga4_property_id: str,
+    start_date: str,
+    end_date: str,
+) -> List[Dict]:
+    rows = _fetch_ga4_secondary_rows(
+        session,
+        access_token,
+        ga4_property_id,
+        start_date,
+        end_date,
+        dimensions=["date", "sessionCampaignName", "sessionDefaultChannelGroup"],
+        metrics=["eventCount"],
+        error_label="GA4 WhatsApp channel runReport",
+        dimension_filter=_build_ga4_whatsapp_click_filter(),
+    )
+    output: List[Dict] = []
+    for row in rows:
+        dims = row["dimensions"]
+        mets = row["metrics"]
+        output.append(
+            {
+                "date_ref": row["date_ref"],
+                "campaign_name": dims.get("sessionCampaignName", ""),
+                "channel_group": dims.get("sessionDefaultChannelGroup", ""),
+                "leads": _to_int(mets.get("eventCount"), 0),
                 "payload": row["payload"],
             }
         )
@@ -1893,7 +2085,7 @@ def _build_landing_fact_rows(brand_slug: str, rows: List[Dict], sync_ts: str) ->
         item["total_users"] += _to_int(row.get("total_users"), 0)
         item["new_users"] += _to_int(row.get("new_users"), 0)
         item["engaged_sessions"] += _to_int(row.get("engaged_sessions"), 0)
-        item["leads"] += _to_int(row.get("key_events"), 0)
+        item["leads"] += _to_int(row.get("leads"), 0)
         item["event_count"] += _to_int(row.get("event_count"), 0)
     return list(merged.values())
 
@@ -1923,7 +2115,7 @@ def _build_channel_fact_rows(brand_slug: str, rows: List[Dict], sync_ts: str) ->
             merged[key] = item
         item["sessions"] += _to_int(row.get("sessions"), 0)
         item["users"] += _to_int(row.get("users"), 0)
-        item["leads"] += _to_int(row.get("key_events"), 0)
+        item["leads"] += _to_int(row.get("leads"), 0)
         item["event_count"] += _to_int(row.get("event_count"), 0)
     return list(merged.values())
 
@@ -2337,6 +2529,18 @@ def _run_job(db: "DatabaseManager", job: Dict) -> Dict:
 
             if ga4_property_id:
                 ga4_rows = _fetch_ga4_rows(session, access_token, ga4_property_id, start_date, end_date)
+                ga4_whatsapp_lead_rows = _fetch_ga4_whatsapp_lead_rows(
+                    session,
+                    access_token,
+                    ga4_property_id,
+                    start_date,
+                    end_date,
+                )
+                ga4_rows = _merge_ga4_lead_counts(
+                    ga4_rows,
+                    ga4_whatsapp_lead_rows,
+                    ["date_ref", "campaign_name", "source", "medium", "session_default_channel_group"],
+                )
                 _heartbeat(
                     db,
                     STATUS_RUNNING,
@@ -2347,6 +2551,18 @@ def _run_job(db: "DatabaseManager", job: Dict) -> Dict:
 
                 try:
                     ga4_landing_rows = _fetch_ga4_landing_page_rows(session, access_token, ga4_property_id, start_date, end_date)
+                    ga4_whatsapp_landing_rows = _fetch_ga4_whatsapp_landing_page_rows(
+                        session,
+                        access_token,
+                        ga4_property_id,
+                        start_date,
+                        end_date,
+                    )
+                    ga4_landing_rows = _merge_ga4_lead_counts(
+                        ga4_landing_rows,
+                        ga4_whatsapp_landing_rows,
+                        ["date_ref", "campaign_name", "source", "medium", "landing_page"],
+                    )
                     _heartbeat(
                         db,
                         STATUS_RUNNING,
@@ -2366,6 +2582,18 @@ def _run_job(db: "DatabaseManager", job: Dict) -> Dict:
 
                 try:
                     ga4_channel_rows = _fetch_ga4_channel_rows(session, access_token, ga4_property_id, start_date, end_date)
+                    ga4_whatsapp_channel_rows = _fetch_ga4_whatsapp_channel_rows(
+                        session,
+                        access_token,
+                        ga4_property_id,
+                        start_date,
+                        end_date,
+                    )
+                    ga4_channel_rows = _merge_ga4_lead_counts(
+                        ga4_channel_rows,
+                        ga4_whatsapp_channel_rows,
+                        ["date_ref", "campaign_name", "channel_group"],
+                    )
                     _heartbeat(
                         db,
                         STATUS_RUNNING,

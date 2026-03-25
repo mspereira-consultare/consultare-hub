@@ -19,20 +19,11 @@ import { MarketingFunilFunnelVisual } from './components/MarketingFunilFunnelVis
 import { MarketingFunilKpis } from './components/MarketingFunilKpis';
 import { MarketingFunilSearchableSelect } from './components/MarketingFunilSearchableSelect';
 import { MarketingFunilSyncStatus } from './components/MarketingFunilSyncStatus';
-import {
-  formatCurrency,
-  formatDate,
-  formatDateTime,
-  formatNumber,
-  getCurrentPeriodRef,
-  getDateRangeFromPeriod,
-} from './components/formatters';
+import { formatNumber, getCurrentPeriodRef, getDateRangeFromPeriod } from './components/formatters';
 import type {
   MarketingFunilCampaign,
   MarketingFunilCampaignList,
   MarketingFunilChannelList,
-  MarketingFunilCrmBoardList,
-  MarketingFunilCrmPipelineList,
   MarketingFunilDeviceList,
   MarketingFunilFilterOptions,
   MarketingFunilLandingList,
@@ -166,8 +157,6 @@ export default function MarketingFunilPage() {
   const [filterOptions, setFilterOptions] = useState<MarketingFunilFilterOptions>(emptyFilterOptions);
   const [campaigns, setCampaigns] = useState<MarketingFunilCampaignList | null>(null);
   const [channels, setChannels] = useState<MarketingFunilChannelList | null>(null);
-  const [crmBoards, setCrmBoards] = useState<MarketingFunilCrmBoardList | null>(null);
-  const [crmPipeline, setCrmPipeline] = useState<MarketingFunilCrmPipelineList | null>(null);
   const [latestJob, setLatestJob] = useState<MarketingFunilLatestJob | null>(null);
 
   const [selectedCampaign, setSelectedCampaign] = useState<MarketingFunilCampaign | null>(null);
@@ -221,12 +210,10 @@ export default function MarketingFunilPage() {
     setError('');
 
     try {
-      const [summaryData, campaignsData, channelsData, crmBoardsData, crmPipelineData, jobsData] = await Promise.all([
+      const [summaryData, campaignsData, channelsData, jobsData] = await Promise.all([
         fetchApi<MarketingFunilSummary>(`/api/admin/marketing/funil/summary?${baseQueryString}`),
         fetchApi<MarketingFunilCampaignList>(`/api/admin/marketing/funil/campaigns?${queryString}`),
         fetchApi<MarketingFunilChannelList>(`/api/admin/marketing/funil/channels?${baseQueryString}`),
-        fetchApi<MarketingFunilCrmBoardList>(`/api/admin/marketing/funil/crm/boards?${baseQueryString}`),
-        fetchApi<MarketingFunilCrmPipelineList>(`/api/admin/marketing/funil/crm/pipeline?${baseQueryString}`),
         fetchApi<{ latestJob: MarketingFunilLatestJob | null }>(
           `/api/admin/marketing/funil/jobs/latest?${baseQueryString}`
         ),
@@ -235,8 +222,6 @@ export default function MarketingFunilPage() {
       setSummary(summaryData);
       setCampaigns(campaignsData);
       setChannels(channelsData);
-      setCrmBoards(crmBoardsData);
-      setCrmPipeline(crmPipelineData);
       setLatestJob(jobsData.latestJob || null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Erro ao carregar dados do marketing/funil.');
@@ -339,8 +324,6 @@ export default function MarketingFunilPage() {
     }
   };
 
-  const crmSnapshotLabel = crmPipeline?.snapshotDate ? `Snapshot CRM: ${formatDate(crmPipeline.snapshotDate)}` : 'CRM CRC';
-
   if (!canView) {
     return (
       <div className="rounded-3xl border border-rose-200 bg-rose-50 p-8 text-rose-900 shadow-sm">
@@ -364,8 +347,8 @@ export default function MarketingFunilPage() {
               <div>
                 <h1 className="text-xl font-bold text-slate-800">Marketing / Funil</h1>
                 <p className="mt-1 max-w-3xl text-xs text-slate-500">
-                  Cruzamento Google Ads + GA4 + CRM CRC com leitura executiva do topo e meio do funil, agora também
-                  com agendamentos válidos e faturamento por competência.
+                  Cruzamento Google Ads + GA4 com leitura executiva de mídia, intenção por WhatsApp, agendamentos
+                  válidos e faturamento por competência.
                 </p>
               </div>
             </div>
@@ -546,12 +529,7 @@ export default function MarketingFunilPage() {
           </div>
 
           <div className="xl:border-l xl:border-slate-200 xl:pl-4">
-            <MarketingFunilSyncStatus
-              latestJob={latestJob}
-              googleLastSyncAt={summary?.lastSyncAt || null}
-              crmLastSyncAt={summary?.crm.lastSyncAt || null}
-              refreshing={refreshing}
-            />
+            <MarketingFunilSyncStatus latestJob={latestJob} googleLastSyncAt={summary?.lastSyncAt || null} refreshing={refreshing} />
           </div>
         </div>
       </section>
@@ -567,98 +545,50 @@ export default function MarketingFunilPage() {
 
       <MarketingFunilFunnelVisual summary={summary} />
 
-      <div className="grid gap-6 2xl:grid-cols-[1.4fr_1fr]">
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader
-            title="Canais"
-            description="Leitura por grupo de canal com sessões, usuários, leads e eventos."
-          />
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                  <th className="px-3 py-3 font-semibold">Grupo de canal</th>
-                  <th className="px-3 py-3 text-right font-semibold">Sessões</th>
-                  <th className="px-3 py-3 text-right font-semibold">Usuários</th>
-                  <th className="px-3 py-3 text-right font-semibold">Leads</th>
-                  <th className="px-3 py-3 text-right font-semibold">Eventos</th>
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <SectionHeader
+          title="Canais"
+          description="Leitura por grupo de canal com sessões, usuários, leads de WhatsApp e eventos."
+        />
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
+                <th className="px-3 py-3 font-semibold">Grupo de canal</th>
+                <th className="px-3 py-3 text-right font-semibold">Sessões</th>
+                <th className="px-3 py-3 text-right font-semibold">Usuários</th>
+                <th className="px-3 py-3 text-right font-semibold">Leads (WhatsApp)</th>
+                <th className="px-3 py-3 text-right font-semibold">Eventos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
+                    Carregando canais...
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
-                      Carregando canais...
-                    </td>
-                  </tr>
-                ) : !channels?.items?.length ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
-                      Nenhum canal encontrado para o período selecionado.
-                    </td>
-                  </tr>
-                ) : (
-                  channels.items.map((item) => (
-                    <tr key={item.channelGroup} className="border-b border-slate-100 last:border-b-0">
-                      <td className="px-3 py-3 font-medium text-slate-900">{item.channelGroup}</td>
-                      <td className="px-3 py-3 text-right">{formatNumber(item.sessions)}</td>
-                      <td className="px-3 py-3 text-right">{formatNumber(item.users)}</td>
-                      <td className="px-3 py-3 text-right font-semibold text-emerald-700">{formatNumber(item.leads)}</td>
-                      <td className="px-3 py-3 text-right">{formatNumber(item.eventCount)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-          <SectionHeader
-            title="CRM CRC"
-            description="Resumo do quadro CRC usado pela gestora neste módulo."
-            badge={crmSnapshotLabel}
-          />
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                  <th className="px-3 py-3 font-semibold">Board</th>
-                  <th className="px-3 py-3 text-right font-semibold">Leads criados</th>
-                  <th className="px-3 py-3 text-right font-semibold">Valor criado</th>
-                  <th className="px-3 py-3 text-right font-semibold">Pipeline atual</th>
-                  <th className="px-3 py-3 text-right font-semibold">Valor pipeline</th>
+              ) : !channels?.items?.length ? (
+                <tr>
+                  <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
+                    Nenhum canal encontrado para o período selecionado.
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {loading ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
-                      Carregando CRM...
-                    </td>
+              ) : (
+                channels.items.map((item) => (
+                  <tr key={item.channelGroup} className="border-b border-slate-100 last:border-b-0">
+                    <td className="px-3 py-3 font-medium text-slate-900">{item.channelGroup}</td>
+                    <td className="px-3 py-3 text-right">{formatNumber(item.sessions)}</td>
+                    <td className="px-3 py-3 text-right">{formatNumber(item.users)}</td>
+                    <td className="px-3 py-3 text-right font-semibold text-emerald-700">{formatNumber(item.leads)}</td>
+                    <td className="px-3 py-3 text-right">{formatNumber(item.eventCount)}</td>
                   </tr>
-                ) : !crmBoards?.items?.length ? (
-                  <tr>
-                    <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
-                      O board CRC ainda não possui dados consolidados para o filtro atual.
-                    </td>
-                  </tr>
-                ) : (
-                  crmBoards.items.map((item) => (
-                    <tr key={item.boardId} className="border-b border-slate-100 last:border-b-0">
-                      <td className="px-3 py-3 font-medium text-slate-900">{item.boardTitle}</td>
-                      <td className="px-3 py-3 text-right">{formatNumber(item.leadsCreatedCount)}</td>
-                      <td className="px-3 py-3 text-right">{formatCurrency(item.leadsCreatedValue)}</td>
-                      <td className="px-3 py-3 text-right font-semibold text-cyan-700">{formatNumber(item.pipelineItemsCount)}</td>
-                      <td className="px-3 py-3 text-right">{formatCurrency(item.pipelineItemsValue)}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <MarketingFunilCampaignTable
         items={campaigns?.items || []}
@@ -673,54 +603,6 @@ export default function MarketingFunilPage() {
         }}
         onOpenDetails={openCampaignDrawer}
       />
-
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <SectionHeader
-          title="Pipeline CRC por estágio"
-          description="Snapshot atual do quadro CRC com recortes por estágio, origem CRM e serviço."
-          badge={crmPipeline?.snapshotDate ? `Snapshot ${formatDate(crmPipeline.snapshotDate)}` : 'Sem snapshot'}
-        />
-        <div className="mt-4 max-h-[30rem] overflow-auto rounded-2xl border border-slate-200">
-          <table className="min-w-full text-sm">
-            <thead className="sticky top-0 z-10 bg-white">
-              <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                <th className="px-3 py-3 font-semibold">Estágio</th>
-                <th className="px-3 py-3 font-semibold">Origem CRM</th>
-                <th className="px-3 py-3 font-semibold">Serviço</th>
-                <th className="px-3 py-3 text-right font-semibold">Itens</th>
-                <th className="px-3 py-3 text-right font-semibold">Valor</th>
-                <th className="px-3 py-3 font-semibold">Atualizado em</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-3 py-10 text-center text-slate-500">
-                    Carregando pipeline CRM...
-                  </td>
-                </tr>
-              ) : !crmPipeline?.items?.length ? (
-                <tr>
-                  <td colSpan={6} className="px-3 py-10 text-center text-slate-500">
-                    Nenhum snapshot do pipeline CRC foi encontrado.
-                  </td>
-                </tr>
-              ) : (
-                crmPipeline.items.map((item) => (
-                  <tr key={`${item.columnId}-${item.crmSourceKey}-${item.serviceKey}`} className="border-b border-slate-100 last:border-b-0">
-                    <td className="px-3 py-3 font-medium text-slate-900">{item.columnTitle}</td>
-                    <td className="px-3 py-3 text-slate-600">{item.crmSourceKey || 'unknown'}</td>
-                    <td className="px-3 py-3 text-slate-600">{item.serviceKey || 'unknown'}</td>
-                    <td className="px-3 py-3 text-right font-semibold text-cyan-700">{formatNumber(item.pipelineItemsCount)}</td>
-                    <td className="px-3 py-3 text-right">{formatCurrency(item.pipelineItemsValue)}</td>
-                    <td className="px-3 py-3 text-slate-500">{formatDateTime(item.lastSyncAt)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
 
       <section className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-5 shadow-sm">
         <SectionHeader

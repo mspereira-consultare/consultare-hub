@@ -1,15 +1,6 @@
-import {
-  BarChart3,
-  Eye,
-  MousePointerClick,
-  Send,
-  Target,
-  Users,
-  Wallet,
-  Workflow,
-} from 'lucide-react';
+import { BarChart3, Eye, MousePointerClick, Send, Target, Users, Wallet, Workflow } from 'lucide-react';
 import type { MarketingFunilSummary } from './types';
-import { formatCompactCurrency, formatCurrency, formatNumber, formatPercent } from './formatters';
+import { formatCurrency, formatNumber, formatPercent } from './formatters';
 
 type MarketingFunilKpisProps = {
   summary: MarketingFunilSummary | null;
@@ -57,9 +48,9 @@ export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
       icon: Users,
     },
     {
-      label: 'Leads digitais',
+      label: 'Leads (WhatsApp)',
       value: formatNumber(summary?.leads || 0),
-      helper: summary ? `${formatCurrency(summary.cpl)} de CPL` : `${formatCurrency(0)} de CPL`,
+      helper: summary ? `${formatCurrency(summary.cpl)} por lead de WhatsApp` : `${formatCurrency(0)} por lead de WhatsApp`,
       icon: Send,
     },
     {
@@ -81,15 +72,15 @@ export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
       icon: BarChart3,
     },
     {
-      label: 'Leads CRM CRC',
-      value: formatNumber(summary?.crm.leadsCreatedCount || 0),
-      helper: summary ? formatCompactCurrency(summary.crm.leadsCreatedValue || 0) : formatCompactCurrency(0),
-      icon: Send,
+      label: 'Usuários totais',
+      value: formatNumber(summary?.totalUsers || 0),
+      helper: summary ? `${formatNumber(summary.newUsers)} novos usuários` : '0 novos usuários',
+      icon: Users,
     },
     {
-      label: 'Pipeline CRC',
-      value: formatNumber(summary?.crm.pipelineItemsCount || 0),
-      helper: summary ? formatCompactCurrency(summary.crm.pipelineItemsValue || 0) : formatCompactCurrency(0),
+      label: 'Eventos',
+      value: formatNumber(summary?.eventCount || 0),
+      helper: summary ? `${formatNumber(summary.pageViews)} páginas vistas` : '0 páginas vistas',
       icon: Workflow,
     },
   ];

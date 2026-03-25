@@ -31,7 +31,7 @@ export function MarketingFunilCampaignTable({
         <div>
           <h2 className="text-lg font-bold text-slate-900">Campanhas</h2>
           <p className="text-sm text-slate-500">
-            Visão consolidada por campanha com custos, tráfego, leads e conversões.
+            Visão consolidada por campanha com custos, tráfego, leads de WhatsApp e conversões.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -62,7 +62,7 @@ export function MarketingFunilCampaignTable({
               <th className="px-3 py-3 text-right font-semibold">Cliques</th>
               <th className="px-3 py-3 text-right font-semibold">CTR</th>
               <th className="px-3 py-3 text-right font-semibold">Sessões</th>
-              <th className="px-3 py-3 text-right font-semibold">Leads</th>
+              <th className="px-3 py-3 text-right font-semibold">Leads (WhatsApp)</th>
               <th className="px-3 py-3 text-right font-semibold">CPL</th>
               <th className="px-3 py-3 text-right font-semibold">Conversões</th>
               <th className="px-3 py-3 text-right font-semibold">Ações</th>

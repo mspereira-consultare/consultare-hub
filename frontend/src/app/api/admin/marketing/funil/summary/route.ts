@@ -20,9 +20,6 @@ const getFilters = (request: Request): MarketingFunilFilters => {
     source: searchParams.get('source') || undefined,
     medium: searchParams.get('medium') || undefined,
     channelGroup: searchParams.get('channelGroup') || undefined,
-    crmBoard: searchParams.get('crmBoard') || undefined,
-    crmSource: searchParams.get('crmSource') || undefined,
-    crmService: searchParams.get('crmService') || undefined,
   };
 };
 
