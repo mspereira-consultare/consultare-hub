@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, PanelRightOpen } from 'lucide-react';
+﻿import { ChevronLeft, ChevronRight, PanelRightOpen } from 'lucide-react';
 import type { MarketingFunilCampaign } from './types';
 import { formatCurrency, formatNumber, formatPercent } from './formatters';
 
@@ -31,7 +31,8 @@ export function MarketingFunilCampaignTable({
         <div>
           <h2 className="text-lg font-bold text-slate-900">Campanhas</h2>
           <p className="text-sm text-slate-500">
-            Visão consolidada por campanha com custos, tráfego, leads de WhatsApp e conversões.
+            Visão consolidada por campanha com mídia, leads de WhatsApp e enriquecimento do Clinia Ads para origem
+            Google.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -58,26 +59,27 @@ export function MarketingFunilCampaignTable({
               <th className="px-3 py-3 font-semibold">Origem / Mídia</th>
               <th className="px-3 py-3 font-semibold">Canal</th>
               <th className="px-3 py-3 text-right font-semibold">Investimento</th>
-              <th className="px-3 py-3 text-right font-semibold">Impressões</th>
               <th className="px-3 py-3 text-right font-semibold">Cliques</th>
-              <th className="px-3 py-3 text-right font-semibold">CTR</th>
-              <th className="px-3 py-3 text-right font-semibold">Sessões</th>
               <th className="px-3 py-3 text-right font-semibold">Leads (WhatsApp)</th>
-              <th className="px-3 py-3 text-right font-semibold">CPL</th>
-              <th className="px-3 py-3 text-right font-semibold">Conversões</th>
+              <th className="px-3 py-3 text-right font-semibold">Contatos Clinia</th>
+              <th className="px-3 py-3 text-right font-semibold">Novos contatos</th>
+              <th className="px-3 py-3 text-right font-semibold">Agend. Clinia</th>
+              <th className="px-3 py-3 text-right font-semibold">Conv. Clinia</th>
+              <th className="px-3 py-3 text-right font-semibold">Custo/contato</th>
+              <th className="px-3 py-3 text-right font-semibold">Custo/agend.</th>
               <th className="px-3 py-3 text-right font-semibold">Ações</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={12} className="px-3 py-10 text-center text-slate-500">
+                <td colSpan={13} className="px-3 py-10 text-center text-slate-500">
                   Carregando campanhas...
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={12} className="px-3 py-10 text-center text-slate-500">
+                <td colSpan={13} className="px-3 py-10 text-center text-slate-500">
                   Nenhuma campanha encontrada para os filtros atuais.
                 </td>
               </tr>
@@ -98,13 +100,14 @@ export function MarketingFunilCampaignTable({
                   </td>
                   <td className="px-3 py-3 text-slate-600">{item.sessionDefaultChannelGroup || '-'}</td>
                   <td className="px-3 py-3 text-right font-semibold text-slate-900">{formatCurrency(item.spend)}</td>
-                  <td className="px-3 py-3 text-right">{formatNumber(item.impressions)}</td>
                   <td className="px-3 py-3 text-right">{formatNumber(item.clicks)}</td>
-                  <td className="px-3 py-3 text-right">{formatPercent(item.ctr)}</td>
-                  <td className="px-3 py-3 text-right">{formatNumber(item.sessions)}</td>
                   <td className="px-3 py-3 text-right font-semibold text-emerald-700">{formatNumber(item.leads)}</td>
-                  <td className="px-3 py-3 text-right">{formatCurrency(item.cpl)}</td>
-                  <td className="px-3 py-3 text-right text-violet-700">{formatNumber(item.conversions)}</td>
+                  <td className="px-3 py-3 text-right font-semibold text-cyan-700">{formatNumber(item.cliniaContacts)}</td>
+                  <td className="px-3 py-3 text-right">{formatNumber(item.cliniaNewContacts)}</td>
+                  <td className="px-3 py-3 text-right font-semibold text-blue-700">{formatNumber(item.cliniaAppointments)}</td>
+                  <td className="px-3 py-3 text-right">{formatPercent(item.cliniaConversionRate)}</td>
+                  <td className="px-3 py-3 text-right">{formatCurrency(item.cliniaCostPerContact)}</td>
+                  <td className="px-3 py-3 text-right">{formatCurrency(item.cliniaCostPerAppointment)}</td>
                   <td className="px-3 py-3 text-right">
                     <button
                       type="button"

@@ -1,5 +1,5 @@
-import { AlertTriangle, CheckCircle2, Clock3, Loader2, RefreshCw } from 'lucide-react';
-import type { MarketingFunilLatestJob } from './types';
+﻿import { AlertTriangle, CheckCircle2, Clock3, Loader2, RefreshCw } from 'lucide-react';
+import type { MarketingFunilLatestJob, MarketingFunilSourceStatus } from './types';
 import { formatDateTime } from './formatters';
 
 const getBadge = (status?: string | null) => {
@@ -51,17 +51,36 @@ const getBadge = (status?: string | null) => {
 
 type MarketingFunilSyncStatusProps = {
   latestJob: MarketingFunilLatestJob | null;
-  googleLastSyncAt?: string | null;
+  sourceStatus: MarketingFunilSourceStatus | null;
   refreshing?: boolean;
 };
 
 export function MarketingFunilSyncStatus({
   latestJob,
-  googleLastSyncAt,
+  sourceStatus,
   refreshing = false,
 }: MarketingFunilSyncStatusProps) {
   const badge = getBadge(latestJob?.status);
   const Icon = badge.icon;
+
+  const rows = [
+    {
+      label: 'Google Ads / GA4',
+      value: formatDateTime(sourceStatus?.google.dataLastSyncAt || sourceStatus?.google.lastRun || null),
+    },
+    {
+      label: 'Clinia Ads',
+      value: formatDateTime(sourceStatus?.cliniaAds.dataLastSyncAt || sourceStatus?.cliniaAds.lastRun || null),
+    },
+    {
+      label: 'Agendamentos',
+      value: formatDateTime(sourceStatus?.appointments.lastRun || null),
+    },
+    {
+      label: 'Faturamento',
+      value: formatDateTime(sourceStatus?.revenue.lastRun || null),
+    },
+  ];
 
   return (
     <div className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -79,10 +98,12 @@ export function MarketingFunilSyncStatus({
       </div>
 
       <div className="mt-3 space-y-2 text-xs text-slate-600">
-        <div className="flex items-center justify-between gap-3">
-          <span className="font-medium text-slate-500">Google Ads / GA4</span>
-          <span className="text-right text-slate-700">{formatDateTime(googleLastSyncAt)}</span>
-        </div>
+        {rows.map((row) => (
+          <div key={row.label} className="flex items-center justify-between gap-3">
+            <span className="font-medium text-slate-500">{row.label}</span>
+            <span className="text-right text-slate-700">{row.value}</span>
+          </div>
+        ))}
         {latestJob?.errorMessage ? (
           <div className="rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-[11px] text-orange-800">
             {latestJob.errorMessage}

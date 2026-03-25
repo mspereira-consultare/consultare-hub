@@ -1,4 +1,4 @@
-import { ExternalLink, Loader2, X } from 'lucide-react';
+﻿import { ExternalLink, Loader2, X } from 'lucide-react';
 import type { MarketingFunilCampaign, MarketingFunilDeviceRow, MarketingFunilLandingRow } from './types';
 import { formatCurrency, formatDateTime, formatNumber, formatPercent } from './formatters';
 
@@ -53,12 +53,13 @@ export function MarketingFunilCampaignDrawer({
             </button>
           </div>
 
-          <div className="mt-5 grid gap-3 sm:grid-cols-4">
+          <div className="mt-5 grid gap-3 sm:grid-cols-5">
             {[
               { label: 'Investimento', value: formatCurrency(campaign.spend) },
               { label: 'Sessões', value: formatNumber(campaign.sessions) },
               { label: 'Leads (WhatsApp)', value: formatNumber(campaign.leads) },
-              { label: 'Conversões', value: formatNumber(campaign.conversions) },
+              { label: 'Contatos Clinia', value: formatNumber(campaign.cliniaContacts) },
+              { label: 'Agend. Clinia', value: formatNumber(campaign.cliniaAppointments) },
             ].map((item) => (
               <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{item.label}</div>

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
@@ -15,6 +15,7 @@ import {
 import { hasPermission } from '@/lib/permissions';
 import { MarketingFunilCampaignDrawer } from './components/MarketingFunilCampaignDrawer';
 import { MarketingFunilCampaignTable } from './components/MarketingFunilCampaignTable';
+import { MarketingFunilCliniaAdsSection } from './components/MarketingFunilCliniaAdsSection';
 import { MarketingFunilFunnelVisual } from './components/MarketingFunilFunnelVisual';
 import { MarketingFunilKpis } from './components/MarketingFunilKpis';
 import { MarketingFunilSearchableSelect } from './components/MarketingFunilSearchableSelect';
@@ -24,10 +25,13 @@ import type {
   MarketingFunilCampaign,
   MarketingFunilCampaignList,
   MarketingFunilChannelList,
+  MarketingFunilCliniaAdsList,
+  MarketingFunilCliniaAdsOriginList,
   MarketingFunilDeviceList,
   MarketingFunilFilterOptions,
   MarketingFunilLandingList,
   MarketingFunilLatestJob,
+  MarketingFunilSourceStatus,
   MarketingFunilSummary,
 } from './components/types';
 
@@ -157,6 +161,9 @@ export default function MarketingFunilPage() {
   const [filterOptions, setFilterOptions] = useState<MarketingFunilFilterOptions>(emptyFilterOptions);
   const [campaigns, setCampaigns] = useState<MarketingFunilCampaignList | null>(null);
   const [channels, setChannels] = useState<MarketingFunilChannelList | null>(null);
+  const [cliniaAds, setCliniaAds] = useState<MarketingFunilCliniaAdsList | null>(null);
+  const [cliniaAdsOrigins, setCliniaAdsOrigins] = useState<MarketingFunilCliniaAdsOriginList | null>(null);
+  const [sourceStatus, setSourceStatus] = useState<MarketingFunilSourceStatus | null>(null);
   const [latestJob, setLatestJob] = useState<MarketingFunilLatestJob | null>(null);
 
   const [selectedCampaign, setSelectedCampaign] = useState<MarketingFunilCampaign | null>(null);
@@ -210,18 +217,25 @@ export default function MarketingFunilPage() {
     setError('');
 
     try {
-      const [summaryData, campaignsData, channelsData, jobsData] = await Promise.all([
-        fetchApi<MarketingFunilSummary>(`/api/admin/marketing/funil/summary?${baseQueryString}`),
-        fetchApi<MarketingFunilCampaignList>(`/api/admin/marketing/funil/campaigns?${queryString}`),
-        fetchApi<MarketingFunilChannelList>(`/api/admin/marketing/funil/channels?${baseQueryString}`),
-        fetchApi<{ latestJob: MarketingFunilLatestJob | null }>(
-          `/api/admin/marketing/funil/jobs/latest?${baseQueryString}`
-        ),
-      ]);
+      const [summaryData, campaignsData, channelsData, jobsData, cliniaAdsData, cliniaOriginsData, sourceStatusData] =
+        await Promise.all([
+          fetchApi<MarketingFunilSummary>(`/api/admin/marketing/funil/summary?${baseQueryString}`),
+          fetchApi<MarketingFunilCampaignList>(`/api/admin/marketing/funil/campaigns?${queryString}`),
+          fetchApi<MarketingFunilChannelList>(`/api/admin/marketing/funil/channels?${baseQueryString}`),
+          fetchApi<{ latestJob: MarketingFunilLatestJob | null }>(
+            `/api/admin/marketing/funil/jobs/latest?${baseQueryString}`
+          ),
+          fetchApi<MarketingFunilCliniaAdsList>(`/api/admin/marketing/funil/clinia-ads/ads?${baseQueryString}`),
+          fetchApi<MarketingFunilCliniaAdsOriginList>(`/api/admin/marketing/funil/clinia-ads/origins?${baseQueryString}`),
+          fetchApi<MarketingFunilSourceStatus>('/api/admin/marketing/funil/source-status'),
+        ]);
 
       setSummary(summaryData);
       setCampaigns(campaignsData);
       setChannels(channelsData);
+      setCliniaAds(cliniaAdsData);
+      setCliniaAdsOrigins(cliniaOriginsData);
+      setSourceStatus(sourceStatusData);
       setLatestJob(jobsData.latestJob || null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Erro ao carregar dados do marketing/funil.');
@@ -347,8 +361,8 @@ export default function MarketingFunilPage() {
               <div>
                 <h1 className="text-xl font-bold text-slate-800">Marketing / Funil</h1>
                 <p className="mt-1 max-w-3xl text-xs text-slate-500">
-                  Cruzamento Google Ads + GA4 com leitura executiva de mídia, intenção por WhatsApp, agendamentos
-                  válidos e faturamento por competência.
+                  Cruzamento Google Ads + GA4 com intenção por WhatsApp, contatos e agendamentos no Clinia Ads,
+                  agendamentos válidos e faturamento por competência.
                 </p>
               </div>
             </div>
@@ -529,7 +543,7 @@ export default function MarketingFunilPage() {
           </div>
 
           <div className="xl:border-l xl:border-slate-200 xl:pl-4">
-            <MarketingFunilSyncStatus latestJob={latestJob} googleLastSyncAt={summary?.lastSyncAt || null} refreshing={refreshing} />
+            <MarketingFunilSyncStatus latestJob={latestJob} sourceStatus={sourceStatus} refreshing={refreshing} />
           </div>
         </div>
       </section>
@@ -544,6 +558,22 @@ export default function MarketingFunilPage() {
       <MarketingFunilKpis summary={summary} />
 
       <MarketingFunilFunnelVisual summary={summary} />
+
+      <MarketingFunilCliniaAdsSection summary={summary} ads={cliniaAds} origins={cliniaAdsOrigins} loading={loading} />
+
+      <MarketingFunilCampaignTable
+        items={campaigns?.items || []}
+        page={campaigns?.page || page}
+        pageSize={campaigns?.pageSize || pageSize}
+        total={campaigns?.total || 0}
+        loading={loading}
+        onPageChange={setPage}
+        onPageSizeChange={(value) => {
+          setPageSize(value);
+          setPage(1);
+        }}
+        onOpenDetails={openCampaignDrawer}
+      />
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <SectionHeader
@@ -590,24 +620,10 @@ export default function MarketingFunilPage() {
         </div>
       </section>
 
-      <MarketingFunilCampaignTable
-        items={campaigns?.items || []}
-        page={campaigns?.page || page}
-        pageSize={campaigns?.pageSize || pageSize}
-        total={campaigns?.total || 0}
-        loading={loading}
-        onPageChange={setPage}
-        onPageSizeChange={(value) => {
-          setPageSize(value);
-          setPage(1);
-        }}
-        onOpenDetails={openCampaignDrawer}
-      />
-
       <section className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-5 shadow-sm">
         <SectionHeader
           title="Próximas camadas"
-          description="Os próximos blocos deixam o painel mais acionável, agora que agenda e faturamento já entraram no agregado."
+          description="Os próximos blocos deixam o painel mais acionável, agora que agenda, faturamento e Clinia Ads já entraram no agregado."
         />
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {[

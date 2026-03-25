@@ -66,6 +66,7 @@ try:
     from worker_agenda_ocupacao import process_pending_agenda_occupancy_jobs_once
     from worker_marketing_funnel_google import process_pending_marketing_funnel_jobs_once
     from worker_clinia_crm import process_pending_clinia_crm_jobs_once
+    from worker_clinia_ads import process_pending_clinia_ads_jobs_once
     from worker_auth import FeegowTokenRenewer
     from worker_auth_clinia import CliniaCookieRenewer
     
@@ -159,6 +160,7 @@ KNOWN_ACTIONS = {
     'agenda_occupancy', # Ocupacao da agenda por especialidade
     'marketing_funnel', # Funil de Marketing (Google Ads + GA4)
     'clinia_crm', # CRM Clinia (boards e cards)
+    'clinia_ads', # Estatisticas de anuncios do Clinia
 }
 
 def _normalize_service_key(service_raw: str) -> str:
@@ -225,6 +227,9 @@ ALIAS_ACTION_MAP = {
     'clinia_crm': 'clinia_crm',
     'crm_clinia': 'clinia_crm',
     'worker_clinia_crm': 'clinia_crm',
+    'clinia_ads': 'clinia_ads',
+    'ads_clinia': 'clinia_ads',
+    'worker_clinia_ads': 'clinia_ads',
 }
 
 # Mapeia ação para nome canônico no `system_status`
@@ -245,6 +250,7 @@ CANONICAL_NAME = {
     'agenda_occupancy': 'Agenda Ocupacao (Feegow API)',
     'marketing_funnel': 'Marketing Funil (Google API)',
     'clinia_crm': 'CRM Clinia (API nao oficial)',
+    'clinia_ads': 'Clinia Ads (API nao oficial)',
 }
 
 def canonicalize(service_raw: str):
@@ -429,6 +435,14 @@ def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
             ):
                 drained += 1
             print(f"Clinia CRM: jobs drenados={drained}")
+        elif action == "clinia_ads":
+            drained = 0
+            while process_pending_clinia_ads_jobs_once(
+                auto_enqueue_if_empty=(drained == 0),
+                requested_by="system_status",
+            ):
+                drained += 1
+            print(f"Clinia Ads: jobs drenados={drained}")
         else:
             print(f"⚠️ Ação desconhecida solicitada: {action}")
 
@@ -601,6 +615,7 @@ def run_scheduler():
     schedule.every().day.at("05:10").do(run_clinia_token_renewal)
     schedule.every().day.at("05:20").do(lambda: run_service('procedures_catalog'))
     schedule.every().day.at("05:25").do(lambda: run_service('clinia_crm'))
+    schedule.every().day.at("05:35").do(lambda: run_service('clinia_ads'))
     schedule.every().day.at("05:40").do(lambda: run_service('marketing_funnel'))
 
     schedule.every().day.at("12:00").do(lambda: run_service('contratos'))
@@ -609,8 +624,10 @@ def run_scheduler():
     schedule.every().day.at("12:10").do(run_clinia_token_renewal)
     schedule.every().day.at("12:20").do(lambda: run_service('procedures_catalog'))
     schedule.every().day.at("12:25").do(lambda: run_service('clinia_crm'))
+    schedule.every().day.at("12:35").do(lambda: run_service('clinia_ads'))
     schedule.every().day.at("18:10").do(lambda: run_service('marketing_funnel'))
     schedule.every().day.at("18:25").do(lambda: run_service('clinia_crm'))
+    schedule.every().day.at("18:35").do(lambda: run_service('clinia_ads'))
     # Pré-aquecimento de sessão do monitor médico antes da abertura (08:00)
     schedule.every().day.at("07:40").do(run_medico_prewarm_job)
     schedule.every().day.at("07:45").do(run_medico_prewarm_job)

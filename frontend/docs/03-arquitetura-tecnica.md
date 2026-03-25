@@ -26,6 +26,9 @@ Persistência principal atual: **MySQL (Railway)**, com suporte legado para Turs
   - recepção: `workers/monitor_recepcao.py`
   - médico: `workers/monitor_medico.py`
   - clinia: `workers/worker_clinia.py`
+- Workers analíticos:
+  - marketing Google/GA4: `workers/worker_marketing_funnel_google.py`
+  - Clinia Ads: `workers/worker_clinia_ads.py`
 - Carga transacional:
   - agendamentos Feegow: `workers/worker_feegow_appointments.py` (base do dashboard de agendamentos)
   - catalogo de procedimentos Feegow: `workers/worker_feegow_procedures.py`
@@ -137,6 +140,8 @@ Arquivo: `workers/main.py`.
 - `contratos`: 12:00.
 - Lote pesado (`faturamento`, `financeiro`, `comercial`, `contratos`): 14:00, 17:00, 19:00.
 - `appointments` (Feegow agendamentos): de hora em hora no minuto `:30`, dentro da janela operacional.
+- `marketing_funnel`: `05:40` e `18:10`.
+- `clinia_ads`: `05:35`, `12:35` e `18:35`.
 
 ## 9) Integrações Externas
 
@@ -153,6 +158,25 @@ Arquivo: `workers/main.py`.
 
 - APIs de grupos, estatísticas e contagem de chats (`worker_clinia.py`).
 - Snapshot em tabelas `clinia_*`.
+- API analítica de anúncios:
+  - endpoint `statistics/ads`
+  - worker dedicado `worker_clinia_ads.py`
+  - fatos diários em `fact_clinia_ads_daily`
+
+### Marketing / Funil
+
+- Google Ads + GA4 alimentam `fact_marketing_funnel_daily`.
+- Clinia Ads alimenta `fact_clinia_ads_daily`.
+- O frontend cruza:
+  - mídia e navegação
+  - leads por clique em WhatsApp
+  - contatos recebidos no Clinia
+  - conversão para agendamento no Clinia
+  - agendamentos válidos no Feegow
+  - faturamento bruto analítico
+
+Regra vigente de lead:
+- clique que leva o usuário para o WhatsApp da clínica.
 
 ### Google Sheets
 

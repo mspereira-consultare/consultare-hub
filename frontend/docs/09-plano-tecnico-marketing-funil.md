@@ -1,143 +1,295 @@
-# Plano Técnico — Módulo `/marketing/funil` (V1 Google-first)
+# Plano Técnico — Módulo `/marketing/funil`
 
 ## Objetivo
-Implementar o módulo `/marketing/funil` com fonte inicial em Google Ads + GA4, com dados auditáveis, atualização por job e consumo por APIs/painel.
+Consolidar a leitura de performance de marketing da Consultare em um único módulo, cruzando:
 
-## Escopo V1
-- Pipeline completo: ingestão, normalização, persistência `raw`, fato diário, jobs e heartbeat.
-- Execução manual (CLI/job) e agendada pelo orquestrador.
-- Placeholders explícitos para etapas ainda não integradas:
-  - `appointments`
-  - `revenue`
-  - `show_rate`
+- Google Ads
+- GA4
+- Clinia Ads
+- Feegow (agendamentos)
+- Faturamento Bruto Analítico
 
-## Decisões congeladas
-- Estratégia: Google-first.
-- Autenticação: OAuth + refresh token.
-- Multi-conta por marca via tabela de configuração.
-- Regra de atribuição V1: `LAST_VALID_SOURCE_CAMPAIGN`.
-- Granularidade analítica: diária.
-- Timezone operacional: `America/Sao_Paulo`.
+O foco atual do módulo é sair de uma leitura puramente de mídia para uma leitura de intenção, contato, conversão em agendamento e resultado financeiro.
 
-## Credenciais e variáveis
-### Obrigatórias
-- `GOOGLE_OAUTH_CLIENT_ID`
-- `GOOGLE_OAUTH_CLIENT_SECRET`
-- `GOOGLE_OAUTH_REFRESH_TOKEN`
-- `GOOGLE_ADS_DEVELOPER_TOKEN`
+## Regra de negócio vigente
 
-### Opcionais
-- `GOOGLE_ADS_LOGIN_CUSTOMER_ID`
-- `MARKETING_FUNNEL_API_TIMEOUT_SEC` (default `60`)
-- `MARKETING_FUNNEL_RETRY_TOTAL` (default `3`)
-- `MARKETING_FUNNEL_RETRY_BACKOFF_SEC` (default `0.5`)
-- `MARKETING_FUNNEL_SYNC_POLL_SEC` (default `60`)
-- `MARKETING_FUNNEL_DEFAULT_PERIOD` (default `previous_month`)
+### Lead
+No contexto atual da Consultare, `lead` no painel significa:
 
-## Modelo de dados V1
-### Configuração
-- `marketing_google_accounts`
-  - `id`, `brand_slug`, `ads_customer_id`, `ga4_property_id`, `is_active`, `notes`, `updated_at`
-- `marketing_campaign_mapping`
-  - `id`, `brand_slug`, `campaign_match_type`, `campaign_match_value`, `unit_key`, `specialty_key`, `channel_key`, `priority`, `is_active`, `updated_at`
+- clique que leva o usuário para o WhatsApp da clínica
 
-### Jobs
-- `marketing_funnel_jobs`
-  - `id`, `status`, `period_ref`, `start_date`, `end_date`, `scope_json`, `requested_by`, `error_message`, `created_at`, `started_at`, `finished_at`, `updated_at`
-- `marketing_funnel_job_items`
-  - `id`, `job_id`, `brand_slug`, `ads_customer_id`, `ga4_property_id`, `status`, `records_read`, `records_written`, `error_message`, `duration_ms`, `created_at`, `updated_at`
+Essa regra é aplicada no worker do marketing/GA4 e no painel. O lead não é mais derivado de `keyEvents` genéricos do GA4.
 
-### Raw
-- `raw_google_ads_campaign_daily`
-- `raw_ga4_campaign_daily`
+### Clinia Ads
+O Clinia Ads entra como etapa posterior ao lead:
 
-### Fato
-- `fact_marketing_funnel_daily`
-  - chave natural única:
-    - `date_ref, brand_slug, unit_key, specialty_key, channel_key, campaign_key`
-  - métricas:
-    - `spend`, `impressions`, `clicks`, `ctr`, `cpc`, `leads`, `cpl`
-  - placeholders:
-    - `appointments`, `revenue`, `show_rate`
+1. `Leads (WhatsApp)`
+2. `Contatos recebidos no Clinia`
+3. `Agendamentos convertidos no Clinia`
+4. `Agendamentos válidos no Feegow`
+5. `Faturamento`
 
-## Worker
-Arquivo: `workers/worker_marketing_funnel_google.py`
+O dado do Clinia Ads não substitui lead. Ele mede o que aconteceu depois do clique de intenção.
 
-### Modos de execução
-- Loop contínuo: `python workers/worker_marketing_funnel_google.py`
-- Ciclo único: `python workers/worker_marketing_funnel_google.py --once`
-- Enfileirar e sair: `python workers/worker_marketing_funnel_google.py --enqueue --period 2026-02`
-- Intervalo explícito:
-  - `python workers/worker_marketing_funnel_google.py --once --start 2026-02-01 --end 2026-02-29`
-- Escopo:
-  - `--brand consultare`
-  - `--account 1234567890`
-- Teste de conexão:
-  - `python workers/worker_marketing_funnel_google.py --test-connections`
-- Somente schema:
-  - `python workers/worker_marketing_funnel_google.py --ensure-only`
+## Fontes de dados
 
-### Fluxo resumido
-1. Garantir tabelas.
-2. Ler job `PENDING` (ou criar ad-hoc em `--once` com auto-enqueue).
-3. Carregar contas ativas de `marketing_google_accounts`.
-4. Obter token OAuth Google.
-5. Coletar:
-   - Google Ads (`googleAds:searchStream`)
-   - GA4 (`runReport`)
-6. Persistir em `raw_*`.
-7. Mesclar Ads + GA4 por `data + campanha normalizada`.
-8. Aplicar mapeamento de campanha.
-9. Upsert em `fact_marketing_funnel_daily`.
-10. Atualizar `marketing_funnel_jobs`, `marketing_funnel_job_items` e heartbeat `system_status.marketing_funnel`.
+### Google Ads + GA4
+- Worker: `workers/worker_marketing_funnel_google.py`
+- Tabelas principais:
+  - `raw_google_ads_campaign_daily`
+  - `raw_ga4_campaign_daily`
+  - `fact_marketing_funnel_daily`
+  - `fact_marketing_funnel_daily_device`
+  - `fact_marketing_funnel_daily_landing_page`
+  - `fact_marketing_funnel_daily_channel`
 
-## Orquestrador
-Arquivo: `workers/main.py`
+### Clinia Ads
+- Worker: `workers/worker_clinia_ads.py`
+- Endpoint de origem:
+  - `https://dashboard.clinia.io/api/statistics/ads?type=this-month&startDate=...&endDate=...`
+- Tabelas:
+  - `clinia_ads_jobs`
+  - `clinia_ads_job_items`
+  - `raw_clinia_ads_contacts`
+  - `fact_clinia_ads_daily`
 
-Implementado:
-- import do worker;
-- novo serviço canônico `marketing_funnel`;
-- aliases:
-  - `marketing_funil`
-  - `funil_marketing`
-  - `worker_marketing_funnel_google`
-- execução por `run_service`:
-  - drena jobs pendentes chamando `process_pending_marketing_funnel_jobs_once(auto_enqueue_if_empty=False)`;
-- agendamento diário:
-  - `05:40` e `18:10`.
+### Agendamentos
+- Fonte: `feegow_appointments`
+- Regra atual do painel:
+  - considerar `scheduled_at`
+  - usar status válidos `1, 2, 3, 4, 7`
 
-## Refresh API
-Arquivo: `frontend/src/app/api/admin/refresh/route.ts`
+### Faturamento
+- Fonte: `faturamento_analitico`
+- Regra atual do painel:
+  - usar `data_de_referência`
+  - somar `total_pago`
+- Label no card:
+  - `Base: Faturamento Bruto Analítico`
 
-Implementado:
-- aliases adicionados para resolver o serviço `marketing_funnel`.
+## Modelo analítico atual
 
-## APIs do módulo (próxima etapa)
-Namespace planejado:
+### Fato principal
+Tabela: `fact_marketing_funnel_daily`
+
+Grão:
+- `date_ref + brand_slug + unit_key + specialty_key + channel_key + campaign_key`
+
+Métricas principais:
+- `spend`
+- `impressions`
+- `clicks`
+- `ctr`
+- `cpc`
+- `sessions`
+- `total_users`
+- `new_users`
+- `engaged_sessions`
+- `engagement_rate`
+- `avg_session_duration_sec`
+- `page_views`
+- `event_count`
+- `session_default_channel_group`
+- `interactions`
+- `conversions`
+- `all_conversions`
+- `conversions_value`
+- `cost_per_conversion`
+- `leads`
+- `cpl`
+- `appointments`
+- `revenue`
+
+### Fato diário do Clinia Ads
+Tabela: `fact_clinia_ads_daily`
+
+Grão:
+- `date_ref + brand_slug + origin + source_id + source_url_hash + title`
+
+Métricas:
+- `contacts_received`
+- `new_contacts_received`
+- `appointments_converted`
+- `conversion_rate`
+- `avg_conversion_time_sec`
+
+Regras:
+- `contacts_received`: contagem de registros com `stage='INTERESTED'`
+- `new_contacts_received`: `COUNT(DISTINCT jid)` entre os `INTERESTED`
+- `appointments_converted`: contagem de registros com `stage='APPOINTMENT'`
+- `conversion_rate`: `appointments_converted / contacts_received`
+- `avg_conversion_time_sec`: média de `conversion_time` quando disponível
+
+## Worker `clinia_ads`
+
+Arquivo:
+- `workers/worker_clinia_ads.py`
+
+### Motivo da separação
+O endpoint de anúncios da Clinia é analítico e não deve rodar no mesmo ciclo curto do worker Clinia operacional.
+
+### O que o worker faz
+1. Reaproveita o cookie atual salvo em `integrations_config`
+2. Renova sessão com `CliniaCookieRenewer` quando necessário
+3. Consulta o endpoint de anúncios com `type=this-month`
+4. Processa os blocos `current` e `last`
+5. Persiste o raw por contato/evento
+6. Reconstrói a fact diária derivada
+7. Atualiza jobs, job items e heartbeat próprio
+
+### Execução
+- teste de conexão:
+  - `python workers/worker_clinia_ads.py --test-connections`
+- garantir schema:
+  - `python workers/worker_clinia_ads.py --ensure-only`
+- ciclo único:
+  - `python workers/worker_clinia_ads.py --once`
+- enfileirar e sair:
+  - `python workers/worker_clinia_ads.py --enqueue`
+
+### Heartbeat
+Serviço:
+- `clinia_ads`
+
+Etapas reportadas em `system_status.details`:
+- `fetch`
+- `persist_raw`
+- `rebuild_fact`
+
+### Schedule no orquestrador
+Arquivo:
+- `workers/main.py`
+
+Horários:
+- `05:35`
+- `12:35`
+- `18:35`
+
+Aliases:
+- `clinia_ads`
+- `ads_clinia`
+- `worker_clinia_ads`
+
+## Limitações conhecidas da origem Clinia Ads
+
+- O endpoint não oferece backfill histórico arbitrário
+- `type=this-month` é a forma estável validada
+- O histórico confiável passa a existir da implantação em diante
+- O payload expõe o período atual e o anterior, mas não substitui um histórico completo de longo prazo
+
+Por isso:
+- o painel não deve prometer histórico completo anterior à implantação do worker
+- períodos antes da cobertura devem aparecer como indisponibilidade histórica, e não como zero silencioso
+
+## Regra de mapeamento com campanhas Google
+
+Na primeira fase, o enriquecimento da tabela principal de campanhas usa apenas:
+
+- `origin = 'google'`
+- `source_id = campaign_name` com correspondência exata
+
+Sem fuzzy matching.
+
+Se não houver match:
+- o registro continua visível no bloco `Anúncios Clinia`
+- mas não é forçado para dentro da tabela de campanhas do Google
+
+## APIs do módulo
+
+### Existentes/expandidas
 - `GET /api/admin/marketing/funil/summary`
 - `GET /api/admin/marketing/funil/campaigns`
+- `GET /api/admin/marketing/funil/channels`
+- `GET /api/admin/marketing/funil/filter-options`
 - `GET /api/admin/marketing/funil/jobs/latest`
+- `GET /api/admin/marketing/funil/source-status`
 - `POST /api/admin/marketing/funil/refresh`
-- `GET /api/admin/marketing/funil/export?format=xlsx|pdf`
 
-## Permissões (próxima etapa)
-- Novo page key: `marketing_funil`.
-- Ações: `view`, `edit`, `refresh`.
+### Novas rotas de Clinia Ads
+- `GET /api/admin/marketing/funil/clinia-ads/ads`
+- `GET /api/admin/marketing/funil/clinia-ads/origins`
 
-## Testes de aceite V1
-1. Worker cria/consome job sem duplicar fato no mesmo período.
-2. Reprocessamento do mesmo período mantém idempotência (upsert).
-3. Falha de uma conta não derruba execução total (`PARTIAL`).
-4. Heartbeat reflete status real (`RUNNING`, `COMPLETED`, `FAILED`, `WARNING`).
-5. Dados `raw` e `fact` conciliam por período/campanha.
+### Regra do refresh
+- `POST /api/admin/marketing/funil/refresh` continua disparando somente o refresh Google
+- Clinia Ads é atualizado por schedule
+- a UI mostra `lastSyncAt` separado para evitar expectativa errada de refresh manual conjunto
 
-## Troubleshooting rápido
-- Erro OAuth:
-  - validar `CLIENT_ID`, `CLIENT_SECRET`, `REFRESH_TOKEN`.
-- Erro Ads:
-  - validar `GOOGLE_ADS_DEVELOPER_TOKEN` e acesso à conta.
-- Erro GA4:
-  - validar `ga4_property_id` e permissão de leitura.
-- Sem dados:
-  - verificar `marketing_google_accounts.is_active=1` e intervalo de datas.
+## Frontend do módulo
 
+Página:
+- `frontend/src/app/(admin)/marketing/funil/page.tsx`
+
+Blocos atuais:
+- filtros e status de sincronização
+- KPIs de mídia
+- KPIs de Clinia Ads
+- funil visual completo
+- tabela de campanhas do Google enriquecida com métricas Clinia
+- seção `Anúncios Clinia`
+- tabela de canais
+
+Leituras visuais importantes:
+- `Leads` = clique para WhatsApp
+- `Contatos Clinia` = contatos recebidos pelos anúncios no Clinia
+- `Agendamentos Clinia` = contatos que chegaram ao estágio `APPOINTMENT`
+
+## Validações recomendadas
+
+### Worker
+```bash
+python -m py_compile workers/worker_clinia_ads.py workers/main.py
+python workers/worker_clinia_ads.py --test-connections
+python workers/worker_clinia_ads.py --once
+```
+
+### Frontend
+```bash
+cd frontend
+npm run build
+```
+
+## Smoke técnico validado nesta entrega
+
+- `py_compile` do worker e do orquestrador
+- `--test-connections` do `worker_clinia_ads`
+- execução real de `python workers/worker_clinia_ads.py --once`
+- `tsc --noEmit`
+- `next build`
+
+Exemplo de persistência validada após o smoke:
+- `raw_clinia_ads_contacts`: `4846` linhas
+- `fact_clinia_ads_daily`: `2536` linhas
+
+Exemplo de agregados validados:
+- março/2026:
+  - `contacts_received`: `2403`
+  - `appointments_converted`: `50`
+  - `conversion_rate`: `2,08%`
+- fevereiro/2026:
+  - `contacts_received`: `2173`
+  - `appointments_converted`: `109`
+  - `conversion_rate`: `5,02%`
+
+## Arquivos principais desta etapa
+
+- `workers/worker_clinia_ads.py`
+- `workers/main.py`
+- `frontend/src/lib/marketing_funil/repository.ts`
+- `frontend/src/app/api/admin/marketing/funil/summary/route.ts`
+- `frontend/src/app/api/admin/marketing/funil/campaigns/route.ts`
+- `frontend/src/app/api/admin/marketing/funil/clinia-ads/ads/route.ts`
+- `frontend/src/app/api/admin/marketing/funil/clinia-ads/origins/route.ts`
+- `frontend/src/app/api/admin/marketing/funil/source-status/route.ts`
+- `frontend/src/app/(admin)/marketing/funil/page.tsx`
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilKpis.tsx`
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilFunnelVisual.tsx`
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilCampaignTable.tsx`
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilCampaignDrawer.tsx`
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilSyncStatus.tsx`
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilCliniaAdsSection.tsx`
+
+## Próximos passos naturais
+
+1. Criar o novo endpoint/submódulo adicional da Clinia definido com a gestora
+2. Expandir atribuição entre campanhas, agendamentos e faturamento
+3. Criar alertas explícitos de cobertura histórica na UI quando o período selecionado estiver fora da janela capturada

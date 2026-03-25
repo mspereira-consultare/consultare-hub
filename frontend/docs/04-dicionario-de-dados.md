@@ -901,3 +901,150 @@ Campos principais:
 - `created_at`
 
 Escrita: repositorio do modulo em toda mutacao relevante.
+
+## Atualização adicional — Marketing Funil + Clinia Ads
+
+### `marketing_funnel_jobs`
+
+Finalidade:
+- registrar execuções do worker de marketing Google/GA4.
+
+Campos principais:
+- `id` (PK)
+- `status` (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `PARTIAL`)
+- `period_ref`
+- `start_date`, `end_date`
+- `scope_json`
+- `requested_by`
+- `error_message`
+- `created_at`, `started_at`, `finished_at`, `updated_at`
+
+### `marketing_funnel_job_items`
+
+Finalidade:
+- detalhar o processamento por marca/conta no job de marketing.
+
+Campos principais:
+- `id` (PK)
+- `job_id`
+- `brand_slug`
+- `ads_customer_id`
+- `ga4_property_id`
+- `status`
+- `records_read`
+- `records_written`
+- `error_message`
+- `duration_ms`
+- `created_at`, `updated_at`
+
+### `fact_marketing_funnel_daily`
+
+Finalidade:
+- fato diário principal do módulo `/marketing/funil`.
+
+Grão:
+- `date_ref + brand_slug + unit_key + specialty_key + channel_key + campaign_key`
+
+Campos principais:
+- dimensões:
+  - `campaign_key`, `campaign_name`
+  - `source`, `medium`
+  - `session_default_channel_group`
+- mídia:
+  - `spend`, `impressions`, `clicks`, `ctr`, `cpc`
+- analytics:
+  - `sessions`, `total_users`, `new_users`
+  - `engaged_sessions`, `engagement_rate`
+  - `avg_session_duration_sec`, `page_views`, `event_count`
+- performance:
+  - `interactions`, `conversions`, `all_conversions`
+  - `conversions_value`, `cost_per_conversion`
+- funil:
+  - `leads`, `cpl`, `appointments`, `revenue`
+
+Observação:
+- `leads` hoje significam clique para WhatsApp da clínica.
+
+Escrita:
+- `workers/worker_marketing_funnel_google.py`
+
+### `clinia_ads_jobs`
+
+Finalidade:
+- registrar execuções do worker `clinia_ads`.
+
+Campos principais:
+- `id` (PK)
+- `status` (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `PARTIAL`)
+- `requested_by`
+- `error_message`
+- `created_at`, `started_at`, `finished_at`, `updated_at`
+
+### `clinia_ads_job_items`
+
+Finalidade:
+- detalhar o resultado por período lógico (`current` / `last`) ou etapa do job do Clinia Ads.
+
+Campos principais:
+- `id` (PK)
+- `job_id`
+- `scope_key`
+- `status`
+- `records_read`
+- `records_written`
+- `error_message`
+- `duration_ms`
+- `created_at`, `updated_at`
+
+### `raw_clinia_ads_contacts`
+
+Finalidade:
+- persistir o payload bruto por contato/evento retornado pela API `statistics/ads`.
+
+Campos principais:
+- `id` (PK técnica)
+- `brand_slug`
+- `jid`
+- `origin`
+- `source_id`
+- `source_url`
+- `source_url_hash`
+- `title`
+- `stage`
+- `created_at_source`
+- `conversion_time_sec`
+- `name`
+- `personal_name`
+- `verified_name`
+- `organization_id`
+- `source_period` (`current`, `last`)
+- `synced_at`
+- `payload_json`
+
+Escrita:
+- `workers/worker_clinia_ads.py`
+
+### `fact_clinia_ads_daily`
+
+Finalidade:
+- agregar diariamente os anúncios do Clinia por origem e identificador do anúncio.
+
+Grão:
+- `date_ref + brand_slug + origin + source_id + source_url_hash + title`
+
+Campos principais:
+- `contacts_received`
+- `new_contacts_received`
+- `appointments_converted`
+- `conversion_rate`
+- `avg_conversion_time_sec`
+- `last_job_id`
+- `updated_at`
+
+Regras:
+- `contacts_received`: registros `INTERESTED`
+- `new_contacts_received`: `COUNT(DISTINCT jid)` entre `INTERESTED`
+- `appointments_converted`: registros `APPOINTMENT`
+
+Escrita:
+- `workers/worker_clinia_ads.py`

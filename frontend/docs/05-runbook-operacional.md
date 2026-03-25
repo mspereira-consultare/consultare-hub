@@ -109,16 +109,44 @@ Serviços comuns:
 - `comercial`
 - `contratos`
 - `clinia`
+- `marketing_funnel`
 - `procedures_catalog`
 
 ## Agendamentos automáticos (orquestrador)
 
 - `auth`: 05:00 e 12:00.
 - `procedures_catalog`: 05:20 e 12:20.
+- `clinia_ads`: 05:35, 12:35 e 18:35.
+- `marketing_funnel`: 05:40 e 18:10.
 - `contratos`: 12:00.
 - lote pesado: 14:00, 17:00, 19:00.
 - `financeiro` horário comercial: de hora em hora no minuto `:30`.
 - monitores online: 06:30 até 20:00.
+
+## 4.1) Validação rápida do Marketing / Funil
+
+Workers:
+
+```bash
+python workers/worker_marketing_funnel_google.py --test-connections
+python workers/worker_clinia_ads.py --test-connections
+python workers/worker_clinia_ads.py --once
+```
+
+APIs:
+
+- `/api/admin/marketing/funil/summary`
+- `/api/admin/marketing/funil/campaigns`
+- `/api/admin/marketing/funil/channels`
+- `/api/admin/marketing/funil/clinia-ads/ads`
+- `/api/admin/marketing/funil/clinia-ads/origins`
+- `/api/admin/marketing/funil/source-status`
+
+Checklist funcional:
+
+- `Leads` devem refletir cliques para WhatsApp
+- `Contatos Clinia` e `Agendamentos Clinia` devem aparecer apenas a partir da implantação do worker `clinia_ads`
+- `POST /api/admin/marketing/funil/refresh` continua atualizando somente a camada Google
 
 ## 5) Backfill de Faturamento
 

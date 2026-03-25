@@ -66,6 +66,8 @@ const MARKETING_APPOINTMENT_STATUS_LABELS: Record<number, string> = {
   7: 'Marcado - confirmado',
 };
 
+const CLINIA_ADS_BRAND = 'consultare';
+
 const getAnalyticsDateExpr = (columnName: string) => {
   const identifier = quoteIdentifier(columnName);
   if (isMysqlProvider()) {
@@ -202,6 +204,45 @@ const normalizeDateRange = (filters: MarketingFunilFilters): DateRange => {
   }
 
   return getPreviousMonthRange();
+};
+
+const getDateRangeMonthRef = (range: Pick<DateRange, 'startDate' | 'endDate'>) => ({
+  startMonth: range.startDate.slice(0, 7),
+  endMonth: range.endDate.slice(0, 7),
+});
+
+const shiftDate = (dateIso: string, days: number) => {
+  const parsed = new Date(`${dateIso}T00:00:00`);
+  parsed.setDate(parsed.getDate() + days);
+  return parsed.toISOString().slice(0, 10);
+};
+
+const getPreviousComparableRange = (
+  currentRange: DateRange,
+  filters: Pick<MarketingFunilFilters, 'periodRef' | 'startDate' | 'endDate'>
+): DateRange => {
+  const hasCustomRange = clean(filters.startDate).length > 0 || clean(filters.endDate).length > 0;
+  if (hasCustomRange) {
+    const start = new Date(`${currentRange.startDate}T00:00:00`);
+    const end = new Date(`${currentRange.endDate}T00:00:00`);
+    const diffDays = Math.round((end.getTime() - start.getTime()) / 86_400_000);
+    const prevEnd = shiftDate(currentRange.startDate, -1);
+    const prevStart = shiftDate(prevEnd, -diffDays);
+    return {
+      periodRef: prevStart.slice(0, 7),
+      startDate: prevStart,
+      endDate: prevEnd,
+    };
+  }
+
+  const [yearRaw, monthRaw] = currentRange.periodRef.split('-');
+  let year = Number(yearRaw || 0);
+  let month = Number(monthRaw || 0) - 1;
+  if (month <= 0) {
+    month = 12;
+    year -= 1;
+  }
+  return getRangeFromPeriod(`${year}-${String(month).padStart(2, '0')}`);
 };
 
 const normalizePage = (value: unknown) => {
@@ -497,6 +538,91 @@ export const ensureMarketingFunilTables = async (db: DbInterface) => {
   );
   await safeExecute(db, 'CREATE INDEX idx_fact_mkt_channel_date_brand ON fact_marketing_funnel_daily_channel(date_ref, brand_slug)');
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS clinia_ads_jobs (
+      id VARCHAR(64) PRIMARY KEY,
+      status VARCHAR(20) NOT NULL,
+      scope_json LONGTEXT,
+      requested_by VARCHAR(64) NOT NULL,
+      error_message TEXT,
+      created_at VARCHAR(32) NOT NULL,
+      started_at VARCHAR(32),
+      finished_at VARCHAR(32),
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+  await safeExecute(db, 'CREATE INDEX idx_clinia_ads_jobs_status ON clinia_ads_jobs(status)');
+  await safeExecute(db, 'CREATE INDEX idx_clinia_ads_jobs_created ON clinia_ads_jobs(created_at)');
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS clinia_ads_job_items (
+      id VARCHAR(64) PRIMARY KEY,
+      job_id VARCHAR(64) NOT NULL,
+      source_period VARCHAR(16) NOT NULL,
+      status VARCHAR(20) NOT NULL,
+      records_read INTEGER NOT NULL DEFAULT 0,
+      records_written INTEGER NOT NULL DEFAULT 0,
+      error_message TEXT,
+      duration_ms INTEGER NOT NULL DEFAULT 0,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+  await safeExecute(db, 'CREATE INDEX idx_clinia_ads_job_item_job ON clinia_ads_job_items(job_id)');
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS raw_clinia_ads_contacts (
+      event_hash VARCHAR(64) PRIMARY KEY,
+      sync_job_id VARCHAR(64) NOT NULL,
+      brand_slug VARCHAR(64) NOT NULL,
+      source_period VARCHAR(16) NOT NULL,
+      date_ref VARCHAR(10) NOT NULL,
+      jid VARCHAR(80) NOT NULL,
+      origin VARCHAR(64),
+      source_id VARCHAR(255),
+      source_url LONGTEXT,
+      source_url_hash VARCHAR(64) NOT NULL,
+      title VARCHAR(255),
+      stage VARCHAR(40) NOT NULL,
+      created_at VARCHAR(32),
+      conversion_time_sec INTEGER NOT NULL DEFAULT 0,
+      name VARCHAR(255),
+      personal_name VARCHAR(255),
+      verified_name VARCHAR(255),
+      organization_id VARCHAR(64),
+      payload_json LONGTEXT,
+      synced_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+  await safeExecute(db, 'CREATE INDEX idx_clinia_ads_raw_date_brand ON raw_clinia_ads_contacts(date_ref, brand_slug)');
+  await safeExecute(db, 'CREATE INDEX idx_clinia_ads_raw_origin ON raw_clinia_ads_contacts(origin)');
+  await safeExecute(db, 'CREATE INDEX idx_clinia_ads_raw_source ON raw_clinia_ads_contacts(source_id)');
+  await safeExecute(db, 'CREATE INDEX idx_clinia_ads_raw_stage ON raw_clinia_ads_contacts(stage)');
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS fact_clinia_ads_daily (
+      id VARCHAR(64) PRIMARY KEY,
+      date_ref VARCHAR(10) NOT NULL,
+      brand_slug VARCHAR(64) NOT NULL,
+      origin VARCHAR(64) NOT NULL,
+      source_id VARCHAR(255),
+      source_url LONGTEXT,
+      source_url_hash VARCHAR(64) NOT NULL,
+      title VARCHAR(255),
+      contacts_received INTEGER NOT NULL DEFAULT 0,
+      new_contacts_received INTEGER NOT NULL DEFAULT 0,
+      appointments_converted INTEGER NOT NULL DEFAULT 0,
+      conversion_rate DECIMAL(10,4) NOT NULL DEFAULT 0,
+      avg_conversion_time_sec DECIMAL(14,2) NOT NULL DEFAULT 0,
+      source_last_sync_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+  await safeExecute(db, 'CREATE INDEX idx_clinia_ads_fact_date_brand ON fact_clinia_ads_daily(date_ref, brand_slug)');
+  await safeExecute(db, 'CREATE INDEX idx_clinia_ads_fact_origin ON fact_clinia_ads_daily(origin)');
+  await safeExecute(db, 'CREATE INDEX idx_clinia_ads_fact_source ON fact_clinia_ads_daily(source_id)');
+
 
   if (isMysqlProvider()) {
     await safeExecute(db, 'ALTER TABLE marketing_funnel_jobs MODIFY COLUMN id VARCHAR(64) NOT NULL');
@@ -532,7 +658,291 @@ const buildCampaignAggregationSelect = () => `
 
 const isConsultareBrandScope = (brandRaw: unknown) => {
   const brand = normalizeTextFilter(brandRaw).toLowerCase();
-  return !brand || brand === 'consultare';
+  return !brand || brand === CLINIA_ADS_BRAND;
+};
+
+type CliniaAdsCoverage = {
+  historyStartMonth: string | null;
+  historyEndMonth: string | null;
+  lastSyncAt: string | null;
+  historyAvailable: boolean;
+};
+
+const getCliniaAdsCoverage = async (
+  db: DbInterface,
+  range: Pick<DateRange, 'startDate' | 'endDate'>
+): Promise<CliniaAdsCoverage> => {
+  const rows = await db.query(
+    `
+    SELECT
+      MIN(date_ref) AS min_date_ref,
+      MAX(date_ref) AS max_date_ref,
+      MAX(source_last_sync_at) AS last_sync_at
+    FROM fact_clinia_ads_daily
+    WHERE brand_slug = ?
+    `,
+    [CLINIA_ADS_BRAND]
+  );
+
+  const row = (rows?.[0] as Record<string, unknown>) || {};
+  const minDate = clean(row.min_date_ref);
+  const maxDate = clean(row.max_date_ref);
+  const historyStartMonth = minDate ? minDate.slice(0, 7) : null;
+  const historyEndMonth = maxDate ? maxDate.slice(0, 7) : null;
+  const selected = getDateRangeMonthRef(range);
+  const historyAvailable = Boolean(
+    historyStartMonth &&
+      historyEndMonth &&
+      selected.startMonth >= historyStartMonth &&
+      selected.endMonth <= historyEndMonth
+  );
+
+  return {
+    historyStartMonth,
+    historyEndMonth,
+    lastSyncAt: clean(row.last_sync_at) || null,
+    historyAvailable,
+  };
+};
+
+const getZeroCliniaAdsSummary = (coverage: CliniaAdsCoverage) => ({
+  contactsReceived: 0,
+  newContactsReceived: 0,
+  appointmentsConverted: 0,
+  conversionRate: 0,
+  avgConversionTimeSec: 0,
+  lastSyncAt: coverage.lastSyncAt,
+  prevContactsReceived: 0,
+  prevNewContactsReceived: 0,
+  prevAppointmentsConverted: 0,
+  prevConversionRate: 0,
+  historyAvailable: coverage.historyAvailable,
+  historyStartMonth: coverage.historyStartMonth,
+  historyEndMonth: coverage.historyEndMonth,
+});
+
+const getCliniaAdsAggregateForRange = async (
+  db: DbInterface,
+  range: Pick<DateRange, 'startDate' | 'endDate'>
+) => {
+  const rows = await db.query(
+    `
+    SELECT
+      SUM(CASE WHEN stage = 'INTERESTED' THEN 1 ELSE 0 END) AS contacts_received,
+      COUNT(DISTINCT CASE WHEN stage = 'INTERESTED' THEN jid ELSE NULL END) AS new_contacts_received,
+      SUM(CASE WHEN stage = 'APPOINTMENT' THEN 1 ELSE 0 END) AS appointments_converted,
+      AVG(CASE WHEN conversion_time_sec > 0 THEN conversion_time_sec ELSE NULL END) AS avg_conversion_time_sec,
+      MAX(synced_at) AS last_sync_at
+    FROM raw_clinia_ads_contacts
+    WHERE brand_slug = ?
+      AND date_ref >= ?
+      AND date_ref <= ?
+    `,
+    [CLINIA_ADS_BRAND, range.startDate, range.endDate]
+  );
+
+  const row = (rows?.[0] as Record<string, unknown>) || {};
+  const contactsReceived = safeInt(row.contacts_received);
+  const appointmentsConverted = safeInt(row.appointments_converted);
+  return {
+    contactsReceived,
+    newContactsReceived: safeInt(row.new_contacts_received),
+    appointmentsConverted,
+    conversionRate: contactsReceived > 0 ? (appointmentsConverted * 100) / contactsReceived : 0,
+    avgConversionTimeSec: safeNum(row.avg_conversion_time_sec),
+    lastSyncAt: clean(row.last_sync_at) || null,
+  };
+};
+
+const getCliniaAdsCampaignMetrics = async (
+  db: DbInterface,
+  range: Pick<DateRange, 'startDate' | 'endDate'>
+) => {
+  const rows = await db.query(
+    `
+    SELECT
+      LOWER(COALESCE(source_id, '')) AS source_id_key,
+      MAX(COALESCE(source_id, '')) AS source_id,
+      SUM(CASE WHEN stage = 'INTERESTED' THEN 1 ELSE 0 END) AS contacts_received,
+      COUNT(DISTINCT CASE WHEN stage = 'INTERESTED' THEN jid ELSE NULL END) AS new_contacts_received,
+      SUM(CASE WHEN stage = 'APPOINTMENT' THEN 1 ELSE 0 END) AS appointments_converted
+    FROM raw_clinia_ads_contacts
+    WHERE brand_slug = ?
+      AND origin = 'google'
+      AND date_ref >= ?
+      AND date_ref <= ?
+      AND TRIM(COALESCE(source_id, '')) <> ''
+    GROUP BY LOWER(COALESCE(source_id, ''))
+    `,
+    [CLINIA_ADS_BRAND, range.startDate, range.endDate]
+  );
+
+  const metrics = new Map<
+    string,
+    {
+      contactsReceived: number;
+      newContactsReceived: number;
+      appointmentsConverted: number;
+      conversionRate: number;
+    }
+  >();
+
+  for (const raw of rows || []) {
+    const row = raw as Record<string, unknown>;
+    const key = clean(row.source_id_key).toLowerCase();
+    const contactsReceived = safeInt(row.contacts_received);
+    const appointmentsConverted = safeInt(row.appointments_converted);
+    metrics.set(key, {
+      contactsReceived,
+      newContactsReceived: safeInt(row.new_contacts_received),
+      appointmentsConverted,
+      conversionRate: contactsReceived > 0 ? (appointmentsConverted * 100) / contactsReceived : 0,
+    });
+  }
+
+  return metrics;
+};
+
+const listCliniaAdsByAd = async (
+  db: DbInterface,
+  range: Pick<DateRange, 'startDate' | 'endDate'>
+) => {
+  const rows = await db.query(
+    `
+    SELECT
+      COALESCE(NULLIF(TRIM(origin), ''), 'unknown') AS origin,
+      COALESCE(source_id, '') AS source_id,
+      COALESCE(source_url, '') AS source_url,
+      COALESCE(NULLIF(TRIM(title), ''), 'Sem título') AS title,
+      SUM(CASE WHEN stage = 'INTERESTED' THEN 1 ELSE 0 END) AS contacts_received,
+      COUNT(DISTINCT CASE WHEN stage = 'INTERESTED' THEN jid ELSE NULL END) AS new_contacts_received,
+      SUM(CASE WHEN stage = 'APPOINTMENT' THEN 1 ELSE 0 END) AS appointments_converted,
+      AVG(CASE WHEN conversion_time_sec > 0 THEN conversion_time_sec ELSE NULL END) AS avg_conversion_time_sec
+    FROM raw_clinia_ads_contacts
+    WHERE brand_slug = ?
+      AND date_ref >= ?
+      AND date_ref <= ?
+    GROUP BY
+      COALESCE(NULLIF(TRIM(origin), ''), 'unknown'),
+      COALESCE(source_id, ''),
+      COALESCE(source_url, ''),
+      COALESCE(NULLIF(TRIM(title), ''), 'Sem título')
+    ORDER BY contacts_received DESC, appointments_converted DESC, title ASC
+    `,
+    [CLINIA_ADS_BRAND, range.startDate, range.endDate]
+  );
+
+  return (rows || []).map((raw) => {
+    const row = raw as Record<string, unknown>;
+    const contactsReceived = safeInt(row.contacts_received);
+    const appointmentsConverted = safeInt(row.appointments_converted);
+    return {
+      origin: clean(row.origin) || 'unknown',
+      sourceId: clean(row.source_id),
+      title: clean(row.title) || 'Sem título',
+      sourceUrl: clean(row.source_url),
+      contactsReceived,
+      newContactsReceived: safeInt(row.new_contacts_received),
+      appointmentsConverted,
+      conversionRate: contactsReceived > 0 ? (appointmentsConverted * 100) / contactsReceived : 0,
+      avgConversionTimeSec: safeNum(row.avg_conversion_time_sec),
+    };
+  });
+};
+
+const listCliniaAdsByOrigin = async (
+  db: DbInterface,
+  range: Pick<DateRange, 'startDate' | 'endDate'>
+) => {
+  const rows = await db.query(
+    `
+    SELECT
+      COALESCE(NULLIF(TRIM(origin), ''), 'unknown') AS origin,
+      SUM(CASE WHEN stage = 'INTERESTED' THEN 1 ELSE 0 END) AS contacts_received,
+      COUNT(DISTINCT CASE WHEN stage = 'INTERESTED' THEN jid ELSE NULL END) AS new_contacts_received,
+      SUM(CASE WHEN stage = 'APPOINTMENT' THEN 1 ELSE 0 END) AS appointments_converted
+    FROM raw_clinia_ads_contacts
+    WHERE brand_slug = ?
+      AND date_ref >= ?
+      AND date_ref <= ?
+    GROUP BY COALESCE(NULLIF(TRIM(origin), ''), 'unknown')
+    ORDER BY contacts_received DESC, origin ASC
+    `,
+    [CLINIA_ADS_BRAND, range.startDate, range.endDate]
+  );
+
+  return (rows || []).map((raw) => {
+    const row = raw as Record<string, unknown>;
+    const contactsReceived = safeInt(row.contacts_received);
+    const appointmentsConverted = safeInt(row.appointments_converted);
+    return {
+      origin: clean(row.origin) || 'unknown',
+      contactsReceived,
+      newContactsReceived: safeInt(row.new_contacts_received),
+      appointmentsConverted,
+      conversionRate: contactsReceived > 0 ? (appointmentsConverted * 100) / contactsReceived : 0,
+    };
+  });
+};
+
+const getMarketingFunilCliniaAdsSummary = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  const range = normalizeDateRange(filters);
+  const coverage = await getCliniaAdsCoverage(db, range);
+
+  if (!isConsultareBrandScope(filters.brand)) {
+    return getZeroCliniaAdsSummary({
+      ...coverage,
+      historyAvailable: false,
+    });
+  }
+
+  if (!coverage.historyAvailable) {
+    return getZeroCliniaAdsSummary(coverage);
+  }
+
+  const current = await getCliniaAdsAggregateForRange(db, range);
+  const previousRange = getPreviousComparableRange(range, filters);
+  const previousCoverage = await getCliniaAdsCoverage(db, previousRange);
+  const previous = previousCoverage.historyAvailable
+    ? await getCliniaAdsAggregateForRange(db, previousRange)
+    : {
+        contactsReceived: 0,
+        newContactsReceived: 0,
+        appointmentsConverted: 0,
+        conversionRate: 0,
+        avgConversionTimeSec: 0,
+        lastSyncAt: null,
+      };
+
+  return {
+    ...current,
+    prevContactsReceived: previous.contactsReceived,
+    prevNewContactsReceived: previous.newContactsReceived,
+    prevAppointmentsConverted: previous.appointmentsConverted,
+    prevConversionRate: previous.conversionRate,
+    historyAvailable: coverage.historyAvailable,
+    historyStartMonth: coverage.historyStartMonth,
+    historyEndMonth: coverage.historyEndMonth,
+  };
+};
+
+const getSourceStatus = async (db: DbInterface, serviceName: string) => {
+  const rows = await db.query(
+    `
+    SELECT service_name, status, last_run, details
+    FROM system_status
+    WHERE service_name = ?
+    LIMIT 1
+    `,
+    [serviceName]
+  );
+  const row = (rows?.[0] as Record<string, unknown>) || {};
+  return {
+    serviceName,
+    status: clean(row.status) || 'UNKNOWN',
+    lastRun: clean(row.last_run) || null,
+    details: clean(row.details) || null,
+  };
 };
 
 const getMarketingFunilAppointmentsSummary = async (db: DbInterface, filters: MarketingFunilFilters) => {
@@ -738,9 +1148,10 @@ export const getMarketingFunnelSummary = async (db: DbInterface, filters: Market
 
   const base = ((rows?.[0] as Record<string, unknown>) || {});
   const derived = toDerivedMetrics(base);
-  const [appointments, revenue] = await Promise.all([
+  const [appointments, revenue, cliniaAds] = await Promise.all([
     getMarketingFunilAppointmentsSummary(db, filters),
     getMarketingFunilRevenueSummary(db, filters),
+    getMarketingFunilCliniaAdsSummary(db, filters),
   ]);
 
   return {
@@ -770,6 +1181,7 @@ export const getMarketingFunnelSummary = async (db: DbInterface, filters: Market
     lastSyncAt: clean(base.last_sync_at) || null,
     appointments,
     revenue,
+    cliniaAds,
   };
 };
 
@@ -779,6 +1191,9 @@ export const listMarketingFunnelCampaigns = async (db: DbInterface, filters: Mar
   const page = normalizePage(filters.page);
   const pageSize = normalizePageSize(filters.pageSize);
   const offset = (page - 1) * pageSize;
+  const cliniaMetrics = isConsultareBrandScope(filters.brand)
+    ? await getCliniaAdsCampaignMetrics(db, range)
+    : new Map();
 
   const baseSql = `${buildCampaignAggregationSelect()} WHERE ${where.join(' AND ')} GROUP BY campaign_key`;
   const countRows = await db.query(`SELECT COUNT(*) AS total FROM (${baseSql}) AS campaigns_count`, params);
@@ -803,6 +1218,12 @@ export const listMarketingFunnelCampaigns = async (db: DbInterface, filters: Mar
     items: (rows || []).map((raw) => {
       const row = raw as Record<string, unknown>;
       const derived = toDerivedMetrics(row);
+      const clinia = cliniaMetrics.get(clean(row.campaign_name).toLowerCase()) || {
+        contactsReceived: 0,
+        newContactsReceived: 0,
+        appointmentsConverted: 0,
+        conversionRate: 0,
+      };
       return {
         campaignKey: clean(row.campaign_key),
         campaignName: clean(row.campaign_name) || 'Sem campanha',
@@ -828,6 +1249,12 @@ export const listMarketingFunnelCampaigns = async (db: DbInterface, filters: Mar
         allConversions: safeNum(row.all_conversions),
         conversionsValue: safeNum(row.conversions_value),
         costPerConversion: derived.costPerConversion,
+        cliniaContacts: clinia.contactsReceived,
+        cliniaNewContacts: clinia.newContactsReceived,
+        cliniaAppointments: clinia.appointmentsConverted,
+        cliniaConversionRate: clinia.conversionRate,
+        cliniaCostPerContact: clinia.contactsReceived > 0 ? derived.spend / clinia.contactsReceived : 0,
+        cliniaCostPerAppointment: clinia.appointmentsConverted > 0 ? derived.spend / clinia.appointmentsConverted : 0,
         lastSyncAt: clean(row.source_last_sync_at) || null,
       };
     }),
@@ -871,6 +1298,87 @@ export const listMarketingFunnelChannels = async (db: DbInterface, filters: Mark
         lastSyncAt: clean(row.last_sync_at) || null,
       };
     }),
+  };
+};
+
+export const listMarketingFunilCliniaAds = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  await ensureMarketingFunilTables(db);
+  const range = normalizeDateRange(filters);
+  const coverage = await getCliniaAdsCoverage(db, range);
+
+  if (!isConsultareBrandScope(filters.brand) || !coverage.historyAvailable) {
+    return {
+      periodRef: range.periodRef,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      historyAvailable: isConsultareBrandScope(filters.brand) ? coverage.historyAvailable : false,
+      historyStartMonth: coverage.historyStartMonth,
+      historyEndMonth: coverage.historyEndMonth,
+      items: [],
+    };
+  }
+
+  return {
+    periodRef: range.periodRef,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    historyAvailable: coverage.historyAvailable,
+    historyStartMonth: coverage.historyStartMonth,
+    historyEndMonth: coverage.historyEndMonth,
+    items: await listCliniaAdsByAd(db, range),
+  };
+};
+
+export const listMarketingFunilCliniaAdsOrigins = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  await ensureMarketingFunilTables(db);
+  const range = normalizeDateRange(filters);
+  const coverage = await getCliniaAdsCoverage(db, range);
+
+  if (!isConsultareBrandScope(filters.brand) || !coverage.historyAvailable) {
+    return {
+      periodRef: range.periodRef,
+      startDate: range.startDate,
+      endDate: range.endDate,
+      historyAvailable: isConsultareBrandScope(filters.brand) ? coverage.historyAvailable : false,
+      historyStartMonth: coverage.historyStartMonth,
+      historyEndMonth: coverage.historyEndMonth,
+      items: [],
+    };
+  }
+
+  return {
+    periodRef: range.periodRef,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    historyAvailable: coverage.historyAvailable,
+    historyStartMonth: coverage.historyStartMonth,
+    historyEndMonth: coverage.historyEndMonth,
+    items: await listCliniaAdsByOrigin(db, range),
+  };
+};
+
+export const getMarketingFunilSourceStatus = async (db: DbInterface) => {
+  await ensureMarketingFunilTables(db);
+  const [google, cliniaAds, appointments, revenue, googleSyncRows, cliniaSyncRows] = await Promise.all([
+    getSourceStatus(db, 'marketing_funnel'),
+    getSourceStatus(db, 'clinia_ads'),
+    getSourceStatus(db, 'appointments'),
+    getSourceStatus(db, 'faturamento'),
+    db.query(`SELECT MAX(source_last_sync_at) AS last_sync_at FROM fact_marketing_funnel_daily`),
+    db.query(`SELECT MAX(source_last_sync_at) AS last_sync_at FROM fact_clinia_ads_daily WHERE brand_slug = ?`, [CLINIA_ADS_BRAND]),
+  ]);
+
+  return {
+    google: {
+      ...google,
+      dataLastSyncAt: clean((googleSyncRows?.[0] as Record<string, unknown>)?.last_sync_at) || null,
+    },
+    cliniaAds: {
+      ...cliniaAds,
+      dataLastSyncAt: clean((cliniaSyncRows?.[0] as Record<string, unknown>)?.last_sync_at) || null,
+    },
+    appointments,
+    revenue,
   };
 };
 

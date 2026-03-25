@@ -29,7 +29,7 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
    Documentação funcional/técnica do módulo de Ocupação de Agenda.
 
 9. [`docs/09-plano-tecnico-marketing-funil.md`](docs/09-plano-tecnico-marketing-funil.md)  
-   Plano técnico detalhado do módulo `/marketing/funil` (V1 Google-first).
+   Plano técnico detalhado do módulo `/marketing/funil`, incluindo Google Ads, GA4, Clinia Ads, agenda e faturamento.
 
 10. [`docs/10-plano-tecnico-colaboradores.md`](docs/10-plano-tecnico-colaboradores.md)  
    Plano técnico e implementação do módulo `/colaboradores` para o Departamento Pessoal.
@@ -62,4 +62,5 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Módulo de Repasses evoluído com workers de consolidação, geração de relatório e controles operacionais.
 - Novo plano de agenda em `docs/08-agenda-ocupacao.md`.
 - Novo plano do módulo `/marketing/funil` em `docs/09-plano-tecnico-marketing-funil.md`.
+- Módulo `/marketing/funil` atualizado com Clinia Ads, nova regra de lead por WhatsApp e documentação técnica consolidada.
 - Novo módulo `/colaboradores` documentado em `docs/10-plano-tecnico-colaboradores.md`.

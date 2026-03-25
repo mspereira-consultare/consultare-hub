@@ -37,6 +37,21 @@ export type MarketingFunilSummary = {
     total: number;
     dateBasis: string;
   };
+  cliniaAds: {
+    contactsReceived: number;
+    newContactsReceived: number;
+    appointmentsConverted: number;
+    conversionRate: number;
+    avgConversionTimeSec: number;
+    lastSyncAt: string | null;
+    prevContactsReceived: number;
+    prevNewContactsReceived: number;
+    prevAppointmentsConverted: number;
+    prevConversionRate: number;
+    historyAvailable: boolean;
+    historyStartMonth: string | null;
+    historyEndMonth: string | null;
+  };
 };
 
 export type MarketingFunilFilterOption = {
@@ -79,6 +94,12 @@ export type MarketingFunilCampaign = {
   allConversions: number;
   conversionsValue: number;
   costPerConversion: number;
+  cliniaContacts: number;
+  cliniaNewContacts: number;
+  cliniaAppointments: number;
+  cliniaConversionRate: number;
+  cliniaCostPerContact: number;
+  cliniaCostPerAppointment: number;
   lastSyncAt: string | null;
 };
 
@@ -165,4 +186,59 @@ export type MarketingFunilLatestJob = {
   startedAt: string | null;
   finishedAt: string | null;
   updatedAt: string;
+};
+
+export type MarketingFunilCliniaAdsRow = {
+  origin: string;
+  sourceId: string;
+  title: string;
+  sourceUrl: string;
+  contactsReceived: number;
+  newContactsReceived: number;
+  appointmentsConverted: number;
+  conversionRate: number;
+  avgConversionTimeSec: number;
+};
+
+export type MarketingFunilCliniaAdsList = {
+  periodRef: string;
+  startDate: string;
+  endDate: string;
+  historyAvailable: boolean;
+  historyStartMonth: string | null;
+  historyEndMonth: string | null;
+  items: MarketingFunilCliniaAdsRow[];
+};
+
+export type MarketingFunilCliniaAdsOriginRow = {
+  origin: string;
+  contactsReceived: number;
+  newContactsReceived: number;
+  appointmentsConverted: number;
+  conversionRate: number;
+};
+
+export type MarketingFunilCliniaAdsOriginList = {
+  periodRef: string;
+  startDate: string;
+  endDate: string;
+  historyAvailable: boolean;
+  historyStartMonth: string | null;
+  historyEndMonth: string | null;
+  items: MarketingFunilCliniaAdsOriginRow[];
+};
+
+export type MarketingFunilSourceStatusRow = {
+  serviceName: string;
+  status: string;
+  lastRun: string | null;
+  details: string | null;
+  dataLastSyncAt?: string | null;
+};
+
+export type MarketingFunilSourceStatus = {
+  google: MarketingFunilSourceStatusRow;
+  cliniaAds: MarketingFunilSourceStatusRow;
+  appointments: MarketingFunilSourceStatusRow;
+  revenue: MarketingFunilSourceStatusRow;
 };

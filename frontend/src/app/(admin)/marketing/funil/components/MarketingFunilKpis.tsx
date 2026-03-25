@@ -1,4 +1,15 @@
-import { BarChart3, Eye, MousePointerClick, Send, Target, Users, Wallet, Workflow } from 'lucide-react';
+﻿import {
+  BarChart3,
+  CalendarCheck2,
+  ContactRound,
+  Eye,
+  MessageCircleMore,
+  MousePointerClick,
+  Send,
+  TrendingUp,
+  Users,
+  Wallet,
+} from 'lucide-react';
 import type { MarketingFunilSummary } from './types';
 import { formatCurrency, formatNumber, formatPercent } from './formatters';
 
@@ -8,13 +19,15 @@ type MarketingFunilKpisProps = {
 
 const kpiTone = [
   { border: 'border-t-slate-700', chip: 'bg-slate-100 text-slate-700' },
-  { border: 'border-t-sky-600', chip: 'bg-sky-50 text-sky-700' },
+  { border: 'border-t-emerald-600', chip: 'bg-emerald-50 text-emerald-700' },
   { border: 'border-t-cyan-600', chip: 'bg-cyan-50 text-cyan-700' },
   { border: 'border-t-blue-600', chip: 'bg-blue-50 text-blue-700' },
-  { border: 'border-t-emerald-600', chip: 'bg-emerald-50 text-emerald-700' },
   { border: 'border-t-violet-600', chip: 'bg-violet-50 text-violet-700' },
   { border: 'border-t-amber-600', chip: 'bg-amber-50 text-amber-700' },
   { border: 'border-t-rose-600', chip: 'bg-rose-50 text-rose-700' },
+  { border: 'border-t-sky-600', chip: 'bg-sky-50 text-sky-700' },
+  { border: 'border-t-teal-600', chip: 'bg-teal-50 text-teal-700' },
+  { border: 'border-t-orange-600', chip: 'bg-orange-50 text-orange-700' },
 ];
 
 export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
@@ -30,6 +43,48 @@ export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
       icon: Wallet,
     },
     {
+      label: 'Leads (WhatsApp)',
+      value: formatNumber(summary?.leads || 0),
+      helper: summary ? `${formatCurrency(summary.cpl)} por lead` : `${formatCurrency(0)} por lead`,
+      icon: Send,
+    },
+    {
+      label: 'Contatos Clinia',
+      value: formatNumber(summary?.cliniaAds.contactsReceived || 0),
+      helper: 'Contatos recebidos pelos anúncios',
+      icon: ContactRound,
+    },
+    {
+      label: 'Novos contatos',
+      value: formatNumber(summary?.cliniaAds.newContactsReceived || 0),
+      helper: 'Contatos únicos no Clinia Ads',
+      icon: Users,
+    },
+    {
+      label: 'Agendamentos Clinia',
+      value: formatNumber(summary?.cliniaAds.appointmentsConverted || 0),
+      helper: 'Estágio APPOINTMENT no Clinia',
+      icon: CalendarCheck2,
+    },
+    {
+      label: 'Taxa de conversão',
+      value: formatPercent(summary?.cliniaAds.conversionRate || 0),
+      helper: 'Agendamentos Clinia / contatos',
+      icon: TrendingUp,
+    },
+    {
+      label: 'Agendamentos válidos',
+      value: formatNumber(summary?.appointments.totalValid || 0),
+      helper: `Confirmados/realizados: ${formatNumber(confirmedAppointments)}`,
+      icon: MessageCircleMore,
+    },
+    {
+      label: 'Faturamento',
+      value: formatCurrency(summary?.revenue.total || 0),
+      helper: 'Base: Faturamento Bruto Analítico',
+      icon: BarChart3,
+    },
+    {
       label: 'Impressões',
       value: formatNumber(summary?.impressions || 0),
       helper: summary ? `${formatPercent(summary.ctr)} de CTR` : `${formatPercent(0)} de CTR`,
@@ -40,48 +95,6 @@ export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
       value: formatNumber(summary?.clicks || 0),
       helper: summary ? `${formatCurrency(summary.cpc)} de CPC` : `${formatCurrency(0)} de CPC`,
       icon: MousePointerClick,
-    },
-    {
-      label: 'Sessões',
-      value: formatNumber(summary?.sessions || 0),
-      helper: summary ? `${formatNumber(summary.totalUsers)} usuários totais` : '0 usuários totais',
-      icon: Users,
-    },
-    {
-      label: 'Leads (WhatsApp)',
-      value: formatNumber(summary?.leads || 0),
-      helper: summary ? `${formatCurrency(summary.cpl)} por lead de WhatsApp` : `${formatCurrency(0)} por lead de WhatsApp`,
-      icon: Send,
-    },
-    {
-      label: 'Conversões',
-      value: formatNumber(summary?.conversions || 0, 0),
-      helper: summary ? `${formatCurrency(summary.costPerConversion)} por conversão` : `${formatCurrency(0)} por conversão`,
-      icon: Target,
-    },
-    {
-      label: 'Agendamentos',
-      value: formatNumber(summary?.appointments.totalValid || 0),
-      helper: `Confirmados/realizados: ${formatNumber(confirmedAppointments)}`,
-      icon: Workflow,
-    },
-    {
-      label: 'Faturamento',
-      value: formatCurrency(summary?.revenue.total || 0),
-      helper: 'Base: Faturamento Bruto Analítico',
-      icon: BarChart3,
-    },
-    {
-      label: 'Usuários totais',
-      value: formatNumber(summary?.totalUsers || 0),
-      helper: summary ? `${formatNumber(summary.newUsers)} novos usuários` : '0 novos usuários',
-      icon: Users,
-    },
-    {
-      label: 'Eventos',
-      value: formatNumber(summary?.eventCount || 0),
-      helper: summary ? `${formatNumber(summary.pageViews)} páginas vistas` : '0 páginas vistas',
-      icon: Workflow,
     },
   ];
 
