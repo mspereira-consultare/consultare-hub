@@ -384,7 +384,8 @@ function MarketingFunilPageContent() {
               <div>
                 <h1 className="text-xl font-bold text-slate-800">Marketing / Funil</h1>
                 <p className="mt-1 max-w-3xl text-xs text-slate-500">
-                  Leitura integrada de Google Ads, WhatsApp, Clinia Ads, agendamentos válidos e faturamento para mensurar o desempenho das campanhas.
+                  Funil de performance do Google Ads até os contatos e agendamentos do Clinia, com contexto operacional
+                  separado para agenda e faturamento.
                 </p>
               </div>
             </div>

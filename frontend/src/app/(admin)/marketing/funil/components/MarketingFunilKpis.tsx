@@ -1,17 +1,17 @@
-﻿import {
-  BarChart3,
+import {
   CalendarCheck2,
   ContactRound,
-  Eye,
   MessageCircleMore,
-  MousePointerClick,
   Send,
   TrendingUp,
   Users,
   Wallet,
+  WalletCards,
 } from 'lucide-react';
 import type { MarketingFunilSummary } from './types';
 import { formatCurrency, formatNumber, formatPercent } from './formatters';
+import { MarketingFunilMetricCard } from './MarketingFunilMetricCard';
+import { buildOverviewTooltipSections } from './marketingFunilTooltipContent';
 
 type MarketingFunilKpisProps = {
   summary: MarketingFunilSummary | null;
@@ -19,106 +19,95 @@ type MarketingFunilKpisProps = {
 
 const kpiTone = [
   { border: 'border-t-slate-700', chip: 'bg-slate-100 text-slate-700' },
-  { border: 'border-t-emerald-600', chip: 'bg-emerald-50 text-emerald-700' },
   { border: 'border-t-cyan-600', chip: 'bg-cyan-50 text-cyan-700' },
+  { border: 'border-t-sky-600', chip: 'bg-sky-50 text-sky-700' },
   { border: 'border-t-blue-600', chip: 'bg-blue-50 text-blue-700' },
   { border: 'border-t-violet-600', chip: 'bg-violet-50 text-violet-700' },
+  { border: 'border-t-emerald-600', chip: 'bg-emerald-50 text-emerald-700' },
   { border: 'border-t-amber-600', chip: 'bg-amber-50 text-amber-700' },
   { border: 'border-t-rose-600', chip: 'bg-rose-50 text-rose-700' },
-  { border: 'border-t-sky-600', chip: 'bg-sky-50 text-sky-700' },
-  { border: 'border-t-teal-600', chip: 'bg-teal-50 text-teal-700' },
-  { border: 'border-t-orange-600', chip: 'bg-orange-50 text-orange-700' },
 ];
 
 export function MarketingFunilKpis({ summary }: MarketingFunilKpisProps) {
-  const getAppointmentCount = (statusId: number) =>
-    summary?.appointments.byStatus.find((item) => item.statusId === statusId)?.count || 0;
-  const confirmedAppointments = getAppointmentCount(3) + getAppointmentCount(7);
+  const performance = summary?.performanceFunnel;
+  const diagnostics = summary?.diagnostics;
+  const operational = summary?.operationalContext;
+  const tooltips = buildOverviewTooltipSections(summary);
 
   const items = [
     {
       label: 'Investimento',
-      value: summary ? formatCurrency(summary.spend) : formatCurrency(0),
+      value: formatCurrency(performance?.googleSpend || 0),
       helper: summary ? `${summary.campaigns} campanhas no período` : '0 campanhas no período',
       icon: Wallet,
+      tooltipSections: tooltips.investimento,
     },
     {
-      label: 'Leads (WhatsApp)',
-      value: formatNumber(summary?.leads || 0),
-      helper: summary ? `${formatCurrency(summary.cpl)} por lead` : `${formatCurrency(0)} por lead`,
-      icon: Send,
-    },
-    {
-      label: 'Contatos Clinia',
-      value: formatNumber(summary?.cliniaAds.contactsReceived || 0),
-      helper: 'Contatos recebidos pelos anúncios',
-      icon: ContactRound,
-    },
-    {
-      label: 'Novos contatos',
-      value: formatNumber(summary?.cliniaAds.newContactsReceived || 0),
-      helper: 'Contatos únicos no Clinia Ads',
+      label: 'Novos contatos Clinia (Google)',
+      value: formatNumber(performance?.googleNewContacts || 0),
+      helper: `${formatCurrency(performance?.costPerNewContact || 0)} por novo contato`,
       icon: Users,
+      tooltipSections: tooltips.novosContatosCliniaGoogle,
     },
     {
-      label: 'Agendamentos Clinia',
-      value: formatNumber(summary?.cliniaAds.appointmentsConverted || 0),
-      helper: 'Estágio APPOINTMENT no Clinia',
+      label: 'Contatos Clinia (Google)',
+      value: formatNumber(performance?.googleContactsReceived || 0),
+      helper: performance?.scopeLabel || 'Origem Google no Clinia Ads',
+      icon: ContactRound,
+      tooltipSections: tooltips.contatosCliniaGoogle,
+    },
+    {
+      label: 'Agendamentos Clinia (Google)',
+      value: formatNumber(performance?.googleAppointmentsConverted || 0),
+      helper: `${formatCurrency(performance?.costPerAppointment || 0)} por agendamento`,
       icon: CalendarCheck2,
+      tooltipSections: tooltips.agendamentosCliniaGoogle,
     },
     {
       label: 'Taxa de conversão',
-      value: formatPercent(summary?.cliniaAds.conversionRate || 0),
-      helper: 'Agendamentos Clinia / contatos',
+      value: formatPercent(performance?.contactToAppointmentRate || 0),
+      helper: 'Agendamentos Clinia / novos contatos',
       icon: TrendingUp,
+      tooltipSections: tooltips.taxaConversao,
+    },
+    {
+      label: 'Cliques em WhatsApp',
+      value: formatNumber(diagnostics?.whatsappClicks || 0),
+      helper: `${formatCurrency(diagnostics?.whatsappCostPerClick || 0)} por clique`,
+      icon: Send,
+      tooltipSections: tooltips.cliquesWhatsapp,
     },
     {
       label: 'Agendamentos válidos',
-      value: formatNumber(summary?.appointments.totalValid || 0),
-      helper: `Confirmados/realizados: ${formatNumber(confirmedAppointments)}`,
+      value: formatNumber(operational?.appointmentsValid || 0),
+      helper: `Confirmados/realizados: ${formatNumber(operational?.appointmentsConfirmedOrRealized || 0)}`,
       icon: MessageCircleMore,
+      tooltipSections: tooltips.agendamentosValidos,
     },
     {
       label: 'Faturamento',
-      value: formatCurrency(summary?.revenue.total || 0),
+      value: formatCurrency(operational?.revenueTotal || 0),
       helper: 'Base: Faturamento Bruto Analítico',
-      icon: BarChart3,
-    },
-    {
-      label: 'Impressões',
-      value: formatNumber(summary?.impressions || 0),
-      helper: summary ? `${formatPercent(summary.ctr)} de CTR` : `${formatPercent(0)} de CTR`,
-      icon: Eye,
-    },
-    {
-      label: 'Cliques',
-      value: formatNumber(summary?.clicks || 0),
-      helper: summary ? `${formatCurrency(summary.cpc)} de CPC` : `${formatCurrency(0)} de CPC`,
-      icon: MousePointerClick,
+      icon: WalletCards,
+      tooltipSections: tooltips.faturamento,
     },
   ];
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
       {items.map((item, index) => {
-        const Icon = item.icon;
         const tone = kpiTone[index % kpiTone.length];
         return (
-          <article
+          <MarketingFunilMetricCard
             key={item.label}
-            className={`rounded-xl border border-slate-200 border-t-[3px] bg-white px-4 py-3.5 shadow-sm ${tone.border}`}
-          >
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
-                <p className="mt-2.5 text-[1.95rem] font-bold leading-none text-slate-900">{item.value}</p>
-              </div>
-              <div className={`rounded-xl p-2.5 ${tone.chip}`}>
-                <Icon size={16} />
-              </div>
-            </div>
-            <p className="mt-2.5 text-[11px] text-slate-500">{item.helper}</p>
-          </article>
+            label={item.label}
+            value={item.value}
+            helper={item.helper}
+            icon={item.icon}
+            borderClassName={tone.border}
+            chipClassName={tone.chip}
+            tooltipSections={item.tooltipSections}
+          />
         );
       })}
     </div>

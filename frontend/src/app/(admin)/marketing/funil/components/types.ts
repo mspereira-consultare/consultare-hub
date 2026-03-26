@@ -37,6 +37,30 @@ export type MarketingFunilSummary = {
     total: number;
     dateBasis: string;
   };
+  performanceFunnel: {
+    scopeMode: 'all-google' | 'filtered-mapped';
+    scopeLabel: string;
+    googleSpend: number;
+    googleContactsReceived: number;
+    googleNewContacts: number;
+    googleAppointmentsConverted: number;
+    costPerNewContact: number;
+    costPerAppointment: number;
+    contactToAppointmentRate: number;
+  };
+  diagnostics: {
+    whatsappClicks: number;
+    whatsappCostPerClick: number;
+    googleUnmappedContacts: number;
+    googleUnmappedNewContacts: number;
+    googleUnmappedAppointments: number;
+  };
+  operationalContext: {
+    appointmentsValid: number;
+    appointmentsConfirmedOrRealized: number;
+    revenueTotal: number;
+    revenueDateBasis: string;
+  };
   cliniaAds: {
     contactsReceived: number;
     newContactsReceived: number;

@@ -10,6 +10,8 @@ import {
   formatGoogleAdsReason,
   hasBudgetLimitation,
 } from './googleAdsFormatters';
+import { MarketingFunilInfoTooltip } from './MarketingFunilInfoTooltip';
+import { buildGoogleAdsHealthTooltipSections } from './marketingFunilTooltipContent';
 
 type MarketingFunilGoogleAdsHealthSectionProps = {
   summary: MarketingFunilSummary | null;
@@ -33,6 +35,46 @@ export function MarketingFunilGoogleAdsHealthSection({
   const pageSize = data?.pageSize || 10;
   const total = data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const tooltips = buildGoogleAdsHealthTooltipSections(summary);
+
+  const summaryCards = [
+    {
+      label: 'Limitadas por orçamento',
+      value: formatNumber(health?.limitedByBudgetCount || 0),
+      helper: 'Motivo retornado pelo Google Ads',
+      tooltipSections: tooltips.limitadasPorOrcamento,
+    },
+    {
+      label: 'Campanhas ativas',
+      value: formatNumber(health?.enabledCount || 0),
+      helper: 'Status ENABLED',
+      tooltipSections: tooltips.campanhasAtivas,
+    },
+    {
+      label: 'Campanhas pausadas',
+      value: formatNumber(health?.pausedCount || 0),
+      helper: 'Status PAUSED',
+      tooltipSections: tooltips.campanhasPausadas,
+    },
+    {
+      label: 'Score médio',
+      value: health?.avgOptimizationScore ? formatPercent((health.avgOptimizationScore || 0) * 100) : 'Sem score',
+      helper: 'Pontuação de otimização',
+      tooltipSections: tooltips.scoreMedio,
+    },
+    {
+      label: 'Taxa média de conversão',
+      value: formatPercent(health?.avgConversionRate || 0),
+      helper: 'Conversões / interações do período',
+      tooltipSections: tooltips.taxaMediaConversao,
+    },
+    {
+      label: 'ROAS Ads médio',
+      value: health?.avgConversionsValuePerCost ? `${formatNumber(health.avgConversionsValuePerCost, 2)}x` : '-',
+      helper: 'Valor de conversão / custo',
+      tooltipSections: tooltips.roasMedio,
+    },
+  ];
 
   return (
     <section className="space-y-5">
@@ -41,7 +83,8 @@ export function MarketingFunilGoogleAdsHealthSection({
           <div>
             <h2 className="text-lg font-bold text-slate-900">Saúde Google Ads</h2>
             <p className="text-sm text-slate-500">
-              Snapshot mais recente das campanhas até a data final selecionada, com orçamento, status e estratégia de lances.
+              Snapshot mais recente das campanhas até a data final selecionada, com orçamento, status e estratégia de
+              lances.
             </p>
           </div>
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
@@ -50,40 +93,15 @@ export function MarketingFunilGoogleAdsHealthSection({
         </div>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-          {[
-            {
-              label: 'Limitadas por orçamento',
-              value: formatNumber(health?.limitedByBudgetCount || 0),
-              helper: 'Motivo retornado pelo Google Ads',
-            },
-            {
-              label: 'Campanhas ativas',
-              value: formatNumber(health?.enabledCount || 0),
-              helper: 'Status ENABLED',
-            },
-            {
-              label: 'Campanhas pausadas',
-              value: formatNumber(health?.pausedCount || 0),
-              helper: 'Status PAUSED',
-            },
-            {
-              label: 'Score médio',
-              value: health?.avgOptimizationScore ? formatPercent((health.avgOptimizationScore || 0) * 100) : 'Sem score',
-              helper: 'Pontuação de otimização',
-            },
-            {
-              label: 'Taxa média de conversão',
-              value: formatPercent(health?.avgConversionRate || 0),
-              helper: 'Conversões / interações do período',
-            },
-            {
-              label: 'ROAS Ads médio',
-              value: health?.avgConversionsValuePerCost ? `${formatNumber(health.avgConversionsValuePerCost, 2)}x` : '-',
-              helper: 'Valor de conversão / custo',
-            },
-          ].map((item) => (
+          {summaryCards.map((item) => (
             <article key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{item.label}</div>
+              <div className="flex items-center gap-2">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{item.label}</div>
+                <MarketingFunilInfoTooltip
+                  label={`Entenda como calculamos ${item.label.toLowerCase()}`}
+                  sections={item.tooltipSections}
+                />
+              </div>
               <div className="mt-3 text-2xl font-bold text-slate-900">{item.value}</div>
               <div className="mt-2 text-xs text-slate-500">{item.helper}</div>
             </article>
@@ -95,7 +113,9 @@ export function MarketingFunilGoogleAdsHealthSection({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-base font-bold text-slate-900">Campanhas por diagnóstico</h3>
-            <p className="text-sm text-slate-500">Priorize campanhas limitadas por orçamento e campanhas com score de otimização baixo.</p>
+            <p className="text-sm text-slate-500">
+              Priorize campanhas limitadas por orçamento e campanhas com score de otimização baixo.
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <label className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Linhas</label>
@@ -166,7 +186,7 @@ export function MarketingFunilGoogleAdsHealthSection({
                             item.campaignPrimaryStatusReasons.slice(0, 2).map((reason) => (
                               <span
                                 key={reason}
-                                className={`inline-flex mr-2 rounded-full border px-2 py-1 text-xs ${
+                                className={`mr-2 inline-flex rounded-full border px-2 py-1 text-xs ${
                                   reason.toUpperCase().includes('BUDGET')
                                     ? 'border-amber-200 bg-amber-50 text-amber-700'
                                     : 'border-slate-200 bg-slate-50 text-slate-600'
@@ -182,7 +202,9 @@ export function MarketingFunilGoogleAdsHealthSection({
                         </div>
                       </td>
                       <td className="px-3 py-3 text-right">
-                        <div className="font-semibold text-slate-900">{item.budgetAmount > 0 ? formatCurrency(item.budgetAmount) : '-'}</div>
+                        <div className="font-semibold text-slate-900">
+                          {item.budgetAmount > 0 ? formatCurrency(item.budgetAmount) : '-'}
+                        </div>
                         <div className="text-xs text-slate-500">{formatGoogleAdsBudgetPeriod(item.budgetPeriod)}</div>
                       </td>
                       <td className="px-3 py-3 text-slate-700">{formatGoogleAdsBiddingStrategy(item.biddingStrategyType)}</td>

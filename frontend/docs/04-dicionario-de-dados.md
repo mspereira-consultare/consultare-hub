@@ -836,264 +836,46 @@ Campos principais:
 - `file_name`, `size_bytes`
 - `created_at`, `updated_at`
 
-## Atualizacao adicional - Agenda Ocupacao
+## Atualização de 25/03/2026 — Contrato analítico do summary de Marketing / Funil
 
-### agenda_occupancy_daily
-- Snapshot diario por `data_ref + unidade_id + especialidade_id`.
-- Campos principais: `agendamentos_count`, `horarios_disponiveis_count`, `horarios_bloqueados_count`, `capacidade_liquida_count`, `taxa_confirmacao_pct`.
-- Alimentacao: `workers/worker_agenda_ocupacao.py`.
+Leitura adicional retornada por `GET /api/admin/marketing/funil/summary`:
 
-### agenda_occupancy_jobs
-- Fila manual de processamento para atualizacao de ocupacao.
-- Status: `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`.
-- Origem de solicitacao: `/api/admin/agenda-ocupacao/refresh`.
-
-## Atualizacao adicional - Modulo de Colaboradores
-
-### `employees`
+### `performanceFunnel`
 
 Finalidade:
-- cadastro principal do colaborador para o Departamento Pessoal.
+- consolidar a leitura principal do funil atribuída ao Google.
 
 Campos principais:
-- `id` (PK)
-- `full_name`
-- `employment_regime` (`CLT`, `PJ`, `ESTAGIO`)
-- `status` (`ATIVO`, `DESLIGADO`)
-- `rg`, `cpf`, `email`, `phone`, `birth_date`
-- `street`, `street_number`, `address_complement`, `district`, `city`, `state_uf`, `zip_code`
-- `education_institution`, `education_level`, `course_name`, `current_semester`
-- `work_schedule`, `salary_amount`, `contract_duration_text`
-- `admission_date`, `contract_end_date`
-- `termination_date`, `termination_reason`, `termination_notes`
-- `units_json`, `job_title`, `department`, `supervisor_name`, `cost_center`
-- `insalubrity_percent`, `transport_voucher_per_day`, `meal_voucher_per_day`, `life_insurance_status`
-- `marital_status`, `has_children`, `children_count`
-- `bank_name`, `bank_agency`, `bank_account`, `pix_key`
-- `created_at`, `updated_at`
+- `scopeMode`
+- `scopeLabel`
+- `googleSpend`
+- `googleContactsReceived`
+- `googleNewContacts`
+- `googleAppointmentsConverted`
+- `costPerNewContact`
+- `costPerAppointment`
+- `contactToAppointmentRate`
 
-Escrita: APIs `/api/admin/colaboradores`.
-
-### `employee_documents`
+### `diagnostics`
 
 Finalidade:
-- armazenar metadados dos documentos anexados ao colaborador.
+- separar sinais auxiliares e volumes ainda não mapeados ao Google Ads.
 
 Campos principais:
-- `id` (PK)
-- `employee_id`
-- `doc_type`
-- `storage_provider`, `storage_bucket`, `storage_key`
-- `original_name`, `mime_type`, `size_bytes`
-- `issue_date`, `expires_at`, `notes`
-- `is_active`
-- `uploaded_by`, `created_at`
+- `whatsappClicks`
+- `whatsappCostPerClick`
+- `googleUnmappedContacts`
+- `googleUnmappedNewContacts`
+- `googleUnmappedAppointments`
 
-Observacao:
-- o tipo `ASO` usa `issue_date` e `expires_at` para calculo de status.
-- uploads novos do mesmo `doc_type` desativam os anteriores.
-
-Escrita: `POST /api/admin/colaboradores/:id/documentos`.
-
-### `employee_uniform_items`
+### `operationalContext`
 
 Finalidade:
-- controlar entregas e devolucoes de uniforme/armario.
+- expor agenda e faturamento como contexto da clínica, sem atribuição direta por campanha.
 
 Campos principais:
-- `id` (PK)
-- `employee_id`
-- `withdrawal_date`
-- `item_description`
-- `quantity`
-- `signed_receipt`
-- `delivery_type`
-- `delivered_by`
-- `status`
-- `created_at`, `updated_at`
+- `appointmentsValid`
+- `appointmentsConfirmedOrRealized`
+- `revenueTotal`
+- `revenueDateBasis`
 
-Escrita: APIs `/api/admin/colaboradores/:id/uniformes*`.
-
-### `employee_recess_periods`
-
-Finalidade:
-- controlar periodos aquisitivos e planejamento de ferias/recessos.
-
-Campos principais:
-- `id` (PK)
-- `employee_id`
-- `acquisition_start_date`, `acquisition_end_date`
-- `days_due`, `days_paid`
-- `leave_deadline_date`
-- `vacation_start_date`, `vacation_duration_days`
-- `sell_ten_days`, `thirteenth_on_vacation`
-- `created_at`, `updated_at`
-
-Campos derivados em leitura:
-- `balance`
-- `vacationEndDate`
-- `situation`
-
-Escrita: APIs `/api/admin/colaboradores/:id/recessos*`.
-
-### `employee_audit_log`
-
-Finalidade:
-- trilha de auditoria de criacao, edicao e operacoes acessorias do modulo.
-
-Campos principais:
-- `id` (PK)
-- `employee_id`
-- `action`
-- `actor_user_id`
-- `payload_json`
-- `created_at`
-
-Escrita: repositorio do modulo em toda mutacao relevante.
-
-## Atualização adicional — Marketing Funil + Clinia Ads
-
-### `marketing_funnel_jobs`
-
-Finalidade:
-- registrar execuções do worker de marketing Google/GA4.
-
-Campos principais:
-- `id` (PK)
-- `status` (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `PARTIAL`)
-- `period_ref`
-- `start_date`, `end_date`
-- `scope_json`
-- `requested_by`
-- `error_message`
-- `created_at`, `started_at`, `finished_at`, `updated_at`
-
-### `marketing_funnel_job_items`
-
-Finalidade:
-- detalhar o processamento por marca/conta no job de marketing.
-
-Campos principais:
-- `id` (PK)
-- `job_id`
-- `brand_slug`
-- `ads_customer_id`
-- `ga4_property_id`
-- `status`
-- `records_read`
-- `records_written`
-- `error_message`
-- `duration_ms`
-- `created_at`, `updated_at`
-
-### `fact_marketing_funnel_daily`
-
-Finalidade:
-- fato diário principal do módulo `/marketing/funil`.
-
-Grão:
-- `date_ref + brand_slug + unit_key + specialty_key + channel_key + campaign_key`
-
-Campos principais:
-- dimensões:
-  - `campaign_key`, `campaign_name`
-  - `source`, `medium`
-  - `session_default_channel_group`
-- mídia:
-  - `spend`, `impressions`, `clicks`, `ctr`, `cpc`
-- analytics:
-  - `sessions`, `total_users`, `new_users`
-  - `engaged_sessions`, `engagement_rate`
-  - `avg_session_duration_sec`, `page_views`, `event_count`
-- performance:
-  - `interactions`, `conversions`, `all_conversions`
-  - `conversions_value`, `cost_per_conversion`
-- funil:
-  - `leads`, `cpl`, `appointments`, `revenue`
-
-Observação:
-- `leads` hoje significam clique para WhatsApp da clínica.
-
-Escrita:
-- `workers/worker_marketing_funnel_google.py`
-
-### `clinia_ads_jobs`
-
-Finalidade:
-- registrar execuções do worker `clinia_ads`.
-
-Campos principais:
-- `id` (PK)
-- `status` (`PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `PARTIAL`)
-- `requested_by`
-- `error_message`
-- `created_at`, `started_at`, `finished_at`, `updated_at`
-
-### `clinia_ads_job_items`
-
-Finalidade:
-- detalhar o resultado por período lógico (`current` / `last`) ou etapa do job do Clinia Ads.
-
-Campos principais:
-- `id` (PK)
-- `job_id`
-- `scope_key`
-- `status`
-- `records_read`
-- `records_written`
-- `error_message`
-- `duration_ms`
-- `created_at`, `updated_at`
-
-### `raw_clinia_ads_contacts`
-
-Finalidade:
-- persistir o payload bruto por contato/evento retornado pela API `statistics/ads`.
-
-Campos principais:
-- `id` (PK técnica)
-- `brand_slug`
-- `jid`
-- `origin`
-- `source_id`
-- `source_url`
-- `source_url_hash`
-- `title`
-- `stage`
-- `created_at_source`
-- `conversion_time_sec`
-- `name`
-- `personal_name`
-- `verified_name`
-- `organization_id`
-- `source_period` (`current`, `last`)
-- `synced_at`
-- `payload_json`
-
-Escrita:
-- `workers/worker_clinia_ads.py`
-
-### `fact_clinia_ads_daily`
-
-Finalidade:
-- agregar diariamente os anúncios do Clinia por origem e identificador do anúncio.
-
-Grão:
-- `date_ref + brand_slug + origin + source_id + source_url_hash + title`
-
-Campos principais:
-- `contacts_received`
-- `new_contacts_received`
-- `appointments_converted`
-- `conversion_rate`
-- `avg_conversion_time_sec`
-- `last_job_id`
-- `updated_at`
-
-Regras:
-- `contacts_received`: registros `INTERESTED`
-- `new_contacts_received`: `COUNT(DISTINCT jid)` entre `INTERESTED`
-- `appointments_converted`: registros `APPOINTMENT`
-
-Escrita:
-- `workers/worker_clinia_ads.py`

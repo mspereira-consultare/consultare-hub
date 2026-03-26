@@ -33,7 +33,7 @@ export function MarketingFunilCliniaAdsSection({
         <div>
           <h2 className="text-lg font-bold text-slate-900">Anúncios Clinia</h2>
           <p className="text-sm text-slate-500">
-            Contatos recebidos e agendamentos atribuídos aos anúncios, com leitura por origem e top criativos.
+            Visão complementar do Clinia Ads por origem e anúncio, incluindo Google, Meta e outras origens capturadas.
           </p>
         </div>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
@@ -56,7 +56,7 @@ export function MarketingFunilCliniaAdsSection({
             helper: `Período anterior: ${formatNumber(clinia?.prevContactsReceived || 0)} (${deltaLabel(
               clinia?.contactsReceived || 0,
               clinia?.prevContactsReceived || 0
-            )})`,
+            )}) · Todas as origens`,
           },
           {
             label: 'Novos contatos',
@@ -64,7 +64,7 @@ export function MarketingFunilCliniaAdsSection({
             helper: `Período anterior: ${formatNumber(clinia?.prevNewContactsReceived || 0)} (${deltaLabel(
               clinia?.newContactsReceived || 0,
               clinia?.prevNewContactsReceived || 0
-            )})`,
+            )}) · Todas as origens`,
           },
           {
             label: 'Agendamentos Clinia',
@@ -72,7 +72,7 @@ export function MarketingFunilCliniaAdsSection({
             helper: `Período anterior: ${formatNumber(clinia?.prevAppointmentsConverted || 0)} (${deltaLabel(
               clinia?.appointmentsConverted || 0,
               clinia?.prevAppointmentsConverted || 0
-            )})`,
+            )}) · Todas as origens`,
           },
           {
             label: 'Taxa de conversão',

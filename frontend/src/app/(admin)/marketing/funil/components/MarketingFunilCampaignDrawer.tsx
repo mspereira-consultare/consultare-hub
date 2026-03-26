@@ -79,7 +79,7 @@ export function MarketingFunilCampaignDrawer({
           <div className="mt-5 grid gap-3 sm:grid-cols-5">
             {[
               { label: 'Investimento', value: formatCurrency(campaign.spend) },
-              { label: 'Leads (WhatsApp)', value: formatNumber(campaign.leads) },
+              { label: 'Cliques WhatsApp', value: formatNumber(campaign.leads) },
               { label: 'Contatos Clinia', value: formatNumber(campaign.cliniaContacts) },
               { label: 'Agend. Clinia', value: formatNumber(campaign.cliniaAppointments) },
               { label: 'ROAS Ads', value: campaign.conversionsValuePerCost > 0 ? `${formatNumber(campaign.conversionsValuePerCost, 2)}x` : '-' },
@@ -162,7 +162,7 @@ export function MarketingFunilCampaignDrawer({
                     <th className="px-4 py-3 text-right font-semibold">Usuários</th>
                     <th className="px-4 py-3 text-right font-semibold">Novos usuários</th>
                     <th className="px-4 py-3 text-right font-semibold">Engajamento</th>
-                    <th className="px-4 py-3 text-right font-semibold">Leads</th>
+                    <th className="px-4 py-3 text-right font-semibold">Cliques WhatsApp</th>
                   </tr>
                 </thead>
                 <tbody>

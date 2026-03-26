@@ -771,10 +771,74 @@ const getZeroCliniaAdsSummary = (coverage: CliniaAdsCoverage) => ({
   historyEndMonth: coverage.historyEndMonth,
 });
 
+type CliniaAdsAggregate = {
+  contactsReceived: number;
+  newContactsReceived: number;
+  appointmentsConverted: number;
+  conversionRate: number;
+  avgConversionTimeSec: number;
+  lastSyncAt: string | null;
+};
+
+const getZeroCliniaAdsAggregate = (): CliniaAdsAggregate => ({
+  contactsReceived: 0,
+  newContactsReceived: 0,
+  appointmentsConverted: 0,
+  conversionRate: 0,
+  avgConversionTimeSec: 0,
+  lastSyncAt: null,
+});
+
+const hasCampaignScopedFilters = (
+  filters: Pick<MarketingFunilFilters, 'campaign' | 'source' | 'medium' | 'channelGroup'>
+) => [filters.campaign, filters.source, filters.medium, filters.channelGroup].some((value) => clean(value).length > 0);
+
 const getCliniaAdsAggregateForRange = async (
   db: DbInterface,
-  range: Pick<DateRange, 'startDate' | 'endDate'>
-) => {
+  range: Pick<DateRange, 'startDate' | 'endDate'>,
+  options?: {
+    origin?: string;
+    includeSourceIds?: string[];
+    excludeSourceIds?: string[];
+  }
+): Promise<CliniaAdsAggregate> => {
+  const includeSourceIds = Array.from(
+    new Set(
+      (options?.includeSourceIds || [])
+        .map((value) => clean(value).toLowerCase())
+        .filter(Boolean)
+    )
+  );
+  const excludeSourceIds = Array.from(
+    new Set(
+      (options?.excludeSourceIds || [])
+        .map((value) => clean(value).toLowerCase())
+        .filter(Boolean)
+    )
+  );
+
+  if (options?.includeSourceIds && includeSourceIds.length === 0) {
+    return getZeroCliniaAdsAggregate();
+  }
+
+  const where = ['brand_slug = ?', 'date_ref >= ?', 'date_ref <= ?'];
+  const params: unknown[] = [CLINIA_ADS_BRAND, range.startDate, range.endDate];
+
+  if (clean(options?.origin)) {
+    where.push('LOWER(COALESCE(origin, \'\')) = ?');
+    params.push(clean(options?.origin).toLowerCase());
+  }
+
+  if (includeSourceIds.length) {
+    where.push(`LOWER(COALESCE(source_id, '')) IN (${includeSourceIds.map(() => '?').join(', ')})`);
+    params.push(...includeSourceIds);
+  }
+
+  if (excludeSourceIds.length) {
+    where.push(`LOWER(COALESCE(source_id, '')) NOT IN (${excludeSourceIds.map(() => '?').join(', ')})`);
+    params.push(...excludeSourceIds);
+  }
+
   const rows = await db.query(
     `
     SELECT
@@ -784,11 +848,9 @@ const getCliniaAdsAggregateForRange = async (
       AVG(CASE WHEN conversion_time_sec > 0 THEN conversion_time_sec ELSE NULL END) AS avg_conversion_time_sec,
       MAX(synced_at) AS last_sync_at
     FROM raw_clinia_ads_contacts
-    WHERE brand_slug = ?
-      AND date_ref >= ?
-      AND date_ref <= ?
+    WHERE ${where.join(' AND ')}
     `,
-    [CLINIA_ADS_BRAND, range.startDate, range.endDate]
+    params
   );
 
   const row = (rows?.[0] as Record<string, unknown>) || {};
@@ -801,6 +863,66 @@ const getCliniaAdsAggregateForRange = async (
     conversionRate: contactsReceived > 0 ? (appointmentsConverted * 100) / contactsReceived : 0,
     avgConversionTimeSec: safeNum(row.avg_conversion_time_sec),
     lastSyncAt: clean(row.last_sync_at) || null,
+  };
+};
+
+const buildPerformanceFunnelSummary = async (
+  db: DbInterface,
+  filters: MarketingFunilFilters,
+  range: DateRange,
+  campaignNames: string[]
+) => {
+  const scopedToCampaigns = hasCampaignScopedFilters(filters);
+  const coverage = await getCliniaAdsCoverage(db, range);
+
+  if (!isConsultareBrandScope(filters.brand) || !coverage.historyAvailable) {
+    return {
+      scopeMode: scopedToCampaigns ? 'filtered-mapped' : 'all-google',
+      scopeLabel: scopedToCampaigns
+        ? 'Campanhas filtradas e mapeadas ao Clinia Ads'
+        : 'Origem Google no Clinia Ads',
+      googleContactsReceived: 0,
+      googleNewContacts: 0,
+      googleAppointmentsConverted: 0,
+      costPerNewContact: 0,
+      costPerAppointment: 0,
+      contactToAppointmentRate: 0,
+      diagnostics: {
+        googleUnmappedContacts: 0,
+        googleUnmappedNewContacts: 0,
+        googleUnmappedAppointments: 0,
+      },
+    };
+  }
+
+  const googleOverall = scopedToCampaigns
+    ? await getCliniaAdsAggregateForRange(db, range, { origin: 'google', includeSourceIds: campaignNames })
+    : await getCliniaAdsAggregateForRange(db, range, { origin: 'google' });
+
+  const unmappedGoogle =
+    !scopedToCampaigns && campaignNames.length
+      ? await getCliniaAdsAggregateForRange(db, range, { origin: 'google', excludeSourceIds: campaignNames })
+      : getZeroCliniaAdsAggregate();
+
+  return {
+    scopeMode: scopedToCampaigns ? 'filtered-mapped' : 'all-google',
+    scopeLabel: scopedToCampaigns
+      ? 'Campanhas filtradas e mapeadas ao Clinia Ads'
+      : 'Origem Google no Clinia Ads',
+    googleContactsReceived: googleOverall.contactsReceived,
+    googleNewContacts: googleOverall.newContactsReceived,
+    googleAppointmentsConverted: googleOverall.appointmentsConverted,
+    costPerNewContact: 0,
+    costPerAppointment: 0,
+    contactToAppointmentRate:
+      googleOverall.newContactsReceived > 0
+        ? (googleOverall.appointmentsConverted * 100) / googleOverall.newContactsReceived
+        : 0,
+    diagnostics: {
+      googleUnmappedContacts: unmappedGoogle.contactsReceived,
+      googleUnmappedNewContacts: unmappedGoogle.newContactsReceived,
+      googleUnmappedAppointments: unmappedGoogle.appointmentsConverted,
+    },
   };
 };
 
@@ -1470,18 +1592,28 @@ export const getMarketingFunnelSummary = async (db: DbInterface, filters: Market
   const derived = toDerivedMetrics(base);
   const { items: campaignItems } = await getEnrichedCampaignItems(db, filters);
   const googleAdsHealth = buildGoogleAdsHealthSummary(campaignItems, base);
+  const performanceFunnelSummary = await buildPerformanceFunnelSummary(
+    db,
+    filters,
+    range,
+    campaignItems.map((item) => item.campaignName)
+  );
+  const spend = derived.spend;
   const [appointments, revenue, cliniaAds] = await Promise.all([
     getMarketingFunilAppointmentsSummary(db, filters),
     getMarketingFunilRevenueSummary(db, filters),
     getMarketingFunilCliniaAdsSummary(db, filters),
   ]);
+  const confirmedOrRealizedAppointments =
+    (appointments.byStatus.find((item) => item.statusId === 3)?.count || 0) +
+    (appointments.byStatus.find((item) => item.statusId === 7)?.count || 0);
 
   return {
     periodRef: range.periodRef,
     startDate: range.startDate,
     endDate: range.endDate,
     campaigns: safeInt(base.campaigns),
-    spend: derived.spend,
+    spend,
     impressions: derived.impressions,
     clicks: derived.clicks,
     ctr: derived.ctr,
@@ -1504,6 +1636,34 @@ export const getMarketingFunnelSummary = async (db: DbInterface, filters: Market
     appointments,
     revenue,
     cliniaAds,
+    performanceFunnel: {
+      scopeMode: performanceFunnelSummary.scopeMode,
+      scopeLabel: performanceFunnelSummary.scopeLabel,
+      googleSpend: spend,
+      googleContactsReceived: performanceFunnelSummary.googleContactsReceived,
+      googleNewContacts: performanceFunnelSummary.googleNewContacts,
+      googleAppointmentsConverted: performanceFunnelSummary.googleAppointmentsConverted,
+      costPerNewContact:
+        performanceFunnelSummary.googleNewContacts > 0 ? spend / performanceFunnelSummary.googleNewContacts : 0,
+      costPerAppointment:
+        performanceFunnelSummary.googleAppointmentsConverted > 0
+          ? spend / performanceFunnelSummary.googleAppointmentsConverted
+          : 0,
+      contactToAppointmentRate: performanceFunnelSummary.contactToAppointmentRate,
+    },
+    diagnostics: {
+      whatsappClicks: derived.leads,
+      whatsappCostPerClick: derived.cpl,
+      googleUnmappedContacts: performanceFunnelSummary.diagnostics.googleUnmappedContacts,
+      googleUnmappedNewContacts: performanceFunnelSummary.diagnostics.googleUnmappedNewContacts,
+      googleUnmappedAppointments: performanceFunnelSummary.diagnostics.googleUnmappedAppointments,
+    },
+    operationalContext: {
+      appointmentsValid: appointments.totalValid,
+      appointmentsConfirmedOrRealized: confirmedOrRealizedAppointments,
+      revenueTotal: revenue.total,
+      revenueDateBasis: revenue.dateBasis,
+    },
     googleAdsHealth,
   };
 };

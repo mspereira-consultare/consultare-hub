@@ -370,3 +370,84 @@ Exemplo de agregados validados:
 1. Criar o novo endpoint/submódulo adicional da Clinia definido com a gestora
 2. Expandir atribuição entre campanhas, agendamentos e faturamento
 3. Criar alertas explícitos de cobertura histórica na UI quando o período selecionado estiver fora da janela capturada
+
+## Atualização de 25/03/2026 — Funil recalibrado e cards explicativos
+
+### Nova leitura principal do funil
+
+Para reduzir a distorção causada por `Leads (WhatsApp)` como etapa principal, a aba `Visão geral` passou a separar:
+
+- **funil de performance atribuída**, com foco em Google Ads + Clinia Ads de origem Google;
+- **contexto operacional**, com agenda e faturamento da clínica.
+
+Sequência principal do funil:
+
+1. `Investimento Google Ads`
+2. `Novos contatos Clinia (Google)`
+3. `Agendamentos Clinia (Google)`
+
+Os cards auxiliares abaixo do funil passam a explicar contexto e diagnóstico:
+
+- `Cliques em WhatsApp`
+- `Google não mapeado`
+- `Agendamentos válidos`
+- `Faturamento`
+
+### Estrutura nova do summary
+
+O payload de `GET /api/admin/marketing/funil/summary` agora expõe também:
+
+- `performanceFunnel`
+  - `scopeMode`
+  - `scopeLabel`
+  - `googleSpend`
+  - `googleContactsReceived`
+  - `googleNewContacts`
+  - `googleAppointmentsConverted`
+  - `costPerNewContact`
+  - `costPerAppointment`
+  - `contactToAppointmentRate`
+- `diagnostics`
+  - `whatsappClicks`
+  - `whatsappCostPerClick`
+  - `googleUnmappedContacts`
+  - `googleUnmappedNewContacts`
+  - `googleUnmappedAppointments`
+- `operationalContext`
+  - `appointmentsValid`
+  - `appointmentsConfirmedOrRealized`
+  - `revenueTotal`
+  - `revenueDateBasis`
+
+### Regra de escopo
+
+- Sem filtros de campanha/origem/mídia/grupo de canal:
+  - `performanceFunnel` usa toda a origem Google no Clinia Ads;
+  - o bloco `Google não mapeado` mostra o que ainda não casa com `campaign_name`.
+- Com filtros de campanha/origem/mídia/grupo de canal:
+  - `performanceFunnel` passa a considerar apenas campanhas filtradas e mapeadas ao Clinia Ads;
+  - o bloco `Google não mapeado` deixa de entrar no cálculo principal.
+
+### Tooltips dos indicadores
+
+Os cards da aba `Visão geral` e os resumos da aba `Saúde Google Ads` agora usam um componente local reutilizável:
+
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilInfoTooltip.tsx`
+
+Os textos seguem a mesma estrutura:
+
+- `O que é`
+- `Como calculamos`
+- `Fonte dos dados`
+- `Escopo do filtro`
+- `Limitação importante`
+
+Arquivos novos ou evoluídos nesta etapa:
+
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilInfoTooltip.tsx`
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilMetricCard.tsx`
+- `frontend/src/app/(admin)/marketing/funil/components/marketingFunilTooltipContent.ts`
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilKpis.tsx`
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilFunnelVisual.tsx`
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilGoogleAdsHealthSection.tsx`
+

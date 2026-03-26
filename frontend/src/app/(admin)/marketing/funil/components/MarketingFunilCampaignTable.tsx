@@ -32,7 +32,7 @@ export function MarketingFunilCampaignTable({
         <div>
           <h2 className="text-lg font-bold text-slate-900">Campanhas</h2>
           <p className="text-sm text-slate-500">
-            Performance consolidada do período com leads via WhatsApp, contatos do Clinia Ads e conversões do Google Ads.
+            Performance consolidada do período com cliques em WhatsApp, contatos do Clinia Ads e conversões do Google Ads.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -59,7 +59,7 @@ export function MarketingFunilCampaignTable({
               <th className="px-3 py-3 font-semibold">Origem / Mídia</th>
               <th className="px-3 py-3 text-right font-semibold">Investimento</th>
               <th className="px-3 py-3 text-right font-semibold">Cliques</th>
-              <th className="px-3 py-3 text-right font-semibold">Leads</th>
+              <th className="px-3 py-3 text-right font-semibold">Cliques WhatsApp</th>
               <th className="px-3 py-3 text-right font-semibold">Contatos</th>
               <th className="px-3 py-3 text-right font-semibold">Agend. Clinia</th>
               <th className="px-3 py-3 text-right font-semibold">Conversões</th>

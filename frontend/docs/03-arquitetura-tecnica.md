@@ -339,159 +339,19 @@ Variáveis necessárias para ativar S3:
   - modelo existe;
   - modelo esta `active`;
   - `contract_type` do modelo bate com `contract_type` do profissional.
-## Atualizacao - Sprint 1 Qualidade (Documentos)
 
-Componentes adicionados:
+## Atualização de 25/03/2026 — Marketing / Funil
 
-- Backend:
-  - `frontend/src/lib/qms/repository.ts`
-  - `frontend/src/lib/qms/auth.ts`
-  - APIs em `frontend/src/app/api/admin/qms/documentos/*`
-- Frontend:
-  - `frontend/src/app/(admin)/qualidade/documentos/page.tsx`
-  - componentes em `frontend/src/app/(admin)/qualidade/documentos/components/*`
-  - placeholders iniciais:
-    - `/qualidade/treinamentos`
-    - `/qualidade/auditorias`
+A camada de leitura do `/marketing/funil` foi recalibrada para distinguir:
 
-Detalhes tecnicos:
+- performance atribuída ao Google (`performanceFunnel`)
+- diagnósticos auxiliares (`diagnostics`)
+- contexto operacional da clínica (`operationalContext`)
 
-- tabelas criadas sob demanda:
-  - `qms_documents`
-  - `qms_document_versions`
-  - `qms_document_files`
-  - `qms_audit_log`
-- upload de arquivo usando provider S3 ja existente;
-- heartbeat/refresh do modulo em `system_status` com `service_name='qms_documentos'`.
+Também foi adicionado um padrão local de ajuda contextual para cards do módulo:
 
-## Atualizacao - Sprint 2 Qualidade (Treinamentos)
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilInfoTooltip.tsx`
+- `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilMetricCard.tsx`
 
-Componentes adicionados:
+Esse padrão evita tooltips nativos do navegador e funciona com hover/focus no desktop e clique no mobile.
 
-- Backend:
-  - `frontend/src/lib/qms/trainings_repository.ts`
-  - APIs em `frontend/src/app/api/admin/qms/treinamentos/*`
-- Frontend:
-  - `frontend/src/app/(admin)/qualidade/treinamentos/page.tsx`
-  - componentes em `frontend/src/app/(admin)/qualidade/treinamentos/components/*`
-
-Detalhes tecnicos:
-
-- novas tabelas:
-  - `qms_training_plans`
-  - `qms_trainings`
-  - `qms_training_files`
-  - `qms_document_training_links`
-- vinculo entre cronograma e POP via tabela de ligacao (N:N);
-- anexos de realizacao usando provider S3 existente;
-- heartbeat/refresh com `service_name='qms_treinamentos'`.
-
-## Atualizacao - Sprint 3 Qualidade (Auditorias)
-
-Componentes adicionados:
-
-- Backend:
-  - `frontend/src/lib/qms/audits_repository.ts`
-  - APIs em `frontend/src/app/api/admin/qms/auditorias/*`
-- Frontend:
-  - `frontend/src/app/(admin)/qualidade/auditorias/page.tsx`
-  - componentes em `frontend/src/app/(admin)/qualidade/auditorias/components/*`
-
-Detalhes tecnicos:
-
-- novas tabelas:
-  - `qms_audits`
-  - `qms_audit_actions`
-- auditoria vinculada a `qms_documents` + `qms_document_versions`;
-- reconciliacao automatica de status de auditoria conforme estado das acoes;
-- regra automatica de atraso para acao corretiva por prazo;
-- heartbeat/refresh com `service_name='qms_auditorias'`;
-- alias de refresh no endpoint unificado (`/api/admin/refresh`) para `qms_auditorias`.
-
-## Atualizacao - Sprint 4 Qualidade (Indicadores e Hardening)
-
-Componentes adicionados:
-
-- Backend:
-  - `frontend/src/lib/qms/metrics_repository.ts`
-  - `GET /api/admin/qms/indicadores`
-  - `POST /api/admin/qms/indicadores/refresh`
-- Frontend:
-  - `frontend/src/app/(admin)/qualidade/components/QmsStatusStrip.tsx`
-  - integracao da faixa consolidada nas paginas:
-    - `documentos`
-    - `treinamentos`
-    - `auditorias`
-
-Detalhes tecnicos:
-
-- leitura consolidada de:
-  - status de documentos (`qms_documents`);
-  - execucao de treinamentos (`qms_training_plans` + `qms_trainings`);
-  - conformidade e atraso de acoes (`qms_audits` + `qms_audit_actions`);
-  - heartbeat de `system_status` (`qms_documentos`, `qms_treinamentos`, `qms_auditorias`).
-- refresh consolidado executa os tres recalculos existentes em lote:
-  - `refreshQmsDocumentStatuses`
-  - `refreshQmsTrainingStatuses`
-  - `refreshQmsAuditStatuses`
-- hardening de dominio aplicado em auditorias:
-  - conformidade limitada a `0..100`;
-  - auditoria `encerrada` exige `reassessed=true`;
-  - validacao de datas de auditoria/checagem/prazo;
-  - acao corretiva `concluida` exige `completion_note`.
-
-## Atualizacao adicional - Arquitetura Agenda Ocupacao
-
-- API frontend cria jobs em `agenda_occupancy_jobs` (`POST /api/admin/agenda-ocupacao/refresh`).
-- Orquestrador (`workers/main.py`) processa o servico `agenda_occupancy` sob demanda via `system_status`.
-- Worker `workers/worker_agenda_ocupacao.py` coleta API Feegow e grava snapshot em `agenda_occupancy_daily`.
-- Exportacoes (`xlsx`/`pdf`) leem apenas o snapshot no banco (sem chamada online a API Feegow).
-
-## Atualizacao adicional - Modulo de Colaboradores
-
-### Componentes novos
-
-- Pagina: `frontend/src/app/(admin)/colaboradores/page.tsx`
-- APIs:
-  - `GET/POST /api/admin/colaboradores`
-  - `GET/PUT /api/admin/colaboradores/:id`
-  - `GET /api/admin/colaboradores/options`
-  - `GET/POST /api/admin/colaboradores/:id/documentos`
-  - `GET /api/admin/colaboradores/documentos/:documentId/download`
-  - `GET/POST /api/admin/colaboradores/:id/uniformes`
-  - `PUT/DELETE /api/admin/colaboradores/:id/uniformes/:entryId`
-  - `GET/POST /api/admin/colaboradores/:id/recessos`
-  - `PUT/DELETE /api/admin/colaboradores/:id/recessos/:entryId`
-- Dominio:
-  - `frontend/src/lib/colaboradores/repository.ts`
-  - `frontend/src/lib/colaboradores/status.ts`
-  - `frontend/src/lib/colaboradores/constants.ts`
-  - `frontend/src/lib/colaboradores/auth.ts`
-  - `frontend/src/lib/colaboradores/types.ts`
-
-### Banco
-
-O modulo garante as tabelas abaixo em runtime:
-- `employees`
-- `employee_documents`
-- `employee_uniform_items`
-- `employee_recess_periods`
-- `employee_audit_log`
-
-### Fluxo tecnico
-
-1. Usuario abre `/colaboradores`.
-2. Frontend chama `GET /api/admin/colaboradores` e `GET /api/admin/colaboradores/options`.
-3. API valida permissao `view` e garante schema do modulo.
-4. Repositorio calcula status do ASO e pendencias documentais a partir de `employee_documents`.
-5. Em criacao/edicao, o frontend envia `POST` ou `PUT` para o colaborador principal.
-6. Abas de `Uniforme`, `Recesso` e `Documentos` usam rotas especificas por colaborador.
-7. Toda mutacao grava trilha em `employee_audit_log`.
-
-### Regras operacionais
-
-- `DESLIGADO` exige `termination_date` e `termination_reason`.
-- `ESTAGIO` exige campos de instituicao, nivel e curso.
-- `ASO` e tratado como tipo documental proprio com `issue_date` e `expires_at`.
-- O upload em massa de documentos e orquestrado no frontend, reaproveitando o endpoint de upload unitario.
-- Nao ha worker dedicado; o modulo e CRUD puro sobre MySQL + storage.
