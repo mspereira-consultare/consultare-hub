@@ -1,6 +1,7 @@
-﻿import { ChevronLeft, ChevronRight, PanelRightOpen } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PanelRightOpen } from 'lucide-react';
 import type { MarketingFunilCampaign } from './types';
 import { formatCurrency, formatNumber, formatPercent } from './formatters';
+import { formatGoogleAdsCampaignStatus, formatGoogleAdsPrimaryStatus, hasBudgetLimitation } from './googleAdsFormatters';
 
 type MarketingFunilCampaignTableProps = {
   items: MarketingFunilCampaign[];
@@ -31,8 +32,7 @@ export function MarketingFunilCampaignTable({
         <div>
           <h2 className="text-lg font-bold text-slate-900">Campanhas</h2>
           <p className="text-sm text-slate-500">
-            Visão consolidada por campanha com mídia, leads de WhatsApp e enriquecimento do Clinia Ads para origem
-            Google.
+            Performance consolidada do período com leads via WhatsApp, contatos do Clinia Ads e conversões do Google Ads.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -57,69 +57,85 @@ export function MarketingFunilCampaignTable({
             <tr className="border-b border-slate-200 bg-slate-50 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
               <th className="px-3 py-3 font-semibold">Campanha</th>
               <th className="px-3 py-3 font-semibold">Origem / Mídia</th>
-              <th className="px-3 py-3 font-semibold">Canal</th>
               <th className="px-3 py-3 text-right font-semibold">Investimento</th>
               <th className="px-3 py-3 text-right font-semibold">Cliques</th>
-              <th className="px-3 py-3 text-right font-semibold">Leads (WhatsApp)</th>
-              <th className="px-3 py-3 text-right font-semibold">Contatos Clinia</th>
-              <th className="px-3 py-3 text-right font-semibold">Novos contatos</th>
+              <th className="px-3 py-3 text-right font-semibold">Leads</th>
+              <th className="px-3 py-3 text-right font-semibold">Contatos</th>
               <th className="px-3 py-3 text-right font-semibold">Agend. Clinia</th>
-              <th className="px-3 py-3 text-right font-semibold">Conv. Clinia</th>
-              <th className="px-3 py-3 text-right font-semibold">Custo/contato</th>
-              <th className="px-3 py-3 text-right font-semibold">Custo/agend.</th>
+              <th className="px-3 py-3 text-right font-semibold">Conversões</th>
+              <th className="px-3 py-3 text-right font-semibold">Taxa conv.</th>
+              <th className="px-3 py-3 text-right font-semibold">Valor conv.</th>
+              <th className="px-3 py-3 text-right font-semibold">ROAS Ads</th>
               <th className="px-3 py-3 text-right font-semibold">Ações</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={13} className="px-3 py-10 text-center text-slate-500">
+                <td colSpan={12} className="px-3 py-10 text-center text-slate-500">
                   Carregando campanhas...
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={13} className="px-3 py-10 text-center text-slate-500">
+                <td colSpan={12} className="px-3 py-10 text-center text-slate-500">
                   Nenhuma campanha encontrada para os filtros atuais.
                 </td>
               </tr>
             ) : (
-              items.map((item) => (
-                <tr key={item.campaignKey} className="border-b border-slate-100 align-top text-slate-700 last:border-b-0">
-                  <td className="px-3 py-3">
-                    <div className="min-w-[220px]">
-                      <div className="font-semibold text-slate-900">{item.campaignName}</div>
-                      <div className="mt-1 text-xs text-slate-500">{item.campaignKey}</div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3">
-                    <div className="min-w-[160px]">
-                      <div>{item.source || '-'}</div>
-                      <div className="text-xs text-slate-500">{item.medium || '-'}</div>
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-slate-600">{item.sessionDefaultChannelGroup || '-'}</td>
-                  <td className="px-3 py-3 text-right font-semibold text-slate-900">{formatCurrency(item.spend)}</td>
-                  <td className="px-3 py-3 text-right">{formatNumber(item.clicks)}</td>
-                  <td className="px-3 py-3 text-right font-semibold text-emerald-700">{formatNumber(item.leads)}</td>
-                  <td className="px-3 py-3 text-right font-semibold text-cyan-700">{formatNumber(item.cliniaContacts)}</td>
-                  <td className="px-3 py-3 text-right">{formatNumber(item.cliniaNewContacts)}</td>
-                  <td className="px-3 py-3 text-right font-semibold text-blue-700">{formatNumber(item.cliniaAppointments)}</td>
-                  <td className="px-3 py-3 text-right">{formatPercent(item.cliniaConversionRate)}</td>
-                  <td className="px-3 py-3 text-right">{formatCurrency(item.cliniaCostPerContact)}</td>
-                  <td className="px-3 py-3 text-right">{formatCurrency(item.cliniaCostPerAppointment)}</td>
-                  <td className="px-3 py-3 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onOpenDetails(item)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
-                    >
-                      <PanelRightOpen size={14} />
-                      Ver detalhes
-                    </button>
-                  </td>
-                </tr>
-              ))
+              items.map((item) => {
+                const budgetLimited = hasBudgetLimitation(item.campaignPrimaryStatusReasons);
+                return (
+                  <tr key={item.campaignKey} className="border-b border-slate-100 align-top text-slate-700 last:border-b-0">
+                    <td className="px-3 py-3">
+                      <div className="min-w-[240px]">
+                        <div className="font-semibold text-slate-900">{item.campaignName}</div>
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                            {formatGoogleAdsCampaignStatus(item.campaignStatus)}
+                          </span>
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">
+                            {formatGoogleAdsPrimaryStatus(item.campaignPrimaryStatus)}
+                          </span>
+                          {budgetLimited ? (
+                            <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 font-semibold text-amber-700">
+                              Orçamento limitado
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="min-w-[170px]">
+                        <div className="font-medium text-slate-800">{item.source || '-'}</div>
+                        <div className="text-xs text-slate-500">{item.medium || '-'}</div>
+                        <div className="mt-1 text-xs text-slate-400">{item.sessionDefaultChannelGroup || 'Sem grupo'}</div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-3 text-right font-semibold text-slate-900">{formatCurrency(item.spend)}</td>
+                    <td className="px-3 py-3 text-right">{formatNumber(item.clicks)}</td>
+                    <td className="px-3 py-3 text-right font-semibold text-emerald-700">{formatNumber(item.leads)}</td>
+                    <td className="px-3 py-3 text-right font-semibold text-cyan-700">{formatNumber(item.cliniaContacts)}</td>
+                    <td className="px-3 py-3 text-right font-semibold text-blue-700">{formatNumber(item.cliniaAppointments)}</td>
+                    <td className="px-3 py-3 text-right">{formatNumber(item.conversions, 2)}</td>
+                    <td className="px-3 py-3 text-right">{formatPercent(item.conversionRate)}</td>
+                    <td className="px-3 py-3 text-right">{formatCurrency(item.conversionsValue)}</td>
+                    <td className="px-3 py-3 text-right font-semibold text-slate-900">
+                      {item.conversionsValuePerCost > 0 ? `${formatNumber(item.conversionsValuePerCost, 2)}x` : '-'}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => onOpenDetails(item)}
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                      >
+                        <PanelRightOpen size={14} />
+                        Ver detalhes
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

@@ -137,6 +137,7 @@ APIs:
 
 - `/api/admin/marketing/funil/summary`
 - `/api/admin/marketing/funil/campaigns`
+- `/api/admin/marketing/funil/google-ads/health`
 - `/api/admin/marketing/funil/channels`
 - `/api/admin/marketing/funil/clinia-ads/ads`
 - `/api/admin/marketing/funil/clinia-ads/origins`
@@ -147,6 +148,8 @@ Checklist funcional:
 - `Leads` devem refletir cliques para WhatsApp
 - `Contatos Clinia` e `Agendamentos Clinia` devem aparecer apenas a partir da implantação do worker `clinia_ads`
 - `POST /api/admin/marketing/funil/refresh` continua atualizando somente a camada Google
+- a aba `Saúde Google Ads` deve exibir orçamento, status e estratégia de lances por campanha
+- campanhas limitadas por orçamento devem aparecer na contagem do resumo de saúde
 
 ## 5) Backfill de Faturamento
 

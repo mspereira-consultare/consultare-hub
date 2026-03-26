@@ -63,4 +63,5 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Novo plano de agenda em `docs/08-agenda-ocupacao.md`.
 - Novo plano do módulo `/marketing/funil` em `docs/09-plano-tecnico-marketing-funil.md`.
 - Módulo `/marketing/funil` atualizado com Clinia Ads, nova regra de lead por WhatsApp e documentação técnica consolidada.
+- Módulo `/marketing/funil` reorganizado em abas (`Visão geral`, `Campanhas`, `Saúde Google Ads`) com diagnóstico de orçamento, status e estratégia de lances.
 - Novo módulo `/colaboradores` documentado em `docs/10-plano-tecnico-colaboradores.md`.

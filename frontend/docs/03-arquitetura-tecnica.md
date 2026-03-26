@@ -166,6 +166,7 @@ Arquivo: `workers/main.py`.
 ### Marketing / Funil
 
 - Google Ads + GA4 alimentam `fact_marketing_funnel_daily`.
+- snapshots diagnósticos do Google Ads ficam em `raw_google_ads_campaign_daily`.
 - Clinia Ads alimenta `fact_clinia_ads_daily`.
 - O frontend cruza:
   - mídia e navegação
@@ -174,6 +175,18 @@ Arquivo: `workers/main.py`.
   - conversão para agendamento no Clinia
   - agendamentos válidos no Feegow
   - faturamento bruto analítico
+
+Organização atual da UI do módulo `/marketing/funil`:
+
+- filtros e status fixos no topo;
+- abas:
+  - `Visão geral`
+  - `Campanhas`
+  - `Saúde Google Ads`
+
+Nova rota interna de diagnóstico:
+
+- `GET /api/admin/marketing/funil/google-ads/health`
 
 Regra vigente de lead:
 - clique que leva o usuário para o WhatsApp da clínica.

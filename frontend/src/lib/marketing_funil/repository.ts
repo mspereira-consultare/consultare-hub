@@ -54,6 +54,15 @@ const safeInt = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const chunkArray = <T>(items: T[], size: number) => {
+  if (size <= 0) return [items];
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
+
 const nowIso = () => new Date().toISOString();
 
 const MARKETING_VALID_APPOINTMENT_STATUSES = [1, 2, 3, 4, 7] as const;
@@ -539,6 +548,47 @@ export const ensureMarketingFunilTables = async (db: DbInterface) => {
   await safeExecute(db, 'CREATE INDEX idx_fact_mkt_channel_date_brand ON fact_marketing_funnel_daily_channel(date_ref, brand_slug)');
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS raw_google_ads_campaign_daily (
+      id VARCHAR(64) PRIMARY KEY,
+      row_hash VARCHAR(64) NOT NULL,
+      sync_job_id VARCHAR(64) NOT NULL,
+      date_ref VARCHAR(10) NOT NULL,
+      brand_slug VARCHAR(64) NOT NULL,
+      ads_customer_id VARCHAR(64) NOT NULL,
+      campaign_id VARCHAR(64),
+      campaign_name VARCHAR(255),
+      impressions INTEGER NOT NULL DEFAULT 0,
+      clicks INTEGER NOT NULL DEFAULT 0,
+      spend DECIMAL(14,2) NOT NULL DEFAULT 0,
+      payload_json LONGTEXT,
+      payload_hash VARCHAR(64),
+      collected_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'campaign_status', 'VARCHAR(40)');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'campaign_primary_status', 'VARCHAR(40)');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'campaign_primary_status_reasons_json', 'LONGTEXT');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'bidding_strategy_type', 'VARCHAR(60)');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'optimization_score', 'DECIMAL(10,4) NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'advertising_channel_type', 'VARCHAR(60)');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'campaign_start_date', 'VARCHAR(10)');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'campaign_end_date', 'VARCHAR(10)');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'budget_name', 'VARCHAR(255)');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'budget_period', 'VARCHAR(40)');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'budget_amount', 'DECIMAL(14,2) NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'currency_code', 'VARCHAR(10)');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'ctr', 'DECIMAL(10,4) NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'average_cpc', 'DECIMAL(14,4) NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'interactions', 'INTEGER NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'conversions', 'DECIMAL(14,4) NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'all_conversions', 'DECIMAL(14,4) NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'conversions_value', 'DECIMAL(14,4) NOT NULL DEFAULT 0');
+  await ensureColumn(db, 'raw_google_ads_campaign_daily', 'cost_per_conversion', 'DECIMAL(14,4) NOT NULL DEFAULT 0');
+  await safeExecute(db, 'CREATE UNIQUE INDEX ux_raw_ads_row_hash ON raw_google_ads_campaign_daily(row_hash)');
+  await safeExecute(db, 'CREATE INDEX idx_raw_ads_date_brand ON raw_google_ads_campaign_daily(date_ref, brand_slug)');
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS clinia_ads_jobs (
       id VARCHAR(64) PRIMARY KEY,
       status VARCHAR(20) NOT NULL,
@@ -801,6 +851,276 @@ const getCliniaAdsCampaignMetrics = async (
   }
 
   return metrics;
+};
+
+type GoogleAdsCampaignSnapshot = {
+  campaignStatus: string;
+  campaignPrimaryStatus: string;
+  campaignPrimaryStatusReasons: string[];
+  biddingStrategyType: string;
+  optimizationScore: number;
+  advertisingChannelType: string;
+  campaignStartDate: string | null;
+  campaignEndDate: string | null;
+  budgetName: string;
+  budgetPeriod: string;
+  budgetAmount: number;
+  currencyCode: string;
+  snapshotDate: string | null;
+  snapshotUpdatedAt: string | null;
+};
+
+const EMPTY_GOOGLE_ADS_SNAPSHOT: GoogleAdsCampaignSnapshot = {
+  campaignStatus: '',
+  campaignPrimaryStatus: '',
+  campaignPrimaryStatusReasons: [],
+  biddingStrategyType: '',
+  optimizationScore: 0,
+  advertisingChannelType: '',
+  campaignStartDate: null,
+  campaignEndDate: null,
+  budgetName: '',
+  budgetPeriod: '',
+  budgetAmount: 0,
+  currencyCode: '',
+  snapshotDate: null,
+  snapshotUpdatedAt: null,
+};
+
+const parseJsonArray = (value: unknown) => {
+  const raw = clean(value);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.map((item) => clean(item)).filter(Boolean);
+    }
+  } catch {
+    return raw
+      .split(';')
+      .map((item) => clean(item))
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const getGoogleAdsSnapshotMap = async (
+  db: DbInterface,
+  campaignNames: string[],
+  range: Pick<DateRange, 'endDate'>,
+  brandRaw?: unknown
+) => {
+  const uniqueNames = Array.from(
+    new Set(
+      campaignNames
+        .map((value) => clean(value))
+        .filter(Boolean)
+    )
+  );
+
+  const map = new Map<string, GoogleAdsCampaignSnapshot>();
+  if (!uniqueNames.length) return map;
+
+  const brand = normalizeTextFilter(brandRaw).toLowerCase();
+
+  for (const chunk of chunkArray(uniqueNames, 100)) {
+    const names = chunk.map((value) => value.toLowerCase());
+    const placeholders = names.map(() => '?').join(', ');
+    const where = ['date_ref <= ?', `LOWER(COALESCE(campaign_name, '')) IN (${placeholders})`];
+    const params: unknown[] = [range.endDate, ...names];
+
+    if (brand) {
+      where.push('brand_slug = ?');
+      params.push(brand);
+    }
+
+    const rows = await db.query(
+      `
+      SELECT
+        campaign_name,
+        campaign_status,
+        campaign_primary_status,
+        campaign_primary_status_reasons_json,
+        bidding_strategy_type,
+        optimization_score,
+        advertising_channel_type,
+        campaign_start_date,
+        campaign_end_date,
+        budget_name,
+        budget_period,
+        budget_amount,
+        currency_code,
+        date_ref,
+        updated_at
+      FROM raw_google_ads_campaign_daily
+      WHERE ${where.join(' AND ')}
+      ORDER BY date_ref DESC, updated_at DESC
+      `,
+      params
+    );
+
+    for (const raw of rows || []) {
+      const row = raw as Record<string, unknown>;
+      const key = clean(row.campaign_name).toLowerCase();
+      if (!key || map.has(key)) continue;
+      map.set(key, {
+        campaignStatus: clean(row.campaign_status),
+        campaignPrimaryStatus: clean(row.campaign_primary_status),
+        campaignPrimaryStatusReasons: parseJsonArray(row.campaign_primary_status_reasons_json),
+        biddingStrategyType: clean(row.bidding_strategy_type),
+        optimizationScore: safeNum(row.optimization_score),
+        advertisingChannelType: clean(row.advertising_channel_type),
+        campaignStartDate: clean(row.campaign_start_date) || null,
+        campaignEndDate: clean(row.campaign_end_date) || null,
+        budgetName: clean(row.budget_name),
+        budgetPeriod: clean(row.budget_period),
+        budgetAmount: safeNum(row.budget_amount),
+        currencyCode: clean(row.currency_code),
+        snapshotDate: clean(row.date_ref) || null,
+        snapshotUpdatedAt: clean(row.updated_at) || null,
+      });
+    }
+  }
+
+  return map;
+};
+
+const toCampaignListItem = (
+  row: Record<string, unknown>,
+  clinia: {
+    contactsReceived: number;
+    newContactsReceived: number;
+    appointmentsConverted: number;
+    conversionRate: number;
+  },
+  googleAds: GoogleAdsCampaignSnapshot
+) => {
+  const derived = toDerivedMetrics(row);
+  const interactions = safeInt(row.interactions);
+  const conversions = safeNum(row.conversions);
+  const conversionsValue = safeNum(row.conversions_value);
+  const interactionRate = derived.impressions > 0 ? (interactions * 100) / derived.impressions : 0;
+  const averageCost = interactions > 0 ? derived.spend / interactions : 0;
+  const conversionRate = interactions > 0 ? (conversions * 100) / interactions : 0;
+  const conversionsValuePerCost = derived.spend > 0 ? conversionsValue / derived.spend : 0;
+
+  return {
+    campaignKey: clean(row.campaign_key),
+    campaignName: clean(row.campaign_name) || 'Sem campanha',
+    source: clean(row.source),
+    medium: clean(row.medium),
+    sessionDefaultChannelGroup: clean(row.session_default_channel_group),
+    spend: derived.spend,
+    impressions: derived.impressions,
+    clicks: derived.clicks,
+    ctr: derived.ctr,
+    cpc: derived.cpc,
+    sessions: derived.sessions,
+    totalUsers: safeInt(row.total_users),
+    newUsers: safeInt(row.new_users),
+    engagedSessions: derived.engagedSessions,
+    engagementRate: derived.engagementRate,
+    pageViews: safeInt(row.page_views),
+    eventCount: safeInt(row.event_count),
+    leads: derived.leads,
+    cpl: derived.cpl,
+    interactions,
+    interactionRate,
+    averageCost,
+    conversions,
+    conversionRate,
+    allConversions: safeNum(row.all_conversions),
+    conversionsValue,
+    conversionsValuePerCost,
+    costPerConversion: derived.costPerConversion,
+    cliniaContacts: clinia.contactsReceived,
+    cliniaNewContacts: clinia.newContactsReceived,
+    cliniaAppointments: clinia.appointmentsConverted,
+    cliniaConversionRate: clinia.conversionRate,
+    cliniaCostPerContact: clinia.contactsReceived > 0 ? derived.spend / clinia.contactsReceived : 0,
+    cliniaCostPerAppointment: clinia.appointmentsConverted > 0 ? derived.spend / clinia.appointmentsConverted : 0,
+    campaignStatus: googleAds.campaignStatus,
+    campaignPrimaryStatus: googleAds.campaignPrimaryStatus,
+    campaignPrimaryStatusReasons: googleAds.campaignPrimaryStatusReasons,
+    biddingStrategyType: googleAds.biddingStrategyType,
+    optimizationScore: googleAds.optimizationScore,
+    advertisingChannelType: googleAds.advertisingChannelType,
+    budgetName: googleAds.budgetName,
+    budgetPeriod: googleAds.budgetPeriod,
+    budgetAmount: googleAds.budgetAmount,
+    currencyCode: googleAds.currencyCode || 'BRL',
+    campaignStartDate: googleAds.campaignStartDate,
+    campaignEndDate: googleAds.campaignEndDate,
+    googleAdsSnapshotDate: googleAds.snapshotDate,
+    googleAdsSnapshotUpdatedAt: googleAds.snapshotUpdatedAt,
+    lastSyncAt: clean(row.source_last_sync_at) || null,
+  };
+};
+
+const buildGoogleAdsHealthSummary = (
+  items: Array<ReturnType<typeof toCampaignListItem>>,
+  overall: {
+    interactions?: unknown;
+    conversions?: unknown;
+    conversions_value?: unknown;
+    spend?: unknown;
+  }
+) => {
+  const withScore = items.filter((item) => item.optimizationScore > 0);
+  const avgOptimizationScore = withScore.length
+    ? withScore.reduce((acc, item) => acc + item.optimizationScore, 0) / withScore.length
+    : 0;
+  const interactions = safeInt(overall.interactions);
+  const conversions = safeNum(overall.conversions);
+  const conversionsValue = safeNum(overall.conversions_value);
+  const spend = safeNum(overall.spend);
+
+  return {
+    limitedByBudgetCount: items.filter((item) =>
+      item.campaignPrimaryStatusReasons.some((reason) => reason.toUpperCase().includes('BUDGET'))
+    ).length,
+    pausedCount: items.filter((item) => item.campaignStatus.toUpperCase() === 'PAUSED').length,
+    enabledCount: items.filter((item) => item.campaignStatus.toUpperCase() === 'ENABLED').length,
+    avgOptimizationScore,
+    avgConversionRate: interactions > 0 ? (conversions * 100) / interactions : 0,
+    avgConversionsValuePerCost: spend > 0 ? conversionsValue / spend : 0,
+  };
+};
+
+const getEnrichedCampaignItems = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  await ensureMarketingFunilTables(db);
+  const { range, where, params } = buildMainWhere(filters);
+  const cliniaMetrics = isConsultareBrandScope(filters.brand)
+    ? await getCliniaAdsCampaignMetrics(db, range)
+    : new Map();
+
+  const rows = await db.query(
+    `
+    ${buildCampaignAggregationSelect()}
+    WHERE ${where.join(' AND ')}
+    GROUP BY campaign_key
+    ORDER BY spend DESC, campaign_name ASC
+    `,
+    params
+  );
+
+  const campaignNames = (rows || []).map((raw) => clean((raw as Record<string, unknown>).campaign_name));
+  const googleAdsSnapshots = await getGoogleAdsSnapshotMap(db, campaignNames, range, filters.brand);
+
+  return {
+    range,
+    items: (rows || []).map((raw) => {
+      const row = raw as Record<string, unknown>;
+      const clinia = cliniaMetrics.get(clean(row.campaign_name).toLowerCase()) || {
+        contactsReceived: 0,
+        newContactsReceived: 0,
+        appointmentsConverted: 0,
+        conversionRate: 0,
+      };
+      const googleAds = googleAdsSnapshots.get(clean(row.campaign_name).toLowerCase()) || EMPTY_GOOGLE_ADS_SNAPSHOT;
+      return toCampaignListItem(row, clinia, googleAds);
+    }),
+  };
 };
 
 const listCliniaAdsByAd = async (
@@ -1148,6 +1468,8 @@ export const getMarketingFunnelSummary = async (db: DbInterface, filters: Market
 
   const base = ((rows?.[0] as Record<string, unknown>) || {});
   const derived = toDerivedMetrics(base);
+  const { items: campaignItems } = await getEnrichedCampaignItems(db, filters);
+  const googleAdsHealth = buildGoogleAdsHealthSummary(campaignItems, base);
   const [appointments, revenue, cliniaAds] = await Promise.all([
     getMarketingFunilAppointmentsSummary(db, filters),
     getMarketingFunilRevenueSummary(db, filters),
@@ -1182,31 +1504,17 @@ export const getMarketingFunnelSummary = async (db: DbInterface, filters: Market
     appointments,
     revenue,
     cliniaAds,
+    googleAdsHealth,
   };
 };
 
 export const listMarketingFunnelCampaigns = async (db: DbInterface, filters: MarketingFunilFilters) => {
-  await ensureMarketingFunilTables(db);
-  const { range, where, params } = buildMainWhere(filters);
+  const { range, items } = await getEnrichedCampaignItems(db, filters);
   const page = normalizePage(filters.page);
   const pageSize = normalizePageSize(filters.pageSize);
   const offset = (page - 1) * pageSize;
-  const cliniaMetrics = isConsultareBrandScope(filters.brand)
-    ? await getCliniaAdsCampaignMetrics(db, range)
-    : new Map();
-
-  const baseSql = `${buildCampaignAggregationSelect()} WHERE ${where.join(' AND ')} GROUP BY campaign_key`;
-  const countRows = await db.query(`SELECT COUNT(*) AS total FROM (${baseSql}) AS campaigns_count`, params);
-  const total = safeInt((countRows?.[0] as Record<string, unknown>)?.total);
-
-  const rows = await db.query(
-    `
-    ${baseSql}
-    ORDER BY spend DESC, campaign_name ASC
-    LIMIT ? OFFSET ?
-    `,
-    [...params, pageSize, offset]
-  );
+  const total = items.length;
+  const pagedItems = items.slice(offset, offset + pageSize);
 
   return {
     periodRef: range.periodRef,
@@ -1215,49 +1523,33 @@ export const listMarketingFunnelCampaigns = async (db: DbInterface, filters: Mar
     page,
     pageSize,
     total,
-    items: (rows || []).map((raw) => {
-      const row = raw as Record<string, unknown>;
-      const derived = toDerivedMetrics(row);
-      const clinia = cliniaMetrics.get(clean(row.campaign_name).toLowerCase()) || {
-        contactsReceived: 0,
-        newContactsReceived: 0,
-        appointmentsConverted: 0,
-        conversionRate: 0,
-      };
-      return {
-        campaignKey: clean(row.campaign_key),
-        campaignName: clean(row.campaign_name) || 'Sem campanha',
-        source: clean(row.source),
-        medium: clean(row.medium),
-        sessionDefaultChannelGroup: clean(row.session_default_channel_group),
-        spend: derived.spend,
-        impressions: derived.impressions,
-        clicks: derived.clicks,
-        ctr: derived.ctr,
-        cpc: derived.cpc,
-        sessions: derived.sessions,
-        totalUsers: safeInt(row.total_users),
-        newUsers: safeInt(row.new_users),
-        engagedSessions: derived.engagedSessions,
-        engagementRate: derived.engagementRate,
-        pageViews: safeInt(row.page_views),
-        eventCount: safeInt(row.event_count),
-        leads: derived.leads,
-        cpl: derived.cpl,
-        interactions: safeInt(row.interactions),
-        conversions: derived.conversions,
-        allConversions: safeNum(row.all_conversions),
-        conversionsValue: safeNum(row.conversions_value),
-        costPerConversion: derived.costPerConversion,
-        cliniaContacts: clinia.contactsReceived,
-        cliniaNewContacts: clinia.newContactsReceived,
-        cliniaAppointments: clinia.appointmentsConverted,
-        cliniaConversionRate: clinia.conversionRate,
-        cliniaCostPerContact: clinia.contactsReceived > 0 ? derived.spend / clinia.contactsReceived : 0,
-        cliniaCostPerAppointment: clinia.appointmentsConverted > 0 ? derived.spend / clinia.appointmentsConverted : 0,
-        lastSyncAt: clean(row.source_last_sync_at) || null,
-      };
-    }),
+    items: pagedItems,
+  };
+};
+
+export const listMarketingFunilGoogleAdsHealth = async (db: DbInterface, filters: MarketingFunilFilters) => {
+  const { range, items } = await getEnrichedCampaignItems(db, filters);
+  const page = normalizePage(filters.page);
+  const pageSize = normalizePageSize(filters.pageSize);
+  const offset = (page - 1) * pageSize;
+
+  const orderedItems = [...items].sort((left, right) => {
+    const leftLimited = left.campaignPrimaryStatusReasons.some((reason) => reason.toUpperCase().includes('BUDGET')) ? 1 : 0;
+    const rightLimited = right.campaignPrimaryStatusReasons.some((reason) => reason.toUpperCase().includes('BUDGET')) ? 1 : 0;
+    if (leftLimited !== rightLimited) return rightLimited - leftLimited;
+    if (left.optimizationScore !== right.optimizationScore) return left.optimizationScore - right.optimizationScore;
+    if (left.spend !== right.spend) return right.spend - left.spend;
+    return left.campaignName.localeCompare(right.campaignName, 'pt-BR');
+  });
+
+  return {
+    periodRef: range.periodRef,
+    startDate: range.startDate,
+    endDate: range.endDate,
+    page,
+    pageSize,
+    total: orderedItems.length,
+    items: orderedItems.slice(offset, offset + pageSize),
   };
 };
 

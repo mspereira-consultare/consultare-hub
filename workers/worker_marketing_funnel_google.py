@@ -15,6 +15,11 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
@@ -267,9 +272,17 @@ def _fetch_google_ads_rows(
         campaign.id,
         campaign.name,
         campaign.status,
+        campaign.primary_status,
+        campaign.primary_status_reasons,
+        campaign.bidding_strategy_type,
+        campaign.optimization_score,
         campaign.advertising_channel_type,
         campaign.start_date,
         campaign.end_date,
+        campaign_budget.name,
+        campaign_budget.period,
+        campaign_budget.amount_micros,
+        customer.currency_code,
         metrics.impressions,
         metrics.clicks,
         metrics.cost_micros,
@@ -303,9 +316,19 @@ def _fetch_google_ads_rows(
             campaign_id = str(camp.get("id") or "").strip()
             campaign_name = str(camp.get("name") or "").strip()
             campaign_status = str(camp.get("status") or "").strip()
+            campaign_primary_status = str(camp.get("primaryStatus") or "").strip()
+            campaign_primary_status_reasons = camp.get("primaryStatusReasons") or []
+            bidding_strategy_type = str(camp.get("biddingStrategyType") or "").strip()
+            optimization_score = _to_decimal(camp.get("optimizationScore"), "0")
             advertising_channel_type = str(camp.get("advertisingChannelType") or "").strip()
             campaign_start_date = str(camp.get("startDate") or "").strip()
             campaign_end_date = str(camp.get("endDate") or "").strip()
+            budget = result.get("campaignBudget", {}) or {}
+            budget_name = str(budget.get("name") or "").strip()
+            budget_period = str(budget.get("period") or "").strip()
+            budget_amount = _to_decimal(budget.get("amountMicros"), "0") / Decimal("1000000")
+            customer = result.get("customer", {}) or {}
+            currency_code = str(customer.get("currencyCode") or "").strip()
             impressions = _to_int(metrics.get("impressions"), 0)
             clicks = _to_int(metrics.get("clicks"), 0)
             cost_micros = _to_decimal(metrics.get("costMicros"), "0")
@@ -326,9 +349,17 @@ def _fetch_google_ads_rows(
                     "campaign_id": campaign_id,
                     "campaign_name": campaign_name,
                     "campaign_status": campaign_status,
+                    "campaign_primary_status": campaign_primary_status,
+                    "campaign_primary_status_reasons": campaign_primary_status_reasons,
+                    "bidding_strategy_type": bidding_strategy_type,
+                    "optimization_score": optimization_score,
                     "advertising_channel_type": advertising_channel_type,
                     "campaign_start_date": campaign_start_date,
                     "campaign_end_date": campaign_end_date,
+                    "budget_name": budget_name,
+                    "budget_period": budget_period,
+                    "budget_amount": budget_amount,
+                    "currency_code": currency_code,
                     "impressions": impressions,
                     "clicks": clicks,
                     "spend": spend,
@@ -1013,9 +1044,17 @@ def ensure_marketing_funnel_tables(db: "DatabaseManager"):
             """
         )
         _ensure_column(db, conn, "raw_google_ads_campaign_daily", "campaign_status", "VARCHAR(40)")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "campaign_primary_status", "VARCHAR(40)")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "campaign_primary_status_reasons_json", "TEXT")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "bidding_strategy_type", "VARCHAR(60)")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "optimization_score", "DECIMAL(10,4) NOT NULL DEFAULT 0")
         _ensure_column(db, conn, "raw_google_ads_campaign_daily", "advertising_channel_type", "VARCHAR(60)")
         _ensure_column(db, conn, "raw_google_ads_campaign_daily", "campaign_start_date", "VARCHAR(10)")
         _ensure_column(db, conn, "raw_google_ads_campaign_daily", "campaign_end_date", "VARCHAR(10)")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "budget_name", "VARCHAR(255)")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "budget_period", "VARCHAR(40)")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "budget_amount", "DECIMAL(14,2) NOT NULL DEFAULT 0")
+        _ensure_column(db, conn, "raw_google_ads_campaign_daily", "currency_code", "VARCHAR(10)")
         _ensure_column(db, conn, "raw_google_ads_campaign_daily", "ctr", "DECIMAL(10,4) NOT NULL DEFAULT 0")
         _ensure_column(db, conn, "raw_google_ads_campaign_daily", "average_cpc", "DECIMAL(14,4) NOT NULL DEFAULT 0")
         _ensure_column(db, conn, "raw_google_ads_campaign_daily", "interactions", "INTEGER NOT NULL DEFAULT 0")
@@ -1578,6 +1617,7 @@ def _persist_raw_ads(db: "DatabaseManager", sync_job_id: str, brand_slug: str, a
         )
         payload_json = _json_dump(row.get("payload") or {})
         payload_hash = _stable_hash(payload_json)
+        primary_status_reasons_json = _json_dump(row.get("campaign_primary_status_reasons") or [])
         params_rows.append(
             (
                 uuid.uuid4().hex,
@@ -1589,9 +1629,17 @@ def _persist_raw_ads(db: "DatabaseManager", sync_job_id: str, brand_slug: str, a
                 row.get("campaign_id"),
                 row.get("campaign_name"),
                 row.get("campaign_status"),
+                row.get("campaign_primary_status"),
+                primary_status_reasons_json,
+                row.get("bidding_strategy_type"),
+                float(_to_decimal(row.get("optimization_score"), "0")),
                 row.get("advertising_channel_type"),
                 row.get("campaign_start_date"),
                 row.get("campaign_end_date"),
+                row.get("budget_name"),
+                row.get("budget_period"),
+                _to_float2(_to_decimal(row.get("budget_amount"), "0")),
+                row.get("currency_code"),
                 int(row.get("impressions") or 0),
                 int(row.get("clicks") or 0),
                 _to_float2(_to_decimal(row.get("spend"), "0")),
@@ -1613,16 +1661,26 @@ def _persist_raw_ads(db: "DatabaseManager", sync_job_id: str, brand_slug: str, a
         """
         INSERT INTO raw_google_ads_campaign_daily (
           id, row_hash, sync_job_id, date_ref, brand_slug, ads_customer_id, campaign_id, campaign_name,
-          campaign_status, advertising_channel_type, campaign_start_date, campaign_end_date,
+          campaign_status, campaign_primary_status, campaign_primary_status_reasons_json,
+          bidding_strategy_type, optimization_score, advertising_channel_type, campaign_start_date, campaign_end_date,
+          budget_name, budget_period, budget_amount, currency_code,
           impressions, clicks, spend, ctr, average_cpc, interactions, conversions, all_conversions,
           conversions_value, cost_per_conversion, payload_json, payload_hash, collected_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(row_hash) DO UPDATE SET
           sync_job_id = excluded.sync_job_id,
           campaign_status = excluded.campaign_status,
+          campaign_primary_status = excluded.campaign_primary_status,
+          campaign_primary_status_reasons_json = excluded.campaign_primary_status_reasons_json,
+          bidding_strategy_type = excluded.bidding_strategy_type,
+          optimization_score = excluded.optimization_score,
           advertising_channel_type = excluded.advertising_channel_type,
           campaign_start_date = excluded.campaign_start_date,
           campaign_end_date = excluded.campaign_end_date,
+          budget_name = excluded.budget_name,
+          budget_period = excluded.budget_period,
+          budget_amount = excluded.budget_amount,
+          currency_code = excluded.currency_code,
           impressions = excluded.impressions,
           clicks = excluded.clicks,
           spend = excluded.spend,

@@ -1,8 +1,17 @@
-﻿import { ExternalLink, Loader2, X } from 'lucide-react';
+import { ExternalLink, Loader2, X } from 'lucide-react';
 import type { MarketingFunilCampaign, MarketingFunilDeviceRow, MarketingFunilLandingRow } from './types';
-import { formatCurrency, formatDateTime, formatNumber, formatPercent } from './formatters';
+import { formatCurrency, formatDate, formatDateTime, formatNumber, formatPercent } from './formatters';
+import {
+  formatGoogleAdsBiddingStrategy,
+  formatGoogleAdsBudgetPeriod,
+  formatGoogleAdsCampaignStatus,
+  formatGoogleAdsChannelType,
+  formatGoogleAdsPrimaryStatus,
+  formatGoogleAdsReason,
+  hasBudgetLimitation,
+} from './googleAdsFormatters';
 
-type TabKey = 'devices' | 'landing';
+type TabKey = 'devices' | 'landing' | 'diagnostics';
 
 type MarketingFunilCampaignDrawerProps = {
   campaign: MarketingFunilCampaign | null;
@@ -15,6 +24,18 @@ type MarketingFunilCampaignDrawerProps = {
   onTabChange: (tab: TabKey) => void;
 };
 
+const TabButton = ({ active, children, onClick }: { active: boolean; children: string; onClick: () => void }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+      active ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+    }`}
+  >
+    {children}
+  </button>
+);
+
 export function MarketingFunilCampaignDrawer({
   campaign,
   open,
@@ -26,6 +47,8 @@ export function MarketingFunilCampaignDrawer({
   onTabChange,
 }: MarketingFunilCampaignDrawerProps) {
   if (!open || !campaign) return null;
+
+  const budgetLimited = hasBudgetLimitation(campaign.campaignPrimaryStatusReasons);
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30 backdrop-blur-sm">
@@ -56,10 +79,10 @@ export function MarketingFunilCampaignDrawer({
           <div className="mt-5 grid gap-3 sm:grid-cols-5">
             {[
               { label: 'Investimento', value: formatCurrency(campaign.spend) },
-              { label: 'Sessões', value: formatNumber(campaign.sessions) },
               { label: 'Leads (WhatsApp)', value: formatNumber(campaign.leads) },
               { label: 'Contatos Clinia', value: formatNumber(campaign.cliniaContacts) },
               { label: 'Agend. Clinia', value: formatNumber(campaign.cliniaAppointments) },
+              { label: 'ROAS Ads', value: campaign.conversionsValuePerCost > 0 ? `${formatNumber(campaign.conversionsValuePerCost, 2)}x` : '-' },
             ].map((item) => (
               <div key={item.label} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{item.label}</div>
@@ -69,38 +92,27 @@ export function MarketingFunilCampaignDrawer({
           </div>
 
           <div className="mt-5 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onTabChange('devices')}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                activeTab === 'devices'
-                  ? 'bg-slate-900 text-white'
-                  : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-              }`}
-            >
+            <TabButton active={activeTab === 'devices'} onClick={() => onTabChange('devices')}>
               Dispositivos
-            </button>
-            <button
-              type="button"
-              onClick={() => onTabChange('landing')}
-              className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
-                activeTab === 'landing'
-                  ? 'bg-slate-900 text-white'
-                  : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-              }`}
-            >
+            </TabButton>
+            <TabButton active={activeTab === 'landing'} onClick={() => onTabChange('landing')}>
               Landing pages
-            </button>
+            </TabButton>
+            <TabButton active={activeTab === 'diagnostics'} onClick={() => onTabChange('diagnostics')}>
+              Diagnóstico Ads
+            </TabButton>
           </div>
         </div>
 
         <div className="px-6 py-5">
-          {loading ? (
+          {loading && activeTab !== 'diagnostics' ? (
             <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-600">
               <Loader2 size={16} className="animate-spin" />
               Carregando detalhamento da campanha...
             </div>
-          ) : activeTab === 'devices' ? (
+          ) : null}
+
+          {!loading && activeTab === 'devices' ? (
             <div className="overflow-x-auto rounded-2xl border border-slate-200">
               <table className="min-w-full text-sm">
                 <thead>
@@ -137,7 +149,9 @@ export function MarketingFunilCampaignDrawer({
                 </tbody>
               </table>
             </div>
-          ) : (
+          ) : null}
+
+          {!loading && activeTab === 'landing' ? (
             <div className="overflow-x-auto rounded-2xl border border-slate-200">
               <table className="min-w-full text-sm">
                 <thead>
@@ -148,7 +162,7 @@ export function MarketingFunilCampaignDrawer({
                     <th className="px-4 py-3 text-right font-semibold">Usuários</th>
                     <th className="px-4 py-3 text-right font-semibold">Novos usuários</th>
                     <th className="px-4 py-3 text-right font-semibold">Engajamento</th>
-                    <th className="px-4 py-3 text-right font-semibold">Leads (WhatsApp)</th>
+                    <th className="px-4 py-3 text-right font-semibold">Leads</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -179,7 +193,92 @@ export function MarketingFunilCampaignDrawer({
                 </tbody>
               </table>
             </div>
-          )}
+          ) : null}
+
+          {activeTab === 'diagnostics' ? (
+            <div className="space-y-4">
+              <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Status atual</div>
+                  <div className="mt-2 text-base font-bold text-slate-900">{formatGoogleAdsCampaignStatus(campaign.campaignStatus)}</div>
+                  <div className="mt-1 text-sm text-slate-500">{formatGoogleAdsPrimaryStatus(campaign.campaignPrimaryStatus)}</div>
+                </article>
+                <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Orçamento</div>
+                  <div className="mt-2 text-base font-bold text-slate-900">
+                    {campaign.budgetAmount > 0 ? formatCurrency(campaign.budgetAmount) : '-'}
+                  </div>
+                  <div className="mt-1 text-sm text-slate-500">
+                    {campaign.budgetName || 'Sem orçamento nomeado'} · {formatGoogleAdsBudgetPeriod(campaign.budgetPeriod)}
+                  </div>
+                </article>
+                <article className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Pontuação de otimização</div>
+                  <div className="mt-2 text-base font-bold text-slate-900">
+                    {campaign.optimizationScore > 0 ? formatPercent(campaign.optimizationScore * 100) : 'Sem score'}
+                  </div>
+                  <div className="mt-1 text-sm text-slate-500">{formatGoogleAdsBiddingStrategy(campaign.biddingStrategyType)}</div>
+                </article>
+              </section>
+
+              <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+                <article className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <h3 className="text-sm font-bold text-slate-900">Motivos do status</h3>
+                  <div className="mt-3 space-y-2">
+                    {campaign.campaignPrimaryStatusReasons.length === 0 ? (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-500">
+                        Nenhum motivo adicional retornado pelo Google Ads para a data mais recente.
+                      </div>
+                    ) : (
+                      campaign.campaignPrimaryStatusReasons.map((reason) => (
+                        <div
+                          key={reason}
+                          className={`rounded-xl border px-3 py-3 text-sm ${
+                            reason.toUpperCase().includes('BUDGET')
+                              ? 'border-amber-200 bg-amber-50 text-amber-900'
+                              : 'border-slate-200 bg-slate-50 text-slate-700'
+                          }`}
+                        >
+                          {formatGoogleAdsReason(reason)}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {budgetLimited ? (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                      O Google Ads sinalizou limitação ligada a orçamento nesta campanha.
+                    </div>
+                  ) : null}
+                </article>
+
+                <article className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <h3 className="text-sm font-bold text-slate-900">Snapshot atual</h3>
+                  <dl className="mt-3 space-y-3 text-sm text-slate-600">
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Tipo de campanha</dt>
+                      <dd className="font-medium text-slate-900">{formatGoogleAdsChannelType(campaign.advertisingChannelType)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Início</dt>
+                      <dd className="font-medium text-slate-900">{formatDate(campaign.campaignStartDate)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Fim</dt>
+                      <dd className="font-medium text-slate-900">{formatDate(campaign.campaignEndDate)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Snapshot</dt>
+                      <dd className="font-medium text-slate-900">{formatDate(campaign.googleAdsSnapshotDate)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <dt>Atualizado em</dt>
+                      <dd className="font-medium text-slate-900">{formatDateTime(campaign.googleAdsSnapshotUpdatedAt)}</dd>
+                    </div>
+                  </dl>
+                </article>
+              </section>
+            </div>
+          ) : null}
 
           <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
             Última sincronização desta campanha:{' '}

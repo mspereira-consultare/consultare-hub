@@ -233,6 +233,83 @@ Leituras visuais importantes:
 - `Contatos Clinia` = contatos recebidos pelos anúncios no Clinia
 - `Agendamentos Clinia` = contatos que chegaram ao estágio `APPOINTMENT`
 
+## Evolução de 25/03/2026 — Abas e Saúde Google Ads
+
+Para evitar excesso de informação em uma única tela, a rota `/marketing/funil` passou a manter os filtros globais no topo e separar o conteúdo em abas:
+
+- `Visão geral`
+- `Campanhas`
+- `Saúde Google Ads`
+
+### Visão geral
+
+Mantém a leitura executiva:
+
+- KPIs principais
+- funil visual
+- bloco Clinia Ads
+- canais
+
+### Campanhas
+
+Foco em performance consolidada do período por campanha, com:
+
+- investimento
+- cliques
+- leads via WhatsApp
+- contatos e agendamentos Clinia
+- conversões do Google Ads
+- valor de conversão
+- ROAS Ads
+
+### Saúde Google Ads
+
+Nova aba diagnóstica para leitura do snapshot mais recente das campanhas até `endDate`, com:
+
+- status da campanha
+- status primário
+- motivos do status
+- orçamento diário
+- tipo de orçamento
+- estratégia de lances
+- pontuação de otimização
+- tipo de campanha
+- datas de início e fim
+
+### Novos campos coletados do Google Ads
+
+Os campos abaixo passaram a ser persistidos em `raw_google_ads_campaign_daily`:
+
+- `campaign_status`
+- `campaign_primary_status`
+- `campaign_primary_status_reasons_json`
+- `bidding_strategy_type`
+- `optimization_score`
+- `advertising_channel_type`
+- `campaign_start_date`
+- `campaign_end_date`
+- `budget_name`
+- `budget_period`
+- `budget_amount`
+- `currency_code`
+
+Esses campos são tratados como snapshot de campanha e não são somados na fact principal do período.
+
+### Novas métricas derivadas no painel
+
+Na aba de campanhas e no drawer, o painel passou a calcular e exibir:
+
+- `interactionRate`
+- `averageCost`
+- `conversionRate`
+- `conversionsValuePerCost`
+
+### Nova API
+
+- `GET /api/admin/marketing/funil/google-ads/health`
+
+Essa rota retorna a lista paginada de campanhas com snapshot atual do Google Ads, respeitando os filtros globais do módulo.
+
 ## Validações recomendadas
 
 ### Worker

@@ -1,6 +1,7 @@
-﻿'use client';
+'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import {
   BarChart3,
@@ -15,12 +16,15 @@ import {
 import { hasPermission } from '@/lib/permissions';
 import { MarketingFunilCampaignDrawer } from './components/MarketingFunilCampaignDrawer';
 import { MarketingFunilCampaignTable } from './components/MarketingFunilCampaignTable';
+import { MarketingFunilChannelsSection } from './components/MarketingFunilChannelsSection';
 import { MarketingFunilCliniaAdsSection } from './components/MarketingFunilCliniaAdsSection';
 import { MarketingFunilFunnelVisual } from './components/MarketingFunilFunnelVisual';
+import { MarketingFunilGoogleAdsHealthSection } from './components/MarketingFunilGoogleAdsHealthSection';
 import { MarketingFunilKpis } from './components/MarketingFunilKpis';
 import { MarketingFunilSearchableSelect } from './components/MarketingFunilSearchableSelect';
 import { MarketingFunilSyncStatus } from './components/MarketingFunilSyncStatus';
-import { formatNumber, getCurrentPeriodRef, getDateRangeFromPeriod } from './components/formatters';
+import { MarketingFunilTabNav } from './components/MarketingFunilTabNav';
+import { getCurrentPeriodRef, getDateRangeFromPeriod } from './components/formatters';
 import type {
   MarketingFunilCampaign,
   MarketingFunilCampaignList,
@@ -29,6 +33,7 @@ import type {
   MarketingFunilCliniaAdsOriginList,
   MarketingFunilDeviceList,
   MarketingFunilFilterOptions,
+  MarketingFunilGoogleAdsHealthList,
   MarketingFunilLandingList,
   MarketingFunilLatestJob,
   MarketingFunilSourceStatus,
@@ -51,6 +56,9 @@ type FilterFormState = {
   medium: string;
   channelGroup: string;
 };
+
+type TabKey = 'overview' | 'campaigns' | 'google-ads-health';
+type DrawerTabKey = 'devices' | 'landing' | 'diagnostics';
 
 const BRAND_OPTIONS = [
   { value: 'all', label: 'Todas as marcas' },
@@ -88,7 +96,10 @@ const emptyFilterOptions: MarketingFunilFilterOptions = {
   channelGroups: [],
 };
 
-const buildParams = (filters: FilterFormState, options?: { page?: number; pageSize?: number }) => {
+const buildParams = (
+  filters: FilterFormState,
+  options?: { page?: number; pageSize?: number }
+) => {
   const params = new URLSearchParams();
   if (filters.useCustomRange) {
     params.set('startDate', filters.startDate);
@@ -108,7 +119,13 @@ const buildParams = (filters: FilterFormState, options?: { page?: number; pageSi
   return params.toString();
 };
 
-const isJobRunning = (job: MarketingFunilLatestJob | null) => ['PENDING', 'RUNNING'].includes(String(job?.status || '').toUpperCase());
+const isJobRunning = (job: MarketingFunilLatestJob | null) =>
+  ['PENDING', 'RUNNING'].includes(String(job?.status || '').toUpperCase());
+
+const readTab = (value: string | null): TabKey => {
+  if (value === 'campaigns' || value === 'google-ads-health') return value;
+  return 'overview';
+};
 
 async function fetchApi<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { cache: 'no-store', ...init });
@@ -119,32 +136,13 @@ async function fetchApi<T>(url: string, init?: RequestInit): Promise<T> {
   return (payload as { data: T }).data;
 }
 
-function SectionHeader({
-  title,
-  description,
-  badge,
-}: {
-  title: string;
-  description: string;
-  badge?: string;
-}) {
-  return (
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h2 className="text-lg font-bold text-slate-900">{title}</h2>
-        <p className="text-sm text-slate-500">{description}</p>
-      </div>
-      {badge ? (
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600">
-          {badge}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-export default function MarketingFunilPage() {
+function MarketingFunilPageContent() {
   const { data: session } = useSession();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeTab = useMemo(() => readTab(searchParams.get('tab')), [searchParams]);
+
   const sessionUser = (session?.user || {}) as SessionUser;
   const role = String(sessionUser.role || 'OPERADOR');
   const canView = hasPermission(sessionUser.permissions, 'marketing_funil', 'view', role);
@@ -154,8 +152,10 @@ export default function MarketingFunilPage() {
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [filters, setFilters] = useState<FilterFormState>(defaults);
   const [appliedFilters, setAppliedFilters] = useState<FilterFormState>(defaults);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [campaignPage, setCampaignPage] = useState(1);
+  const [campaignPageSize, setCampaignPageSize] = useState(10);
+  const [healthPage, setHealthPage] = useState(1);
+  const [healthPageSize, setHealthPageSize] = useState(10);
 
   const [summary, setSummary] = useState<MarketingFunilSummary | null>(null);
   const [filterOptions, setFilterOptions] = useState<MarketingFunilFilterOptions>(emptyFilterOptions);
@@ -163,11 +163,12 @@ export default function MarketingFunilPage() {
   const [channels, setChannels] = useState<MarketingFunilChannelList | null>(null);
   const [cliniaAds, setCliniaAds] = useState<MarketingFunilCliniaAdsList | null>(null);
   const [cliniaAdsOrigins, setCliniaAdsOrigins] = useState<MarketingFunilCliniaAdsOriginList | null>(null);
+  const [googleAdsHealth, setGoogleAdsHealth] = useState<MarketingFunilGoogleAdsHealthList | null>(null);
   const [sourceStatus, setSourceStatus] = useState<MarketingFunilSourceStatus | null>(null);
   const [latestJob, setLatestJob] = useState<MarketingFunilLatestJob | null>(null);
 
   const [selectedCampaign, setSelectedCampaign] = useState<MarketingFunilCampaign | null>(null);
-  const [drawerTab, setDrawerTab] = useState<'devices' | 'landing'>('devices');
+  const [drawerTab, setDrawerTab] = useState<DrawerTabKey>('devices');
   const [drawerLoading, setDrawerLoading] = useState(false);
   const [drawerDevices, setDrawerDevices] = useState<MarketingFunilDeviceList['items']>([]);
   const [drawerLandingPages, setDrawerLandingPages] = useState<MarketingFunilLandingList['items']>([]);
@@ -177,13 +178,32 @@ export default function MarketingFunilPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
-  const queryString = useMemo(
-    () => buildParams(appliedFilters, { page, pageSize }),
-    [appliedFilters, page, pageSize]
+  const baseQueryString = useMemo(() => buildParams(appliedFilters), [appliedFilters]);
+  const campaignsQueryString = useMemo(
+    () => buildParams(appliedFilters, { page: campaignPage, pageSize: campaignPageSize }),
+    [appliedFilters, campaignPage, campaignPageSize]
+  );
+  const googleAdsHealthQueryString = useMemo(
+    () => buildParams(appliedFilters, { page: healthPage, pageSize: healthPageSize }),
+    [appliedFilters, healthPage, healthPageSize]
+  );
+  const filterOptionsQueryString = useMemo(() => buildParams(filters), [filters]);
+
+  const setActiveTab = useCallback(
+    (tab: TabKey) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('tab', tab);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams]
   );
 
-  const baseQueryString = useMemo(() => buildParams(appliedFilters), [appliedFilters]);
-  const filterOptionsQueryString = useMemo(() => buildParams(filters), [filters]);
+  const applyAdvancedFilter = useCallback(
+    (field: 'campaign' | 'source' | 'medium' | 'channelGroup', value: string) => {
+      setFilters((prev) => ({ ...prev, [field]: value }));
+    },
+    []
+  );
 
   const loadDrawerDetails = useCallback(
     async (campaign: MarketingFunilCampaign) => {
@@ -211,24 +231,44 @@ export default function MarketingFunilPage() {
     [appliedFilters]
   );
 
+  const openCampaignDrawer = useCallback(
+    (campaign: MarketingFunilCampaign, preferredTab: DrawerTabKey = 'devices') => {
+      setSelectedCampaign(campaign);
+      setDrawerTab(preferredTab);
+      void loadDrawerDetails(campaign);
+    },
+    [loadDrawerDetails]
+  );
+
   const loadAllData = useCallback(async () => {
     if (!canView) return;
     setLoading(true);
     setError('');
 
     try {
-      const [summaryData, campaignsData, channelsData, jobsData, cliniaAdsData, cliniaOriginsData, sourceStatusData] =
-        await Promise.all([
-          fetchApi<MarketingFunilSummary>(`/api/admin/marketing/funil/summary?${baseQueryString}`),
-          fetchApi<MarketingFunilCampaignList>(`/api/admin/marketing/funil/campaigns?${queryString}`),
-          fetchApi<MarketingFunilChannelList>(`/api/admin/marketing/funil/channels?${baseQueryString}`),
-          fetchApi<{ latestJob: MarketingFunilLatestJob | null }>(
-            `/api/admin/marketing/funil/jobs/latest?${baseQueryString}`
-          ),
-          fetchApi<MarketingFunilCliniaAdsList>(`/api/admin/marketing/funil/clinia-ads/ads?${baseQueryString}`),
-          fetchApi<MarketingFunilCliniaAdsOriginList>(`/api/admin/marketing/funil/clinia-ads/origins?${baseQueryString}`),
-          fetchApi<MarketingFunilSourceStatus>('/api/admin/marketing/funil/source-status'),
-        ]);
+      const [
+        summaryData,
+        campaignsData,
+        channelsData,
+        jobsData,
+        cliniaAdsData,
+        cliniaOriginsData,
+        sourceStatusData,
+        googleAdsHealthData,
+      ] = await Promise.all([
+        fetchApi<MarketingFunilSummary>(`/api/admin/marketing/funil/summary?${baseQueryString}`),
+        fetchApi<MarketingFunilCampaignList>(`/api/admin/marketing/funil/campaigns?${campaignsQueryString}`),
+        fetchApi<MarketingFunilChannelList>(`/api/admin/marketing/funil/channels?${baseQueryString}`),
+        fetchApi<{ latestJob: MarketingFunilLatestJob | null }>(
+          `/api/admin/marketing/funil/jobs/latest?${baseQueryString}`
+        ),
+        fetchApi<MarketingFunilCliniaAdsList>(`/api/admin/marketing/funil/clinia-ads/ads?${baseQueryString}`),
+        fetchApi<MarketingFunilCliniaAdsOriginList>(`/api/admin/marketing/funil/clinia-ads/origins?${baseQueryString}`),
+        fetchApi<MarketingFunilSourceStatus>('/api/admin/marketing/funil/source-status'),
+        fetchApi<MarketingFunilGoogleAdsHealthList>(
+          `/api/admin/marketing/funil/google-ads/health?${googleAdsHealthQueryString}`
+        ),
+      ]);
 
       setSummary(summaryData);
       setCampaigns(campaignsData);
@@ -236,13 +276,14 @@ export default function MarketingFunilPage() {
       setCliniaAds(cliniaAdsData);
       setCliniaAdsOrigins(cliniaOriginsData);
       setSourceStatus(sourceStatusData);
+      setGoogleAdsHealth(googleAdsHealthData);
       setLatestJob(jobsData.latestJob || null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Erro ao carregar dados do marketing/funil.');
     } finally {
       setLoading(false);
     }
-  }, [baseQueryString, canView, queryString]);
+  }, [baseQueryString, canView, campaignsQueryString, googleAdsHealthQueryString]);
 
   const loadFilterOptions = useCallback(async () => {
     if (!canView) return;
@@ -257,91 +298,73 @@ export default function MarketingFunilPage() {
   }, [canView, filterOptionsQueryString]);
 
   useEffect(() => {
-    loadAllData();
+    void loadAllData();
   }, [loadAllData]);
 
   useEffect(() => {
-    loadFilterOptions();
+    void loadFilterOptions();
   }, [loadFilterOptions]);
 
   useEffect(() => {
-    if (!isJobRunning(latestJob)) return;
-    const timer = window.setTimeout(() => {
-      loadAllData();
-    }, 4000);
-    return () => window.clearTimeout(timer);
-  }, [latestJob, loadAllData]);
+    if (!canView || !isJobRunning(latestJob)) return;
+    const timeout = window.setTimeout(() => {
+      void loadAllData();
+    }, 15000);
+    return () => window.clearTimeout(timeout);
+  }, [canView, latestJob, loadAllData]);
 
-  const openCampaignDrawer = async (campaign: MarketingFunilCampaign) => {
-    setSelectedCampaign(campaign);
-    setDrawerTab('devices');
-    setDrawerDevices([]);
-    setDrawerLandingPages([]);
-    await loadDrawerDetails(campaign);
-  };
-
-  const onApplyFilters = () => {
+  const onApplyFilters = useCallback(() => {
+    setCampaignPage(1);
+    setHealthPage(1);
     setAppliedFilters(filters);
-    setPage(1);
-    setNotice('');
-  };
+  }, [filters]);
 
-  const applyAdvancedFilter = (
-    field: 'campaign' | 'source' | 'medium' | 'channelGroup',
-    value: string
-  ) => {
-    const next = { ...filters, [field]: value };
+  const onClearFilters = useCallback(() => {
+    const next = getDefaultFilters();
     setFilters(next);
     setAppliedFilters(next);
-    setPage(1);
-    setNotice('');
-  };
-
-  const onClearFilters = () => {
-    const reset = getDefaultFilters();
-    setFilters(reset);
-    setAppliedFilters(reset);
-    setPage(1);
-    setPageSize(10);
-    setNotice('');
+    setCampaignPage(1);
+    setCampaignPageSize(10);
+    setHealthPage(1);
+    setHealthPageSize(10);
+    setFiltersExpanded(false);
+    setNotice('Filtros redefinidos para o período padrão do módulo.');
     setError('');
-  };
+  }, []);
 
-  const onRefresh = async () => {
+  const onRefresh = useCallback(async () => {
     if (!canRefresh) return;
     setRefreshing(true);
-    setError('');
     setNotice('');
+    setError('');
     try {
-      const body: Record<string, unknown> = {};
-      if (appliedFilters.useCustomRange) {
-        body.startDate = appliedFilters.startDate;
-        body.endDate = appliedFilters.endDate;
-      } else {
-        body.periodRef = appliedFilters.periodRef;
-      }
-      if (appliedFilters.brand !== 'all') body.brand = appliedFilters.brand;
-
-      const response = await fetchApi<{ job: MarketingFunilLatestJob }>('/api/admin/marketing/funil/refresh', {
+      const res = await fetch('/api/admin/marketing/funil/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...(appliedFilters.useCustomRange
+            ? { startDate: appliedFilters.startDate, endDate: appliedFilters.endDate }
+            : { periodRef: appliedFilters.periodRef }),
+          brand: appliedFilters.brand === 'all' ? undefined : appliedFilters.brand,
+        }),
       });
-
-      setLatestJob(response.job);
-      setNotice('Atualização do Google enfileirada. A página será recarregada automaticamente ao concluir.');
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(String((payload as { error?: unknown }).error || 'Falha ao atualizar dados do Google.'));
+      }
+      setNotice('Atualização do Google solicitada com sucesso. Os blocos serão recarregados automaticamente ao concluir.');
       await loadAllData();
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : 'Erro ao solicitar atualização.');
+      setError(refreshError instanceof Error ? refreshError.message : 'Erro ao solicitar atualização do Google.');
     } finally {
       setRefreshing(false);
     }
-  };
+  }, [appliedFilters, canRefresh, loadAllData]);
 
   if (!canView) {
     return (
-      <div className="rounded-3xl border border-rose-200 bg-rose-50 p-8 text-rose-900 shadow-sm">
-        <h1 className="text-xl font-bold">Sem permissão</h1>
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-6 py-5 text-amber-900">
+        <h1 className="text-lg font-bold">Acesso restrito</h1>
         <p className="mt-2 text-sm">
           Você não possui acesso ao módulo <code>marketing_funil</code>.
         </p>
@@ -361,8 +384,7 @@ export default function MarketingFunilPage() {
               <div>
                 <h1 className="text-xl font-bold text-slate-800">Marketing / Funil</h1>
                 <p className="mt-1 max-w-3xl text-xs text-slate-500">
-                  Cruzamento Google Ads + GA4 com intenção por WhatsApp, contatos e agendamentos no Clinia Ads,
-                  agendamentos válidos e faturamento por competência.
+                  Leitura integrada de Google Ads, WhatsApp, Clinia Ads, agendamentos válidos e faturamento para mensurar o desempenho das campanhas.
                 </p>
               </div>
             </div>
@@ -504,7 +526,7 @@ export default function MarketingFunilPage() {
               </button>
               <button
                 type="button"
-                onClick={() => loadAllData()}
+                onClick={() => void loadAllData()}
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
               >
                 <RefreshCw size={16} />
@@ -512,7 +534,7 @@ export default function MarketingFunilPage() {
               </button>
               <button
                 type="button"
-                onClick={onRefresh}
+                onClick={() => void onRefresh()}
                 disabled={!canRefresh || refreshing}
                 className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
                   refreshing
@@ -555,99 +577,46 @@ export default function MarketingFunilPage() {
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{notice}</div>
       ) : null}
 
-      <MarketingFunilKpis summary={summary} />
+      <MarketingFunilTabNav activeTab={activeTab} onChange={setActiveTab} />
 
-      <MarketingFunilFunnelVisual summary={summary} />
-
-      <MarketingFunilCliniaAdsSection summary={summary} ads={cliniaAds} origins={cliniaAdsOrigins} loading={loading} />
-
-      <MarketingFunilCampaignTable
-        items={campaigns?.items || []}
-        page={campaigns?.page || page}
-        pageSize={campaigns?.pageSize || pageSize}
-        total={campaigns?.total || 0}
-        loading={loading}
-        onPageChange={setPage}
-        onPageSizeChange={(value) => {
-          setPageSize(value);
-          setPage(1);
-        }}
-        onOpenDetails={openCampaignDrawer}
-      />
-
-      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <SectionHeader
-          title="Canais"
-          description="Leitura por grupo de canal com sessões, usuários, leads de WhatsApp e eventos."
-        />
-        <div className="mt-4 overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
-                <th className="px-3 py-3 font-semibold">Grupo de canal</th>
-                <th className="px-3 py-3 text-right font-semibold">Sessões</th>
-                <th className="px-3 py-3 text-right font-semibold">Usuários</th>
-                <th className="px-3 py-3 text-right font-semibold">Leads (WhatsApp)</th>
-                <th className="px-3 py-3 text-right font-semibold">Eventos</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
-                    Carregando canais...
-                  </td>
-                </tr>
-              ) : !channels?.items?.length ? (
-                <tr>
-                  <td colSpan={5} className="px-3 py-10 text-center text-slate-500">
-                    Nenhum canal encontrado para o período selecionado.
-                  </td>
-                </tr>
-              ) : (
-                channels.items.map((item) => (
-                  <tr key={item.channelGroup} className="border-b border-slate-100 last:border-b-0">
-                    <td className="px-3 py-3 font-medium text-slate-900">{item.channelGroup}</td>
-                    <td className="px-3 py-3 text-right">{formatNumber(item.sessions)}</td>
-                    <td className="px-3 py-3 text-right">{formatNumber(item.users)}</td>
-                    <td className="px-3 py-3 text-right font-semibold text-emerald-700">{formatNumber(item.leads)}</td>
-                    <td className="px-3 py-3 text-right">{formatNumber(item.eventCount)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      {activeTab === 'overview' ? (
+        <div className="space-y-6">
+          <MarketingFunilKpis summary={summary} />
+          <MarketingFunilFunnelVisual summary={summary} />
+          <MarketingFunilCliniaAdsSection summary={summary} ads={cliniaAds} origins={cliniaAdsOrigins} loading={loading} />
+          <MarketingFunilChannelsSection channels={channels} loading={loading} />
         </div>
-      </section>
+      ) : null}
 
-      <section className="rounded-xl border border-dashed border-slate-300 bg-white/70 p-5 shadow-sm">
-        <SectionHeader
-          title="Próximas camadas"
-          description="Os próximos blocos deixam o painel mais acionável, agora que agenda, faturamento e Clinia Ads já entraram no agregado."
+      {activeTab === 'campaigns' ? (
+        <MarketingFunilCampaignTable
+          items={campaigns?.items || []}
+          page={campaigns?.page || campaignPage}
+          pageSize={campaigns?.pageSize || campaignPageSize}
+          total={campaigns?.total || 0}
+          loading={loading}
+          onPageChange={setCampaignPage}
+          onPageSizeChange={(value) => {
+            setCampaignPageSize(value);
+            setCampaignPage(1);
+          }}
+          onOpenDetails={(campaign) => openCampaignDrawer(campaign, 'devices')}
         />
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          {[
-            {
-              title: 'Atribuição por campanha',
-              description: 'Distribuir agendamentos e faturamento entre campanhas com uma regra transparente de atribuição.',
-            },
-            {
-              title: 'Ocupação da agenda',
-              description: 'Conectar capacidade e ocupação para leitura operacional do crescimento.',
-            },
-            {
-              title: 'Especialidades e unidades',
-              description: 'Abrir cortes por unidade e especialidade para uma leitura comercial mais fina.',
-            },
-          ].map((item) => (
-            <article key={item.title} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Em integração</div>
-              <h3 className="mt-2 text-base font-bold text-slate-900">{item.title}</h3>
-              <p className="mt-2 text-sm text-slate-600">{item.description}</p>
-            </article>
-          ))}
-        </div>
-      </section>
+      ) : null}
+
+      {activeTab === 'google-ads-health' ? (
+        <MarketingFunilGoogleAdsHealthSection
+          summary={summary}
+          data={googleAdsHealth}
+          loading={loading}
+          onPageChange={setHealthPage}
+          onPageSizeChange={(value) => {
+            setHealthPageSize(value);
+            setHealthPage(1);
+          }}
+          onOpenDetails={(campaign) => openCampaignDrawer(campaign, 'diagnostics')}
+        />
+      ) : null}
 
       <MarketingFunilCampaignDrawer
         campaign={selectedCampaign}
@@ -660,5 +629,19 @@ export default function MarketingFunilPage() {
         onTabChange={setDrawerTab}
       />
     </div>
+  );
+}
+
+export default function MarketingFunilPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="rounded-xl border border-slate-200 bg-white px-6 py-10 text-sm text-slate-500 shadow-sm">
+          Carregando marketing / funil...
+        </div>
+      }
+    >
+      <MarketingFunilPageContent />
+    </Suspense>
   );
 }

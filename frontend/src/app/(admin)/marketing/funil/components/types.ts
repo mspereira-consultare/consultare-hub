@@ -52,6 +52,14 @@ export type MarketingFunilSummary = {
     historyStartMonth: string | null;
     historyEndMonth: string | null;
   };
+  googleAdsHealth: {
+    limitedByBudgetCount: number;
+    pausedCount: number;
+    enabledCount: number;
+    avgOptimizationScore: number;
+    avgConversionRate: number;
+    avgConversionsValuePerCost: number;
+  };
 };
 
 export type MarketingFunilFilterOption = {
@@ -90,9 +98,13 @@ export type MarketingFunilCampaign = {
   leads: number;
   cpl: number;
   interactions: number;
+  interactionRate: number;
+  averageCost: number;
   conversions: number;
+  conversionRate: number;
   allConversions: number;
   conversionsValue: number;
+  conversionsValuePerCost: number;
   costPerConversion: number;
   cliniaContacts: number;
   cliniaNewContacts: number;
@@ -100,10 +112,34 @@ export type MarketingFunilCampaign = {
   cliniaConversionRate: number;
   cliniaCostPerContact: number;
   cliniaCostPerAppointment: number;
+  campaignStatus: string;
+  campaignPrimaryStatus: string;
+  campaignPrimaryStatusReasons: string[];
+  biddingStrategyType: string;
+  optimizationScore: number;
+  advertisingChannelType: string;
+  budgetName: string;
+  budgetPeriod: string;
+  budgetAmount: number;
+  currencyCode: string;
+  campaignStartDate: string | null;
+  campaignEndDate: string | null;
+  googleAdsSnapshotDate: string | null;
+  googleAdsSnapshotUpdatedAt: string | null;
   lastSyncAt: string | null;
 };
 
 export type MarketingFunilCampaignList = {
+  periodRef: string;
+  startDate: string;
+  endDate: string;
+  page: number;
+  pageSize: number;
+  total: number;
+  items: MarketingFunilCampaign[];
+};
+
+export type MarketingFunilGoogleAdsHealthList = {
   periodRef: string;
   startDate: string;
   endDate: string;

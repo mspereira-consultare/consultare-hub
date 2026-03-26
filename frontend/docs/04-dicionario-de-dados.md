@@ -258,6 +258,55 @@ Materialização diária derivada de `faturamento_analitico`.
 |---|---|
 | `data_ref` | Dia (YYYY-MM-DD) |
 | `unidade`, `grupo`, `procedimento` | Dimensões |
+
+---
+
+## 6) Marketing / Funil
+
+### `raw_google_ads_campaign_daily`
+
+Snapshot diário bruto de campanhas Google Ads.
+
+Campos relevantes para o módulo:
+
+- identificação:
+  - `date_ref`
+  - `brand_slug`
+  - `ads_customer_id`
+  - `campaign_id`
+  - `campaign_name`
+- performance:
+  - `impressions`
+  - `clicks`
+  - `spend`
+  - `ctr`
+  - `average_cpc`
+  - `interactions`
+  - `conversions`
+  - `all_conversions`
+  - `conversions_value`
+  - `cost_per_conversion`
+- diagnóstico/snapshot:
+  - `campaign_status`
+  - `campaign_primary_status`
+  - `campaign_primary_status_reasons_json`
+  - `bidding_strategy_type`
+  - `optimization_score`
+  - `advertising_channel_type`
+  - `campaign_start_date`
+  - `campaign_end_date`
+  - `budget_name`
+  - `budget_period`
+  - `budget_amount`
+  - `currency_code`
+
+Escrita: `worker_marketing_funnel_google.py`
+
+Uso:
+
+- enriquecer a tabela de campanhas;
+- alimentar a aba `Saúde Google Ads`;
+- compor o diagnóstico atual das campanhas até a data final selecionada.
 | `procedimento_key` | Chave técnica do procedimento (MySQL) |
 | `total_pago` | Soma do valor pago |
 | `qtd` | Quantidade agregada |
