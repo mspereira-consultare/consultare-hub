@@ -89,11 +89,11 @@ export function MarketingFunilCliniaAdsSection({
       </div>
 
       <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="rounded-2xl border border-slate-200">
+        <div className="flex min-h-[28rem] flex-col rounded-2xl border border-slate-200">
           <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
             <h3 className="text-sm font-bold text-slate-900">Top anúncios por contato</h3>
           </div>
-          <div className="max-h-[24rem] overflow-auto">
+          <div className="min-h-0 flex-1 overflow-auto">
             <table className="min-w-full text-sm">
               <thead className="sticky top-0 bg-white">
                 <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-[0.14em] text-slate-500">
@@ -118,7 +118,7 @@ export function MarketingFunilCliniaAdsSection({
                     </td>
                   </tr>
                 ) : (
-                  ads.items.slice(0, 15).map((item, index) => (
+                  ads.items.map((item, index) => (
                     <tr key={`${item.origin}-${item.sourceId}-${index}`} className="border-b border-slate-100 last:border-b-0">
                       <td className="px-4 py-3 font-medium capitalize text-slate-700">{item.origin}</td>
                       <td className="px-4 py-3">
