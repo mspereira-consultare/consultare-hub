@@ -1,4 +1,4 @@
-type MarketingFunilTabKey = 'overview' | 'campaigns' | 'google-ads-health';
+﻿type MarketingFunilTabKey = 'overview' | 'campaigns' | 'google-ads-health';
 
 type MarketingFunilTabNavProps = {
   activeTab: MarketingFunilTabKey;
@@ -36,12 +36,12 @@ export function MarketingFunilTabNav({ activeTab, onChange }: MarketingFunilTabN
               onClick={() => onChange(tab.key)}
               className={`rounded-xl border px-4 py-3 text-left transition ${
                 active
-                  ? 'border-blue-900 bg-blue-900 text-white shadow-sm'
+                  ? 'border-blue-200 bg-blue-50 text-[#17407E] shadow-sm ring-1 ring-blue-100'
                   : 'border-transparent bg-white text-slate-700 hover:border-slate-200 hover:bg-slate-50'
               }`}
             >
               <div className="text-sm font-semibold">{tab.label}</div>
-              <div className={`mt-1 text-xs ${active ? 'text-blue-100' : 'text-slate-500'}`}>{tab.description}</div>
+              <div className={`mt-1 text-xs ${active ? 'text-blue-700' : 'text-slate-500'}`}>{tab.description}</div>
             </button>
           );
         })}
