@@ -36,12 +36,12 @@ export function MarketingFunilTabNav({ activeTab, onChange }: MarketingFunilTabN
               onClick={() => onChange(tab.key)}
               className={`rounded-xl border px-4 py-3 text-left transition ${
                 active
-                  ? 'border-blue-200 bg-blue-50 text-blue-900 shadow-sm'
+                  ? 'border-blue-900 bg-blue-900 text-white shadow-sm'
                   : 'border-transparent bg-white text-slate-700 hover:border-slate-200 hover:bg-slate-50'
               }`}
             >
               <div className="text-sm font-semibold">{tab.label}</div>
-              <div className="mt-1 text-xs text-slate-500">{tab.description}</div>
+              <div className={`mt-1 text-xs ${active ? 'text-blue-100' : 'text-slate-500'}`}>{tab.description}</div>
             </button>
           );
         })}
