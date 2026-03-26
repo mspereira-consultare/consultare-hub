@@ -181,18 +181,33 @@ Escrita: worker Feegow de agendamentos (`appointments`) e backfills.
 
 ### `feegow_proposals`
 
-| Campo | Descrição |
+| Campo | Descri??o |
 |---|---|
 | `proposal_id` (PK) | ID da proposta |
 | `date` | Data da proposta |
-| `status` | Situação da proposta |
+| `status` | Situa??o da proposta |
 | `unit_name` | Unidade |
 | `professional_name` | Profissional |
-| `total_value` | Valor total (líquido calculado) |
+| `total_value` | Valor total (l?quido calculado) |
 | `items_json` | Itens da proposta |
-| `updated_at` | Atualização |
+| `patient_id` | ID do paciente na Feegow |
+| `proposal_last_update` | ?ltima atualiza??o informada pela API de propostas |
+| `updated_at` | Atualiza??o local |
 
 Escrita: worker de propostas.
+
+### `feegow_patient_contacts_cache`
+
+| Campo | Descri??o |
+|---|---|
+| `patient_id` (PK) | ID do paciente na Feegow |
+| `patient_name` | Nome do paciente |
+| `phone_primary` | Telefone/celular principal |
+| `email_primary` | E-mail principal |
+| `cpf` | CPF retornado pela Feegow |
+| `updated_at` | Momento do ?ltimo refresh do cache |
+
+Escrita: worker de propostas e fallback on-demand das APIs de `/propostas/details` e `/propostas/export`.
 
 ### `feegow_contracts`
 

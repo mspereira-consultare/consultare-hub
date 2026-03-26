@@ -150,6 +150,8 @@ Arquivo: `workers/main.py`.
 - API de agendamentos (`worker_feegow_appointments.py`).
 - API de procedimentos (`worker_feegow_procedures.py`).
 - API de propostas (`worker_proposals.py`).
+- O dom?nio de propostas agora persiste `patient_id`, `proposal_last_update` e uma cache local de contatos Feegow em `feegow_patient_contacts_cache`.
+- As APIs `/api/admin/propostas/details` e `/api/admin/propostas/export` reutilizam a base local e fazem fallback on-demand em `patient/search?paciente_id=...` para cache miss.
 - API de contratos (`worker_contracts.py`).
 - Fluxos de monitor via páginas internas (recepção/médico).
 - Renovação de credenciais/cookies por Playwright (`worker_auth.py`).

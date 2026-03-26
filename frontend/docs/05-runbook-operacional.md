@@ -83,6 +83,8 @@ Esperado:
 
 - `/api/admin/financial/history`
 - `/api/admin/propostas`
+- `/api/admin/propostas/details`
+- `/api/admin/propostas/export`
 - `/api/admin/contratos`
 - `/api/admin/produtividade`
 - `/api/admin/goals/dashboard`

@@ -1,13 +1,18 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
+import { ensureProposalsSupportTables } from '@/lib/proposals/repository';
+import { AWAITING_CLIENT_APPROVAL_STATUS } from '@/lib/proposals/constants';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
 const WON_STATUSES = ['executada', 'aprovada pelo cliente', 'ganho', 'realizado', 'concluido', 'pago'];
+const REJECTED_STATUS = 'Rejeitada pelo cliente';
+const APPROVED_STATUS = 'Aprovada pelo cliente';
 
-function parseNumber(value: any) {
+function parseNumber(value: unknown) {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
 }
@@ -46,6 +51,7 @@ export async function GET(request: Request) {
       const statusFilter = searchParams.get('status') || 'all';
 
       const db = getDbConnection();
+      await ensureProposalsSupportTables(db);
 
       const summaryBase = buildBaseWhere(startDate, endDate, unitFilter, statusFilter, true);
       const wonInSql = WON_STATUSES.map(() => '?').join(',');
@@ -56,31 +62,41 @@ export async function GET(request: Request) {
             COALESCE(SUM(total_value), 0) as valor,
             COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) IN (${wonInSql}) THEN 1 ELSE 0 END), 0) as won_qtd,
             COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) IN (${wonInSql}) THEN total_value ELSE 0 END), 0) as won_value,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'aguardando aprovação do cliente' THEN 1 ELSE 0 END), 0) as awaiting_client_approval_qtd,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'aguardando aprovação do cliente' THEN total_value ELSE 0 END), 0) as awaiting_client_approval_value,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'aprovada pelo cliente' THEN 1 ELSE 0 END), 0) as approved_by_client_qtd,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'aprovada pelo cliente' THEN total_value ELSE 0 END), 0) as approved_by_client_value,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'rejeitada pelo cliente' THEN 1 ELSE 0 END), 0) as rejected_by_client_qtd,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = 'rejeitada pelo cliente' THEN total_value ELSE 0 END), 0) as rejected_by_client_value
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN 1 ELSE 0 END), 0) as awaiting_client_approval_qtd,
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN total_value ELSE 0 END), 0) as awaiting_client_approval_value,
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN 1 ELSE 0 END), 0) as approved_by_client_qtd,
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN total_value ELSE 0 END), 0) as approved_by_client_value,
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN 1 ELSE 0 END), 0) as rejected_by_client_qtd,
+            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN total_value ELSE 0 END), 0) as rejected_by_client_value
           FROM feegow_proposals
           ${summaryBase.where}
         `,
-        [...WON_STATUSES, ...WON_STATUSES, ...summaryBase.params],
+        [
+          ...WON_STATUSES,
+          ...WON_STATUSES,
+          AWAITING_CLIENT_APPROVAL_STATUS,
+          AWAITING_CLIENT_APPROVAL_STATUS,
+          APPROVED_STATUS,
+          APPROVED_STATUS,
+          REJECTED_STATUS,
+          REJECTED_STATUS,
+          ...summaryBase.params,
+        ],
       );
 
       const rawSummary = summaryRows[0] || {};
       const summary = {
-        qtd: parseNumber(rawSummary.qtd),
-        valor: parseNumber(rawSummary.valor),
-        wonValue: parseNumber(rawSummary.won_value),
-        wonQtd: parseNumber(rawSummary.won_qtd),
-        awaitingClientApprovalQtd: parseNumber(rawSummary.awaiting_client_approval_qtd),
-        awaitingClientApprovalValue: parseNumber(rawSummary.awaiting_client_approval_value),
-        approvedByClientQtd: parseNumber(rawSummary.approved_by_client_qtd),
-        approvedByClientValue: parseNumber(rawSummary.approved_by_client_value),
-        rejectedByClientQtd: parseNumber(rawSummary.rejected_by_client_qtd),
-        rejectedByClientValue: parseNumber(rawSummary.rejected_by_client_value),
-        lostValue: parseNumber(rawSummary.rejected_by_client_value),
+        qtd: parseNumber((rawSummary as any).qtd),
+        valor: parseNumber((rawSummary as any).valor),
+        wonValue: parseNumber((rawSummary as any).won_value),
+        wonQtd: parseNumber((rawSummary as any).won_qtd),
+        awaitingClientApprovalQtd: parseNumber((rawSummary as any).awaiting_client_approval_qtd),
+        awaitingClientApprovalValue: parseNumber((rawSummary as any).awaiting_client_approval_value),
+        approvedByClientQtd: parseNumber((rawSummary as any).approved_by_client_qtd),
+        approvedByClientValue: parseNumber((rawSummary as any).approved_by_client_value),
+        rejectedByClientQtd: parseNumber((rawSummary as any).rejected_by_client_qtd),
+        rejectedByClientValue: parseNumber((rawSummary as any).rejected_by_client_value),
+        lostValue: parseNumber((rawSummary as any).rejected_by_client_value),
       };
 
       const unitBase = buildBaseWhere(startDate, endDate, unitFilter, statusFilter, true);
@@ -151,7 +167,7 @@ export async function GET(request: Request) {
     return NextResponse.json(cached);
   } catch (error: any) {
     console.error('Erro API Propostas:', error);
-    return NextResponse.json({ error: error.message }, { status: error?.status || 500 });
+    return NextResponse.json({ error: error?.message || 'Erro ao carregar propostas.' }, { status: error?.status || 500 });
   }
 }
 
@@ -169,6 +185,7 @@ export async function POST() {
     invalidateCache('admin:');
     return NextResponse.json({ success: true, message: 'Atualização solicitada' });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: error?.status || 500 });
+    return NextResponse.json({ error: error?.message || 'Erro ao solicitar atualização.' }, { status: error?.status || 500 });
   }
 }
+

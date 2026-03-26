@@ -46,7 +46,7 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Produtividade/agendamentos: `feegow_appointments`.
 - Catálogo de procedimentos: `feegow_procedures_catalog`.
 - Procedimentos por profissional: `professional_procedure_rates`.
-- Propostas: `feegow_proposals`.
+- Propostas: `feegow_proposals` + `feegow_patient_contacts_cache`.
 - Resolvesaúde: `feegow_contracts`.
 
 ## Público-alvo

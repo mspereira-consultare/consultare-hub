@@ -225,6 +225,8 @@ Monitorar pipeline comercial por período, unidade e profissional.
 ### Fonte consumida
 
 - `GET /api/admin/propostas`
+- `GET /api/admin/propostas/details`
+- `GET /api/admin/propostas/export`
 
 ### Indicadores de topo
 
@@ -252,6 +254,20 @@ Monitorar pipeline comercial por período, unidade e profissional.
 | Taxa conversão | `valor_executado / valor_total * 100` |
 | Ticket médio | `valor_total / qtd` |
 | Ticket exec. | `valor_executado / qtd_executado` |
+
+### Base detalhada
+
+Objetivo operacional:
+- expor a lista de registros que alimenta o painel;
+- priorizar follow-up de propostas em `Aguardando aprova??o do cliente`;
+- permitir exporta??o em XLSX para apoio da equipe comercial.
+
+Regras:
+- respeita os filtros globais de per?odo e unidade;
+- se o filtro global de status estiver espec?fico, a base segue esse status;
+- se o filtro global estiver em `Todos`, a base abre em `Aguardando aprova??o do cliente`;
+- a tabela ? paginada e mostra data, paciente, telefone, procedimento(s), unidade, profissional, valor e status;
+- nome e telefone do paciente s?o enriquecidos a partir da Feegow por `patient/search?paciente_id=...`, com cache local.
 
 ---
 
