@@ -41,6 +41,7 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Heartbeat de workers: tabela `system_status`.
 - Fonte de verdade para métricas:
 - Financeiro e Dashboard financeiro: `faturamento_resumo_*` com fallback em `faturamento_analitico`.
+- O KPI `Novos pacientes` do `/financeiro` vem de `feegow_appointments.first_appointment_flag` + `patient_id`.
 - Relatório Geral Financeiro (PDF/XLSX): `faturamento_analitico`.
 - Filas: `espera_medica`, `recepcao_historico`, `clinia_group_snapshots`.
 - Produtividade/agendamentos: `feegow_appointments`.

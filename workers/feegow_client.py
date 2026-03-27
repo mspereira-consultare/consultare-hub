@@ -99,6 +99,7 @@ def list_procedures():
 
     id_col = next((c for c in ['id', 'ID', 'procedimento_id'] if c in df.columns), None)
     grp_col = next((c for c in ['grupo_procedimento_id', 'grupo_id'] if c in df.columns), None)
+    name_col = next((c for c in ['nome', 'Nome', 'nome_procedimento'] if c in df.columns), None)
 
     if id_col:
         # Padroniza IDs para int
@@ -109,6 +110,7 @@ def list_procedures():
         
         cols = {id_col: 'proc_ref_id'}
         if grp_col: cols[grp_col] = 'grupo_procedimento_id'
+        if name_col: cols[name_col] = 'procedure_name_ref'
         
         return df[list(cols.keys())].rename(columns=cols)
     return pd.DataFrame()
@@ -195,10 +197,14 @@ def fetch_financial_data(start_date, end_date):
                 
                 # Merge 1: Descobrir o ID do Grupo
                 df = df.merge(df_procs, left_on='procedimento_id', right_on='proc_ref_id', how='left')
+                if 'procedure_name_ref' in df.columns:
+                    df['procedure_name'] = df['procedure_name_ref'].fillna('N/A')
             except Exception as e:
                 print(f"Erro merge procedimentos: {e}")
         else:
             print("AVISO: Tabela de procedimentos baixada mas sem coluna 'proc_ref_id'. Merge ignorado.")
+    if 'procedure_name' not in df.columns:
+        df['procedure_name'] = 'N/A'
 
     # Passo B: Procedimento -> Grupo
     if not df_grupos.empty and "grupo_procedimento_id" in df.columns:

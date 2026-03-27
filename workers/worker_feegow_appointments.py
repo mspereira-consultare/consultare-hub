@@ -23,6 +23,17 @@ def clean_currency(value_str):
         return float(s)
     except: return 0.0
 
+def clean_int(value, default=0):
+    try:
+        if pd.isna(value) or value == '':
+            return default
+    except Exception:
+        pass
+    try:
+        return int(float(value))
+    except Exception:
+        return default
+
 def update_appointments_data():
     print(f"--- Worker Feegow Appointments (Batch Optimized): {datetime.datetime.now().strftime('%H:%M:%S')} ---")
     db = DatabaseManager()
@@ -76,6 +87,10 @@ def update_appointments_data():
             str(row.get('especialidade') or 'Geral'), 
             nome_prof,
             str(row.get('procedure_group') or 'Geral'),
+            clean_int(row.get('paciente_id')),
+            clean_int(row.get('procedimento_id')),
+            str(row.get('procedure_name') or 'N/A'),
+            clean_int(row.get('primeiro_agendamento') or row.get('first_appointment_flag')),
             str(row.get('agendado_por') or 'Sis'),
             str(row.get('nome_fantasia') or 'Matriz'),
             sched_at,
@@ -90,7 +105,8 @@ def update_appointments_data():
         conn.execute('''
             CREATE TABLE IF NOT EXISTS feegow_appointments (
                 appointment_id INTEGER PRIMARY KEY, date TEXT, status_id INTEGER, value REAL, 
-                specialty TEXT, professional_name TEXT, procedure_group TEXT, 
+                specialty TEXT, professional_name TEXT, procedure_group TEXT,
+                patient_id INTEGER, procedure_id INTEGER, procedure_name TEXT, first_appointment_flag INTEGER,
                 scheduled_by TEXT, unit_name TEXT, scheduled_at TEXT, updated_at TEXT
             )
         ''')
@@ -99,7 +115,11 @@ def update_appointments_data():
         migrations = [
             "ALTER TABLE feegow_appointments ADD COLUMN scheduled_by TEXT",
             "ALTER TABLE feegow_appointments ADD COLUMN unit_name TEXT",
-            "ALTER TABLE feegow_appointments ADD COLUMN scheduled_at TEXT"
+            "ALTER TABLE feegow_appointments ADD COLUMN scheduled_at TEXT",
+            "ALTER TABLE feegow_appointments ADD COLUMN patient_id INTEGER",
+            "ALTER TABLE feegow_appointments ADD COLUMN procedure_id INTEGER",
+            "ALTER TABLE feegow_appointments ADD COLUMN procedure_name TEXT",
+            "ALTER TABLE feegow_appointments ADD COLUMN first_appointment_flag INTEGER"
         ]
         
         for mig in migrations:
@@ -116,14 +136,23 @@ def update_appointments_data():
         sql = '''
             INSERT INTO feegow_appointments (
                 appointment_id, date, status_id, value, 
-                specialty, professional_name, procedure_group, 
+                specialty, professional_name, procedure_group,
+                patient_id, procedure_id, procedure_name, first_appointment_flag,
                 scheduled_by, unit_name, scheduled_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(appointment_id) DO UPDATE SET
+                date = excluded.date,
                 status_id = excluded.status_id,
                 value = excluded.value,
+                specialty = excluded.specialty,
+                procedure_group = excluded.procedure_group,
+                patient_id = excluded.patient_id,
+                procedure_id = excluded.procedure_id,
+                procedure_name = excluded.procedure_name,
+                first_appointment_flag = excluded.first_appointment_flag,
                 professional_name = excluded.professional_name,
                 unit_name = excluded.unit_name,
+                scheduled_by = excluded.scheduled_by,
                 scheduled_at = excluded.scheduled_at,
                 updated_at = excluded.updated_at
         '''

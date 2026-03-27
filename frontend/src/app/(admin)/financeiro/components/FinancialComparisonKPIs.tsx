@@ -1,11 +1,12 @@
 'use client';
 
 import React from 'react';
-import { DollarSign, Ticket, Users } from 'lucide-react';
+import { DollarSign, Ticket, UserPlus, Users } from 'lucide-react';
 
 type Totals = {
   total: number;
   qtd: number;
+  newPatients?: number;
 };
 
 type ComparisonKPIProps = {
@@ -15,9 +16,7 @@ type ComparisonKPIProps = {
   labelB: string;
 };
 
-const fmtMoney = (value: number) =>
-  value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-
+const fmtMoney = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const fmtNumber = (value: number) => value.toLocaleString('pt-BR');
 
 const formatDelta = (current: number, previous: number, money = false) => {
@@ -25,11 +24,7 @@ const formatDelta = (current: number, previous: number, money = false) => {
   const pct = previous === 0 ? null : (delta / previous) * 100;
   const valueLabel = money ? fmtMoney(delta) : fmtNumber(delta);
   const pctLabel = pct === null ? '-' : `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
-  return {
-    delta,
-    valueLabel,
-    pctLabel,
-  };
+  return { delta, valueLabel, pctLabel };
 };
 
 const DeltaBadge = ({ delta, label }: { delta: number; label: string }) => (
@@ -49,9 +44,10 @@ export const FinancialComparisonKPIs = ({ base, compare, labelA, labelB }: Compa
   const totalDelta = formatDelta(base.total, compare.total, true);
   const ticketDelta = formatDelta(baseTicket, compareTicket, true);
   const qtdDelta = formatDelta(base.qtd, compare.qtd, false);
+  const newPatientsDelta = formatDelta(base.newPatients || 0, compare.newPatients || 0, false);
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start gap-4">
         <div className="p-3 bg-blue-100 text-blue-600 rounded-lg">
           <DollarSign />
@@ -59,8 +55,8 @@ export const FinancialComparisonKPIs = ({ base, compare, labelA, labelB }: Compa
         <div className="w-full">
           <p className="text-sm text-slate-500">Faturamento</p>
           <p className="text-xl font-bold text-slate-800">{fmtMoney(base.total)}</p>
-          <p className="text-xs text-slate-500 mt-1">Periodo A: {labelA}</p>
-          <p className="text-xs text-slate-500">Periodo B: {fmtMoney(compare.total)} ({labelB})</p>
+          <p className="text-xs text-slate-500 mt-1">PerÃ­odo A: {labelA}</p>
+          <p className="text-xs text-slate-500">PerÃ­odo B: {fmtMoney(compare.total)} ({labelB})</p>
           <div className="mt-2">
             <DeltaBadge delta={totalDelta.delta} label={`${totalDelta.valueLabel} (${totalDelta.pctLabel})`} />
           </div>
@@ -72,10 +68,10 @@ export const FinancialComparisonKPIs = ({ base, compare, labelA, labelB }: Compa
           <Ticket />
         </div>
         <div className="w-full">
-          <p className="text-sm text-slate-500">Ticket Medio</p>
+          <p className="text-sm text-slate-500">Ticket mÃ©dio</p>
           <p className="text-xl font-bold text-slate-800">{fmtMoney(baseTicket)}</p>
-          <p className="text-xs text-slate-500 mt-1">Periodo A: {labelA}</p>
-          <p className="text-xs text-slate-500">Periodo B: {fmtMoney(compareTicket)} ({labelB})</p>
+          <p className="text-xs text-slate-500 mt-1">PerÃ­odo A: {labelA}</p>
+          <p className="text-xs text-slate-500">PerÃ­odo B: {fmtMoney(compareTicket)} ({labelB})</p>
           <div className="mt-2">
             <DeltaBadge delta={ticketDelta.delta} label={`${ticketDelta.valueLabel} (${ticketDelta.pctLabel})`} />
           </div>
@@ -89,10 +85,25 @@ export const FinancialComparisonKPIs = ({ base, compare, labelA, labelB }: Compa
         <div className="w-full">
           <p className="text-sm text-slate-500">Atendimentos</p>
           <p className="text-xl font-bold text-slate-800">{fmtNumber(base.qtd)}</p>
-          <p className="text-xs text-slate-500 mt-1">Periodo A: {labelA}</p>
-          <p className="text-xs text-slate-500">Periodo B: {fmtNumber(compare.qtd)} ({labelB})</p>
+          <p className="text-xs text-slate-500 mt-1">PerÃ­odo A: {labelA}</p>
+          <p className="text-xs text-slate-500">PerÃ­odo B: {fmtNumber(compare.qtd)} ({labelB})</p>
           <div className="mt-2">
             <DeltaBadge delta={qtdDelta.delta} label={`${qtdDelta.valueLabel} (${qtdDelta.pctLabel})`} />
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-start gap-4">
+        <div className="p-3 bg-amber-100 text-amber-600 rounded-lg">
+          <UserPlus />
+        </div>
+        <div className="w-full">
+          <p className="text-sm text-slate-500">Novos pacientes</p>
+          <p className="text-xl font-bold text-slate-800">{fmtNumber(base.newPatients || 0)}</p>
+          <p className="text-xs text-slate-500 mt-1">PerÃ­odo A: {labelA}</p>
+          <p className="text-xs text-slate-500">PerÃ­odo B: {fmtNumber(compare.newPatients || 0)} ({labelB})</p>
+          <div className="mt-2">
+            <DeltaBadge delta={newPatientsDelta.delta} label={`${newPatientsDelta.valueLabel} (${newPatientsDelta.pctLabel})`} />
           </div>
         </div>
       </div>

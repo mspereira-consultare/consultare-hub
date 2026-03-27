@@ -163,6 +163,7 @@ Analisar faturamento por período, unidade, grupo e procedimento, com modo compa
 | Faturamento | `history.totals.total` | Soma de `total_pago` no período filtrado |
 | Atendimentos/Guias | `history.totals.qtd` | Soma de `qtd` (resumo) ou contagem (analítico fallback) |
 | Ticket médio | frontend | `total / qtd` |
+| Novos pacientes | `history.totals.newPatients` | `COUNT(DISTINCT patient_id)` em `feegow_appointments`, com `first_appointment_flag = 1`, usando a `date` da consulta e respeitando os filtros de unidade, grupo e procedimento |
 | Curva diária | `history.daily` | Série por dia (`d`) |
 | Evolução mensal | `history.monthly` | Série por mês (`m`) |
 | Grupos de procedimento | `history.groupStats` | Soma e quantidade por `grupo` |

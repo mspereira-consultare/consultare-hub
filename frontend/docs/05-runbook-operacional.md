@@ -284,7 +284,18 @@ FROM feegow_appointments
 WHERE scheduled_at BETWEEN CONCAT(CURDATE(),' 00:00:00') AND CONCAT(CURDATE(),' 23:59:59');
 ```
 
-## Catalogo de procedimentos (Feegow)
+
+## Novos pacientes no financeiro
+
+```sql
+SELECT COUNT(DISTINCT patient_id) AS novos_pacientes
+FROM feegow_appointments
+WHERE first_appointment_flag = 1
+  AND date BETWEEN '2026-01-01' AND '2026-01-31';
+```
+
+ObservaÃ§Ã£o: o card `Novos pacientes` do `/financeiro` usa a `date` da consulta, nÃ£o `scheduled_at`.
+## CatÃ¡logo de procedimentos (Feegow)
 
 ```sql
 SELECT COUNT(*) AS total_procedimentos, MAX(updated_at) AS ultima_atualizacao

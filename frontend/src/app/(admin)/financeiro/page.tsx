@@ -30,7 +30,7 @@ type SelectOption = { name: string; label?: string };
 type DateRange = { start: string; end: string };
 type ChartPoint = { label: string; total: number; qtd: number; sortKey: string };
 type GroupPoint = { procedure_group: string; total: number; qtd: number };
-type Totals = { total: number; qtd: number };
+type Totals = { total: number; qtd: number; newPatients: number };
 type Heartbeat = { status: string; last_run: string; details: string };
 type ComparisonMode = 'previous' | 'yoy' | 'custom';
 type ComparisonRow = {
@@ -248,12 +248,12 @@ export default function FinancialPage() {
   const [groups, setGroups] = useState<SelectOption[]>([]);
   const [procedures, setProcedures] = useState<SelectOption[]>([]);
   const [units, setUnits] = useState<SelectOption[]>([]);
-  const [totals, setTotals] = useState<Totals>({ total: 0, qtd: 0 });
+  const [totals, setTotals] = useState<Totals>({ total: 0, qtd: 0, newPatients: 0 });
 
   const [compareDaily, setCompareDaily] = useState<ChartPoint[]>([]);
   const [compareMonthly, setCompareMonthly] = useState<ChartPoint[]>([]);
   const [compareGroupStats, setCompareGroupStats] = useState<GroupPoint[]>([]);
-  const [compareTotals, setCompareTotals] = useState<Totals>({ total: 0, qtd: 0 });
+  const [compareTotals, setCompareTotals] = useState<Totals>({ total: 0, qtd: 0, newPatients: 0 });
 
   const [heartbeat, setHeartbeat] = useState<Heartbeat | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -354,7 +354,7 @@ export default function FinancialPage() {
         }
 
         setGroupStats(baseData.groupStats || baseData.groups || []);
-        setTotals(baseData.totals || { total: 0, qtd: 0 });
+        setTotals(baseData.totals || { total: 0, qtd: 0, newPatients: 0 });
 
         if (baseData.heartbeat) {
           setHeartbeat(baseData.heartbeat);
@@ -371,12 +371,12 @@ export default function FinancialPage() {
         setCompareDaily(normalizeDaily(compareData.daily || []));
         setCompareMonthly(normalizeMonthly(compareData.monthly || []));
         setCompareGroupStats(compareData.groupStats || compareData.groups || []);
-        setCompareTotals(compareData.totals || { total: 0, qtd: 0 });
+        setCompareTotals(compareData.totals || { total: 0, qtd: 0, newPatients: 0 });
       } else {
         setCompareDaily([]);
         setCompareMonthly([]);
         setCompareGroupStats([]);
-        setCompareTotals({ total: 0, qtd: 0 });
+        setCompareTotals({ total: 0, qtd: 0, newPatients: 0 });
       }
     } catch (error) {
       console.error('Erro Financeiro:', error);
@@ -480,7 +480,7 @@ export default function FinancialPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-800">Financeiro</h1>
-              <p className="text-slate-500 text-xs">Analise de faturamento, volume e ticket medio.</p>
+              <p className="text-slate-500 text-xs">Análise de faturamento, volume e ticket médio.</p>
             </div>
           </div>
 
@@ -510,7 +510,7 @@ export default function FinancialPage() {
               className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all border whitespace-nowrap bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100"
             >
               <FileText size={14} />
-              Relatorio Geral
+              Relatório Geral
             </button>
 
             <button
@@ -529,7 +529,7 @@ export default function FinancialPage() {
               <div>
                 <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block flex items-center gap-2">
                   <Calendar size={14} />
-                  Periodo de Analise (A)
+                  Período de Análise (A)
                 </label>
                 <div className="flex items-center gap-2 bg-slate-50 px-3 py-2.5 rounded-lg border border-slate-200">
                   <input
@@ -553,14 +553,14 @@ export default function FinancialPage() {
                   <Building2 size={14} />
                   Unidade
                 </label>
-                <SearchableSelect options={units} value={selectedUnit} onChange={setSelectedUnit} placeholder="Todas as Unidades" />
+                <SearchableSelect options={units} value={selectedUnit} onChange={setSelectedUnit} placeholder="Todas as unidades" />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
               <div>
                 <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Grupo de Procedimento</label>
-                <SearchableSelect options={groups} value={selectedGroup} onChange={setSelectedGroup} placeholder="Todos os Grupos" />
+                <SearchableSelect options={groups} value={selectedGroup} onChange={setSelectedGroup} placeholder="Todos os grupos" />
               </div>
 
               <div>
@@ -569,7 +569,7 @@ export default function FinancialPage() {
                   options={procedures}
                   value={selectedProcedure}
                   onChange={setSelectedProcedure}
-                  placeholder="Todos Procedimentos"
+                  placeholder="Todos os procedimentos"
                 />
               </div>
 
@@ -595,7 +595,7 @@ export default function FinancialPage() {
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <GitCompareArrows size={16} className="text-slate-600" />
-                  <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Comparacao de Periodos</span>
+                  <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Comparação de Períodos</span>
                 </div>
                 <button
                   onClick={() => setComparisonEnabled((prev) => !prev)}
@@ -605,22 +605,22 @@ export default function FinancialPage() {
                       : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
                   }`}
                 >
-                  {comparisonEnabled ? 'Comparacao ativada' : 'Ativar comparacao'}
+                  {comparisonEnabled ? 'Comparação ativada' : 'Ativar comparação'}
                 </button>
               </div>
 
               {comparisonEnabled && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 border border-slate-200 rounded-lg p-3">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase text-slate-500 tracking-wider block">Modelo do Periodo Comparado (B)</label>
+                    <label className="text-xs font-bold uppercase text-slate-500 tracking-wider block">Modelo do Período Comparado (B)</label>
                     <select
                       value={comparisonMode}
                       onChange={(e) => setComparisonMode(e.target.value as ComparisonMode)}
                       className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700"
                     >
-                      <option value="previous">Periodo anterior equivalente</option>
-                      <option value="yoy">Mesmo periodo do ano anterior</option>
-                      <option value="custom">Periodo personalizado</option>
+                      <option value="previous">Período anterior equivalente</option>
+                      <option value="yoy">Mesmo período do ano anterior</option>
+                      <option value="custom">Período personalizado</option>
                     </select>
                     {comparisonMode === 'custom' && (
                       <label className="flex items-center gap-2 text-xs text-slate-600">
@@ -630,13 +630,13 @@ export default function FinancialPage() {
                           onChange={(e) => setLockDuration(e.target.checked)}
                           className="rounded border-slate-300"
                         />
-                        Manter a mesma duracao do periodo A
+                        Manter a mesma duração do período A
                       </label>
                     )}
                   </div>
 
                   <div>
-                    <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Faixa de Datas do Periodo B</label>
+                    <label className="text-xs font-bold uppercase text-slate-500 tracking-wider mb-2 block">Faixa de Datas do Período B</label>
                     <div className="flex items-center gap-2 bg-white px-3 py-2.5 rounded-lg border border-slate-200">
                       <input
                         type="date"
@@ -696,14 +696,14 @@ export default function FinancialPage() {
         <div className="lg:col-span-1">
           {comparisonEnabled ? (
             <ComparisonHistoryChart
-              title="Evolucao Mensal (Comparativo)"
+              title="Evolução Mensal (Comparativo)"
               data={monthlyComparisonRows}
               labelA={labelA}
               labelB={labelB}
               className="h-[350px]"
             />
           ) : (
-            <HistoryChart title="Evolucao Mensal" data={monthly} color="#1e3a8a" className="h-[350px]" />
+            <HistoryChart title="Evolução Mensal" data={monthly} color="#1e3a8a" className="h-[350px]" />
           )}
         </div>
 
@@ -718,22 +718,22 @@ export default function FinancialPage() {
         <div className="lg:col-span-2">
           {comparisonEnabled ? (
             <ComparisonHistoryChart
-              title="Curva Diaria (Comparativo)"
+              title="Curva Diária (Comparativo)"
               data={dailyComparisonRows}
               labelA={labelA}
               labelB={labelB}
               className="h-[400px]"
             />
           ) : (
-            <HistoryChart title="Curva Diaria" data={daily} color="#0ea5e9" className="h-[400px]" />
+            <HistoryChart title="Curva Diária" data={daily} color="#0ea5e9" className="h-[400px]" />
           )}
         </div>
 
         <div className="lg:col-span-1">
           {comparisonEnabled ? (
-            <ComparisonHistoryTable title="Detalhe Diario (Comparativo)" data={dailyComparisonRows} className="h-[400px]" />
+            <ComparisonHistoryTable title="Detalhe Diário (Comparativo)" data={dailyComparisonRows} className="h-[400px]" />
           ) : (
-            <HistoryTable title="Detalhe Diario" data={daily} className="h-[400px]" />
+            <HistoryTable title="Detalhe Diário" data={daily} className="h-[400px]" />
           )}
         </div>
       </div>

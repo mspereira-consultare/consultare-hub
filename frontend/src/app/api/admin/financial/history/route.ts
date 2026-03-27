@@ -25,6 +25,15 @@ const tableExists = async (db: any, tableName: string) => {
   }
 };
 
+const columnExists = async (db: any, tableName: string, columnName: string) => {
+  try {
+    const rows = await db.query(`PRAGMA table_info(${tableName})`);
+    return Array.isArray(rows) && rows.some((row: any) => String(row?.name || '').toLowerCase() === columnName.toLowerCase());
+  } catch {
+    return false;
+  }
+};
+
 export async function GET(request: Request) {
   try {
     const cacheKey = buildCacheKey('admin', request.url);
@@ -43,6 +52,7 @@ export async function GET(request: Request) {
     const hasSummary = await tableExists(db, SUMMARY_TABLE);
     const hasAnalitico = await tableExists(db, ANALITICO_TABLE);
     const hasMonthly = hasSummary && await tableExists(db, MONTHLY_TABLE);
+    const hasAppointments = await tableExists(db, 'feegow_appointments');
 
     if (!hasSummary && !hasAnalitico) {
       const statusRes = await db.query(`
@@ -142,7 +152,52 @@ export async function GET(request: Request) {
         FROM ${tableName}
         ${baseWhere}
     `, baseParams);
-    const totals = totalsRes[0] || { total: 0, qtd: 0 };
+    const totals = {
+      total: Number(totalsRes[0]?.total || 0),
+      qtd: Number(totalsRes[0]?.qtd || 0),
+      newPatients: 0,
+    };
+
+    if (hasAppointments) {
+      const [hasPatientId, hasFirstAppointmentFlag, hasProcedureName] = await Promise.all([
+        columnExists(db, 'feegow_appointments', 'patient_id'),
+        columnExists(db, 'feegow_appointments', 'first_appointment_flag'),
+        columnExists(db, 'feegow_appointments', 'procedure_name'),
+      ]);
+
+      if (hasPatientId && hasFirstAppointmentFlag && hasProcedureName) {
+        let appointmentsWhere = `
+          WHERE date BETWEEN ? AND ?
+          AND first_appointment_flag = 1
+          AND patient_id IS NOT NULL
+          AND patient_id != 0
+        `;
+        const appointmentParams: any[] = [startDate, endDate];
+
+        if (unitFilter && unitFilter !== 'all') {
+          appointmentsWhere += ` AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))`;
+          appointmentParams.push(unitFilter);
+        }
+        if (groupFilter && groupFilter !== 'all') {
+          appointmentsWhere += ` AND UPPER(TRIM(procedure_group)) = UPPER(TRIM(?))`;
+          appointmentParams.push(groupFilter);
+        }
+        if (procedureFilter && procedureFilter !== 'all') {
+          appointmentsWhere += ` AND UPPER(TRIM(procedure_name)) = UPPER(TRIM(?))`;
+          appointmentParams.push(procedureFilter);
+        }
+
+        const newPatientsRes = await db.query(
+          `
+            SELECT COUNT(DISTINCT patient_id) as total
+            FROM feegow_appointments
+            ${appointmentsWhere}
+          `,
+          appointmentParams
+        );
+        totals.newPatients = Number(newPatientsRes[0]?.total || 0);
+      }
+    }
 
     // 5. QUERY: LISTA DE GRUPOS (Combobox)
     // Precisamos listar todos os grupos disponíveis no período + Agenda (se existir)

@@ -18,6 +18,7 @@ load_dotenv(os.path.join(BASE_DIR, ".env"))
 load_dotenv(os.path.join(BASE_DIR, ".env.local"))
 
 API_URL = "https://api.feegow.com/v1/api/appoints/search"
+PROCEDURES_URL = "https://api.feegow.com/v1/api/procedures/list"
 
 
 def is_lost_connection_error(exc: Exception) -> bool:
@@ -121,6 +122,10 @@ def ensure_tables(mysql_cfg: dict):
                     specialty VARCHAR(191) NULL,
                     professional_name VARCHAR(191) NULL,
                     procedure_group VARCHAR(191) NULL,
+                    patient_id BIGINT NULL,
+                    procedure_id BIGINT NULL,
+                    procedure_name VARCHAR(255) NULL,
+                    first_appointment_flag TINYINT NULL,
                     scheduled_by VARCHAR(191) NULL,
                     unit_name VARCHAR(191) NULL,
                     scheduled_at VARCHAR(50) NULL,
@@ -128,6 +133,17 @@ def ensure_tables(mysql_cfg: dict):
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                 """
             )
+            migrations = [
+                "ALTER TABLE feegow_appointments ADD COLUMN patient_id BIGINT NULL",
+                "ALTER TABLE feegow_appointments ADD COLUMN procedure_id BIGINT NULL",
+                "ALTER TABLE feegow_appointments ADD COLUMN procedure_name VARCHAR(255) NULL",
+                "ALTER TABLE feegow_appointments ADD COLUMN first_appointment_flag TINYINT NULL",
+            ]
+            for migration in migrations:
+                try:
+                    cur.execute(migration)
+                except Exception:
+                    pass
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS feegow_appointments_backfill_checkpoint (
@@ -166,6 +182,28 @@ def get_completed_months(mysql_cfg: dict):
 
     rows = mysql_operation(mysql_cfg, "get checkpoint", _op)
     return {(int(r[0]), int(r[1])) for r in rows}
+
+
+def has_missing_enrichment(mysql_cfg: dict, start_date: datetime.date, end_date: datetime.date) -> bool:
+    sql = """
+        SELECT COUNT(1)
+        FROM feegow_appointments
+        WHERE date BETWEEN %s AND %s
+          AND (
+            patient_id IS NULL
+            OR procedure_id IS NULL
+            OR procedure_name IS NULL
+            OR first_appointment_flag IS NULL
+          )
+    """
+
+    def _op(conn):
+        with conn.cursor() as cur:
+            cur.execute(sql, (start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d")))
+            row = cur.fetchone()
+            return int((row or [0])[0] or 0)
+
+    return mysql_operation(mysql_cfg, "check missing enrichment", _op) > 0
 
 
 def mark_month_completed(
@@ -220,7 +258,7 @@ def fetch_month(start_date: datetime.date, end_date: datetime.date) -> list:
 
     for attempt in range(1, 6):
         try:
-            res = requests.get(API_URL, headers=api_headers(), json=payload, timeout=120)
+            res = requests.get(API_URL, headers=api_headers(), params=payload, timeout=120)
             if res.status_code >= 400:
                 raise RuntimeError(f"HTTP {res.status_code}: {res.text[:220]}")
             body = res.json()
@@ -239,6 +277,29 @@ def fetch_month(start_date: datetime.date, end_date: datetime.date) -> list:
     return []
 
 
+def fetch_procedure_name_map() -> dict:
+    try:
+        res = requests.get(PROCEDURES_URL, headers=api_headers(), timeout=120)
+        if res.status_code >= 400:
+            raise RuntimeError(f"HTTP {res.status_code}: {res.text[:220]}")
+        body = res.json()
+        if not body.get("success", False):
+            raise RuntimeError(f"API success=false: {body}")
+        content = body.get("content", [])
+        if not isinstance(content, list):
+            return {}
+        mapping = {}
+        for row in content:
+            proc_id = clean_int(row.get("procedimento_id") or row.get("id"))
+            if proc_id <= 0:
+                continue
+            mapping[proc_id] = str(row.get("nome") or row.get("Nome") or "N/A")
+        return mapping
+    except Exception as exc:
+        print(f"[WARN] Falha ao carregar catálogo de procedimentos: {exc}")
+        return {}
+
+
 def clean_currency(value_str) -> float:
     if value_str is None:
         return 0.0
@@ -252,6 +313,17 @@ def clean_currency(value_str) -> float:
         return float(s)
     except Exception:
         return 0.0
+
+
+def clean_int(value, default: int = 0) -> int:
+    if value is None:
+        return default
+    try:
+        if str(value).strip() == "":
+            return default
+        return int(float(value))
+    except Exception:
+        return default
 
 
 def normalize_date(raw) -> str:
@@ -270,10 +342,11 @@ def normalize_date(raw) -> str:
     return ""
 
 
-def parse_rows(api_rows: list) -> list:
+def parse_rows(api_rows: list, procedure_name_map: dict | None = None) -> list:
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     valid_statuses = {1, 2, 3, 4, 6, 7, 11, 15, 16, 22}
     out = []
+    procedure_name_map = procedure_name_map or {}
 
     for r in api_rows:
         app_id = int(r.get("agendamento_id") or r.get("id") or 0)
@@ -292,6 +365,12 @@ def parse_rows(api_rows: list) -> list:
         if not dt:
             continue
 
+        procedure_id = clean_int(r.get("procedimento_id"))
+        procedure_name = (
+            str(r.get("procedure_name") or r.get("nome_procedimento") or "").strip()
+            or str(procedure_name_map.get(procedure_id) or "N/A")
+        )
+
         out.append(
             (
                 app_id,
@@ -306,6 +385,10 @@ def parse_rows(api_rows: list) -> list:
                     or r.get("grupo_procedimento")
                     or "Geral"
                 ),
+                clean_int(r.get("paciente_id")),
+                procedure_id,
+                procedure_name,
+                clean_int(r.get("primeiro_agendamento") or r.get("first_appointment_flag")),
                 str(r.get("agendado_por") or r.get("scheduled_by") or "Sis"),
                 str(r.get("nome_fantasia") or r.get("unidade_nome") or r.get("unidade") or "Matriz"),
                 str(r.get("agendado_em") or r.get("scheduled_at") or ""),
@@ -319,8 +402,9 @@ UPSERT_SQL = """
     INSERT INTO feegow_appointments (
         appointment_id, date, status_id, value,
         specialty, professional_name, procedure_group,
+        patient_id, procedure_id, procedure_name, first_appointment_flag,
         scheduled_by, unit_name, scheduled_at, updated_at
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
     ON DUPLICATE KEY UPDATE
         date = VALUES(date),
         status_id = VALUES(status_id),
@@ -328,6 +412,10 @@ UPSERT_SQL = """
         specialty = VALUES(specialty),
         professional_name = VALUES(professional_name),
         procedure_group = VALUES(procedure_group),
+        patient_id = VALUES(patient_id),
+        procedure_id = VALUES(procedure_id),
+        procedure_name = VALUES(procedure_name),
+        first_appointment_flag = VALUES(first_appointment_flag),
         scheduled_by = VALUES(scheduled_by),
         unit_name = VALUES(unit_name),
         scheduled_at = VALUES(scheduled_at),
@@ -440,6 +528,10 @@ def run_backfill(start_date: datetime.date, end_date: datetime.date):
     print(f"[INFO] Backfill alvo: {start_date} -> {end_date}")
 
     completed = get_completed_months(mysql_cfg)
+    if has_missing_enrichment(mysql_cfg, start_date, end_date):
+        print("[INFO] Existem registros sem enriquecimento do primeiro agendamento. Reprocessando meses mesmo com checkpoint.")
+        completed = set()
+    procedure_name_map = fetch_procedure_name_map()
     cursor = month_start(start_date)
     total_saved = 0
 
@@ -459,7 +551,7 @@ def run_backfill(start_date: datetime.date, end_date: datetime.date):
         )
         t0 = time.time()
         api_rows = fetch_month(win_start, win_end)
-        rows = parse_rows(api_rows)
+        rows = parse_rows(api_rows, procedure_name_map)
         print(f"[API] linhas: {len(api_rows)} | validas para salvar: {len(rows)}")
 
         if rows:

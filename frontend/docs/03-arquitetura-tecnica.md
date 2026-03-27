@@ -148,14 +148,15 @@ Arquivo: `workers/main.py`.
 ### Feegow
 
 - API de agendamentos (`worker_feegow_appointments.py`).
+- O domÃ­nio de agendamentos agora persiste `patient_id`, `procedure_id`, `procedure_name` e `first_appointment_flag` em `feegow_appointments`.
+- O KPI `Novos pacientes` do `/financeiro` usa `COUNT(DISTINCT patient_id)` com `first_appointment_flag = 1`, filtrando pela `date` da consulta.
 - API de procedimentos (`worker_feegow_procedures.py`).
 - API de propostas (`worker_proposals.py`).
-- O dom?nio de propostas agora persiste `patient_id`, `proposal_last_update` e uma cache local de contatos Feegow em `feegow_patient_contacts_cache`.
+- O domÃ­nio de propostas agora persiste `patient_id`, `proposal_last_update` e uma cache local de contatos Feegow em `feegow_patient_contacts_cache`.
 - As APIs `/api/admin/propostas/details` e `/api/admin/propostas/export` reutilizam a base local e fazem fallback on-demand em `patient/search?paciente_id=...` para cache miss.
 - API de contratos (`worker_contracts.py`).
-- Fluxos de monitor via páginas internas (recepção/médico).
-- Renovação de credenciais/cookies por Playwright (`worker_auth.py`).
-
+- Fluxos de monitor via pÃ¡ginas internas (recepÃ§Ã£o/mÃ©dico).
+- RenovaÃ§Ã£o de credenciais/cookies por Playwright (`worker_auth.py`).
 ### Clinia
 
 - APIs de grupos, estatísticas e contagem de chats (`worker_clinia.py`).

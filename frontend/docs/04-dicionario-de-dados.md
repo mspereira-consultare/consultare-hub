@@ -79,20 +79,25 @@ Escrita: API de equipes.
 
 ### `feegow_appointments`
 
-| Campo | Descrição |
+| Campo | DescriÃ§Ã£o |
 |---|---|
-| `id` (PK) | Identificador do agendamento |
-| `scheduled_at` | Data/hora do agendamento |
-| `scheduled_by` | Responsável pelo agendamento |
-| `specialty` | Especialidade |
-| `professional` | Profissional |
-| `status_id` | Status numérico (ver STATUS_MAP) |
-| `status` | Status textual |
-| `patient_name` | Nome do paciente |
-| `created_at` | Data/hora de criação |
-| `updated_at` | Última atualização |
+| `appointment_id` (PK) | Identificador do agendamento |
+| `date` | Data da consulta/agendamento em `YYYY-MM-DD` |
+| `status_id` | Status numÃ©rico do agendamento |
+| `value` | Valor total do agendamento |
+| `specialty` | Especialidade normalizada |
+| `professional_name` | Profissional normalizado |
+| `procedure_group` | Grupo de procedimento |
+| `patient_id` | Identificador do paciente na Feegow |
+| `procedure_id` | Procedimento principal do agendamento |
+| `procedure_name` | Nome do procedimento principal |
+| `first_appointment_flag` | Flag de primeiro agendamento (`primeiro_agendamento`) |
+| `scheduled_by` | ResponsÃ¡vel pelo agendamento |
+| `unit_name` | Unidade/`nome_fantasia` |
+| `scheduled_at` | Data/hora em que o agendamento foi marcado |
+| `updated_at` | Ãltima atualizaÃ§Ã£o local |
 
-Escrita: worker_feegow_appointments.py
+Escrita: `worker_feegow_appointments.py` e `worker_feegow_appointments_backfill.py`
 
 | Campo | Descrição |
 |---|---|
@@ -181,7 +186,7 @@ Escrita: worker Feegow de agendamentos (`appointments`) e backfills.
 
 ### `feegow_proposals`
 
-| Campo | Descri??o |
+| Campo | DescriÃ§Ã£o |
 |---|---|
 | `proposal_id` (PK) | ID da proposta |
 | `date` | Data da proposta |
@@ -198,7 +203,7 @@ Escrita: worker de propostas.
 
 ### `feegow_patient_contacts_cache`
 
-| Campo | Descri??o |
+| Campo | DescriÃ§Ã£o |
 |---|---|
 | `patient_id` (PK) | ID do paciente na Feegow |
 | `patient_name` | Nome do paciente |
