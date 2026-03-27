@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { ShieldCheck, Wrench } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
 import type { EquipmentListItem, EquipmentListSummary } from '@/lib/equipamentos/types';
 import { EquipmentFiltersBar } from './components/EquipmentFiltersBar';
@@ -76,7 +76,7 @@ export default function EquipamentosPage() {
     search: '',
     unit: 'all',
     calibrationStatus: 'all',
-    operationalStatus: 'all',
+    operationalStatus: 'ATIVO',
   });
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -207,49 +207,40 @@ export default function EquipamentosPage() {
   return (
     <div className="space-y-6">
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_304px] xl:items-start">
-          <div className="space-y-4">
-            <div className="flex items-start gap-3">
-              <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md">
-                <ShieldCheck size={20} />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-800">Qualidade / Equipamentos</h1>
-                <p className="mt-1 max-w-3xl text-xs text-slate-500">
-                  Controle centralizado dos equipamentos da clínica, com calibração, manutenção e anexos em um único lugar.
-                </p>
-              </div>
+        <div className="p-6">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md">
+              <ShieldCheck size={20} />
             </div>
-          </div>
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-            <div className="flex items-center gap-2 font-medium text-slate-900">
-              <Wrench size={16} />
-              Visão gerencial
+            <div>
+              <h1 className="text-xl font-bold text-slate-800">Equipamentos</h1>
+              <p className="mt-1 max-w-4xl text-xs text-slate-500">
+                Acompanhe vencimentos de calibração, manutenções, responsáveis e evidências documentais dos equipamentos por unidade.
+              </p>
             </div>
-            <p className="mt-2">
-              Acompanhe vencimentos, manutenção e evidências documentais sem depender da planilha manual.
-            </p>
           </div>
         </div>
-      </section>
 
-      <EquipmentFiltersBar
-        filters={filters}
-        units={options.units}
-        calibrationStatuses={options.calibrationStatuses}
-        operationalStatuses={options.operationalStatuses}
-        canEdit={canEdit}
-        canRefresh={canRefresh}
-        loading={loading}
-        refreshing={refreshing}
-        onChange={(next) => {
-          setFilters(next);
-          setPage(1);
-        }}
-        onRefresh={() => loadItems(true)}
-        onExport={onExport}
-        onCreate={openCreate}
-      />
+        <div className="border-t border-slate-100 p-6">
+          <EquipmentFiltersBar
+            filters={filters}
+            units={options.units}
+            calibrationStatuses={options.calibrationStatuses}
+            operationalStatuses={options.operationalStatuses}
+            canEdit={canEdit}
+            canRefresh={canRefresh}
+            loading={loading}
+            refreshing={refreshing}
+            onChange={(next) => {
+              setFilters(next);
+              setPage(1);
+            }}
+            onRefresh={() => loadItems(true)}
+            onExport={onExport}
+            onCreate={openCreate}
+          />
+        </div>
+      </section>
 
       <EquipmentSummaryCards summary={summary} />
 

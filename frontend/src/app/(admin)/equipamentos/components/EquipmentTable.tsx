@@ -17,6 +17,14 @@ const calibrationBadgeClassName = (status: string) => {
   return 'bg-slate-50 text-slate-700 ring-slate-200';
 };
 
+const operationalBadgeClassName = (status: string) => {
+  if (status === 'ATIVO') return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
+  if (status === 'EM_MANUTENCAO') return 'bg-amber-50 text-amber-700 ring-amber-200';
+  if (status === 'INATIVO') return 'bg-slate-100 text-slate-600 ring-slate-200';
+  if (status === 'DESCARTADO') return 'bg-rose-50 text-rose-700 ring-rose-200';
+  return 'bg-slate-50 text-slate-700 ring-slate-200';
+};
+
 type EquipmentTableProps = {
   items: EquipmentListItem[];
   loading?: boolean;
@@ -74,7 +82,11 @@ export function EquipmentTable({ items, loading, canEdit, onEdit }: EquipmentTab
                   </td>
                   <td className="px-4 py-4 text-slate-600">{item.category || '-'}</td>
                   <td className="px-4 py-4 text-slate-600">{item.locationDetail || '-'}</td>
-                  <td className="px-4 py-4 text-slate-700">{operationalStatusLabel[item.operationalStatus] || item.operationalStatus}</td>
+                  <td className="px-4 py-4">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${operationalBadgeClassName(item.operationalStatus)}`}>
+                      {operationalStatusLabel[item.operationalStatus] || item.operationalStatus}
+                    </span>
+                  </td>
                   <td className="px-4 py-4">
                     <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${calibrationBadgeClassName(item.calibrationStatus)}`}>
                       {item.calibrationStatusLabel}
