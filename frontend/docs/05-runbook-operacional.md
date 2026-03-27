@@ -589,3 +589,24 @@ Variaveis opcionais do worker `workers/worker_agenda_ocupacao.py`:
 Servico monitorado no heartbeat:
 
 - `system_status.service_name = 'agenda_occupancy'`
+
+
+## 5.2) Valida??o r?pida do m?dulo de Equipamentos
+
+APIs:
+
+- `/api/admin/equipamentos`
+- `/api/admin/equipamentos/options`
+- `/api/admin/equipamentos/export`
+- `/api/admin/equipamentos/[id]`
+- `/api/admin/equipamentos/[id]/eventos`
+- `/api/admin/equipamentos/[id]/arquivos`
+
+Checklist funcional:
+
+- a p?gina `/equipamentos` deve aparecer no grupo `QUALIDADE`
+- o cadastro precisa salvar equipamento com unidade, identifica??o e status operacional
+- o status de calibra??o deve ser calculado automaticamente
+- eventos de manuten??o devem aparecer no hist?rico ap?s o primeiro salvamento
+- upload e download de arquivos devem funcionar pelo storage configurado
+- a exporta??o XLSX deve respeitar os filtros vis?veis na tela

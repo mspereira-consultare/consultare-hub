@@ -274,3 +274,33 @@ Implementacao:
 - `frontend/src/lib/colaboradores/auth.ts`
 - `frontend/src/app/api/admin/colaboradores/route.ts`
 - `frontend/src/app/api/admin/colaboradores/[id]/route.ts`
+
+
+## Atualiza??o ? Equipamentos
+
+Novo `PageKey` inclu?do no sistema:
+
+| PageKey | Rota |
+|---|---|
+| `equipamentos` | `/equipamentos` |
+
+### Defaults
+
+| Perfil | View | Edit | Refresh |
+|---|---:|---:|---:|
+| `ADMIN` | ? | ? | ? |
+| `GESTOR` | ? | ? | ? |
+| `OPERADOR` | ? | ? | ? |
+
+### APIs protegidas
+
+| API | PageKey | A??o validada |
+|---|---|---|
+| `/api/admin/equipamentos` | `equipamentos` | `view` / `edit` |
+| `/api/admin/equipamentos/[id]` | `equipamentos` | `view` / `edit` |
+| `/api/admin/equipamentos/options` | `equipamentos` | `view` |
+| `/api/admin/equipamentos/export` | `equipamentos` | `view` |
+| `/api/admin/equipamentos/[id]/eventos` | `equipamentos` | `view` / `edit` |
+| `/api/admin/equipamentos/[id]/eventos/[eventId]` | `equipamentos` | `edit` |
+| `/api/admin/equipamentos/[id]/arquivos` | `equipamentos` | `view` / `edit` |
+| `/api/admin/equipamentos/arquivos/[fileId]/download` | `equipamentos` | `view` |

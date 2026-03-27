@@ -358,3 +358,54 @@ Também foi adicionado um padrão local de ajuda contextual para cards do módul
 
 Esse padrão evita tooltips nativos do navegador e funciona com hover/focus no desktop e clique no mobile.
 
+
+
+## 14) M?dulo de Equipamentos
+
+### Frontend
+
+- P?gina: `frontend/src/app/(admin)/equipamentos/page.tsx`
+- Componentes principais:
+  - `EquipmentFiltersBar`
+  - `EquipmentSummaryCards`
+  - `EquipmentTable`
+  - `EquipmentFormModal`
+  - `EquipmentEventsSection`
+  - `EquipmentFilesSection`
+
+### Backend
+
+Dom?nio dedicado em `frontend/src/lib/equipamentos/`:
+
+- `constants.ts`
+- `types.ts`
+- `status.ts`
+- `auth.ts`
+- `repository.ts`
+
+### APIs
+
+- `GET/POST /api/admin/equipamentos`
+- `GET/PUT /api/admin/equipamentos/[id]`
+- `GET /api/admin/equipamentos/options`
+- `GET /api/admin/equipamentos/export`
+- `GET/POST /api/admin/equipamentos/[id]/eventos`
+- `PUT/DELETE /api/admin/equipamentos/[id]/eventos/[eventId]`
+- `GET/POST /api/admin/equipamentos/[id]/arquivos`
+- `GET /api/admin/equipamentos/arquivos/[fileId]/download`
+
+### Persist?ncia
+
+O m?dulo garante tabelas em runtime:
+
+- `clinic_equipment`
+- `clinic_equipment_events`
+- `clinic_equipment_files`
+
+### Regras de c?lculo
+
+O status de calibra??o n?o ? digitado livremente. Ele ? derivado em `frontend/src/lib/equipamentos/status.ts` a partir de:
+
+- `calibration_required`
+- `next_calibration_date`
+- janela de alerta de 30 dias

@@ -28,6 +28,7 @@ import {
   Stethoscope,
   FileText,
   BarChart3,
+  Wrench,
 } from "lucide-react";
 import { hasPermission, type PageKey } from "@/lib/permissions";
 
@@ -109,6 +110,14 @@ const menuItems: MenuItem[] = [
     group: "GESTÃO DE PESSOAS",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "colaboradores",
+  },
+  {
+    href: "/equipamentos",
+    label: "Equipamentos",
+    icon: Wrench,
+    group: "QUALIDADE",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "equipamentos",
   },
   {
     href: "/qualidade/documentos",

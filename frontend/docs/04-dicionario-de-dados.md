@@ -899,3 +899,67 @@ Campos principais:
 - `revenueTotal`
 - `revenueDateBasis`
 
+
+
+## 11) Qualidade ? Equipamentos
+
+### `clinic_equipment`
+
+| Campo | Descri??o |
+|---|---|
+| `id` (PK) | Identificador UUID do equipamento |
+| `unit_name` | Unidade do equipamento |
+| `description` | Descri??o principal |
+| `identification_number` | C?digo interno / patrim?nio / identifica??o |
+| `barcode_value` | C?digo de barras ou QR opcional |
+| `category` | Categoria do equipamento |
+| `manufacturer` | Fabricante |
+| `model` | Modelo |
+| `serial_number` | N?mero de s?rie |
+| `location_detail` | Localiza??o ou setor |
+| `operational_status` | `ATIVO`, `EM_MANUTENCAO`, `INATIVO`, `DESCARTADO` |
+| `calibration_required` | Flag de exig?ncia de calibra??o |
+| `calibration_frequency_days` | Periodicidade em dias |
+| `last_calibration_date` | ?ltima calibra??o registrada |
+| `next_calibration_date` | Pr?xima calibra??o prevista |
+| `calibration_responsible` | Respons?vel / empresa |
+| `calibration_notes` | Observa??es da calibra??o |
+| `notes` | Observa??es gerais |
+| `created_at`, `updated_at` | Auditoria b?sica |
+
+Escrita: APIs do m?dulo `/equipamentos`.
+
+### `clinic_equipment_events`
+
+| Campo | Descri??o |
+|---|---|
+| `id` (PK) | Identificador UUID do evento |
+| `equipment_id` | FK l?gica para `clinic_equipment.id` |
+| `event_date` | Data do evento |
+| `event_type` | Tipo (`MANUTENCAO_PREVENTIVA`, `MANUTENCAO_CORRETIVA`, `OCORRENCIA`, `CALIBRACAO`) |
+| `description` | Descri??o do evento |
+| `handled_by` | Respons?vel / fornecedor |
+| `status` | `ABERTO`, `EM_ANDAMENTO`, `CONCLUIDO`, `CANCELADO` |
+| `notes` | Observa??es adicionais |
+| `created_at`, `updated_at` | Auditoria b?sica |
+
+Escrita: APIs de eventos do m?dulo `/equipamentos`.
+
+### `clinic_equipment_files`
+
+| Campo | Descri??o |
+|---|---|
+| `id` (PK) | Identificador UUID do arquivo |
+| `equipment_id` | FK l?gica para `clinic_equipment.id` |
+| `file_type` | `FOTO`, `CERTIFICADO`, `MANUAL`, `OUTRO` |
+| `storage_provider` | Provider de storage |
+| `storage_bucket` | Bucket/container |
+| `storage_key` | Chave do arquivo no storage |
+| `original_name` | Nome original do arquivo |
+| `mime_type` | Tipo MIME |
+| `size_bytes` | Tamanho do arquivo |
+| `notes` | Observa??es do arquivo |
+| `uploaded_by` | Usu?rio respons?vel pelo upload |
+| `created_at` | Data/hora do upload |
+
+Escrita: APIs de upload do m?dulo `/equipamentos`.

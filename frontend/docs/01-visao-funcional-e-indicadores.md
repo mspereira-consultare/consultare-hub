@@ -720,3 +720,42 @@ Acoes:
 - Atualizar tela
 - Exportar XLSX
 - Exportar PDF
+
+
+## Equipamentos (`/equipamentos`)
+
+### Objetivo
+
+Controlar os equipamentos f?sicos da cl?nica, com foco em calibra??o, manuten??o, evid?ncias documentais e rastreabilidade por unidade.
+
+### Filtros
+
+- Unidade
+- Status de calibra??o
+- Status operacional
+- Busca por descri??o, identifica??o, s?rie ou respons?vel
+
+### Fontes consumidas
+
+- `GET /api/admin/equipamentos`
+- `GET /api/admin/equipamentos/options`
+- `GET /api/admin/equipamentos/export`
+
+### Indicadores
+
+| Indicador | Fonte | Regra |
+|---|---|---|
+| Total de equipamentos | `/api/admin/equipamentos` | Quantidade total do recorte filtrado |
+| Calibra??o em dia | `/api/admin/equipamentos` | Equipamentos com pr?xima calibra??o fora da janela de alerta |
+| Vencendo | `/api/admin/equipamentos` | Pr?xima calibra??o nos pr?ximos 30 dias |
+| Vencidos | `/api/admin/equipamentos` | Pr?xima calibra??o anterior ? data atual |
+| Em manuten??o | `/api/admin/equipamentos` | Equipamentos com `operational_status='EM_MANUTENCAO'` |
+
+### Regras da tabela
+
+| Item | Regra |
+|---|---|
+| Status de calibra??o | Derivado por `calibration_required` + `next_calibration_date` |
+| Hist?rico de manuten??o | Mantido em `clinic_equipment_events` |
+| Arquivos | Mantidos em `clinic_equipment_files` com download pelo painel |
+| Exporta??o XLSX | Usa exatamente os filtros vis?veis da tela |
