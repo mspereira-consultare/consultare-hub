@@ -206,25 +206,29 @@ export default function EquipamentosPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="rounded-2xl bg-[#17407E] p-4 text-white shadow-lg shadow-[#17407E]/20">
-              <ShieldCheck size={24} />
-            </div>
-            <div>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-900">Qualidade / Equipamentos</h1>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                Controle centralizado dos equipamentos da clínica, com calibração, manutenção e anexos em um único lugar.
-              </p>
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="grid gap-5 p-6 xl:grid-cols-[minmax(0,1fr)_304px] xl:items-start">
+          <div className="space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md">
+                <ShieldCheck size={20} />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-slate-800">Qualidade / Equipamentos</h1>
+                <p className="mt-1 max-w-3xl text-xs text-slate-500">
+                  Controle centralizado dos equipamentos da clínica, com calibração, manutenção e anexos em um único lugar.
+                </p>
+              </div>
             </div>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
             <div className="flex items-center gap-2 font-medium text-slate-900">
               <Wrench size={16} />
               Visão gerencial
             </div>
-            <p className="mt-2">Acompanhe vencimentos, manutenção e evidências documentais sem depender da planilha manual.</p>
+            <p className="mt-2">
+              Acompanhe vencimentos, manutenção e evidências documentais sem depender da planilha manual.
+            </p>
           </div>
         </div>
       </section>
@@ -289,4 +293,5 @@ export default function EquipamentosPage() {
       />
     </div>
   );
-}
+}
+

@@ -57,11 +57,11 @@ export function EquipmentSummaryCards({ summary }: EquipmentSummaryCardsProps) {
       {cards.map((card) => {
         const Icon = card.icon;
         return (
-          <div key={card.key} className={`rounded-2xl border bg-white p-4 shadow-sm ${card.accent}`}>
+          <div key={card.key} className={`rounded-xl border bg-white p-4 shadow-sm ${card.accent}`}>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">{card.label}</p>
-                <p className="mt-3 text-3xl font-semibold tracking-tight text-slate-900">{values[card.key]}</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{card.label}</p>
+                <p className="mt-3 text-2xl font-bold text-slate-900">{values[card.key]}</p>
               </div>
               <div className="rounded-full bg-slate-100 p-3 text-slate-600">
                 <Icon size={18} />

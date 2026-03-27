@@ -28,7 +28,7 @@ type EquipmentEventsSectionProps = {
 
 const inputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-200';
-const labelClassName = 'mb-1 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500';
+const labelClassName = 'mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500';
 
 const eventStatusLabel = (value: string, options: SelectOption[]) =>
   options.find((item) => item.value === value)?.label || value;
@@ -157,7 +157,7 @@ export function EquipmentEventsSection({
         <div className="mt-4 max-h-[420px] overflow-auto">
           <table className="min-w-full text-left text-sm">
             <thead className="sticky top-0 bg-white">
-              <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+              <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
                 <th className="px-2 py-3">Data</th>
                 <th className="px-2 py-3">Tipo</th>
                 <th className="px-2 py-3">Descrição</th>
@@ -213,4 +213,5 @@ export function EquipmentEventsSection({
       </section>
     </div>
   );
-}
+}
+

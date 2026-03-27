@@ -37,7 +37,7 @@ export function EquipmentTable({ items, loading, canEdit, onEdit }: EquipmentTab
       <div className="max-h-[68vh] overflow-auto">
         <table className="min-w-full text-left text-sm">
           <thead className="sticky top-0 z-10 bg-white">
-            <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">
+            <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               <th className="px-4 py-3">Unidade</th>
               <th className="px-4 py-3">Equipamento</th>
               <th className="px-4 py-3">Categoria</th>
@@ -111,4 +111,5 @@ export function EquipmentTable({ items, loading, canEdit, onEdit }: EquipmentTab
       </div>
     </div>
   );
-}
+}
+

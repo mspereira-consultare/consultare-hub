@@ -45,7 +45,7 @@ export function EquipmentFiltersBar({
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="grid gap-3 xl:grid-cols-[2fr_1fr_1fr_1fr_auto_auto_auto] xl:items-end">
         <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Busca</span>
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Busca</span>
           <div className="relative">
             <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
@@ -58,7 +58,7 @@ export function EquipmentFiltersBar({
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Unidade</span>
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Unidade</span>
           <select
             className={inputClassName}
             value={filters.unit}
@@ -74,7 +74,7 @@ export function EquipmentFiltersBar({
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Status de calibração</span>
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Status de calibração</span>
           <select
             className={inputClassName}
             value={filters.calibrationStatus}
@@ -90,7 +90,7 @@ export function EquipmentFiltersBar({
         </label>
 
         <label className="block">
-          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Status operacional</span>
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Status operacional</span>
           <select
             className={inputClassName}
             value={filters.operationalStatus}
@@ -137,4 +137,5 @@ export function EquipmentFiltersBar({
       </div>
     </div>
   );
-}
+}
+
