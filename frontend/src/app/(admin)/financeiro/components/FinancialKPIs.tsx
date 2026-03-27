@@ -17,7 +17,7 @@ export const FinancialKPIs = ({ data }: { data: KPIData }) => {
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
         <div className="p-3 bg-blue-100 text-blue-600 rounded-lg"><DollarSign /></div>
         <div>
-          <p className="text-sm text-slate-500">Faturamento do perÃ­odo</p>
+          <p className="text-sm text-slate-500">Faturamento do período</p>
           <p className="text-2xl font-bold text-slate-800">{fmtMoney(data.total || 0)}</p>
         </div>
       </div>
@@ -25,7 +25,7 @@ export const FinancialKPIs = ({ data }: { data: KPIData }) => {
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
         <div className="p-3 bg-green-100 text-green-600 rounded-lg"><Ticket /></div>
         <div>
-          <p className="text-sm text-slate-500">Ticket mÃ©dio</p>
+          <p className="text-sm text-slate-500">Ticket médio</p>
           <p className="text-2xl font-bold text-slate-800">{fmtMoney(ticketAvg)}</p>
         </div>
       </div>
@@ -43,7 +43,7 @@ export const FinancialKPIs = ({ data }: { data: KPIData }) => {
         <div>
           <p className="text-sm text-slate-500">Novos pacientes</p>
           <p className="text-2xl font-bold text-slate-800">{fmtNumber(data.newPatients || 0)}</p>
-          <p className="text-xs text-slate-500 mt-1">Primeiro agendamento no perÃ­odo</p>
+          <p className="text-xs text-slate-500 mt-1">Primeiro agendamento no período</p>
         </div>
       </div>
     </div>

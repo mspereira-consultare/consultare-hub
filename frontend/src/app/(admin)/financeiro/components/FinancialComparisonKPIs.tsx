@@ -55,8 +55,8 @@ export const FinancialComparisonKPIs = ({ base, compare, labelA, labelB }: Compa
         <div className="w-full">
           <p className="text-sm text-slate-500">Faturamento</p>
           <p className="text-xl font-bold text-slate-800">{fmtMoney(base.total)}</p>
-          <p className="text-xs text-slate-500 mt-1">PerÃ­odo A: {labelA}</p>
-          <p className="text-xs text-slate-500">PerÃ­odo B: {fmtMoney(compare.total)} ({labelB})</p>
+          <p className="text-xs text-slate-500 mt-1">Período A: {labelA}</p>
+          <p className="text-xs text-slate-500">Período B: {fmtMoney(compare.total)} ({labelB})</p>
           <div className="mt-2">
             <DeltaBadge delta={totalDelta.delta} label={`${totalDelta.valueLabel} (${totalDelta.pctLabel})`} />
           </div>
@@ -68,10 +68,10 @@ export const FinancialComparisonKPIs = ({ base, compare, labelA, labelB }: Compa
           <Ticket />
         </div>
         <div className="w-full">
-          <p className="text-sm text-slate-500">Ticket mÃ©dio</p>
+          <p className="text-sm text-slate-500">Ticket médio</p>
           <p className="text-xl font-bold text-slate-800">{fmtMoney(baseTicket)}</p>
-          <p className="text-xs text-slate-500 mt-1">PerÃ­odo A: {labelA}</p>
-          <p className="text-xs text-slate-500">PerÃ­odo B: {fmtMoney(compareTicket)} ({labelB})</p>
+          <p className="text-xs text-slate-500 mt-1">Período A: {labelA}</p>
+          <p className="text-xs text-slate-500">Período B: {fmtMoney(compareTicket)} ({labelB})</p>
           <div className="mt-2">
             <DeltaBadge delta={ticketDelta.delta} label={`${ticketDelta.valueLabel} (${ticketDelta.pctLabel})`} />
           </div>
@@ -85,8 +85,8 @@ export const FinancialComparisonKPIs = ({ base, compare, labelA, labelB }: Compa
         <div className="w-full">
           <p className="text-sm text-slate-500">Atendimentos</p>
           <p className="text-xl font-bold text-slate-800">{fmtNumber(base.qtd)}</p>
-          <p className="text-xs text-slate-500 mt-1">PerÃ­odo A: {labelA}</p>
-          <p className="text-xs text-slate-500">PerÃ­odo B: {fmtNumber(compare.qtd)} ({labelB})</p>
+          <p className="text-xs text-slate-500 mt-1">Período A: {labelA}</p>
+          <p className="text-xs text-slate-500">Período B: {fmtNumber(compare.qtd)} ({labelB})</p>
           <div className="mt-2">
             <DeltaBadge delta={qtdDelta.delta} label={`${qtdDelta.valueLabel} (${qtdDelta.pctLabel})`} />
           </div>
@@ -100,8 +100,8 @@ export const FinancialComparisonKPIs = ({ base, compare, labelA, labelB }: Compa
         <div className="w-full">
           <p className="text-sm text-slate-500">Novos pacientes</p>
           <p className="text-xl font-bold text-slate-800">{fmtNumber(base.newPatients || 0)}</p>
-          <p className="text-xs text-slate-500 mt-1">PerÃ­odo A: {labelA}</p>
-          <p className="text-xs text-slate-500">PerÃ­odo B: {fmtNumber(compare.newPatients || 0)} ({labelB})</p>
+          <p className="text-xs text-slate-500 mt-1">Período A: {labelA}</p>
+          <p className="text-xs text-slate-500">Período B: {fmtNumber(compare.newPatients || 0)} ({labelB})</p>
           <div className="mt-2">
             <DeltaBadge delta={newPatientsDelta.delta} label={`${newPatientsDelta.valueLabel} (${newPatientsDelta.pctLabel})`} />
           </div>
