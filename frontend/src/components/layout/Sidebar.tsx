@@ -161,11 +161,19 @@ const menuItems: MenuItem[] = [
   },
   {
     href: "/propostas",
-    label: "Gestão de Propostas",
+    label: "Propostas - Base de trabalho",
     icon: Briefcase,
     group: "FINANCEIRO",
-    roles: ["ADMIN", "GESTOR"],
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "propostas",
+  },
+  {
+    href: "/propostas/gerencial",
+    label: "Propostas - Visão gerencial",
+    icon: BarChart3,
+    group: "FINANCEIRO",
+    roles: ["ADMIN", "GESTOR"],
+    pageKey: "propostas_gerencial",
   },
   {
     href: "/repasses",

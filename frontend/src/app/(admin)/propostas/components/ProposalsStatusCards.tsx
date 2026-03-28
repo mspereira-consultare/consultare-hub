@@ -31,7 +31,7 @@ export function ProposalsStatusCards({ summary, percentageOfTotal, onOpenAwaitin
               className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
             >
               <ArrowDownToLine size={14} />
-              Ver base
+              Abrir base
             </button>
           </div>
         </div>

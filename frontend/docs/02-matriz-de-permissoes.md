@@ -26,6 +26,7 @@ Este documento descreve o controle de acesso atual do sistema:
 | `agendamentos` | `/agendamentos` |
 | `contratos` | `/contratos` |
 | `propostas` | `/propostas` |
+| `propostas_gerencial` | `/propostas/gerencial` |
 | `metas_dashboard` | `/metas/dashboard` |
 | `metas` | `/metas` |
 | `produtividade` | `/produtividade` |
@@ -55,6 +56,7 @@ Fonte: `frontend/src/lib/permissions.ts`.
 | agendamentos | ✅ | ✅ | ✅ |
 | contratos | ✅ | ✅ | ✅ |
 | propostas | ✅ | ✅ | ✅ |
+| propostas_gerencial | ✅ | ❌ | ✅ |
 | metas_dashboard | ✅ | ❌ | ❌ |
 | metas | ✅ | ✅ | ❌ |
 | produtividade | ✅ | ✅ | ✅ |
@@ -74,7 +76,8 @@ Fonte: `frontend/src/lib/permissions.ts`.
 | financeiro | ❌ | ❌ | ❌ |
 | agendamentos | ✅ | ❌ | ❌ |
 | contratos | ❌ | ❌ | ❌ |
-| propostas | ❌ | ❌ | ❌ |
+| propostas | ✅ | ✅ | ❌ |
+| propostas_gerencial | ❌ | ❌ | ❌ |
 | metas_dashboard | ✅ | ❌ | ❌ |
 | metas | ❌ | ❌ | ❌ |
 | produtividade | ✅ | ❌ | ✅ |
@@ -90,7 +93,8 @@ Fonte: `frontend/src/lib/permissions.ts`.
 | monitor | ✅ | ❌ | ✅ |
 | financeiro | ❌ | ❌ | ❌ |
 | contratos | ❌ | ❌ | ❌ |
-| propostas | ❌ | ❌ | ❌ |
+| propostas | ✅ | ✅ | ❌ |
+| propostas_gerencial | ❌ | ❌ | ❌ |
 | metas_dashboard | ✅ | ❌ | ❌ |
 | metas | ❌ | ❌ | ❌ |
 | produtividade | ✅ | ❌ | ✅ |
@@ -157,7 +161,7 @@ Em `frontend/src/app/api/admin/refresh/route.ts`:
 |---|---|
 | `financeiro` | `produtividade` |
 | `faturamento` | `financeiro` |
-| `comercial` | `propostas` |
+| `comercial` | `propostas_gerencial` |
 | `contratos` | `contratos` |
 | `monitor_medico` | `monitor` |
 | `monitor_recepcao` | `monitor` |

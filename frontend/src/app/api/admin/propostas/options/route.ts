@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { listProposalDetails, normalizeProposalDetailFilters, normalizeProposalFilters } from '@/lib/proposals/repository';
 import { requirePropostasPermission } from '@/lib/proposals/auth';
+import { listProposalFilterOptions, normalizeProposalFilters } from '@/lib/proposals/repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -13,18 +13,17 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
-    const baseFilters = normalizeProposalFilters(searchParams);
-    const filters = normalizeProposalDetailFilters(searchParams, baseFilters);
-    const details = await listProposalDetails(filters, auth.db);
+    const filters = normalizeProposalFilters(searchParams);
+    const options = await listProposalFilterOptions(filters, auth.db);
 
     return NextResponse.json({
       status: 'success',
-      data: details,
+      data: options,
     });
   } catch (error: any) {
-    console.error('Erro API Propostas detalhes:', error);
+    console.error('Erro API Propostas opções:', error);
     return NextResponse.json(
-      { error: error?.message || 'Erro ao carregar base detalhada de propostas.' },
+      { error: error?.message || 'Erro ao carregar filtros de propostas.' },
       { status: Number(error?.status) || 500 },
     );
   }

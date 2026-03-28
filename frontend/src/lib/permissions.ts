@@ -7,6 +7,7 @@ export type PageKey =
   | 'financeiro'
   | 'contratos'
   | 'propostas'
+  | 'propostas_gerencial'
   | 'repasses'
   | 'marketing_funil'
   | 'colaboradores'
@@ -40,7 +41,8 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'monitor', label: 'Monitor', path: '/monitor' },
   { key: 'financeiro', label: 'Financeiro', path: '/financeiro' },
   { key: 'contratos', label: 'ResolveSaúde', path: '/contratos' },
-  { key: 'propostas', label: 'Propostas', path: '/propostas' },
+  { key: 'propostas', label: 'Propostas - Base de trabalho', path: '/propostas' },
+  { key: 'propostas_gerencial', label: 'Propostas - Visão gerencial', path: '/propostas/gerencial' },
   { key: 'repasses', label: 'Fechamento de Repasses', path: '/repasses' },
   { key: 'marketing_funil', label: 'Marketing - Funil', path: '/marketing/funil' },
   { key: 'colaboradores', label: 'Colaboradores', path: '/colaboradores' },
@@ -92,14 +94,14 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
     setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { edit: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
     return matrix;
   }
 
-  setMany(matrix, ['dashboard', 'monitor', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
-  setMany(matrix, ['checklist_crc', 'checklist_recepcao'], { edit: true });
+  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
+  setMany(matrix, ['propostas', 'checklist_crc', 'checklist_recepcao'], { edit: true });
   setMany(matrix, ['monitor', 'produtividade', 'agendamentos', 'colaboradores', 'equipamentos', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
   return matrix;
 };
@@ -153,6 +155,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/financeiro') return 'financeiro';
   if (path === '/contratos') return 'contratos';
   if (path === '/propostas') return 'propostas';
+  if (path === '/propostas/gerencial') return 'propostas_gerencial';
   if (path === '/repasses') return 'repasses';
   if (path === '/marketing/funil') return 'marketing_funil';
   if (path === '/colaboradores') return 'colaboradores';
@@ -175,7 +178,11 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
 
   if (path.startsWith('/api/admin/financial/')) return 'financeiro';
   if (path.startsWith('/api/admin/contratos')) return 'contratos';
-  if (path.startsWith('/api/admin/propostas')) return 'propostas';
+  if (path === '/api/admin/propostas' || path === '/api/admin/propostas/') return 'propostas_gerencial';
+  if (path.startsWith('/api/admin/propostas/details')) return 'propostas';
+  if (path.startsWith('/api/admin/propostas/export')) return 'propostas';
+  if (path.startsWith('/api/admin/propostas/options')) return 'propostas';
+  if (path.startsWith('/api/admin/propostas/followup')) return 'propostas';
   if (path.startsWith('/api/admin/repasses')) return 'repasses';
   if (path.startsWith('/api/admin/marketing/funil')) return 'marketing_funil';
   if (path.startsWith('/api/admin/colaboradores')) return 'colaboradores';

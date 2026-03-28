@@ -227,7 +227,9 @@ Escrita: worker de propostas e fallback on-demand das APIs de `/propostas/detail
 | `updated_by_user_name` | Nome do usuário que fez a última edição |
 | `updated_at` | Data/hora da última edição |
 
-Escrita: APIs `/api/admin/propostas/followup/options` e `/api/admin/propostas/followup/[proposalId]`.
+Leitura: página operacional `/propostas`, exportação XLSX e APIs de follow-up.
+
+Escrita: API `/api/admin/propostas/followup/[proposalId]`.
 
 
 ### `feegow_contracts`

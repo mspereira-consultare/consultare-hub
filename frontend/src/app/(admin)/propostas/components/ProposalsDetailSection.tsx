@@ -41,7 +41,10 @@ export function ProposalsDetailSection({
   onChangePage,
   onRowSaved,
 }: Props) {
-  const detailStatuses = useMemo(() => Array.from(new Set(availableStatuses)).sort((a, b) => a.localeCompare(b, 'pt-BR')), [availableStatuses]);
+  const detailStatuses = useMemo(
+    () => Array.from(new Set(availableStatuses)).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [availableStatuses],
+  );
   const globalStatusLocked = selectedStatus !== 'all';
   const hasActiveLocalFilters = Boolean(detailSearch) || (!globalStatusLocked && detailStatus !== AWAITING_CLIENT_APPROVAL_STATUS);
   const fromRow = detailData.totalRows === 0 ? 0 : (detailData.page - 1) * detailData.pageSize + 1;

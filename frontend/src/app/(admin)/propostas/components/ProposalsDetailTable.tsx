@@ -23,7 +23,7 @@ export function ProposalsDetailTable({ rows, canEdit, followupOptions, onSaved }
             <th className="px-4 py-3">Unidade</th>
             <th className="px-4 py-3">Profissional</th>
             <th className="px-4 py-3 text-right">Valor</th>
-            <th className="px-4 py-3">Status proposta</th>
+            <th className="px-4 py-3">Status da proposta</th>
             <th className="px-4 py-3">Conversão</th>
             <th className="px-4 py-3">Motivo</th>
             <th className="px-4 py-3">Responsável</th>

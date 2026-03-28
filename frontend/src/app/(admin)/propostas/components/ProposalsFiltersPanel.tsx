@@ -2,23 +2,28 @@
 import { formatLastUpdate } from './formatters';
 
 type Props = {
+  title: string;
+  subtitle: string;
   dateRange: { start: string; end: string };
   selectedUnit: string;
   selectedStatus: string;
   availableUnits: string[];
   availableStatuses: string[];
   filtersExpanded: boolean;
-  heartbeat: { status?: string; last_run?: string | null } | null;
-  isUpdating: boolean;
+  heartbeat?: { status?: string; last_run?: string | null } | null;
+  isUpdating?: boolean;
+  canRefresh?: boolean;
   onChangeDateRange: (next: { start: string; end: string }) => void;
   onChangeUnit: (value: string) => void;
   onChangeStatus: (value: string) => void;
   onToggleExpanded: () => void;
-  onManualUpdate: () => void;
+  onManualUpdate?: () => void;
   onResetFilters: () => void;
 };
 
 export function ProposalsFiltersPanel({
+  title,
+  subtitle,
   dateRange,
   selectedUnit,
   selectedStatus,
@@ -26,7 +31,8 @@ export function ProposalsFiltersPanel({
   availableStatuses,
   filtersExpanded,
   heartbeat,
-  isUpdating,
+  isUpdating = false,
+  canRefresh = false,
   onChangeDateRange,
   onChangeUnit,
   onChangeStatus,
@@ -42,8 +48,8 @@ export function ProposalsFiltersPanel({
             <FileText size={24} />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-800">Propostas</h1>
-            <p className="text-slate-500 text-xs">Acompanhamento comercial, conversão e base operacional de follow-up.</p>
+            <h1 className="text-xl font-bold text-slate-800">{title}</h1>
+            <p className="text-slate-500 text-xs">{subtitle}</p>
           </div>
         </div>
 
@@ -59,18 +65,20 @@ export function ProposalsFiltersPanel({
             </div>
           )}
 
-          <button
-            onClick={onManualUpdate}
-            disabled={isUpdating}
-            className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all border whitespace-nowrap ${
-              isUpdating
-                ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-wait'
-                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-blue-600'
-            }`}
-          >
-            {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
-            {isUpdating ? 'Sincronizando...' : 'Atualizar'}
-          </button>
+          {canRefresh && onManualUpdate ? (
+            <button
+              onClick={onManualUpdate}
+              disabled={isUpdating}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all border whitespace-nowrap ${
+                isUpdating
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 cursor-wait'
+                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-blue-600'
+              }`}
+            >
+              {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
+              {isUpdating ? 'Sincronizando...' : 'Atualizar'}
+            </button>
+          ) : null}
 
           <button
             onClick={onToggleExpanded}

@@ -1,8 +1,10 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { getDbConnection } from '@/lib/db';
-import { hasPermission, type PermissionAction } from '@/lib/permissions';
+import { hasPermission, type PageKey, type PermissionAction } from '@/lib/permissions';
 import { loadUserPermissionMatrix } from '@/lib/permissions_server';
+
+type ProposalPageKey = Extract<PageKey, 'propostas' | 'propostas_gerencial'>;
 
 export const getPropostasAccessContext = async () => {
   const session = await getServerSession(authOptions);
@@ -26,14 +28,21 @@ export const getPropostasAccessContext = async () => {
   };
 };
 
-export const requirePropostasPermission = async (action: PermissionAction) => {
+const requireProposalPagePermission = async (pageKey: ProposalPageKey, action: PermissionAction) => {
   const context = await getPropostasAccessContext();
   if (!context.ok) return context;
 
-  const allowed = hasPermission(context.permissions, 'propostas', action, context.role);
+  const allowed = hasPermission(context.permissions, pageKey, action, context.role);
   if (!allowed) {
-    return { ok: false as const, status: 403, error: 'Sem permissão para propostas.' };
+    const label = pageKey === 'propostas_gerencial' ? 'propostas gerenciais' : 'propostas';
+    return { ok: false as const, status: 403, error: `Sem permissão para ${label}.` };
   }
 
   return context;
 };
+
+export const requirePropostasPermission = async (action: PermissionAction) =>
+  requireProposalPagePermission('propostas', action);
+
+export const requirePropostasGerencialPermission = async (action: PermissionAction) =>
+  requireProposalPagePermission('propostas_gerencial', action);

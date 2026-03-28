@@ -35,6 +35,11 @@ export type ProposalFollowupOptions = {
   conversionReasonsByStatus: Record<string, Array<{ value: ProposalConversionReason; label: string }>>;
 };
 
+export type ProposalFilterOptions = {
+  availableUnits: string[];
+  availableStatuses: string[];
+};
+
 export type ProposalFollowupUpdateInput = {
   proposalId: number;
   conversionStatus: ProposalConversionStatus;
@@ -290,6 +295,61 @@ const buildSearchClause = (search: string) => {
       )
     `,
     params: [pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern],
+  };
+};
+
+export const listProposalFilterOptions = async (
+  filters: ProposalFilters,
+  db: DbInterface = getDbConnection(),
+): Promise<ProposalFilterOptions> => {
+  await ensureProposalsSupportTables(db);
+
+  const unitsParams: any[] = [filters.startDate, filters.endDate];
+  let unitsWhere = 'WHERE date BETWEEN ? AND ?';
+  if (normalizeString(filters.status).toLowerCase() !== 'all') {
+    unitsWhere += " AND LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?))";
+    unitsParams.push(filters.status);
+  }
+
+  const statusesParams: any[] = [filters.startDate, filters.endDate];
+  let statusesWhere = 'WHERE date BETWEEN ? AND ?';
+  if (normalizeString(filters.unit).toLowerCase() !== 'all') {
+    statusesWhere += " AND UPPER(TRIM(COALESCE(unit_name, ''))) = UPPER(TRIM(?))";
+    statusesParams.push(filters.unit);
+  }
+
+  const [unitRows, statusRows] = await Promise.all([
+    db.query(
+      `
+        SELECT DISTINCT TRIM(unit_name) AS unit_name
+        FROM feegow_proposals
+        ${unitsWhere}
+          AND unit_name IS NOT NULL
+          AND TRIM(unit_name) <> ''
+        ORDER BY unit_name
+      `,
+      unitsParams,
+    ),
+    db.query(
+      `
+        SELECT DISTINCT TRIM(status) AS status
+        FROM feegow_proposals
+        ${statusesWhere}
+          AND status IS NOT NULL
+          AND TRIM(status) <> ''
+        ORDER BY status
+      `,
+      statusesParams,
+    ),
+  ]);
+
+  return {
+    availableUnits: unitRows
+      .map((row: any) => normalizeString(row?.unit_name))
+      .filter(Boolean),
+    availableStatuses: statusRows
+      .map((row: any) => normalizeString(row?.status))
+      .filter(Boolean),
   };
 };
 

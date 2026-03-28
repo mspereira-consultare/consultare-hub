@@ -12,11 +12,29 @@ type Props = {
   onSaved: (row: ProposalDetailRow) => void;
 };
 
+const PROCEDURE_PREVIEW_LIMIT = 100;
+
 const followupBadgeClassName = (status: string) => {
   if (status === 'CONVERTIDO') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (status === 'EM_CONTATO') return 'border-blue-200 bg-blue-50 text-blue-700';
   if (status === 'NAO_CONVERTIDO') return 'border-rose-200 bg-rose-50 text-rose-700';
   return 'border-amber-200 bg-amber-50 text-amber-700';
+};
+
+const truncateProcedureSummary = (summary: string) => {
+  const normalized = String(summary || '').trim();
+  if (!normalized) {
+    return { preview: '-', truncated: false };
+  }
+
+  if (normalized.length <= PROCEDURE_PREVIEW_LIMIT) {
+    return { preview: normalized, truncated: false };
+  }
+
+  return {
+    preview: `${normalized.slice(0, PROCEDURE_PREVIEW_LIMIT).trimEnd()}...`,
+    truncated: true,
+  };
 };
 
 export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: Props) {
@@ -53,6 +71,15 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
     draft.conversionReason !== (row.conversionReason || '') ||
     draft.responsibleUserId !== (row.responsibleUserId || '');
 
+  const procedurePreview = useMemo(() => truncateProcedureSummary(row.procedureSummary), [row.procedureSummary]);
+  const canExpandProcedures = procedurePreview.truncated && row.proceduresDetailed.length > 0;
+
+  useEffect(() => {
+    if (!canExpandProcedures && expanded) {
+      setExpanded(false);
+    }
+  }, [canExpandProcedures, expanded]);
+
   const handleCopyPhone = async () => {
     try {
       await navigator.clipboard.writeText(row.patientPhone);
@@ -77,7 +104,7 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
         }),
       });
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload?.error || 'Falha ao salvar follow-up.');
+      if (!response.ok) throw new Error(String(payload?.error || 'Falha ao salvar follow-up.'));
       if (payload?.data) onSaved(payload.data as ProposalDetailRow);
     } catch (error: any) {
       setSaveError(String(error?.message || error || 'Erro ao salvar.'));
@@ -96,10 +123,10 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
         </td>
         <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.patientPhone}</td>
         <td className="px-4 py-3 min-w-[320px]">
-          <div className="font-medium text-slate-800">{row.procedureSummary || '-'}</div>
+          <div className="font-medium text-slate-800">{procedurePreview.preview}</div>
           <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
             <span>{row.procedureCount} item(ns)</span>
-            {row.proceduresDetailed.length > 0 ? (
+            {canExpandProcedures ? (
               <button
                 type="button"
                 onClick={() => setExpanded((current) => !current)}

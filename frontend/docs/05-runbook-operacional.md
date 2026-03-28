@@ -83,6 +83,7 @@ Esperado:
 
 - `/api/admin/financial/history`
 - `/api/admin/propostas`
+- `/api/admin/propostas/options`
 - `/api/admin/propostas/details`
 - `/api/admin/propostas/export`
 - `/api/admin/propostas/followup/options`
@@ -318,6 +319,7 @@ LIMIT 20;
   - `/monitor`
   - `/financeiro`
   - `/propostas`
+  - `/propostas/gerencial`
 
 ---
 

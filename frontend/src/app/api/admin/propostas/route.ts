@@ -1,8 +1,9 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 import { ensureProposalsSupportTables } from '@/lib/proposals/repository';
 import { AWAITING_CLIENT_APPROVAL_STATUS } from '@/lib/proposals/constants';
+import { requirePropostasGerencialPermission } from '@/lib/proposals/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -42,6 +43,11 @@ function buildBaseWhere(
 
 export async function GET(request: Request) {
   try {
+    const auth = await requirePropostasGerencialPermission('view');
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const cacheKey = buildCacheKey('admin', request.url);
     const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
       const { searchParams } = new URL(request.url);
@@ -173,6 +179,11 @@ export async function GET(request: Request) {
 
 export async function POST() {
   try {
+    const auth = await requirePropostasGerencialPermission('refresh');
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
     const db = getDbConnection();
     await db.execute(`
       INSERT INTO system_status (service_name, status, last_run, details)

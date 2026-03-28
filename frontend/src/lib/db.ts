@@ -9,6 +9,28 @@ export interface DbInterface {
 let tursoClient: ReturnType<typeof createClient> | null = null;
 let mysqlPool: Pool | null = null;
 
+function resolveMysqlUrl() {
+  const internal = String(process.env.MYSQL_URL || '').trim();
+  const publicUrl = String(process.env.MYSQL_PUBLIC_URL || '').trim();
+
+  if (!internal && publicUrl) return publicUrl;
+  if (!internal) return internal;
+
+  try {
+    const parsed = new URL(internal);
+    const host = String(parsed.hostname || '').toLowerCase();
+    const isInternalHost = host.endsWith('.railway.internal');
+    const isRailwayRuntime = Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID);
+    if (isInternalHost && !isRailwayRuntime && publicUrl) {
+      return publicUrl;
+    }
+  } catch {
+    // fallback to the configured internal URL below
+  }
+
+  return internal;
+}
+
 function resolveProvider(): 'turso' | 'mysql' {
   const raw = String(process.env.DB_PROVIDER || '').toLowerCase().trim();
   if (raw === 'mysql' || raw === 'turso') return raw;
@@ -83,7 +105,7 @@ function adaptSqlForMysql(sql: string, params: any[] = []): { sql: string; param
 }
 
 function getMysqlDbConnection(): DbInterface {
-  const mysqlUrl = process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL;
+  const mysqlUrl = resolveMysqlUrl();
   if (!mysqlUrl) {
     throw new Error('MYSQL_URL ou MYSQL_PUBLIC_URL nao configurada.');
   }
