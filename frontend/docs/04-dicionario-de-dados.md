@@ -186,33 +186,49 @@ Escrita: worker Feegow de agendamentos (`appointments`) e backfills.
 
 ### `feegow_proposals`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `proposal_id` (PK) | ID da proposta |
 | `date` | Data da proposta |
-| `status` | Situa??o da proposta |
+| `status` | Situação da proposta |
 | `unit_name` | Unidade |
 | `professional_name` | Profissional |
-| `total_value` | Valor total (l?quido calculado) |
+| `total_value` | Valor total líquido calculado |
 | `items_json` | Itens da proposta |
 | `patient_id` | ID do paciente na Feegow |
-| `proposal_last_update` | ?ltima atualiza??o informada pela API de propostas |
-| `updated_at` | Atualiza??o local |
+| `proposal_last_update` | Última atualização informada pela API de propostas |
+| `updated_at` | Atualização local |
 
 Escrita: worker de propostas.
 
 ### `feegow_patient_contacts_cache`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `patient_id` (PK) | ID do paciente na Feegow |
 | `patient_name` | Nome do paciente |
 | `phone_primary` | Telefone/celular principal |
 | `email_primary` | E-mail principal |
 | `cpf` | CPF retornado pela Feegow |
-| `updated_at` | Momento do ?ltimo refresh do cache |
+| `updated_at` | Momento do último refresh do cache |
 
 Escrita: worker de propostas e fallback on-demand das APIs de `/propostas/details` e `/propostas/export`.
+
+### `proposal_followup_control`
+
+| Campo | Descrição |
+|---|---|
+| `proposal_id` (PK) | ID da proposta vinculada a `feegow_proposals` |
+| `conversion_status` | Situação operacional da equipe (`PENDENTE`, `EM_CONTATO`, `CONVERTIDO`, `NAO_CONVERTIDO`) |
+| `conversion_reason` | Motivo associado à situação, quando aplicável |
+| `responsible_user_id` | ID do usuário responsável pelo follow-up |
+| `responsible_user_name` | Nome do responsável salvo em snapshot |
+| `updated_by_user_id` | ID do usuário que fez a última edição |
+| `updated_by_user_name` | Nome do usuário que fez a última edição |
+| `updated_at` | Data/hora da última edição |
+
+Escrita: APIs `/api/admin/propostas/followup/options` e `/api/admin/propostas/followup/[proposalId]`.
+
 
 ### `feegow_contracts`
 

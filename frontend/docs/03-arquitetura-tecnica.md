@@ -152,8 +152,9 @@ Arquivo: `workers/main.py`.
 - O KPI `Novos pacientes` do `/financeiro` usa `COUNT(DISTINCT patient_id)` com `first_appointment_flag = 1`, filtrando pela `date` da consulta.
 - API de procedimentos (`worker_feegow_procedures.py`).
 - API de propostas (`worker_proposals.py`).
-- O domÃ­nio de propostas agora persiste `patient_id`, `proposal_last_update` e uma cache local de contatos Feegow em `feegow_patient_contacts_cache`.
-- As APIs `/api/admin/propostas/details` e `/api/admin/propostas/export` reutilizam a base local e fazem fallback on-demand em `patient/search?paciente_id=...` para cache miss.
+- O domínio de propostas persiste `patient_id`, `proposal_last_update` e uma cache local de contatos Feegow em `feegow_patient_contacts_cache`.
+- O controle operacional da equipe fica em `proposal_followup_control`, separado de `feegow_proposals`, para não ser sobrescrito por refresh do worker.
+- As APIs `/api/admin/propostas/details`, `/api/admin/propostas/export`, `/api/admin/propostas/followup/options` e `/api/admin/propostas/followup/[proposalId]` reutilizam a base local e fazem fallback on-demand em `patient/search?paciente_id=...` para cache miss.
 - API de contratos (`worker_contracts.py`).
 - Fluxos de monitor via pÃ¡ginas internas (recepÃ§Ã£o/mÃ©dico).
 - RenovaÃ§Ã£o de credenciais/cookies por Playwright (`worker_auth.py`).

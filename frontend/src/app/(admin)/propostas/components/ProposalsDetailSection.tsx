@@ -1,39 +1,45 @@
-﻿'use client';
+'use client';
 
 import { Download, FilterX, Loader2, Search } from 'lucide-react';
 import { useMemo } from 'react';
 import { AWAITING_CLIENT_APPROVAL_STATUS } from '@/lib/proposals/constants';
 import { ProposalsDetailTable } from './ProposalsDetailTable';
-import type { ProposalDetailResponse } from './types';
+import type { ProposalDetailResponse, ProposalDetailRow, ProposalFollowupOptions } from './types';
 
 type Props = {
   detailData: ProposalDetailResponse;
+  followupOptions: ProposalFollowupOptions;
   availableStatuses: string[];
   selectedStatus: string;
   detailStatus: string;
   detailSearch: string;
   loading: boolean;
   exporting: boolean;
+  canEdit: boolean;
   onChangeDetailStatus: (value: string) => void;
   onChangeDetailSearch: (value: string) => void;
   onClearDetailFilters: () => void;
   onExport: () => void;
   onChangePage: (page: number) => void;
+  onRowSaved: (row: ProposalDetailRow) => void;
 };
 
 export function ProposalsDetailSection({
   detailData,
+  followupOptions,
   availableStatuses,
   selectedStatus,
   detailStatus,
   detailSearch,
   loading,
   exporting,
+  canEdit,
   onChangeDetailStatus,
   onChangeDetailSearch,
   onClearDetailFilters,
   onExport,
   onChangePage,
+  onRowSaved,
 }: Props) {
   const detailStatuses = useMemo(() => Array.from(new Set(availableStatuses)).sort((a, b) => a.localeCompare(b, 'pt-BR')), [availableStatuses]);
   const globalStatusLocked = selectedStatus !== 'all';
@@ -45,9 +51,9 @@ export function ProposalsDetailSection({
     <section className="bg-white rounded-xl border border-slate-200 shadow-sm" id="base-detalhada-propostas">
       <div className="p-5 border-b border-slate-100 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
-          <h2 className="text-lg font-bold text-slate-800">Base detalhada</h2>
+          <h2 className="text-lg font-bold text-slate-800">Base de trabalho</h2>
           <p className="text-sm text-slate-500 mt-1">
-            Lista operacional para follow-up da equipe comercial, sempre respeitando o período e a unidade selecionados no painel.
+            Fila operacional para follow-up da equipe, com conversão, responsável e histórico da última edição.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-medium">
@@ -127,7 +133,7 @@ export function ProposalsDetailSection({
         {loading ? (
           <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 text-slate-400">
             <Loader2 size={28} className="animate-spin text-blue-600" />
-            <p className="text-sm">Carregando base detalhada...</p>
+            <p className="text-sm">Carregando base de trabalho...</p>
           </div>
         ) : detailData.rows.length === 0 ? (
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-6 py-12 text-center text-sm text-slate-500">
@@ -135,7 +141,12 @@ export function ProposalsDetailSection({
           </div>
         ) : (
           <>
-            <ProposalsDetailTable rows={detailData.rows} />
+            <ProposalsDetailTable
+              rows={detailData.rows}
+              canEdit={canEdit}
+              followupOptions={followupOptions}
+              onSaved={onRowSaved}
+            />
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-500">
                 Página {detailData.page} de {detailData.totalPages}

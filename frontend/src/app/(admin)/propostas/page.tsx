@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -13,9 +13,19 @@ import {
 import { ProposalsDetailSection } from './components/ProposalsDetailSection';
 import { ProposalsFiltersPanel } from './components/ProposalsFiltersPanel';
 import { ProposalsStatusCards } from './components/ProposalsStatusCards';
+import { ProposalsTabNav } from './components/ProposalsTabNav';
 import { AWAITING_CLIENT_APPROVAL_STATUS } from '@/lib/proposals/constants';
 import { formatCurrency, toNumber } from './components/formatters';
-import type { GroupedUnit, ProposalDetailResponse, SellerRow, SortKey, Summary, UnitRow } from './components/types';
+import type {
+  GroupedUnit,
+  ProposalDetailResponse,
+  ProposalDetailRow,
+  ProposalFollowupOptions,
+  SellerRow,
+  SortKey,
+  Summary,
+  UnitRow,
+} from './components/types';
 
 const EMPTY_SUMMARY: Summary = {
   qtd: 0,
@@ -41,10 +51,18 @@ const EMPTY_DETAIL_DATA: ProposalDetailResponse = {
   detailStatusApplied: AWAITING_CLIENT_APPROVAL_STATUS,
 };
 
+const EMPTY_FOLLOWUP_OPTIONS: ProposalFollowupOptions = {
+  canEdit: false,
+  users: [],
+  conversionStatuses: [],
+  conversionReasonsByStatus: {},
+};
+
 export default function ProposalsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [detailError, setDetailError] = useState('');
+  const [activeTab, setActiveTab] = useState<'workqueue' | 'overview'>('workqueue');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedUnit, setSelectedUnit] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -75,6 +93,7 @@ export default function ProposalsPage() {
   const [detailSearchInput, setDetailSearchInput] = useState('');
   const [detailSearch, setDetailSearch] = useState('');
   const [detailPage, setDetailPage] = useState(1);
+  const [followupOptions, setFollowupOptions] = useState<ProposalFollowupOptions>(EMPTY_FOLLOWUP_OPTIONS);
 
   const detailSectionRef = useRef<HTMLDivElement | null>(null);
   const previousGlobalStatusRef = useRef('all');
@@ -194,6 +213,18 @@ export default function ProposalsPage() {
     }
   }, [dateRange.end, dateRange.start, detailPage, detailSearch, detailStatus, selectedStatus, selectedUnit]);
 
+  const fetchFollowupOptions = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/propostas/followup/options', { cache: 'no-store' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload?.error || 'Falha ao carregar opções da base de trabalho.');
+      setFollowupOptions(payload?.data || EMPTY_FOLLOWUP_OPTIONS);
+    } catch (fetchError) {
+      console.error('Erro ao carregar opções de follow-up de propostas:', fetchError);
+      setDetailError((current) => current || (fetchError instanceof Error ? fetchError.message : 'Erro ao carregar opções da base.'));
+    }
+  }, []);
+
   useEffect(() => {
     fetchData();
   }, [fetchData]);
@@ -201,6 +232,10 @@ export default function ProposalsPage() {
   useEffect(() => {
     fetchDetailData();
   }, [fetchDetailData]);
+
+  useEffect(() => {
+    fetchFollowupOptions();
+  }, [fetchFollowupOptions]);
 
   useEffect(() => {
     if (selectedStatus === 'all') return;
@@ -295,11 +330,19 @@ export default function ProposalsPage() {
   };
 
   const handleOpenAwaitingBase = () => {
+    setActiveTab('workqueue');
     setDetailStatus(AWAITING_CLIENT_APPROVAL_STATUS);
     setDetailPage(1);
     window.setTimeout(() => {
       detailSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 120);
+  };
+
+  const handleFollowupRowSaved = (nextRow: ProposalDetailRow) => {
+    setDetailData((current) => ({
+      ...current,
+      rows: current.rows.map((row) => (row.proposalId === nextRow.proposalId ? nextRow : row)),
+    }));
   };
 
   const handleExportDetail = async () => {
@@ -363,223 +406,264 @@ export default function ProposalsPage() {
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
       {detailError && <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{detailError}</div>}
 
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">Visão geral</h2>
+      <ProposalsTabNav activeTab={activeTab} onChange={setActiveTab} />
+
+      {activeTab === 'workqueue' ? (
+        <div ref={detailSectionRef}>
+          <ProposalsDetailSection
+            detailData={detailData}
+            followupOptions={followupOptions}
+            availableStatuses={availableStatuses.length > 0 ? availableStatuses : [AWAITING_CLIENT_APPROVAL_STATUS]}
+            selectedStatus={selectedStatus}
+            detailStatus={detailStatus}
+            detailSearch={detailSearchInput}
+            loading={detailLoading}
+            exporting={detailExporting}
+            canEdit={followupOptions.canEdit}
+            onChangeDetailStatus={(value) => {
+              setDetailStatus(value);
+              setDetailPage(1);
+            }}
+            onChangeDetailSearch={setDetailSearchInput}
+            onClearDetailFilters={() => {
+              setDetailSearchInput('');
+              if (selectedStatus === 'all') setDetailStatus(AWAITING_CLIENT_APPROVAL_STATUS);
+              setDetailPage(1);
+            }}
+            onExport={handleExportDetail}
+            onChangePage={setDetailPage}
+            onRowSaved={handleFollowupRowSaved}
+          />
         </div>
+      ) : null}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Total de propostas</p>
-            <h3 className="text-2xl font-bold text-slate-800">{summary.qtd}</h3>
-            <div className="mt-2 flex items-center gap-1 text-xs text-blue-600 font-medium">
-              <FileText size={12} />
-              <span>100% do volume</span>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Valor total</p>
-            <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(summary.valor)}</h3>
-            <div className="mt-2 flex items-center gap-1 text-xs text-emerald-600 font-medium">
-              <DollarSign size={12} />
-              <span>{summary.qtd} propostas · 100% do valor</span>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Convertido (ganho)</p>
-            <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(summary.wonValue)}</h3>
-            <div className="mt-2 flex items-center gap-1 text-xs text-purple-600 font-medium">
-              <TrendingUp size={12} />
-              <span>
-                {summary.wonQtd} propostas · {percentageOfTotal(summary.wonValue).toFixed(1)}%
-              </span>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Taxa de conversão</p>
-            <h3 className="text-2xl font-bold text-slate-800">{summary.conversionRate.toFixed(1)}%</h3>
-            <div className="mt-2 flex items-center gap-1 text-xs text-amber-600 font-medium">
-              <PieChart size={12} />
-              <span>
-                {summary.wonQtd} de {summary.qtd} propostas
-              </span>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-            <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Ticket médio</p>
-            <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(avgTicket)}</h3>
-            <div className="mt-2 flex items-center gap-1 text-xs text-slate-600 font-medium">
-              <DollarSign size={12} />
-              <span>{summary.qtd} propostas no cálculo</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <ProposalsStatusCards
-        summary={summary}
-        percentageOfTotal={percentageOfTotal}
-        onOpenAwaitingBase={handleOpenAwaitingBase}
-      />
-
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 text-slate-400 animate-in fade-in">
-          <Loader2 size={40} className="animate-spin mb-4 text-blue-600" />
-          <p>Carregando análises...</p>
-        </div>
-      ) : (
+      {activeTab === 'overview' ? (
         <>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-1 space-y-6">
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <Briefcase className="w-5 h-5 text-slate-500" />
-                Performance por unidade
-              </h2>
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-slate-500">Visão gerencial</h2>
+            </div>
 
-              <div className="space-y-4">
-                {unitData.map((unit, index) => (
-                  <div key={`${unit.name}-${index}`} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h4 className="font-bold text-slate-800">{unit.name || 'Sem unidade'}</h4>
-                        <span className="text-xs text-slate-500">{unit.qtd} propostas</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Total de propostas</p>
+                <h3 className="text-2xl font-bold text-slate-800">{summary.qtd}</h3>
+                <div className="mt-2 flex items-center gap-1 text-xs text-blue-600 font-medium">
+                  <FileText size={12} />
+                  <span>100% do volume</span>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Valor total</p>
+                <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(summary.valor)}</h3>
+                <div className="mt-2 flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                  <DollarSign size={12} />
+                  <span>{summary.qtd} propostas · 100% do valor</span>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Convertido (ganho)</p>
+                <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(summary.wonValue)}</h3>
+                <div className="mt-2 flex items-center gap-1 text-xs text-purple-600 font-medium">
+                  <TrendingUp size={12} />
+                  <span>
+                    {summary.wonQtd} propostas · {percentageOfTotal(summary.wonValue).toFixed(1)}%
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Taxa de conversão</p>
+                <h3 className="text-2xl font-bold text-slate-800">{summary.conversionRate.toFixed(1)}%</h3>
+                <div className="mt-2 flex items-center gap-1 text-xs text-amber-600 font-medium">
+                  <PieChart size={12} />
+                  <span>
+                    {summary.wonQtd} de {summary.qtd} propostas
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                <p className="text-slate-500 text-[11px] font-bold uppercase tracking-wider mb-1">Ticket médio</p>
+                <h3 className="text-2xl font-bold text-slate-800">{formatCurrency(avgTicket)}</h3>
+                <div className="mt-2 flex items-center gap-1 text-xs text-slate-600 font-medium">
+                  <DollarSign size={12} />
+                  <span>{summary.qtd} propostas no cálculo</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <ProposalsStatusCards
+            summary={summary}
+            percentageOfTotal={percentageOfTotal}
+            onOpenAwaitingBase={handleOpenAwaitingBase}
+          />
+
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400 animate-in fade-in">
+              <Loader2 size={40} className="animate-spin mb-4 text-blue-600" />
+              <p>Carregando análises...</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1 space-y-6">
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                  <Briefcase className="w-5 h-5 text-slate-500" />
+                  Performance por unidade
+                </h2>
+
+                <div className="space-y-4">
+                  {unitData.map((unit, index) => (
+                    <div
+                      key={`${unit.name}-${index}`}
+                      className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all"
+                    >
+                      <div className="flex justify-between items-start mb-3">
+                        <div>
+                          <h4 className="font-bold text-slate-800">{unit.name || 'Sem unidade'}</h4>
+                          <span className="text-xs text-slate-500">{unit.qtd} propostas</span>
+                        </div>
+                        <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-bold">
+                          {formatCurrency(unit.total)}
+                        </span>
                       </div>
-                      <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-bold">{formatCurrency(unit.total)}</span>
-                    </div>
 
-                    <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
-                      <div style={{ width: '100%' }} className="bg-blue-500 h-full opacity-80" />
+                      <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
+                        <div style={{ width: '100%' }} className="bg-blue-500 h-full opacity-80" />
+                      </div>
                     </div>
-                  </div>
-                ))}
-                {unitData.length === 0 && <p className="text-slate-400 text-sm italic">Nenhum dado por unidade.</p>}
-              </div>
-            </div>
-
-            <div className="lg:col-span-2">
-              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 gap-4 flex-col sm:flex-row">
-                  <h2 className="font-bold text-slate-800">Ranking profissional</h2>
-                  <div className="relative w-full sm:w-64">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                    <input
-                      type="text"
-                      placeholder="Filtrar profissional..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="pl-9 pr-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none w-full"
-                    />
-                  </div>
+                  ))}
+                  {unitData.length === 0 ? (
+                    <p className="text-slate-400 text-sm italic">Nenhum dado por unidade.</p>
+                  ) : null}
                 </div>
+              </div>
 
-                <div className="overflow-auto max-h-[560px]">
-                  <table className="w-full text-left">
-                    <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase text-slate-500 font-semibold">
-                      <tr>
-                        <th className="px-4 py-3">
-                          <button onClick={() => toggleSort('professional_name')} className="inline-flex items-center gap-1 hover:text-slate-700">
-                            Profissional <span>{sortIndicator('professional_name')}</span>
-                          </button>
-                        </th>
-                        <th className="px-4 py-3 text-right">
-                          <button onClick={() => toggleSort('qtd')} className="inline-flex items-center gap-1 hover:text-slate-700">
-                            Qtd <span>{sortIndicator('qtd')}</span>
-                          </button>
-                        </th>
-                        <th className="px-4 py-3 text-right">
-                          <button onClick={() => toggleSort('qtd_executado')} className="inline-flex items-center gap-1 hover:text-slate-700">
-                            Exec. qtd <span>{sortIndicator('qtd_executado')}</span>
-                          </button>
-                        </th>
-                        <th className="px-4 py-3 text-right">
-                          <button onClick={() => toggleSort('valor')} className="inline-flex items-center gap-1 hover:text-slate-700">
-                            Total estimado <span>{sortIndicator('valor')}</span>
-                          </button>
-                        </th>
-                        <th className="px-4 py-3 text-right">
-                          <button onClick={() => toggleSort('valor_executado')} className="inline-flex items-center gap-1 hover:text-slate-700">
-                            Total executado <span>{sortIndicator('valor_executado')}</span>
-                          </button>
-                        </th>
-                        <th className="px-4 py-3 text-center">
-                          <button onClick={() => toggleSort('conversion_rate')} className="inline-flex items-center gap-1 hover:text-slate-700">
-                            Taxa de conversão <span>{sortIndicator('conversion_rate')}</span>
-                          </button>
-                        </th>
-                        <th className="px-4 py-3 text-center">
-                          <button onClick={() => toggleSort('ticket_medio')} className="inline-flex items-center gap-1 hover:text-slate-700">
-                            Ticket médio <span>{sortIndicator('ticket_medio')}</span>
-                          </button>
-                        </th>
-                        <th className="px-4 py-3 text-center">
-                          <button onClick={() => toggleSort('ticket_exec')} className="inline-flex items-center gap-1 hover:text-slate-700">
-                            Ticket exec. <span>{sortIndicator('ticket_exec')}</span>
-                          </button>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 text-sm">
-                      {sortedSellers.map((seller, index) => (
-                        <tr key={`${seller.professional_name || 'sistema'}-${index}`} className="hover:bg-slate-50 transition-colors">
-                          <td className="px-4 py-3 font-medium text-slate-700">{seller.professional_name || 'Sistema'}</td>
-                          <td className="px-4 py-3 text-right text-slate-600">{toNumber(seller.qtd)}</td>
-                          <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{toNumber(seller.qtd_executado)}</td>
-                          <td className="px-4 py-3 text-right text-slate-700 font-semibold">{formatCurrency(toNumber(seller.valor))}</td>
-                          <td className="px-4 py-3 text-right font-bold">
-                            <span className="text-emerald-600">{formatCurrency(toNumber(seller.valor_executado))}</span>
-                          </td>
-                          <td className="px-4 py-3 text-center text-slate-600 text-xs font-semibold">
-                            {toNumber(seller.valor) > 0
-                              ? `${((toNumber(seller.valor_executado) / toNumber(seller.valor)) * 100).toFixed(1)}%`
-                              : '0,0%'}
-                          </td>
-                          <td className="px-4 py-3 text-center text-slate-400 text-xs">
-                            {formatCurrency(toNumber(seller.valor) / Math.max(toNumber(seller.qtd), 1))}
-                          </td>
-                          <td className="px-4 py-3 text-center text-slate-400 text-xs">
-                            {formatCurrency(toNumber(seller.valor_executado) / Math.max(toNumber(seller.qtd_executado), 1))}
-                          </td>
+              <div className="lg:col-span-2">
+                <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                  <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 gap-4 flex-col sm:flex-row">
+                    <h2 className="font-bold text-slate-800">Ranking profissional</h2>
+                    <div className="relative w-full sm:w-64">
+                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        placeholder="Filtrar profissional..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-9 pr-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="overflow-auto max-h-[560px]">
+                    <table className="w-full text-left">
+                      <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase text-slate-500 font-semibold">
+                        <tr>
+                          <th className="px-4 py-3">
+                            <button
+                              onClick={() => toggleSort('professional_name')}
+                              className="inline-flex items-center gap-1 hover:text-slate-700"
+                            >
+                              Profissional <span>{sortIndicator('professional_name')}</span>
+                            </button>
+                          </th>
+                          <th className="px-4 py-3 text-right">
+                            <button onClick={() => toggleSort('qtd')} className="inline-flex items-center gap-1 hover:text-slate-700">
+                              Qtd <span>{sortIndicator('qtd')}</span>
+                            </button>
+                          </th>
+                          <th className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => toggleSort('qtd_executado')}
+                              className="inline-flex items-center gap-1 hover:text-slate-700"
+                            >
+                              Exec. qtd <span>{sortIndicator('qtd_executado')}</span>
+                            </button>
+                          </th>
+                          <th className="px-4 py-3 text-right">
+                            <button onClick={() => toggleSort('valor')} className="inline-flex items-center gap-1 hover:text-slate-700">
+                              Total estimado <span>{sortIndicator('valor')}</span>
+                            </button>
+                          </th>
+                          <th className="px-4 py-3 text-right">
+                            <button
+                              onClick={() => toggleSort('valor_executado')}
+                              className="inline-flex items-center gap-1 hover:text-slate-700"
+                            >
+                              Total executado <span>{sortIndicator('valor_executado')}</span>
+                            </button>
+                          </th>
+                          <th className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => toggleSort('conversion_rate')}
+                              className="inline-flex items-center gap-1 hover:text-slate-700"
+                            >
+                              Taxa de conversão <span>{sortIndicator('conversion_rate')}</span>
+                            </button>
+                          </th>
+                          <th className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => toggleSort('ticket_medio')}
+                              className="inline-flex items-center gap-1 hover:text-slate-700"
+                            >
+                              Ticket médio <span>{sortIndicator('ticket_medio')}</span>
+                            </button>
+                          </th>
+                          <th className="px-4 py-3 text-center">
+                            <button
+                              onClick={() => toggleSort('ticket_exec')}
+                              className="inline-flex items-center gap-1 hover:text-slate-700"
+                            >
+                              Ticket exec. <span>{sortIndicator('ticket_exec')}</span>
+                            </button>
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {sortedSellers.length === 0 && !loading && (
-                    <p className="text-center text-slate-400 py-6 text-sm">Nenhum profissional encontrado.</p>
-                  )}
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 text-sm">
+                        {sortedSellers.map((seller, index) => (
+                          <tr
+                            key={`${seller.professional_name || 'sistema'}-${index}`}
+                            className="hover:bg-slate-50 transition-colors"
+                          >
+                            <td className="px-4 py-3 font-medium text-slate-700">{seller.professional_name || 'Sistema'}</td>
+                            <td className="px-4 py-3 text-right text-slate-600">{toNumber(seller.qtd)}</td>
+                            <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{toNumber(seller.qtd_executado)}</td>
+                            <td className="px-4 py-3 text-right text-slate-700 font-semibold">
+                              {formatCurrency(toNumber(seller.valor))}
+                            </td>
+                            <td className="px-4 py-3 text-right font-bold">
+                              <span className="text-emerald-600">{formatCurrency(toNumber(seller.valor_executado))}</span>
+                            </td>
+                            <td className="px-4 py-3 text-center text-slate-600 text-xs font-semibold">
+                              {toNumber(seller.valor) > 0
+                                ? `${((toNumber(seller.valor_executado) / toNumber(seller.valor)) * 100).toFixed(1)}%`
+                                : '0,0%'}
+                            </td>
+                            <td className="px-4 py-3 text-center text-slate-400 text-xs">
+                              {formatCurrency(toNumber(seller.valor) / Math.max(toNumber(seller.qtd), 1))}
+                            </td>
+                            <td className="px-4 py-3 text-center text-slate-400 text-xs">
+                              {formatCurrency(
+                                toNumber(seller.valor_executado) / Math.max(toNumber(seller.qtd_executado), 1),
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {sortedSellers.length === 0 ? (
+                      <p className="text-center text-slate-400 py-6 text-sm">Nenhum profissional encontrado.</p>
+                    ) : null}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-
-          <div ref={detailSectionRef}>
-            <ProposalsDetailSection
-              detailData={detailData}
-              availableStatuses={availableStatuses.length > 0 ? availableStatuses : [AWAITING_CLIENT_APPROVAL_STATUS]}
-              selectedStatus={selectedStatus}
-              detailStatus={detailStatus}
-              detailSearch={detailSearchInput}
-              loading={detailLoading}
-              exporting={detailExporting}
-              onChangeDetailStatus={(value) => {
-                setDetailStatus(value);
-                setDetailPage(1);
-              }}
-              onChangeDetailSearch={setDetailSearchInput}
-              onClearDetailFilters={() => {
-                setDetailSearchInput('');
-                if (selectedStatus === 'all') setDetailStatus(AWAITING_CLIENT_APPROVAL_STATUS);
-                setDetailPage(1);
-              }}
-              onExport={handleExportDetail}
-              onChangePage={setDetailPage}
-            />
-          </div>
+          )}
         </>
-      )}
+      ) : null}
     </div>
   );
 }

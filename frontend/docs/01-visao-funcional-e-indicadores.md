@@ -221,13 +221,20 @@ Acompanhar carteira ativa do cartão, vendas do período, inadimplência e fatur
 
 ### Objetivo
 
-Monitorar pipeline comercial por período, unidade e profissional.
+Operar a fila comercial da equipe e acompanhar a visão gerencial do pipeline no mesmo módulo.
 
 ### Fonte consumida
 
 - `GET /api/admin/propostas`
 - `GET /api/admin/propostas/details`
 - `GET /api/admin/propostas/export`
+- `GET /api/admin/propostas/followup/options`
+- `PATCH /api/admin/propostas/followup/[proposalId]`
+
+### Abas da página
+
+- `Base de trabalho` (padrão): fila operacional para follow-up, conversão e responsável.
+- `Visão gerencial`: cards, status e rankings consolidados do período.
 
 ### Indicadores de topo
 
@@ -256,19 +263,23 @@ Monitorar pipeline comercial por período, unidade e profissional.
 | Ticket médio | `valor_total / qtd` |
 | Ticket exec. | `valor_executado / qtd_executado` |
 
-### Base detalhada
+### Base de trabalho
 
 Objetivo operacional:
-- expor a lista de registros que alimenta o painel;
-- priorizar follow-up de propostas em `Aguardando aprova??o do cliente`;
-- permitir exporta??o em XLSX para apoio da equipe comercial.
+- expor a lista detalhada que alimenta o painel;
+- priorizar follow-up de propostas em `Aguardando aprovação do cliente`;
+- permitir atribuição de responsável e registro do desfecho comercial;
+- exportar a base em XLSX para apoio da equipe.
 
 Regras:
-- respeita os filtros globais de per?odo e unidade;
-- se o filtro global de status estiver espec?fico, a base segue esse status;
-- se o filtro global estiver em `Todos`, a base abre em `Aguardando aprova??o do cliente`;
-- a tabela ? paginada e mostra data, paciente, telefone, procedimento(s), unidade, profissional, valor e status;
-- nome e telefone do paciente s?o enriquecidos a partir da Feegow por `patient/search?paciente_id=...`, com cache local.
+- respeita os filtros globais de período, unidade e status;
+- se o filtro global de status estiver específico, a base segue esse status;
+- se o filtro global estiver em `Todos`, a base abre em `Aguardando aprovação do cliente`;
+- a tabela é paginada e mostra data, paciente, telefone, procedimento(s), unidade, profissional, valor e status da proposta;
+- o campo `Procedimento(s)` pode ser expandido para exibir todos os itens da proposta, com valores quando disponíveis;
+- a base inclui colunas operacionais persistentes: `Conversão`, `Motivo`, `Responsável` e `Última edição`;
+- nome e telefone do paciente são enriquecidos a partir da Feegow por `patient/search?paciente_id=...`, com cache local;
+- as edições da equipe ficam em tabela separada (`proposal_followup_control`) e não são sobrescritas pelo worker de propostas.
 
 ---
 

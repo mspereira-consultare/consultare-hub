@@ -1,6 +1,11 @@
-﻿import { getDbConnection, type DbInterface } from '@/lib/db';
-
-export const AWAITING_CLIENT_APPROVAL_STATUS = 'Aguardando aprovação do cliente';
+import { getDbConnection, type DbInterface } from '@/lib/db';
+import {
+  AWAITING_CLIENT_APPROVAL_STATUS,
+  PROPOSAL_CONVERSION_REASONS_BY_STATUS,
+  PROPOSAL_CONVERSION_STATUSES,
+  type ProposalConversionReason,
+  type ProposalConversionStatus,
+} from '@/lib/proposals/constants';
 const FEEGOW_BASE_URL = 'https://api.feegow.com/v1/api';
 const CONTACT_CACHE_STALE_DAYS = 30;
 const CONTACT_HYDRATION_CONCURRENCY = 8;
@@ -19,6 +24,31 @@ export type ProposalDetailFilters = ProposalFilters & {
   pageSize: number;
 };
 
+export type ProposalFollowupUserOption = {
+  value: string;
+  label: string;
+};
+
+export type ProposalFollowupOptions = {
+  users: ProposalFollowupUserOption[];
+  conversionStatuses: Array<{ value: ProposalConversionStatus; label: string }>;
+  conversionReasonsByStatus: Record<string, Array<{ value: ProposalConversionReason; label: string }>>;
+};
+
+export type ProposalFollowupUpdateInput = {
+  proposalId: number;
+  conversionStatus: ProposalConversionStatus;
+  conversionReason: ProposalConversionReason | null;
+  responsibleUserId: string | null;
+  updatedByUserId: string;
+  updatedByUserName: string;
+};
+
+export type ProposalProcedureDetail = {
+  name: string;
+  value: number;
+};
+
 export type ProposalDetailRow = {
   proposalId: number;
   proposalDate: string;
@@ -31,8 +61,18 @@ export type ProposalDetailRow = {
   patientEmail: string;
   procedureSummary: string;
   procedureCount: number;
+  proceduresDetailed: ProposalProcedureDetail[];
+  proceduresDetailedText: string;
   totalValue: number;
   proposalLastUpdate: string | null;
+  conversionStatus: ProposalConversionStatus;
+  conversionStatusLabel: string;
+  conversionReason: ProposalConversionReason | null;
+  conversionReasonLabel: string | null;
+  responsibleUserId: string | null;
+  responsibleUserName: string | null;
+  updatedByUserName: string | null;
+  updatedAt: string | null;
 };
 
 export type ProposalDetailResult = {
@@ -74,6 +114,12 @@ type RawProposalRow = {
   patient_name?: string | null;
   phone_primary?: string | null;
   email_primary?: string | null;
+  conversion_status?: string | null;
+  conversion_reason?: string | null;
+  responsible_user_id?: string | null;
+  responsible_user_name?: string | null;
+  updated_by_user_name?: string | null;
+  followup_updated_at?: string | null;
 };
 
 const normalizeString = (value: unknown) => String(value || '').trim();
@@ -83,10 +129,35 @@ const normalizeNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const proposalConversionStatusMap = new Map(PROPOSAL_CONVERSION_STATUSES.map((item) => [item.value, item.label]));
+const proposalConversionReasonMap = new Map(
+  Object.values(PROPOSAL_CONVERSION_REASONS_BY_STATUS).flat().map((item) => [item.value, item.label]),
+);
+const allowedConversionStatuses = new Set(PROPOSAL_CONVERSION_STATUSES.map((item) => item.value));
+const allowedConversionReasonsByStatus = Object.fromEntries(
+  Object.entries(PROPOSAL_CONVERSION_REASONS_BY_STATUS).map(([status, items]) => [status, new Set(items.map((item) => item.value))]),
+) as Record<string, Set<string>>;
+
 const normalizeDateParam = (value: string | null | undefined, fallback: string) => {
   const raw = normalizeString(value);
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
   return fallback;
+};
+
+const normalizeProposalConversionStatus = (value: unknown): ProposalConversionStatus => {
+  const raw = normalizeString(value).toUpperCase();
+  return allowedConversionStatuses.has(raw as ProposalConversionStatus) ? (raw as ProposalConversionStatus) : 'PENDENTE';
+};
+
+const normalizeProposalConversionReason = (
+  status: ProposalConversionStatus,
+  value: unknown,
+): ProposalConversionReason | null => {
+  const raw = normalizeString(value).toUpperCase();
+  if (!raw) return null;
+  const allowedReasons = allowedConversionReasonsByStatus[status];
+  if (!allowedReasons || !allowedReasons.has(raw)) return null;
+  return raw as ProposalConversionReason;
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -111,6 +182,19 @@ export const ensureProposalsSupportTables = async (db: DbInterface = getDbConnec
       email_primary TEXT,
       cpf TEXT,
       updated_at TEXT
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS proposal_followup_control (
+      proposal_id BIGINT PRIMARY KEY,
+      conversion_status VARCHAR(40) NULL,
+      conversion_reason VARCHAR(64) NULL,
+      responsible_user_id VARCHAR(64) NULL,
+      responsible_user_name TEXT NULL,
+      updated_by_user_id VARCHAR(64) NULL,
+      updated_by_user_name TEXT NULL,
+      updated_at TEXT NULL
     )
   `);
 
@@ -201,9 +285,11 @@ const buildSearchClause = (search: string) => {
         OR UPPER(COALESCE(p.professional_name, '')) LIKE ?
         OR UPPER(COALESCE(p.unit_name, '')) LIKE ?
         OR UPPER(COALESCE(p.items_json, '')) LIKE ?
+        OR UPPER(COALESCE(f.responsible_user_name, '')) LIKE ?
+        OR UPPER(COALESCE(f.updated_by_user_name, '')) LIKE ?
       )
     `,
-    params: [pattern, pattern, pattern, pattern, pattern, pattern],
+    params: [pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern],
   };
 };
 
@@ -227,6 +313,25 @@ const summarizeProcedures = (itemsJson: unknown) => {
   };
 };
 
+const buildProcedureDetails = (itemsJson: unknown): ProposalProcedureDetail[] =>
+  parseItemsJson(itemsJson)
+    .map((item) => ({
+      name: normalizeString(item?.nome),
+      value: normalizeNumber(item?.valor),
+    }))
+    .filter((item) => item.name);
+
+const buildDetailedProceduresText = (procedures: ProposalProcedureDetail[]) =>
+  procedures.length === 0
+    ? ''
+    : procedures
+        .map((item) =>
+          item.value > 0
+            ? `${item.name} (${item.value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})`
+            : item.name,
+        )
+        .join(' | ');
+
 const nowTimestamp = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 
 const parseCachedContactTimestamp = (value: string | null | undefined) => {
@@ -245,6 +350,32 @@ const extractPrimaryValue = (value: unknown) => {
     return '';
   }
   return normalizeString(value);
+};
+
+export const listProposalFollowupOptions = async (db: DbInterface = getDbConnection()): Promise<ProposalFollowupOptions> => {
+  await ensureProposalsSupportTables(db);
+
+  const userRows = await db.query(
+    `
+      SELECT id, name
+      FROM users
+      WHERE UPPER(TRIM(COALESCE(status, ''))) = 'ATIVO'
+      ORDER BY name ASC
+    `,
+  );
+
+  return {
+    users: userRows
+      .map((row: any) => ({
+        value: normalizeString(row?.id),
+        label: normalizeString(row?.name),
+      }))
+      .filter((item) => item.value && item.label),
+    conversionStatuses: [...PROPOSAL_CONVERSION_STATUSES],
+    conversionReasonsByStatus: Object.fromEntries(
+      Object.entries(PROPOSAL_CONVERSION_REASONS_BY_STATUS).map(([status, items]) => [status, [...items]]),
+    ),
+  };
 };
 
 const fetchPatientContactFromFeegow = async (patientId: number): Promise<FeegowPatientContact | null> => {
@@ -382,6 +513,9 @@ const hydrateMissingPatientContacts = async (db: DbInterface, patientIds: number
 const mapProposalRows = (rows: RawProposalRow[]) =>
   rows.map((row) => {
     const procedures = summarizeProcedures(row.items_json);
+    const proceduresDetailed = buildProcedureDetails(row.items_json);
+    const conversionStatus = normalizeProposalConversionStatus(row.conversion_status);
+    const conversionReason = normalizeProposalConversionReason(conversionStatus, row.conversion_reason);
     return {
       proposalId: normalizeNumber(row.proposal_id),
       proposalDate: normalizeString(row.date),
@@ -394,8 +528,18 @@ const mapProposalRows = (rows: RawProposalRow[]) =>
       patientEmail: normalizeString(row.email_primary),
       procedureSummary: procedures.summary,
       procedureCount: procedures.count,
+      proceduresDetailed,
+      proceduresDetailedText: buildDetailedProceduresText(proceduresDetailed),
       totalValue: normalizeNumber(row.total_value),
       proposalLastUpdate: normalizeString(row.proposal_last_update) || null,
+      conversionStatus,
+      conversionStatusLabel: proposalConversionStatusMap.get(conversionStatus) || 'Pendente',
+      conversionReason,
+      conversionReasonLabel: conversionReason ? proposalConversionReasonMap.get(conversionReason) || null : null,
+      responsibleUserId: normalizeString(row.responsible_user_id) || null,
+      responsibleUserName: normalizeString(row.responsible_user_name) || null,
+      updatedByUserName: normalizeString(row.updated_by_user_name) || null,
+      updatedAt: normalizeString(row.followup_updated_at) || null,
     } satisfies ProposalDetailRow;
   });
 
@@ -412,10 +556,109 @@ const baseDetailSelect = `
     p.items_json,
     c.patient_name,
     c.phone_primary,
-    c.email_primary
+    c.email_primary,
+    f.conversion_status,
+    f.conversion_reason,
+    f.responsible_user_id,
+    f.responsible_user_name,
+    f.updated_by_user_name,
+    f.updated_at AS followup_updated_at
   FROM feegow_proposals p
   LEFT JOIN feegow_patient_contacts_cache c ON c.patient_id = p.patient_id
+  LEFT JOIN proposal_followup_control f ON f.proposal_id = p.proposal_id
 `;
+
+export const upsertProposalFollowup = async (
+  input: ProposalFollowupUpdateInput,
+  db: DbInterface = getDbConnection(),
+) => {
+  await ensureProposalsSupportTables(db);
+
+  const proposalId = normalizeNumber(input.proposalId);
+  if (proposalId <= 0) {
+    const error = new Error('Proposta inválida.');
+    (error as any).status = 400;
+    throw error;
+  }
+
+  const proposalRows = await db.query(`SELECT proposal_id FROM feegow_proposals WHERE proposal_id = ? LIMIT 1`, [proposalId]);
+  if (!proposalRows.length) {
+    const error = new Error('Proposta não encontrada.');
+    (error as any).status = 404;
+    throw error;
+  }
+
+  const conversionStatus = normalizeProposalConversionStatus(input.conversionStatus);
+  const conversionReason = normalizeProposalConversionReason(conversionStatus, input.conversionReason);
+
+  let responsibleUserId = normalizeString(input.responsibleUserId) || null;
+  let responsibleUserName: string | null = null;
+
+  if (responsibleUserId) {
+    const responsibleRows = await db.query(
+      `
+        SELECT id, name
+        FROM users
+        WHERE id = ?
+          AND UPPER(TRIM(COALESCE(status, ''))) = 'ATIVO'
+        LIMIT 1
+      `,
+      [responsibleUserId],
+    );
+    if (!responsibleRows.length) {
+      const error = new Error('Responsável inválido ou inativo.');
+      (error as any).status = 400;
+      throw error;
+    }
+    responsibleUserId = normalizeString((responsibleRows[0] as any)?.id) || null;
+    responsibleUserName = normalizeString((responsibleRows[0] as any)?.name) || null;
+  }
+
+  const updatedAt = nowTimestamp();
+  await db.execute(
+    `
+      INSERT INTO proposal_followup_control (
+        proposal_id,
+        conversion_status,
+        conversion_reason,
+        responsible_user_id,
+        responsible_user_name,
+        updated_by_user_id,
+        updated_by_user_name,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(proposal_id) DO UPDATE SET
+        conversion_status = excluded.conversion_status,
+        conversion_reason = excluded.conversion_reason,
+        responsible_user_id = excluded.responsible_user_id,
+        responsible_user_name = excluded.responsible_user_name,
+        updated_by_user_id = excluded.updated_by_user_id,
+        updated_by_user_name = excluded.updated_by_user_name,
+        updated_at = excluded.updated_at
+    `,
+    [
+      proposalId,
+      conversionStatus,
+      conversionReason,
+      responsibleUserId,
+      responsibleUserName,
+      normalizeString(input.updatedByUserId) || null,
+      normalizeString(input.updatedByUserName) || 'Usuário',
+      updatedAt,
+    ],
+  );
+
+  const refreshed = await db.query(
+    `
+      ${baseDetailSelect}
+      WHERE p.proposal_id = ?
+      LIMIT 1
+    `,
+    [proposalId],
+  );
+
+  return mapProposalRows(refreshed as RawProposalRow[])[0] || null;
+};
 
 export const listProposalDetails = async (filters: ProposalDetailFilters, db: DbInterface = getDbConnection()): Promise<ProposalDetailResult> => {
   await ensureProposalsSupportTables(db);
@@ -431,6 +674,7 @@ export const listProposalDetails = async (filters: ProposalDetailFilters, db: Db
       SELECT COUNT(*) AS total
       FROM feegow_proposals p
       LEFT JOIN feegow_patient_contacts_cache c ON c.patient_id = p.patient_id
+      LEFT JOIN proposal_followup_control f ON f.proposal_id = p.proposal_id
       ${whereSql}
     `,
     whereParams,

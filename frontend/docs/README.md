@@ -47,7 +47,7 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Produtividade/agendamentos: `feegow_appointments`.
 - Catálogo de procedimentos: `feegow_procedures_catalog`.
 - Procedimentos por profissional: `professional_procedure_rates`.
-- Propostas: `feegow_proposals` + `feegow_patient_contacts_cache`.
+- Propostas: `feegow_proposals` + `feegow_patient_contacts_cache` + `proposal_followup_control`.
 - Resolvesaúde: `feegow_contracts`.
 
 ## Público-alvo
@@ -68,5 +68,5 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Novo módulo `/colaboradores` documentado em `docs/10-plano-tecnico-colaboradores.md`.
 - Módulo `/marketing/funil` recalibrado para usar `Novos contatos Clinia (Google)` como lead operacional principal e separar `Cliques em WhatsApp` como diagnóstico auxiliar.
 - Cards do `/marketing/funil` e da aba `Saúde Google Ads` agora usam hovers detalhados com fórmula, origem do dado, escopo e limitações.
-
-- Novo m?dulo `/equipamentos` documentado em `docs/11-plano-tecnico-equipamentos.md`.
+- Página `/propostas` reorganizada com abas `Base de trabalho` e `Visão gerencial`, incluindo follow-up persistente por proposta e exportação enriquecida.
+- Novo módulo `/equipamentos` documentado em `docs/11-plano-tecnico-equipamentos.md`.

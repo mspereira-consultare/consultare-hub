@@ -85,6 +85,8 @@ Esperado:
 - `/api/admin/propostas`
 - `/api/admin/propostas/details`
 - `/api/admin/propostas/export`
+- `/api/admin/propostas/followup/options`
+- `/api/admin/propostas/followup/[proposalId]`
 - `/api/admin/contratos`
 - `/api/admin/produtividade`
 - `/api/admin/goals/dashboard`

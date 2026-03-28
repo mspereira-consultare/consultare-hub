@@ -1,4 +1,4 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { listProposalDetails, normalizeProposalDetailFilters, normalizeProposalFilters } from '@/lib/proposals/repository';
 
 export const dynamic = 'force-dynamic';
