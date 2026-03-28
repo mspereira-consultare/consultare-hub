@@ -15,10 +15,20 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const filters = normalizeProposalFilters(searchParams);
     const options = await listProposalFilterOptions(filters, auth.db);
+    const statusResult = await auth.db.query(`
+      SELECT status, last_run, details
+      FROM system_status
+      WHERE service_name = 'comercial'
+    `);
+    const heartbeat = statusResult[0] || { status: 'UNKNOWN', last_run: null, details: '' };
 
     return NextResponse.json({
       status: 'success',
-      data: options,
+      data: {
+        ...options,
+        heartbeat,
+        canRefresh: Boolean(auth.permissions?.propostas?.refresh || auth.permissions?.propostas_gerencial?.refresh),
+      },
     });
   } catch (error: any) {
     console.error('Erro API Propostas opções:', error);

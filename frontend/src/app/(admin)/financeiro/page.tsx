@@ -30,7 +30,7 @@ type SelectOption = { name: string; label?: string };
 type DateRange = { start: string; end: string };
 type ChartPoint = { label: string; total: number; qtd: number; sortKey: string };
 type GroupPoint = { procedure_group: string; total: number; qtd: number };
-type Totals = { total: number; qtd: number; newPatients: number };
+type Totals = { total: number; qtd: number; newPatients: number; totalPatients: number };
 type Heartbeat = { status: string; last_run: string; details: string };
 type ComparisonMode = 'previous' | 'yoy' | 'custom';
 type ComparisonRow = {
@@ -248,12 +248,12 @@ export default function FinancialPage() {
   const [groups, setGroups] = useState<SelectOption[]>([]);
   const [procedures, setProcedures] = useState<SelectOption[]>([]);
   const [units, setUnits] = useState<SelectOption[]>([]);
-  const [totals, setTotals] = useState<Totals>({ total: 0, qtd: 0, newPatients: 0 });
+  const [totals, setTotals] = useState<Totals>({ total: 0, qtd: 0, newPatients: 0, totalPatients: 0 });
 
   const [compareDaily, setCompareDaily] = useState<ChartPoint[]>([]);
   const [compareMonthly, setCompareMonthly] = useState<ChartPoint[]>([]);
   const [compareGroupStats, setCompareGroupStats] = useState<GroupPoint[]>([]);
-  const [compareTotals, setCompareTotals] = useState<Totals>({ total: 0, qtd: 0, newPatients: 0 });
+  const [compareTotals, setCompareTotals] = useState<Totals>({ total: 0, qtd: 0, newPatients: 0, totalPatients: 0 });
 
   const [heartbeat, setHeartbeat] = useState<Heartbeat | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
@@ -354,7 +354,7 @@ export default function FinancialPage() {
         }
 
         setGroupStats(baseData.groupStats || baseData.groups || []);
-        setTotals(baseData.totals || { total: 0, qtd: 0, newPatients: 0 });
+        setTotals(baseData.totals || { total: 0, qtd: 0, newPatients: 0, totalPatients: 0 });
 
         if (baseData.heartbeat) {
           setHeartbeat(baseData.heartbeat);
@@ -371,12 +371,12 @@ export default function FinancialPage() {
         setCompareDaily(normalizeDaily(compareData.daily || []));
         setCompareMonthly(normalizeMonthly(compareData.monthly || []));
         setCompareGroupStats(compareData.groupStats || compareData.groups || []);
-        setCompareTotals(compareData.totals || { total: 0, qtd: 0, newPatients: 0 });
+        setCompareTotals(compareData.totals || { total: 0, qtd: 0, newPatients: 0, totalPatients: 0 });
       } else {
         setCompareDaily([]);
         setCompareMonthly([]);
         setCompareGroupStats([]);
-        setCompareTotals({ total: 0, qtd: 0, newPatients: 0 });
+        setCompareTotals({ total: 0, qtd: 0, newPatients: 0, totalPatients: 0 });
       }
     } catch (error) {
       console.error('Erro Financeiro:', error);

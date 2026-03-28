@@ -102,6 +102,9 @@ function PropostasBasePageContent() {
   const [detailSearch, setDetailSearch] = useState('');
   const [detailPage, setDetailPage] = useState(1);
   const [followupOptions, setFollowupOptions] = useState<ProposalFollowupOptions>(EMPTY_FOLLOWUP_OPTIONS);
+  const [heartbeat, setHeartbeat] = useState<{ status?: string; last_run?: string | null; details?: string | null } | null>(null);
+  const [canRefresh, setCanRefresh] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const previousGlobalStatusRef = useRef(initialStatus);
 
@@ -140,6 +143,9 @@ function PropostasBasePageContent() {
       setAvailableUnits(nextUnits);
       setAvailableStatuses(nextStatuses);
       setAvailableProfessionals(nextProfessionals);
+      setHeartbeat(payload?.data?.heartbeat || null);
+      setCanRefresh(Boolean(payload?.data?.canRefresh));
+      setIsUpdating(['PENDING', 'RUNNING'].includes(String(payload?.data?.heartbeat?.status || '').toUpperCase()));
     } catch (fetchError) {
       console.error('Erro ao carregar filtros operacionais de propostas:', fetchError);
       setError(normalizeFetchError(fetchError, 'Erro ao carregar filtros de propostas.'));
@@ -221,6 +227,18 @@ function PropostasBasePageContent() {
   useEffect(() => {
     void fetchFollowupOptions();
   }, [fetchFollowupOptions]);
+
+  useEffect(() => {
+    const heartbeatStatus = String(heartbeat?.status || '').toUpperCase();
+    if (!['PENDING', 'RUNNING'].includes(heartbeatStatus)) return;
+
+    const timeoutId = window.setTimeout(() => {
+      void loadOptions();
+      void fetchDetailData();
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchDetailData, heartbeat?.status, loadOptions]);
 
   useEffect(() => {
     if (selectedUnit !== 'all' && availableUnits.length > 0 && !availableUnits.includes(selectedUnit)) {
@@ -307,6 +325,27 @@ function PropostasBasePageContent() {
     }));
   };
 
+  const handleManualUpdate = async () => {
+    if (!canRefresh) return;
+    setIsUpdating(true);
+    setError('');
+    try {
+      const response = await fetch('/api/admin/propostas', { method: 'POST' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(payload?.error || 'Falha ao solicitar atualização.'));
+      }
+      window.setTimeout(() => {
+        void loadOptions();
+        void fetchDetailData();
+      }, 1000);
+    } catch (updateError) {
+      console.error('Erro ao solicitar atualização de propostas:', updateError);
+      setError(normalizeFetchError(updateError, 'Erro ao solicitar atualização.'));
+      setIsUpdating(false);
+    }
+  };
+
   const handleExportDetail = async () => {
     setDetailExporting(true);
     setDetailError('');
@@ -365,6 +404,10 @@ function PropostasBasePageContent() {
         availableStatuses={availableStatuses}
         filtersExpanded={filtersExpanded}
         hasActiveFilters={globalFiltersActive}
+        heartbeat={heartbeat}
+        isUpdating={isUpdating}
+        canRefresh={canRefresh}
+        onManualUpdate={handleManualUpdate}
         extraFilters={
           <>
             <div>

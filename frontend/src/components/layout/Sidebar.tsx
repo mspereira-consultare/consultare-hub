@@ -768,33 +768,33 @@ export function Sidebar() {
                           const isSubgroupExpanded = isSubgroupActive ? true : !!expandedGroups[subgroupKey];
 
                           return (
-                            <div key={subgroupKey} className="rounded-lg border border-white/10 bg-white/5">
+                            <div key={subgroupKey} className="pt-1">
                               <button
                                 type="button"
                                 onClick={() => toggleSubgroup(group, section.label)}
                                 className={cn(
-                                  "flex w-full items-center justify-between px-3 py-2 text-left transition-colors",
-                                  isSubgroupActive ? "text-white" : "text-slate-200 hover:bg-white/5"
+                                  "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors",
+                                  isSubgroupActive ? "text-slate-100" : "text-slate-300/85 hover:text-white"
                                 )}
                                 title={isSubgroupExpanded ? `Recolher ${section.label}` : `Expandir ${section.label}`}
                                 aria-label={isSubgroupExpanded ? `Recolher ${section.label}` : `Expandir ${section.label}`}
                               >
                                 <div className="flex items-center gap-2">
                                   <section.icon
-                                    size={16}
+                                    size={14}
                                     className={cn(
                                       "flex-shrink-0",
-                                      isSubgroupActive ? "text-[#3FBD80]" : "text-slate-300"
+                                      isSubgroupActive ? "text-slate-200" : "text-slate-400/90"
                                     )}
                                   />
-                                  <span className="text-[12px] font-semibold uppercase tracking-[0.12em]">
+                                  <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-300/90">
                                     {section.label}
                                   </span>
                                 </div>
                                 {isSubgroupExpanded ? (
-                                  <ChevronDown size={14} className="text-slate-200/80" />
+                                  <ChevronDown size={13} className="text-slate-300/70" />
                                 ) : (
-                                  <ChevronRight size={14} className="text-slate-200/80" />
+                                  <ChevronRight size={13} className="text-slate-300/70" />
                                 )}
                               </button>
 
@@ -805,7 +805,7 @@ export function Sidebar() {
                                 )}
                                 aria-hidden={!isSubgroupExpanded}
                               >
-                                <div className="space-y-1 border-t border-white/10 px-2 py-2">
+                                <div className="ml-5 space-y-1 border-l border-white/10 pl-2">
                                   {section.items.map((item) => {
                                     const isActive = isItemActive(item);
 
@@ -818,28 +818,23 @@ export function Sidebar() {
                                           clearSearch();
                                         }}
                                         className={cn(
-                                          "group relative flex items-center rounded-lg transition-all duration-200",
-                                          "pl-4 pr-2.5 py-1.5",
+                                          "group flex items-center rounded-md px-3 py-1.5 transition-colors",
                                           isActive
-                                            ? "bg-[#17407E] text-white font-medium shadow-md"
-                                            : "text-slate-300 hover:bg-white/5 hover:text-white"
+                                            ? "bg-white/[0.08] text-white/95"
+                                            : "text-slate-300/85 hover:bg-white/[0.04] hover:text-white"
                                         )}
                                       >
-                                        {isActive && (
-                                          <span className="absolute left-0 top-0 h-full w-1 rounded-r-full bg-[#3FBD80]" />
-                                        )}
-
                                         <item.icon
-                                          size={16}
+                                          size={15}
                                           className={cn(
                                             "flex-shrink-0 transition-colors",
                                             isActive
-                                              ? "text-[#3FBD80]"
-                                              : "text-slate-300 group-hover:text-white"
+                                              ? "text-slate-100"
+                                              : "text-slate-400/80 group-hover:text-slate-200"
                                           )}
                                         />
 
-                                        <span className="ml-3 flex-1 truncate text-[13px]">
+                                        <span className="ml-2.5 flex-1 truncate text-[12px] font-medium">
                                           {item.label}
                                         </span>
                                       </Link>

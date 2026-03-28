@@ -69,7 +69,7 @@ export async function GET(request: Request) {
         procedures: [],
         units: [],
         unitsBilling: [],
-        totals: { total: 0, qtd: 0 },
+        totals: { total: 0, qtd: 0, newPatients: 0, totalPatients: 0 },
         heartbeat
       };
     }
@@ -156,6 +156,7 @@ export async function GET(request: Request) {
       total: Number(totalsRes[0]?.total || 0),
       qtd: Number(totalsRes[0]?.qtd || 0),
       newPatients: 0,
+      totalPatients: 0,
     };
 
     if (hasAppointments) {
@@ -165,10 +166,9 @@ export async function GET(request: Request) {
         columnExists(db, 'feegow_appointments', 'procedure_name'),
       ]);
 
-      if (hasPatientId && hasFirstAppointmentFlag && hasProcedureName) {
+      if (hasPatientId && hasProcedureName) {
         let appointmentsWhere = `
           WHERE date BETWEEN ? AND ?
-          AND first_appointment_flag = 1
           AND patient_id IS NOT NULL
           AND patient_id != 0
         `;
@@ -187,15 +187,22 @@ export async function GET(request: Request) {
           appointmentParams.push(procedureFilter);
         }
 
-        const newPatientsRes = await db.query(
+        const patientCountsRes = await db.query(
           `
-            SELECT COUNT(DISTINCT patient_id) as total
+            SELECT
+              COUNT(DISTINCT patient_id) as total_patients,
+              ${
+                hasFirstAppointmentFlag
+                  ? 'COUNT(DISTINCT CASE WHEN first_appointment_flag = 1 THEN patient_id END) as new_patients'
+                  : '0 as new_patients'
+              }
             FROM feegow_appointments
             ${appointmentsWhere}
           `,
           appointmentParams
         );
-        totals.newPatients = Number(newPatientsRes[0]?.total || 0);
+        totals.totalPatients = Number(patientCountsRes[0]?.total_patients || 0);
+        totals.newPatients = Number(patientCountsRes[0]?.new_patients || 0);
       }
     }
 

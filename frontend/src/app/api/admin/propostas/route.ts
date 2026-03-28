@@ -3,7 +3,7 @@ import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 import { ensureProposalsSupportTables } from '@/lib/proposals/repository';
 import { AWAITING_CLIENT_APPROVAL_STATUS } from '@/lib/proposals/constants';
-import { requirePropostasGerencialPermission } from '@/lib/proposals/auth';
+import { requirePropostasGerencialPermission, requirePropostasPermission } from '@/lib/proposals/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -179,12 +179,15 @@ export async function GET(request: Request) {
 
 export async function POST() {
   try {
-    const auth = await requirePropostasGerencialPermission('refresh');
+    let auth = await requirePropostasPermission('refresh');
+    if (!auth.ok) {
+      auth = await requirePropostasGerencialPermission('refresh');
+    }
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }
 
-    const db = getDbConnection();
+    const db = auth.db ?? getDbConnection();
     await db.execute(`
       INSERT INTO system_status (service_name, status, last_run, details)
       VALUES ('comercial', 'PENDING', datetime('now'), 'Solicitado via painel')

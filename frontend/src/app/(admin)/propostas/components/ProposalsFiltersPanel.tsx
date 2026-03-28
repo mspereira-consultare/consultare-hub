@@ -97,7 +97,7 @@ export function ProposalsFiltersPanel({
 
       {filtersExpanded && (
         <div className="border-t border-slate-100 p-6">
-          <div className="grid grid-cols-1 items-end gap-4 lg:grid-cols-4">
+          <div className="grid grid-cols-1 items-end gap-4 lg:grid-cols-3">
             <div>
               <label className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
                 <Calendar size={14} />
@@ -155,21 +155,22 @@ export function ProposalsFiltersPanel({
               </select>
             </div>
 
-            <div>
-              {hasActiveFilters && (
-                <button
-                  onClick={onResetFilters}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-100"
-                  title="Limpar filtros"
-                >
-                  <FilterX size={16} />
-                  Limpar filtros
-                </button>
-              )}
-            </div>
           </div>
 
           {extraFilters ? <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">{extraFilters}</div> : null}
+
+          {hasActiveFilters ? (
+            <div className="mt-4 flex justify-end">
+              <button
+                onClick={onResetFilters}
+                className="flex items-center justify-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-600 transition hover:bg-rose-100"
+                title="Limpar filtros"
+              >
+                <FilterX size={16} />
+                Limpar filtros
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
     </div>
