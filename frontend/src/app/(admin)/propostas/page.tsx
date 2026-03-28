@@ -1,7 +1,7 @@
-'use client';
+﻿'use client';
 
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { hasPermission } from '@/lib/permissions';
 import { ProposalsDetailSection } from './components/ProposalsDetailSection';
@@ -37,6 +37,11 @@ const getDefaultDateRange = () => {
   };
 };
 
+const normalizeSelectParam = (value: string | null, fallback = 'all') => {
+  const normalized = String(value || '').trim();
+  return normalized || fallback;
+};
+
 const normalizeFetchError = (error: unknown, fallback: string) => {
   const message = error instanceof Error ? error.message : String(error || fallback);
   if (!message || message === 'Failed to fetch') {
@@ -48,6 +53,9 @@ const normalizeFetchError = (error: unknown, fallback: string) => {
 function PropostasBasePageContent() {
   const { data: session } = useSession();
   const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const router = useRouter();
+
   const initialDateRange = useMemo(() => {
     const defaults = getDefaultDateRange();
     const start = String(searchParams.get('startDate') || defaults.start).trim();
@@ -57,12 +65,15 @@ function PropostasBasePageContent() {
       end: /^\d{4}-\d{2}-\d{2}$/.test(end) ? end : defaults.end,
     };
   }, [searchParams]);
-  const initialUnit = useMemo(() => String(searchParams.get('unit') || 'all').trim() || 'all', [searchParams]);
-  const initialStatus = useMemo(() => String(searchParams.get('status') || 'all').trim() || 'all', [searchParams]);
+  const initialUnit = useMemo(() => normalizeSelectParam(searchParams.get('unit')), [searchParams]);
+  const initialStatus = useMemo(() => normalizeSelectParam(searchParams.get('status')), [searchParams]);
   const initialDetailStatus = useMemo(
     () => String(searchParams.get('detailStatus') || '').trim() || AWAITING_CLIENT_APPROVAL_STATUS,
     [searchParams],
   );
+  const initialConversion = useMemo(() => normalizeSelectParam(searchParams.get('conversion')), [searchParams]);
+  const initialResponsible = useMemo(() => normalizeSelectParam(searchParams.get('responsible')), [searchParams]);
+  const initialProfessional = useMemo(() => normalizeSelectParam(searchParams.get('professional')), [searchParams]);
 
   const role = String((session?.user as any)?.role || 'OPERADOR');
   const permissions = (session?.user as any)?.permissions;
@@ -73,9 +84,13 @@ function PropostasBasePageContent() {
   const [dateRange, setDateRange] = useState(initialDateRange);
   const [selectedUnit, setSelectedUnit] = useState(initialUnit);
   const [selectedStatus, setSelectedStatus] = useState(initialStatus);
+  const [selectedConversion, setSelectedConversion] = useState(initialConversion);
+  const [selectedResponsible, setSelectedResponsible] = useState(initialResponsible);
+  const [selectedProfessional, setSelectedProfessional] = useState(initialProfessional);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
   const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
+  const [availableProfessionals, setAvailableProfessionals] = useState<string[]>([]);
 
   const [detailData, setDetailData] = useState<ProposalDetailResponse>(EMPTY_DETAIL_DATA);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -89,6 +104,13 @@ function PropostasBasePageContent() {
   const [followupOptions, setFollowupOptions] = useState<ProposalFollowupOptions>(EMPTY_FOLLOWUP_OPTIONS);
 
   const previousGlobalStatusRef = useRef(initialStatus);
+
+  const globalFiltersActive =
+    selectedUnit !== 'all' ||
+    selectedStatus !== 'all' ||
+    selectedConversion !== 'all' ||
+    selectedResponsible !== 'all' ||
+    selectedProfessional !== 'all';
 
   const loadOptions = useCallback(async () => {
     if (!canView) return;
@@ -111,9 +133,13 @@ function PropostasBasePageContent() {
       const nextStatuses = Array.isArray(payload?.data?.availableStatuses)
         ? payload.data.availableStatuses.map((item: unknown) => String(item || '').trim()).filter(Boolean)
         : [];
+      const nextProfessionals = Array.isArray(payload?.data?.availableProfessionals)
+        ? payload.data.availableProfessionals.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+        : [];
 
       setAvailableUnits(nextUnits);
       setAvailableStatuses(nextStatuses);
+      setAvailableProfessionals(nextProfessionals);
     } catch (fetchError) {
       console.error('Erro ao carregar filtros operacionais de propostas:', fetchError);
       setError(normalizeFetchError(fetchError, 'Erro ao carregar filtros de propostas.'));
@@ -132,6 +158,9 @@ function PropostasBasePageContent() {
         unit: selectedUnit,
         status: selectedStatus,
         detailStatus,
+        conversion: selectedConversion,
+        responsible: selectedResponsible,
+        professional: selectedProfessional,
         search: detailSearch,
         page: String(detailPage),
         pageSize: String(EMPTY_DETAIL_DATA.pageSize),
@@ -152,7 +181,19 @@ function PropostasBasePageContent() {
     } finally {
       setDetailLoading(false);
     }
-  }, [canView, dateRange.end, dateRange.start, detailPage, detailSearch, detailStatus, selectedStatus, selectedUnit]);
+  }, [
+    canView,
+    dateRange.end,
+    dateRange.start,
+    detailPage,
+    detailSearch,
+    detailStatus,
+    selectedConversion,
+    selectedProfessional,
+    selectedResponsible,
+    selectedStatus,
+    selectedUnit,
+  ]);
 
   const fetchFollowupOptions = useCallback(async () => {
     if (!canView) return;
@@ -194,6 +235,27 @@ function PropostasBasePageContent() {
   }, [availableStatuses, selectedStatus]);
 
   useEffect(() => {
+    if (selectedProfessional === 'all') return;
+    if (availableProfessionals.length === 0) return;
+    if (availableProfessionals.includes(selectedProfessional)) return;
+    setSelectedProfessional('all');
+  }, [availableProfessionals, selectedProfessional]);
+
+  useEffect(() => {
+    if (selectedResponsible === 'all') return;
+    if (followupOptions.users.length === 0) return;
+    if (followupOptions.users.some((item) => item.value === selectedResponsible)) return;
+    setSelectedResponsible('all');
+  }, [followupOptions.users, selectedResponsible]);
+
+  useEffect(() => {
+    if (selectedConversion === 'all') return;
+    if (followupOptions.conversionStatuses.length === 0) return;
+    if (followupOptions.conversionStatuses.some((item) => item.value === selectedConversion)) return;
+    setSelectedConversion('all');
+  }, [followupOptions.conversionStatuses, selectedConversion]);
+
+  useEffect(() => {
     const timeoutId = window.setTimeout(() => {
       setDetailSearch(detailSearchInput.trim());
       setDetailPage(1);
@@ -212,6 +274,32 @@ function PropostasBasePageContent() {
     previousGlobalStatusRef.current = selectedStatus;
   }, [initialDetailStatus, selectedStatus]);
 
+  useEffect(() => {
+    if (!pathname) return;
+    const params = new URLSearchParams({
+      startDate: dateRange.start,
+      endDate: dateRange.end,
+      unit: selectedUnit,
+      status: selectedStatus,
+      detailStatus,
+      conversion: selectedConversion,
+      responsible: selectedResponsible,
+      professional: selectedProfessional,
+    });
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [
+    dateRange.end,
+    dateRange.start,
+    detailStatus,
+    pathname,
+    router,
+    selectedConversion,
+    selectedProfessional,
+    selectedResponsible,
+    selectedStatus,
+    selectedUnit,
+  ]);
+
   const handleFollowupRowSaved = (nextRow: ProposalDetailRow) => {
     setDetailData((current) => ({
       ...current,
@@ -229,9 +317,10 @@ function PropostasBasePageContent() {
         unit: selectedUnit,
         status: selectedStatus,
         detailStatus,
+        conversion: selectedConversion,
+        responsible: selectedResponsible,
+        professional: selectedProfessional,
         search: detailSearch,
-        page: String(detailPage),
-        pageSize: String(EMPTY_DETAIL_DATA.pageSize),
       });
       const response = await fetch(`/api/admin/propostas/export?${params.toString()}`);
       if (!response.ok) {
@@ -265,7 +354,7 @@ function PropostasBasePageContent() {
   }
 
   return (
-    <div className="space-y-6 p-6 bg-slate-50 min-h-screen">
+    <div className="min-h-screen space-y-6 bg-slate-50 p-6">
       <ProposalsFiltersPanel
         title="Propostas / Base de trabalho"
         subtitle="Fila operacional para follow-up da equipe, com conversão, responsável e histórico da última edição."
@@ -275,13 +364,87 @@ function PropostasBasePageContent() {
         availableUnits={availableUnits}
         availableStatuses={availableStatuses}
         filtersExpanded={filtersExpanded}
-        onChangeDateRange={setDateRange}
-        onChangeUnit={setSelectedUnit}
-        onChangeStatus={setSelectedStatus}
+        hasActiveFilters={globalFiltersActive}
+        extraFilters={
+          <>
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Conversão</label>
+              <select
+                value={selectedConversion}
+                onChange={(event) => {
+                  setSelectedConversion(event.target.value);
+                  setDetailPage(1);
+                }}
+                className="w-full cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="all">Todas as conversões</option>
+                {followupOptions.conversionStatuses.map((status) => (
+                  <option key={status.value} value={status.value}>
+                    {status.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Responsável</label>
+              <select
+                value={selectedResponsible}
+                onChange={(event) => {
+                  setSelectedResponsible(event.target.value);
+                  setDetailPage(1);
+                }}
+                className="w-full cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="all">Todos os responsáveis</option>
+                {followupOptions.users.map((user) => (
+                  <option key={user.value} value={user.value}>
+                    {user.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Profissional</label>
+              <select
+                value={selectedProfessional}
+                onChange={(event) => {
+                  setSelectedProfessional(event.target.value);
+                  setDetailPage(1);
+                }}
+                className="w-full cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="all">Todos os profissionais</option>
+                {availableProfessionals.map((professional) => (
+                  <option key={professional} value={professional}>
+                    {professional}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </>
+        }
+        onChangeDateRange={(next) => {
+          setDateRange(next);
+          setDetailPage(1);
+        }}
+        onChangeUnit={(value) => {
+          setSelectedUnit(value);
+          setDetailPage(1);
+        }}
+        onChangeStatus={(value) => {
+          setSelectedStatus(value);
+          setDetailPage(1);
+        }}
         onToggleExpanded={() => setFiltersExpanded((prev) => !prev)}
         onResetFilters={() => {
           setSelectedUnit('all');
           setSelectedStatus('all');
+          setSelectedConversion('all');
+          setSelectedResponsible('all');
+          setSelectedProfessional('all');
+          setDetailPage(1);
         }}
       />
 
@@ -322,8 +485,8 @@ export default function PropostasBasePage() {
   return (
     <Suspense
       fallback={
-        <div className="rounded-xl border border-slate-200 bg-white px-6 py-10 text-sm text-slate-500 shadow-sm">
-          Carregando base de trabalho de propostas...
+        <div className="min-h-screen bg-slate-50 p-6">
+          <div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Carregando base de trabalho...</div>
         </div>
       }
     >

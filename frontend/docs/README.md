@@ -68,5 +68,5 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Novo módulo `/colaboradores` documentado em `docs/10-plano-tecnico-colaboradores.md`.
 - Módulo `/marketing/funil` recalibrado para usar `Novos contatos Clinia (Google)` como lead operacional principal e separar `Cliques em WhatsApp` como diagnóstico auxiliar.
 - Cards do `/marketing/funil` e da aba `Saúde Google Ads` agora usam hovers detalhados com fórmula, origem do dado, escopo e limitações.
-- Módulo de propostas separado entre `/propostas` (base de trabalho) e `/propostas/gerencial` (visão gerencial), com permissionamento distinto, follow-up persistente por proposta e exportação enriquecida.
+- Módulo de propostas separado entre `/propostas` (base de trabalho) e `/propostas/gerencial` (visão gerencial), com permissionamento distinto, follow-up persistente por proposta, submenu próprio em `Financeiro > Propostas`, filtros operacionais por conversão/responsável/profissional e exportação enriquecida.
 - Novo módulo `/equipamentos` documentado em `docs/11-plano-tecnico-equipamentos.md`.

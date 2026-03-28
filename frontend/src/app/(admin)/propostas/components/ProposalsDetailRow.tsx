@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Check, ChevronDown, ChevronUp, Copy, Loader2, MessageCircle, Save } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
@@ -116,13 +116,13 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
   return (
     <>
       <tr className="align-top hover:bg-slate-50">
-        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.proposalDate || '-'}</td>
-        <td className="px-4 py-3 min-w-[220px]">
+        <td className="whitespace-nowrap px-4 py-3 text-slate-700">{row.proposalDate || '-'}</td>
+        <td className="min-w-[220px] px-4 py-3">
           <div className="font-medium text-slate-800">{row.patientName}</div>
           <div className="text-xs text-slate-500">ID {row.patientId || '-'}</div>
         </td>
-        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.patientPhone}</td>
-        <td className="px-4 py-3 min-w-[320px]">
+        <td className="whitespace-nowrap px-4 py-3 text-slate-700">{row.patientPhone}</td>
+        <td className="min-w-[380px] px-4 py-3">
           <div className="font-medium text-slate-800">{procedurePreview.preview}</div>
           <div className="mt-1 flex items-center gap-3 text-xs text-slate-500">
             <span>{row.procedureCount} item(ns)</span>
@@ -139,14 +139,14 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
           </div>
         </td>
         <td className="px-4 py-3 text-slate-700">{row.unitName}</td>
-        <td className="px-4 py-3 min-w-[220px] text-slate-700">{row.professionalName}</td>
-        <td className="px-4 py-3 text-right font-semibold text-slate-800 whitespace-nowrap">{formatCurrency(row.totalValue)}</td>
-        <td className="px-4 py-3">
-          <span className="inline-flex rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 border border-amber-200">
+        <td className="min-w-[220px] px-4 py-3 text-slate-700">{row.professionalName}</td>
+        <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-800">{formatCurrency(row.totalValue)}</td>
+        <td className="min-w-[250px] px-4 py-3">
+          <span className="inline-flex max-w-[250px] rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-center text-xs font-semibold leading-4 text-amber-800 whitespace-normal">
             {row.status}
           </span>
         </td>
-        <td className="px-4 py-3 min-w-[180px]">
+        <td className="min-w-[180px] px-4 py-3">
           {canEdit ? (
             <select
               value={draft.conversionStatus}
@@ -174,7 +174,7 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
             </span>
           )}
         </td>
-        <td className="px-4 py-3 min-w-[180px]">
+        <td className="min-w-[180px] px-4 py-3">
           {canEdit ? (
             <select
               value={draft.conversionReason}
@@ -193,7 +193,7 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
             <span className="text-sm text-slate-600">{row.conversionReasonLabel || '—'}</span>
           )}
         </td>
-        <td className="px-4 py-3 min-w-[190px]">
+        <td className="min-w-[190px] px-4 py-3">
           {canEdit ? (
             <select
               value={draft.responsibleUserId}
@@ -211,7 +211,7 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
             <span className="text-sm text-slate-600">{row.responsibleUserName || 'Não atribuído'}</span>
           )}
         </td>
-        <td className="px-4 py-3 min-w-[180px] text-xs text-slate-500">
+        <td className="min-w-[180px] px-4 py-3 text-xs text-slate-500">
           {row.updatedAt ? (
             <div>
               <div className="font-semibold text-slate-700">{row.updatedByUserName || 'Usuário'}</div>
@@ -239,10 +239,10 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
               onClick={(event) => {
                 if (!hasPhone) event.preventDefault();
               }}
-              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold border ${
+              className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
                 hasPhone
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                  : 'border-slate-200 bg-slate-50 text-slate-400 pointer-events-none'
+                  : 'pointer-events-none border-slate-200 bg-slate-50 text-slate-400'
               }`}
             >
               <MessageCircle size={13} />
@@ -260,17 +260,26 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
               </button>
             ) : null}
           </div>
-          {saveError ? <div className="mt-2 text-right text-xs text-rose-600">{saveError}</div> : null}
+          {saveError ? <p className="mt-2 text-right text-xs text-rose-600">{saveError}</p> : null}
         </td>
       </tr>
       {expanded ? (
         <tr className="bg-slate-50/70">
-          <td colSpan={13} className="px-4 py-4">
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Procedimentos da proposta</div>
-              <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+          <td colSpan={13} className="px-4 pb-4 pt-0">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-800">Itens da proposta</h3>
+                  <p className="text-xs text-slate-500">Lista completa de procedimentos vinculados a esta proposta.</p>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-600">
+                  {row.procedureCount} item(ns)
+                </span>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {row.proceduresDetailed.map((item, index) => (
-                  <div key={`${row.proposalId}-${item.name}-${index}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                  <div key={`${row.proposalId}-${index}-${item.name}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
                     <div className="text-sm font-medium text-slate-800">{item.name}</div>
                     <div className="mt-1 text-xs text-slate-500">
                       {item.value > 0 ? formatCurrency(item.value) : 'Valor não informado'}

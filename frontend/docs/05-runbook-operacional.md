@@ -320,6 +320,7 @@ LIMIT 20;
   - `/financeiro`
   - `/propostas`
   - `/propostas/gerencial`
+- Smoke de propostas operacional recomendado: validar submenu `Financeiro > Propostas`, aplicar filtros de `Conversão`, `Responsável` e `Profissional`, conferir truncamento de `Procedimento(s)` e exportar XLSX.
 
 ---
 

@@ -20,6 +20,9 @@ export type ProposalFilters = {
 export type ProposalDetailFilters = ProposalFilters & {
   detailStatus: string;
   search: string;
+  conversion: string;
+  responsible: string;
+  professional: string;
   page: number;
   pageSize: number;
 };
@@ -38,6 +41,7 @@ export type ProposalFollowupOptions = {
 export type ProposalFilterOptions = {
   availableUnits: string[];
   availableStatuses: string[];
+  availableProfessionals: string[];
 };
 
 export type ProposalFollowupUpdateInput = {
@@ -240,6 +244,9 @@ export const normalizeProposalDetailFilters = (
     ...filters,
     detailStatus: normalizeString(getParam(params, 'detailStatus')),
     search: normalizeString(getParam(params, 'search')),
+    conversion: normalizeString(getParam(params, 'conversion')) || 'all',
+    responsible: normalizeString(getParam(params, 'responsible')) || 'all',
+    professional: normalizeString(getParam(params, 'professional')) || 'all',
     page,
     pageSize,
   };
@@ -272,6 +279,21 @@ const buildProposalWhere = (filters: ProposalDetailFilters | ProposalFilters, de
   if (normalizeString(statusToApply)) {
     where += " AND LOWER(TRIM(COALESCE(p.status, ''))) = LOWER(TRIM(?))";
     params.push(statusToApply);
+  }
+
+  if ('conversion' in filters && normalizeString(filters.conversion).toLowerCase() !== 'all') {
+    where += " AND UPPER(TRIM(COALESCE(NULLIF(f.conversion_status, ''), 'PENDENTE'))) = UPPER(TRIM(?))";
+    params.push(filters.conversion);
+  }
+
+  if ('responsible' in filters && normalizeString(filters.responsible).toLowerCase() !== 'all') {
+    where += " AND TRIM(COALESCE(f.responsible_user_id, '')) = TRIM(?)";
+    params.push(filters.responsible);
+  }
+
+  if ('professional' in filters && normalizeString(filters.professional).toLowerCase() !== 'all') {
+    where += " AND UPPER(TRIM(COALESCE(p.professional_name, ''))) = UPPER(TRIM(?))";
+    params.push(filters.professional);
   }
 
   return { where, params };
@@ -318,7 +340,18 @@ export const listProposalFilterOptions = async (
     statusesParams.push(filters.unit);
   }
 
-  const [unitRows, statusRows] = await Promise.all([
+  const professionalsParams: any[] = [filters.startDate, filters.endDate];
+  let professionalsWhere = 'WHERE date BETWEEN ? AND ?';
+  if (normalizeString(filters.unit).toLowerCase() !== 'all') {
+    professionalsWhere += " AND UPPER(TRIM(COALESCE(unit_name, ''))) = UPPER(TRIM(?))";
+    professionalsParams.push(filters.unit);
+  }
+  if (normalizeString(filters.status).toLowerCase() !== 'all') {
+    professionalsWhere += " AND LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?))";
+    professionalsParams.push(filters.status);
+  }
+
+  const [unitRows, statusRows, professionalRows] = await Promise.all([
     db.query(
       `
         SELECT DISTINCT TRIM(unit_name) AS unit_name
@@ -341,6 +374,17 @@ export const listProposalFilterOptions = async (
       `,
       statusesParams,
     ),
+    db.query(
+      `
+        SELECT DISTINCT TRIM(professional_name) AS professional_name
+        FROM feegow_proposals
+        ${professionalsWhere}
+          AND professional_name IS NOT NULL
+          AND TRIM(professional_name) <> ''
+        ORDER BY professional_name
+      `,
+      professionalsParams,
+    ),
   ]);
 
   return {
@@ -349,6 +393,9 @@ export const listProposalFilterOptions = async (
       .filter(Boolean),
     availableStatuses: statusRows
       .map((row: any) => normalizeString(row?.status))
+      .filter(Boolean),
+    availableProfessionals: professionalRows
+      .map((row: any) => normalizeString(row?.professional_name))
       .filter(Boolean),
   };
 };

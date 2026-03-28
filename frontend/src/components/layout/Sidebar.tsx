@@ -42,6 +42,7 @@ interface MenuItem {
   label: string;
   icon: React.ElementType;
   group: string;
+  subgroup?: string;
   roles: UserRole[];
   pageKey: PageKey;
 }
@@ -161,17 +162,19 @@ const menuItems: MenuItem[] = [
   },
   {
     href: "/propostas",
-    label: "Propostas - Base de trabalho",
+    label: "Base de trabalho",
     icon: Briefcase,
     group: "FINANCEIRO",
+    subgroup: "Propostas",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "propostas",
   },
   {
     href: "/propostas/gerencial",
-    label: "Propostas - Visão gerencial",
+    label: "Visão gerencial",
     icon: BarChart3,
     group: "FINANCEIRO",
+    subgroup: "Propostas",
     roles: ["ADMIN", "GESTOR"],
     pageKey: "propostas_gerencial",
   },
@@ -259,6 +262,46 @@ const ROLE_LABEL: Record<UserRole, string> = {
   OPERADOR: "Operador",
 };
 
+type GroupSection =
+  | {
+      type: "item";
+      item: MenuItem;
+    }
+  | {
+      type: "subgroup";
+      label: string;
+      icon: React.ElementType;
+      items: MenuItem[];
+    };
+
+const getSubgroupKey = (group: string, subgroup: string) => `${group}::${subgroup}`;
+
+const buildGroupSections = (items: MenuItem[]): GroupSection[] => {
+  const sections: GroupSection[] = [];
+  const subgroupMap = new Map<string, { icon: React.ElementType; items: MenuItem[] }>();
+
+  for (const item of items) {
+    if (!item.subgroup) {
+      sections.push({ type: "item", item });
+      continue;
+    }
+
+    if (!subgroupMap.has(item.subgroup)) {
+      const entry = { icon: item.icon, items: [item] };
+      subgroupMap.set(item.subgroup, entry);
+      sections.push({ type: "subgroup", label: item.subgroup, icon: item.icon, items: entry.items });
+      continue;
+    }
+
+    subgroupMap.get(item.subgroup)!.items.push(item);
+  }
+
+  return sections;
+};
+
+const getCollapsedItemLabel = (item: MenuItem) =>
+  item.subgroup ? `${item.subgroup} / ${item.label}` : item.label;
+
 export function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -306,6 +349,19 @@ export function Sidebar() {
   }, [authorizedItems, pathname]);
 
   const activeGroup = activeItem?.group;
+  const activeSubgroupKey = activeItem?.subgroup
+    ? getSubgroupKey(activeItem.group, activeItem.subgroup)
+    : null;
+
+  const ensureExpandedKeysForItem = (item: MenuItem) => {
+    setExpandedGroups((prev) => {
+      const next = { ...prev, [item.group]: true };
+      if (item.subgroup) {
+        next[getSubgroupKey(item.group, item.subgroup)] = true;
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     try {
@@ -328,10 +384,18 @@ export function Sidebar() {
 
   useEffect(() => {
     if (!activeGroup) return;
-    setExpandedGroups((prev) =>
-      prev[activeGroup] ? prev : { ...prev, [activeGroup]: true }
-    );
-  }, [activeGroup]);
+    setExpandedGroups((prev) => {
+      const next = prev[activeGroup]
+        ? { ...prev }
+        : { ...prev, [activeGroup]: true };
+
+      if (activeSubgroupKey) {
+        next[activeSubgroupKey] = true;
+      }
+
+      return next;
+    });
+  }, [activeGroup, activeSubgroupKey]);
 
   useEffect(() => {
     if (!isOpen) setSearchTerm("");
@@ -342,7 +406,7 @@ export function Sidebar() {
     if (!q) return null;
 
     const matches = authorizedItems.filter((item) => {
-      const hay = `${item.label} ${item.href} ${item.group}`.toLowerCase();
+      const hay = `${item.label} ${item.subgroup ?? ""} ${item.href} ${item.group}`.toLowerCase();
       return hay.includes(q);
     });
 
@@ -361,10 +425,21 @@ export function Sidebar() {
     setExpandedGroups((prev) => ({ ...prev, [group]: !prev[group] }));
   };
 
+  const toggleSubgroup = (group: string, subgroup: string) => {
+    const subgroupKey = getSubgroupKey(group, subgroup);
+    if (subgroupKey === activeSubgroupKey) return;
+    setExpandedGroups((prev) => ({ ...prev, [subgroupKey]: !prev[subgroupKey] }));
+  };
+
   const expandAllGroups = () => {
     const next: Record<string, boolean> = {};
     groupsOrdered.forEach((group) => {
       next[group] = true;
+    });
+    authorizedItems.forEach((item) => {
+      if (item.subgroup) {
+        next[getSubgroupKey(item.group, item.subgroup)] = true;
+      }
     });
     setExpandedGroups(next);
   };
@@ -372,6 +447,7 @@ export function Sidebar() {
   const collapseAllGroups = () => {
     const next: Record<string, boolean> = {};
     if (activeGroup) next[activeGroup] = true;
+    if (activeSubgroupKey) next[activeSubgroupKey] = true;
     setExpandedGroups(next);
   };
 
@@ -496,15 +572,12 @@ export function Sidebar() {
                           {items.map((item) => {
                             const isActive = isItemActive(item);
 
-                            return (
-                              <Link
-                                key={item.href}
-                                href={item.href}
-                                onClick={() => {
-                                  setExpandedGroups((prev) => ({
-                                    ...prev,
-                                    [item.group]: true,
-                                  }));
+                          return (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              onClick={() => {
+                                  ensureExpandedKeysForItem(item);
                                   clearSearch();
                                 }}
                                 className={cn(
@@ -531,7 +604,7 @@ export function Sidebar() {
                                 />
 
                                 <span className="ml-3 text-[13px] flex-1 truncate">
-                                  {item.label}
+                                  {getCollapsedItemLabel(item)}
                                 </span>
                               </Link>
                             );
@@ -547,6 +620,7 @@ export function Sidebar() {
             groupsOrdered.map((group) => {
               const items = authorizedItems.filter((item) => item.group === group);
               if (items.length === 0) return null;
+              const sections = buildGroupSections(items);
 
               const isExpanded = !isOpen
                 ? true
@@ -566,7 +640,7 @@ export function Sidebar() {
                           key={item.href}
                           href={item.href}
                           onClick={() => {
-                            setExpandedGroups((prev) => ({ ...prev, [item.group]: true }));
+                            ensureExpandedKeysForItem(item);
                             clearSearch();
                           }}
                           className={cn(
@@ -591,7 +665,7 @@ export function Sidebar() {
                           />
 
                           <div className="absolute left-full ml-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-50 shadow-lg border border-slate-700">
-                            {item.label}
+                            {getCollapsedItemLabel(item)}
                           </div>
                         </Link>
                       );
@@ -647,44 +721,133 @@ export function Sidebar() {
                           isExpanded ? "translate-y-0" : "-translate-y-1"
                         )}
                       >
-                        {items.map((item) => {
-                          const isActive = isItemActive(item);
+                        {sections.map((section) => {
+                          if (section.type === "item") {
+                            const item = section.item;
+                            const isActive = isItemActive(item);
+
+                            return (
+                              <Link
+                                key={item.href}
+                                href={item.href}
+                                onClick={() => {
+                                  ensureExpandedKeysForItem(item);
+                                  clearSearch();
+                                }}
+                                className={cn(
+                                  "group relative flex items-center rounded-lg transition-all duration-200",
+                                  "pl-3 pr-2.5 py-1.5",
+                                  isActive
+                                    ? "bg-[#17407E] text-white font-medium shadow-md"
+                                    : "text-slate-300 hover:bg-white/5 hover:text-white"
+                                )}
+                              >
+                                {isActive && (
+                                  <span className="absolute left-0 top-0 h-full w-1 rounded-r-full bg-[#3FBD80]" />
+                                )}
+
+                                <item.icon
+                                  size={18}
+                                  className={cn(
+                                    "flex-shrink-0 transition-colors",
+                                    isActive
+                                      ? "text-[#3FBD80]"
+                                      : "text-slate-300 group-hover:text-white"
+                                  )}
+                                />
+
+                                <span className="ml-3 flex-1 truncate text-[13px]">
+                                  {item.label}
+                                </span>
+                              </Link>
+                            );
+                          }
+
+                          const subgroupKey = getSubgroupKey(group, section.label);
+                          const isSubgroupActive = activeSubgroupKey === subgroupKey;
+                          const isSubgroupExpanded = isSubgroupActive ? true : !!expandedGroups[subgroupKey];
 
                           return (
-                            <Link
-                              key={item.href}
-                              href={item.href}
-                              onClick={() => {
-                                setExpandedGroups((prev) => ({ ...prev, [item.group]: true }));
-                                clearSearch();
-                              }}
-                              className={cn(
-                                "group relative flex items-center rounded-lg transition-all duration-200",
-                                // ↓ itens mais condensados
-                                "pl-3 pr-2.5 py-1.5",
-                                isActive
-                                  ? "bg-[#17407E] text-white font-medium shadow-md"
-                                  : "text-slate-300 hover:bg-white/5 hover:text-white"
-                              )}
-                            >
-                              {isActive && (
-                                <span className="absolute left-0 h-full w-1 bg-[#3FBD80] rounded-r-full top-0" />
-                              )}
-
-                              <item.icon
-                                size={18}
+                            <div key={subgroupKey} className="rounded-lg border border-white/10 bg-white/5">
+                              <button
+                                type="button"
+                                onClick={() => toggleSubgroup(group, section.label)}
                                 className={cn(
-                                  "flex-shrink-0 transition-colors",
-                                  isActive
-                                    ? "text-[#3FBD80]"
-                                    : "text-slate-300 group-hover:text-white"
+                                  "flex w-full items-center justify-between px-3 py-2 text-left transition-colors",
+                                  isSubgroupActive ? "text-white" : "text-slate-200 hover:bg-white/5"
                                 )}
-                              />
+                                title={isSubgroupExpanded ? `Recolher ${section.label}` : `Expandir ${section.label}`}
+                                aria-label={isSubgroupExpanded ? `Recolher ${section.label}` : `Expandir ${section.label}`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <section.icon
+                                    size={16}
+                                    className={cn(
+                                      "flex-shrink-0",
+                                      isSubgroupActive ? "text-[#3FBD80]" : "text-slate-300"
+                                    )}
+                                  />
+                                  <span className="text-[12px] font-semibold uppercase tracking-[0.12em]">
+                                    {section.label}
+                                  </span>
+                                </div>
+                                {isSubgroupExpanded ? (
+                                  <ChevronDown size={14} className="text-slate-200/80" />
+                                ) : (
+                                  <ChevronRight size={14} className="text-slate-200/80" />
+                                )}
+                              </button>
 
-                              <span className="ml-3 text-[13px] flex-1 truncate">
-                                {item.label}
-                              </span>
-                            </Link>
+                              <div
+                                className={cn(
+                                  "overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out",
+                                  isSubgroupExpanded ? "max-h-40 opacity-100" : "max-h-0 opacity-0"
+                                )}
+                                aria-hidden={!isSubgroupExpanded}
+                              >
+                                <div className="space-y-1 border-t border-white/10 px-2 py-2">
+                                  {section.items.map((item) => {
+                                    const isActive = isItemActive(item);
+
+                                    return (
+                                      <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        onClick={() => {
+                                          ensureExpandedKeysForItem(item);
+                                          clearSearch();
+                                        }}
+                                        className={cn(
+                                          "group relative flex items-center rounded-lg transition-all duration-200",
+                                          "pl-4 pr-2.5 py-1.5",
+                                          isActive
+                                            ? "bg-[#17407E] text-white font-medium shadow-md"
+                                            : "text-slate-300 hover:bg-white/5 hover:text-white"
+                                        )}
+                                      >
+                                        {isActive && (
+                                          <span className="absolute left-0 top-0 h-full w-1 rounded-r-full bg-[#3FBD80]" />
+                                        )}
+
+                                        <item.icon
+                                          size={16}
+                                          className={cn(
+                                            "flex-shrink-0 transition-colors",
+                                            isActive
+                                              ? "text-[#3FBD80]"
+                                              : "text-slate-300 group-hover:text-white"
+                                          )}
+                                        />
+
+                                        <span className="ml-3 flex-1 truncate text-[13px]">
+                                          {item.label}
+                                        </span>
+                                      </Link>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
                           );
                         })}
                       </div>

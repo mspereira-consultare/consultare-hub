@@ -155,6 +155,8 @@ Arquivo: `workers/main.py`.
 - O domínio de propostas persiste `patient_id`, `proposal_last_update` e uma cache local de contatos Feegow em `feegow_patient_contacts_cache`.
 - O controle operacional da equipe fica em `proposal_followup_control`, separado de `feegow_proposals`, para não ser sobrescrito por refresh do worker.
 - A página operacional `/propostas` usa `/api/admin/propostas/options`, `/api/admin/propostas/details`, `/api/admin/propostas/export`, `/api/admin/propostas/followup/options` e `/api/admin/propostas/followup/[proposalId]`.
+- `/api/admin/propostas/options` também expõe `availableProfessionals`, enquanto `/api/admin/propostas/followup/options` alimenta os filtros de `Conversão` e `Responsável`.
+- As consultas operacionais de `/propostas/details` e `/propostas/export` aceitam filtros adicionais por `conversion`, `responsible` e `professional`.
 - A página gerencial `/propostas/gerencial` usa `/api/admin/propostas` para resumo e refresh manual do domínio `comercial`.
 - As APIs operacionais reutilizam a base local e fazem fallback on-demand em `patient/search?paciente_id=...` para cache miss.
 - API de contratos (`worker_contracts.py`).

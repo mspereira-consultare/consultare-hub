@@ -275,13 +275,14 @@ Objetivo operacional:
 - exportar a base em XLSX para apoio da equipe.
 
 Regras:
-- respeita os filtros globais de período, unidade e status;
+- respeita os filtros globais de período, unidade, status, conversão, responsável e profissional;
 - se o filtro global de status estiver específico, a base segue esse status;
 - se o filtro global estiver em `Todos`, a base abre em `Aguardando aprovação do cliente`;
 - a tabela é paginada e mostra data, paciente, telefone, procedimento(s), unidade, profissional, valor e status da proposta;
 - o campo `Procedimento(s)` mostra um resumo de até `100` caracteres;
 - quando o resumo ultrapassa esse limite, o botão `Ver itens` aparece para expandir a linha e exibir todos os procedimentos com valores quando disponíveis;
 - a base inclui colunas operacionais persistentes: `Conversão`, `Motivo`, `Responsável` e `Última edição`;
+- a navegação do módulo na sidebar fica em `Financeiro > Propostas > Base de trabalho` e `Financeiro > Propostas > Visão gerencial`;
 - nome e telefone do paciente são enriquecidos a partir da Feegow por `patient/search?paciente_id=...`, com cache local;
 - as edições da equipe ficam em tabela separada (`proposal_followup_control`) e não são sobrescritas pelo worker de propostas.
 

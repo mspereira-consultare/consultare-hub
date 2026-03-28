@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Download, FilterX, Loader2, Search } from 'lucide-react';
 import { useMemo } from 'react';
@@ -51,11 +51,11 @@ export function ProposalsDetailSection({
   const toRow = Math.min(detailData.totalRows, detailData.page * detailData.pageSize);
 
   return (
-    <section className="bg-white rounded-xl border border-slate-200 shadow-sm" id="base-detalhada-propostas">
-      <div className="p-5 border-b border-slate-100 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
+    <section className="rounded-xl border border-slate-200 bg-white shadow-sm" id="base-detalhada-propostas">
+      <div className="flex flex-col gap-4 border-b border-slate-100 p-5 xl:flex-row xl:items-end xl:justify-between">
         <div>
           <h2 className="text-lg font-bold text-slate-800">Base de trabalho</h2>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="mt-1 text-sm text-slate-500">
             Fila operacional para follow-up da equipe, com conversão, responsável e histórico da última edição.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
@@ -81,8 +81,8 @@ export function ProposalsDetailSection({
         </div>
       </div>
 
-      <div className="p-5 border-b border-slate-100 bg-slate-50/70">
-        <div className="grid grid-cols-1 xl:grid-cols-[260px_minmax(0,1fr)_160px] gap-3">
+      <div className="border-b border-slate-100 bg-slate-50/70 p-5">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-[260px_minmax(0,1fr)_160px]">
           <div>
             <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Status da base</label>
             <select
@@ -112,8 +112,8 @@ export function ProposalsDetailSection({
                 type="text"
                 value={detailSearch}
                 onChange={(e) => onChangeDetailSearch(e.target.value)}
-                placeholder="Paciente, telefone, procedimento, unidade ou profissional"
-                className="w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 py-2.5 text-sm text-slate-700 outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="Paciente, telefone, procedimento, unidade, profissional ou responsável"
+                className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
           </div>
