@@ -24,6 +24,19 @@ type Row = {
 
 const formatNumber = (value: number) => Number(value || 0).toLocaleString("pt-BR");
 const formatPercent = (value: number) => `${Number(value || 0).toFixed(2).replace(".", ",")}%`;
+const getRowClassName = (taxaOcupacaoComercialPct: number, rowIndex: number) => {
+  if (taxaOcupacaoComercialPct > 60) {
+    return "border-t border-emerald-100 bg-emerald-50/70 hover:bg-emerald-50";
+  }
+
+  if (taxaOcupacaoComercialPct < 40) {
+    return "border-t border-rose-100 bg-rose-50/70 hover:bg-rose-50";
+  }
+
+  return rowIndex % 2 === 0
+    ? "border-t border-slate-100 bg-white hover:bg-slate-50"
+    : "border-t border-slate-100 bg-slate-50/40 hover:bg-slate-50";
+};
 
 export function OccupancyTable({
   rows,
@@ -140,7 +153,7 @@ export function OccupancyTable({
               </tr>
             ) : (
               rows.map((row, idx) => (
-                <tr key={`${row.especialidadeId}-${idx}`} className="border-t border-slate-100 even:bg-slate-50/40">
+                <tr key={`${row.especialidadeId}-${idx}`} className={getRowClassName(row.taxaOcupacaoComercialPct, idx)}>
                   <td className="px-3 py-2 text-slate-700">{row.especialidadeNome}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.agendamentosCount)}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatNumber(row.horariosDisponiveisCount)}</td>

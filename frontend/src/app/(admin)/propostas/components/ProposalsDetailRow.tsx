@@ -115,9 +115,9 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
 
   return (
     <>
-      <tr className="align-top hover:bg-slate-50">
-        <td className="whitespace-nowrap px-4 py-3 text-slate-700">{row.proposalDate || '-'}</td>
-        <td className="min-w-[220px] px-4 py-3">
+      <tr className="group align-top hover:bg-slate-50">
+        <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-3 text-slate-700 shadow-[1px_0_0_0_rgba(226,232,240,1)] group-hover:bg-slate-50">{row.proposalDate || '-'}</td>
+        <td className="sticky left-[120px] z-10 min-w-[240px] bg-white px-4 py-3 shadow-[1px_0_0_0_rgba(226,232,240,1)] group-hover:bg-slate-50">
           <div className="font-medium text-slate-800">{row.patientName}</div>
           <div className="text-xs text-slate-500">ID {row.patientId || '-'}</div>
         </td>
