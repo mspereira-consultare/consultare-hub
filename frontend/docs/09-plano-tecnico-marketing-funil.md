@@ -1,5 +1,22 @@
 # Plano Técnico — Módulo `/marketing/funil`
 
+## Status consolidado em 2026-03-30
+Este documento descreve o **unico modulo de Marketing implementado ate agora** no painel: `/marketing/funil`.
+
+No roadmap macro dos documentos em `planejamentos/`, continuam **pendentes** como paginas/modulos proprios:
+- `/marketing/controle`
+- `/marketing/reputacao`
+- `/marketing/configuracoes`
+
+Resumo do estado atual:
+- `/marketing/funil` esta implementado e operacional;
+- o escopo atual ja foi alem do V1 Google-first original;
+- o modulo hoje usa Google Ads, GA4, Clinia Ads, Feegow e faturamento analitico;
+- ainda permanecem pendentes exportacao do modulo, endpoints de `specialties/capacity` e uma atribuicao mais robusta de receita por campanha.
+
+Para uma visao executiva comparando o que foi planejado e o que ja existe, consultar tambem:
+- `planejamentos/STATUS_MODULOS_MARKETING_2026-03-30.md`
+
 ## Objetivo
 Consolidar a leitura de performance de marketing da Consultare em um único módulo, cruzando:
 

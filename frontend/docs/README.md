@@ -34,6 +34,12 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 10. [`docs/10-plano-tecnico-colaboradores.md`](docs/10-plano-tecnico-colaboradores.md)  
    Plano técnico e implementação do módulo `/colaboradores` para o Departamento Pessoal.
 
+11. [`docs/11-plano-tecnico-equipamentos.md`](docs/11-plano-tecnico-equipamentos.md)  
+   Plano técnico e implementação do módulo `/equipamentos`, incluindo cadastro, calibração, manutenção e anexos.
+
+12. [`docs/12-plano-tecnico-marketing-controle.md`](docs/12-plano-tecnico-marketing-controle.md)  
+   Plano técnico e implementação do módulo `/marketing/controle`, com cockpit mensal executivo por marca e exportação XLSX.
+
 ## Convenções
 
 - Datas: padrão `YYYY-MM-DD` no banco e filtros internos.
@@ -70,3 +76,4 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 - Cards do `/marketing/funil` e da aba `Saúde Google Ads` agora usam hovers detalhados com fórmula, origem do dado, escopo e limitações.
 - Módulo de propostas separado entre `/propostas` (base de trabalho) e `/propostas/gerencial` (visão gerencial), com permissionamento distinto, follow-up persistente por proposta, submenu próprio em `Financeiro > Propostas`, filtros operacionais por conversão/responsável/profissional e exportação enriquecida.
 - Novo módulo `/equipamentos` documentado em `docs/11-plano-tecnico-equipamentos.md`.
+- Novo módulo `/marketing/controle` documentado em `docs/12-plano-tecnico-marketing-controle.md`, com leitura semanal/mensal por marca, blocos reais de Google/GA4/Clinia e placeholders explícitos para fontes ainda não integradas.

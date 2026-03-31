@@ -775,3 +775,61 @@ Controlar os equipamentos f?sicos da cl?nica, com foco em calibra??o, manuten??o
 | Hist?rico de manuten??o | Mantido em `clinic_equipment_events` |
 | Arquivos | Mantidos em `clinic_equipment_files` com download pelo painel |
 | Exporta??o XLSX | Usa exatamente os filtros vis?veis da tela |
+
+---
+
+## Marketing / Controle (`/marketing/controle`)
+
+### Objetivo
+
+Oferecer um cockpit executivo mensal por marca, com leitura semanal e mensal das fontes de marketing ja integradas, sem depender da planilha manual.
+
+### Filtros
+
+- Marca (`Consultare` ou `Resolve`)
+- Mes (`YYYY-MM`)
+
+### Fontes consumidas
+
+- `GET /api/admin/marketing/controle/summary`
+- `GET /api/admin/marketing/controle/grid`
+- `GET /api/admin/marketing/controle/source-status`
+- `POST /api/admin/marketing/controle/refresh`
+- `GET /api/admin/marketing/controle/export`
+
+### Indicadores principais
+
+| Indicador | Fonte | Regra |
+|---|---|---|
+| Visitantes do site | `fact_marketing_funnel_daily` | `SUM(total_users)` |
+| Cliques em WhatsApp | `fact_marketing_funnel_daily` | `SUM(leads)` |
+| Novos contatos Clinia (Google) | `fact_clinia_ads_daily` | `SUM(new_contacts_received)` com `origin='google'` |
+| Agendamentos Clinia (Google) | `fact_clinia_ads_daily` | `SUM(appointments_converted)` com `origin='google'` |
+| Investimento Google Ads | `fact_marketing_funnel_daily` | `SUM(spend)` |
+| Custo por novo contato | frontend/API | `spend / new_contacts_received` |
+| Custo por agendamento | frontend/API | `spend / appointments_converted` |
+
+### Grade mensal
+
+Colunas fixas da grade:
+
+- `Semana 1`: dias `1-7`
+- `Semana 2`: dias `8-14`
+- `Semana 3`: dias `15-21`
+- `Semana 4`: dias `22-fim do mes`
+- `Mensal`
+
+Blocos reais do MVP:
+
+- `KPIs principais`
+- `Google Ads`
+- `Site / GA4`
+
+Blocos visiveis, mas ainda sem integracao:
+
+- `Facebook organico`
+- `Instagram organico`
+- `LinkedIn organico`
+- `E-mail marketing`
+- `Google Meu Negocio`
+- `SEO tecnico / SEMrush`

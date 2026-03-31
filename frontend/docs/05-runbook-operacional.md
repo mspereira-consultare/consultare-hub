@@ -615,3 +615,25 @@ Checklist funcional:
 - eventos de manuten??o devem aparecer no hist?rico ap?s o primeiro salvamento
 - upload e download de arquivos devem funcionar pelo storage configurado
 - a exporta??o XLSX deve respeitar os filtros vis?veis na tela
+
+## 4.2) Validacao rapida do Marketing / Controle
+
+Dependencias operacionais:
+
+- `marketing_funnel`
+- `clinia_ads`
+
+APIs:
+
+- `/api/admin/marketing/controle/summary`
+- `/api/admin/marketing/controle/grid`
+- `/api/admin/marketing/controle/source-status`
+- `/api/admin/marketing/controle/export`
+
+Checklist funcional:
+
+- `Marca` deve aceitar apenas `Consultare` e `Resolve`
+- a grade deve mostrar `Semana 1`, `Semana 2`, `Semana 3`, `Semana 4` e `Mensal`
+- `POST /api/admin/marketing/controle/refresh` deve enfileirar somente a camada Google
+- `Resolve` sem dados deve manter a tela carregada, com estado vazio consistente
+- blocos nao integrados devem aparecer como `Em planejamento`

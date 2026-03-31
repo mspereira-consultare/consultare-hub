@@ -308,3 +308,31 @@ Novo `PageKey` inclu?do no sistema:
 | `/api/admin/equipamentos/[id]/eventos/[eventId]` | `equipamentos` | `edit` |
 | `/api/admin/equipamentos/[id]/arquivos` | `equipamentos` | `view` / `edit` |
 | `/api/admin/equipamentos/arquivos/[fileId]/download` | `equipamentos` | `view` |
+
+---
+
+## Atualizacao: modulo `marketing_controle`
+
+### Rota
+
+- `/marketing/controle`
+- APIs relacionadas:
+  - `/api/admin/marketing/controle/summary`
+  - `/api/admin/marketing/controle/grid`
+  - `/api/admin/marketing/controle/source-status`
+  - `/api/admin/marketing/controle/refresh`
+  - `/api/admin/marketing/controle/export`
+
+### Defaults atuais
+
+| Perfil | view | edit | refresh |
+|---|---:|---:|---:|
+| ADMIN | sim | sim | sim |
+| GESTOR | sim | nao | sim |
+| OPERADOR | nao | nao | nao |
+
+### Regra de autorizacao
+
+- `GET`: exige `view`
+- `POST /refresh`: exige `refresh`
+- nao ha fluxo de `edit` no MVP, pois o modulo e read-only

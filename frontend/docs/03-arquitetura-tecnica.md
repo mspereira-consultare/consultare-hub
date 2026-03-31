@@ -414,3 +414,36 @@ O status de calibra??o n?o ? digitado livremente. Ele ? derivado em `frontend/sr
 - `calibration_required`
 - `next_calibration_date`
 - janela de alerta de 30 dias
+
+## Atualizacao de 30/03/2026 — Marketing / Controle
+
+Foi adicionado o modulo `/marketing/controle` como cockpit executivo mensal, separado do `/marketing/funil`.
+
+Principais caracteristicas do MVP:
+
+- foco em leitura executiva semanal/mensal por marca;
+- marcas disponiveis:
+  - `Consultare`
+  - `Resolve`
+- blocos reais:
+  - `KPIs principais`
+  - `Google Ads`
+  - `Site / GA4`
+- blocos futuros aparecem como `Em planejamento`, sem valores ficticios;
+- exportacao em `XLSX`;
+- permissao dedicada via `marketing_controle`.
+
+Camada de dados reutilizada:
+
+- `fact_marketing_funnel_daily`
+- `fact_clinia_ads_daily`
+- `system_status`
+- `marketing_funnel_jobs`
+
+APIs do modulo:
+
+- `GET /api/admin/marketing/controle/summary`
+- `GET /api/admin/marketing/controle/grid`
+- `GET /api/admin/marketing/controle/source-status`
+- `POST /api/admin/marketing/controle/refresh`
+- `GET /api/admin/marketing/controle/export`

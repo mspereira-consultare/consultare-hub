@@ -981,3 +981,31 @@ Escrita: APIs de eventos do m?dulo `/equipamentos`.
 | `created_at` | Data/hora do upload |
 
 Escrita: APIs de upload do m?dulo `/equipamentos`.
+
+## Atualizacao de 30/03/2026 — Marketing / Controle
+
+O modulo `/marketing/controle` nao cria tabelas novas no MVP.
+
+Ele reutiliza as seguintes fontes:
+
+- `fact_marketing_funnel_daily`
+  - visitantes, usuarios, novos usuarios, sessoes, sessoes engajadas, page views
+  - investimento, impressoes, cliques, conversoes e valor de conversao
+  - cliques em WhatsApp via `leads`
+- `fact_clinia_ads_daily`
+  - `new_contacts_received`
+  - `appointments_converted`
+  - filtro `origin='google'`
+- `system_status`
+  - heartbeat exibido no cabeçalho do modulo
+
+Contratos de leitura:
+
+- `GET /api/admin/marketing/controle/summary`
+- `GET /api/admin/marketing/controle/grid`
+- `GET /api/admin/marketing/controle/source-status`
+- `GET /api/admin/marketing/controle/export`
+
+Observacao:
+
+- os buckets `Semana 1..4` e `Mensal` sao calculados em tempo de leitura, nao persistidos em tabela separada.

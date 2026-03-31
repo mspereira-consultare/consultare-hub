@@ -9,6 +9,7 @@ export type PageKey =
   | 'propostas'
   | 'propostas_gerencial'
   | 'repasses'
+  | 'marketing_controle'
   | 'marketing_funil'
   | 'colaboradores'
   | 'equipamentos'
@@ -44,6 +45,7 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'propostas', label: 'Propostas - Base de trabalho', path: '/propostas' },
   { key: 'propostas_gerencial', label: 'Propostas - Visão gerencial', path: '/propostas/gerencial' },
   { key: 'repasses', label: 'Fechamento de Repasses', path: '/repasses' },
+  { key: 'marketing_controle', label: 'Marketing - Controle', path: '/marketing/controle' },
   { key: 'marketing_funil', label: 'Marketing - Funil', path: '/marketing/funil' },
   { key: 'colaboradores', label: 'Colaboradores', path: '/colaboradores' },
   { key: 'equipamentos', label: 'Equipamentos', path: '/equipamentos' },
@@ -94,13 +96,13 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda'], { view: true });
     setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { edit: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil'], { refresh: true });
     return matrix;
   }
 
-  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'ajuda'], { view: true });
+  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_funil', 'ajuda'], { view: true });
   setMany(matrix, ['propostas', 'checklist_crc', 'checklist_recepcao'], { edit: true });
   setMany(matrix, ['monitor', 'produtividade', 'agendamentos', 'colaboradores', 'equipamentos', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
   return matrix;
@@ -157,6 +159,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/propostas') return 'propostas';
   if (path === '/propostas/gerencial') return 'propostas_gerencial';
   if (path === '/repasses') return 'repasses';
+  if (path === '/marketing/controle') return 'marketing_controle';
   if (path === '/marketing/funil') return 'marketing_funil';
   if (path === '/colaboradores') return 'colaboradores';
   if (path === '/equipamentos') return 'equipamentos';
@@ -184,6 +187,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/propostas/options')) return 'propostas';
   if (path.startsWith('/api/admin/propostas/followup')) return 'propostas';
   if (path.startsWith('/api/admin/repasses')) return 'repasses';
+  if (path.startsWith('/api/admin/marketing/controle')) return 'marketing_controle';
   if (path.startsWith('/api/admin/marketing/funil')) return 'marketing_funil';
   if (path.startsWith('/api/admin/colaboradores')) return 'colaboradores';
   if (path.startsWith('/api/admin/equipamentos')) return 'equipamentos';

@@ -211,6 +211,14 @@ const menuItems: MenuItem[] = [
     pageKey: "agenda_ocupacao",
   },
   {
+    href: "/marketing/controle",
+    label: "Marketing - Controle",
+    icon: ClipboardList,
+    group: "MARKETING",
+    roles: ["ADMIN", "GESTOR"],
+    pageKey: "marketing_controle",
+  },
+  {
     href: "/marketing/funil",
     label: "Marketing - Funil",
     icon: BarChart3,
