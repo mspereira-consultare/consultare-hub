@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { Check, ChevronDown, ChevronUp, Copy, Loader2, MessageCircle, Save } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, ChevronUp, Copy, Loader2, MessageCircle, Save } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { formatCurrency, formatDateOnly, formatLastUpdate, normalizePhoneForWhatsApp } from './formatters';
 import type { ProposalDetailRow, ProposalFollowupOptions } from './types';
@@ -160,6 +160,9 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
     }
   };
 
+  const iconButtonBaseClassName =
+    'inline-flex h-8 w-8 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-50';
+
   return (
     <>
       <tr className={rowClassName}>
@@ -311,16 +314,17 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
             'Sem edição'
           )}
         </td>
-        <td className={`sticky right-0 z-10 px-4 py-3 shadow-[-1px_0_0_0_rgba(226,232,240,1)] ${stickyCellClassName}`}>
-          <div className="flex items-center justify-end gap-2">
+        <td className="px-3 py-3">
+          <div className="flex items-center justify-center gap-1.5">
             <button
               type="button"
               onClick={handleCopyPhone}
               disabled={!hasPhone}
-              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              title={copiedProposalId === row.proposalId ? 'Telefone copiado' : 'Copiar telefone'}
+              aria-label={copiedProposalId === row.proposalId ? 'Telefone copiado' : 'Copiar telefone'}
+              className={`${iconButtonBaseClassName} border-slate-200 bg-white text-slate-600 hover:bg-slate-50`}
             >
               {copiedProposalId === row.proposalId ? <Check size={13} /> : <Copy size={13} />}
-              {copiedProposalId === row.proposalId ? 'Copiado' : 'Copiar'}
             </button>
             <a
               href={whatsappHref}
@@ -329,28 +333,50 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
               onClick={(event) => {
                 if (!hasPhone) event.preventDefault();
               }}
-              className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold ${
+              title={hasPhone ? 'Abrir conversa no WhatsApp' : 'Telefone indisponível'}
+              aria-label={hasPhone ? 'Abrir conversa no WhatsApp' : 'Telefone indisponível'}
+              className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
                 hasPhone
                   ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                   : 'pointer-events-none border-slate-200 bg-slate-50 text-slate-400'
               }`}
             >
               <MessageCircle size={13} />
-              WhatsApp
             </a>
             {canEdit ? (
               <button
                 type="button"
                 onClick={handleSave}
                 disabled={!hasChanges || saving}
-                className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+                title={
+                  saving
+                    ? 'Salvando alterações'
+                    : hasChanges
+                      ? 'Salvar alterações'
+                      : 'Nenhuma alteração pendente'
+                }
+                aria-label={
+                  saving
+                    ? 'Salvando alterações'
+                    : hasChanges
+                      ? 'Salvar alterações'
+                      : 'Nenhuma alteração pendente'
+                }
+                className={`${iconButtonBaseClassName} border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100`}
               >
                 {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-                Salvar
               </button>
             ) : null}
           </div>
-          {saveError ? <p className="mt-2 text-right text-xs text-rose-600">{saveError}</p> : null}
+          {saveError ? (
+            <div
+              title={saveError}
+              aria-label={saveError}
+              className="mt-2 flex items-center justify-center text-rose-600"
+            >
+              <AlertCircle size={14} />
+            </div>
+          ) : null}
         </td>
       </tr>
       {expanded ? (

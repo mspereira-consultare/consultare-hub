@@ -13,7 +13,7 @@ type Props = {
 export function ProposalsDetailTable({ rows, canEdit, followupOptions, onSaved }: Props) {
   return (
     <div className="max-h-[72vh] overflow-auto rounded-xl border border-slate-200">
-      <table className="w-full min-w-[2360px] bg-white text-left">
+      <table className="w-full min-w-[2280px] bg-white text-left">
         <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
           <tr>
             <th className="sticky left-0 z-20 min-w-[120px] bg-slate-50 px-4 py-3 shadow-[1px_0_0_0_rgba(226,232,240,1)]">Data</th>
@@ -31,7 +31,7 @@ export function ProposalsDetailTable({ rows, canEdit, followupOptions, onSaved }
             <th className="px-4 py-3">Motivo</th>
             <th className="px-4 py-3">Responsável</th>
             <th className="px-4 py-3">Última edição</th>
-            <th className="sticky right-0 z-20 min-w-[170px] bg-slate-50 px-4 py-3 text-right shadow-[-1px_0_0_0_rgba(226,232,240,1)]">Ações</th>
+            <th className="min-w-[90px] px-3 py-3 text-center">Ações</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 text-sm">
