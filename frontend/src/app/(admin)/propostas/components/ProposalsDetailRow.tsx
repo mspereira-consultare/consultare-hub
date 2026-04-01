@@ -104,6 +104,19 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
     () => getReturnDateMeta(canEdit ? draft.nextContactAt : row.nextContactAt),
     [canEdit, draft.nextContactAt, row.nextContactAt],
   );
+  const rowNextContactAt = row.nextContactAt || '';
+  const isOverdueReturn = Boolean(rowNextContactAt) && rowNextContactAt < TODAY_ISO;
+  const isTodayReturn = Boolean(rowNextContactAt) && rowNextContactAt === TODAY_ISO;
+  const rowClassName = isOverdueReturn
+    ? 'group align-top bg-rose-50/70 hover:bg-rose-50'
+    : isTodayReturn
+      ? 'group align-top bg-amber-50/70 hover:bg-amber-50'
+      : 'group align-top hover:bg-slate-50';
+  const stickyCellClassName = isOverdueReturn
+    ? 'bg-rose-50/70 group-hover:bg-rose-50'
+    : isTodayReturn
+      ? 'bg-amber-50/70 group-hover:bg-amber-50'
+      : 'bg-white group-hover:bg-slate-50';
 
   useEffect(() => {
     if (!canExpandProcedures && expanded) {
@@ -149,9 +162,9 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
 
   return (
     <>
-      <tr className="group align-top hover:bg-slate-50">
-        <td className="sticky left-0 z-10 whitespace-nowrap bg-white px-4 py-3 text-slate-700 shadow-[1px_0_0_0_rgba(226,232,240,1)] group-hover:bg-slate-50">{row.proposalDate || '-'}</td>
-        <td className="sticky left-[120px] z-10 min-w-[240px] bg-white px-4 py-3 shadow-[1px_0_0_0_rgba(226,232,240,1)] group-hover:bg-slate-50">
+      <tr className={rowClassName}>
+        <td className={`sticky left-0 z-10 whitespace-nowrap px-4 py-3 text-slate-700 shadow-[1px_0_0_0_rgba(226,232,240,1)] ${stickyCellClassName}`}>{row.proposalDate || '-'}</td>
+        <td className={`sticky left-[120px] z-10 min-w-[240px] px-4 py-3 shadow-[1px_0_0_0_rgba(226,232,240,1)] ${stickyCellClassName}`}>
           <div className="font-medium text-slate-800">{row.patientName}</div>
           <div className="text-xs text-slate-500">ID {row.patientId || '-'}</div>
         </td>
@@ -298,7 +311,7 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
             'Sem edição'
           )}
         </td>
-        <td className="px-4 py-3">
+        <td className={`sticky right-0 z-10 px-4 py-3 shadow-[-1px_0_0_0_rgba(226,232,240,1)] ${stickyCellClassName}`}>
           <div className="flex items-center justify-end gap-2">
             <button
               type="button"

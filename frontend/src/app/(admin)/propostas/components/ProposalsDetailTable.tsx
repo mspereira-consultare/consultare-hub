@@ -31,7 +31,7 @@ export function ProposalsDetailTable({ rows, canEdit, followupOptions, onSaved }
             <th className="px-4 py-3">Motivo</th>
             <th className="px-4 py-3">Responsável</th>
             <th className="px-4 py-3">Última edição</th>
-            <th className="px-4 py-3 text-right">Ações</th>
+            <th className="sticky right-0 z-20 min-w-[170px] bg-slate-50 px-4 py-3 text-right shadow-[-1px_0_0_0_rgba(226,232,240,1)]">Ações</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 text-sm">

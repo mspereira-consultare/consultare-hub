@@ -49,6 +49,26 @@ export function ProposalsDetailSection({
   const hasActiveLocalFilters = Boolean(detailSearch) || (!globalStatusLocked && detailStatus !== AWAITING_CLIENT_APPROVAL_STATUS);
   const fromRow = detailData.totalRows === 0 ? 0 : (detailData.page - 1) * detailData.pageSize + 1;
   const toRow = Math.min(detailData.totalRows, detailData.page * detailData.pageSize);
+  const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
+  const rowSummary = useMemo(() => {
+    let dueNow = 0;
+    let overdue = 0;
+    let withoutResponsible = 0;
+    let inContact = 0;
+    let converted = 0;
+
+    for (const row of detailData.rows) {
+      if (!row.responsibleUserId) withoutResponsible += 1;
+      if (row.conversionStatus === 'EM_CONTATO') inContact += 1;
+      if (row.conversionStatus === 'CONVERTIDO') converted += 1;
+      if (row.nextContactAt) {
+        if (row.nextContactAt < todayIso) overdue += 1;
+        if (row.nextContactAt <= todayIso) dueNow += 1;
+      }
+    }
+
+    return { dueNow, overdue, withoutResponsible, inContact, converted };
+  }, [detailData.rows, todayIso]);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm" id="base-detalhada-propostas">
@@ -133,6 +153,33 @@ export function ProposalsDetailSection({
       </div>
 
       <div className="p-5">
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Visíveis na página</p>
+            <p className="mt-1 text-2xl font-bold text-slate-800">{detailData.rows.length}</p>
+          </div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Retorno até hoje</p>
+            <p className="mt-1 text-2xl font-bold text-amber-800">{rowSummary.dueNow}</p>
+          </div>
+          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700">Atrasadas</p>
+            <p className="mt-1 text-2xl font-bold text-rose-800">{rowSummary.overdue}</p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Sem responsável</p>
+            <p className="mt-1 text-2xl font-bold text-slate-800">{rowSummary.withoutResponsible}</p>
+          </div>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-blue-700">Em contato / convertidas</p>
+            <p className="mt-1 text-2xl font-bold text-blue-800">
+              {rowSummary.inContact}
+              <span className="mx-2 text-slate-300">/</span>
+              {rowSummary.converted}
+            </p>
+          </div>
+        </div>
+
         {loading ? (
           <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 text-slate-400">
             <Loader2 size={28} className="animate-spin text-blue-600" />
