@@ -23,6 +23,7 @@ export type ProposalDetailFilters = ProposalFilters & {
   conversion: string;
   responsible: string;
   professional: string;
+  returnDate: string;
   page: number;
   pageSize: number;
 };
@@ -49,6 +50,9 @@ export type ProposalFollowupUpdateInput = {
   conversionStatus: ProposalConversionStatus;
   conversionReason: ProposalConversionReason | null;
   responsibleUserId: string | null;
+  observation: string | null;
+  lastContactAt: string | null;
+  nextContactAt: string | null;
   updatedByUserId: string;
   updatedByUserName: string;
 };
@@ -80,6 +84,9 @@ export type ProposalDetailRow = {
   conversionReasonLabel: string | null;
   responsibleUserId: string | null;
   responsibleUserName: string | null;
+  observation: string | null;
+  lastContactAt: string | null;
+  nextContactAt: string | null;
   updatedByUserName: string | null;
   updatedAt: string | null;
 };
@@ -127,6 +134,9 @@ type RawProposalRow = {
   conversion_reason?: string | null;
   responsible_user_id?: string | null;
   responsible_user_name?: string | null;
+  observation?: string | null;
+  last_contact_at?: string | null;
+  next_contact_at?: string | null;
   updated_by_user_name?: string | null;
   followup_updated_at?: string | null;
 };
@@ -201,6 +211,9 @@ export const ensureProposalsSupportTables = async (db: DbInterface = getDbConnec
       conversion_reason VARCHAR(64) NULL,
       responsible_user_id VARCHAR(64) NULL,
       responsible_user_name TEXT NULL,
+      observation TEXT NULL,
+      last_contact_at TEXT NULL,
+      next_contact_at TEXT NULL,
       updated_by_user_id VARCHAR(64) NULL,
       updated_by_user_name TEXT NULL,
       updated_at TEXT NULL
@@ -209,6 +222,9 @@ export const ensureProposalsSupportTables = async (db: DbInterface = getDbConnec
 
   await ensureColumn(db, 'feegow_proposals', 'patient_id', 'BIGINT');
   await ensureColumn(db, 'feegow_proposals', 'proposal_last_update', 'TEXT');
+  await ensureColumn(db, 'proposal_followup_control', 'observation', 'TEXT');
+  await ensureColumn(db, 'proposal_followup_control', 'last_contact_at', 'TEXT');
+  await ensureColumn(db, 'proposal_followup_control', 'next_contact_at', 'TEXT');
 };
 
 const getTodayRef = () => {
@@ -220,6 +236,13 @@ const getTodayRef = () => {
     day: '2-digit',
   }).format(now);
 };
+
+const normalizeIsoDateOnly = (value: unknown) => {
+  const normalized = normalizeString(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(normalized) ? normalized : '';
+};
+
+const normalizeObservation = (value: unknown) => normalizeText(value).slice(0, 2000);
 
 export const normalizeProposalFilters = (params: URLSearchParams | Record<string, unknown>): ProposalFilters => {
   const today = getTodayRef();
@@ -247,6 +270,7 @@ export const normalizeProposalDetailFilters = (
     conversion: normalizeString(getParam(params, 'conversion')) || 'all',
     responsible: normalizeString(getParam(params, 'responsible')) || 'all',
     professional: normalizeString(getParam(params, 'professional')) || 'all',
+    returnDate: normalizeIsoDateOnly(getParam(params, 'returnDate')),
     page,
     pageSize,
   };
@@ -294,6 +318,11 @@ const buildProposalWhere = (filters: ProposalDetailFilters | ProposalFilters, de
   if ('professional' in filters && normalizeString(filters.professional).toLowerCase() !== 'all') {
     where += " AND UPPER(TRIM(COALESCE(p.professional_name, ''))) = UPPER(TRIM(?))";
     params.push(filters.professional);
+  }
+
+  if ('returnDate' in filters && normalizeIsoDateOnly(filters.returnDate)) {
+    where += " AND TRIM(COALESCE(f.next_contact_at, '')) = TRIM(?)";
+    params.push(normalizeIsoDateOnly(filters.returnDate));
   }
 
   return { where, params };
@@ -645,6 +674,9 @@ const mapProposalRows = (rows: RawProposalRow[]) =>
       conversionReasonLabel: conversionReason ? proposalConversionReasonMap.get(conversionReason) || null : null,
       responsibleUserId: normalizeString(row.responsible_user_id) || null,
       responsibleUserName: normalizeString(row.responsible_user_name) || null,
+      observation: normalizeText(row.observation) || null,
+      lastContactAt: normalizeIsoDateOnly(row.last_contact_at) || null,
+      nextContactAt: normalizeIsoDateOnly(row.next_contact_at) || null,
       updatedByUserName: normalizeString(row.updated_by_user_name) || null,
       updatedAt: normalizeString(row.followup_updated_at) || null,
     } satisfies ProposalDetailRow;
@@ -668,6 +700,9 @@ const baseDetailSelect = `
     f.conversion_reason,
     f.responsible_user_id,
     f.responsible_user_name,
+    f.observation,
+    f.last_contact_at,
+    f.next_contact_at,
     f.updated_by_user_name,
     f.updated_at AS followup_updated_at
   FROM feegow_proposals p
@@ -697,6 +732,9 @@ export const upsertProposalFollowup = async (
 
   const conversionStatus = normalizeProposalConversionStatus(input.conversionStatus);
   const conversionReason = normalizeProposalConversionReason(conversionStatus, input.conversionReason);
+  const observation = normalizeObservation(input.observation) || null;
+  const lastContactAt = normalizeIsoDateOnly(input.lastContactAt) || null;
+  const nextContactAt = normalizeIsoDateOnly(input.nextContactAt) || null;
 
   let responsibleUserId = normalizeString(input.responsibleUserId) || null;
   let responsibleUserName: string | null = null;
@@ -730,15 +768,21 @@ export const upsertProposalFollowup = async (
         conversion_reason,
         responsible_user_id,
         responsible_user_name,
+        observation,
+        last_contact_at,
+        next_contact_at,
         updated_by_user_id,
         updated_by_user_name,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(proposal_id) DO UPDATE SET
         conversion_status = excluded.conversion_status,
         conversion_reason = excluded.conversion_reason,
         responsible_user_id = excluded.responsible_user_id,
         responsible_user_name = excluded.responsible_user_name,
+        observation = excluded.observation,
+        last_contact_at = excluded.last_contact_at,
+        next_contact_at = excluded.next_contact_at,
         updated_by_user_id = excluded.updated_by_user_id,
         updated_by_user_name = excluded.updated_by_user_name,
         updated_at = excluded.updated_at
@@ -749,6 +793,9 @@ export const upsertProposalFollowup = async (
       conversionReason,
       responsibleUserId,
       responsibleUserName,
+      observation,
+      lastContactAt,
+      nextContactAt,
       normalizeString(input.updatedByUserId) || null,
       normalizeString(input.updatedByUserName) || 'Usuário',
       updatedAt,
@@ -775,6 +822,7 @@ export const listProposalDetails = async (filters: ProposalDetailFilters, db: Db
   const searchClause = buildSearchClause(filters.search);
   const whereSql = `${baseWhere.where} ${searchClause.sql}`;
   const whereParams = [...baseWhere.params, ...searchClause.params];
+  const todayRef = getTodayRef();
 
   const totalRowsResult = await db.query(
     `
@@ -795,10 +843,25 @@ export const listProposalDetails = async (filters: ProposalDetailFilters, db: Db
     `
       ${baseDetailSelect}
       ${whereSql}
-      ORDER BY p.date DESC, p.proposal_id DESC
+      ORDER BY
+        CASE
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN 0
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN 1
+          ELSE 2
+        END ASC,
+        CASE
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN TRIM(f.next_contact_at)
+          ELSE NULL
+        END ASC,
+        CASE
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN TRIM(f.next_contact_at)
+          ELSE NULL
+        END ASC,
+        p.date DESC,
+        p.proposal_id DESC
       LIMIT ? OFFSET ?
     `,
-    [...whereParams, filters.pageSize, offset],
+    [...whereParams, todayRef, todayRef, filters.pageSize, offset],
   )) as RawProposalRow[];
 
   const missingIds = Array.from(
@@ -815,10 +878,25 @@ export const listProposalDetails = async (filters: ProposalDetailFilters, db: Db
       `
         ${baseDetailSelect}
         ${whereSql}
-        ORDER BY p.date DESC, p.proposal_id DESC
+        ORDER BY
+          CASE
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN 0
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN 1
+            ELSE 2
+          END ASC,
+          CASE
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN TRIM(f.next_contact_at)
+            ELSE NULL
+          END ASC,
+          CASE
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN TRIM(f.next_contact_at)
+            ELSE NULL
+          END ASC,
+          p.date DESC,
+          p.proposal_id DESC
         LIMIT ? OFFSET ?
       `,
-      [...whereParams, filters.pageSize, offset],
+      [...whereParams, todayRef, todayRef, filters.pageSize, offset],
     )) as RawProposalRow[];
   }
 
@@ -839,14 +917,30 @@ export const listProposalExportRows = async (filters: ProposalDetailFilters, db:
   const searchClause = buildSearchClause(filters.search);
   const whereSql = `${baseWhere.where} ${searchClause.sql}`;
   const whereParams = [...baseWhere.params, ...searchClause.params];
+  const todayRef = getTodayRef();
 
   let rows = (await db.query(
     `
       ${baseDetailSelect}
       ${whereSql}
-      ORDER BY p.date DESC, p.proposal_id DESC
+      ORDER BY
+        CASE
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN 0
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN 1
+          ELSE 2
+        END ASC,
+        CASE
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN TRIM(f.next_contact_at)
+          ELSE NULL
+        END ASC,
+        CASE
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN TRIM(f.next_contact_at)
+          ELSE NULL
+        END ASC,
+        p.date DESC,
+        p.proposal_id DESC
     `,
-    whereParams,
+    [...whereParams, todayRef, todayRef],
   )) as RawProposalRow[];
 
   const missingIds = Array.from(
@@ -863,9 +957,24 @@ export const listProposalExportRows = async (filters: ProposalDetailFilters, db:
       `
         ${baseDetailSelect}
         ${whereSql}
-        ORDER BY p.date DESC, p.proposal_id DESC
+        ORDER BY
+          CASE
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN 0
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN 1
+            ELSE 2
+          END ASC,
+          CASE
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN TRIM(f.next_contact_at)
+            ELSE NULL
+          END ASC,
+          CASE
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN TRIM(f.next_contact_at)
+            ELSE NULL
+          END ASC,
+          p.date DESC,
+          p.proposal_id DESC
       `,
-      whereParams,
+      [...whereParams, todayRef, todayRef],
     )) as RawProposalRow[];
   }
 

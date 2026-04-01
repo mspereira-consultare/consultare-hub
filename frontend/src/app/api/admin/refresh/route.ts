@@ -118,13 +118,13 @@ export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) {
-      return NextResponse.json({ error: 'Nao autenticado' }, { status: 401 });
+      return NextResponse.json({ error: 'Não autenticado' }, { status: 401 });
     }
 
     const { service } = await request.json(); 
 
     if (!service) {
-        return NextResponse.json({ error: "Serviço não informado" }, { status: 400 });
+        return NextResponse.json({ error: 'Serviço não informado' }, { status: 400 });
     }
 
     const serviceName = normalizeService(service);
@@ -140,7 +140,7 @@ export async function POST(request: Request) {
         : hasAnyRefresh(permissions, role);
 
     if (!canRefresh) {
-      return NextResponse.json({ error: 'Sem permissao para atualizar este servico' }, { status: 403 });
+      return NextResponse.json({ error: 'Sem permissão para atualizar este serviço' }, { status: 403 });
     }
 
     const db = getDbConnection();
@@ -150,7 +150,7 @@ export async function POST(request: Request) {
         INSERT INTO system_status (service_name, status, last_run, details)
         VALUES (?, 'PENDING', datetime('now'), 'Solicitado via Painel')
         ON CONFLICT(service_name) 
-        DO UPDATE SET status = 'PENDING', details = 'Solicitado via Painel'
+        DO UPDATE SET status = 'PENDING', details = 'Solicitado via Painel', last_run = datetime('now')
     `;
 
     // Agora é AWAIT para compatibilidade com Turso
@@ -159,11 +159,11 @@ export async function POST(request: Request) {
     invalidateCache('admin:');
     return NextResponse.json({ 
         success: true, 
-        message: "Atualização solicitada. O worker processará em breve." 
+        message: 'Atualização solicitada. O worker processará em breve.' 
     });
 
   } catch (error: any) {
-    console.error("Erro Refresh API:", error);
+    console.error('Erro na API de refresh:', error);
     return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
   }
 }

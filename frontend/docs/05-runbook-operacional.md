@@ -91,6 +91,7 @@ Esperado:
 - `/api/admin/contratos`
 - `/api/admin/produtividade`
 - `/api/admin/goals/dashboard`
+- `/api/admin/goals/dashboard/export`
 - `/api/admin/checklist/crc`
 - `/api/admin/checklist/recepcao?unit=campinas_shopping`
 

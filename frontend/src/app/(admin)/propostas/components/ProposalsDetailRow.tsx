@@ -2,7 +2,7 @@
 
 import { Check, ChevronDown, ChevronUp, Copy, Loader2, MessageCircle, Save } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { formatCurrency, formatLastUpdate, normalizePhoneForWhatsApp } from './formatters';
+import { formatCurrency, formatDateOnly, formatLastUpdate, normalizePhoneForWhatsApp } from './formatters';
 import type { ProposalDetailRow, ProposalFollowupOptions } from './types';
 
 type Props = {
@@ -13,6 +13,7 @@ type Props = {
 };
 
 const PROCEDURE_PREVIEW_LIMIT = 100;
+const TODAY_ISO = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 
 const followupBadgeClassName = (status: string) => {
   if (status === 'CONVERTIDO') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
@@ -37,6 +38,23 @@ const truncateProcedureSummary = (summary: string) => {
   };
 };
 
+const getReturnDateMeta = (dateString?: string | null) => {
+  const normalized = String(dateString || '').trim();
+  if (!normalized) {
+    return { label: 'Sem retorno agendado', className: 'border-slate-200 bg-slate-100 text-slate-500' };
+  }
+
+  if (normalized < TODAY_ISO) {
+    return { label: 'Retorno em atraso', className: 'border-rose-200 bg-rose-50 text-rose-700' };
+  }
+
+  if (normalized === TODAY_ISO) {
+    return { label: 'Retornar hoje', className: 'border-amber-200 bg-amber-50 text-amber-700' };
+  }
+
+  return { label: 'Retorno futuro', className: 'border-blue-200 bg-blue-50 text-blue-700' };
+};
+
 export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: Props) {
   const [copiedProposalId, setCopiedProposalId] = useState<number | null>(null);
   const [expanded, setExpanded] = useState(false);
@@ -46,6 +64,9 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
     conversionStatus: row.conversionStatus,
     conversionReason: row.conversionReason || '',
     responsibleUserId: row.responsibleUserId || '',
+    observation: row.observation || '',
+    lastContactAt: row.lastContactAt || '',
+    nextContactAt: row.nextContactAt || '',
   });
 
   useEffect(() => {
@@ -53,6 +74,9 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
       conversionStatus: row.conversionStatus,
       conversionReason: row.conversionReason || '',
       responsibleUserId: row.responsibleUserId || '',
+      observation: row.observation || '',
+      lastContactAt: row.lastContactAt || '',
+      nextContactAt: row.nextContactAt || '',
     });
     setSaveError('');
   }, [row]);
@@ -69,10 +93,17 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
   const hasChanges =
     draft.conversionStatus !== row.conversionStatus ||
     draft.conversionReason !== (row.conversionReason || '') ||
-    draft.responsibleUserId !== (row.responsibleUserId || '');
+    draft.responsibleUserId !== (row.responsibleUserId || '') ||
+    draft.observation !== (row.observation || '') ||
+    draft.lastContactAt !== (row.lastContactAt || '') ||
+    draft.nextContactAt !== (row.nextContactAt || '');
 
   const procedurePreview = useMemo(() => truncateProcedureSummary(row.procedureSummary), [row.procedureSummary]);
   const canExpandProcedures = procedurePreview.truncated && row.proceduresDetailed.length > 0;
+  const nextContactMeta = useMemo(
+    () => getReturnDateMeta(canEdit ? draft.nextContactAt : row.nextContactAt),
+    [canEdit, draft.nextContactAt, row.nextContactAt],
+  );
 
   useEffect(() => {
     if (!canExpandProcedures && expanded) {
@@ -101,6 +132,9 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
           conversionStatus: draft.conversionStatus,
           conversionReason: draft.conversionReason || null,
           responsibleUserId: draft.responsibleUserId || null,
+          observation: draft.observation || null,
+          lastContactAt: draft.lastContactAt || null,
+          nextContactAt: draft.nextContactAt || null,
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -145,6 +179,49 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
           <span className="inline-flex max-w-[250px] rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-center text-xs font-semibold leading-4 text-amber-800 whitespace-normal">
             {row.status}
           </span>
+        </td>
+        <td className="min-w-[150px] px-4 py-3">
+          {canEdit ? (
+            <input
+              type="date"
+              value={draft.lastContactAt}
+              onChange={(event) => setDraft((current) => ({ ...current, lastContactAt: event.target.value }))}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
+            />
+          ) : (
+            <span className="text-sm text-slate-600">{formatDateOnly(row.lastContactAt)}</span>
+          )}
+        </td>
+        <td className="min-w-[170px] px-4 py-3">
+          <div className="space-y-2">
+            {canEdit ? (
+              <input
+                type="date"
+                value={draft.nextContactAt}
+                onChange={(event) => setDraft((current) => ({ ...current, nextContactAt: event.target.value }))}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
+              />
+            ) : (
+              <span className="text-sm text-slate-700">{formatDateOnly(row.nextContactAt)}</span>
+            )}
+            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${nextContactMeta.className}`}>
+              {nextContactMeta.label}
+            </span>
+          </div>
+        </td>
+        <td className="min-w-[300px] px-4 py-3">
+          {canEdit ? (
+            <input
+              type="text"
+              value={draft.observation}
+              onChange={(event) => setDraft((current) => ({ ...current, observation: event.target.value }))}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
+              placeholder="Registrar observação"
+              maxLength={280}
+            />
+          ) : (
+            <span className="text-sm text-slate-600">{row.observation || '—'}</span>
+          )}
         </td>
         <td className="min-w-[180px] px-4 py-3">
           {canEdit ? (
@@ -265,7 +342,7 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
       </tr>
       {expanded ? (
         <tr className="bg-slate-50/70">
-          <td colSpan={13} className="px-4 pb-4 pt-0">
+          <td colSpan={16} className="px-4 pb-4 pt-0">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>

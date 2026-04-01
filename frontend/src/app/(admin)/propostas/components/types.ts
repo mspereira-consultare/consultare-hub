@@ -66,6 +66,9 @@ export type ProposalDetailRow = {
   conversionReasonLabel: string | null;
   responsibleUserId: string | null;
   responsibleUserName: string | null;
+  observation: string | null;
+  lastContactAt: string | null;
+  nextContactAt: string | null;
   updatedByUserName: string | null;
   updatedAt: string | null;
 };

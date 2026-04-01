@@ -44,6 +44,9 @@ export async function GET(request: Request) {
       { header: 'Unidade', key: 'unitName', width: 24 },
       { header: 'Profissional', key: 'professionalName', width: 30 },
       { header: 'Status da proposta', key: 'status', width: 28 },
+      { header: 'Último contato', key: 'lastContactAt', width: 18 },
+      { header: 'Próximo contato', key: 'nextContactAt', width: 18 },
+      { header: 'Observação', key: 'observation', width: 34 },
       { header: 'Convers\u00e3o', key: 'conversionStatus', width: 18 },
       { header: 'Motivo', key: 'conversionReason', width: 24 },
       { header: 'Respons\u00e1vel', key: 'responsibleUserName', width: 24 },
@@ -54,16 +57,16 @@ export async function GET(request: Request) {
       { header: 'ID da proposta', key: 'proposalId', width: 16 },
     ];
 
-    worksheet.mergeCells('A1:P1');
+    worksheet.mergeCells('A1:S1');
     worksheet.getCell('A1').value = 'Propostas - base de trabalho';
     worksheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
     worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17407E' } };
 
-    worksheet.mergeCells('A2:P2');
-    worksheet.getCell('A2').value = `Per\u00edodo: ${filters.startDate} at\u00e9 ${filters.endDate} | Unidade: ${filters.unit === 'all' ? 'Todas as unidades' : filters.unit} | Status detalhado: ${result.detailStatusApplied}`;
+    worksheet.mergeCells('A2:S2');
+    worksheet.getCell('A2').value = `Período: ${filters.startDate} até ${filters.endDate} | Unidade: ${filters.unit === 'all' ? 'Todas as unidades' : filters.unit} | Status detalhado: ${result.detailStatusApplied} | Data de retorno: ${filters.returnDate || 'Todas'}`;
     worksheet.getCell('A2').font = { size: 10 };
 
-    worksheet.mergeCells('A3:P3');
+    worksheet.mergeCells('A3:S3');
     worksheet.getCell('A3').value = `Gerado em: ${formatDateTime(new Date().toISOString())}`;
     worksheet.getCell('A3').font = { size: 10 };
 
@@ -84,6 +87,9 @@ export async function GET(request: Request) {
         row.unitName,
         row.professionalName,
         row.status,
+        row.lastContactAt || '-',
+        row.nextContactAt || '-',
+        row.observation || '-',
         row.conversionStatusLabel,
         row.conversionReasonLabel || '-',
         row.responsibleUserName || 'N\u00e3o atribu\u00eddo',
@@ -93,7 +99,7 @@ export async function GET(request: Request) {
         row.proposalLastUpdate ? formatDateTime(row.proposalLastUpdate) : '-',
         row.proposalId,
       ];
-      excelRow.getCell(12).numFmt = 'R$ #,##0.00';
+      excelRow.getCell(15).numFmt = 'R$ #,##0.00';
       rowIndex += 1;
     }
 

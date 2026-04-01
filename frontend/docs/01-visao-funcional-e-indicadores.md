@@ -164,6 +164,7 @@ Analisar faturamento por período, unidade, grupo e procedimento, com modo compa
 | Atendimentos/Guias | `history.totals.qtd` | Soma de `qtd` (resumo) ou contagem (analítico fallback) |
 | Ticket médio | frontend | `total / qtd` |
 | Novos pacientes | `history.totals.newPatients` | `COUNT(DISTINCT patient_id)` em `feegow_appointments`, com `first_appointment_flag = 1`, usando a `date` da consulta e respeitando os filtros de unidade, grupo e procedimento |
+| % de novos pacientes | frontend + `history.totals.totalPatients` | `newPatients / totalPatients * 100`, considerando pacientes distintos no per?odo filtrado |
 | Curva diária | `history.daily` | Série por dia (`d`) |
 | Evolução mensal | `history.monthly` | Série por mês (`m`) |
 | Grupos de procedimento | `history.groupStats` | Soma e quantidade por `grupo` |
@@ -332,6 +333,7 @@ Acompanhar progresso em tempo real das metas vigentes.
 ### Fonte consumida
 
 - `GET /api/admin/goals/dashboard`
+- `POST /api/admin/goals/dashboard/export`
 
 ### Regras de status visual
 
@@ -349,6 +351,11 @@ Acompanhar progresso em tempo real das metas vigentes.
 | Batidas | Quantidade de metas em `SUCCESS` |
 | Atenção | Quantidade de metas em `WARNING` |
 | Total | Quantidade total de metas filtradas |
+
+### Exporta??es
+
+- `XLSX`: planilha com aba `Resumo` e aba `Metas`, incluindo filtros aplicados e todos os detalhes vis?veis da meta.
+- `PDF`: relat?rio executivo em A4 paisagem, com identidade visual Consultare, cabe?alho institucional, resumo dos KPIs e tabela consolidada das metas filtradas.
 
 ---
 

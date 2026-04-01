@@ -157,7 +157,7 @@ export function ProposalsFiltersPanel({
 
           </div>
 
-          {extraFilters ? <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">{extraFilters}</div> : null}
+          {extraFilters ? <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">{extraFilters}</div> : null}
 
           {hasActiveFilters ? (
             <div className="mt-4 flex justify-end">

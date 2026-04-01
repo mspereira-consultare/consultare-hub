@@ -31,7 +31,7 @@ type DateRange = { start: string; end: string };
 type ChartPoint = { label: string; total: number; qtd: number; sortKey: string };
 type GroupPoint = { procedure_group: string; total: number; qtd: number };
 type Totals = { total: number; qtd: number; newPatients: number; totalPatients: number };
-type Heartbeat = { status: string; last_run: string; details: string };
+type Heartbeat = { status: string; last_run: string | null; details: string };
 type ComparisonMode = 'previous' | 'yoy' | 'custom';
 type ComparisonRow = {
   key: string;
@@ -257,6 +257,7 @@ export default function FinancialPage() {
 
   const [heartbeat, setHeartbeat] = useState<Heartbeat | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [manualRefreshActive, setManualRefreshActive] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const comparisonRange = useMemo<DateRange>(() => {
@@ -358,11 +359,17 @@ export default function FinancialPage() {
 
         if (baseData.heartbeat) {
           setHeartbeat(baseData.heartbeat);
-          if (baseData.heartbeat.status === 'RUNNING' || baseData.heartbeat.status === 'PENDING') {
+          const heartbeatStatus = String(baseData.heartbeat.status || '').toUpperCase();
+          if (manualRefreshActive && (heartbeatStatus === 'RUNNING' || heartbeatStatus === 'PENDING')) {
             setIsUpdating(true);
-            setTimeout(() => fetchData(true), 3000);
+            window.setTimeout(() => {
+              void fetchData(true);
+            }, 3000);
           } else {
             setIsUpdating(false);
+            if (manualRefreshActive) {
+              setManualRefreshActive(false);
+            }
           }
         }
       }
@@ -380,6 +387,10 @@ export default function FinancialPage() {
       }
     } catch (error) {
       console.error('Erro Financeiro:', error);
+      if (manualRefreshActive) {
+        setManualRefreshActive(false);
+        setIsUpdating(false);
+      }
     } finally {
       setLoading(false);
     }
@@ -387,15 +398,19 @@ export default function FinancialPage() {
 
   const handleManualUpdate = async () => {
     setIsUpdating(true);
+    setManualRefreshActive(true);
     try {
-      await fetch('/api/admin/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ service: 'worker_faturamento_scraping' }),
-      });
-      setTimeout(() => fetchData(true), 1000);
+      const response = await fetch('/api/admin/financial/history', { method: 'POST' });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(String(payload?.error || 'Falha ao solicitar atualização do financeiro.'));
+      }
+      window.setTimeout(() => {
+        void fetchData(true);
+      }, 1000);
     } catch (error) {
       console.error(error);
+      setManualRefreshActive(false);
       setIsUpdating(false);
     }
   };

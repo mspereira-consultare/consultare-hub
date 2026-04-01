@@ -74,6 +74,10 @@ function PropostasBasePageContent() {
   const initialConversion = useMemo(() => normalizeSelectParam(searchParams.get('conversion')), [searchParams]);
   const initialResponsible = useMemo(() => normalizeSelectParam(searchParams.get('responsible')), [searchParams]);
   const initialProfessional = useMemo(() => normalizeSelectParam(searchParams.get('professional')), [searchParams]);
+  const initialReturnDate = useMemo(() => {
+    const raw = String(searchParams.get('returnDate') || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
+  }, [searchParams]);
 
   const role = String((session?.user as any)?.role || 'OPERADOR');
   const permissions = (session?.user as any)?.permissions;
@@ -87,6 +91,7 @@ function PropostasBasePageContent() {
   const [selectedConversion, setSelectedConversion] = useState(initialConversion);
   const [selectedResponsible, setSelectedResponsible] = useState(initialResponsible);
   const [selectedProfessional, setSelectedProfessional] = useState(initialProfessional);
+  const [selectedReturnDate, setSelectedReturnDate] = useState(initialReturnDate);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [availableUnits, setAvailableUnits] = useState<string[]>([]);
   const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
@@ -113,7 +118,8 @@ function PropostasBasePageContent() {
     selectedStatus !== 'all' ||
     selectedConversion !== 'all' ||
     selectedResponsible !== 'all' ||
-    selectedProfessional !== 'all';
+    selectedProfessional !== 'all' ||
+    Boolean(selectedReturnDate);
 
   const loadOptions = useCallback(async () => {
     if (!canView) return;
@@ -167,6 +173,7 @@ function PropostasBasePageContent() {
         conversion: selectedConversion,
         responsible: selectedResponsible,
         professional: selectedProfessional,
+        returnDate: selectedReturnDate,
         search: detailSearch,
         page: String(detailPage),
         pageSize: String(EMPTY_DETAIL_DATA.pageSize),
@@ -195,6 +202,7 @@ function PropostasBasePageContent() {
     detailSearch,
     detailStatus,
     selectedConversion,
+    selectedReturnDate,
     selectedProfessional,
     selectedResponsible,
     selectedStatus,
@@ -303,6 +311,7 @@ function PropostasBasePageContent() {
       conversion: selectedConversion,
       responsible: selectedResponsible,
       professional: selectedProfessional,
+      returnDate: selectedReturnDate,
     });
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [
@@ -312,17 +321,15 @@ function PropostasBasePageContent() {
     pathname,
     router,
     selectedConversion,
+    selectedReturnDate,
     selectedProfessional,
     selectedResponsible,
     selectedStatus,
     selectedUnit,
   ]);
 
-  const handleFollowupRowSaved = (nextRow: ProposalDetailRow) => {
-    setDetailData((current) => ({
-      ...current,
-      rows: current.rows.map((row) => (row.proposalId === nextRow.proposalId ? nextRow : row)),
-    }));
+  const handleFollowupRowSaved = (_nextRow: ProposalDetailRow) => {
+    void fetchDetailData();
   };
 
   const handleManualUpdate = async () => {
@@ -359,6 +366,7 @@ function PropostasBasePageContent() {
         conversion: selectedConversion,
         responsible: selectedResponsible,
         professional: selectedProfessional,
+        returnDate: selectedReturnDate,
         search: detailSearch,
       });
       const response = await fetch(`/api/admin/propostas/export?${params.toString()}`);
@@ -466,6 +474,19 @@ function PropostasBasePageContent() {
                 ))}
               </select>
             </div>
+
+            <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Data de retorno</label>
+              <input
+                type="date"
+                value={selectedReturnDate}
+                onChange={(event) => {
+                  setSelectedReturnDate(event.target.value);
+                  setDetailPage(1);
+                }}
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500"
+              />
+            </div>
           </>
         }
         onChangeDateRange={(next) => {
@@ -487,6 +508,7 @@ function PropostasBasePageContent() {
           setSelectedConversion('all');
           setSelectedResponsible('all');
           setSelectedProfessional('all');
+          setSelectedReturnDate('');
           setDetailPage(1);
         }}
       />

@@ -11,18 +11,22 @@ export type ProposalConversionStatus = (typeof PROPOSAL_CONVERSION_STATUSES)[num
 
 export const PROPOSAL_CONVERSION_REASONS_BY_STATUS = {
   EM_CONTATO: [
-    { value: 'SEM_RETORNO', label: 'Sem retorno' },
-    { value: 'RETORNAR_DEPOIS', label: 'Retornar depois' },
-    { value: 'AGUARDANDO_RESPOSTA', label: 'Aguardando resposta' },
+    { value: 'REALIZOU_OUTRO_LOCAL', label: 'Realizou em outro local' },
+    { value: 'PROBLEMAS_FINANCEIROS', label: 'Problemas financeiros' },
+    { value: 'REALIZOU_SUS', label: 'Realizou no SUS' },
+    { value: 'REALIZOU_CONVENIO', label: 'Realizou pelo conv\u00eanio' },
+    { value: 'RETORNAR_DEPOIS', label: 'Retornar depois (fluxo do follow up)' },
+    { value: 'TELEFONE_INVALIDO', label: 'Telefone inv\u00e1lido' },
+    { value: 'OUTROS', label: 'Outros' },
   ],
   NAO_CONVERTIDO: [
-    { value: 'SEM_INTERESSE', label: 'Sem interesse' },
-    { value: 'PRECO', label: 'Pre\u00e7o' },
-    { value: 'SEM_DISPONIBILIDADE', label: 'Sem disponibilidade' },
-    { value: 'CONTATO_INVALIDO', label: 'Contato inv\u00e1lido' },
-    { value: 'DUPLICADO', label: 'Duplicado' },
-    { value: 'JA_REALIZOU', label: 'J\u00e1 realizou' },
-    { value: 'OUTRO', label: 'Outro' },
+    { value: 'REALIZOU_OUTRO_LOCAL', label: 'Realizou em outro local' },
+    { value: 'PROBLEMAS_FINANCEIROS', label: 'Problemas financeiros' },
+    { value: 'REALIZOU_SUS', label: 'Realizou no SUS' },
+    { value: 'REALIZOU_CONVENIO', label: 'Realizou pelo conv\u00eanio' },
+    { value: 'RETORNAR_DEPOIS', label: 'Retornar depois (fluxo do follow up)' },
+    { value: 'TELEFONE_INVALIDO', label: 'Telefone inv\u00e1lido' },
+    { value: 'OUTROS', label: 'Outros' },
   ],
 } as const;
 

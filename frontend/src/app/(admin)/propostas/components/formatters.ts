@@ -15,6 +15,14 @@ export function formatLastUpdate(dateString?: string | null): string {
   return parsed.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
 }
 
+export function formatDateOnly(dateString?: string | null): string {
+  if (!dateString) return '—';
+  const normalized = String(dateString).trim();
+  const parsed = new Date(`${normalized}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return normalized;
+  return parsed.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
+
 export function compactProcedures(summary: string, count: number): string {
   const parts = String(summary || '')
     .split('|')

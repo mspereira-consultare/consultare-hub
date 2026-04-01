@@ -4,7 +4,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Target, TrendingUp, RefreshCw, Filter,
   CheckCircle2, AlertTriangle, Loader2,
-  CreditCard, Building2
+  CreditCard, Building2, FileSpreadsheet, FileDown
 } from 'lucide-react';
 import { GoalDetailsModal } from '../components/GoalDetailsModal';
 import { GOAL_SCOPES, KPIS_AVAILABLE, PERIODICITY_OPTIONS, UNITS, SECTORS } from '../constants';
@@ -63,6 +63,16 @@ const DEFAULT_FILTERS: GoalFilters = {
   target_max: ''
 };
 
+const SCOPE_LABELS = Object.fromEntries(GOAL_SCOPES.map((item) => [item.value, item.label])) as Record<string, string>;
+const PERIODICITY_LABELS = Object.fromEntries(PERIODICITY_OPTIONS.map((item) => [item.value, item.label])) as Record<string, string>;
+const UNIT_LABELS = Object.fromEntries(UNITS.map((item) => [item.value, item.label])) as Record<string, string>;
+const KPI_LABELS = Object.fromEntries(KPIS_AVAILABLE.map((item) => [item.id, item.label])) as Record<string, string>;
+const STATUS_LABELS: Record<DashboardGoal['status'], string> = {
+  SUCCESS: 'Batida',
+  WARNING: 'Atenção',
+  DANGER: 'Em risco',
+};
+
 export default function GoalsDashboardPage() {
   const [goals, setGoals] = useState<DashboardGoal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,6 +82,8 @@ export default function GoalsDashboardPage() {
   const [filters, setFilters] = useState<GoalFilters>(DEFAULT_FILTERS);
   const [groupsOptions, setGroupsOptions] = useState<string[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
+  const [exportingXlsx, setExportingXlsx] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
 
   const fetchData = async (forceFresh = false) => {
     setLoading(true);
@@ -209,6 +221,98 @@ export default function GoalsDashboardPage() {
     return val.toLocaleString('pt-BR');
   };
 
+  const appliedFilters = useMemo(() => {
+    const entries: Array<{ label: string; value: string }> = [];
+
+    if (filters.name.trim()) entries.push({ label: 'Nome', value: filters.name.trim() });
+    if (filters.scope !== 'all') entries.push({ label: 'Escopo', value: SCOPE_LABELS[filters.scope] || filters.scope });
+    if (filters.sector !== 'all') entries.push({ label: 'Setor', value: filters.sector });
+    if (filters.periodicity !== 'all') {
+      entries.push({ label: 'Periodicidade', value: PERIODICITY_LABELS[filters.periodicity] || filters.periodicity });
+    }
+    if (filters.unit !== 'all') entries.push({ label: 'Unidade de medida', value: UNIT_LABELS[filters.unit] || filters.unit });
+    if (filters.linked_kpi_id !== 'all') {
+      entries.push({ label: 'Indicador (KPI)', value: KPI_LABELS[filters.linked_kpi_id] || filters.linked_kpi_id });
+    }
+    if (filters.filter_group !== 'all') entries.push({ label: 'Grupo de procedimento', value: filters.filter_group });
+    if (filters.clinic_unit !== 'all') entries.push({ label: 'Unidade clínica', value: filters.clinic_unit });
+    if (filters.collaborator !== 'all') entries.push({ label: 'Colaborador', value: filters.collaborator });
+    if (filters.team !== 'all') entries.push({ label: 'Equipe', value: filters.team });
+    if (filters.start_date) entries.push({ label: 'Vigência início', value: filters.start_date });
+    if (filters.end_date) entries.push({ label: 'Vigência fim', value: filters.end_date });
+    if (filters.target_min) entries.push({ label: 'Meta mínima', value: filters.target_min });
+    if (filters.target_max) entries.push({ label: 'Meta máxima', value: filters.target_max });
+
+    return entries;
+  }, [filters]);
+
+  const buildExportPayload = (format: 'xlsx' | 'pdf') => ({
+    format,
+    generatedAt: new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' }),
+    filters: appliedFilters,
+    summary: {
+      totalGoals,
+      successGoals,
+      warningGoals,
+      globalProgress,
+    },
+    goals: filteredGoals.map((goal) => ({
+      name: goal.name,
+      scopeLabel: SCOPE_LABELS[goal.scope] || goal.scope,
+      sector: goal.sector || '—',
+      periodicityLabel: PERIODICITY_LABELS[goal.periodicity] || goal.periodicity,
+      unitLabel: UNIT_LABELS[goal.unit] || goal.unit,
+      indicatorLabel: KPI_LABELS[goal.linked_kpi_id || ''] || goal.linked_kpi_id || '—',
+      groupLabel: goal.filter_group || '—',
+      clinicUnitLabel: goal.clinic_unit || '—',
+      collaboratorLabel: goal.collaborator || '—',
+      teamLabel: goal.team || '—',
+      startDate: goal.start_date || '—',
+      endDate: goal.end_date || '—',
+      targetLabel: formatValue(goal.target, goal.unit),
+      currentLabel: formatValue(goal.current, goal.unit),
+      percentageLabel: `${goal.percentage}%`,
+      statusLabel: STATUS_LABELS[goal.status],
+      status: goal.status,
+    })),
+  });
+
+  const handleExport = async (format: 'xlsx' | 'pdf') => {
+    if (format === 'xlsx') {
+      setExportingXlsx(true);
+    } else {
+      setExportingPdf(true);
+    }
+
+    try {
+      const response = await fetch('/api/admin/goals/dashboard/export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(buildExportPayload(format)),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(String(payload?.error || 'Falha ao exportar relatório.'));
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `metas-dashboard.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Erro ao exportar dashboard de metas:', error);
+    } finally {
+      setExportingXlsx(false);
+      setExportingPdf(false);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 max-w-full mx-auto min-h-screen bg-slate-50">
       
@@ -228,6 +332,24 @@ export default function GoalsDashboardPage() {
         </div>
         
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => handleExport('xlsx')}
+            disabled={loading || exportingXlsx || exportingPdf}
+            className="flex items-center gap-2 px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-700 text-sm hover:bg-emerald-100 transition-all shadow-sm active:scale-95 disabled:opacity-70"
+          >
+            {exportingXlsx ? <Loader2 className="animate-spin" size={16} /> : <FileSpreadsheet size={16} />}
+            Exportar XLSX
+          </button>
+
+          <button
+            onClick={() => handleExport('pdf')}
+            disabled={loading || exportingXlsx || exportingPdf}
+            className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm hover:bg-blue-100 transition-all shadow-sm active:scale-95 disabled:opacity-70"
+          >
+            {exportingPdf ? <Loader2 className="animate-spin" size={16} /> : <FileDown size={16} />}
+            Exportar PDF
+          </button>
+
           <button 
               onClick={() => fetchData(true)} 
               disabled={loading}
@@ -640,21 +762,21 @@ function DashboardCard({ goal, formatValue, compact = true, onClick }: {
         </span>
       </div>
 
-      {/* Tags de Parâmetros */}
+      {/* Tags de parâmetros */}
       <div className="flex flex-wrap gap-0.5 mb-1.5">
         {goal.filter_group && (
           <span className="text-[8px] md:text-[9px] bg-violet-100 text-violet-700 px-1 py-0.5 rounded font-medium truncate max-w-full" title={goal.filter_group}>
-            📊 {goal.filter_group.substring(0, 10)}
+            Grupo: {goal.filter_group.substring(0, 10)}
           </span>
         )}
         {goal.clinic_unit && goal.clinic_unit !== 'all' && (
           <span className="text-[8px] md:text-[9px] bg-blue-100 text-blue-700 px-1 py-0.5 rounded font-medium truncate max-w-full" title={goal.clinic_unit}>
-            🏥 {goal.clinic_unit.substring(0, 8)}
+            Unidade: {goal.clinic_unit.substring(0, 8)}
           </span>
         )}
         {goal.team && (
           <span className="text-[8px] md:text-[9px] bg-purple-100 text-purple-700 px-1 py-0.5 rounded font-medium truncate max-w-full" title={goal.team}>
-            👥 {goal.team.substring(0, 8)}
+            Equipe: {goal.team.substring(0, 8)}
           </span>
         )}
       </div>
@@ -683,10 +805,10 @@ function DashboardCard({ goal, formatValue, compact = true, onClick }: {
         />
       </div>
 
-      {/* Periodicidade e Projeção */}
+      {/* Periodicidade e projeção */}
       <div className="flex justify-between items-center text-[8px] md:text-[9px] text-slate-500 font-semibold uppercase">
         <span>
-          {goal.periodicity === 'monthly' ? '📅 Mês' : goal.periodicity === 'weekly' ? '🗓️ Semana' : goal.periodicity === 'daily' ? '📆 Dia' : '⏱️ Período'}
+          {goal.periodicity === 'monthly' ? 'Mês' : goal.periodicity === 'weekly' ? 'Semana' : goal.periodicity === 'daily' ? 'Dia' : 'Período'}
         </span>
         {projection !== null && (
           <span className="text-slate-600 font-bold normal-case">
