@@ -109,6 +109,11 @@ A camada converte SQL legado para MySQL quando necessário:
 - `ON CONFLICT ... DO UPDATE` -> `ON DUPLICATE KEY UPDATE`
 - `PRAGMA table_info(...)` -> `information_schema.columns`
 
+Fallback local importante:
+
+- quando o Next é iniciado dentro de `frontend/`, o adaptador tenta carregar também o `.env` da raiz do repositório (`../.env`) para manter a conexão MySQL disponível no ambiente local;
+- isso evita falso fallback para Turso em APIs server-side que dependem do banco principal, como `/api/admin/goals/dashboard`.
+
 ### Workers (`database_manager.py`)
 
 - Resolve `MYSQL_URL` com fallback automático para `MYSQL_PUBLIC_URL` fora do runtime Railway interno.

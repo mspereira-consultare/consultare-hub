@@ -8,8 +8,60 @@ export interface DbInterface {
 
 let tursoClient: ReturnType<typeof createClient> | null = null;
 let mysqlPool: Pool | null = null;
+let envBootstrapped = false;
+
+function ensureServerEnv() {
+  if (envBootstrapped) return;
+  envBootstrapped = true;
+
+  if (
+    process.env.DB_PROVIDER ||
+    process.env.MYSQL_URL ||
+    process.env.MYSQL_PUBLIC_URL ||
+    process.env.TURSO_URL ||
+    process.env.TURSO_TOKEN
+  ) {
+    return;
+  }
+
+  try {
+    // Fallback local: quando o Next é iniciado dentro de `frontend/`,
+    // o `.env` na raiz do repositório não é carregado automaticamente.
+    // Tentamos os dois caminhos para manter o painel consistente no ambiente local.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const dotenv = require('dotenv') as typeof import('dotenv');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require('path') as typeof import('path');
+
+    const candidates = [
+      path.resolve(process.cwd(), '.env'),
+      path.resolve(process.cwd(), '../.env'),
+    ];
+
+    for (const candidate of candidates) {
+      if (!fs.existsSync(candidate)) continue;
+      dotenv.config({ path: candidate, override: false });
+
+      if (
+        process.env.DB_PROVIDER ||
+        process.env.MYSQL_URL ||
+        process.env.MYSQL_PUBLIC_URL ||
+        process.env.TURSO_URL ||
+        process.env.TURSO_TOKEN
+      ) {
+        break;
+      }
+    }
+  } catch {
+    // Em produção o Next já injeta as envs. Se o fallback falhar,
+    // seguimos para o comportamento normal de resolução abaixo.
+  }
+}
 
 function resolveMysqlUrl() {
+  ensureServerEnv();
   const internal = String(process.env.MYSQL_URL || '').trim();
   const publicUrl = String(process.env.MYSQL_PUBLIC_URL || '').trim();
 
@@ -32,6 +84,7 @@ function resolveMysqlUrl() {
 }
 
 function resolveProvider(): 'turso' | 'mysql' {
+  ensureServerEnv();
   const raw = String(process.env.DB_PROVIDER || '').toLowerCase().trim();
   if (raw === 'mysql' || raw === 'turso') return raw;
   if (process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL) return 'mysql';

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { getServerSession } from 'next-auth';
 import { readFile } from 'fs/promises';
 import path from 'path';
@@ -71,34 +71,9 @@ const cleanText = (value: unknown) => {
   return text || '—';
 };
 
-const truncateText = (value: string, maxLength: number) => {
-  const text = cleanText(value);
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`;
-};
-
 const formatFilterLine = (filters: ExportPayload['filters']) => {
   if (!Array.isArray(filters) || filters.length === 0) return 'Sem filtros adicionais.';
   return filters.map((item) => `${cleanText(item.label)}: ${cleanText(item.value)}`).join(' | ');
-};
-
-const wrapByLength = (text: string, maxLength = 110) => {
-  const words = cleanText(text).split(/\s+/);
-  const lines: string[] = [];
-  let current = '';
-
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length > maxLength && current) {
-      lines.push(current);
-      current = word;
-    } else {
-      current = next;
-    }
-  }
-
-  if (current) lines.push(current);
-  return lines;
 };
 
 const statusPdfColors = (status: ExportGoalRow['status']) => {
@@ -130,6 +105,94 @@ const resolveLogoBuffer = async () => {
   return null;
 };
 
+const buildGoalDetails = (goal: ExportGoalRow) => {
+  return [
+    goal.sector !== '—' ? `Setor: ${goal.sector}` : '',
+    goal.groupLabel !== '—' ? `Grupo: ${goal.groupLabel}` : '',
+    goal.clinicUnitLabel !== '—' ? `Unidade: ${goal.clinicUnitLabel}` : '',
+    goal.collaboratorLabel !== '—' ? `Colaborador: ${goal.collaboratorLabel}` : '',
+    goal.teamLabel !== '—' ? `Equipe: ${goal.teamLabel}` : '',
+    goal.startDate !== '—' || goal.endDate !== '—' ? `Vigência: ${goal.startDate} a ${goal.endDate}` : '',
+  ]
+    .filter(Boolean)
+    .join(' • ');
+};
+
+const fitTextWithEllipsis = (font: PDFFont, text: string, maxWidth: number, fontSize: number) => {
+  const safeText = cleanText(text);
+  if (font.widthOfTextAtSize(safeText, fontSize) <= maxWidth) return safeText;
+
+  let result = safeText;
+  while (result.length > 1 && font.widthOfTextAtSize(`${result}...`, fontSize) > maxWidth) {
+    result = result.slice(0, -1);
+  }
+  return `${result.trimEnd()}...`;
+};
+
+const splitLongWord = (font: PDFFont, word: string, maxWidth: number, fontSize: number) => {
+  const parts: string[] = [];
+  let current = '';
+
+  for (const char of word) {
+    const next = current + char;
+    if (current && font.widthOfTextAtSize(next, fontSize) > maxWidth) {
+      parts.push(current);
+      current = char;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) parts.push(current);
+  return parts;
+};
+
+const wrapTextByWidth = (
+  font: PDFFont,
+  text: string,
+  maxWidth: number,
+  fontSize: number,
+  maxLines = 3
+) => {
+  const safeText = cleanText(text);
+  if (!safeText) return ['—'];
+
+  const tokens = safeText.split(/\s+/).flatMap((word) => {
+    if (font.widthOfTextAtSize(word, fontSize) <= maxWidth) return [word];
+    return splitLongWord(font, word, maxWidth, fontSize);
+  });
+
+  const lines: string[] = [];
+  let current = '';
+
+  for (const token of tokens) {
+    const candidate = current ? `${current} ${token}` : token;
+    if (current && font.widthOfTextAtSize(candidate, fontSize) > maxWidth) {
+      lines.push(current);
+      current = token;
+    } else {
+      current = candidate;
+    }
+
+    if (lines.length === maxLines) break;
+  }
+
+  if (lines.length < maxLines && current) {
+    lines.push(current);
+  }
+
+  if (lines.length > maxLines) {
+    lines.length = maxLines;
+  }
+
+  const consumedText = lines.join(' ').trim();
+  if (consumedText.length < safeText.length) {
+    lines[lines.length - 1] = fitTextWithEllipsis(font, `${lines[lines.length - 1]} ${safeText.slice(consumedText.length)}`.trim(), maxWidth, fontSize);
+  }
+
+  return lines;
+};
+
 const buildWorkbook = async (payload: ExportPayload) => {
   const workbook = new ExcelJS.Workbook();
   workbook.creator = 'Hub Consultare';
@@ -152,7 +215,9 @@ const buildWorkbook = async (payload: ExportPayload) => {
 
   summarySheet.mergeCells('A3:B3');
   summarySheet.getCell('A3').value = formatFilterLine(payload.filters);
+  summarySheet.getCell('A3').alignment = { wrapText: true };
   summarySheet.getCell('A3').font = { size: 10 };
+  summarySheet.getRow(3).height = 32;
 
   summarySheet.addRows([
     { label: 'Metas visíveis', value: payload.summary.totalGoals },
@@ -167,30 +232,36 @@ const buildWorkbook = async (payload: ExportPayload) => {
 
   const goalsSheet = workbook.addWorksheet('Metas');
   goalsSheet.columns = [
-    { header: 'Meta', key: 'name', width: 34 },
-    { header: 'Escopo', key: 'scopeLabel', width: 18 },
-    { header: 'Setor', key: 'sector', width: 22 },
+    { header: 'Meta', key: 'name', width: 30 },
+    { header: 'Escopo', key: 'scopeLabel', width: 14 },
     { header: 'Periodicidade', key: 'periodicityLabel', width: 18 },
-    { header: 'KPI', key: 'indicatorLabel', width: 24 },
-    { header: 'Grupo de procedimento', key: 'groupLabel', width: 24 },
-    { header: 'Unidade clínica', key: 'clinicUnitLabel', width: 22 },
-    { header: 'Colaborador', key: 'collaboratorLabel', width: 22 },
-    { header: 'Equipe', key: 'teamLabel', width: 22 },
-    { header: 'Vigência início', key: 'startDate', width: 16 },
-    { header: 'Vigência fim', key: 'endDate', width: 16 },
-    { header: 'Meta', key: 'targetLabel', width: 18 },
-    { header: 'Atual', key: 'currentLabel', width: 18 },
-    { header: '%', key: 'percentageLabel', width: 12 },
-    { header: 'Status', key: 'statusLabel', width: 18 },
+    { header: 'KPI', key: 'indicatorLabel', width: 22 },
+    { header: 'Detalhes', key: 'details', width: 48 },
+    { header: 'Meta', key: 'targetLabel', width: 16 },
+    { header: 'Atual', key: 'currentLabel', width: 16 },
+    { header: '%', key: 'percentageLabel', width: 10 },
+    { header: 'Status', key: 'statusLabel', width: 16 },
   ];
 
-  const goalsHeader = goalsSheet.getRow(1);
-  goalsHeader.values = goalsSheet.columns.map((column) => column.header as string);
-  goalsHeader.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  goalsHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17407E' } };
+  const headerRow = goalsSheet.getRow(1);
+  headerRow.values = goalsSheet.columns.map((column) => column.header as string);
+  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17407E' } };
 
   payload.goals.forEach((goal) => {
-    const row = goalsSheet.addRow(goal);
+    const row = goalsSheet.addRow({
+      name: goal.name,
+      scopeLabel: goal.scopeLabel,
+      periodicityLabel: goal.periodicityLabel,
+      indicatorLabel: goal.indicatorLabel,
+      details: buildGoalDetails(goal),
+      targetLabel: goal.targetLabel,
+      currentLabel: goal.currentLabel,
+      percentageLabel: goal.percentageLabel,
+      statusLabel: goal.statusLabel,
+    });
+
+    row.alignment = { vertical: 'top', wrapText: true };
     row.getCell('statusLabel').fill = {
       type: 'pattern',
       pattern: 'solid',
@@ -210,66 +281,111 @@ const buildPdf = async (payload: ExportPayload) => {
   const logo = logoBuffer ? await pdfDoc.embedPng(logoBuffer) : null;
 
   const pageSize: [number, number] = [842, 595];
-  const margin = 30;
-  const rowHeight = 18;
+  const margin = 26;
+  const contentWidth = pageSize[0] - margin * 2;
+  const tableHeaderHeight = 20;
+  const bodyFontSize = 7.1;
+  const headerFontSize = 7.6;
+  const lineHeight = 8.2;
+  const cellPaddingX = 4;
+  const cellPaddingTop = 4;
+  const bottomSafeArea = 28;
+
   const columns = [
-    { label: 'Meta', width: 160 },
-    { label: 'Escopo', width: 58 },
-    { label: 'Periodicidade', width: 66 },
-    { label: 'KPI', width: 96 },
-    { label: 'Detalhes', width: 170 },
-    { label: 'Meta', width: 60 },
-    { label: 'Atual', width: 60 },
-    { label: '%', width: 40 },
-    { label: 'Status', width: 62 },
+    { label: 'Meta', width: 128, align: 'left' as const, maxLines: 2 },
+    { label: 'Escopo', width: 54, align: 'left' as const, maxLines: 2 },
+    { label: 'Periodicidade', width: 62, align: 'left' as const, maxLines: 2 },
+    { label: 'KPI', width: 88, align: 'left' as const, maxLines: 2 },
+    { label: 'Detalhes', width: 238, align: 'left' as const, maxLines: 4 },
+    { label: 'Meta', width: 64, align: 'right' as const, maxLines: 2 },
+    { label: 'Atual', width: 64, align: 'right' as const, maxLines: 2 },
+    { label: '%', width: 32, align: 'center' as const, maxLines: 1 },
+    { label: 'Status', width: 60, align: 'center' as const, maxLines: 2 },
   ];
 
-  const drawHeader = (page: any, showSummary: boolean) => {
+  const drawLines = (
+    page: PDFPage,
+    lines: string[],
+    x: number,
+    y: number,
+    width: number,
+    font: PDFFont,
+    fontSize: number,
+    color: ReturnType<typeof rgb>,
+    align: 'left' | 'center' | 'right',
+    cellHeight: number
+  ) => {
+    const textBlockHeight = lines.length * lineHeight;
+    const startY = y + cellHeight - cellPaddingTop - fontSize;
+    const centeredYOffset = Math.max(0, (cellHeight - textBlockHeight) / 2 - 1);
+    const baseY = align === 'center' ? y + cellHeight - centeredYOffset - fontSize - 1 : startY;
+
+    lines.forEach((line, index) => {
+      const lineWidth = font.widthOfTextAtSize(line, fontSize);
+      const textX =
+        align === 'right'
+          ? x + width - cellPaddingX - lineWidth
+          : align === 'center'
+            ? x + Math.max((width - lineWidth) / 2, cellPaddingX)
+            : x + cellPaddingX;
+
+      page.drawText(line, {
+        x: textX,
+        y: baseY - index * lineHeight,
+        size: fontSize,
+        font,
+        color,
+      });
+    });
+  };
+
+  const drawHeader = (page: PDFPage, showSummary: boolean) => {
     const { width, height } = page.getSize();
     page.drawRectangle({
       x: margin,
-      y: height - 62,
+      y: height - 60,
       width: width - margin * 2,
-      height: 36,
+      height: 34,
       color: rgb(0.09, 0.25, 0.49),
     });
     page.drawText('Painel de Metas - Relatório Executivo', {
       x: margin + 14,
-      y: height - 47,
+      y: height - 46,
       size: 15,
       font: bold,
       color: rgb(1, 1, 1),
     });
 
     if (logo) {
-      const scaled = logo.scale(0.18);
+      const scaled = logo.scale(0.17);
       page.drawImage(logo, {
         x: width - margin - scaled.width,
-        y: height - 58,
+        y: height - 56,
         width: scaled.width,
         height: scaled.height,
       });
     }
 
-    const filterLines = wrapByLength(formatFilterLine(payload.filters), 118);
+    const filterLines = wrapTextByWidth(regular, formatFilterLine(payload.filters), contentWidth, 8, 3);
     page.drawText(`Gerado em: ${cleanText(payload.generatedAt)}`, {
       x: margin,
-      y: height - 80,
+      y: height - 78,
       size: 9,
       font: regular,
       color: rgb(0.2, 0.2, 0.2),
     });
+
     filterLines.forEach((line, index) => {
       page.drawText(line, {
         x: margin,
-        y: height - 94 - index * 11,
+        y: height - 92 - index * 10,
         size: 8,
         font: regular,
         color: rgb(0.28, 0.28, 0.28),
       });
     });
 
-    let y = height - 118 - Math.max(0, filterLines.length - 1) * 11;
+    let y = height - 112 - Math.max(0, filterLines.length - 1) * 10;
     if (showSummary) {
       const cards = [
         { label: 'Metas visíveis', value: String(payload.summary.totalGoals) },
@@ -278,13 +394,15 @@ const buildPdf = async (payload: ExportPayload) => {
         { label: 'Progresso global', value: `${payload.summary.globalProgress}%` },
       ];
 
+      const cardWidth = 188;
+      const cardGap = 12;
       cards.forEach((card, index) => {
-        const x = margin + index * 190;
+        const x = margin + index * (cardWidth + cardGap);
         page.drawRectangle({
           x,
-          y: y - 44,
-          width: 180,
-          height: 36,
+          y: y - 40,
+          width: cardWidth,
+          height: 32,
           color: rgb(0.96, 0.97, 0.99),
           borderColor: rgb(0.84, 0.88, 0.95),
           borderWidth: 0.8,
@@ -298,35 +416,41 @@ const buildPdf = async (payload: ExportPayload) => {
         });
         page.drawText(card.value, {
           x: x + 10,
-          y: y - 36,
-          size: 13,
+          y: y - 34,
+          size: 12,
           font: bold,
           color: rgb(0.09, 0.25, 0.49),
         });
       });
-      y -= 58;
+      y -= 50;
     }
 
     return y;
   };
 
-  const drawTableHeader = (page: any, y: number) => {
+  const drawTableHeader = (page: PDFPage, y: number) => {
     let x = margin;
     columns.forEach((column) => {
       page.drawRectangle({
         x,
         y,
         width: column.width,
-        height: rowHeight,
+        height: tableHeaderHeight,
         color: rgb(0.09, 0.25, 0.49),
       });
-      page.drawText(column.label, {
-        x: x + 4,
-        y: y + 5,
-        size: 8,
-        font: bold,
-        color: rgb(1, 1, 1),
-      });
+
+      drawLines(
+        page,
+        [column.label],
+        x,
+        y,
+        column.width,
+        bold,
+        headerFontSize,
+        rgb(1, 1, 1),
+        column.align === 'right' ? 'right' : column.align === 'center' ? 'center' : 'left',
+        tableHeaderHeight
+      );
       x += column.width;
     });
   };
@@ -334,82 +458,76 @@ const buildPdf = async (payload: ExportPayload) => {
   let page = pdfDoc.addPage(pageSize);
   let y = drawHeader(page, true);
   drawTableHeader(page, y);
-  y -= rowHeight;
+  y -= tableHeaderHeight;
 
-  for (const goal of payload.goals) {
-    if (y < 36) {
+  payload.goals.forEach((goal, rowIndex) => {
+    const details = buildGoalDetails(goal);
+    const cellValues = [
+      goal.name,
+      goal.scopeLabel,
+      goal.periodicityLabel,
+      goal.indicatorLabel,
+      details,
+      goal.targetLabel,
+      goal.currentLabel,
+      goal.percentageLabel,
+      goal.statusLabel,
+    ];
+
+    const wrappedCells = cellValues.map((value, index) =>
+      wrapTextByWidth(
+        index === 8 ? bold : regular,
+        value,
+        columns[index].width - cellPaddingX * 2,
+        bodyFontSize,
+        columns[index].maxLines
+      )
+    );
+
+    const maxLines = Math.max(...wrappedCells.map((lines) => lines.length));
+    const rowHeight = Math.max(18, maxLines * lineHeight + cellPaddingTop * 2);
+
+    if (y - rowHeight < bottomSafeArea) {
       page = pdfDoc.addPage(pageSize);
       y = drawHeader(page, false);
       drawTableHeader(page, y);
-      y -= rowHeight;
+      y -= tableHeaderHeight;
     }
 
-    const detailText = [
-      goal.sector !== '—' ? `Setor: ${goal.sector}` : '',
-      goal.groupLabel !== '—' ? `Grupo: ${goal.groupLabel}` : '',
-      goal.clinicUnitLabel !== '—' ? `Unidade: ${goal.clinicUnitLabel}` : '',
-      goal.collaboratorLabel !== '—' ? `Colaborador: ${goal.collaboratorLabel}` : '',
-      goal.teamLabel !== '—' ? `Equipe: ${goal.teamLabel}` : '',
-      goal.startDate !== '—' || goal.endDate !== '—' ? `Vigência: ${goal.startDate} a ${goal.endDate}` : '',
-    ]
-      .filter(Boolean)
-      .join(' | ');
-
-    const rowValues = [
-      truncateText(goal.name, 32),
-      truncateText(goal.scopeLabel, 12),
-      truncateText(goal.periodicityLabel, 14),
-      truncateText(goal.indicatorLabel, 20),
-      truncateText(detailText, 48),
-      truncateText(goal.targetLabel, 12),
-      truncateText(goal.currentLabel, 12),
-      truncateText(goal.percentageLabel, 7),
-      truncateText(goal.statusLabel, 16),
-    ];
-
     let x = margin;
-    rowValues.forEach((value, index) => {
-      const isStatusCell = index === rowValues.length - 1;
-      if (isStatusCell) {
-        const colors = statusPdfColors(goal.status);
-        page.drawRectangle({
-          x,
-          y,
-          width: columns[index].width,
-          height: rowHeight,
-          color: colors.background,
-          borderColor: rgb(0.85, 0.88, 0.92),
-          borderWidth: 0.5,
-        });
-        page.drawText(value, {
-          x: x + 4,
-          y: y + 5,
-          size: 8,
-          font: bold,
-          color: colors.text,
-        });
-      } else {
-        page.drawRectangle({
-          x,
-          y,
-          width: columns[index].width,
-          height: rowHeight,
-          borderColor: rgb(0.85, 0.88, 0.92),
-          borderWidth: 0.5,
-        });
-        page.drawText(value, {
-          x: x + 4,
-          y: y + 5,
-          size: 8,
-          font: regular,
-          color: rgb(0.1, 0.1, 0.1),
-        });
-      }
+    wrappedCells.forEach((lines, index) => {
+      const isStatusCell = index === wrappedCells.length - 1;
+      const zebra = rowIndex % 2 === 0 ? rgb(1, 1, 1) : rgb(0.985, 0.988, 0.994);
+      const colors = isStatusCell ? statusPdfColors(goal.status) : null;
+
+      page.drawRectangle({
+        x,
+        y: y - rowHeight,
+        width: columns[index].width,
+        height: rowHeight,
+        color: colors?.background ?? zebra,
+        borderColor: rgb(0.85, 0.88, 0.92),
+        borderWidth: 0.5,
+      });
+
+      drawLines(
+        page,
+        lines,
+        x,
+        y - rowHeight,
+        columns[index].width,
+        isStatusCell ? bold : regular,
+        bodyFontSize,
+        colors?.text ?? rgb(0.12, 0.12, 0.12),
+        columns[index].align,
+        rowHeight
+      );
+
       x += columns[index].width;
     });
 
     y -= rowHeight;
-  }
+  });
 
   const bytes = await pdfDoc.save();
   return Buffer.from(bytes);
@@ -435,7 +553,7 @@ export async function POST(request: Request) {
         status: 200,
         headers: {
           'Content-Type': 'application/pdf',
-          'Content-Disposition': 'attachment; filename=\"metas-dashboard.pdf\"',
+          'Content-Disposition': 'attachment; filename="metas-dashboard.pdf"',
           'Cache-Control': 'no-store',
         },
       });
@@ -446,7 +564,7 @@ export async function POST(request: Request) {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': 'attachment; filename=\"metas-dashboard.xlsx\"',
+        'Content-Disposition': 'attachment; filename="metas-dashboard.xlsx"',
         'Cache-Control': 'no-store',
       },
     });

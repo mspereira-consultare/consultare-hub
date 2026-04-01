@@ -95,6 +95,12 @@ Esperado:
 - `/api/admin/checklist/crc`
 - `/api/admin/checklist/recepcao?unit=campinas_shopping`
 
+Checklist extra para metas:
+
+- confirmar se o frontend enxergou `DB_PROVIDER=mysql` e `MYSQL_URL`/`MYSQL_PUBLIC_URL`;
+- validar uma meta mensal conhecida em `/api/admin/goals/dashboard` antes de exportar PDF;
+- metas diárias devem usar a data local de `America/Sao_Paulo`, não UTC.
+
 ## 3.4 Login e permissões
 
 - login com `ADMIN`: acesso total.
@@ -243,6 +249,8 @@ Checklist:
 - confirmar que frontend e workers apontam para o mesmo banco.
 - validar `DB_PROVIDER=mysql` em ambos.
 - checar cache e heartbeat.
+- no ambiente local, se o Next estiver rodando a partir de `frontend/`, garantir que o `.env` da raiz esteja acessível para o adaptador `frontend/src/lib/db.ts`.
+- no módulo de metas, valores zerados em lote normalmente indicam falha de conexão/configuração no runtime do frontend ou uso de data UTC em meta diária.
 
 Checklist extra para fila médica:
 
