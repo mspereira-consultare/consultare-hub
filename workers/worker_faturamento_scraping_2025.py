@@ -21,7 +21,7 @@ except ImportError:
 from worker_faturamento_scraping import (
     clean_column_name,
     clean_currency,
-    remove_total_pago_outliers,
+    prepare_faturamento_dataframe,
     save_dataframe_to_db,
     update_faturamento_summary,
 )
@@ -581,31 +581,7 @@ def run_scraper_2025(start_date=None, end_date=None, use_checkpoint=True, sleep_
                     for col in cols_fin:
                         df[col] = df[col].apply(clean_currency)
 
-                    col_data = next((c for c in df.columns if 'pagamento' in c and 'data' in c), None)
-                    if not col_data:
-                        col_data = next((c for c in df.columns if 'data' in c), 'data')
-
-                    def normalize_accounting_date(row):
-                        d_str = row[col_data]
-                        val = row['total_pago'] if 'total_pago' in row else 0
-                        try:
-                            d_obj = datetime.datetime.strptime(str(d_str), "%d/%m/%Y")
-                            d_iso = d_obj.strftime("%Y-%m-%d")
-                            if val < 0 and d_iso < iso_inicio:
-                                return iso_inicio
-                            return d_iso
-                        except Exception:
-                            return None
-
-                    df['data_contabil'] = df.apply(normalize_accounting_date, axis=1)
-                    df_validas = df[df['data_contabil'].notna()].copy()
-
-                    df_validas[col_data] = df_validas['data_contabil']
-                    df_validas = df_validas.drop(columns=['data_contabil'])
-
-                    df = df_validas
-                    df = remove_total_pago_outliers(df, abs_threshold=1_000_000.0, context=f"backfill {month:02d}/{year}")
-                    df['updated_at'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    df, col_data = prepare_faturamento_dataframe(df, iso_inicio, context=f"backfill {month:02d}/{year}")
 
                     condition = f"{col_data} >= '{iso_inicio}' AND {col_data} <= '{iso_fim}'"
                     print(f"💾 Salvando mês {month:02d}/{year}: {len(df)} registros no faturamento_analitico")

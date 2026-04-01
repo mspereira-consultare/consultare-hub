@@ -14,6 +14,7 @@ import {
   Star,
   Loader2
 } from 'lucide-react';
+import { formatSystemStatusTimestamp } from '@/lib/system_status_time';
 
 interface DashboardData {
   medic: any[];
@@ -120,17 +121,6 @@ export default function DashboardPage() {
   };
 
   // Formatador de Data do Status
-  const formatLastUpdate = (dateString: string) => {
-    if (!dateString) return 'Nunca';
-    const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
-    try {
-      const parsed = new Date(isoString);
-      return Number.isNaN(parsed.getTime()) ? dateString : parsed.toLocaleString('pt-BR');
-    } catch (e) {
-      return dateString;
-    }
-  };
-
   const WAIT_ALERT_MINUTES = 30;
 
   if (!data && loading) {
@@ -228,7 +218,7 @@ export default function DashboardPage() {
               <span className="font-bold uppercase text-slate-400 tracking-wider mb-0.5">Última Sincronização (Faturamento)</span>
               <div className="flex items-center gap-1.5">
                 <div className={`w-2 h-2 rounded-full ${isUpdating ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`}></div>
-                <span className="font-medium text-slate-600">{formatLastUpdate(heartbeat.last_run)}</span>
+                <span className="font-medium text-slate-600">{formatSystemStatusTimestamp(heartbeat.last_run, 'Nunca')}</span>
               </div>
             </div>
           )}

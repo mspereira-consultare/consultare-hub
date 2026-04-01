@@ -102,6 +102,24 @@ def _ensure_mysql_procedure_key(conn, table_name, pk_cols):
     except Exception:
         pass
 
+def _ensure_mysql_unique_index(conn, table_name, index_name, columns_sql):
+    res = conn.execute(
+        """
+        SELECT COUNT(1)
+        FROM information_schema.statistics
+        WHERE table_schema = DATABASE()
+          AND table_name = ?
+          AND index_name = ?
+        """,
+        (table_name, index_name)
+    )
+    cnt = _fetch_scalar(res) or 0
+    if cnt == 0:
+        conn.execute(f"CREATE UNIQUE INDEX {index_name} ON {table_name} ({columns_sql})")
+
+def _ensure_sqlite_unique_index(conn, index_name, table_name, columns_sql):
+    conn.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table_name} ({columns_sql})")
+
 def _select_usuario_da_conta_column(page):
     last_error = None
     for _ in range(3):
@@ -176,6 +194,104 @@ def _prefer_accented(a: str, b: str) -> str:
     if has_accent(b) and not has_accent(a):
         return b
     return a
+
+def _find_column_by_normalized_key(columns, target_key):
+    wanted = _normalize_col_key(target_key)
+    for col in columns:
+        if _normalize_col_key(col) == wanted:
+            return col
+    return None
+
+def _parse_report_date(value):
+    if value is None or pd.isna(value):
+        return None
+    raw = str(value).strip()
+    if not raw:
+        return None
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%Y-%m-%d %H:%M:%S"):
+        try:
+            return datetime.datetime.strptime(raw[:19], fmt).strftime("%Y-%m-%d")
+        except Exception:
+            continue
+    return None
+
+def _row_value_by_keys(row, *candidates):
+    index = list(getattr(row, 'index', []))
+    for candidate in candidates:
+        if candidate in row:
+            return row.get(candidate)
+        normalized = _normalize_col_key(candidate)
+        for actual in index:
+            if _normalize_col_key(actual) == normalized:
+                return row.get(actual)
+    return None
+
+def _build_faturamento_line_key(row, payment_date_original_col=None, reference_date_col=None):
+    total_pago = clean_currency(_row_value_by_keys(row, 'total_pago') or 0)
+    payment_date_original = _parse_report_date(_row_value_by_keys(row, payment_date_original_col or 'data_do_pagamento_original')) if payment_date_original_col else _parse_report_date(_row_value_by_keys(row, 'data_do_pagamento_original'))
+    current_payment_date = _parse_report_date(_row_value_by_keys(row, 'data_do_pagamento'))
+    reference_date = _parse_report_date(_row_value_by_keys(row, reference_date_col or 'data_de_referencia')) if reference_date_col else _parse_report_date(_row_value_by_keys(row, 'data_de_referencia'))
+    stable_date = reference_date if total_pago < 0 and reference_date else (payment_date_original or current_payment_date or reference_date or '')
+
+    parts = [
+        stable_date,
+        reference_date or '',
+        _strip_accents(_row_value_by_keys(row, 'forma_de_pagamento') or '').strip().upper(),
+        _strip_accents(_row_value_by_keys(row, 'tipo') or '').strip().upper(),
+        f"{clean_currency(_row_value_by_keys(row, 'desconto') or 0):.2f}",
+        f"{clean_currency(_row_value_by_keys(row, 'acrescimo') or 0):.2f}",
+        f"{clean_currency(_row_value_by_keys(row, 'valor_produzido') or 0):.2f}",
+        f"{clean_currency(_row_value_by_keys(row, 'total_bruto') or 0):.2f}",
+        f"{total_pago:.2f}",
+        _strip_accents(_row_value_by_keys(row, 'paciente') or '').strip().upper(),
+        _strip_accents(_row_value_by_keys(row, 'procedimento') or '').strip().upper(),
+        _strip_accents(_row_value_by_keys(row, 'usuario_que_agendou') or '').strip().upper(),
+        _strip_accents(_row_value_by_keys(row, 'tipo_do_procedimento') or '').strip().upper(),
+        _strip_accents(_row_value_by_keys(row, 'grupo') or '').strip().upper(),
+        _strip_accents(_row_value_by_keys(row, 'unidade') or '').strip().upper(),
+        str(_row_value_by_keys(row, 'prontuario') or '').strip(),
+        _strip_accents(_row_value_by_keys(row, 'usuario_da_conta') or '').strip().upper(),
+    ]
+    return hashlib.md5('|'.join(parts).encode('utf-8')).hexdigest()
+
+def prepare_faturamento_dataframe(df, window_start_iso, context=''):
+    if df is None or df.empty:
+        return df, None
+
+    prepared = df.copy()
+    payment_date_col = next((c for c in prepared.columns if 'pagamento' in c and 'data' in c), None)
+    if not payment_date_col:
+        payment_date_col = next((c for c in prepared.columns if 'data' in c), 'data')
+    reference_date_col = _find_column_by_normalized_key(prepared.columns, 'data_de_referencia')
+
+    prepared['data_do_pagamento_original'] = prepared[payment_date_col].apply(
+        lambda value: _parse_report_date(value) or ('' if value is None or pd.isna(value) else str(value).strip())
+    )
+
+    def normalize_accounting_date(row):
+        payment_date = _parse_report_date(row.get(payment_date_col))
+        reference_date = _parse_report_date(row.get(reference_date_col)) if reference_date_col else None
+        total_pago = clean_currency(row.get('total_pago', 0))
+
+        if total_pago < 0:
+            if reference_date:
+                return reference_date
+            if payment_date and payment_date < window_start_iso:
+                return window_start_iso
+        return payment_date
+
+    prepared['data_contabil'] = prepared.apply(normalize_accounting_date, axis=1)
+    prepared = prepared[prepared['data_contabil'].notna()].copy()
+    prepared[payment_date_col] = prepared['data_contabil']
+    prepared = prepared.drop(columns=['data_contabil'])
+
+    prepared = remove_total_pago_outliers(prepared, abs_threshold=1_000_000.0, context=context)
+    prepared['line_key_hash'] = prepared.apply(
+        lambda row: _build_faturamento_line_key(row, 'data_do_pagamento_original', reference_date_col),
+        axis=1
+    )
+    prepared['updated_at'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    return prepared, payment_date_col
 
 def clean_currency(value):
     """Lógica original de limpeza de moeda mantida"""
@@ -269,8 +385,10 @@ def save_dataframe_to_db(db, df, table_name, delete_condition=None):
             if rename_map:
                 df = df.rename(columns=rename_map)
 
+        is_faturamento_analitico = table_name == 'faturamento_analitico' and 'line_key_hash' in df.columns
+
         # 2. Garante a tabela (Criação Dinâmica baseada no DF)
-        # Mapeia tipos do Pandas para SQLite
+        # Mapeia tipos do Pandas para SQLite/MySQL
         type_map = {
             'int64': 'INTEGER', 'float64': 'REAL', 'object': 'TEXT',
             'bool': 'INTEGER', 'datetime64[ns]': 'TEXT'
@@ -278,6 +396,8 @@ def save_dataframe_to_db(db, df, table_name, delete_condition=None):
         cols_def = []
         for col, dtype in df.dtypes.items():
             sql_type = type_map.get(str(dtype), 'TEXT')
+            if db.use_mysql and table_name == 'faturamento_analitico' and col == 'line_key_hash':
+                sql_type = 'VARCHAR(32)'
             cols_def.append(f"{col} {sql_type}")
         
         create_sql = f"CREATE TABLE IF NOT EXISTS {table_name} ({', '.join(cols_def)})"
@@ -304,26 +424,61 @@ def save_dataframe_to_db(db, df, table_name, delete_condition=None):
             for col, dtype in df.dtypes.items():
                 if col not in existing_cols:
                     sql_type = type_map.get(str(dtype), 'TEXT')
+                    if db.use_mysql and table_name == 'faturamento_analitico' and col == 'line_key_hash':
+                        sql_type = 'VARCHAR(32)'
                     conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {col} {sql_type}")
         except Exception as e:
             print(f"⚠️ Não foi possível ajustar colunas da tabela {table_name}: {e}")
 
         # 2. Limpeza (Delete prévio)
+        if is_faturamento_analitico and db.use_mysql:
+            try:
+                conn.execute(f"ALTER TABLE {table_name} MODIFY COLUMN line_key_hash VARCHAR(32) NULL")
+            except Exception:
+                pass
+
+        has_line_key_conflict_target = False
+        if is_faturamento_analitico:
+            try:
+                if db.use_mysql:
+                    _ensure_mysql_unique_index(conn, table_name, 'uq_faturamento_analitico_line_key_hash', 'line_key_hash')
+                else:
+                    _ensure_sqlite_unique_index(conn, 'uq_faturamento_analitico_line_key_hash', table_name, 'line_key_hash')
+                has_line_key_conflict_target = True
+            except Exception as e:
+                print(f"⚠️ Nao foi possivel garantir indice unico de line_key_hash: {e}")
+
         if delete_condition:
             del_sql = f"DELETE FROM {table_name} WHERE {delete_condition}"
             print(f"   🗑️  Executando limpeza: {del_sql}")
             if db.use_turso: conn.execute(del_sql)
             else: conn.execute(del_sql)
 
-        # 3. Inserção em Lote (Batch)
+        # 3. Insercao em Lote (Batch)
         cols = list(df.columns)
         placeholders = ', '.join(['?'] * len(cols))
-        insert_sql = f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders})"
+        if is_faturamento_analitico and has_line_key_conflict_target:
+            update_cols = [col for col in cols if col != 'line_key_hash']
+            if db.use_mysql:
+                quoted_cols = ', '.join([f"`{col}`" for col in cols])
+                update_set = ', '.join([f"`{col}` = VALUES(`{col}`)" for col in update_cols])
+                insert_sql = (
+                    f"INSERT INTO {table_name} ({quoted_cols}) VALUES ({placeholders}) "
+                    f"ON DUPLICATE KEY UPDATE {update_set}"
+                )
+            else:
+                update_set = ', '.join([f"{col} = excluded.{col}" for col in update_cols])
+                insert_sql = (
+                    f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders}) "
+                    f"ON CONFLICT(line_key_hash) DO UPDATE SET {update_set}"
+                )
+        else:
+            insert_sql = f"INSERT INTO {table_name} ({', '.join(cols)}) VALUES ({placeholders})"
         
         # Converte DataFrame para lista de tuplas (tratando NaNs como None)
         data = df.where(pd.notnull(df), None).values.tolist()
         
-        # Conversão extra para garantir tipos primitivos (int, float, str)
+        # Conversao extra para garantir tipos primitivos (int, float, str)
         # O driver do Turso pode reclamar de tipos numpy
         clean_data = []
         for row in data:
@@ -354,7 +509,7 @@ def save_dataframe_to_db(db, df, table_name, delete_condition=None):
             for i in range(0, len(stmts), CHUNK_SIZE):
                 conn.batch(stmts[i:i + CHUNK_SIZE])
         else:
-            # Batch Local
+            # Batch Local/MySQL
             conn.executemany(insert_sql, clean_data)
             conn.commit()
             
@@ -880,32 +1035,7 @@ def run_scraper():
             for col in cols_fin:
                 df[col] = df[col].apply(clean_currency)
 
-            col_data = next((c for c in df.columns if 'pagamento' in c and 'data' in c), None)
-            if not col_data:
-                col_data = next((c for c in df.columns if 'data' in c), 'data')
-            
-            def normalize_accounting_date(row):
-                d_str = row[col_data]
-                val = row['total_pago'] if 'total_pago' in row else 0
-                try:
-                    d_obj = datetime.datetime.strptime(str(d_str), "%d/%m/%Y")
-                    d_iso = d_obj.strftime("%Y-%m-%d")
-                    # Lógica de Estorno Retroativo (Mantida)
-                    if val < 0 and d_iso < iso_inicio:
-                        return iso_inicio
-                    return d_iso
-                except:
-                    return None
-
-            df['data_contabil'] = df.apply(normalize_accounting_date, axis=1)
-            df_validas = df[df['data_contabil'].notna()].copy()
-            
-            df_validas[col_data] = df_validas['data_contabil']
-            df_validas = df_validas.drop(columns=['data_contabil'])
-
-            df = df_validas
-            df = remove_total_pago_outliers(df, abs_threshold=1_000_000.0, context="worker diario")
-            df['updated_at'] = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            df, col_data = prepare_faturamento_dataframe(df, iso_inicio, context="worker diario")
 
             # --- AUDITORIA ---
             ajustados = df[df[col_data] == iso_inicio]

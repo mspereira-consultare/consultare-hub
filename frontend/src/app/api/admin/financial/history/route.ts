@@ -392,20 +392,29 @@ export async function GET(request: Request) {
   }
 }
 
-// POST: Trigger de Atualização
+// POST: Trigger de Atualizacao
 export async function POST() {
     try {
         const db = getDbConnection();
-        await db.execute(`
-            INSERT INTO system_status (service_name, status, last_run, details)
-            VALUES ('faturamento', 'PENDING', datetime('now'), 'Solicitado via Painel')
-            ON CONFLICT(service_name) DO UPDATE SET
-                status = 'PENDING',
-                details = 'Solicitado via Painel',
-                last_run = datetime('now')
+        const existingRows = await db.query(`
+            SELECT last_run
+            FROM system_status
+            WHERE service_name = 'faturamento'
         `);
+        const preservedLastRun = existingRows[0]?.last_run || null;
+
+        await db.execute(
+            `
+                INSERT INTO system_status (service_name, status, last_run, details)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(service_name) DO UPDATE SET
+                    status = excluded.status,
+                    details = excluded.details
+            `,
+            ['faturamento', 'PENDING', preservedLastRun, 'Solicitado via Painel']
+        );
         invalidateCache('admin:');
-        return NextResponse.json({ success: true, message: "Atualização solicitada" });
+        return NextResponse.json({ success: true, message: "Atualizacao solicitada" });
     } catch (error: any) {
         return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
     }

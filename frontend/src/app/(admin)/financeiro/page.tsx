@@ -431,17 +431,6 @@ export default function FinancialPage() {
     lockDuration,
   ]);
 
-  const formatLastUpdate = (dateString: string) => {
-    if (!dateString) return 'Nunca';
-    const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
-    try {
-      const parsed = new Date(isoString);
-      return Number.isNaN(parsed.getTime()) ? dateString : parsed.toLocaleString('pt-BR');
-    } catch {
-      return dateString;
-    }
-  };
-
   const monthlyComparisonRows = useMemo<ComparisonRow[]>(
     () => alignSeriesByPosition(monthly, compareMonthly, 'monthly'),
     [monthly, compareMonthly]
