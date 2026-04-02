@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
+import {
+  buildFinancialUnitClause,
+  collapseFinancialUnits,
+  resolveFinancialUnit,
+} from '@/lib/financial_units';
 
 export const dynamic = 'force-dynamic';
 const CACHE_TTL_MS = 30 * 60 * 1000;
@@ -32,6 +37,23 @@ const columnExists = async (db: any, tableName: string, columnName: string) => {
   } catch {
     return false;
   }
+};
+
+const toCanonicalUnitOptions = (rows: Array<{ name?: string }>) => {
+  const grouped = new Map<string, { name: string; label: string }>();
+
+  for (const row of rows || []) {
+    const rawName = String(row?.name || '').trim();
+    if (!rawName) continue;
+    const resolved = resolveFinancialUnit(rawName);
+    const key = resolved?.key || `raw:${rawName.toLowerCase()}`;
+    if (!grouped.has(key)) {
+      const label = resolved?.label || rawName;
+      grouped.set(key, { name: label, label });
+    }
+  }
+
+  return Array.from(grouped.values()).sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
 };
 
 export async function GET(request: Request) {
@@ -90,8 +112,7 @@ export async function GET(request: Request) {
 
     // Filtros Opcionais
     if (unitFilter && unitFilter !== 'all') {
-        baseWhere += ` AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
-        baseParams.push(unitFilter);
+        baseWhere += buildFinancialUnitClause('unidade', unitFilter, baseParams);
     }
     if (groupFilter && groupFilter !== 'all') {
         baseWhere += ` AND UPPER(TRIM(grupo)) = UPPER(TRIM(?))`;
@@ -175,8 +196,7 @@ export async function GET(request: Request) {
         const appointmentParams: any[] = [startDate, endDate];
 
         if (unitFilter && unitFilter !== 'all') {
-          appointmentsWhere += ` AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))`;
-          appointmentParams.push(unitFilter);
+          appointmentsWhere += buildFinancialUnitClause('unit_name', unitFilter, appointmentParams);
         }
         if (groupFilter && groupFilter !== 'all') {
           appointmentsWhere += ` AND UPPER(TRIM(procedure_group)) = UPPER(TRIM(?))`;
@@ -222,8 +242,7 @@ export async function GET(request: Request) {
     
     // Se há filtro de unidade, aplica aqui também
     if (unitFilter && unitFilter !== 'all') {
-        groupsQuery += ` AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
-        groupParams.push(unitFilter);
+        groupsQuery += buildFinancialUnitClause('unidade', unitFilter, groupParams);
     }
     
     groupsQuery += ` AND grupo IS NOT NULL AND grupo != ''
@@ -235,13 +254,20 @@ export async function GET(request: Request) {
             SELECT TRIM(procedure_group) as name, 0 as total, COUNT(*) as qtd 
             FROM feegow_appointments 
             WHERE date BETWEEN ? AND ?
-            AND procedure_group IS NOT NULL AND procedure_group != '' 
+            AND procedure_group IS NOT NULL AND procedure_group != ''`;
+
+    const appointmentGroupParams: any[] = [startDate, endDate];
+    if (unitFilter && unitFilter !== 'all') {
+        groupsQuery += buildFinancialUnitClause('unit_name', unitFilter, appointmentGroupParams);
+    }
+
+    groupsQuery += ` 
             GROUP BY 1
         ) GROUP BY name ORDER BY total DESC
     `;
     
     // Duplicamos params para o UNION
-    const unionParams = [...groupParams, startDate, endDate];
+    const unionParams = [...groupParams, ...appointmentGroupParams];
 
     // Tenta rodar com Agenda. Se falhar (tabela não existe), roda só Faturamento.
     let groups = [];
@@ -258,8 +284,7 @@ export async function GET(request: Request) {
         
         const simpleParams = [startDate, endDate];
         if (unitFilter && unitFilter !== 'all') {
-            simpleGroupsQuery += ` AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
-            simpleParams.push(unitFilter);
+            simpleGroupsQuery += buildFinancialUnitClause('unidade', unitFilter, simpleParams);
         }
         
         simpleGroupsQuery += ` AND grupo IS NOT NULL AND grupo != ''
@@ -281,8 +306,7 @@ export async function GET(request: Request) {
     let groupStatsWhere = `WHERE ${dateCol} BETWEEN ? AND ? AND ${unitFilterExclude} AND grupo IS NOT NULL AND grupo != ''`;
     const groupStatsParams: any[] = [startDate, endDate];
     if (unitFilter && unitFilter !== 'all') {
-        groupStatsWhere += ` AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
-        groupStatsParams.push(unitFilter);
+        groupStatsWhere += buildFinancialUnitClause('unidade', unitFilter, groupStatsParams);
     }
     if (procedureFilter && procedureFilter !== 'all') {
         groupStatsWhere += ` AND UPPER(TRIM(procedimento)) = UPPER(TRIM(?))`;
@@ -306,10 +330,9 @@ export async function GET(request: Request) {
 
     // 6. QUERY: LISTA DE PROCEDIMENTOS (Combobox)
     let procWhere = `WHERE procedimento IS NOT NULL AND procedimento != '' AND ${unitFilterExclude}`;
-    const procParams = [];
+    const procParams: any[] = [];
     if (unitFilter && unitFilter !== 'all') {
-        procWhere += ` AND UPPER(TRIM(unidade)) = UPPER(TRIM(?))`;
-        procParams.push(unitFilter);
+        procWhere += buildFinancialUnitClause('unidade', unitFilter, procParams);
     }
     if (groupFilter && groupFilter !== 'all') {
         procWhere += ` AND UPPER(TRIM(grupo)) = UPPER(TRIM(?))`;
@@ -333,10 +356,7 @@ export async function GET(request: Request) {
         ORDER BY name ASC
     `, [startDate, endDate]);
 
-    const units = unitsRes.map((u: any) => ({
-        ...u,
-        label: u.name
-    }));
+    const units = toCanonicalUnitOptions(unitsRes);
 
     // 8. QUERY: FATURAMENTO POR UNIDADE
     let unitsBillingWhere = `WHERE ${dateCol} BETWEEN ? AND ? AND ${unitFilterExclude}`;
@@ -361,6 +381,7 @@ export async function GET(request: Request) {
         GROUP BY name
         ORDER BY total DESC
     `, unitsBillingParams);
+    const unitsBilling = collapseFinancialUnits(unitsBillingRes).sort((a, b) => b.total - a.total);
 
     // 9. HEARTBEAT (Status)
     const statusRes = await db.query(`
@@ -377,7 +398,7 @@ export async function GET(request: Request) {
         groupStats,
         procedures,
         units,
-        unitsBilling: unitsBillingRes,
+        unitsBilling,
         totals,
         heartbeat 
     };

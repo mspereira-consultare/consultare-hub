@@ -6,6 +6,10 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { hasPermission, type PermissionAction } from '@/lib/permissions';
 import { loadUserPermissionMatrix } from '@/lib/permissions_server';
+import {
+  buildFinancialUnitClause,
+  getFinancialUnitByKey,
+} from '@/lib/financial_units';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +25,6 @@ type CsvRecord = string[];
 type UnitConfig = {
   key: string;
   label: string;
-  dbCandidates: string[];
   sheetCandidates: string[];
 };
 
@@ -67,32 +70,21 @@ const UNITS: UnitConfig[] = [
   {
     key: 'campinas_shopping',
     label: 'Campinas Shopping',
-    dbCandidates: ['Campinas Shopping', 'Shopping Campinas', 'Shop. Campinas'],
     sheetCandidates: ['Campinas Shopping', 'Shopping Campinas'],
   },
   {
     key: 'centro_cambui',
     label: 'Centro Cambui',
-    dbCandidates: ['Centro Cambui', 'Centro Cambui', 'Centro'],
-    sheetCandidates: ['Centro Cambui', 'Centro Cambui', 'Centro'],
+    sheetCandidates: ['Centro Cambui', 'Centro Cambuí'],
   },
   {
     key: 'ouro_verde',
     label: 'Ouro Verde',
-    dbCandidates: ['Ouro Verde'],
     sheetCandidates: ['Ouro Verde'],
   },
   {
     key: 'resolve',
     label: 'Resolve',
-    dbCandidates: [
-      'Resolve',
-      'Resolvesaude',
-      'ResolveSaude',
-      'ResolveSaude',
-      'Resolvecard Gestao De Beneficos E Meios De Pagamentos',
-      'RESOLVECARD GESTAO DE BENEFICOS E MEIOS DE PAGAMENTOS',
-    ],
     sheetCandidates: ['Resolve', 'Resolvesaude', 'ResolveSaude', 'Resolve Saude'],
   },
 ];
@@ -114,7 +106,8 @@ const unitByKey = (keyRaw: string | null) => {
 const unitKeyFromValue = (value: string) => {
   const norm = normalizeText(value);
   for (const unit of UNITS) {
-    const allCandidates = [unit.label, ...unit.dbCandidates, ...unit.sheetCandidates];
+    const dbAliases = getFinancialUnitByKey(unit.key)?.aliases || [];
+    const allCandidates = [unit.label, ...dbAliases, ...unit.sheetCandidates];
     if (allCandidates.some((candidate) => normalizeText(candidate) === norm)) {
       return unit.key;
     }
@@ -204,16 +197,6 @@ const renderRawSection = (label: string, value: string, opts?: { suffix?: string
   const suffix = String(opts?.suffix || '').trim();
   if (!raw) return [`- ${label}: -`];
   return [`- ${label}${suffix ? ` | ${suffix}` : ''}:`, raw];
-};
-
-const buildInClause = (column: string, values: string[], params: any[]) => {
-  const clean = values
-    .map((v) => String(v || '').trim())
-    .filter((v) => v.length > 0);
-  if (clean.length === 0) return '';
-  const placeholders = clean.map(() => '?').join(',');
-  params.push(...clean.map((v) => v.toUpperCase()));
-  return ` AND UPPER(TRIM(${column})) IN (${placeholders})`;
 };
 
 const ensureChecklistTable = async (db: any) => {
@@ -608,7 +591,7 @@ const loadChecklist = async (requestUrl: string) => {
   }
 
   const revenueDayParams: any[] = [todayIso];
-  const revenueDaySql = buildInClause('unidade', unit.dbCandidates, revenueDayParams);
+  const revenueDaySql = buildFinancialUnitClause('unidade', unit.key, revenueDayParams);
   const dayRows = await db.query(
     `
     SELECT COALESCE(SUM(total_pago), 0) as total_pago, COALESCE(SUM(qtd), 0) as qtd
@@ -622,7 +605,7 @@ const loadChecklist = async (requestUrl: string) => {
   const ticketMedioDia = qtdDia > 0 ? faturamentoDia / qtdDia : 0;
 
   const revenueMonthParams: any[] = [monthRef];
-  const revenueMonthSql = buildInClause('unidade', unit.dbCandidates, revenueMonthParams);
+  const revenueMonthSql = buildFinancialUnitClause('unidade', unit.key, revenueMonthParams);
   const monthRows = await db.query(
     `
     SELECT COALESCE(SUM(total_pago), 0) as total_pago
@@ -645,7 +628,7 @@ const loadChecklist = async (requestUrl: string) => {
   `;
 
   const goalUnitParams: any[] = [todayIso, todayIso];
-  const goalUnitSql = buildInClause('clinic_unit', unit.dbCandidates, goalUnitParams);
+  const goalUnitSql = buildFinancialUnitClause('clinic_unit', unit.key, goalUnitParams);
   const goalUnitRows = await db.query(
     `
     SELECT COALESCE(SUM(target_value), 0) as total
@@ -671,7 +654,7 @@ const loadChecklist = async (requestUrl: string) => {
   const percentualMetaAtingida = metaMensal > 0 ? (faturamentoMes / metaMensal) * 100 : 0;
 
   const proposalParams: any[] = [];
-  const proposalUnitSql = buildInClause('unit_name', unit.dbCandidates, proposalParams);
+  const proposalUnitSql = buildFinancialUnitClause('unit_name', unit.key, proposalParams);
   const proposalRows = await db.query(
     `
     SELECT COALESCE(SUM(total_value), 0) as total
@@ -683,7 +666,7 @@ const loadChecklist = async (requestUrl: string) => {
   const orcamentosEmAberto = toNumber(proposalRows[0]?.total);
 
   const tomorrowParams: any[] = [tomorrowIso];
-  const tomorrowUnitSql = buildInClause('unit_name', unit.dbCandidates, tomorrowParams);
+  const tomorrowUnitSql = buildFinancialUnitClause('unit_name', unit.key, tomorrowParams);
   const tomorrowRows = await db.query(
     `
     SELECT
