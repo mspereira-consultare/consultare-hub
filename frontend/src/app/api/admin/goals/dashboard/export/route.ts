@@ -280,27 +280,28 @@ const buildPdf = async (payload: ExportPayload) => {
   const logoBuffer = await resolveLogoBuffer();
   const logo = logoBuffer ? await pdfDoc.embedPng(logoBuffer) : null;
 
-  const pageSize: [number, number] = [842, 595];
-  const margin = 26;
+  const pageSize: [number, number] = [1191, 842];
+  const margin = 34;
   const contentWidth = pageSize[0] - margin * 2;
   const tableHeaderHeight = 20;
-  const bodyFontSize = 7.1;
-  const headerFontSize = 7.6;
-  const lineHeight = 8.2;
+  const bodyFontSize = 7.4;
+  const headerFontSize = 7.8;
+  const lineHeight = 8.8;
   const cellPaddingX = 4;
   const cellPaddingTop = 4;
-  const bottomSafeArea = 28;
+  const bottomSafeArea = 34;
+  const sectionGap = 12;
 
   const columns = [
-    { label: 'Meta', width: 128, align: 'left' as const, maxLines: 2 },
-    { label: 'Escopo', width: 54, align: 'left' as const, maxLines: 2 },
-    { label: 'Periodicidade', width: 62, align: 'left' as const, maxLines: 2 },
-    { label: 'KPI', width: 88, align: 'left' as const, maxLines: 2 },
-    { label: 'Detalhes', width: 238, align: 'left' as const, maxLines: 4 },
-    { label: 'Meta', width: 64, align: 'right' as const, maxLines: 2 },
-    { label: 'Atual', width: 64, align: 'right' as const, maxLines: 2 },
+    { label: 'Meta', width: 170, align: 'left' as const, maxLines: 3 },
+    { label: 'Escopo', width: 72, align: 'left' as const, maxLines: 2 },
+    { label: 'Periodicidade', width: 82, align: 'left' as const, maxLines: 2 },
+    { label: 'KPI', width: 118, align: 'left' as const, maxLines: 3 },
+    { label: 'Detalhes', width: 403, align: 'left' as const, maxLines: 5 },
+    { label: 'Meta', width: 82, align: 'right' as const, maxLines: 2 },
+    { label: 'Atual', width: 82, align: 'right' as const, maxLines: 2 },
     { label: '%', width: 32, align: 'center' as const, maxLines: 1 },
-    { label: 'Status', width: 60, align: 'center' as const, maxLines: 2 },
+    { label: 'Status', width: 82, align: 'center' as const, maxLines: 2 },
   ];
 
   const drawLines = (
@@ -394,35 +395,39 @@ const buildPdf = async (payload: ExportPayload) => {
         { label: 'Progresso global', value: `${payload.summary.globalProgress}%` },
       ];
 
-      const cardWidth = 188;
-      const cardGap = 12;
+      const cardWidth = 254;
+      const cardGap = 14;
+      const cardHeight = 38;
+      const cardBottomY = y - 46;
       cards.forEach((card, index) => {
         const x = margin + index * (cardWidth + cardGap);
         page.drawRectangle({
           x,
-          y: y - 40,
+          y: cardBottomY,
           width: cardWidth,
-          height: 32,
+          height: cardHeight,
           color: rgb(0.96, 0.97, 0.99),
           borderColor: rgb(0.84, 0.88, 0.95),
           borderWidth: 0.8,
         });
         page.drawText(card.label, {
           x: x + 10,
-          y: y - 22,
+          y: cardBottomY + 22,
           size: 8,
           font: regular,
           color: rgb(0.35, 0.4, 0.47),
         });
         page.drawText(card.value, {
           x: x + 10,
-          y: y - 34,
-          size: 12,
+          y: cardBottomY + 8,
+          size: 13,
           font: bold,
           color: rgb(0.09, 0.25, 0.49),
         });
       });
-      y -= 50;
+      y = cardBottomY - sectionGap - tableHeaderHeight;
+    } else {
+      y -= sectionGap + tableHeaderHeight;
     }
 
     return y;

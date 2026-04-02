@@ -254,6 +254,19 @@ def _build_faturamento_line_key(row, payment_date_original_col=None, reference_d
     ]
     return hashlib.md5('|'.join(parts).encode('utf-8')).hexdigest()
 
+def _should_dedupe_retroactive_negative(row, window_start_iso, payment_date_original_col='data_do_pagamento_original'):
+    total_pago = clean_currency(_row_value_by_keys(row, 'total_pago') or 0)
+    if total_pago >= 0:
+        return False
+
+    payment_date_original = _parse_report_date(
+        _row_value_by_keys(row, payment_date_original_col, 'data_do_pagamento_original')
+    )
+    if not payment_date_original:
+        return False
+
+    return payment_date_original < window_start_iso
+
 def prepare_faturamento_dataframe(df, window_start_iso, context=''):
     if df is None or df.empty:
         return df, None
@@ -287,7 +300,9 @@ def prepare_faturamento_dataframe(df, window_start_iso, context=''):
 
     prepared = remove_total_pago_outliers(prepared, abs_threshold=1_000_000.0, context=context)
     prepared['line_key_hash'] = prepared.apply(
-        lambda row: _build_faturamento_line_key(row, 'data_do_pagamento_original', reference_date_col),
+        lambda row: _build_faturamento_line_key(row, 'data_do_pagamento_original', reference_date_col)
+        if _should_dedupe_retroactive_negative(row, window_start_iso)
+        else None,
         axis=1
     )
     prepared['updated_at'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
