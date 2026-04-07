@@ -24,6 +24,30 @@ interface DashboardData {
   financeByUnit?: any;
 }
 
+function getSaoPauloDateParts(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value || '1970';
+  const month = parts.find((part) => part.type === 'month')?.value || '01';
+  const day = parts.find((part) => part.type === 'day')?.value || '01';
+
+  return { year, month, day };
+}
+
+function getSaoPauloDateRange() {
+  const { year, month, day } = getSaoPauloDateParts();
+  return {
+    today: `${year}-${month}-${day}`,
+    monthStart: `${year}-${month}-01`,
+  };
+}
+
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,9 +78,7 @@ export default function DashboardPage() {
         const joiner = url.includes('?') ? '&' : '?';
         return `${url}${joiner}refresh=${Date.now()}`;
       };
-      const today = new Date();
-      const todayStr = today.toISOString().split('T')[0];
-      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+      const { today: todayStr, monthStart } = getSaoPauloDateRange();
       const monthEnd = todayStr;
       
       const [resMedic, resRecep, resWhats, resFinanceDaily, resFinanceMonth, resFinanceByUnitDaily, resFinanceByUnitMonth, resGoals] = await Promise.all([
