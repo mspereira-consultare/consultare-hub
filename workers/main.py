@@ -3,6 +3,7 @@ import time
 import os
 import sys
 import datetime
+import json
 import uuid
 import schedule
 import builtins
@@ -64,7 +65,10 @@ try:
     from worker_contracts import run_worker_contracts
     from worker_repasse_consolidado import process_pending_repasse_jobs_once
     from worker_consolidacao_profissionais import process_pending_consolidacao_jobs_once
-    from worker_agenda_ocupacao import process_pending_agenda_occupancy_jobs_once
+    from worker_agenda_ocupacao import (
+        enqueue_agenda_occupancy_job,
+        process_pending_agenda_occupancy_jobs_once,
+    )
     from worker_marketing_funnel_google import process_pending_marketing_funnel_jobs_once
     from worker_clinia_crm import process_pending_clinia_crm_jobs_once
     from worker_clinia_ads import process_pending_clinia_ads_jobs_once
@@ -512,6 +516,49 @@ def run_feegow_hourly():
     print("⏱️ Executando Feegow (agendamentos) no horário de operação...")
     run_service('appointments')
 
+
+def run_agenda_occupancy_current_month():
+    """Garante refresh da ocupação da agenda para o mês atual em todas as unidades."""
+    now = _now_work_tz()
+    start_date = now.replace(day=1).strftime("%Y-%m-%d")
+    end_date = now.strftime("%Y-%m-%d")
+    units = [2, 3, 12]
+
+    db = DatabaseManager()
+    existing = db.execute_query(
+        """
+        SELECT id, status
+        FROM agenda_occupancy_jobs
+        WHERE start_date = ?
+          AND end_date = ?
+          AND unit_scope_json IN (?, ?)
+          AND status IN ('PENDING', 'RUNNING')
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (start_date, end_date, json.dumps(units), json.dumps(units, separators=(",", ":"))),
+    )
+
+    if existing:
+        print(
+            f"⏭️ Agenda ocupação já possui job pendente/em execução para {start_date}..{end_date}."
+        )
+    else:
+        job = enqueue_agenda_occupancy_job(
+            start_date=start_date,
+            end_date=end_date,
+            unit_scope=units,
+            requested_by="scheduler_auto",
+            db=db,
+            initial_status="PENDING",
+        )
+        print(
+            f"📅 Job automático agenda_occupancy enfileirado | "
+            f"id={job['id']} periodo={job['start_date']}..{job['end_date']} units={job['unit_scope']}"
+        )
+
+    run_service('agenda_occupancy')
+
 def run_token_renewal():
     """Roda o Playwright para renovar tokens e salvar no banco"""
     print("\n🔑 Iniciando Renovação de Tokens (Auth)...")
@@ -629,6 +676,7 @@ def run_scheduler():
     schedule.every().day.at("05:25").do(lambda: run_service('clinia_crm'))
     schedule.every().day.at("05:35").do(lambda: run_service('clinia_ads'))
     schedule.every().day.at("05:40").do(lambda: run_service('marketing_funnel'))
+    schedule.every().day.at("06:15").do(run_agenda_occupancy_current_month)
 
     schedule.every().day.at("12:00").do(lambda: run_service('contratos'))
 
@@ -638,9 +686,11 @@ def run_scheduler():
     schedule.every().day.at("12:30").do(lambda: run_service('patients_registry'))
     schedule.every().day.at("12:25").do(lambda: run_service('clinia_crm'))
     schedule.every().day.at("12:35").do(lambda: run_service('clinia_ads'))
+    schedule.every().day.at("12:45").do(run_agenda_occupancy_current_month)
     schedule.every().day.at("18:10").do(lambda: run_service('marketing_funnel'))
     schedule.every().day.at("18:25").do(lambda: run_service('clinia_crm'))
     schedule.every().day.at("18:35").do(lambda: run_service('clinia_ads'))
+    schedule.every().day.at("18:45").do(run_agenda_occupancy_current_month)
     # Pré-aquecimento de sessão do monitor médico antes da abertura (08:00)
     schedule.every().day.at("07:40").do(run_medico_prewarm_job)
     schedule.every().day.at("07:45").do(run_medico_prewarm_job)

@@ -131,6 +131,7 @@ Serviços comuns:
 - `patients_registry`: 05:30, 12:30 e tamb?m nos lotes pesados das 14:00, 17:00 e 19:00.
 - `clinia_ads`: 05:35, 12:35 e 18:35.
 - `marketing_funnel`: 05:40 e 18:10.
+- `agenda_occupancy`: 06:15, 12:45 e 18:45 (m?s atual, todas as unidades).
 - `contratos`: 12:00.
 - lote pesado: 14:00, 17:00, 19:00.
 - `financeiro` horário comercial: de hora em hora no minuto `:30`.
