@@ -128,6 +128,7 @@ Serviços comuns:
 
 - `auth`: 05:00 e 12:00.
 - `procedures_catalog`: 05:20 e 12:20.
+- `patients_registry`: 05:30, 12:30 e tamb?m nos lotes pesados das 14:00, 17:00 e 19:00.
 - `clinia_ads`: 05:35, 12:35 e 18:35.
 - `marketing_funnel`: 05:40 e 18:10.
 - `contratos`: 12:00.
@@ -300,13 +301,14 @@ WHERE scheduled_at BETWEEN CONCAT(CURDATE(),' 00:00:00') AND CONCAT(CURDATE(),' 
 ## Novos pacientes no financeiro
 
 ```sql
-SELECT COUNT(DISTINCT patient_id) AS novos_pacientes
-FROM feegow_appointments
-WHERE first_appointment_flag = 1
-  AND date BETWEEN '2026-01-01' AND '2026-01-31';
+SELECT COUNT(DISTINCT a.patient_id) AS novos_pacientes
+FROM feegow_appointments a
+JOIN feegow_patients p ON p.patient_id = a.patient_id
+WHERE a.date BETWEEN '2026-01-01' AND '2026-01-31'
+  AND DATE(p.criado_em) BETWEEN '2026-01-01' AND '2026-01-31';
 ```
 
-ObservaÃ§Ã£o: o card `Novos pacientes` do `/financeiro` usa a `date` da consulta, nÃ£o `scheduled_at`.
+Observa??o: o card `Novos pacientes` do `/financeiro` usa a `date` da consulta para o recorte operacional e `DATE(feegow_patients.criado_em)` para classificar o paciente como novo no per?odo.
 ## CatÃ¡logo de procedimentos (Feegow)
 
 ```sql

@@ -153,8 +153,9 @@ Arquivo: `workers/main.py`.
 ### Feegow
 
 - API de agendamentos (`worker_feegow_appointments.py`).
+- API de pacientes (`worker_feegow_patients.py`), com persist?ncia de `criado_em`/`alterado_em` em `feegow_patients` para refinar o indicador de novos pacientes.
 - O domÃ­nio de agendamentos agora persiste `patient_id`, `procedure_id`, `procedure_name` e `first_appointment_flag` em `feegow_appointments`.
-- O KPI `Novos pacientes` do `/financeiro` usa `COUNT(DISTINCT patient_id)` com `first_appointment_flag = 1`, filtrando pela `date` da consulta.
+- O KPI `Novos pacientes` do `/financeiro` usa `COUNT(DISTINCT patient_id)` em `feegow_appointments`, com join em `feegow_patients` e `DATE(criado_em)` dentro do per?odo selecionado.
 - API de procedimentos (`worker_feegow_procedures.py`).
 - API de propostas (`worker_proposals.py`).
 - O domínio de propostas persiste `patient_id`, `proposal_last_update` e uma cache local de contatos Feegow em `feegow_patient_contacts_cache`.

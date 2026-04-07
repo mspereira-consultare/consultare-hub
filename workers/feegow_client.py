@@ -243,3 +243,21 @@ def fetch_proposals(start_date, end_date):
     # Se der erro, verifique se é 'date_start' ou 'data_inicio'.
     data = request_endpoint("proposal/list", method="GET", json_body=payload)
     return pd.DataFrame(normalize_content(data))
+
+def fetch_patients_page(limit=100, offset=0, extra_params=None):
+    """
+    Busca uma pagina da listagem de pacientes.
+    Endpoint: /patient/list
+    """
+    payload = {
+        "limit": int(limit),
+        "offset": int(offset),
+    }
+    if isinstance(extra_params, dict):
+        payload.update({k: v for k, v in extra_params.items() if v not in (None, "", [])})
+    return request_endpoint("patient/list", method="GET", json_body=payload)
+
+
+def fetch_patients_dataframe(limit=100, offset=0, extra_params=None):
+    data = fetch_patients_page(limit=limit, offset=offset, extra_params=extra_params)
+    return pd.DataFrame(normalize_content(data))

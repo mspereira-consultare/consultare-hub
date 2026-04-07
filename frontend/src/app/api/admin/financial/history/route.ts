@@ -75,6 +75,8 @@ export async function GET(request: Request) {
     const hasAnalitico = await tableExists(db, ANALITICO_TABLE);
     const hasMonthly = hasSummary && await tableExists(db, MONTHLY_TABLE);
     const hasAppointments = await tableExists(db, 'feegow_appointments');
+    const hasPatientsRegistry = await tableExists(db, 'feegow_patients');
+    const hasPatientsRegistryState = await tableExists(db, 'feegow_patients_sync_state');
 
     if (!hasSummary && !hasAnalitico) {
       const statusRes = await db.query(`
@@ -181,11 +183,26 @@ export async function GET(request: Request) {
     };
 
     if (hasAppointments) {
-      const [hasPatientId, hasFirstAppointmentFlag, hasProcedureName] = await Promise.all([
+      const [hasPatientId, hasFirstAppointmentFlag, hasProcedureName, hasPatientsCreatedAt] = await Promise.all([
         columnExists(db, 'feegow_appointments', 'patient_id'),
         columnExists(db, 'feegow_appointments', 'first_appointment_flag'),
         columnExists(db, 'feegow_appointments', 'procedure_name'),
+        hasPatientsRegistry ? columnExists(db, 'feegow_patients', 'criado_em') : Promise.resolve(false),
       ]);
+      let hasPatientsRegistryData = false;
+      let patientsRegistryBootstrapComplete = false;
+      if (hasPatientsRegistry && hasPatientsCreatedAt) {
+        const patientsRegistryCountRes = await db.query('SELECT COUNT(1) as total FROM feegow_patients');
+        hasPatientsRegistryData = Number(patientsRegistryCountRes[0]?.total || 0) > 0;
+        if (hasPatientsRegistryState) {
+          const patientsRegistryStateRes = await db.query(`
+            SELECT sync_value
+            FROM feegow_patients_sync_state
+            WHERE sync_key = 'bootstrap_complete'
+          `);
+          patientsRegistryBootstrapComplete = String(patientsRegistryStateRes[0]?.sync_value || '') === '1';
+        }
+      }
 
       if (hasPatientId && hasProcedureName) {
         let appointmentsWhere = `
@@ -207,20 +224,39 @@ export async function GET(request: Request) {
           appointmentParams.push(procedureFilter);
         }
 
-        const patientCountsRes = await db.query(
-          `
-            SELECT
-              COUNT(DISTINCT patient_id) as total_patients,
-              ${
-                hasFirstAppointmentFlag
-                  ? 'COUNT(DISTINCT CASE WHEN first_appointment_flag = 1 THEN patient_id END) as new_patients'
-                  : '0 as new_patients'
-              }
-            FROM feegow_appointments
-            ${appointmentsWhere}
-          `,
-          appointmentParams
-        );
+        const appointmentsWhereAliased = appointmentsWhere
+          .replace(/\bdate\b/g, 'a.date')
+          .replace(/\bpatient_id\b/g, 'a.patient_id')
+          .replace(/\bunit_name\b/g, 'a.unit_name')
+          .replace(/\bprocedure_group\b/g, 'a.procedure_group')
+          .replace(/\bprocedure_name\b/g, 'a.procedure_name');
+
+        const patientCountsRes = hasPatientsRegistry && hasPatientsCreatedAt && hasPatientsRegistryData && patientsRegistryBootstrapComplete
+          ? await db.query(
+              `
+                SELECT
+                  COUNT(DISTINCT a.patient_id) as total_patients,
+                  COUNT(DISTINCT CASE WHEN DATE(p.criado_em) BETWEEN ? AND ? THEN a.patient_id END) as new_patients
+                FROM feegow_appointments a
+                LEFT JOIN feegow_patients p ON p.patient_id = a.patient_id
+                ${appointmentsWhereAliased}
+              `,
+              [startDate, endDate, ...appointmentParams]
+            )
+          : await db.query(
+              `
+                SELECT
+                  COUNT(DISTINCT patient_id) as total_patients,
+                  ${
+                    hasFirstAppointmentFlag
+                      ? 'COUNT(DISTINCT CASE WHEN first_appointment_flag = 1 THEN patient_id END) as new_patients'
+                      : '0 as new_patients'
+                  }
+                FROM feegow_appointments
+                ${appointmentsWhere}
+              `,
+              appointmentParams
+            );
         totals.totalPatients = Number(patientCountsRes[0]?.total_patients || 0);
         totals.newPatients = Number(patientCountsRes[0]?.new_patients || 0);
       }

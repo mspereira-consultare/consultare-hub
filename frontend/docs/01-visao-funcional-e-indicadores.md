@@ -163,7 +163,7 @@ Analisar faturamento por perÃ­odo, unidade, grupo e procedimento, com modo com
 | Faturamento | `history.totals.total` | Soma de `total_pago` no perÃ­odo filtrado |
 | Atendimentos/Guias | `history.totals.qtd` | Soma de `qtd` (resumo) ou contagem (analÃ­tico fallback) |
 | Ticket mÃ©dio | frontend | `total / qtd` |
-| Novos pacientes | `history.totals.newPatients` | `COUNT(DISTINCT patient_id)` em `feegow_appointments`, com `first_appointment_flag = 1`, usando a `date` da consulta e respeitando os filtros de unidade, grupo e procedimento |
+| Novos pacientes | `history.totals.newPatients` | `COUNT(DISTINCT patient_id)` em `feegow_appointments`, filtrando pelos par?metros da p?gina e marcando como novo quando `DATE(feegow_patients.criado_em)` cai dentro do per?odo selecionado |
 | % de novos pacientes | frontend + `history.totals.totalPatients` | `newPatients / totalPatients * 100`, considerando pacientes distintos no per?odo filtrado |
 | Curva diÃ¡ria | `history.daily` | SÃ©rie por dia (`d`) |
 | EvoluÃ§Ã£o mensal | `history.monthly` | SÃ©rie por mÃªs (`m`) |

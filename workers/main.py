@@ -59,6 +59,7 @@ try:
     from worker_feegow_procedures import update_procedures_catalog
     from worker_feegow_professionals_sync import run_sync as run_professionals_sync
     from worker_proposals import update_proposals
+    from worker_feegow_patients import sync_feegow_patients
     from worker_faturamento_scraping import run_scraper
     from worker_contracts import run_worker_contracts
     from worker_repasse_consolidado import process_pending_repasse_jobs_once
@@ -145,6 +146,7 @@ _serial_running_action = None
 
 KNOWN_ACTIONS = {
     'appointments',
+    'patients_registry',
     'procedures_catalog',
     'professionals_sync',
     'faturamento', # Receita bruta analítica
@@ -182,6 +184,11 @@ ALIAS_ACTION_MAP = {
     'feegow_finance': 'appointments',
     'worker_feegow': 'appointments',
     'worker_feegow_appointments': 'appointments',
+    'patients_registry': 'patients_registry',
+    'patients': 'patients_registry',
+    'pacientes': 'patients_registry',
+    'feegow_patients': 'patients_registry',
+    'worker_feegow_patients': 'patients_registry',
     'procedures_catalog': 'procedures_catalog',
     'procedures': 'procedures_catalog',
     'catalogo_procedimentos': 'procedures_catalog',
@@ -235,6 +242,7 @@ ALIAS_ACTION_MAP = {
 # Mapeia ação para nome canônico no `system_status`
 CANONICAL_NAME = {
     'appointments': 'Appointments (Feegow API)',
+    'patients_registry': 'Pacientes (Feegow API)',
     'procedures_catalog': 'Catalogo de Procedimentos (Feegow API)',
     'professionals_sync': 'Profissionais (Feegow API)',
     'faturamento': 'Faturamento (Scraping)',
@@ -384,6 +392,8 @@ def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
 
         if action == "appointments":
             update_appointments_data()
+        elif action == "patients_registry":
+            sync_feegow_patients()
         elif action == "procedures_catalog":
             update_procedures_catalog()
         elif action == "professionals_sync":
@@ -488,9 +498,10 @@ def run_hourly_workers():
 
 def run_heavy_workers():
     """Executa os workers mais pesados em lote."""
-    print("⏰ Executando jobs pesados: faturamento, feegow, propostas, contratos...")
+    print("⏰ Executando jobs pesados: faturamento, feegow, pacientes, propostas, contratos...")
     run_service('faturamento')
     run_service('appointments')  # Feegow (agendamentos)
+    run_service('patients_registry')
     run_service('comercial')
     run_service('contratos')
 
@@ -614,6 +625,7 @@ def run_scheduler():
     schedule.every().day.at("05:00").do(run_token_renewal)
     schedule.every().day.at("05:10").do(run_clinia_token_renewal)
     schedule.every().day.at("05:20").do(lambda: run_service('procedures_catalog'))
+    schedule.every().day.at("05:30").do(lambda: run_service('patients_registry'))
     schedule.every().day.at("05:25").do(lambda: run_service('clinia_crm'))
     schedule.every().day.at("05:35").do(lambda: run_service('clinia_ads'))
     schedule.every().day.at("05:40").do(lambda: run_service('marketing_funnel'))
@@ -623,6 +635,7 @@ def run_scheduler():
     schedule.every().day.at("12:00").do(run_token_renewal)
     schedule.every().day.at("12:10").do(run_clinia_token_renewal)
     schedule.every().day.at("12:20").do(lambda: run_service('procedures_catalog'))
+    schedule.every().day.at("12:30").do(lambda: run_service('patients_registry'))
     schedule.every().day.at("12:25").do(lambda: run_service('clinia_crm'))
     schedule.every().day.at("12:35").do(lambda: run_service('clinia_ads'))
     schedule.every().day.at("18:10").do(lambda: run_service('marketing_funnel'))

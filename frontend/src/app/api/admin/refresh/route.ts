@@ -15,6 +15,11 @@ const SERVICE_ALIASES: Record<string, string> = {
   feegow_finance: 'appointments',
   worker_feegow: 'appointments',
   worker_feegow_appointments: 'appointments',
+  patients_registry: 'patients_registry',
+  patients: 'patients_registry',
+  pacientes: 'patients_registry',
+  feegow_patients: 'patients_registry',
+  worker_feegow_patients: 'patients_registry',
   procedures_catalog: 'procedures_catalog',
   procedures: 'procedures_catalog',
   feegow_procedures: 'procedures_catalog',
@@ -76,6 +81,7 @@ const normalizeService = (serviceRaw: string) => {
 
 const SERVICE_PAGE_MAP: Record<string, PageKey> = {
   appointments: 'produtividade',
+  patients_registry: 'financeiro',
   faturamento: 'financeiro',
   comercial: 'propostas',
   contratos: 'contratos',
@@ -96,6 +102,7 @@ const SERVICE_PAGE_MAP: Record<string, PageKey> = {
 
 const SERVICE_REFRESH_PAGES: Record<string, PageKey[]> = {
   appointments: ['produtividade', 'agendamentos', 'checklist_crc', 'checklist_recepcao'],
+  patients_registry: ['financeiro'],
   faturamento: ['financeiro', 'dashboard', 'checklist_recepcao'],
   comercial: ['propostas', 'checklist_recepcao'],
   contratos: ['contratos'],

@@ -99,6 +99,37 @@ Escrita: API de equipes.
 
 Escrita: `worker_feegow_appointments.py` e `worker_feegow_appointments_backfill.py`
 
+### `feegow_patients`
+
+| Campo | Descri??o |
+|---|---|
+| `patient_id` (PK) | Identificador do paciente na Feegow |
+| `nome` | Nome do paciente |
+| `nome_social` | Nome social, quando houver |
+| `nascimento` | Data de nascimento |
+| `bairro` | Bairro informado no cadastro |
+| `tabela_id` | ID da tabela/pre?o da Feegow |
+| `sexo_id` | Sexo cadastrado na Feegow |
+| `email` | E-mail principal |
+| `celular` | Celular principal |
+| `criado_em` | Data/hora de cria??o do cadastro do paciente |
+| `alterado_em` | Data/hora da ?ltima altera??o do cadastro |
+| `programa_saude_json` | Payload resumido de programas de sa?de |
+| `payload_json` | Payload bruto do item retornado pela API |
+| `updated_at` | ?ltima atualiza??o local |
+
+Escrita: `worker_feegow_patients.py`
+
+### `feegow_patients_sync_state`
+
+| Campo | Descri??o |
+|---|---|
+| `sync_key` (PK) | Chave de controle da sincroniza??o |
+| `sync_value` | Valor de estado (`bootstrap_complete`, `last_sync_mode`, etc.) |
+| `updated_at` | Data/hora da ?ltima atualiza??o |
+
+Escrita: `worker_feegow_patients.py`
+
 | Campo | Descrição |
 |---|---|
 | `id` (PK) | Identificador da relação |
