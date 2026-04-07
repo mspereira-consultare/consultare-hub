@@ -529,6 +529,20 @@ Variaveis novas (workers):
 Checklist rapido de validacao:
 
 1. Verificar `system_status` do `monitor_medico` atualizando continuamente.
+
+Smoke r?pido de autentica??o e filas ap?s mudan?a do Feegow para `app4`:
+
+```powershell
+python workers/worker_auth.py
+python workers/worker_faturamento_scraping.py
+python -c "import sys; sys.path.append(r'workers'); from monitor_medico import run_medico_prewarm; print(run_medico_prewarm())"
+```
+
+Esperado:
+
+- `worker_auth.py`: `3/3 unidades atualizadas`;
+- `worker_faturamento_scraping.py`: relat?rio abre em `app4` e persiste registros;
+- `run_medico_prewarm()`: `Prewarm OK (...)`, mesmo quando as filas estiverem vazias.
 2. Confirmar logs de prewarm entre 07:40 e 07:55.
 3. Simular sessao expirada e validar re-login automatico sem restart manual.
 4. Conferir que warnings repetidos nao spamam logs (throttle ativo).
@@ -564,6 +578,20 @@ Tabelas criadas:
 - `repasse_pdf_artifacts`
 
 ## 11) Repasses - Sprint 2 (worker scraping)
+
+Valida??o manual recomendada ap?s mudan?as de login do Feegow:
+
+```powershell
+python workers/worker_repasse_consolidado.py --once --period 2026-03 --professional-ids feegow:2396 --requested-by smoke_app4
+python workers/worker_consolidacao_profissionais.py --once --period 2026-03 --professionals feegow:2396 --requested-by smoke_app4
+```
+
+Resultado esperado do smoke acima:
+
+- login conclu?do em `app4.feegow.com`;
+- telas `RepassesConferidos` e `RepassesAConferir` carregam com os filtros principais;
+- heartbeat dos servi?os `repasse_sync` e `repasse_consolidacao` muda para `COMPLETED` ao final do job.
+
 
 Worker:
 

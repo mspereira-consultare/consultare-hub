@@ -168,6 +168,17 @@ Arquivo: `workers/main.py`.
 - API de contratos (`worker_contracts.py`).
 - Fluxos de monitor via pÃ¡ginas internas (recepÃ§Ã£o/mÃ©dico).
 - RenovaÃ§Ã£o de credenciais/cookies por Playwright (`worker_auth.py`).
+- Desde abril/2026, os fluxos web do Feegow usam autentica??o efetiva em `https://app4.feegow.com`.
+- O helper compartilhado `workers/feegow_web_auth.py` centraliza login em `app4`, troca de unidade, captura de `x-access-token`/cookies do Totem e c?pia de cookies do browser para `requests.Session`.
+- Workers web j? migrados para esse helper:
+  - `worker_auth.py`
+  - `worker_faturamento_scraping.py`
+  - `feegow_core.py`
+  - `worker_repasse_consolidado.py`
+  - `worker_consolidacao_profissionais.py`
+  - `worker_faturamento_scraping_2025.py`
+- Com isso, `faturamento`, `monitor_medico`/filas e os scrapers de repasse deixaram de depender do fluxo legado de `franchising.feegow.com`.
+
 ### Clinia
 
 - APIs de grupos, estatísticas e contagem de chats (`worker_clinia.py`).

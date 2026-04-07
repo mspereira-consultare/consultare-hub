@@ -332,6 +332,16 @@ Status atual:
 - Atualizacao dupla em endpoint unico:
   - `POST /api/admin/repasses/refresh`
   - cria simultaneamente jobs em `repasse_sync_jobs` e `repasse_consolidacao_jobs`.
+
+### Atualiza??o operacional de abril/2026
+
+- O Feegow deixou de aceitar de forma est?vel o fluxo web legado em `franchising.feegow.com`.
+- Os workers `worker_repasse_consolidado.py` e `worker_consolidacao_profissionais.py` foram migrados para o helper `workers/feegow_web_auth.py`, com login real em `app4`.
+- Smoke validado ap?s a migra??o:
+  - `worker_repasse_consolidado.py --once --period 2026-03 --professional-ids feegow:2396`
+    - resultado: `66` linhas, total `R$ 7.640,00`;
+  - `worker_consolidacao_profissionais.py --once --period 2026-03 --professionals feegow:2396`
+    - resultado: `69` linhas, total `R$ 7.988,00`.
 - Persistencia de conferencia manual por usuario:
   - `repasse_consolidacao_line_marks` (chave: `period_ref + professional_id + source_row_hash + user_id`)
   - `repasse_consolidacao_mark_legends` (chave: `user_id + color_key`)
