@@ -508,9 +508,9 @@ def run_token_renewal():
     try:
         db.update_heartbeat("auth", "RUNNING", "Renovando tokens...")
         renewer = FeegowTokenRenewer()
-        renewer.obter_tokens() # Isso popula as linhas unit_id 2, 3, 12 no banco
+        summary = renewer.obter_tokens() # Isso popula as linhas unit_id 2, 3, 12 no banco
         print("✅ Tokens renovados com sucesso.")
-        db.update_heartbeat("auth", "COMPLETED", "Tokens atualizados")
+        db.update_heartbeat("auth", "COMPLETED", summary or "Tokens atualizados")
     except Exception as e:
         print(f"❌ Falha na renovação de tokens: {e}")
         db.update_heartbeat("auth", "ERROR", str(e))

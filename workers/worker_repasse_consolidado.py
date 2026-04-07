@@ -18,15 +18,17 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from database_manager import DatabaseManager
+    from feegow_web_auth import APP4_BASE_URL, login_feegow_app4, switch_feegow_unit
 except ImportError:
     DatabaseManager = None
+    from .feegow_web_auth import APP4_BASE_URL, login_feegow_app4, switch_feegow_unit
 
 
-BASE_URL = "https://franchising.feegow.com"
-LOGIN_URL = f"{BASE_URL}/main/?P=Login&U=&Partner=&qs="
+BASE_URL = APP4_BASE_URL
+LOGIN_URL = f"{BASE_URL}/main/?P=Login"
 CHANGE_UNIT_URL = f"{BASE_URL}/v8.1/?P=MudaLocal&Pers=1&MudaLocal=0"
 REPASSE_URL = f"{BASE_URL}/v8.1/?P=RepassesConferidos&Pers=1"
-REPORT_SOURCE_URL = "https://franchising.feegow.com/v8.1/?P=RepassesConferidos&Pers="
+REPORT_SOURCE_URL = f"{BASE_URL}/v8.1/?P=RepassesConferidos&Pers="
 
 SERVICE_NAME = "repasse_sync"
 STATUS_PENDING = "PENDING"
@@ -1155,73 +1157,13 @@ def _login_feegow(page):
     if not user or not password:
         raise RuntimeError("FEEGOW_USER/FEEGOW_PASS nao configurados.")
 
-    page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-    page.wait_for_timeout(800)
-
-    # Se a sessão já estiver válida, evita forçar seleção de campos de login.
-    has_old_user = page.locator("input[name='User']").count() > 0
-    has_old_pass = page.locator("input[name='password']").count() > 0
-    has_email_role = False
-    try:
-        has_email_role = page.get_by_role("textbox", name="E-mail").count() > 0
-    except Exception:
-        has_email_role = False
-
-    looks_login = has_old_user or has_old_pass or has_email_role or ("login" in page.url.lower())
-    if not looks_login:
-        return
-
-    clicked = False
-    try:
-        if has_email_role:
-            page.get_by_role("textbox", name="E-mail").fill(user)
-            page.get_by_role("textbox", name="Senha").fill(password)
-            btn = page.get_by_role("button", name=re.compile(r"Entrar", re.IGNORECASE))
-            if btn.count() > 0:
-                btn.first.click()
-                clicked = True
-    except Exception:
-        pass
-
-    if not clicked:
-        if has_old_user:
-            page.fill("input[name='User']", user)
-        if has_old_pass:
-            page.fill("input[name='password']", password)
-
-        for sel in [
-            "button[name='btnLogar']",
-            "button[type='submit']",
-            "input[type='submit']",
-            "button:has-text('Entrar')",
-        ]:
-            try:
-                if page.locator(sel).count() > 0:
-                    page.locator(sel).first.click()
-                    clicked = True
-                    break
-            except Exception:
-                continue
-
-    page.wait_for_timeout(1500)
-
-    # Confirma se saiu da tela de login.
-    still_old_user = page.locator("input[name='User']").count() > 0
-    still_old_pass = page.locator("input[name='password']").count() > 0
-    still_email_role = False
-    try:
-        still_email_role = page.get_by_role("textbox", name="E-mail").count() > 0
-    except Exception:
-        still_email_role = False
-
-    if still_old_user or still_old_pass or still_email_role or ("login" in page.url.lower()):
-        raise RuntimeError("Falha no login Feegow (permaneceu na tela de login).")
+    login_feegow_app4(page, user, password, logger=_debug if _is_debug_enabled() else print)
 
 
 def _open_repasse_screen(page):
     _debug("abrindo tela de repasses...")
     try:
-        page.goto(CHANGE_UNIT_URL, wait_until="domcontentloaded", timeout=60000)
+        switch_feegow_unit(page, 0, logger=_debug if _is_debug_enabled() else None)
     except Exception:
         pass
 

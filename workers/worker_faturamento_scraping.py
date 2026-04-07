@@ -12,6 +12,7 @@ import hashlib
 import unicodedata
 from playwright.sync_api import sync_playwright
 from io import StringIO
+from feegow_web_auth import APP4_BASE_URL, login_feegow_app4, switch_feegow_unit
 
 # --- SETUP DE IMPORTS ---
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -963,20 +964,16 @@ def run_scraper():
         try:
             # --- LÓGICA DE SCRAPING ORIGINAL (INTACTA) ---
             print("🔐 Login...")
-            page.goto("https://franchising.feegow.com/main/?P=Login")
-            try:
-                if page.get_by_role("textbox", name="E-mail").is_visible(timeout=3000):
-                    page.get_by_role("textbox", name="E-mail").fill(user)
-                    page.get_by_role("textbox", name="Senha").fill(password)
-                    page.get_by_role("button", name="Entrar ").click()
-            except: pass
-
-            time.sleep(2)
-            page.goto("https://franchising.feegow.com/v8.1/?P=MudaLocal&Pers=1&MudaLocal=0", timeout=60000)
-            time.sleep(3)
+            login_feegow_app4(page, user, password, logger=print)
+            switch_feegow_unit(page, 0, logger=print)
+            time.sleep(1.5)
 
             print("📂 Acessando Relatório...")
-            page.goto("https://franchising.feegow.com/main/?P=RelatoriosModoFranquia&Pers=1&TR=72")
+            page.goto(f"{APP4_BASE_URL}/v8.1/?P=RelatoriosModoFranquia&Pers=1&TR=72", wait_until="domcontentloaded", timeout=60000)
+            try:
+                page.wait_for_load_state("networkidle", timeout=30000)
+            except Exception:
+                pass
 
             try:
                 if page.get_by_role("button", name="Não, obrigada.").is_visible(timeout=3000):

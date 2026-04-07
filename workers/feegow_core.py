@@ -12,6 +12,7 @@ from io import StringIO
 from datetime import datetime
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from playwright.sync_api import sync_playwright
 
 load_dotenv()
 
@@ -20,8 +21,20 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from database_manager import DatabaseManager
+    from feegow_web_auth import (
+        APP4_BASE_URL,
+        hydrate_requests_session_from_context,
+        login_feegow_app4,
+        switch_feegow_unit,
+    )
 except ImportError:
-    pass
+    from .database_manager import DatabaseManager
+    from .feegow_web_auth import (
+        APP4_BASE_URL,
+        hydrate_requests_session_from_context,
+        login_feegow_app4,
+        switch_feegow_unit,
+    )
 
 def get_feegow_config_from_db():
     """Busca credenciais no banco de dados (Híbrido)"""
@@ -47,7 +60,7 @@ class FeegowSystem:
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36"
         })
-        self.base_url = "https://franchising.feegow.com"
+        self.base_url = APP4_BASE_URL
         self.last_queue_fetch_meta = {}
 
     @staticmethod
@@ -127,10 +140,7 @@ class FeegowSystem:
         return "<table" in lower or cls._looks_like_empty_queue_html(html_text)
 
     def login(self):
-        """Realiza o login via POST e valida a sessão"""
-        url = f"{self.base_url}/main/?P=Login&U=&Partner=&qs="
-        
-        # 1. Tenta pegar do banco
+        """Autentica via app4 com Playwright e reaproveita os cookies no requests.Session."""
         config = get_feegow_config_from_db()
         user = config['user'] if config and config['user'] else os.getenv("FEEGOW_USER")
         password = config['pass'] if config and config['pass'] else os.getenv("FEEGOW_PASS")
@@ -139,26 +149,36 @@ class FeegowSystem:
             print("   [ERRO] Credenciais não encontradas (Configure no Painel Admin ou .env)")
             return False
 
-        payload = {
-            "User": user,
-            "password": password,
-            "btnLogar": "Entrar"
-        }
-        
+        headless = str(os.getenv("PLAYWRIGHT_HEADLESS", "1")).strip().lower() in ("1", "true", "yes")
         try:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Tentando login...")
-            resp = self.session.post(url, data=payload, timeout=20)
-            
-            # Verifica sucesso via Cookies
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Tentando login via app4...")
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=headless)
+                context = browser.new_context(ignore_https_errors=True)
+                page = context.new_page()
+                try:
+                    login_feegow_app4(page, user, password, logger=print)
+                    switch_feegow_unit(page, 0, logger=print)
+                    hydrate_requests_session_from_context(context, self.session, logger=print)
+                finally:
+                    try:
+                        context.close()
+                    except Exception:
+                        pass
+                    try:
+                        browser.close()
+                    except Exception:
+                        pass
+
             cookies = self.session.cookies.get_dict()
-            if any("ASPSESSION" in k for k in cookies):
-                print("   Login realizado com sucesso (Sessão ASP gerada).")
+            if cookies:
+                print("   Login realizado com sucesso (cookies reaproveitados do app4).")
                 return True
-            else:
-                print("   Falha: Servidor não retornou cookie de sessão.")
-                return False
+
+            print("   Falha: nenhum cookie foi copiado para a sessão requests.")
+            return False
         except Exception as e:
-            print(f"   Erro crítico no login: {e}")
+            print(f"   Erro crítico no login via app4: {e}")
             return False
 
     def trocar_unidade(self, unidade_id):
@@ -213,48 +233,7 @@ class FeegowSystem:
             return None
         
     def _login_app_specific(self):
-        """
-        Login específico no APP e Ponte de Cookies para o CORE.
-        """
-        url = "https://app.feegow.com/main/?P=Login"
-        
-        # Usa as mesmas credenciais do login principal
-        config = get_feegow_config_from_db()
-        user = config['user'] if config and config['user'] else os.getenv("FEEGOW_USER")
-        password = config['pass'] if config and config['pass'] else os.getenv("FEEGOW_PASS")
-
-        payload = {
-            "User": user,
-            "password": password,
-            "btnLogar": "Entrar"
-        }
-        try:
-            print(f"   [AUTH] Autenticando via app.feegow.com...")
-            headers_login = {
-                "Origin": "https://app.feegow.com",
-                "Referer": "https://app.feegow.com/main/?P=Login"
-            }
-            resp = self.session.post(url, data=payload, headers=headers_login, timeout=20)
-            
-            # --- PONTE DE COOKIES (A MÁGICA) ---
-            # O login pode ter setado cookies para 'app.feegow.com' ou '.feegow.com'.
-            # Vamos garantir que o 'core.feegow.com' também tenha esses cookies.
-            if resp.status_code == 200:
-                cookies_dict = self.session.cookies.get_dict()
-                
-                # Procura cookies importantes e replica para o domínio do Core
-                for nome, valor in cookies_dict.items():
-                    if "session" in nome or "token" in nome.lower() or "asp" in nome.lower():
-                        self.session.cookies.set(nome, valor, domain="core.feegow.com")
-                        self.session.cookies.set(nome, valor, domain=".feegow.com")
-                
-                print("   [AUTH] Cookies replicados para Core.")
-                return True
-            
-            return False
-        except Exception as e:
-            print(f"   [AUTH] Erro no login APP: {e}")
-            return False
+        return self.login()
 
     def parse_html(self, html_content, nome_unidade):
         if not html_content or "<table" not in html_content:
