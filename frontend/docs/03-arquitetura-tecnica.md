@@ -145,7 +145,7 @@ Arquivo: `workers/main.py`.
 - `contratos`: 12:00.
 - Lote pesado (`faturamento`, `financeiro`, `comercial`, `contratos`): 14:00, 17:00, 19:00.
 - `appointments` (Feegow agendamentos): de hora em hora no minuto `:30`, dentro da janela operacional.
-- `agenda_occupancy`: refresh autom?tico do m?s atual para todas as unidades ?s `06:15`, `12:45` e `18:45`.
+- `agenda_occupancy`: refresh autom?tico do m?s atual + 2 meses futuros (configur?vel por `AGENDA_OCCUPANCY_FUTURE_MONTHS`) para todas as unidades ?s `06:15`, `12:45` e `18:45`.
 - `marketing_funnel`: `05:40` e `18:10`.
 - `clinia_ads`: `05:35`, `12:35` e `18:35`.
 

@@ -77,6 +77,7 @@ Integração com orquestrador:
   - `agenda_ocupacao`
   - `ocupacao_agenda`
 - Quando a API solicita refresh, o orquestrador processa o job pendente.
+- O scheduler também enfileira refresh automático para o mês atual + horizonte futuro configurável por `AGENDA_OCCUPANCY_FUTURE_MONTHS` (padrão `2`), cobrindo todas as unidades (`2`, `3`, `12`) às `06:15`, `12:45` e `18:45`.
 
 ## APIs do módulo
 

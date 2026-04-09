@@ -518,10 +518,17 @@ def run_feegow_hourly():
 
 
 def run_agenda_occupancy_current_month():
-    """Garante refresh da ocupação da agenda para o mês atual em todas as unidades."""
+    """Garante refresh da ocupação da agenda para o mês atual + horizonte futuro em todas as unidades."""
     now = _now_work_tz()
+    future_months = max(0, int(os.getenv("AGENDA_OCCUPANCY_FUTURE_MONTHS", "2")))
     start_date = now.replace(day=1).strftime("%Y-%m-%d")
-    end_date = now.strftime("%Y-%m-%d")
+    target_year = now.year
+    target_month = now.month + future_months
+    while target_month > 12:
+        target_year += 1
+        target_month -= 12
+    target_last_day = calendar.monthrange(target_year, target_month)[1]
+    end_date = f"{target_year:04d}-{target_month:02d}-{target_last_day:02d}"
     units = [2, 3, 12]
 
     db = DatabaseManager()

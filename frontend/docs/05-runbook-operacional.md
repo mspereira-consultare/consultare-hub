@@ -42,6 +42,7 @@ Variáveis mínimas:
 - `MYSQL_READ_TIMEOUT_SEC` (opcional, padrão `20`)
 - `MYSQL_WRITE_TIMEOUT_SEC` (opcional, padrão `20`)
 - `MEDICO_PARSE_TIMEOUT_SEC` (opcional, padrão `25`)
+- `AGENDA_OCCUPANCY_FUTURE_MONTHS` (opcional, padrão `2`)
 
 ## 2) Sequência de Deploy Recomendada
 
@@ -131,7 +132,7 @@ Serviços comuns:
 - `patients_registry`: 05:30, 12:30 e tamb?m nos lotes pesados das 14:00, 17:00 e 19:00.
 - `clinia_ads`: 05:35, 12:35 e 18:35.
 - `marketing_funnel`: 05:40 e 18:10.
-- `agenda_occupancy`: 06:15, 12:45 e 18:45 (m?s atual, todas as unidades).
+- `agenda_occupancy`: 06:15, 12:45 e 18:45 (m?s atual + `AGENDA_OCCUPANCY_FUTURE_MONTHS`, todas as unidades).
 - `contratos`: 12:00.
 - lote pesado: 14:00, 17:00, 19:00.
 - `financeiro` horário comercial: de hora em hora no minuto `:30`.
