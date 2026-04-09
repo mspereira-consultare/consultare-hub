@@ -145,6 +145,7 @@ Operações implementadas em `frontend/src/lib/permissions_server.ts`:
 | `/api/admin/financial/general-report` | `financeiro` | `view` |
 | `/api/admin/profissionais/:id/documentos` | `profissionais` | `view`/`edit` |
 | `/api/admin/profissionais/documentos/:documentId/download` | `profissionais` | `view` |
+| `/api/admin/profissionais/documentos/:documentId` | `profissionais` | `edit` |
 | `/api/admin/profissionais/:id/procedimentos` | `profissionais` | `view`/`edit` |
 | `/api/admin/profissionais/procedures/options` | `profissionais` | `view` |
 | `/api/admin/profissionais/:id/contratos` | `profissionais` | `view`/`edit` |
@@ -270,7 +271,7 @@ Implementacao:
 
 - Listagem, detalhe e downloads (`GET`): exige `view`.
 - Criacao/edicao (`POST`/`PUT`): exige `edit`.
-- Remocoes de uniforme/recesso (`DELETE`): exige `edit`.
+- Remocoes de documentos/uniforme/recesso (`DELETE`): exige `edit`.
 - `refresh` permanece no modelo de permissao, mas nao aciona worker especifico no V1.
 
 Implementacao:

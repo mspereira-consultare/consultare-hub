@@ -828,6 +828,29 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS professional_documents_inactive (
+      id VARCHAR(64) PRIMARY KEY,
+      source_document_id VARCHAR(64) NOT NULL,
+      professional_id VARCHAR(64) NOT NULL,
+      doc_type VARCHAR(40) NOT NULL,
+      storage_provider VARCHAR(30) NOT NULL,
+      storage_bucket VARCHAR(120),
+      storage_key VARCHAR(255) NOT NULL,
+      original_name VARCHAR(255) NOT NULL,
+      mime_type VARCHAR(120) NOT NULL,
+      size_bytes BIGINT NOT NULL,
+      expires_at DATE,
+      notes TEXT,
+      inactive_reason VARCHAR(30) NOT NULL,
+      uploaded_by VARCHAR(64) NOT NULL,
+      original_created_at TEXT NOT NULL,
+      archived_by VARCHAR(64) NOT NULL,
+      archived_at TEXT NOT NULL,
+      UNIQUE(source_document_id)
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS feegow_procedures_catalog (
       procedimento_id BIGINT PRIMARY KEY,
       nome VARCHAR(255) NOT NULL,
@@ -907,6 +930,10 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   await safeCreateIndex(
     db,
     `CREATE INDEX idx_prof_proc_rates_prof ON professional_procedure_rates (professional_id)`
+  );
+  await safeCreateIndex(
+    db,
+    `CREATE INDEX idx_prof_documents_inactive_prof ON professional_documents_inactive (professional_id)`
   );
 
   tablesEnsured = true;
@@ -1224,6 +1251,7 @@ export const deleteProfessional = async (
   });
 
   await db.execute(`DELETE FROM professional_contracts WHERE professional_id = ?`, [professionalId]);
+  await db.execute(`DELETE FROM professional_documents_inactive WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professional_documents WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professional_document_checklist WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professional_procedure_rates WHERE professional_id = ?`, [professionalId]);
@@ -1379,6 +1407,51 @@ export const getProfessionalDocumentById = async (
   return mapDocument(rows[0]);
 };
 
+const archiveProfessionalDocumentRows = async (
+  db: DbInterface,
+  documents: ProfessionalDocument[],
+  actorUserId: string,
+  reason: 'REPLACED' | 'DELETED'
+) => {
+  const archivedAt = NOW();
+  for (const document of documents) {
+    const existing = await db.query(
+      `SELECT source_document_id FROM professional_documents_inactive WHERE source_document_id = ? LIMIT 1`,
+      [document.id]
+    );
+    if (existing[0]) continue;
+
+    await db.execute(
+      `
+      INSERT INTO professional_documents_inactive (
+        id, source_document_id, professional_id, doc_type, storage_provider, storage_bucket, storage_key,
+        original_name, mime_type, size_bytes, expires_at, notes, inactive_reason,
+        uploaded_by, original_created_at, archived_by, archived_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        randomUUID(),
+        document.id,
+        document.professionalId,
+        document.docType,
+        document.storageProvider,
+        document.storageBucket,
+        document.storageKey,
+        document.originalName,
+        document.mimeType,
+        document.sizeBytes,
+        document.expiresAt,
+        document.notes,
+        reason,
+        document.uploadedBy,
+        document.createdAt,
+        actorUserId,
+        archivedAt,
+      ]
+    );
+  }
+};
+
 export const createProfessionalDocumentRecord = async (
   db: DbInterface,
   professionalId: string,
@@ -1402,14 +1475,27 @@ export const createProfessionalDocumentRecord = async (
 
   const now = NOW();
 
-  await db.execute(
-    `
-    UPDATE professional_documents
-    SET is_active = 0
-    WHERE professional_id = ? AND doc_type = ? AND is_active = 1
-    `,
-    [professionalId, docType]
-  );
+  if (docType !== 'OUTRO') {
+    const activeRows = await db.query(
+      `
+      SELECT *
+      FROM professional_documents
+      WHERE professional_id = ? AND doc_type = ? AND is_active = 1
+      `,
+      [professionalId, docType]
+    );
+    const activeDocuments = activeRows.map((row) => mapDocument(row));
+    await archiveProfessionalDocumentRows(db, activeDocuments, actorUserId, 'REPLACED');
+
+    await db.execute(
+      `
+      UPDATE professional_documents
+      SET is_active = 0
+      WHERE professional_id = ? AND doc_type = ? AND is_active = 1
+      `,
+      [professionalId, docType]
+    );
+  }
 
   const id = randomUUID();
   await db.execute(
@@ -1417,7 +1503,7 @@ export const createProfessionalDocumentRecord = async (
     INSERT INTO professional_documents (
       id, professional_id, doc_type, storage_provider, storage_bucket, storage_key,
       original_name, mime_type, size_bytes, expires_at, is_active, notes, uploaded_by, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
     `,
     [
       id,
@@ -1430,6 +1516,7 @@ export const createProfessionalDocumentRecord = async (
       clean(input.mimeType),
       Number(input.sizeBytes || 0),
       expiresAt,
+      clean(input.notes) || null,
       clean(input.uploadedBy),
       now,
     ]
@@ -1437,29 +1524,48 @@ export const createProfessionalDocumentRecord = async (
 
   // Se o documento estiver no checklist manual, marca automaticamente como "digital = OK".
   if (checklistDocTypes.has(docType)) {
-    await db.execute(
+    const checklistRows = await db.query(
       `
-      INSERT INTO professional_document_checklist (
-        id, professional_id, doc_type, has_physical_copy, has_digital_copy, expires_at, notes,
-        verified_by, verified_at, updated_at
-      ) VALUES (?, ?, ?, 0, 1, ?, '', ?, ?, ?)
-      ON CONFLICT(professional_id, doc_type) DO UPDATE SET
-        has_digital_copy = 1,
-        expires_at = excluded.expires_at,
-        verified_by = excluded.verified_by,
-        verified_at = excluded.verified_at,
-        updated_at = excluded.updated_at
+      SELECT id
+      FROM professional_document_checklist
+      WHERE professional_id = ? AND doc_type = ?
+      LIMIT 1
       `,
-      [
-        randomUUID(),
-        professionalId,
-        docType,
-        expiresAt,
-        actorUserId,
-        now,
-        now,
-      ]
+      [professionalId, docType]
     );
+
+    if (checklistRows[0]) {
+      await db.execute(
+        `
+        UPDATE professional_document_checklist
+        SET has_digital_copy = 1,
+            expires_at = ?,
+            verified_by = ?,
+            verified_at = ?,
+            updated_at = ?
+        WHERE professional_id = ? AND doc_type = ?
+        `,
+        [expiresAt, actorUserId, now, now, professionalId, docType]
+      );
+    } else {
+      await db.execute(
+        `
+        INSERT INTO professional_document_checklist (
+          id, professional_id, doc_type, has_physical_copy, has_digital_copy, expires_at, notes,
+          verified_by, verified_at, updated_at
+        ) VALUES (?, ?, ?, 0, 1, ?, '', ?, ?, ?)
+        `,
+        [
+          randomUUID(),
+          professionalId,
+          docType,
+          expiresAt,
+          actorUserId,
+          now,
+          now,
+        ]
+      );
+    }
   }
 
   await insertAudit(db, 'DOCUMENT_UPLOADED', actorUserId, professionalId, {
@@ -1473,6 +1579,49 @@ export const createProfessionalDocumentRecord = async (
     throw new ProfessionalValidationError('Falha ao carregar documento criado.', 500);
   }
   return created;
+};
+
+export const deactivateProfessionalDocument = async (
+  db: DbInterface,
+  documentId: string,
+  actorUserId: string
+) => {
+  await ensureProfessionalsTables(db);
+  const existing = await getProfessionalDocumentById(db, documentId);
+  if (!existing) {
+    throw new ProfessionalValidationError('Documento não encontrado.', 404);
+  }
+  if (!existing.isActive) {
+    return existing;
+  }
+
+  await archiveProfessionalDocumentRows(db, [existing], actorUserId, 'DELETED');
+  await db.execute(`UPDATE professional_documents SET is_active = 0 WHERE id = ?`, [documentId]);
+
+  if (checklistDocTypes.has(existing.docType)) {
+    await db.execute(
+      `
+      UPDATE professional_document_checklist
+      SET has_digital_copy = 0,
+          verified_by = ?,
+          verified_at = ?,
+          updated_at = ?
+      WHERE professional_id = ? AND doc_type = ?
+      `,
+      [actorUserId, NOW(), NOW(), existing.professionalId, existing.docType]
+    );
+  }
+
+  await insertAudit(db, 'DOCUMENT_DEACTIVATED', actorUserId, existing.professionalId, {
+    documentId,
+    docType: existing.docType,
+  });
+
+  const updated = await getProfessionalDocumentById(db, documentId);
+  if (!updated) {
+    throw new ProfessionalValidationError('Falha ao carregar documento atualizado.', 500);
+  }
+  return updated;
 };
 
 export const registerDocumentDownloadAudit = async (

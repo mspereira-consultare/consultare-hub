@@ -617,8 +617,10 @@ Centralizar o cadastro da carteira de profissionais, com foco em:
 
 No fluxo atual:
 - o usuario pode marcar manualmente copia fisica/digital por tipo de documento;
-- tambem pode fazer upload real de arquivos via S3 no mesmo modal;
-- o tipo `OUTRO` aparece apenas no upload (nao entra no checklist manual e nao altera o indicador `X/Y` de documentos).
+- tambem pode fazer upload real de arquivos via S3 diretamente na linha do documento;
+- ao substituir um documento, o arquivo anterior e desativado e preservado no historico;
+- a exclusao na UI e logica: remove o arquivo da lista ativa, mas mantem consulta/download historico;
+- o tipo `OUTRO` aparece apenas em `Documentos diversos` (nao entra no checklist manual e nao altera o indicador `X/Y` de documentos), permitindo mais de um arquivo ativo.
 - a tabela de documentos exibida no cadastro nao recebe mais `CONTRATO_GERADO` automaticamente; para contrato final, usar upload manual de `CONTRATO_ASSINADO`.
 - a aba `Contratos` do modal gera os dois formatos por padrao (`PDF` + `Word`), permite `Visualizar PDF`, `Baixar PDF`, `Baixar Word`, `Gerar novo` e `Reprocessar` (somente status `ERRO`).
 - na renderizacao do contrato: CPF e CNPJ sao formatados automaticamente; `Todas Especialidades` usa separacao em portugues (`A, B e C`).
@@ -629,7 +631,8 @@ No fluxo atual:
 - Endpoints de documentos para o mÃ³dulo foram adicionados:
   - `GET/POST /api/admin/profissionais/:id/documentos`
   - `GET /api/admin/profissionais/documentos/:documentId/download`
-- A tabela de documentos do modal permite `Visualizar` (`?inline=1`) e `Baixar`.
+  - `DELETE /api/admin/profissionais/documentos/:documentId`
+- A tabela de documentos do modal permite `Visualizar` (`?inline=1`), `Baixar`, `Substituir` e `Excluir`.
 - A geraÃ§Ã£o de contrato foi incorporada na aba `Contratos` do modal, com histÃ³rico por profissional.
 - O modal foi ampliado e reorganizado para reduzir scroll e condensar campos.
 ## Qualidade - Sprint 1 (Documentos Operacionais)

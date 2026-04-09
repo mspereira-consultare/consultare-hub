@@ -144,6 +144,7 @@ export type ProfessionalDocumentUploadInput = {
   mimeType: string;
   sizeBytes: number;
   expiresAt: string | null;
+  notes?: string | null;
   storageProvider: string;
   storageBucket: string | null;
   storageKey: string;

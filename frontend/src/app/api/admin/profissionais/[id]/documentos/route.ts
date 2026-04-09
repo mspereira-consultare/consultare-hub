@@ -69,6 +69,7 @@ export async function POST(request: Request, context: ParamsContext) {
     const docType = String(formData.get('docType') || '').trim().toUpperCase();
     const expiresAtRaw = String(formData.get('expiresAt') || '').trim();
     const expiresAt = expiresAtRaw || null;
+    const notes = String(formData.get('notes') || '').trim() || null;
 
     const mimeType = String(filePart.type || 'application/octet-stream');
     const originalName = String(filePart.name || 'arquivo.bin');
@@ -108,6 +109,7 @@ export async function POST(request: Request, context: ParamsContext) {
           mimeType,
           sizeBytes,
           expiresAt,
+          notes,
           storageProvider: upload.provider,
           storageBucket: upload.bucket,
           storageKey: upload.key,

@@ -33,7 +33,8 @@ export type EmployeeDocumentTypeCode =
   | 'VACINACAO_FILHOS'
   | 'CPF_FILHOS'
   | 'COMPROVANTE_MATRICULA_ESTAGIO'
-  | 'RELATORIO_SEMESTRAL_ESTAGIO';
+  | 'RELATORIO_SEMESTRAL_ESTAGIO'
+  | 'OUTRO';
 
 export type EmployeeDocumentTypeDef = {
   code: EmployeeDocumentTypeCode;
@@ -137,6 +138,7 @@ export const EMPLOYEE_DOCUMENT_TYPES: EmployeeDocumentTypeDef[] = [
   { code: 'CPF_FILHOS', label: 'CPF dos filhos', hasIssueDate: false, hasExpiration: false, optional: false },
   { code: 'COMPROVANTE_MATRICULA_ESTAGIO', label: 'Comprovante de matrícula (estágio)', hasIssueDate: false, hasExpiration: false, optional: false },
   { code: 'RELATORIO_SEMESTRAL_ESTAGIO', label: 'Relatório semestral (estágio)', hasIssueDate: false, hasExpiration: false, optional: false },
+  { code: 'OUTRO', label: 'Documento diverso', hasIssueDate: false, hasExpiration: false, optional: true },
 ];
 
 export const BRAZIL_UFS = [

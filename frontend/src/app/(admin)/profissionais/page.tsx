@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { AlertCircle, ChevronDown, ChevronRight, Download, Edit3, Eye, FileUp, Filter, Loader2, Plus, RefreshCw, RotateCcw, Search, User, X } from 'lucide-react';
+import { AlertCircle, ChevronDown, ChevronRight, Download, Edit3, Eye, FileUp, Filter, Loader2, Plus, RefreshCw, RotateCcw, Search, Trash2, User, X } from 'lucide-react';
 import {
   BRAZIL_UFS,
   CHECKLIST_DOCUMENT_TYPES,
@@ -39,6 +39,7 @@ type ServiceStatus = {
   last_run: string | null;
   details: string | null;
 };
+type DocumentDraft = { file: File | null; expiresAt: string; notes: string };
 type FormProcedureRate = {
   procedimentoId: number;
   procedimentoNome: string;
@@ -171,6 +172,13 @@ const formatDateTime = (value: string | null | undefined) => {
   return raw;
 };
 
+const formatFilesize = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) return '-';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+};
+
 const parseMoneyInput = (value: string | number | null | undefined) => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   const raw = String(value || '').trim();
@@ -237,9 +245,8 @@ export default function ProfessionalsPage() {
   const [docsLoading, setDocsLoading] = useState(false);
   const [uploadedDocs, setUploadedDocs] = useState<ProfessionalDocument[]>([]);
   const [uploadingDoc, setUploadingDoc] = useState(false);
-  const [uploadDocType, setUploadDocType] = useState<string>(DOCUMENT_TYPES[0]?.code || 'RG');
-  const [uploadExpiresAt, setUploadExpiresAt] = useState('');
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadingDocKey, setUploadingDocKey] = useState<string | null>(null);
+  const [documentDrafts, setDocumentDrafts] = useState<Record<string, DocumentDraft>>({});
   const [modalError, setModalError] = useState('');
   const [modalNotice, setModalNotice] = useState('');
   const [photoLoadError, setPhotoLoadError] = useState(false);
@@ -248,7 +255,6 @@ export default function ProfessionalsPage() {
   const [specialtiesSource, setSpecialtiesSource] = useState<'feegow_api' | 'database' | 'unknown'>('unknown');
   const [deleteTarget, setDeleteTarget] = useState<ProfessionalListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [isUploadExpanded, setIsUploadExpanded] = useState(false);
   const [isChecklistExpanded, setIsChecklistExpanded] = useState(false);
   const [sortBy, setSortBy] = useState<'status' | 'name' | 'specialty' | 'registration' | 'contractType' | 'documents' | 'certidao'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -292,6 +298,26 @@ export default function ProfessionalsPage() {
   const photoDoc = useMemo(
     () => uploadedDocs.find((doc) => doc.docType === 'FOTO' && doc.isActive),
     [uploadedDocs]
+  );
+  const activeProfessionalDocuments = useMemo(
+    () => uploadedDocs.filter((doc) => doc.isActive),
+    [uploadedDocs]
+  );
+  const inactiveProfessionalDocuments = useMemo(
+    () => uploadedDocs.filter((doc) => !doc.isActive),
+    [uploadedDocs]
+  );
+  const activeProfessionalDocumentByType = useMemo(() => {
+    const map = new Map<string, ProfessionalDocument>();
+    for (const doc of activeProfessionalDocuments) {
+      if (doc.docType === 'OUTRO') continue;
+      if (!map.has(doc.docType)) map.set(doc.docType, doc);
+    }
+    return map;
+  }, [activeProfessionalDocuments]);
+  const otherProfessionalDocuments = useMemo(
+    () => activeProfessionalDocuments.filter((doc) => doc.docType === 'OUTRO'),
+    [activeProfessionalDocuments]
   );
   const sortedItems = useMemo(() => {
     const arr = [...items];
@@ -743,29 +769,50 @@ export default function ProfessionalsPage() {
     }
   };
 
-  const uploadDocument = async () => {
+  const updateProfessionalDocumentDraft = (key: string, patch: Partial<DocumentDraft>) => {
+    setDocumentDrafts((prev) => ({
+      ...prev,
+      [key]: {
+        file: prev[key]?.file || null,
+        expiresAt: prev[key]?.expiresAt || '',
+        notes: prev[key]?.notes || '',
+        ...patch,
+      },
+    }));
+  };
+
+  const addOtherProfessionalDocumentDraft = () => {
+    updateProfessionalDocumentDraft(`OUTRO-${Date.now()}-${Math.random()}`, {
+      file: null,
+      expiresAt: '',
+      notes: '',
+    });
+  };
+
+  const uploadDocument = async (docType: string, draftKey = docType) => {
     if (!editingId) {
       setModalError('Salve o cadastro primeiro para habilitar upload.');
       return;
     }
-    if (!uploadFile) {
+    const draft = documentDrafts[draftKey];
+    if (!draft?.file) {
       setModalError('Selecione um arquivo para upload.');
       return;
     }
-    const selectedType = DOCUMENT_TYPES.find((d) => d.code === uploadDocType);
-    if (selectedType?.hasExpiration && !uploadExpiresAt) {
-      setModalError('Este tipo de documento exige data de expiracao.');
+    const selectedType = DOCUMENT_TYPES.find((d) => d.code === docType);
+    if (selectedType?.hasExpiration && !draft.expiresAt) {
+      setModalError('Este tipo de documento exige data de expiração.');
       return;
     }
     setUploadingDoc(true);
+    setUploadingDocKey(draftKey);
     setModalError('');
     try {
-      const uploadedType = uploadDocType;
-      const uploadedExpiresAt = uploadExpiresAt;
       const fd = new FormData();
-      fd.append('file', uploadFile);
-      fd.append('docType', uploadedType);
-      if (uploadExpiresAt) fd.append('expiresAt', uploadExpiresAt);
+      fd.append('file', draft.file);
+      fd.append('docType', docType);
+      if (draft.expiresAt) fd.append('expiresAt', draft.expiresAt);
+      if (draft.notes.trim()) fd.append('notes', draft.notes.trim());
 
       const res = await fetch(`/api/admin/profissionais/${encodeURIComponent(editingId)}/documentos`, {
         method: 'POST',
@@ -774,25 +821,62 @@ export default function ProfessionalsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || 'Falha no upload.');
 
-      setUploadFile(null);
-      setUploadExpiresAt('');
+      setDocumentDrafts((prev) => {
+        const next = { ...prev };
+        delete next[draftKey];
+        return next;
+      });
       await fetchDocuments(editingId);
       setForm((prev) => ({
         ...prev,
         checklist: prev.checklist.map((row) =>
-          row.docType === uploadedType
+          row.docType === docType
             ? {
                 ...row,
                 hasDigitalCopy: true,
-                expiresAt: uploadedExpiresAt || row.expiresAt,
+                expiresAt: draft.expiresAt || row.expiresAt,
               }
             : row
         ),
       }));
+      setModalNotice('Documento enviado com sucesso.');
     } catch (e: any) {
       setModalError(e?.message || 'Falha no upload.');
     } finally {
       setUploadingDoc(false);
+      setUploadingDocKey(null);
+    }
+  };
+
+  const deactivateProfessionalDocumentFile = async (documentId: string) => {
+    if (!editingId || !canEdit) return;
+    const ok = window.confirm('Remover este arquivo ativo? Ele sairá da checklist e ficará preservado no histórico.');
+    if (!ok) return;
+    setUploadingDoc(true);
+    setUploadingDocKey(documentId);
+    setModalError('');
+    try {
+      const res = await fetch(`/api/admin/profissionais/documentos/${encodeURIComponent(documentId)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || 'Falha ao remover documento.');
+      await fetchDocuments(editingId);
+      const removedDocType = String(data?.data?.docType || '');
+      if (removedDocType) {
+        setForm((prev) => ({
+          ...prev,
+          checklist: prev.checklist.map((row) =>
+            row.docType === removedDocType ? { ...row, hasDigitalCopy: false } : row
+          ),
+        }));
+      }
+      setModalNotice('Documento removido da lista ativa e preservado no histórico.');
+    } catch (e: any) {
+      setModalError(e?.message || 'Falha ao remover documento.');
+    } finally {
+      setUploadingDoc(false);
+      setUploadingDocKey(null);
     }
   };
 
@@ -841,12 +925,10 @@ export default function ProfessionalsPage() {
     setProcedureRates([]);
     setProcedureSearch('');
     setSelectedProcedureId('');
-    setUploadFile(null);
-    setUploadExpiresAt('');
-    setUploadDocType(DOCUMENT_TYPES[0]?.code || 'RG');
+    setDocumentDrafts({});
+    setUploadingDocKey(null);
     setModalError('');
     setModalNotice('');
-    setIsUploadExpanded(false);
     setIsChecklistExpanded(false);
     setModalTab('cadastro');
     setIsModalOpen(true);
@@ -861,12 +943,10 @@ export default function ProfessionalsPage() {
       if (!res.ok) throw new Error(data?.error || 'Falha ao abrir profissional.');
       setEditingId(id);
       setForm(toForm(data.data));
-      setUploadFile(null);
-      setUploadExpiresAt('');
-      setUploadDocType(DOCUMENT_TYPES[0]?.code || 'RG');
+      setDocumentDrafts({});
+      setUploadingDocKey(null);
       setProcedureSearch('');
       setSelectedProcedureId('');
-      setIsUploadExpanded(false);
       setIsChecklistExpanded(false);
       setModalTab('cadastro');
       setModalNotice('');
@@ -1667,147 +1747,197 @@ export default function ProfessionalsPage() {
               )}
 
               {modalTab === 'documentos' && (
-                <>
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setIsUploadExpanded((v) => !v)}
-                  className="w-full flex items-center justify-between py-2 text-sm font-semibold text-slate-700"
-                >
-                  <span>Upload de documentos (opcional)</span>
-                  {isUploadExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-                {isUploadExpanded && (
-                  <>
-                    {!editingId ? (
-                      <div className="text-xs px-3 py-2 rounded border bg-slate-50 text-slate-600">
-                        Salve o cadastro primeiro para habilitar upload e download de arquivos.
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2 items-end">
-                      <div>
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Tipo de documento</label>
-                        <select
-                          value={uploadDocType}
-                          onChange={(e) => { setUploadDocType(e.target.value); setUploadExpiresAt(''); }}
-                          className="w-full px-2 py-2 border rounded bg-white"
-                        >
-                          {DOCUMENT_TYPES.filter((d) => d.code !== 'CONTRATO_GERADO').map((d) => (
-                            <option key={d.code} value={d.code}>
-                              {d.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Data de expiracao</label>
-                        <input
-                          type="date"
-                          value={uploadExpiresAt}
-                          onChange={(e) => setUploadExpiresAt(e.target.value)}
-                          className="w-full px-2 py-2 border rounded"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Arquivo</label>
-                        <input
-                          type="file"
-                          onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                          className="w-full px-2 py-2 border rounded"
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={uploadDocument}
-                        disabled={!canEdit || uploadingDoc}
-                        className="px-3 py-2 rounded bg-[#17407E] text-white text-sm disabled:opacity-60 inline-flex items-center justify-center gap-2"
-                      >
-                        {uploadingDoc ? <Loader2 size={14} className="animate-spin" /> : <FileUp size={14} />}
-                        {uploadingDoc ? 'Enviando...' : 'Enviar arquivo'}
-                      </button>
+                <div className="space-y-4">
+                  {!editingId ? (
+                    <div className="text-xs px-3 py-2 rounded border bg-slate-50 text-slate-600">
+                      Salve o cadastro primeiro para habilitar upload e download de arquivos.
                     </div>
-
-                    <div className="border rounded-lg overflow-auto">
-                      <table className="w-full text-sm">
-                        <thead className="bg-slate-50 text-xs uppercase text-slate-600">
-                          <tr>
-                            <th className="px-2 py-2 text-left">Tipo</th>
-                            <th className="px-2 py-2 text-left">Arquivo</th>
-                            <th className="px-2 py-2 text-left">Expiração</th>
-                            <th className="px-2 py-2 text-left">Upload</th>
-                            <th className="px-2 py-2 text-left">Ações</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {docsLoading ? (
-                            <tr>
-                              <td colSpan={5} className="px-2 py-4 text-center text-slate-500">
-                                <span className="inline-flex items-center gap-2">
-                                  <Loader2 size={14} className="animate-spin" />
-                                  Carregando arquivos...
-                                </span>
-                              </td>
-                            </tr>
-                          ) : uploadedDocs.length === 0 ? (
-                            <tr>
-                              <td colSpan={5} className="px-2 py-4 text-center text-slate-500">
-                                Nenhum arquivo enviado.
-                              </td>
-                            </tr>
-                          ) : (
-                            uploadedDocs.map((doc) => (
-                              <tr key={doc.id} className="border-t">
-                                <td className="px-2 py-2">{DOCUMENT_TYPES.find((x) => x.code === doc.docType)?.label || doc.docType}</td>
-                                <td className="px-2 py-2">{doc.originalName}</td>
-                                <td className="px-2 py-2">{doc.expiresAt || '-'}</td>
-                                <td className="px-2 py-2">{doc.createdAt ? doc.createdAt.slice(0, 19).replace('T', ' ') : '-'}</td>
-                                <td className="px-2 py-2">
-                                  <div className="flex items-center gap-3">
-                                    <a
-                                      href={`/api/admin/profissionais/documentos/${encodeURIComponent(doc.id)}/download?inline=1`}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
-                                    >
-                                      <Eye size={13} />
-                                      Visualizar
-                                    </a>
-                                    <a
-                                      href={`/api/admin/profissionais/documentos/${encodeURIComponent(doc.id)}/download`}
-                                      className="inline-flex items-center gap-1 text-[#17407E] hover:underline"
-                                    >
-                                      <Download size={13} />
-                                      Baixar
-                                    </a>
-                                  </div>
-                                </td>
+                  ) : (
+                    <>
+                      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <div className="flex flex-col gap-2 border-b border-slate-100 bg-slate-50 px-4 py-3 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-800">Checklist documental</h3>
+                            <p className="text-xs text-slate-500">Envie, substitua ou remova arquivos diretamente na linha do documento.</p>
+                          </div>
+                          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+                            {uploadedDocs.filter((doc) => doc.isActive && doc.docType !== 'OUTRO').length}/{CHECKLIST_DOCUMENT_TYPES.length} com arquivo ativo
+                          </span>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="min-w-[1080px] w-full text-sm">
+                            <thead className="bg-white text-xs uppercase tracking-wide text-slate-500">
+                              <tr>
+                                <th className="px-3 py-3 text-left">Documento</th>
+                                <th className="px-3 py-3 text-left">Arquivo atual</th>
+                                <th className="px-3 py-3 text-left">Expiração</th>
+                                <th className="px-3 py-3 text-left">Novo arquivo</th>
+                                <th className="px-3 py-3 text-left">Observações</th>
+                                <th className="px-3 py-3 text-left">Ações</th>
                               </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                    )}
-                  </>
-                )}
-              </div>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {CHECKLIST_DOCUMENT_TYPES.map((docDef) => {
+                                const activeDoc = activeProfessionalDocumentByType.get(docDef.code);
+                                const draft = documentDrafts[docDef.code];
+                                return (
+                                  <tr key={docDef.code} className="align-top">
+                                    <td className="px-3 py-3">
+                                      <div className="font-semibold text-slate-800">{docDef.label}</div>
+                                      <div className="mt-1 text-xs text-slate-500">{docDef.required ? 'Obrigatório' : 'Opcional'}</div>
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      {activeDoc ? (
+                                        <div>
+                                          <div className="max-w-[260px] truncate font-medium text-slate-700" title={activeDoc.originalName}>{activeDoc.originalName}</div>
+                                          <div className="text-xs text-slate-500">{formatFilesize(activeDoc.sizeBytes)} | Enviado em {formatDateTime(activeDoc.createdAt)}</div>
+                                          <span className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Ativo</span>
+                                        </div>
+                                      ) : (
+                                        <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Pendente</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      <input
+                                        disabled={!canEdit || !docDef.hasExpiration}
+                                        type="date"
+                                        value={draft?.expiresAt || ''}
+                                        onChange={(event) => updateProfessionalDocumentDraft(docDef.code, { expiresAt: event.target.value })}
+                                        className="w-full rounded-lg border border-slate-200 px-2 py-2 text-sm disabled:bg-slate-50"
+                                      />
+                                      {activeDoc?.expiresAt ? <div className="mt-1 text-xs text-slate-500">Atual: {formatDateBr(activeDoc.expiresAt)}</div> : null}
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      <input
+                                        disabled={!canEdit}
+                                        type="file"
+                                        onChange={(event) => updateProfessionalDocumentDraft(docDef.code, { file: event.target.files?.[0] || null })}
+                                        className="w-full rounded-lg border border-slate-200 px-2 py-2 text-sm"
+                                      />
+                                      {draft?.file ? <div className="mt-1 text-xs text-slate-500">Selecionado: {draft.file.name}</div> : null}
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      <input
+                                        disabled={!canEdit}
+                                        value={draft?.notes || ''}
+                                        onChange={(event) => updateProfessionalDocumentDraft(docDef.code, { notes: event.target.value })}
+                                        placeholder="Observações do envio"
+                                        className="w-full rounded-lg border border-slate-200 px-2 py-2 text-sm"
+                                      />
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      <div className="flex flex-wrap gap-2">
+                                        {activeDoc ? (
+                                          <>
+                                            <a href={`/api/admin/profissionais/documentos/${encodeURIComponent(activeDoc.id)}/download?inline=1`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><Eye size={12} /> Ver</a>
+                                            <a href={`/api/admin/profissionais/documentos/${encodeURIComponent(activeDoc.id)}/download`} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><Download size={12} /> Baixar</a>
+                                            {canEdit ? <button type="button" disabled={uploadingDoc} onClick={() => deactivateProfessionalDocumentFile(activeDoc.id)} className="inline-flex items-center gap-1 rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"><Trash2 size={12} /> Excluir</button> : null}
+                                          </>
+                                        ) : null}
+                                        {canEdit ? (
+                                          <button type="button" disabled={uploadingDoc || !draft?.file} onClick={() => uploadDocument(docDef.code)} className="inline-flex items-center gap-1 rounded-md bg-[#17407E] px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">
+                                            {uploadingDocKey === docDef.code ? <Loader2 size={12} className="animate-spin" /> : <FileUp size={12} />}
+                                            {activeDoc ? 'Substituir' : 'Enviar'}
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
 
-              <div>
-                <button
-                  type="button"
-                  onClick={() => setIsChecklistExpanded((v) => !v)}
-                  className="w-full flex items-center justify-between py-2 text-sm font-semibold text-slate-700"
-                >
-                  <span>Checklist manual de documentos (transição)</span>
-                  {isChecklistExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </button>
-                {isChecklistExpanded && (
-                  <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="px-2 py-2 text-left">Documento</th><th className="px-2 py-2 text-left">Físico</th><th className="px-2 py-2 text-left">Digital</th><th className="px-2 py-2 text-left">Expiração</th><th className="px-2 py-2 text-left">Obs</th></tr></thead><tbody>{form.checklist.map((c, i) => { const d = DOCUMENT_TYPES.find((x) => x.code === c.docType); return <tr key={c.docType} className="border-t"><td className="px-2 py-2">{d?.label || c.docType}</td><td className="px-2 py-2"><input type="checkbox" checked={c.hasPhysicalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasPhysicalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2"><input type="checkbox" checked={c.hasDigitalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasDigitalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2">{d?.hasExpiration ? <input type="date" value={c.expiresAt} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], expiresAt: e.target.value }; return { ...p, checklist: n }; })} className="px-2 py-1 border rounded" /> : <span className="text-xs text-slate-400">-</span>}</td><td className="px-2 py-2"><input value={c.notes} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], notes: e.target.value }; return { ...p, checklist: n }; })} className="w-full px-2 py-1 border rounded" /></td></tr>; })}</tbody></table></div>
-                )}
-              </div>
-                </>
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-800">Documentos diversos</h3>
+                            <p className="text-xs text-slate-500">Anexos complementares fora da checklist principal. ? poss?vel manter mais de um ativo.</p>
+                          </div>
+                          {canEdit ? (
+                            <button type="button" onClick={addOtherProfessionalDocumentDraft} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-[#17407E] hover:bg-blue-100">
+                              <Plus size={14} /> Adicionar documento diverso
+                            </button>
+                          ) : null}
+                        </div>
+
+                        <div className="mt-3 space-y-3">
+                          {Object.entries(documentDrafts).filter(([key]) => key.startsWith('OUTRO-')).map(([key, draft]) => (
+                            <div key={key} className="grid gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                              <label>
+                                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Arquivo</span>
+                                <input disabled={!canEdit} type="file" onChange={(event) => updateProfessionalDocumentDraft(key, { file: event.target.files?.[0] || null })} className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm" />
+                              </label>
+                              <label>
+                                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">Descrição/observação</span>
+                                <input disabled={!canEdit} value={draft.notes} onChange={(event) => updateProfessionalDocumentDraft(key, { notes: event.target.value })} placeholder="Ex.: declaração complementar" className="w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-sm" />
+                              </label>
+                              <div className="flex gap-2">
+                                <button type="button" disabled={uploadingDoc || !draft.file} onClick={() => uploadDocument('OUTRO', key)} className="inline-flex items-center gap-1 rounded-md bg-[#17407E] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"><FileUp size={12} /> Enviar</button>
+                                <button type="button" disabled={!canEdit} onClick={() => setDocumentDrafts((prev) => { const next = { ...prev }; delete next[key]; return next; })} className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">Remover</button>
+                              </div>
+                            </div>
+                          ))}
+
+                          {otherProfessionalDocuments.length === 0 ? (
+                            <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">Nenhum documento diverso ativo.</div>
+                          ) : (
+                            <div className="overflow-x-auto rounded-lg border border-slate-200">
+                              <table className="min-w-[760px] w-full text-sm">
+                                <thead className="bg-slate-50 text-xs uppercase text-slate-600">
+                                  <tr><th className="px-3 py-2 text-left">Arquivo</th><th className="px-3 py-2 text-left">Observações</th><th className="px-3 py-2 text-left">Upload</th><th className="px-3 py-2 text-left">Ações</th></tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {otherProfessionalDocuments.map((doc) => (
+                                    <tr key={doc.id}>
+                                      <td className="px-3 py-2 font-medium text-slate-700">{doc.originalName}<div className="text-xs text-slate-500">{formatFilesize(doc.sizeBytes)}</div></td>
+                                      <td className="px-3 py-2 text-slate-600">{doc.notes || '-'}</td>
+                                      <td className="px-3 py-2 text-xs text-slate-500">{formatDateTime(doc.createdAt)}</td>
+                                      <td className="px-3 py-2"><div className="flex flex-wrap gap-2"><a href={`/api/admin/profissionais/documentos/${encodeURIComponent(doc.id)}/download?inline=1`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><Eye size={12} /> Ver</a><a href={`/api/admin/profissionais/documentos/${encodeURIComponent(doc.id)}/download`} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><Download size={12} /> Baixar</a>{canEdit ? <button type="button" disabled={uploadingDoc} onClick={() => deactivateProfessionalDocumentFile(doc.id)} className="inline-flex items-center gap-1 rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"><Trash2 size={12} /> Excluir</button> : null}</div></td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <h3 className="text-sm font-semibold text-slate-800">Histórico de documentos</h3>
+                        <p className="text-xs text-slate-500">Arquivos substituídos ou excluídos da lista ativa continuam disponíveis para consulta.</p>
+                        <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+                          <table className="min-w-[860px] w-full text-sm">
+                            <thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="px-3 py-2 text-left">Tipo</th><th className="px-3 py-2 text-left">Arquivo</th><th className="px-3 py-2 text-left">Expiração</th><th className="px-3 py-2 text-left">Upload original</th><th className="px-3 py-2 text-left">Ações</th></tr></thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {inactiveProfessionalDocuments.length === 0 ? (
+                                <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500">Nenhum documento hist?rico.</td></tr>
+                              ) : inactiveProfessionalDocuments.map((doc) => (
+                                <tr key={doc.id}><td className="px-3 py-2 font-medium text-slate-700">{DOCUMENT_TYPES.find((x) => x.code === doc.docType)?.label || doc.docType}</td><td className="px-3 py-2">{doc.originalName}<div className="text-xs text-slate-500">{formatFilesize(doc.sizeBytes)}</div></td><td className="px-3 py-2">{formatDateBr(doc.expiresAt)}</td><td className="px-3 py-2 text-xs text-slate-500">{formatDateTime(doc.createdAt)}</td><td className="px-3 py-2"><div className="flex flex-wrap gap-2"><a href={`/api/admin/profissionais/documentos/${encodeURIComponent(doc.id)}/download?inline=1`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><Eye size={12} /> Ver</a><a href={`/api/admin/profissionais/documentos/${encodeURIComponent(doc.id)}/download`} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><Download size={12} /> Baixar</a></div></td></tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      <div>
+                        <button
+                          type="button"
+                          onClick={() => setIsChecklistExpanded((v) => !v)}
+                          className="w-full flex items-center justify-between py-2 text-sm font-semibold text-slate-700"
+                        >
+                          <span>Checklist manual de documentos (transição)</span>
+                          {isChecklistExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                        </button>
+                        {isChecklistExpanded && (
+                          <div className="border rounded-lg overflow-hidden"><table className="w-full text-sm"><thead className="bg-slate-50 text-xs uppercase text-slate-600"><tr><th className="px-2 py-2 text-left">Documento</th><th className="px-2 py-2 text-left">Físico</th><th className="px-2 py-2 text-left">Digital</th><th className="px-2 py-2 text-left">Expiração</th><th className="px-2 py-2 text-left">Obs</th></tr></thead><tbody>{form.checklist.map((c, i) => { const d = DOCUMENT_TYPES.find((x) => x.code === c.docType); return <tr key={c.docType} className="border-t"><td className="px-2 py-2">{d?.label || c.docType}</td><td className="px-2 py-2"><input type="checkbox" checked={c.hasPhysicalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasPhysicalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2"><input type="checkbox" checked={c.hasDigitalCopy} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], hasDigitalCopy: e.target.checked }; return { ...p, checklist: n }; })} /></td><td className="px-2 py-2">{d?.hasExpiration ? <input type="date" value={c.expiresAt} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], expiresAt: e.target.value }; return { ...p, checklist: n }; })} className="px-2 py-1 border rounded" /> : <span className="text-xs text-slate-400">-</span>}</td><td className="px-2 py-2"><input value={c.notes} onChange={(e) => setForm((p) => { const n = [...p.checklist]; n[i] = { ...n[i], notes: e.target.value }; return { ...p, checklist: n }; })} className="w-full px-2 py-1 border rounded" /></td></tr>; })}</tbody></table></div>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
 
               {modalTab === 'procedimentos' && (

@@ -37,6 +37,7 @@ O desenho segue o mesmo padrao funcional de `/profissionais`:
 - `GET /api/admin/colaboradores/options`
 - `GET/POST /api/admin/colaboradores/[id]/documentos`
 - `GET /api/admin/colaboradores/documentos/[documentId]/download`
+- `DELETE /api/admin/colaboradores/documentos/[documentId]`
 - `GET/POST /api/admin/colaboradores/[id]/uniformes`
 - `PUT/DELETE /api/admin/colaboradores/[id]/uniformes/[entryId]`
 - `GET/POST /api/admin/colaboradores/[id]/recessos`
@@ -75,9 +76,26 @@ Campos principais:
 - `is_active`, `uploaded_by`, `created_at`.
 
 Regras atuais:
-- novo upload do mesmo tipo desativa os anteriores;
+- novo upload do mesmo tipo desativa os anteriores e preserva o arquivo antigo no historico;
+- `OUTRO` permite multiplos documentos ativos para anexos diversos;
 - `ASO` usa o mesmo fluxo documental, com `issue_date` e `expires_at`;
 - `Conta Bancaria` fica no cadastro estruturado, nao em upload.
+
+### `employee_documents_inactive`
+
+Tabela de apoio para historico de documentos inativos.
+
+Campos principais:
+- `source_document_id`, `employee_id`, `doc_type`;
+- metadados originais do arquivo (`storage_*`, `original_name`, `mime_type`, `size_bytes`);
+- `issue_date`, `expires_at`, `notes`;
+- `inactive_reason` (`REPLACED` ou `DELETED`);
+- `original_created_at`, `archived_by`, `archived_at`.
+
+Uso:
+- recebe copia do documento ativo quando ele e substituido por novo upload;
+- recebe copia quando o usuario exclui/remova o arquivo da checklist ativa;
+- o arquivo fisico permanece no storage para consulta historica.
 
 ### `employee_uniform_items`
 
@@ -214,7 +232,9 @@ Abas implementadas:
 
 Regras de uso:
 - `Uniforme`, `Recesso` e `Documentos` ficam operacionais apos o primeiro save do colaborador;
-- upload de documentos aceita envio em massa com classificacao do tipo antes de salvar;
+- a aba `Documentos` exibe uma tabela por tipo documental esperado, com upload, substituicao e exclusao diretamente na linha;
+- documentos diversos usam o tipo `OUTRO` e aceitam mais de um arquivo ativo;
+- documentos substituidos ou excluidos continuam visiveis no historico para consulta/download;
 - uniforme e recesso usam CRUD proprio por colaborador.
 
 ## 6. Permissoes

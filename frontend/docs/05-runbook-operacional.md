@@ -355,14 +355,17 @@ LIMIT 20;
 3. Validar registro em `professional_documents`.
 4. Visualizar o mesmo arquivo em `GET /api/admin/profissionais/documentos/:documentId/download?inline=1`.
 5. Baixar em `GET /api/admin/profissionais/documentos/:documentId/download`.
-6. Validar auditoria em `professional_audit_log` (`DOCUMENT_UPLOADED` e `DOCUMENT_DOWNLOADED`).
-7. Na aba `Procedimentos`, vincular itens e validar persistência em `professional_procedure_rates`.
+6. Substituir o arquivo pelo mesmo tipo documental e validar que o anterior ficou `is_active=0` e foi copiado para `professional_documents_inactive`.
+7. Usar `DELETE /api/admin/profissionais/documentos/:documentId` ou o bot?o `Excluir` da UI e validar hist?rico preservado.
+8. Validar auditoria em `professional_audit_log` (`DOCUMENT_UPLOADED`, `DOCUMENT_DOWNLOADED` e `DOCUMENT_DEACTIVATED`).
+9. Na aba `Procedimentos`, vincular itens e validar persist?ncia em `professional_procedure_rates`.
 
-### Observação de rollout
+### Observa??o de rollout
 
-A interface da página `/profissionais` opera em modo hibrido sem bloqueio:
+A interface da p?gina `/profissionais` opera em modo hibrido sem bloqueio:
 - checklist manual de transicao;
-- upload S3 ativo (incluindo `Visualizar`/`Baixar` por documento).
+- upload S3 ativo por linha documental (incluindo `Visualizar`/`Baixar`/`Excluir` por documento);
+- documentos diversos (`OUTRO`) podem ter mais de um arquivo ativo.
 
 
 ## 9) Modelos de Contrato (`/modelos-contrato`)

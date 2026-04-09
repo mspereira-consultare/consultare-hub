@@ -311,6 +311,13 @@ Uso atual:
 - upload via API (`POST /api/admin/profissionais/:id/documentos`)
 - download via API autenticada (`GET /api/admin/profissionais/documentos/:documentId/download`)
 - visualizacao inline (`GET /api/admin/profissionais/documentos/:documentId/download?inline=1`)
+- exclusao logica via API (`DELETE /api/admin/profissionais/documentos/:documentId`)
+- substituicao por tipo com historico em `professional_documents_inactive`
+
+O mesmo padrao de checklist por linha e historico de inativos tambem e aplicado ao modulo `/colaboradores`:
+- `POST /api/admin/colaboradores/:id/documentos`
+- `DELETE /api/admin/colaboradores/documentos/:documentId`
+- `employee_documents_inactive` como tabela de historico.
 
 Variáveis necessárias para ativar S3:
 - `STORAGE_PROVIDER=s3`

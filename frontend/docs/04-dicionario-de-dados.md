@@ -577,8 +577,31 @@ Campos:
 
 Observacao de tipos:
 - aceita os tipos documentais oficiais do modulo e tambem `OUTRO` para anexos livres.
+- `OUTRO` permite multiplos arquivos ativos.
+- demais tipos mantem apenas um arquivo ativo; ao substituir, o arquivo anterior e desativado e preservado no historico.
 - contratos gerados automaticamente nao sao mais gravados nesta tabela.
 - para contrato final assinado, usar upload manual com `doc_type = CONTRATO_ASSINADO`.
+
+### `professional_documents_inactive`
+
+Historico de documentos de profissionais que foram substituidos ou removidos da lista ativa.
+
+Campos:
+- `id` (PK)
+- `source_document_id`
+- `professional_id`
+- `doc_type`
+- `storage_provider`, `storage_bucket`, `storage_key`
+- `original_name`, `mime_type`, `size_bytes`
+- `expires_at`, `notes`
+- `inactive_reason` (`REPLACED` ou `DELETED`)
+- `uploaded_by`, `original_created_at`
+- `archived_by`, `archived_at`
+
+Uso:
+- manter rastreabilidade de documentos antigos sem apagar o arquivo do storage;
+- permitir download/visualizacao historica pela tabela principal desativada;
+- suportar substituicao segura de documentos na UI por linha.
 
 ### `professional_contracts`
 

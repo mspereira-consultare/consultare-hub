@@ -70,7 +70,7 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
   },
   {
     code: 'COMPROVANTE_ENDERECO',
-    label: 'Comprovante de Endereco',
+    label: 'Comprovante de Endereço',
     required: false,
     hasExpiration: false,
     warningDays: 0,
@@ -84,14 +84,14 @@ export const DOCUMENT_TYPES: DocumentTypeDef[] = [
   },
   {
     code: 'CURRICULO',
-    label: 'Curriculo',
+    label: 'Currículo',
     required: false,
     hasExpiration: false,
     warningDays: 0,
   },
   {
     code: 'CERTIDAO_ETICA',
-    label: 'CERTIDAO DE ETICO PROFISSIONAL',
+    label: 'Certidão Ética Profissional',
     required: true,
     hasExpiration: true,
     warningDays: 30,

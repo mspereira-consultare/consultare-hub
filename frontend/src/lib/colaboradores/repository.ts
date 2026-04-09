@@ -653,6 +653,30 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS employee_documents_inactive (
+      id VARCHAR(64) PRIMARY KEY,
+      source_document_id VARCHAR(64) NOT NULL,
+      employee_id VARCHAR(64) NOT NULL,
+      doc_type VARCHAR(60) NOT NULL,
+      storage_provider VARCHAR(30) NOT NULL,
+      storage_bucket VARCHAR(120) NULL,
+      storage_key VARCHAR(255) NOT NULL,
+      original_name VARCHAR(255) NOT NULL,
+      mime_type VARCHAR(120) NOT NULL,
+      size_bytes BIGINT NOT NULL,
+      issue_date DATE NULL,
+      expires_at DATE NULL,
+      notes TEXT NULL,
+      inactive_reason VARCHAR(30) NOT NULL,
+      uploaded_by VARCHAR(64) NOT NULL,
+      original_created_at TEXT NOT NULL,
+      archived_by VARCHAR(64) NOT NULL,
+      archived_at TEXT NOT NULL,
+      UNIQUE(source_document_id)
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS employee_uniform_items (
       id VARCHAR(64) PRIMARY KEY,
       employee_id VARCHAR(64) NOT NULL,
@@ -732,6 +756,7 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_employees_full_name ON employees (full_name)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employees_status ON employees (status)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_documents_employee ON employee_documents (employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_documents_inactive_employee ON employee_documents_inactive (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_uniform_items_employee ON employee_uniform_items (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_locker_assignments_employee ON employee_locker_assignments (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_locker_assignments_active ON employee_locker_assignments (unit_name, locker_code, is_active)`);
@@ -1037,6 +1062,52 @@ export const getEmployeeDocumentById = async (db: DbInterface, documentId: strin
   return mapDocument(rows[0]);
 };
 
+const archiveEmployeeDocumentRows = async (
+  db: DbInterface,
+  documents: EmployeeDocument[],
+  actorUserId: string,
+  reason: 'REPLACED' | 'DELETED'
+) => {
+  const archivedAt = NOW();
+  for (const document of documents) {
+    const existing = await db.query(
+      `SELECT source_document_id FROM employee_documents_inactive WHERE source_document_id = ? LIMIT 1`,
+      [document.id]
+    );
+    if (existing[0]) continue;
+
+    await db.execute(
+      `
+      INSERT INTO employee_documents_inactive (
+        id, source_document_id, employee_id, doc_type, storage_provider, storage_bucket, storage_key,
+        original_name, mime_type, size_bytes, issue_date, expires_at, notes, inactive_reason,
+        uploaded_by, original_created_at, archived_by, archived_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        randomUUID(),
+        document.id,
+        document.employeeId,
+        document.docType,
+        document.storageProvider,
+        document.storageBucket,
+        document.storageKey,
+        document.originalName,
+        document.mimeType,
+        document.sizeBytes,
+        document.issueDate,
+        document.expiresAt,
+        document.notes,
+        reason,
+        document.uploadedBy,
+        document.createdAt,
+        actorUserId,
+        archivedAt,
+      ]
+    );
+  }
+};
+
 export const createEmployeeDocumentRecord = async (
   db: DbInterface,
   employeeId: string,
@@ -1063,14 +1134,27 @@ export const createEmployeeDocumentRecord = async (
 
   const now = NOW();
 
-  await db.execute(
-    `
-    UPDATE employee_documents
-    SET is_active = 0
-    WHERE employee_id = ? AND doc_type = ? AND is_active = 1
-    `,
-    [employeeId, docType]
-  );
+  if (docType !== 'OUTRO') {
+    const activeRows = await db.query(
+      `
+      SELECT *
+      FROM employee_documents
+      WHERE employee_id = ? AND doc_type = ? AND is_active = 1
+      `,
+      [employeeId, docType]
+    );
+    const activeDocuments = activeRows.map(mapDocument);
+    await archiveEmployeeDocumentRows(db, activeDocuments, actorUserId, 'REPLACED');
+
+    await db.execute(
+      `
+      UPDATE employee_documents
+      SET is_active = 0
+      WHERE employee_id = ? AND doc_type = ? AND is_active = 1
+      `,
+      [employeeId, docType]
+    );
+  }
 
   const id = randomUUID();
   await db.execute(
@@ -1109,6 +1193,34 @@ export const createEmployeeDocumentRecord = async (
     throw new EmployeeValidationError('Falha ao carregar documento criado.', 500);
   }
   return created;
+};
+
+export const deactivateEmployeeDocument = async (
+  db: DbInterface,
+  documentId: string,
+  actorUserId: string
+) => {
+  await ensureEmployeesTables(db);
+  const existing = await getEmployeeDocumentById(db, documentId);
+  if (!existing) {
+    throw new EmployeeValidationError('Documento não encontrado.', 404);
+  }
+  if (!existing.isActive) {
+    return existing;
+  }
+
+  await archiveEmployeeDocumentRows(db, [existing], actorUserId, 'DELETED');
+  await db.execute(`UPDATE employee_documents SET is_active = 0 WHERE id = ?`, [documentId]);
+  await insertAudit(db, 'EMPLOYEE_DOCUMENT_DEACTIVATED', actorUserId, existing.employeeId, {
+    documentId,
+    docType: existing.docType,
+  });
+
+  const updated = await getEmployeeDocumentById(db, documentId);
+  if (!updated) {
+    throw new EmployeeValidationError('Falha ao carregar documento atualizado.', 500);
+  }
+  return updated;
 };
 
 export const registerEmployeeDocumentDownloadAudit = async (

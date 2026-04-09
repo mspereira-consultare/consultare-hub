@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
@@ -17,6 +17,7 @@ import {
   Search,
   ShieldAlert,
   Shirt,
+  Trash2,
   UserRound,
   Wallet,
   X,
@@ -44,6 +45,7 @@ import {
   computeAsoStatus,
   computeDocumentProgress,
   computeMissingDocuments,
+  getExpectedDocumentTypes,
   getDocumentTypeLabel,
 } from '@/lib/colaboradores/status';
 import type {
@@ -170,7 +172,7 @@ type RecessFormState = {
 
 type PendingUpload = {
   localId: string;
-  file: File;
+  file: File | null;
   docType: EmployeeDocumentTypeCode;
   issueDate: string;
   expiresAt: string;
@@ -707,6 +709,39 @@ export default function ColaboradoresPage() {
           })),
     [options.documentTypes]
   );
+  const documentTypeMeta = useMemo(
+    () => new Map(currentDocumentTypes.map((item) => [item.value, item])),
+    [currentDocumentTypes]
+  );
+  const expectedDocumentTypes = useMemo(
+    () =>
+      getExpectedDocumentTypes({
+        employmentRegime: form.employmentRegime,
+        maritalStatus: (form.maritalStatus || null) as any,
+        hasChildren: form.hasChildren,
+      }),
+    [form.employmentRegime, form.maritalStatus, form.hasChildren]
+  );
+  const activeDocuments = useMemo(
+    () => documents.filter((doc) => doc.isActive),
+    [documents]
+  );
+  const inactiveDocuments = useMemo(
+    () => documents.filter((doc) => !doc.isActive),
+    [documents]
+  );
+  const activeDocumentByType = useMemo(() => {
+    const map = new Map<string, EmployeeDocument>();
+    for (const doc of activeDocuments) {
+      if (doc.docType === 'OUTRO') continue;
+      if (!map.has(doc.docType)) map.set(doc.docType, doc);
+    }
+    return map;
+  }, [activeDocuments]);
+  const otherActiveDocuments = useMemo(
+    () => activeDocuments.filter((doc) => doc.docType === 'OUTRO'),
+    [activeDocuments]
+  );
   const currentLockerKeyStatuses = useMemo(
     () =>
       options.lockerKeyStatuses && options.lockerKeyStatuses.length > 0
@@ -892,14 +927,63 @@ export default function ColaboradoresPage() {
     }
   };
 
-  const uploadDocuments = async () => {
-    if (!currentEmployeeId || pendingUploads.length === 0) return;
+  const upsertDocumentDraft = (localId: string, patch: Partial<PendingUpload>) => {
+    setPendingUploads((prev) => {
+      const index = prev.findIndex((item) => item.localId === localId);
+      if (index >= 0) {
+        return prev.map((item) => (item.localId === localId ? { ...item, ...patch } : item));
+      }
+      const docType = (patch.docType || localId) as EmployeeDocumentTypeCode;
+      return [
+        ...prev,
+        {
+          localId,
+          file: patch.file || null,
+          docType,
+          issueDate: patch.issueDate || '',
+          expiresAt: patch.expiresAt || '',
+          notes: patch.notes || '',
+        },
+      ];
+    });
+  };
+
+  const addOtherDocumentDraft = () => {
+    setPendingUploads((prev) => [
+      ...prev,
+      {
+        localId: `OUTRO-${Date.now()}-${Math.random()}`,
+        file: null,
+        docType: 'OUTRO',
+        issueDate: '',
+        expiresAt: '',
+        notes: '',
+      },
+    ]);
+  };
+
+  const uploadDocuments = async (localId?: string) => {
+    if (!currentEmployeeId) return;
+    const drafts = localId ? pendingUploads.filter((item) => item.localId === localId) : pendingUploads;
+    if (drafts.length === 0) return;
+    const missingFile = drafts.find((draft) => !draft.file);
+    if (missingFile) {
+      setModalError('Selecione um arquivo antes de enviar.');
+      return;
+    }
     setUploadingDocuments(true);
     setModalError('');
     try {
-      for (const draft of pendingUploads) {
+      for (const draft of drafts) {
+        const selectedType = documentTypeMeta.get(draft.docType);
+        if (selectedType?.hasIssueDate && !draft.issueDate) {
+          throw new Error(`Informe a data de emissão para ${selectedType.label}.`);
+        }
+        if (selectedType?.hasExpiration && !draft.expiresAt) {
+          throw new Error(`Informe a data de vencimento para ${selectedType.label}.`);
+        }
         const formData = new FormData();
-        formData.append('file', draft.file);
+        formData.append('file', draft.file as File);
         formData.append('docType', draft.docType);
         if (draft.issueDate) formData.append('issueDate', draft.issueDate);
         if (draft.expiresAt) formData.append('expiresAt', draft.expiresAt);
@@ -918,12 +1002,36 @@ export default function ColaboradoresPage() {
         `/api/admin/colaboradores/${encodeURIComponent(currentEmployeeId)}/documentos`
       );
       setDocuments(docsPayload.data || []);
-      setPendingUploads([]);
-      setModalNotice('Documentos enviados com sucesso.');
+      setPendingUploads((prev) => localId ? prev.filter((item) => item.localId !== localId) : []);
+      setModalNotice(drafts.length === 1 ? 'Documento enviado com sucesso.' : 'Documentos enviados com sucesso.');
       await loadList(pagination.page, appliedFilters);
     } catch (uploadError: any) {
       console.error('Erro ao enviar documentos:', uploadError);
       setModalError(uploadError?.message || 'Falha ao enviar documentos.');
+    } finally {
+      setUploadingDocuments(false);
+    }
+  };
+
+  const deactivateEmployeeDocumentFile = async (documentId: string) => {
+    if (!currentEmployeeId || !canEdit) return;
+    const ok = window.confirm('Remover este arquivo ativo? Ele sairá da checklist e ficará preservado no histórico.');
+    if (!ok) return;
+    setUploadingDocuments(true);
+    setModalError('');
+    try {
+      await fetchJson<{ status: string; data: EmployeeDocument }>(
+        `/api/admin/colaboradores/documentos/${encodeURIComponent(documentId)}`,
+        { method: 'DELETE' }
+      );
+      const docsPayload = await fetchJson<{ status: string; data: EmployeeDocument[] }>(
+        `/api/admin/colaboradores/${encodeURIComponent(currentEmployeeId)}/documentos`
+      );
+      setDocuments(docsPayload.data || []);
+      setModalNotice('Documento removido da lista ativa e preservado no histórico.');
+      await loadList(pagination.page, appliedFilters);
+    } catch (deleteError: any) {
+      setModalError(deleteError?.message || 'Falha ao remover documento.');
     } finally {
       setUploadingDocuments(false);
     }
@@ -1894,133 +2002,192 @@ export default function ColaboradoresPage() {
                   ) : null}
 
                   {modalTab === 'documentos' ? (
-                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-[420px,1fr]">
-                      <SectionCard title="Upload em massa" description="Selecione vários arquivos e classifique o tipo antes de salvar." icon={FileUp}>
-                        <div className="space-y-3">
-                          <input
-                            type="file"
-                            multiple
-                            disabled={currentEmployeeReadOnly}
-                            onChange={(event) => {
-                              const files = Array.from(event.target.files || []);
-                              if (files.length === 0) return;
-                              setPendingUploads((prev) => [
-                                ...prev,
-                                ...files.map((file) => ({
-                                  localId: `${Date.now()}-${file.name}-${Math.random()}`,
-                                  file,
-                                  docType: 'CURRICULO' as EmployeeDocumentTypeCode,
-                                  issueDate: '',
-                                  expiresAt: '',
-                                  notes: '',
-                                })),
-                              ]);
-                              event.currentTarget.value = '';
-                            }}
-                            className={filterInputClassName}
-                          />
-                          <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600">
-                            <div className="font-semibold text-slate-700">Resumo documental</div>
-                            <div className="mt-2">Obrigatórios entregues: {documentSummary.progress.done}/{documentSummary.progress.total}</div>
-                            <div>ASO: <span className="font-semibold">{documentSummary.aso.status}</span>{documentSummary.aso.expiresAt ? ` (vence em ${formatDateBr(documentSummary.aso.expiresAt)})` : ''}</div>
-                            <div className="mt-2 text-slate-500">
-                              Faltando: {documentSummary.missing.length > 0 ? documentSummary.missing.map(getDocumentTypeLabel).join(', ') : 'Nenhum documento obrigatório pendente'}
-                            </div>
+                    <div className="space-y-4">
+                      <SectionCard title="Checklist documental" description="Envie ou substitua cada documento diretamente na respectiva linha." icon={FileText}>
+                        <div className="mb-3 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600">
+                          <div className="font-semibold text-slate-700">Resumo documental</div>
+                          <div className="mt-2">Obrigatórios entregues: {documentSummary.progress.done}/{documentSummary.progress.total}</div>
+                          <div>ASO: <span className="font-semibold">{documentSummary.aso.status}</span>{documentSummary.aso.expiresAt ? ` (vence em ${formatDateBr(documentSummary.aso.expiresAt)})` : ''}</div>
+                          <div className="mt-2 text-slate-500">
+                            Faltando: {documentSummary.missing.length > 0 ? documentSummary.missing.map(getDocumentTypeLabel).join(', ') : 'Nenhum documento obrigat?rio pendente'}
                           </div>
+                        </div>
 
-                          {pendingUploads.length > 0 ? (
-                            <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-                              {pendingUploads.map((draft) => {
-                                const selectedType = currentDocumentTypes.find((item) => item.value === draft.docType);
+                        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                          <table className="min-w-[1120px] w-full text-sm">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                              <tr>
+                                <th className="px-3 py-3">Documento</th>
+                                <th className="px-3 py-3">Arquivo atual</th>
+                                <th className="px-3 py-3">Datas</th>
+                                <th className="px-3 py-3">Novo arquivo</th>
+                                <th className="px-3 py-3">Observações</th>
+                                <th className="px-3 py-3">Ações</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {expectedDocumentTypes.map((docType) => {
+                                const meta = documentTypeMeta.get(docType);
+                                const activeDoc = activeDocumentByType.get(docType);
+                                const draft = pendingUploads.find((item) => item.localId === docType);
                                 return (
-                                  <div key={draft.localId} className="rounded-lg border border-slate-200 p-3">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div>
-                                        <div className="text-sm font-medium text-slate-800">{draft.file.name}</div>
-                                        <div className="text-xs text-slate-500">{formatFilesize(draft.file.size)}</div>
+                                  <tr key={docType} className="align-top">
+                                    <td className="px-3 py-3">
+                                      <div className="font-semibold text-slate-800">{meta?.label || getDocumentTypeLabel(docType)}</div>
+                                      <div className="mt-1 text-xs text-slate-500">{meta?.optional ? 'Opcional' : 'Obrigatório'}</div>
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      {activeDoc ? (
+                                        <div>
+                                          <div className="max-w-[260px] truncate font-medium text-slate-700" title={activeDoc.originalName}>{activeDoc.originalName}</div>
+                                          <div className="text-xs text-slate-500">{formatFilesize(activeDoc.sizeBytes)} | Enviado em {formatDateTime(activeDoc.createdAt)}</div>
+                                          <span className="mt-2 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">Ativo</span>
+                                        </div>
+                                      ) : (
+                                        <span className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">Pendente</span>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      <div className="space-y-2">
+                                        <label className="block">
+                                          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Emissão</span>
+                                          <input disabled={currentEmployeeReadOnly || !meta?.hasIssueDate} type="date" value={draft?.issueDate || ''} onChange={(event) => upsertDocumentDraft(docType, { docType, issueDate: event.target.value })} className={filterInputClassName} />
+                                        </label>
+                                        <label className="block">
+                                          <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">Vencimento</span>
+                                          <input disabled={currentEmployeeReadOnly || !meta?.hasExpiration} type="date" value={draft?.expiresAt || ''} onChange={(event) => upsertDocumentDraft(docType, { docType, expiresAt: event.target.value })} className={filterInputClassName} />
+                                        </label>
                                       </div>
-                                      <button type="button" disabled={currentEmployeeReadOnly} onClick={() => setPendingUploads((prev) => prev.filter((item) => item.localId !== draft.localId))} className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:bg-slate-50">
-                                        Remover
-                                      </button>
-                                    </div>
-                                    <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
-                                      <div className="md:col-span-2">
-                                        <label className={fieldLabelClassName}>Tipo documental</label>
-                                        <select disabled={currentEmployeeReadOnly} value={draft.docType} onChange={(event) => setPendingUploads((prev) => prev.map((item) => item.localId === draft.localId ? { ...item, docType: event.target.value as EmployeeDocumentTypeCode } : item))} className={filterInputClassName}>
-                                          {currentDocumentTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                                        </select>
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      <input disabled={currentEmployeeReadOnly} type="file" onChange={(event) => upsertDocumentDraft(docType, { docType, file: event.target.files?.[0] || null })} className={filterInputClassName} />
+                                      {draft?.file ? <div className="mt-1 text-xs text-slate-500">Selecionado: {draft.file.name}</div> : null}
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      <input disabled={currentEmployeeReadOnly} value={draft?.notes || ''} onChange={(event) => upsertDocumentDraft(docType, { docType, notes: event.target.value })} placeholder="Observações do envio" className={filterInputClassName} />
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      <div className="flex flex-wrap gap-2">
+                                        {activeDoc ? (
+                                          <>
+                                            <button type="button" onClick={() => window.open(`/api/admin/colaboradores/documentos/${encodeURIComponent(activeDoc.id)}/download?inline=1`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">
+                                              <FileText size={12} /> Ver
+                                            </button>
+                                            <button type="button" onClick={() => window.open(`/api/admin/colaboradores/documentos/${encodeURIComponent(activeDoc.id)}/download`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">
+                                              <FileDown size={12} /> Baixar
+                                            </button>
+                                            {canEdit ? (
+                                              <button type="button" disabled={uploadingDocuments} onClick={() => deactivateEmployeeDocumentFile(activeDoc.id)} className="inline-flex items-center gap-1 rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">
+                                                <Trash2 size={12} /> Excluir
+                                              </button>
+                                            ) : null}
+                                          </>
+                                        ) : null}
+                                        {canEdit ? (
+                                          <button type="button" disabled={uploadingDocuments || !draft?.file} onClick={() => uploadDocuments(docType)} className="inline-flex items-center gap-1 rounded-md bg-[#17407E] px-2 py-1 text-xs font-semibold text-white disabled:opacity-50">
+                                            {uploadingDocuments ? <Loader2 size={12} className="animate-spin" /> : <FileUp size={12} />}
+                                            {activeDoc ? 'Substituir' : 'Enviar'}
+                                          </button>
+                                        ) : null}
                                       </div>
-                                      <div>
-                                        <label className={fieldLabelClassName}>Data de emissão</label>
-                                        <input disabled={currentEmployeeReadOnly || !selectedType?.hasIssueDate} type="date" value={draft.issueDate} onChange={(event) => setPendingUploads((prev) => prev.map((item) => item.localId === draft.localId ? { ...item, issueDate: event.target.value } : item))} className={filterInputClassName} />
-                                      </div>
-                                      <div>
-                                        <label className={fieldLabelClassName}>Data de vencimento</label>
-                                        <input disabled={currentEmployeeReadOnly || !selectedType?.hasExpiration} type="date" value={draft.expiresAt} onChange={(event) => setPendingUploads((prev) => prev.map((item) => item.localId === draft.localId ? { ...item, expiresAt: event.target.value } : item))} className={filterInputClassName} />
-                                      </div>
-                                      <div className="md:col-span-2">
-                                        <label className={fieldLabelClassName}>Observações</label>
-                                        <input disabled={currentEmployeeReadOnly} value={draft.notes} onChange={(event) => setPendingUploads((prev) => prev.map((item) => item.localId === draft.localId ? { ...item, notes: event.target.value } : item))} className={filterInputClassName} />
-                                      </div>
-                                    </div>
-                                  </div>
+                                    </td>
+                                  </tr>
                                 );
                               })}
-                              {canEdit ? (
-                                <button type="button" disabled={uploadingDocuments} onClick={uploadDocuments} className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
-                                  {uploadingDocuments ? <Loader2 size={14} className="animate-spin" /> : <FileUp size={14} />}
-                                  Salvar documentos selecionados
+                            </tbody>
+                          </table>
+                        </div>
+                      </SectionCard>
+
+                      <SectionCard title="Documentos diversos" description="Use para anexos complementares que não fazem parte da checklist obrigatória." icon={FileUp}>
+                        <div className="space-y-3">
+                          {canEdit ? (
+                            <button type="button" onClick={addOtherDocumentDraft} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-[#17407E] hover:bg-blue-100">
+                              <Plus size={14} /> Adicionar documento diverso
+                            </button>
+                          ) : null}
+
+                          {pendingUploads.filter((draft) => draft.docType === 'OUTRO').map((draft) => (
+                            <div key={draft.localId} className="grid gap-3 rounded-lg border border-dashed border-slate-300 bg-white p-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                              <label>
+                                <span className={fieldLabelClassName}>Arquivo</span>
+                                <input disabled={currentEmployeeReadOnly} type="file" onChange={(event) => upsertDocumentDraft(draft.localId, { docType: 'OUTRO', file: event.target.files?.[0] || null })} className={filterInputClassName} />
+                              </label>
+                              <label>
+                                <span className={fieldLabelClassName}>Descrição/observação</span>
+                                <input disabled={currentEmployeeReadOnly} value={draft.notes} onChange={(event) => upsertDocumentDraft(draft.localId, { notes: event.target.value })} placeholder="Ex.: certificado complementar" className={filterInputClassName} />
+                              </label>
+                              <div className="flex gap-2">
+                                <button type="button" disabled={uploadingDocuments || !draft.file} onClick={() => uploadDocuments(draft.localId)} className="inline-flex items-center gap-1 rounded-md bg-[#17407E] px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                                  <FileUp size={12} /> Enviar
                                 </button>
-                              ) : null}
+                                <button type="button" disabled={currentEmployeeReadOnly} onClick={() => setPendingUploads((prev) => prev.filter((item) => item.localId !== draft.localId))} className="rounded-md border border-slate-200 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50">
+                                  Remover
+                                </button>
+                              </div>
                             </div>
+                          ))}
+
+                          {otherActiveDocuments.length === 0 ? (
+                            <div className="rounded-lg border border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">Nenhum documento diverso ativo.</div>
                           ) : (
-                            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                              Nenhum arquivo em fila. Selecione um ou vários documentos para classificar antes do upload.
+                            <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                              <table className="min-w-[760px] w-full text-sm">
+                                <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                                  <tr>
+                                    <th className="px-3 py-2">Arquivo</th>
+                                    <th className="px-3 py-2">Observações</th>
+                                    <th className="px-3 py-2">Upload</th>
+                                    <th className="px-3 py-2">Ações</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {otherActiveDocuments.map((doc) => (
+                                    <tr key={doc.id}>
+                                      <td className="px-3 py-2 font-medium text-slate-700">{doc.originalName}<div className="text-xs text-slate-500">{formatFilesize(doc.sizeBytes)}</div></td>
+                                      <td className="px-3 py-2 text-slate-600">{doc.notes || '-'}</td>
+                                      <td className="px-3 py-2 text-xs text-slate-500">{formatDateTime(doc.createdAt)}</td>
+                                      <td className="px-3 py-2">
+                                        <div className="flex flex-wrap gap-2">
+                                          <button type="button" onClick={() => window.open(`/api/admin/colaboradores/documentos/${encodeURIComponent(doc.id)}/download?inline=1`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><FileText size={12} /> Ver</button>
+                                          <button type="button" onClick={() => window.open(`/api/admin/colaboradores/documentos/${encodeURIComponent(doc.id)}/download`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><FileDown size={12} /> Baixar</button>
+                                          {canEdit ? <button type="button" disabled={uploadingDocuments} onClick={() => deactivateEmployeeDocumentFile(doc.id)} className="inline-flex items-center gap-1 rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"><Trash2 size={12} /> Excluir</button> : null}
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
                             </div>
                           )}
                         </div>
                       </SectionCard>
 
-                      <SectionCard title="Documentos enviados" description="Arquivos ativos e histórico documental do colaborador." icon={FileText}>
-                        <div className="overflow-x-auto">
+                      <SectionCard title="Histórico de documentos" description="Arquivos substituídos ou excluídos da lista ativa continuam preservados para consulta." icon={FileText}>
+                        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
                           <table className="min-w-[900px] w-full text-sm">
-                            <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
+                            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
                               <tr>
-                                <th className="px-2 py-2">Tipo</th>
-                                <th className="px-2 py-2">Arquivo</th>
-                                <th className="px-2 py-2">Emissão</th>
-                                <th className="px-2 py-2">Vencimento</th>
-                                <th className="px-2 py-2">Status</th>
-                                <th className="px-2 py-2">Upload</th>
-                                <th className="px-2 py-2">Ações</th>
+                                <th className="px-3 py-2">Tipo</th>
+                                <th className="px-3 py-2">Arquivo</th>
+                                <th className="px-3 py-2">Vencimento</th>
+                                <th className="px-3 py-2">Upload original</th>
+                                <th className="px-3 py-2">Ações</th>
                               </tr>
                             </thead>
-                            <tbody>
-                              {documents.length === 0 ? (
-                                <tr><td colSpan={7} className="px-2 py-8 text-center text-slate-500">Nenhum documento cadastrado.</td></tr>
-                              ) : documents.map((doc) => (
-                                <tr key={doc.id} className="border-t border-slate-100">
-                                  <td className="px-2 py-2 font-medium text-slate-700">{getDocumentTypeLabel(doc.docType)}</td>
-                                  <td className="px-2 py-2">
-                                    <div>{doc.originalName}</div>
-                                    <div className="text-xs text-slate-500">{formatFilesize(doc.sizeBytes)}</div>
-                                  </td>
-                                  <td className="px-2 py-2">{formatDateBr(doc.issueDate)}</td>
-                                  <td className="px-2 py-2">{formatDateBr(doc.expiresAt)}</td>
-                                  <td className="px-2 py-2">
-                                    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${doc.isActive ? 'border-emerald-200 bg-emerald-100 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-500'}`}>
-                                      {doc.isActive ? 'Ativo' : 'Histórico'}
-                                    </span>
-                                  </td>
-                                  <td className="px-2 py-2 text-xs text-slate-500">{formatDateTime(doc.createdAt)}</td>
-                                  <td className="px-2 py-2">
-                                    <div className="flex items-center gap-2">
-                                      <button type="button" onClick={() => window.open(`/api/admin/colaboradores/documentos/${encodeURIComponent(doc.id)}/download?inline=1`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">
-                                        <FileText size={12} /> Ver
-                                      </button>
-                                      <button type="button" onClick={() => window.open(`/api/admin/colaboradores/documentos/${encodeURIComponent(doc.id)}/download`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">
-                                        <FileDown size={12} /> Baixar
-                                      </button>
+                            <tbody className="divide-y divide-slate-100">
+                              {inactiveDocuments.length === 0 ? (
+                                <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-500">Nenhum documento hist?rico.</td></tr>
+                              ) : inactiveDocuments.map((doc) => (
+                                <tr key={doc.id}>
+                                  <td className="px-3 py-2 font-medium text-slate-700">{getDocumentTypeLabel(doc.docType)}</td>
+                                  <td className="px-3 py-2">{doc.originalName}<div className="text-xs text-slate-500">{formatFilesize(doc.sizeBytes)}</div></td>
+                                  <td className="px-3 py-2">{formatDateBr(doc.expiresAt)}</td>
+                                  <td className="px-3 py-2 text-xs text-slate-500">{formatDateTime(doc.createdAt)}</td>
+                                  <td className="px-3 py-2">
+                                    <div className="flex flex-wrap gap-2">
+                                      <button type="button" onClick={() => window.open(`/api/admin/colaboradores/documentos/${encodeURIComponent(doc.id)}/download?inline=1`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><FileText size={12} /> Ver</button>
+                                      <button type="button" onClick={() => window.open(`/api/admin/colaboradores/documentos/${encodeURIComponent(doc.id)}/download`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"><FileDown size={12} /> Baixar</button>
                                     </div>
                                   </td>
                                 </tr>
