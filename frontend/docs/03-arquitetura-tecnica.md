@@ -466,3 +466,31 @@ APIs do modulo:
 - `GET /api/admin/marketing/controle/source-status`
 - `POST /api/admin/marketing/controle/refresh`
 - `GET /api/admin/marketing/controle/export`
+
+---
+
+## Módulo Vigilância Sanitária
+
+Página: `/qualidade/vigilancia-sanitaria`.
+
+Domínio dedicado em `frontend/src/lib/vigilancia_sanitaria/`, com cálculo de status de vencimento em `status.ts` e persistência em MySQL por demanda nas APIs.
+
+Tabelas:
+
+- `health_surveillance_licenses`
+- `health_surveillance_documents`
+- `health_surveillance_files`
+
+APIs:
+
+- `GET /api/admin/vigilancia-sanitaria/summary`
+- `GET/POST /api/admin/vigilancia-sanitaria/licenses`
+- `GET/PUT/DELETE /api/admin/vigilancia-sanitaria/licenses/[id]`
+- `GET/POST /api/admin/vigilancia-sanitaria/documents`
+- `GET/PUT/DELETE /api/admin/vigilancia-sanitaria/documents/[id]`
+- `POST /api/admin/vigilancia-sanitaria/files`
+- `GET /api/admin/vigilancia-sanitaria/files/[id]/download`
+- `DELETE /api/admin/vigilancia-sanitaria/files/[id]`
+- `GET /api/admin/vigilancia-sanitaria/export`
+
+O módulo é manual no V1 e não possui worker. Upload/download usa o provider de storage padrão do painel.

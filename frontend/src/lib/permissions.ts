@@ -20,6 +20,7 @@ export type PageKey =
   | 'agendamentos'
   | 'profissionais'
   | 'qualidade_documentos'
+  | 'vigilancia_sanitaria'
   | 'qualidade_treinamentos'
   | 'qualidade_auditorias'
   | 'checklist_crc'
@@ -55,7 +56,8 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'produtividade', label: 'Produtividade', path: '/produtividade' },
   { key: 'agendamentos', label: 'Agendamentos', path: '/agendamentos' },
   { key: 'profissionais', label: 'Profissionais', path: '/profissionais' },
-  { key: 'qualidade_documentos', label: 'Qualidade - Documentos', path: '/qualidade/documentos' },
+  { key: 'qualidade_documentos', label: 'Qualidade - POPs e Manuais', path: '/qualidade/documentos' },
+  { key: 'vigilancia_sanitaria', label: 'Qualidade - Vigilância Sanitária', path: '/qualidade/vigilancia-sanitaria' },
   { key: 'qualidade_treinamentos', label: 'Qualidade - Treinamentos', path: '/qualidade/treinamentos' },
   { key: 'qualidade_auditorias', label: 'Qualidade - Auditorias', path: '/qualidade/auditorias' },
   { key: 'checklist_crc', label: 'Checklist CRC', path: '/checklist-crc' },
@@ -96,13 +98,13 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda'], { view: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { edit: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil'], { refresh: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda'], { view: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { edit: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil'], { refresh: true });
     return matrix;
   }
 
-  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_funil', 'ajuda'], { view: true });
+  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_funil', 'ajuda'], { view: true });
   setMany(matrix, ['propostas', 'checklist_crc', 'checklist_recepcao'], { edit: true });
   setMany(matrix, ['monitor', 'produtividade', 'agendamentos', 'colaboradores', 'equipamentos', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
   return matrix;
@@ -116,7 +118,7 @@ const toBool = (value: unknown): boolean => {
 };
 
 export const sanitizeMatrix = (input: unknown, roleRaw = 'OPERADOR'): PermissionMatrix => {
-  const base = input && typeof input === 'object' ? createEmptyMatrix() : getDefaultMatrixByRole(roleRaw);
+  const base = getDefaultMatrixByRole(roleRaw);
   if (!input || typeof input !== 'object') return base;
   const src = input as Record<string, unknown>;
 
@@ -168,6 +170,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/agendamentos') return 'agendamentos';
   if (path === '/profissionais') return 'profissionais';
   if (path === '/qualidade/documentos') return 'qualidade_documentos';
+  if (path === '/qualidade/vigilancia-sanitaria') return 'vigilancia_sanitaria';
   if (path === '/qualidade/treinamentos') return 'qualidade_treinamentos';
   if (path === '/qualidade/auditorias') return 'qualidade_auditorias';
   if (path === '/metas/dashboard') return 'metas_dashboard';
@@ -198,6 +201,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/agendamentos')) return 'agendamentos';
   if (path.startsWith('/api/admin/profissionais')) return 'profissionais';
   if (path.startsWith('/api/admin/qms/documentos')) return 'qualidade_documentos';
+  if (path.startsWith('/api/admin/vigilancia-sanitaria')) return 'vigilancia_sanitaria';
   if (path.startsWith('/api/admin/qms/treinamentos')) return 'qualidade_treinamentos';
   if (path.startsWith('/api/admin/qms/auditorias')) return 'qualidade_auditorias';
   if (path.startsWith('/api/admin/goals/dashboard')) return 'metas_dashboard';

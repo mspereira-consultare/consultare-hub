@@ -1040,3 +1040,52 @@ Contratos de leitura:
 Observacao:
 
 - os buckets `Semana 1..4` e `Mensal` sao calculados em tempo de leitura, nao persistidos em tabela separada.
+
+---
+
+## Vigilância Sanitária
+
+### `health_surveillance_licenses`
+
+| Coluna | Descrição |
+|---|---|
+| `id` | Identificador da licença |
+| `unit_name` | Unidade |
+| `license_name` | Nome da licença |
+| `cnae` | CNAE associado |
+| `license_number` | Número/protocolo |
+| `issuer` | Órgão emissor |
+| `valid_until` | Data de validade |
+| `renewal_status` | Status de renovação |
+| `responsible_name` | Responsável interno |
+| `notes` | Observações |
+| `is_active` | Exclusão lógica |
+| `created_by`, `updated_by` | Auditoria básica |
+| `created_at`, `updated_at` | Timestamps |
+
+### `health_surveillance_documents`
+
+| Coluna | Descrição |
+|---|---|
+| `id` | Identificador do documento |
+| `unit_name` | Unidade |
+| `document_name` | Nome do documento |
+| `document_type` | Tipo do documento |
+| `license_id` | Licença vinculada, opcional |
+| `valid_until` | Data de validade, opcional |
+| `responsible_name` | Responsável interno |
+| `notes` | Observações |
+| `is_active` | Exclusão lógica |
+| `created_by`, `updated_by` | Auditoria básica |
+| `created_at`, `updated_at` | Timestamps |
+
+### `health_surveillance_files`
+
+| Coluna | Descrição |
+|---|---|
+| `id` | Identificador do arquivo |
+| `entity_type` | `license` ou `document` |
+| `entity_id` | ID da licença/documento |
+| `storage_provider`, `storage_bucket`, `storage_key` | Localização no storage |
+| `original_name`, `mime_type`, `size_bytes` | Metadados do arquivo |
+| `uploaded_by`, `created_at` | Auditoria do upload |

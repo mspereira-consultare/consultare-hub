@@ -292,9 +292,9 @@ export default function QmsDocumentosPage() {
       <header className="bg-white border border-slate-200 rounded-xl px-5 py-4 shadow-sm">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-slate-800">Documentos Operacionais (POPs)</h1>
+            <h1 className="text-2xl font-bold text-slate-800">POPs e Manuais</h1>
             <p className="text-sm text-slate-600 mt-1">
-              QMS (Sistema de Gestao da Qualidade): controle de POPs, revisoes e anexos.
+              Controle de POPs, manuais internos, revisões e anexos do Sistema de Gestão da Qualidade.
             </p>
           </div>
 
@@ -313,7 +313,7 @@ export default function QmsDocumentosPage() {
               className="px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 flex items-center gap-2"
             >
               <FilePlus2 size={16} />
-              Novo documento
+              Novo POP ou manual
             </button>
           </div>
         </div>
@@ -359,7 +359,7 @@ export default function QmsDocumentosPage() {
         </div>
 
         <div className="mt-3 text-xs text-slate-600">
-          Worker QMS Documentos:{' '}
+          Worker QMS POPs e Manuais:{' '}
           <span className="font-semibold text-slate-800">{statusLabel(serviceStatus?.status)}</span>
           {serviceStatus?.last_run ? ` | Última execução: ${serviceStatus.last_run}` : ''}
         </div>
@@ -375,7 +375,7 @@ export default function QmsDocumentosPage() {
 
       {loading ? (
         <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-slate-500">
-          Carregando documentos...
+          Carregando POPs e manuais...
         </div>
       ) : (
         <DocumentTable

@@ -29,6 +29,7 @@ import {
   FileText,
   BarChart3,
   Wrench,
+  ShieldCheck,
 } from "lucide-react";
 import { hasPermission, type PageKey } from "@/lib/permissions";
 
@@ -122,11 +123,19 @@ const menuItems: MenuItem[] = [
   },
   {
     href: "/qualidade/documentos",
-    label: "Documentos",
+    label: "POPs e Manuais",
     icon: FileText,
     group: "QUALIDADE",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "qualidade_documentos",
+  },
+  {
+    href: "/qualidade/vigilancia-sanitaria",
+    label: "Vigilância Sanitária",
+    icon: ShieldCheck,
+    group: "QUALIDADE",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "vigilancia_sanitaria",
   },
   {
     href: "/qualidade/treinamentos",

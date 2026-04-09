@@ -678,3 +678,20 @@ Checklist funcional:
 - `POST /api/admin/marketing/controle/refresh` deve enfileirar somente a camada Google
 - `Resolve` sem dados deve manter a tela carregada, com estado vazio consistente
 - blocos nao integrados devem aparecer como `Em planejamento`
+
+---
+
+## Módulo Qualidade - Vigilância Sanitária
+
+Tela: `/qualidade/vigilancia-sanitaria`.
+
+Validações pós-deploy:
+
+1. Confirmar item `Vigilância Sanitária` no grupo `QUALIDADE` da sidebar.
+2. Criar uma licença com validade e anexo.
+3. Criar um documento vinculado à licença.
+4. Baixar e visualizar um anexo.
+5. Conferir a aba `Gerencial` com status de vencimento calculado.
+6. Exportar XLSX e validar que os filtros foram respeitados.
+
+Observação: o módulo é manual no V1 e não possui worker nem heartbeat próprio.

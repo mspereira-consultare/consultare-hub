@@ -336,3 +336,22 @@ Novo `PageKey` inclu?do no sistema:
 - `GET`: exige `view`
 - `POST /refresh`: exige `refresh`
 - nao ha fluxo de `edit` no MVP, pois o modulo e read-only
+
+---
+
+## Atualização: Vigilância Sanitária
+
+Novo `PageKey`: `vigilancia_sanitaria`.
+
+| PageKey | Rota | Observação |
+|---|---|---|
+| `qualidade_documentos` | `/qualidade/documentos` | Exibido na UI como `POPs e Manuais` |
+| `vigilancia_sanitaria` | `/qualidade/vigilancia-sanitaria` | Licenças e documentos regulatórios da Vigilância Sanitária |
+
+Defaults:
+
+| Perfil | View | Edit | Refresh |
+|---|---:|---:|---:|
+| ADMIN | sim | sim | sim |
+| GESTOR | sim | sim | sim |
+| OPERADOR | sim | não | não |

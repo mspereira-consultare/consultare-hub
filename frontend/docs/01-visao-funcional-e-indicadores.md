@@ -842,3 +842,27 @@ Blocos visiveis, mas ainda sem integracao:
 - `SEO tecnico / SEMrush`
 
 
+
+---
+
+## Vigilância Sanitária (`/qualidade/vigilancia-sanitaria`)
+
+### Objetivo
+
+Controlar licenças, documentos regulatórios, anexos e vencimentos por unidade, com visão gerencial para itens vencidos, vencendo e em dia.
+
+### Indicadores
+
+| Indicador | Fonte | Regra |
+|---|---|---|
+| Total de licenças | `health_surveillance_licenses` | Registros ativos filtrados |
+| Licenças vencidas | `health_surveillance_licenses` | `valid_until < hoje` |
+| Licenças vencendo | `health_surveillance_licenses` | `valid_until` entre hoje e 60 dias |
+| Documentos vencidos | `health_surveillance_documents` | `valid_until < hoje` |
+| Documentos vencendo | `health_surveillance_documents` | `valid_until` entre hoje e 60 dias |
+| Sem validade | licenças/documentos | Itens sem data de validade, quando aplicável |
+
+### Observações
+
+- A página `/qualidade/documentos` passa a ser exibida como `POPs e Manuais`.
+- Documentos regulatórios da Vigilância Sanitária ficam separados em `/qualidade/vigilancia-sanitaria`.
