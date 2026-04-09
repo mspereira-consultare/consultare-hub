@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useSession } from 'next-auth/react';
 import { Download, FilePlus2, Loader2, RefreshCw, ShieldCheck } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
@@ -45,6 +45,9 @@ const defaultFilters: Filters = {
 };
 
 const emptyList = { items: [], total: 0, page: 1, pageSize: 20, totalPages: 1 };
+
+const filterControlClassName =
+  'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100';
 
 const normalizeError = async (res: Response) => {
   try {
@@ -197,7 +200,7 @@ export default function VigilanciaSanitariaPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-xl border border-slate-200 bg-gradient-to-br from-white via-white to-blue-50/40 shadow-sm">
         <div className="flex flex-col gap-4 p-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-3">
             <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md"><ShieldCheck size={20} /></div>
@@ -225,18 +228,28 @@ export default function VigilanciaSanitariaPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 border-t border-slate-100 p-6 md:grid-cols-2 xl:grid-cols-6">
-          <input value={filters.search} onChange={(e) => updateFilters({ search: e.target.value })} placeholder="Buscar por nome, CNAE ou responsável" className="rounded-lg border border-slate-200 px-3 py-2 text-sm xl:col-span-2" />
-          <select value={filters.unit} onChange={(e) => updateFilters({ unit: e.target.value, licenseId: 'all' })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-            <option value="all">Todas as unidades</option>
-            {SURVEILLANCE_UNITS.map((unit) => <option key={unit} value={unit}>{SURVEILLANCE_UNIT_LABELS[unit]}</option>)}
-          </select>
-          <select value={filters.expirationStatus} onChange={(e) => updateFilters({ expirationStatus: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-            <option value="all">Todos os vencimentos</option>
-            {SURVEILLANCE_EXPIRATION_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-          </select>
-          <input type="date" value={filters.validFrom} onChange={(e) => updateFilters({ validFrom: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-          <input type="date" value={filters.validTo} onChange={(e) => updateFilters({ validTo: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm" />
+        <div className="grid gap-3 border-t border-blue-100 bg-slate-50/70 p-6 md:grid-cols-2 xl:grid-cols-6">
+          <FilterField label="Busca" className="xl:col-span-2">
+            <input value={filters.search} onChange={(e) => updateFilters({ search: e.target.value })} placeholder="Nome, CNAE ou responsável" className={filterControlClassName} />
+          </FilterField>
+          <FilterField label="Unidade">
+            <select value={filters.unit} onChange={(e) => updateFilters({ unit: e.target.value, licenseId: 'all' })} className={filterControlClassName}>
+              <option value="all">Todas as unidades</option>
+              {SURVEILLANCE_UNITS.map((unit) => <option key={unit} value={unit}>{SURVEILLANCE_UNIT_LABELS[unit]}</option>)}
+            </select>
+          </FilterField>
+          <FilterField label="Vencimento">
+            <select value={filters.expirationStatus} onChange={(e) => updateFilters({ expirationStatus: e.target.value })} className={filterControlClassName}>
+              <option value="all">Todos os vencimentos</option>
+              {SURVEILLANCE_EXPIRATION_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+            </select>
+          </FilterField>
+          <FilterField label="Validade inicial">
+            <input type="date" value={filters.validFrom} onChange={(e) => updateFilters({ validFrom: e.target.value })} className={filterControlClassName} />
+          </FilterField>
+          <FilterField label="Validade final">
+            <input type="date" value={filters.validTo} onChange={(e) => updateFilters({ validTo: e.target.value })} className={filterControlClassName} />
+          </FilterField>
         </div>
       </section>
 
@@ -248,15 +261,19 @@ export default function VigilanciaSanitariaPage() {
 
       {activeTab === 'licenses' ? (
         <div className="space-y-4">
-          <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
-            <select value={filters.renewalStatus} onChange={(e) => updateFilters({ renewalStatus: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm md:w-72">
-              <option value="all">Todos os status de renovação</option>
-              {SURVEILLANCE_RENEWAL_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-            </select>
-            <button type="button" onClick={() => loadData()} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Atualizar tela
-            </button>
-          </div>
+          <TabFilterShell
+            title="Filtros de licenças"
+            description="Refine a listagem por status de renovação, mantendo os filtros gerais do cabeçalho."
+            loading={loading}
+            onRefresh={loadData}
+          >
+            <FilterField label="Status de renovação">
+              <select value={filters.renewalStatus} onChange={(e) => updateFilters({ renewalStatus: e.target.value })} className={filterControlClassName}>
+                <option value="all">Todos os status de renovação</option>
+                {SURVEILLANCE_RENEWAL_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+              </select>
+            </FilterField>
+          </TabFilterShell>
           <SurveillanceLicenseTable items={licenses.items} loading={loading} canEdit={canEdit} onEdit={(item) => openEdit('license', item)} onDelete={(item) => deleteItem('license', item)} />
           <Pagination page={licenses.page} totalPages={licenses.totalPages} total={licenses.total} onPrev={() => setLicensePage((p) => Math.max(1, p - 1))} onNext={() => setLicensePage((p) => Math.min(licenses.totalPages, p + 1))} />
         </div>
@@ -264,19 +281,25 @@ export default function VigilanciaSanitariaPage() {
 
       {activeTab === 'documents' ? (
         <div className="space-y-4">
-          <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3">
-            <select value={filters.documentType} onChange={(e) => updateFilters({ documentType: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              <option value="all">Todos os tipos</option>
-              {SURVEILLANCE_DOCUMENT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
-            </select>
-            <select value={filters.licenseId} onChange={(e) => updateFilters({ licenseId: e.target.value })} className="rounded-lg border border-slate-200 px-3 py-2 text-sm">
-              <option value="all">Todas as licenças</option>
-              {filteredLicenseOptions.map((license) => <option key={license.id} value={license.id}>{license.licenseName}</option>)}
-            </select>
-            <button type="button" onClick={() => loadData()} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Atualizar tela
-            </button>
-          </div>
+          <TabFilterShell
+            title="Filtros de documentos"
+            description="Refine a listagem por tipo de documento e vínculo com licenças cadastradas."
+            loading={loading}
+            onRefresh={loadData}
+          >
+            <FilterField label="Tipo de documento">
+              <select value={filters.documentType} onChange={(e) => updateFilters({ documentType: e.target.value })} className={filterControlClassName}>
+                <option value="all">Todos os tipos</option>
+                {SURVEILLANCE_DOCUMENT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
+              </select>
+            </FilterField>
+            <FilterField label="Licença vinculada">
+              <select value={filters.licenseId} onChange={(e) => updateFilters({ licenseId: e.target.value })} className={filterControlClassName}>
+                <option value="all">Todas as licenças</option>
+                {filteredLicenseOptions.map((license) => <option key={license.id} value={license.id}>{license.licenseName}</option>)}
+              </select>
+            </FilterField>
+          </TabFilterShell>
           <SurveillanceDocumentTable items={documents.items} loading={loading} canEdit={canEdit} onEdit={(item) => openEdit('document', item)} onDelete={(item) => deleteItem('document', item)} />
           <Pagination page={documents.page} totalPages={documents.totalPages} total={documents.total} onPrev={() => setDocumentPage((p) => Math.max(1, p - 1))} onNext={() => setDocumentPage((p) => Math.min(documents.totalPages, p + 1))} />
         </div>
@@ -292,6 +315,47 @@ export default function VigilanciaSanitariaPage() {
         onSaved={loadData}
       />
     </div>
+  );
+}
+
+function FilterField({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <label className={`flex min-w-0 flex-col gap-1 ${className || ''}`}>
+      <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+function TabFilterShell({
+  title,
+  description,
+  loading,
+  onRefresh,
+  children,
+}: {
+  title: string;
+  description: string;
+  loading: boolean;
+  onRefresh: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-blue-50/50 px-4 py-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-sm font-semibold text-slate-900">{title}</h2>
+          <p className="mt-1 text-xs text-slate-500">{description}</p>
+        </div>
+        <button type="button" onClick={onRefresh} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50">
+          {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+          Atualizar tela
+        </button>
+      </div>
+      <div className="grid gap-3 bg-white p-4 md:grid-cols-2 xl:grid-cols-4">
+        {children}
+      </div>
+    </section>
   );
 }
 

@@ -61,6 +61,12 @@ const formatBytes = (value: number) => {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 };
 
+const inputClassName =
+  'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-500';
+
+const textareaClassName =
+  'min-h-40 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-50 disabled:text-slate-500';
+
 export function SurveillanceFormModal({ open, kind, item, canEdit, licenseOptions, onClose, onSaved }: Props) {
   const [licenseForm, setLicenseForm] = useState(emptyLicenseForm);
   const [documentForm, setDocumentForm] = useState(emptyDocumentForm);
@@ -189,7 +195,7 @@ export function SurveillanceFormModal({ open, kind, item, canEdit, licenseOption
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+      <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
         <div className="flex items-start justify-between border-b border-slate-100 px-6 py-4">
           <div>
             <h2 className="text-lg font-bold text-slate-900">{title}</h2>
@@ -205,81 +211,87 @@ export function SurveillanceFormModal({ open, kind, item, canEdit, licenseOption
           {loading ? (
             <div className="rounded-xl border border-slate-100 p-8 text-center text-slate-500">Carregando...</div>
           ) : (
-            <div className="grid gap-4 lg:grid-cols-[1fr_0.8fr]">
-              <section className="space-y-4 rounded-xl border border-slate-200 p-4">
-                <h3 className="text-sm font-semibold text-slate-900">Dados principais</h3>
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+              <section className="space-y-5 rounded-2xl border border-blue-100 bg-gradient-to-br from-white to-blue-50/40 p-5">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Dados principais</h3>
+                  <p className="mt-1 text-xs text-slate-500">Informações cadastrais, validade e responsáveis pelo acompanhamento.</p>
+                </div>
                 {kind === 'license' ? (
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-4 lg:grid-cols-3">
                     <Field label="Unidade">
-                      <select disabled={!canEdit} value={licenseForm.unitName} onChange={(e) => setLicenseForm((f) => ({ ...f, unitName: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50">
+                      <select disabled={!canEdit} value={licenseForm.unitName} onChange={(e) => setLicenseForm((f) => ({ ...f, unitName: e.target.value }))} className={inputClassName}>
                         {SURVEILLANCE_UNITS.map((unit) => <option key={unit} value={unit}>{SURVEILLANCE_UNIT_LABELS[unit]}</option>)}
                       </select>
                     </Field>
                     <Field label="Validade">
-                      <input disabled={!canEdit} type="date" value={licenseForm.validUntil} onChange={(e) => setLicenseForm((f) => ({ ...f, validUntil: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
-                    </Field>
-                    <Field label="Nome da licença">
-                      <input disabled={!canEdit} value={licenseForm.licenseName} onChange={(e) => setLicenseForm((f) => ({ ...f, licenseName: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
+                      <input disabled={!canEdit} type="date" value={licenseForm.validUntil} onChange={(e) => setLicenseForm((f) => ({ ...f, validUntil: e.target.value }))} className={inputClassName} />
                     </Field>
                     <Field label="CNAE">
-                      <input disabled={!canEdit} value={licenseForm.cnae} onChange={(e) => setLicenseForm((f) => ({ ...f, cnae: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
+                      <input disabled={!canEdit} value={licenseForm.cnae} onChange={(e) => setLicenseForm((f) => ({ ...f, cnae: e.target.value }))} className={inputClassName} />
+                    </Field>
+                    <Field label="Nome da licença" className="lg:col-span-2">
+                      <input disabled={!canEdit} value={licenseForm.licenseName} onChange={(e) => setLicenseForm((f) => ({ ...f, licenseName: e.target.value }))} className={inputClassName} />
                     </Field>
                     <Field label="Número da licença/protocolo">
-                      <input disabled={!canEdit} value={licenseForm.licenseNumber} onChange={(e) => setLicenseForm((f) => ({ ...f, licenseNumber: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
+                      <input disabled={!canEdit} value={licenseForm.licenseNumber} onChange={(e) => setLicenseForm((f) => ({ ...f, licenseNumber: e.target.value }))} className={inputClassName} />
                     </Field>
                     <Field label="Órgão emissor">
-                      <input disabled={!canEdit} value={licenseForm.issuer} onChange={(e) => setLicenseForm((f) => ({ ...f, issuer: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
+                      <input disabled={!canEdit} value={licenseForm.issuer} onChange={(e) => setLicenseForm((f) => ({ ...f, issuer: e.target.value }))} className={inputClassName} />
                     </Field>
                     <Field label="Status de renovação">
-                      <select disabled={!canEdit} value={licenseForm.renewalStatus} onChange={(e) => setLicenseForm((f) => ({ ...f, renewalStatus: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50">
+                      <select disabled={!canEdit} value={licenseForm.renewalStatus} onChange={(e) => setLicenseForm((f) => ({ ...f, renewalStatus: e.target.value }))} className={inputClassName}>
                         {SURVEILLANCE_RENEWAL_STATUSES.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
                       </select>
                     </Field>
                     <Field label="Responsável interno">
-                      <input disabled={!canEdit} value={licenseForm.responsibleName} onChange={(e) => setLicenseForm((f) => ({ ...f, responsibleName: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
+                      <input disabled={!canEdit} value={licenseForm.responsibleName} onChange={(e) => setLicenseForm((f) => ({ ...f, responsibleName: e.target.value }))} className={inputClassName} />
                     </Field>
-                    <Field label="Observações" className="md:col-span-2">
-                      <textarea disabled={!canEdit} value={licenseForm.notes} onChange={(e) => setLicenseForm((f) => ({ ...f, notes: e.target.value }))} className="min-h-24 rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
+                    <Field label="Observações" className="lg:col-span-3">
+                      <textarea disabled={!canEdit} value={licenseForm.notes} onChange={(e) => setLicenseForm((f) => ({ ...f, notes: e.target.value }))} className={textareaClassName} />
                     </Field>
                   </div>
                 ) : (
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-4 lg:grid-cols-3">
                     <Field label="Unidade">
-                      <select disabled={!canEdit} value={documentForm.unitName} onChange={(e) => setDocumentForm((f) => ({ ...f, unitName: e.target.value, licenseId: '' }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50">
+                      <select disabled={!canEdit} value={documentForm.unitName} onChange={(e) => setDocumentForm((f) => ({ ...f, unitName: e.target.value, licenseId: '' }))} className={inputClassName}>
                         {SURVEILLANCE_UNITS.map((unit) => <option key={unit} value={unit}>{SURVEILLANCE_UNIT_LABELS[unit]}</option>)}
                       </select>
                     </Field>
                     <Field label="Validade">
-                      <input disabled={!canEdit} type="date" value={documentForm.validUntil} onChange={(e) => setDocumentForm((f) => ({ ...f, validUntil: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
-                    </Field>
-                    <Field label="Documento">
-                      <input disabled={!canEdit} value={documentForm.documentName} onChange={(e) => setDocumentForm((f) => ({ ...f, documentName: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
+                      <input disabled={!canEdit} type="date" value={documentForm.validUntil} onChange={(e) => setDocumentForm((f) => ({ ...f, validUntil: e.target.value }))} className={inputClassName} />
                     </Field>
                     <Field label="Tipo de documento">
-                      <select disabled={!canEdit} value={documentForm.documentType} onChange={(e) => setDocumentForm((f) => ({ ...f, documentType: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50">
+                      <select disabled={!canEdit} value={documentForm.documentType} onChange={(e) => setDocumentForm((f) => ({ ...f, documentType: e.target.value }))} className={inputClassName}>
                         {SURVEILLANCE_DOCUMENT_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}
                       </select>
                     </Field>
-                    <Field label="Licença vinculada" className="md:col-span-2">
-                      <select disabled={!canEdit} value={documentForm.licenseId} onChange={(e) => setDocumentForm((f) => ({ ...f, licenseId: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50">
+                    <Field label="Documento" className="lg:col-span-2">
+                      <input disabled={!canEdit} value={documentForm.documentName} onChange={(e) => setDocumentForm((f) => ({ ...f, documentName: e.target.value }))} className={inputClassName} />
+                    </Field>
+                    <Field label="Responsável interno">
+                      <input disabled={!canEdit} value={documentForm.responsibleName} onChange={(e) => setDocumentForm((f) => ({ ...f, responsibleName: e.target.value }))} className={inputClassName} />
+                    </Field>
+                    <Field label="Licença vinculada" className="lg:col-span-3">
+                      <select disabled={!canEdit} value={documentForm.licenseId} onChange={(e) => setDocumentForm((f) => ({ ...f, licenseId: e.target.value }))} className={inputClassName}>
                         <option value="">Sem vínculo</option>
                         {filteredLicenseOptions.map((license) => <option key={license.id} value={license.id}>{license.licenseName}</option>)}
                       </select>
                     </Field>
-                    <Field label="Responsável interno">
-                      <input disabled={!canEdit} value={documentForm.responsibleName} onChange={(e) => setDocumentForm((f) => ({ ...f, responsibleName: e.target.value }))} className="rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
-                    </Field>
-                    <Field label="Observações" className="md:col-span-2">
-                      <textarea disabled={!canEdit} value={documentForm.notes} onChange={(e) => setDocumentForm((f) => ({ ...f, notes: e.target.value }))} className="min-h-24 rounded-lg border border-slate-200 px-3 py-2 text-sm disabled:bg-slate-50" />
+                    <Field label="Observações" className="lg:col-span-3">
+                      <textarea disabled={!canEdit} value={documentForm.notes} onChange={(e) => setDocumentForm((f) => ({ ...f, notes: e.target.value }))} className={textareaClassName} />
                     </Field>
                   </div>
                 )}
               </section>
 
-              <section className="space-y-4 rounded-xl border border-slate-200 p-4">
-                <h3 className="text-sm font-semibold text-slate-900">Arquivos</h3>
+              <section className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-5">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Arquivos</h3>
+                  <p className="mt-1 text-xs text-slate-500">Anexe evidências, licenças digitalizadas e protocolos.</p>
+                </div>
                 {canEdit ? (
-                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500 hover:bg-slate-100">
+                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-blue-200 bg-white px-4 py-7 text-center text-sm text-slate-500 transition hover:border-blue-300 hover:bg-blue-50/60">
                     <FileUp size={22} className="mb-2 text-slate-400" />
                     Selecionar arquivos para upload
                     <input type="file" multiple className="hidden" onChange={(event) => setSelectedFiles(Array.from(event.target.files || []))} />
@@ -322,7 +334,7 @@ export function SurveillanceFormModal({ open, kind, item, canEdit, licenseOption
 
 function Field({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
   return (
-    <label className={`space-y-1 ${className || ''}`}>
+    <label className={`flex min-w-0 flex-col gap-1 ${className || ''}`}>
       <span className="text-xs font-semibold text-slate-600">{label}</span>
       {children}
     </label>
