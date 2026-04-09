@@ -1,28 +1,11 @@
 ﻿import { NextResponse } from 'next/server';
 import { invalidateCache } from '@/lib/api_cache';
 import { requireAgendaOcupacaoPermission } from '@/lib/agenda_ocupacao/auth';
+import { getAgendaOcupacaoDefaultRange } from '@/lib/agenda_ocupacao/date_range';
 import { AgendaOcupacaoValidationError, createAgendaOcupacaoJob } from '@/lib/agenda_ocupacao/repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const getDefaultRange = () => {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'America/Sao_Paulo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(now);
-  const byType = new Map(parts.map((p) => [p.type, p.value]));
-  const year = String(byType.get('year') || '1970');
-  const month = String(byType.get('month') || '01');
-  const day = String(byType.get('day') || '01');
-  return {
-    startDate: `${year}-${month}-01`,
-    endDate: `${year}-${month}-${day}`,
-  };
-};
 
 export async function POST(request: Request) {
   try {
@@ -41,7 +24,7 @@ export async function POST(request: Request) {
       payload = {};
     }
 
-    const defaults = getDefaultRange();
+    const defaults = getAgendaOcupacaoDefaultRange();
     const unit = String(payload.unit || payload.unitId || 'all').trim();
 
     const job = await createAgendaOcupacaoJob(

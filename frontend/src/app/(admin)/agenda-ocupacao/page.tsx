@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { Download, Loader2, RefreshCw } from "lucide-react";
+import { getAgendaOcupacaoDefaultRange } from "@/lib/agenda_ocupacao/date_range";
 import { hasPermission } from "@/lib/permissions";
 import { OccupancyTable } from "./components/OccupancyTable";
 
@@ -67,24 +68,6 @@ const formatDateTime = (value?: string | null) => {
   return parsed.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 };
 
-const getDefaultRange = () => {
-  const now = new Date();
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const byType = new Map(parts.map((p) => [p.type, p.value]));
-  const year = String(byType.get("year") || "1970");
-  const month = String(byType.get("month") || "01");
-  const day = String(byType.get("day") || "01");
-  return {
-    startDate: `${year}-${month}-01`,
-    endDate: `${year}-${month}-${day}`,
-  };
-};
-
 export default function AgendaOcupacaoPage() {
   const { data: session } = useSession();
   type SessionUser = { role?: string; permissions?: unknown };
@@ -94,7 +77,7 @@ export default function AgendaOcupacaoPage() {
   const canView = hasPermission(sessionUser.permissions, "agenda_ocupacao", "view", role);
   const canRefresh = hasPermission(sessionUser.permissions, "agenda_ocupacao", "refresh", role);
 
-  const defaults = getDefaultRange();
+  const defaults = getAgendaOcupacaoDefaultRange();
   const [startDate, setStartDate] = useState(defaults.startDate);
   const [endDate, setEndDate] = useState(defaults.endDate);
   const [unit, setUnit] = useState<"all" | "2" | "3" | "12">("all");
@@ -258,6 +241,9 @@ export default function AgendaOcupacaoPage() {
             <h1 className="text-xl font-bold text-slate-800">Ocupação da agenda por especialidade</h1>
             <p className="text-xs text-slate-500">
               Indicadores: ocupação comercial e taxa de bloqueio por especialidade e unidade.
+            </p>
+            <p className="mt-1 text-[11px] text-slate-400">
+              A tela abre com o mês atual e mais 2 meses futuros para apoiar o planejamento da agenda.
             </p>
           </div>
 

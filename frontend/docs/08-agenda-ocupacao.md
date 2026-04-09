@@ -10,6 +10,11 @@ A página `/agenda-ocupacao` mostra ocupação de agenda por:
 
 O objetivo é permitir análise operacional e cruzamento com campanhas de marketing usando granularidade diária no banco.
 
+Comportamento padrão da tela:
+
+- abre com filtro do primeiro dia do mês atual até o último dia do mês + 2 meses futuros;
+- esse recorte acompanha o horizonte abastecido automaticamente pelo worker.
+
 ## Métrica oficial
 
 `Tx. de Confirmação (%) = Agendamentos / (Horários Disponíveis + Agendamentos - Horários Bloqueados) * 100`
