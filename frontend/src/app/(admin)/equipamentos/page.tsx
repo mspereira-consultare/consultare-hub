@@ -85,6 +85,7 @@ export default function EquipamentosPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [selectedItem, setSelectedItem] = useState<EquipmentListItem | null>(null);
@@ -179,6 +180,30 @@ export default function EquipamentosPage() {
     loadItems(true);
   };
 
+  const handleDelete = async (item: EquipmentListItem) => {
+    if (!canEdit) return;
+    const ok = window.confirm(
+      `Excluir "${item.description}"? O equipamento será marcado como inativo e deixará a visão padrão da página.`,
+    );
+    if (!ok) return;
+
+    try {
+      setError(null);
+      const res = await fetch(`/api/admin/equipamentos/${encodeURIComponent(item.id)}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) throw new Error(await normalizeError(res));
+      setNotice('Equipamento inativado com sucesso.');
+      if (selectedItem?.id === item.id) {
+        setSelectedItem(null);
+        setModalOpen(false);
+      }
+      await loadItems(true);
+    } catch (err: any) {
+      setError(String(err?.message || err));
+    }
+  };
+
   const onExport = () => {
     const query = new URLSearchParams({
       search: filters.search,
@@ -248,7 +273,11 @@ export default function EquipamentosPage() {
         <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>
       ) : null}
 
-      <EquipmentTable items={items} loading={loading} canEdit={canEdit} onEdit={openEdit} />
+      {notice ? (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>
+      ) : null}
+
+      <EquipmentTable items={items} loading={loading} canEdit={canEdit} onEdit={openEdit} onDelete={handleDelete} />
 
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-slate-500">{paginationLabel}</p>

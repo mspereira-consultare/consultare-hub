@@ -58,6 +58,16 @@ export class EmployeeValidationError extends Error {
 let tablesEnsured = false;
 
 const NOW = () => new Date().toISOString();
+const TODAY_SAO_PAULO = () => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const byType = new Map(parts.map((part) => [part.type, part.value]));
+  return `${byType.get('year')}-${byType.get('month')}-${byType.get('day')}`;
+};
 const clean = (value: any) => String(value ?? '').trim();
 const upper = (value: any) => clean(value).toUpperCase();
 const bool = (value: any) =>
@@ -1219,6 +1229,44 @@ export const deactivateEmployeeDocument = async (
   const updated = await getEmployeeDocumentById(db, documentId);
   if (!updated) {
     throw new EmployeeValidationError('Falha ao carregar documento atualizado.', 500);
+  }
+  return updated;
+};
+
+export const deactivateEmployee = async (db: DbInterface, employeeId: string, actorUserId: string) => {
+  await ensureEmployeesTables(db);
+  const existing = await getEmployeeById(db, employeeId);
+  if (!existing) throw new EmployeeValidationError('Colaborador não encontrado.', 404);
+
+  const now = NOW();
+  const terminationDate = existing.terminationDate || TODAY_SAO_PAULO();
+  const terminationReason = existing.terminationReason || 'Inativado pelo painel';
+  const terminationNotes = existing.terminationNotes || 'Registro inativado pela listagem de colaboradores.';
+
+  await db.execute(
+    `
+    UPDATE employees
+    SET
+      status = 'DESLIGADO',
+      termination_date = ?,
+      termination_reason = ?,
+      termination_notes = ?,
+      updated_at = ?
+    WHERE id = ?
+    `,
+    [terminationDate, terminationReason, terminationNotes, now, employeeId]
+  );
+
+  await insertAudit(db, 'EMPLOYEE_DEACTIVATED', actorUserId, employeeId, {
+    previousStatus: existing.status,
+    nextStatus: 'DESLIGADO',
+    terminationDate,
+    terminationReason,
+  });
+
+  const updated = await getEmployeeById(db, employeeId);
+  if (!updated) {
+    throw new EmployeeValidationError('Falha ao carregar colaborador inativado.', 500);
   }
   return updated;
 };

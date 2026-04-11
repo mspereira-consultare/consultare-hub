@@ -28,9 +28,9 @@ export async function GET(request: Request) {
 
     const result = await listEmployees(auth.db, {
       search: String(searchParams.get('search') || '').trim(),
-      status: (String(searchParams.get('status') || 'all').trim().toUpperCase() as any) === 'ATIVO'
+      status: (String(searchParams.get('status') || 'ATIVO').trim().toUpperCase() as any) === 'ATIVO'
         ? 'ATIVO'
-        : (String(searchParams.get('status') || 'all').trim().toUpperCase() as any) === 'DESLIGADO'
+        : (String(searchParams.get('status') || 'ATIVO').trim().toUpperCase() as any) === 'DESLIGADO'
           ? 'DESLIGADO'
           : 'all',
       regime: (String(searchParams.get('regime') || 'all').trim().toUpperCase() as any) === 'CLT'

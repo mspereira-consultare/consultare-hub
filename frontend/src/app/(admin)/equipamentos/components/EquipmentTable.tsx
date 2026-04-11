@@ -1,4 +1,4 @@
-import { Edit3, FileText, Wrench } from 'lucide-react';
+import { Edit3, FileText, Trash2, Wrench } from 'lucide-react';
 import { EQUIPMENT_UNIT_LABELS } from '@/lib/equipamentos/constants';
 import type { EquipmentListItem } from '@/lib/equipamentos/types';
 
@@ -30,9 +30,10 @@ type EquipmentTableProps = {
   loading?: boolean;
   canEdit: boolean;
   onEdit: (item: EquipmentListItem) => void;
+  onDelete: (item: EquipmentListItem) => void;
 };
 
-export function EquipmentTable({ items, loading, canEdit, onEdit }: EquipmentTableProps) {
+export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete }: EquipmentTableProps) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
@@ -105,15 +106,27 @@ export function EquipmentTable({ items, loading, canEdit, onEdit }: EquipmentTab
                     </div>
                   </td>
                   <td className="px-4 py-4 text-right">
-                    <button
-                      type="button"
-                      onClick={() => onEdit(item)}
-                      disabled={!canEdit}
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Edit3 size={14} />
-                      Editar
-                    </button>
+                    <div className="inline-flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onEdit(item)}
+                        disabled={!canEdit}
+                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Edit3 size={14} />
+                        Editar
+                      </button>
+                      {canEdit && item.operationalStatus !== 'INATIVO' && item.operationalStatus !== 'DESCARTADO' ? (
+                        <button
+                          type="button"
+                          onClick={() => onDelete(item)}
+                          className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50"
+                        >
+                          <Trash2 size={14} />
+                          Excluir
+                        </button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireEquipamentosPermission } from '@/lib/equipamentos/auth';
-import { getEquipmentById, updateEquipment } from '@/lib/equipamentos/repository';
+import { deactivateEquipment, getEquipmentById, updateEquipment } from '@/lib/equipamentos/repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -43,4 +43,21 @@ export async function PUT(request: Request, context: ParamsContext) {
       { status: Number(error?.status) || 500 },
     );
   }
-}
+}
+
+export async function DELETE(_: Request, context: ParamsContext) {
+  try {
+    const auth = await requireEquipamentosPermission('edit');
+    if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+
+    const { id } = await context.params;
+    const data = await deactivateEquipment(auth.db, String(id || ''));
+    return NextResponse.json({ status: 'success', data });
+  } catch (error: any) {
+    console.error('Erro ao inativar equipamento:', error);
+    return NextResponse.json(
+      { error: error?.message || 'Erro interno ao inativar equipamento.' },
+      { status: Number(error?.status) || 500 },
+    );
+  }
+}

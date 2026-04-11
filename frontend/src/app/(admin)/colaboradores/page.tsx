@@ -223,7 +223,7 @@ const emptyOptions: EmployeesOptionsPayload = {
 
 const emptyFilters = (): FiltersState => ({
   search: '',
-  status: 'all',
+  status: 'ATIVO',
   regime: 'all',
   unit: 'all',
   asoStatus: 'all',
@@ -533,18 +533,19 @@ export default function ColaboradoresPage() {
   const [recessForm, setRecessForm] = useState<RecessFormState>(emptyRecessForm());
   const [recessEditingId, setRecessEditingId] = useState<string | null>(null);
   const [recessSaving, setRecessSaving] = useState(false);
+  const defaultListFilters = useMemo(() => emptyFilters(), []);
 
   const filtersApplied = useMemo(
     () =>
       Boolean(
-        filters.search ||
-          filters.status !== 'all' ||
-          filters.regime !== 'all' ||
-          filters.unit !== 'all' ||
-          filters.asoStatus !== 'all' ||
-          filters.pendencyStatus !== 'all'
+        filters.search !== defaultListFilters.search ||
+          filters.status !== defaultListFilters.status ||
+          filters.regime !== defaultListFilters.regime ||
+          filters.unit !== defaultListFilters.unit ||
+          filters.asoStatus !== defaultListFilters.asoStatus ||
+          filters.pendencyStatus !== defaultListFilters.pendencyStatus
       ),
-    [filters]
+    [defaultListFilters, filters]
   );
 
   const documentSummary = useMemo(() => {
@@ -674,6 +675,33 @@ export default function ColaboradoresPage() {
   const openCreate = () => {
     resetModalState();
     setIsModalOpen(true);
+  };
+
+  const deleteEmployee = async (employee: EmployeeListItem) => {
+    if (!canEdit) return;
+    const ok = window.confirm(
+      `Excluir "${employee.fullName}"? O colaborador será marcado como desligado e sairá da visão padrão da página.`,
+    );
+    if (!ok) return;
+
+    try {
+      setError('');
+      setNotice('');
+      await fetchJson<{ status: string; data: EmployeeListItem }>(
+        `/api/admin/colaboradores/${encodeURIComponent(employee.id)}`,
+        { method: 'DELETE' }
+      );
+      if (currentEmployeeId === employee.id) {
+        setIsModalOpen(false);
+        resetModalState();
+      }
+      setPagination((prev) => ({ ...prev, page: 1 }));
+      await loadList(1, appliedFilters);
+      setNotice('Colaborador inativado com sucesso.');
+    } catch (deleteError: any) {
+      console.error('Erro ao inativar colaborador:', deleteError);
+      setError(deleteError?.message || 'Falha ao inativar colaborador.');
+    }
   };
 
   const openEdit = async (employeeId: string) => {
@@ -1268,14 +1296,26 @@ export default function ColaboradoresPage() {
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(item.id)}
-                        className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
-                      >
-                        <Edit3 size={12} />
-                        {canEdit ? 'Editar' : 'Ver'}
-                      </button>
+                      <div className="inline-flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openEdit(item.id)}
+                          className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          <Edit3 size={12} />
+                          {canEdit ? 'Editar' : 'Ver'}
+                        </button>
+                        {canEdit && item.status === 'ATIVO' ? (
+                          <button
+                            type="button"
+                            onClick={() => deleteEmployee(item)}
+                            className="inline-flex items-center gap-1 rounded-md border border-rose-200 px-2.5 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                          >
+                            <Trash2 size={12} />
+                            Excluir
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 ))

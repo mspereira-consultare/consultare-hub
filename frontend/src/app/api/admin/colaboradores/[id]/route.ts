@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   EmployeeValidationError,
+  deactivateEmployee,
   getEmployeeById,
   updateEmployee,
 } from '@/lib/colaboradores/repository';
@@ -48,5 +49,22 @@ export async function PUT(request: Request, context: ParamsContext) {
     console.error('Erro ao atualizar colaborador:', error);
     const status = error instanceof EmployeeValidationError ? error.status : Number(error?.status) || 500;
     return NextResponse.json({ error: error?.message || 'Erro interno ao atualizar colaborador.' }, { status });
+  }
+}
+
+export async function DELETE(_: Request, context: ParamsContext) {
+  try {
+    const auth = await requireColaboradoresPermission('edit');
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status });
+    }
+
+    const { id } = await context.params;
+    const updated = await deactivateEmployee(auth.db, String(id || ''), auth.userId);
+    return NextResponse.json({ status: 'success', data: updated });
+  } catch (error: any) {
+    console.error('Erro ao inativar colaborador:', error);
+    const status = error instanceof EmployeeValidationError ? error.status : Number(error?.status) || 500;
+    return NextResponse.json({ error: error?.message || 'Erro interno ao inativar colaborador.' }, { status });
   }
 }

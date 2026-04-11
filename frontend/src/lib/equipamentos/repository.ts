@@ -344,7 +344,7 @@ export const normalizeEquipmentFilters = (params: URLSearchParams | Record<strin
   const page = clamp(Number(getParam('page') || 1), 1, 999999);
   const pageSize = clamp(Number(getParam('pageSize') || DEFAULT_PAGE_SIZE), 1, MAX_PAGE_SIZE);
   const calibrationStatus = upper(getParam('calibrationStatus') || 'ALL');
-  const operationalStatus = upper(getParam('operationalStatus') || 'ALL');
+  const operationalStatus = upper(getParam('operationalStatus') || 'ATIVO');
 
   return {
     search: clean(getParam('search')),
@@ -640,6 +640,25 @@ export const updateEquipment = async (
 
   const item = await getEquipmentById(db, equipmentId);
   if (!item) throw new EquipmentValidationError('Falha ao atualizar equipamento.', 500);
+  return item;
+};
+
+export const deactivateEquipment = async (db: DbInterface, equipmentId: string): Promise<EquipmentListItem> => {
+  await ensureEquipmentTables(db);
+  await ensureEquipmentExists(db, equipmentId);
+
+  await db.execute(
+    `
+    UPDATE clinic_equipment
+    SET operational_status = 'INATIVO',
+        updated_at = ?
+    WHERE id = ?
+    `,
+    [NOW(), equipmentId],
+  );
+
+  const item = await getEquipmentById(db, equipmentId);
+  if (!item) throw new EquipmentValidationError('Falha ao carregar equipamento inativado.', 500);
   return item;
 };
 
