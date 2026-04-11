@@ -3,6 +3,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
+  ChevronDown,
+  ChevronUp,
   CheckCircle2,
   FileDown,
   FileSpreadsheet,
@@ -10,7 +12,6 @@ import {
   LayoutList,
   Loader2,
   RefreshCw,
-  Sparkles,
   Target,
   TrendingUp,
 } from 'lucide-react';
@@ -112,6 +113,7 @@ export default function GoalsDashboardPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [lastUpdated, setLastUpdated] = useState(new Date());
   const [selectedGoal, setSelectedGoal] = useState<DashboardGoal | null>(null);
+  const [filtersVisible, setFiltersVisible] = useState(true);
   const [filtersExpanded, setFiltersExpanded] = useState(false);
   const [filters, setFilters] = useState<GoalFilters>(DEFAULT_FILTERS);
   const [groupsOptions, setGroupsOptions] = useState<string[]>([]);
@@ -420,16 +422,15 @@ export default function GoalsDashboardPage() {
     <div className="min-h-screen bg-slate-50 p-4 md:p-6">
       <div className="mx-auto max-w-[1800px] space-y-6">
         <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-5 border-b border-slate-200 px-6 py-6 xl:flex-row xl:items-start xl:justify-between">
-            <div className="space-y-2">
-              <div className="inline-flex items-center gap-2 rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-blue-700">
-                <Sparkles size={14} />
-                Dashboard de metas
+          <div className="flex flex-col gap-5 px-6 py-6 xl:flex-row xl:items-start xl:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-700 text-white shadow-sm">
+                <Target size={24} />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-slate-900 md:text-3xl">Painel executivo de metas</h1>
-                <p className="mt-1 max-w-3xl text-sm text-slate-500">
-                  Visualização mais organizada para acompanhar performance, identificar gargalos e navegar por área sem poluição visual.
+              <div className="space-y-1">
+                <h1 className="text-2xl font-bold text-slate-900 md:text-[2rem]">Metas / Dashboard</h1>
+                <p className="max-w-3xl text-sm text-slate-500">
+                  Acompanhamento consolidado das metas por área, com leitura executiva, filtros e detalhamento por indicador.
                 </p>
               </div>
             </div>
@@ -464,128 +465,157 @@ export default function GoalsDashboardPage() {
             </div>
           </div>
 
-          <div className="space-y-4 px-6 py-5">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-              <div className="space-y-1.5 xl:col-span-2">
-                <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Buscar meta</label>
-                <input
-                  type="text"
-                  value={filters.name}
-                  onChange={(event) => setFilters((current) => ({ ...current, name: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-                  placeholder="Digite o nome da meta"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Status</label>
-                <select
-                  value={filters.status}
-                  onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-                >
-                  {STATUS_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Escopo</label>
-                <select
-                  value={filters.scope}
-                  onChange={(event) => setFilters((current) => ({ ...current, scope: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-                >
-                  <option value="all">Todos os escopos</option>
-                  {GOAL_SCOPES.map((scope) => (
-                    <option key={scope.value} value={scope.value}>
-                      {scope.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Periodicidade</label>
-                <select
-                  value={filters.periodicity}
-                  onChange={(event) => setFilters((current) => ({ ...current, periodicity: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-                >
-                  <option value="all">Todas as periodicidades</option>
-                  {PERIODICITY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Unidade clínica</label>
-                <select
-                  value={filters.clinic_unit}
-                  onChange={(event) => setFilters((current) => ({ ...current, clinic_unit: event.target.value }))}
-                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
-                >
-                  <option value="all">Todas as unidades</option>
-                  {availableOptions.clinicUnits.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="text-xs text-slate-500">
-                Última atualização: <span className="font-semibold text-slate-700">{formatLastUpdated(lastUpdated)}</span>
+          <div className="border-t border-slate-200 px-6 py-5">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+              <div className="space-y-1">
+                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Filtros do painel</div>
+                <p className="text-sm text-slate-500">
+                  {filtersVisible
+                    ? 'Refine o recorte por nome, status, escopo, periodicidade e contexto.'
+                    : 'Filtros recolhidos para priorizar a leitura do painel.'}
+                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  onClick={() => setFiltersExpanded((current) => !current)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
-                >
-                  <Filter size={16} />
-                  {filtersExpanded ? 'Recolher filtros avançados' : 'Filtros avançados'}
-                </button>
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                  Última atualização: {formatLastUpdated(lastUpdated)}
+                </span>
 
                 <button
-                  onClick={() => {
-                    setFilters(DEFAULT_FILTERS);
-                    setActiveTab('executive');
-                  }}
-                  disabled={!hasActiveFilters}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  onClick={() => setFiltersVisible((current) => !current)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                 >
-                  Limpar filtros
+                  {filtersVisible ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  {filtersVisible ? 'Recolher filtros' : 'Mostrar filtros'}
                 </button>
               </div>
             </div>
 
-            {filtersExpanded && (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {filtersVisible && (
+              <>
+                <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+                  <div className="space-y-1.5 xl:col-span-2">
+                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Buscar meta</label>
+                    <input
+                      type="text"
+                      value={filters.name}
+                      onChange={(event) => setFilters((current) => ({ ...current, name: event.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                      placeholder="Digite o nome da meta"
+                    />
+                  </div>
+
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Setor</label>
+                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Status</label>
                     <select
-                      value={filters.sector}
-                      onChange={(event) => setFilters((current) => ({ ...current, sector: event.target.value }))}
+                      value={filters.status}
+                      onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
                       className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                     >
-                      <option value="all">Todos os setores</option>
-                      {(SECTORS.length ? SECTORS : availableOptions.sectors).map((option) => (
+                      {STATUS_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Escopo</label>
+                    <select
+                      value={filters.scope}
+                      onChange={(event) => setFilters((current) => ({ ...current, scope: event.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                    >
+                      <option value="all">Todos os escopos</option>
+                      {GOAL_SCOPES.map((scope) => (
+                        <option key={scope.value} value={scope.value}>
+                          {scope.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Periodicidade</label>
+                    <select
+                      value={filters.periodicity}
+                      onChange={(event) => setFilters((current) => ({ ...current, periodicity: event.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                    >
+                      <option value="all">Todas as periodicidades</option>
+                      {PERIODICITY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Unidade clínica</label>
+                    <select
+                      value={filters.clinic_unit}
+                      onChange={(event) => setFilters((current) => ({ ...current, clinic_unit: event.target.value }))}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                    >
+                      <option value="all">Todas as unidades</option>
+                      {availableOptions.clinicUnits.map((option) => (
                         <option key={option} value={option}>
                           {option}
                         </option>
                       ))}
                     </select>
                   </div>
+                </div>
+
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs text-slate-500">
+                    {hasActiveFilters
+                      ? `${appliedFilters.length} filtro(s) ativo(s) no recorte atual.`
+                      : 'Sem filtros adicionais aplicados.'}
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => setFiltersExpanded((current) => !current)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                    >
+                      <Filter size={16} />
+                      {filtersExpanded ? 'Recolher filtros avançados' : 'Filtros avançados'}
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        setFilters(DEFAULT_FILTERS);
+                        setActiveTab('executive');
+                      }}
+                      disabled={!hasActiveFilters}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Limpar filtros
+                    </button>
+                  </div>
+                </div>
+
+                {filtersExpanded && (
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Setor</label>
+                        <select
+                          value={filters.sector}
+                          onChange={(event) => setFilters((current) => ({ ...current, sector: event.target.value }))}
+                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                        >
+                          <option value="all">Todos os setores</option>
+                          {(SECTORS.length ? SECTORS : availableOptions.sectors).map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
 
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Indicador (KPI)</label>
@@ -713,21 +743,39 @@ export default function GoalsDashboardPage() {
               </div>
             )}
 
-            {hasActiveFilters && (
-              <div className="rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-blue-800">
-                Exibindo <span className="font-bold">{filteredGoals.length}</span> de <span className="font-bold">{goals.length}</span> metas com filtros aplicados.
-              </div>
+                {hasActiveFilters && (
+                  <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-blue-800">
+                    Exibindo <span className="font-bold">{filteredGoals.length}</span> de <span className="font-bold">{goals.length}</span>{' '}
+                    metas com filtros aplicados.
+                  </div>
+                )}
+
+                {errorMessage && (
+                  <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {errorMessage}
+                  </div>
+                )}
+              </>
             )}
 
-            {errorMessage && (
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                {errorMessage}
+            {!filtersVisible && (
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-sm text-slate-500">
+                  {hasActiveFilters
+                    ? `${appliedFilters.length} filtro(s) ativo(s) com o painel recolhido.`
+                    : 'Nenhum filtro adicional aplicado no momento.'}
+                </div>
+                {errorMessage && (
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {errorMessage}
+                  </div>
+                )}
               </div>
             )}
           </div>
         </section>
 
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
           <SummaryCard
             title="Total de metas"
             value={String(totalGoals)}
@@ -857,14 +905,14 @@ function SummaryCard({
   } as const;
 
   return (
-    <div className={`rounded-3xl border px-5 py-5 shadow-sm ${styles[tone]}`}>
+    <div className={`rounded-[24px] border px-4 py-4 shadow-sm ${styles[tone]}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{title}</p>
-          <h3 className="mt-3 text-3xl font-bold text-slate-900">{value}</h3>
-          <p className="mt-2 text-sm text-slate-500">{subtitle}</p>
+          <h3 className="mt-2.5 text-2xl font-bold text-slate-900 md:text-[1.75rem]">{value}</h3>
+          <p className="mt-1.5 text-xs text-slate-500 md:text-sm">{subtitle}</p>
         </div>
-        <div className="rounded-2xl bg-white/90 p-3 shadow-sm">{icon}</div>
+        <div className="rounded-2xl bg-white/90 p-2.5 shadow-sm">{icon}</div>
       </div>
     </div>
   );
