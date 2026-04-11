@@ -420,16 +420,16 @@ export default function GoalsDashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 md:p-6">
-      <div className="mx-auto max-w-[1800px] space-y-6">
-        <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-5 px-6 py-6 xl:flex-row xl:items-start xl:justify-between">
-            <div className="flex items-start gap-4">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-700 text-white shadow-sm">
-                <Target size={24} />
+      <div className="mx-auto max-w-[1800px] space-y-5">
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-900 text-white shadow-sm">
+                <Target size={20} />
               </div>
-              <div className="space-y-1">
-                <h1 className="text-2xl font-bold text-slate-900 md:text-[2rem]">Metas / Dashboard</h1>
-                <p className="max-w-3xl text-sm text-slate-500">
+              <div className="space-y-0.5">
+                <h1 className="text-xl font-bold text-slate-800">Metas / Dashboard</h1>
+                <p className="max-w-2xl text-xs text-slate-500">
                   Acompanhamento consolidado das metas por área, com leitura executiva, filtros e detalhamento por indicador.
                 </p>
               </div>
@@ -439,7 +439,7 @@ export default function GoalsDashboardPage() {
               <button
                 onClick={() => handleExport('xlsx')}
                 disabled={loading || exportingXlsx || exportingPdf}
-                className="inline-flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {exportingXlsx ? <Loader2 className="animate-spin" size={16} /> : <FileSpreadsheet size={16} />}
                 Exportar XLSX
@@ -448,7 +448,7 @@ export default function GoalsDashboardPage() {
               <button
                 onClick={() => handleExport('pdf')}
                 disabled={loading || exportingXlsx || exportingPdf}
-                className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-700 transition hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {exportingPdf ? <Loader2 className="animate-spin" size={16} /> : <FileDown size={16} />}
                 Exportar PDF
@@ -457,7 +457,7 @@ export default function GoalsDashboardPage() {
               <button
                 onClick={() => fetchData(true)}
                 disabled={loading}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {loading ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
                 Atualizar
@@ -465,11 +465,11 @@ export default function GoalsDashboardPage() {
             </div>
           </div>
 
-          <div className="border-t border-slate-200 px-6 py-5">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-              <div className="space-y-1">
-                <div className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Filtros do painel</div>
-                <p className="text-sm text-slate-500">
+          <div className="border-t border-slate-100 px-5 py-3.5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="space-y-0.5">
+                <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Filtros do painel</div>
+                <p className="text-xs text-slate-500">
                   {filtersVisible
                     ? 'Refine o recorte por nome, status, escopo, periodicidade e contexto.'
                     : 'Filtros recolhidos para priorizar a leitura do painel.'}
@@ -477,13 +477,13 @@ export default function GoalsDashboardPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-[11px] font-medium text-slate-600">
                   Última atualização: {formatLastUpdated(lastUpdated)}
                 </span>
 
                 <button
                   onClick={() => setFiltersVisible((current) => !current)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                 >
                   {filtersVisible ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   {filtersVisible ? 'Recolher filtros' : 'Mostrar filtros'}
@@ -493,24 +493,24 @@ export default function GoalsDashboardPage() {
 
             {filtersVisible && (
               <>
-                <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-                  <div className="space-y-1.5 xl:col-span-2">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Buscar meta</label>
+                <div className="mt-3.5 grid gap-3 md:grid-cols-2 xl:grid-cols-12">
+                  <div className="space-y-1.5 xl:col-span-4">
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Buscar meta</label>
                     <input
                       type="text"
                       value={filters.name}
                       onChange={(event) => setFilters((current) => ({ ...current, name: event.target.value }))}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                       placeholder="Digite o nome da meta"
                     />
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Status</label>
+                  <div className="space-y-1.5 xl:col-span-2">
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Status</label>
                     <select
                       value={filters.status}
                       onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                     >
                       {STATUS_OPTIONS.map((option) => (
                         <option key={option.value} value={option.value}>
@@ -520,12 +520,12 @@ export default function GoalsDashboardPage() {
                     </select>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Escopo</label>
+                  <div className="space-y-1.5 xl:col-span-2">
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Escopo</label>
                     <select
                       value={filters.scope}
                       onChange={(event) => setFilters((current) => ({ ...current, scope: event.target.value }))}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                     >
                       <option value="all">Todos os escopos</option>
                       {GOAL_SCOPES.map((scope) => (
@@ -536,12 +536,12 @@ export default function GoalsDashboardPage() {
                     </select>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Periodicidade</label>
+                  <div className="space-y-1.5 xl:col-span-2">
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Periodicidade</label>
                     <select
                       value={filters.periodicity}
                       onChange={(event) => setFilters((current) => ({ ...current, periodicity: event.target.value }))}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                     >
                       <option value="all">Todas as periodicidades</option>
                       {PERIODICITY_OPTIONS.map((option) => (
@@ -552,12 +552,12 @@ export default function GoalsDashboardPage() {
                     </select>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Unidade clínica</label>
+                  <div className="space-y-1.5 xl:col-span-2">
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Unidade clínica</label>
                     <select
                       value={filters.clinic_unit}
                       onChange={(event) => setFilters((current) => ({ ...current, clinic_unit: event.target.value }))}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                     >
                       <option value="all">Todas as unidades</option>
                       {availableOptions.clinicUnits.map((option) => (
@@ -569,8 +569,8 @@ export default function GoalsDashboardPage() {
                   </div>
                 </div>
 
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-xs text-slate-500">
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-[11px] text-slate-500">
                     {hasActiveFilters
                       ? `${appliedFilters.length} filtro(s) ativo(s) no recorte atual.`
                       : 'Sem filtros adicionais aplicados.'}
@@ -579,7 +579,7 @@ export default function GoalsDashboardPage() {
                   <div className="flex flex-wrap items-center gap-2">
                     <button
                       onClick={() => setFiltersExpanded((current) => !current)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
                     >
                       <Filter size={16} />
                       {filtersExpanded ? 'Recolher filtros avançados' : 'Filtros avançados'}
@@ -591,7 +591,7 @@ export default function GoalsDashboardPage() {
                         setActiveTab('executive');
                       }}
                       disabled={!hasActiveFilters}
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       Limpar filtros
                     </button>
@@ -599,14 +599,14 @@ export default function GoalsDashboardPage() {
                 </div>
 
                 {filtersExpanded && (
-                  <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/80 p-4">
                     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                       <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Setor</label>
+                        <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Setor</label>
                         <select
                           value={filters.sector}
                           onChange={(event) => setFilters((current) => ({ ...current, sector: event.target.value }))}
-                          className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
+                          className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-700 outline-none transition focus:border-blue-300 focus:ring-4 focus:ring-blue-100"
                         >
                           <option value="all">Todos os setores</option>
                           {(SECTORS.length ? SECTORS : availableOptions.sectors).map((option) => (
@@ -618,7 +618,7 @@ export default function GoalsDashboardPage() {
                       </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Indicador (KPI)</label>
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Indicador (KPI)</label>
                     <select
                       value={filters.linked_kpi_id}
                       onChange={(event) => setFilters((current) => ({ ...current, linked_kpi_id: event.target.value }))}
@@ -634,7 +634,7 @@ export default function GoalsDashboardPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Unidade de medida</label>
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Unidade de medida</label>
                     <select
                       value={filters.unit}
                       onChange={(event) => setFilters((current) => ({ ...current, unit: event.target.value }))}
@@ -650,7 +650,7 @@ export default function GoalsDashboardPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Grupo de procedimento</label>
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Grupo de procedimento</label>
                     <select
                       value={filters.filter_group}
                       onChange={(event) => setFilters((current) => ({ ...current, filter_group: event.target.value }))}
@@ -667,7 +667,7 @@ export default function GoalsDashboardPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Colaborador</label>
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Colaborador</label>
                     <select
                       value={filters.collaborator}
                       onChange={(event) => setFilters((current) => ({ ...current, collaborator: event.target.value }))}
@@ -683,7 +683,7 @@ export default function GoalsDashboardPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Equipe</label>
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Equipe</label>
                     <select
                       value={filters.team}
                       onChange={(event) => setFilters((current) => ({ ...current, team: event.target.value }))}
@@ -699,7 +699,7 @@ export default function GoalsDashboardPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Vigência inicial</label>
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Vigência inicial</label>
                     <input
                       type="date"
                       value={filters.start_date}
@@ -709,7 +709,7 @@ export default function GoalsDashboardPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Vigência final</label>
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Vigência final</label>
                     <input
                       type="date"
                       value={filters.end_date}
@@ -719,7 +719,7 @@ export default function GoalsDashboardPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Meta mínima</label>
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Meta mínima</label>
                     <input
                       type="number"
                       value={filters.target_min}
@@ -730,7 +730,7 @@ export default function GoalsDashboardPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">Meta máxima</label>
+                    <label className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Meta máxima</label>
                     <input
                       type="number"
                       value={filters.target_max}
@@ -744,14 +744,14 @@ export default function GoalsDashboardPage() {
             )}
 
                 {hasActiveFilters && (
-                  <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-blue-800">
+                  <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-sm text-blue-800">
                     Exibindo <span className="font-bold">{filteredGoals.length}</span> de <span className="font-bold">{goals.length}</span>{' '}
                     metas com filtros aplicados.
                   </div>
                 )}
 
                 {errorMessage && (
-                  <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  <div className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                     {errorMessage}
                   </div>
                 )}
@@ -759,14 +759,14 @@ export default function GoalsDashboardPage() {
             )}
 
             {!filtersVisible && (
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                <div className="text-sm text-slate-500">
+              <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs text-slate-500">
                   {hasActiveFilters
                     ? `${appliedFilters.length} filtro(s) ativo(s) com o painel recolhido.`
                     : 'Nenhum filtro adicional aplicado no momento.'}
                 </div>
                 {errorMessage && (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
                     {errorMessage}
                   </div>
                 )}
@@ -807,7 +807,7 @@ export default function GoalsDashboardPage() {
         </section>
 
         <section className="space-y-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+          <div className="flex items-center gap-2 text-[13px] font-semibold text-slate-700">
             <LayoutList size={16} className="text-blue-600" />
             Navegação por área
           </div>
@@ -815,7 +815,7 @@ export default function GoalsDashboardPage() {
           <GoalsDashboardTabNav tabs={tabDefinitions} activeTab={activeTab} onChange={setActiveTab} />
 
           {loading && goals.length === 0 ? (
-            <div className="flex min-h-[320px] flex-col items-center justify-center rounded-3xl border border-slate-200 bg-white text-slate-400 shadow-sm">
+            <div className="flex min-h-[320px] flex-col items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 shadow-sm">
               <Loader2 size={40} className="mb-4 animate-spin text-blue-600" />
               <p className="text-sm">Calculando indicadores...</p>
             </div>
@@ -829,13 +829,13 @@ export default function GoalsDashboardPage() {
             />
           ) : (
             <section className="space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+              <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
                 <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900">{tabDefinitions.find((tab) => tab.id === activeTab)?.label || 'Metas'}</h2>
-                    <p className="text-sm text-slate-500">Lista analítica ordenada alfabeticamente para leitura rápida e comparação entre metas.</p>
+                    <h2 className="text-base font-bold text-slate-900">{tabDefinitions.find((tab) => tab.id === activeTab)?.label || 'Metas'}</h2>
+                    <p className="text-xs text-slate-500">Lista analítica ordenada alfabeticamente para leitura rápida e comparação entre metas.</p>
                   </div>
-                  <div className="text-sm text-slate-500">{visibleGoals.length} meta(s) na aba atual</div>
+                  <div className="text-xs text-slate-500">{visibleGoals.length} meta(s) na aba atual</div>
                 </div>
               </div>
 
@@ -851,13 +851,13 @@ export default function GoalsDashboardPage() {
           )}
 
           {!loading && goals.length === 0 && (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
               Nenhuma meta configurada para o período atual.
             </div>
           )}
 
           {!loading && goals.length > 0 && filteredGoals.length === 0 && (
-            <div className="rounded-3xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
+            <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
               Nenhuma meta encontrada com os filtros aplicados.
             </div>
           )}
@@ -905,14 +905,14 @@ function SummaryCard({
   } as const;
 
   return (
-    <div className={`rounded-[24px] border px-4 py-4 shadow-sm ${styles[tone]}`}>
+    <div className={`rounded-xl border px-4 py-3.5 shadow-sm ${styles[tone]}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">{title}</p>
-          <h3 className="mt-2.5 text-2xl font-bold text-slate-900 md:text-[1.75rem]">{value}</h3>
-          <p className="mt-1.5 text-xs text-slate-500 md:text-sm">{subtitle}</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">{title}</p>
+          <h3 className="mt-2 text-xl font-bold text-slate-900 md:text-2xl">{value}</h3>
+          <p className="mt-1 text-[11px] text-slate-500 md:text-xs">{subtitle}</p>
         </div>
-        <div className="rounded-2xl bg-white/90 p-2.5 shadow-sm">{icon}</div>
+        <div className="rounded-xl bg-white/90 p-2 shadow-sm">{icon}</div>
       </div>
     </div>
   );
