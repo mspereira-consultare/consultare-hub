@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 const CACHE_TTL_MS = 15000;
 const ACTIVE_MAX_AGE_HOURS = Math.max(
   1,
-  Number.parseInt(process.env.MEDIC_API_ACTIVE_MAX_AGE_HOURS || '12', 10) || 12
+  Number.parseInt(process.env.MEDIC_API_ACTIVE_MAX_AGE_HOURS || '12', 10) || 12,
 );
 
 function getSaoPauloNow() {
@@ -32,6 +32,13 @@ function getSaoPauloNow() {
   };
 }
 
+function getSaoPauloToday() {
+  const now = getSaoPauloNow();
+  const month = String(now.month).padStart(2, '0');
+  const day = String(now.day).padStart(2, '0');
+  return `${now.year}-${month}-${day}`;
+}
+
 function computeCurrentWaitMinutes(arrivalRaw: string, fallbackMinutes: number) {
   const arrival = String(arrivalRaw || '').trim();
   const match = arrival.match(/^(\d{1,2}):(\d{2})/);
@@ -51,12 +58,12 @@ function computeCurrentWaitMinutes(arrivalRaw: string, fallbackMinutes: number) 
   return diff;
 }
 
-function normalizeUnitId(dbName: string): string { 
-  const upper = (dbName || '').toUpperCase(); 
-  if (upper.includes("OURO")) return "Ouro Verde"; 
-  if (upper.includes("CAMBUI") || upper.includes("CAMBUÍ")) return "Centro Cambui"; 
-  if (upper.includes("SHOPPING") || upper.includes("CAMPINAS")) return "Campinas Shopping";
-  return dbName; 
+function normalizeUnitId(dbName: string): string {
+  const upper = (dbName || '').toUpperCase();
+  if (upper.includes('OURO')) return 'Ouro Verde';
+  if (upper.includes('CAMBUI') || upper.includes('CAMBUÍ')) return 'Centro Cambui';
+  if (upper.includes('SHOPPING') || upper.includes('CAMPINAS')) return 'Campinas Shopping';
+  return dbName;
 }
 
 export async function GET() {
@@ -66,20 +73,19 @@ export async function GET() {
       const isMysql = String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql'
         || !!process.env.MYSQL_URL
         || !!process.env.MYSQL_PUBLIC_URL;
+      const todaySaoPaulo = getSaoPauloToday();
 
-      // Inicializa unidades
       const unitsMap = new Map<string, any>();
-      ["Ouro Verde", "Centro Cambui", "Campinas Shopping"].forEach(id => {
+      ['Ouro Verde', 'Centro Cambui', 'Campinas Shopping'].forEach((id) => {
         unitsMap.set(id, {
           id,
           name: id.toUpperCase(),
           patients: [],
           totalAttended: 0,
-          averageWaitDay: 0
+          averageWaitDay: 0,
         });
       });
 
-      // 1️⃣ FILA ATUAL (somente ativos recentes)
       const filaSql = isMysql
         ? `
           SELECT hash_id, unidade, paciente, chegada, espera_minutos, status, profissional, updated_at
@@ -103,7 +109,7 @@ export async function GET() {
         `;
       const filaRows = await db.query(filaSql);
 
-      (filaRows as any[]).forEach(row => {
+      (filaRows as any[]).forEach((row) => {
         const normalizedId = normalizeUnitId(row.unidade);
         const targetUnit = unitsMap.get(normalizedId);
         if (!targetUnit) return;
@@ -126,30 +132,29 @@ export async function GET() {
           priority: {
             isElderly: row.paciente?.toLowerCase().includes('idoso'),
             isWheelchair: row.paciente?.toLowerCase().includes('cadeirante'),
-            isPregnant: row.paciente?.toLowerCase().includes('gestante')
-          }
+            isPregnant: row.paciente?.toLowerCase().includes('gestante'),
+          },
         });
       });
 
-      // 2️⃣ TOTAL ATENDIDOS HOJE
       const attendedSql = isMysql
         ? `
           SELECT unidade, COUNT(*) as total
           FROM espera_medica
           WHERE status LIKE 'Finalizado%'
-            AND DATE(updated_at) = CURDATE()
+            AND DATE(updated_at) = ?
           GROUP BY unidade
         `
         : `
           SELECT unidade, COUNT(*) as total
           FROM espera_medica
           WHERE status LIKE 'Finalizado%'
-            AND date(updated_at) = date('now')
+            AND date(updated_at) = ?
           GROUP BY unidade
         `;
-      const attendedRows = await db.query(attendedSql);
+      const attendedRows = await db.query(attendedSql, [todaySaoPaulo]);
 
-      (attendedRows as any[]).forEach(row => {
+      (attendedRows as any[]).forEach((row) => {
         const normalizedId = normalizeUnitId(row.unidade);
         const targetUnit = unitsMap.get(normalizedId);
         if (targetUnit) {
@@ -157,13 +162,12 @@ export async function GET() {
         }
       });
 
-      // 3️⃣ MÉDIA DE ESPERA DO DIA
       const avgSql = isMysql
         ? `
           SELECT unidade, ROUND(AVG(espera_minutos), 0) as media
           FROM espera_medica
           WHERE status LIKE 'Finalizado%'
-            AND DATE(updated_at) = CURDATE()
+            AND DATE(updated_at) = ?
             AND espera_minutos IS NOT NULL
             AND espera_minutos BETWEEN 0 AND 240
           GROUP BY unidade
@@ -172,14 +176,14 @@ export async function GET() {
           SELECT unidade, ROUND(AVG(espera_minutos), 0) as media
           FROM espera_medica
           WHERE status LIKE 'Finalizado%'
-            AND date(updated_at) = date('now')
+            AND date(updated_at) = ?
             AND espera_minutos IS NOT NULL
             AND espera_minutos BETWEEN 0 AND 240
           GROUP BY unidade
         `;
-      const avgRows = await db.query(avgSql);
+      const avgRows = await db.query(avgSql, [todaySaoPaulo]);
 
-      (avgRows as any[]).forEach(row => {
+      (avgRows as any[]).forEach((row) => {
         const normalizedId = normalizeUnitId(row.unidade);
         const targetUnit = unitsMap.get(normalizedId);
         if (targetUnit) {
@@ -187,24 +191,22 @@ export async function GET() {
         }
       });
 
-      // 4️⃣ Ordenação da fila
-      unitsMap.forEach(unit => {
+      unitsMap.forEach((unit) => {
         unit.patients.sort((a: any, b: any) => {
           if (a.status === 'in_service' && b.status !== 'in_service') return -1;
           if (a.status !== 'in_service' && b.status === 'in_service') return 1;
           return b.waitTime - a.waitTime;
         });
-      }); 
+      });
 
       return {
         status: 'success',
         data: Array.from(unitsMap.values()),
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     });
 
     return NextResponse.json(cached);
-
   } catch (error) {
     console.error('[MEDIC API ERROR]', error);
     return NextResponse.json({ error: 'Erro interno' }, { status: (error as any)?.status || 500 });
