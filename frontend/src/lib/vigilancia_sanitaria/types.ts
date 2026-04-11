@@ -125,10 +125,10 @@ export type SurveillanceListResult<T> = {
 export type SurveillanceSummary = {
   cards: {
     totalLicenses: number;
-    expiredLicenses: number;
-    dueSoonLicenses: number;
-    expiredDocuments: number;
-    dueSoonDocuments: number;
+    totalDocuments: number;
+    expiringItems: number;
+    alertItems: number;
+    expiredItems: number;
     noValidity: number;
   };
   criticalAlerts: Array<{
@@ -154,7 +154,8 @@ export type SurveillanceSummary = {
     unitName: SurveillanceUnit;
     total: number;
     expired: number;
-    dueSoon: number;
+    alert: number;
+    warning: number;
     ok: number;
     noValidity: number;
   }>;

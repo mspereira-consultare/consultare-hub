@@ -16,8 +16,8 @@ export const SURVEILLANCE_UNIT_LABELS: Record<SurveillanceUnit, string> = {
 
 export const SURVEILLANCE_EXPIRATION_STATUSES = [
   { value: 'VENCIDO', label: 'Vencido' },
-  { value: 'VENCE_HOJE', label: 'Vence hoje' },
-  { value: 'VENCENDO', label: 'Vencendo' },
+  { value: 'ALERTA', label: 'Alerta (até 30 dias)' },
+  { value: 'VENCENDO', label: 'Vencendo (31-60 dias)' },
   { value: 'EM_DIA', label: 'Em dia' },
   { value: 'SEM_VALIDADE', label: 'Sem validade' },
 ] as const;
@@ -48,3 +48,4 @@ export type SurveillanceDocumentType = (typeof SURVEILLANCE_DOCUMENT_TYPES)[numb
 export const DEFAULT_PAGE_SIZE = 20;
 export const MAX_PAGE_SIZE = 100;
 export const EXPIRATION_WARNING_DAYS = 60;
+export const EXPIRATION_ALERT_DAYS = 30;

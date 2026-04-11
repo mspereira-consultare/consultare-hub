@@ -890,10 +890,10 @@ export const getSurveillanceSummary = async (db: DbInterface, filters: Surveilla
 
   const cards = {
     totalLicenses: filteredLicenses.length,
-    expiredLicenses: filteredLicenses.filter((item) => item.expirationStatus === 'VENCIDO').length,
-    dueSoonLicenses: filteredLicenses.filter((item) => item.expirationStatus === 'VENCE_HOJE' || item.expirationStatus === 'VENCENDO').length,
-    expiredDocuments: filteredDocuments.filter((item) => item.expirationStatus === 'VENCIDO').length,
-    dueSoonDocuments: filteredDocuments.filter((item) => item.expirationStatus === 'VENCE_HOJE' || item.expirationStatus === 'VENCENDO').length,
+    totalDocuments: filteredDocuments.length,
+    expiringItems: [...filteredLicenses, ...filteredDocuments].filter((item) => item.expirationStatus === 'VENCENDO').length,
+    alertItems: [...filteredLicenses, ...filteredDocuments].filter((item) => item.expirationStatus === 'ALERTA').length,
+    expiredItems: [...filteredLicenses, ...filteredDocuments].filter((item) => item.expirationStatus === 'VENCIDO').length,
     noValidity: [...filteredLicenses, ...filteredDocuments].filter((item) => item.expirationStatus === 'SEM_VALIDADE').length,
   };
 
@@ -921,21 +921,22 @@ export const getSurveillanceSummary = async (db: DbInterface, filters: Surveilla
   ];
 
   const criticalAlerts = sortByExpiration(
-    combined.filter((item) => ['VENCIDO', 'VENCE_HOJE', 'VENCENDO'].includes(item.expirationStatus)),
+    combined.filter((item) => ['VENCIDO', 'ALERTA', 'VENCENDO'].includes(item.expirationStatus)),
   ).slice(0, 12);
 
   const upcoming = sortByExpiration(combined.filter((item) => item.expirationStatus !== 'SEM_VALIDADE')).slice(0, 12);
 
-  const unitMap = new Map<SurveillanceUnit, { unitName: SurveillanceUnit; total: number; expired: number; dueSoon: number; ok: number; noValidity: number }>();
+  const unitMap = new Map<SurveillanceUnit, { unitName: SurveillanceUnit; total: number; expired: number; alert: number; warning: number; ok: number; noValidity: number }>();
   for (const unit of SURVEILLANCE_UNITS) {
-    unitMap.set(unit, { unitName: unit, total: 0, expired: 0, dueSoon: 0, ok: 0, noValidity: 0 });
+    unitMap.set(unit, { unitName: unit, total: 0, expired: 0, alert: 0, warning: 0, ok: 0, noValidity: 0 });
   }
 
   for (const item of combined) {
-    const row = unitMap.get(item.unitName) || { unitName: item.unitName, total: 0, expired: 0, dueSoon: 0, ok: 0, noValidity: 0 };
+    const row = unitMap.get(item.unitName) || { unitName: item.unitName, total: 0, expired: 0, alert: 0, warning: 0, ok: 0, noValidity: 0 };
     row.total += 1;
     if (item.expirationStatus === 'VENCIDO') row.expired += 1;
-    else if (item.expirationStatus === 'VENCE_HOJE' || item.expirationStatus === 'VENCENDO') row.dueSoon += 1;
+    else if (item.expirationStatus === 'ALERTA') row.alert += 1;
+    else if (item.expirationStatus === 'VENCENDO') row.warning += 1;
     else if (item.expirationStatus === 'EM_DIA') row.ok += 1;
     else row.noValidity += 1;
     unitMap.set(item.unitName, row);

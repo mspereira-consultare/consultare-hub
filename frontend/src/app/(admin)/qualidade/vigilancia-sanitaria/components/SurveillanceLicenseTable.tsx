@@ -1,8 +1,9 @@
-﻿import { SURVEILLANCE_RENEWAL_STATUSES, SURVEILLANCE_UNIT_LABELS } from '@/lib/vigilancia_sanitaria/constants';
+import { SURVEILLANCE_RENEWAL_STATUSES, SURVEILLANCE_UNIT_LABELS } from '@/lib/vigilancia_sanitaria/constants';
+import { getExpirationAppearance } from '@/lib/vigilancia_sanitaria/status';
 import type { SurveillanceLicense } from '@/lib/vigilancia_sanitaria/types';
 import { SurveillanceStatusBadge } from './SurveillanceStatusBadge';
 
-const formatDate = (value?: string | null) => value ? value.split('-').reverse().join('/') : '-';
+const formatDate = (value?: string | null) => (value ? value.split('-').reverse().join('/') : '-');
 const renewalLabel = (value: string) => SURVEILLANCE_RENEWAL_STATUSES.find((item) => item.value === value)?.label || value;
 
 export function SurveillanceLicenseTable({
@@ -37,36 +38,60 @@ export function SurveillanceLicenseTable({
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500">Carregando licenças...</td></tr>
-            ) : items.length === 0 ? (
-              <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500">Nenhuma licença encontrada.</td></tr>
-            ) : items.map((item) => (
-              <tr key={item.id} className="hover:bg-slate-50/70">
-                <td className="px-4 py-3 text-slate-600">{SURVEILLANCE_UNIT_LABELS[item.unitName] || item.unitName}</td>
-                <td className="px-4 py-3">
-                  <p className="font-semibold text-slate-900">{item.licenseName}</p>
-                  <p className="text-xs text-slate-500">{item.licenseNumber || item.issuer || 'Sem número/protocolo'}</p>
-                </td>
-                <td className="px-4 py-3 text-slate-600">{item.cnae}</td>
-                <td className="px-4 py-3 text-slate-600">{formatDate(item.validUntil)}</td>
-                <td className="px-4 py-3"><SurveillanceStatusBadge status={item.expirationStatus} label={item.expirationStatusLabel} /></td>
-                <td className="px-4 py-3 text-slate-600">{renewalLabel(item.renewalStatus)}</td>
-                <td className="px-4 py-3 text-slate-600">{item.responsibleName || '-'}</td>
-                <td className="px-4 py-3 text-center text-slate-600">{item.fileCount}</td>
-                <td className="px-4 py-3 text-right">
-                  <div className="inline-flex gap-2">
-                    <button type="button" onClick={() => onEdit(item)} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
-                      Ver/editar
-                    </button>
-                    {canEdit ? (
-                      <button type="button" onClick={() => onDelete(item)} className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50">
-                        Excluir
-                      </button>
-                    ) : null}
-                  </div>
+              <tr>
+                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                  Carregando licenças...
                 </td>
               </tr>
-            ))}
+            ) : items.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="px-4 py-8 text-center text-slate-500">
+                  Nenhuma licença encontrada.
+                </td>
+              </tr>
+            ) : (
+              items.map((item) => {
+                const appearance = getExpirationAppearance(item.expirationStatus);
+
+                return (
+                  <tr key={item.id} className={appearance.row}>
+                    <td className="px-4 py-3 text-slate-600">{SURVEILLANCE_UNIT_LABELS[item.unitName] || item.unitName}</td>
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-slate-900">{item.licenseName}</p>
+                      <p className="text-xs text-slate-500">{item.licenseNumber || item.issuer || 'Sem número/protocolo'}</p>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{item.cnae}</td>
+                    <td className={`px-4 py-3 font-medium ${appearance.text}`}>{formatDate(item.validUntil)}</td>
+                    <td className="px-4 py-3">
+                      <SurveillanceStatusBadge status={item.expirationStatus} label={item.expirationStatusLabel} />
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{renewalLabel(item.renewalStatus)}</td>
+                    <td className="px-4 py-3 text-slate-600">{item.responsibleName || '-'}</td>
+                    <td className="px-4 py-3 text-center text-slate-600">{item.fileCount}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="inline-flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => onEdit(item)}
+                          className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                        >
+                          Ver/editar
+                        </button>
+                        {canEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => onDelete(item)}
+                            className="rounded-lg border border-rose-200 px-3 py-1.5 text-xs font-medium text-rose-700 hover:bg-rose-50"
+                          >
+                            Excluir
+                          </button>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
           </tbody>
         </table>
       </div>

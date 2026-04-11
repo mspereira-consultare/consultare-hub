@@ -10,17 +10,25 @@ Criar o módulo `/qualidade/vigilancia-sanitaria` para controle manual de licen�
 - cadastro, edição e exclusão lógica de licenças e documentos;
 - upload, download, visualização e exclusão de anexos;
 - status de vencimento calculado automaticamente;
-- alertas visuais para itens vencidos e vencendo;
+- alertas visuais para itens vencidos, em alerta e vencendo;
 - exportação XLSX conforme filtros aplicados;
 - sem workflow de aprovação, lembretes automáticos ou worker.
 
 ## Regras de Vencimento
 
 - `Vencido`: validade menor que hoje;
-- `Vence hoje`: validade igual a hoje;
-- `Vencendo`: validade entre hoje e 60 dias;
+- `Alerta`: validade entre hoje e 30 dias;
+- `Vencendo`: validade entre 31 e 60 dias;
 - `Em dia`: validade maior que 60 dias;
 - `Sem validade`: documentos sem validade informada.
+
+### Convenção visual
+
+- `Vencido`: roxo;
+- `Alerta`: vermelho;
+- `Vencendo`: amarelo;
+- `Em dia`: verde;
+- `Sem validade`: cinza neutro.
 
 ## Modelo de Dados
 
