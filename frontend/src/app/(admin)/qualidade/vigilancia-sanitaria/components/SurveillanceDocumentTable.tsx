@@ -46,8 +46,19 @@ export function SurveillanceDocumentTable({
                 <td className="px-4 py-3 font-semibold text-slate-900">{item.documentName}</td>
                 <td className="px-4 py-3 text-slate-600">{typeLabel(item.documentType)}</td>
                 <td className="px-4 py-3 text-slate-600">
-                  {item.licenseName ? item.licenseName : '-'}
-                  {item.licenseName && !item.licenseActive ? <span className="ml-1 text-xs text-amber-700">(inativa)</span> : null}
+                  {item.linkedLicenses.length ? (
+                    <div className="space-y-1">
+                      {item.linkedLicenses.slice(0, 2).map((license) => (
+                        <div key={`${item.id}-${license.id}`} className="leading-5">
+                          <span>{license.licenseName}</span>
+                          {!license.active ? <span className="ml-1 text-xs text-amber-700">(inativa)</span> : null}
+                        </div>
+                      ))}
+                      {item.linkedLicenses.length > 2 ? (
+                        <div className="text-xs text-slate-400">+{item.linkedLicenses.length - 2} vínculo(s)</div>
+                      ) : null}
+                    </div>
+                  ) : '-'}
                 </td>
                 <td className="px-4 py-3 text-slate-600">{formatDate(item.validUntil)}</td>
                 <td className="px-4 py-3"><SurveillanceStatusBadge status={item.expirationStatus} label={item.expirationStatusLabel} /></td>

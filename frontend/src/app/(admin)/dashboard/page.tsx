@@ -14,6 +14,7 @@ import {
   Star,
   Loader2
 } from 'lucide-react';
+import { resolveFinancialUnit } from '@/lib/financial_units';
 import { formatSystemStatusTimestamp } from '@/lib/system_status_time';
 
 interface DashboardData {
@@ -161,6 +162,7 @@ export default function DashboardPage() {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
+  const getFinancialGoalKey = (value: string) => resolveFinancialUnit(value)?.key || normalizeKey(value);
 
   const WORK_START_HOUR = 8;
   const WORK_END_HOUR = 19;
@@ -210,10 +212,10 @@ export default function DashboardPage() {
   const dailyUnitGoals = new Map<string, any>();
   const monthlyUnitGoals = new Map<string, any>();
   dailyBillingGoals.forEach((g: any) => {
-    if (g.clinic_unit && g.clinic_unit !== 'all') dailyUnitGoals.set(normalizeKey(g.clinic_unit), g);
+    if (g.clinic_unit && g.clinic_unit !== 'all') dailyUnitGoals.set(getFinancialGoalKey(g.clinic_unit), g);
   });
   monthlyBillingGoals.forEach((g: any) => {
-    if (g.clinic_unit && g.clinic_unit !== 'all') monthlyUnitGoals.set(normalizeKey(g.clinic_unit), g);
+    if (g.clinic_unit && g.clinic_unit !== 'all') monthlyUnitGoals.set(getFinancialGoalKey(g.clinic_unit), g);
   });
 
   // Consolidação de Dados
@@ -245,7 +247,7 @@ export default function DashboardPage() {
             </div>
           )}
           
-          {/* BOTÃO ATUALIZAR FATURAMENTO */}
+          {/* BOTAO ATUALIZAR FATURAMENTO */}
           <button 
             onClick={handleManualFinanceUpdate}
             disabled={isUpdating}
@@ -484,6 +486,12 @@ export default function DashboardPage() {
               );
             })()}
 
+            {dailyUnitGoals.size === 0 ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+                Sem meta diária cadastrada para faturamento.
+              </div>
+            ) : null}
+
             {/* Tabela por unidade - Hoje */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
@@ -499,7 +507,7 @@ export default function DashboardPage() {
                     const unitsBilling = data?.financeByUnit?.daily?.unitsBilling || [];
                     if (unitsBilling && unitsBilling.length > 0) {
                       return unitsBilling.map((unit: any, idx: number) => {
-                        const unitGoal = dailyUnitGoals.get(normalizeKey(unit.name));
+                        const unitGoal = dailyUnitGoals.get(getFinancialGoalKey(unit.name));
                         const unitCurrent = Number(unitGoal?.current || 0);
                         const unitTarget = Number(unitGoal?.target || 0);
                         const unitPercent = unitTarget > 0 ? (unitCurrent / unitTarget) * 100 : (Number(unitGoal?.percentage) || 0);
@@ -508,7 +516,7 @@ export default function DashboardPage() {
                           <tr key={idx} className="hover:bg-slate-50">
                             <td className="px-2 py-1.5 font-medium text-slate-700 text-xs">
                               <div className="flex flex-col">
-                                <span>{unit.name?.substring(0, 12) || 'N/A'}</span>
+                                <span>{unit.name || 'N/A'}</span>
                                 {unitGoal && (
                                   <span className="text-[9px] text-slate-400">
                                     Meta: {formatMoney(unitTarget)} • {unitPercent.toFixed(0)}% • Proj: {formatMoney(unitProjection)}
@@ -594,7 +602,7 @@ export default function DashboardPage() {
                     const unitsBilling = data?.financeByUnit?.monthly?.unitsBilling || [];
                     if (unitsBilling && unitsBilling.length > 0) {
                       return unitsBilling.map((unit: any, idx: number) => {
-                        const unitGoal = monthlyUnitGoals.get(normalizeKey(unit.name));
+                        const unitGoal = monthlyUnitGoals.get(getFinancialGoalKey(unit.name));
                         const unitCurrent = Number(unitGoal?.current || 0);
                         const unitTarget = Number(unitGoal?.target || 0);
                         const unitPercent = unitTarget > 0 ? (unitCurrent / unitTarget) * 100 : (Number(unitGoal?.percentage) || 0);
@@ -603,7 +611,7 @@ export default function DashboardPage() {
                           <tr key={idx} className="hover:bg-slate-50">
                             <td className="px-2 py-1.5 font-medium text-slate-700 text-xs">
                               <div className="flex flex-col">
-                                <span>{unit.name?.substring(0, 12) || 'N/A'}</span>
+                                <span>{unit.name || 'N/A'}</span>
                                 {unitGoal && (
                                   <span className="text-[9px] text-slate-400">
                                     Meta: {formatMoney(unitTarget)} • {unitPercent.toFixed(0)}% • Proj: {formatMoney(unitProjection)}

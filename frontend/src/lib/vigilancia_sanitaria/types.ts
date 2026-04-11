@@ -19,6 +19,13 @@ export type SurveillanceFile = {
   createdAt: string;
 };
 
+export type SurveillanceLinkedLicense = {
+  id: string;
+  licenseName: string;
+  active: boolean;
+  unitName: SurveillanceUnit | null;
+};
+
 export type SurveillanceLicense = {
   id: string;
   unitName: SurveillanceUnit;
@@ -45,9 +52,10 @@ export type SurveillanceDocument = {
   unitName: SurveillanceUnit;
   documentName: string;
   documentType: SurveillanceDocumentType | null;
-  licenseId: string | null;
-  licenseName: string | null;
-  licenseActive: boolean;
+  linkedLicenses: SurveillanceLinkedLicense[];
+  linkedLicenseIds: string[];
+  linkedLicenseNamesLabel: string;
+  hasInactiveLinkedLicense: boolean;
   validUntil: string | null;
   responsibleName: string | null;
   notes: string | null;
@@ -77,7 +85,7 @@ export type SurveillanceDocumentInput = {
   unitName: SurveillanceUnit;
   documentName: string;
   documentType?: SurveillanceDocumentType | null;
-  licenseId?: string | null;
+  licenseIds?: string[];
   validUntil?: string | null;
   responsibleName?: string | null;
   notes?: string | null;

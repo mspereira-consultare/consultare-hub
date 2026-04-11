@@ -72,7 +72,7 @@ export async function GET(request: Request) {
         unit: SURVEILLANCE_UNIT_LABELS[item.unitName] || item.unitName,
         name: item.documentName,
         type: item.documentType || '-',
-        license: item.licenseName || '-',
+        license: item.linkedLicenseNamesLabel || '-',
         validUntil: formatDate(item.validUntil),
         expirationStatus: getExpirationStatusLabel(item.expirationStatus),
         responsible: item.responsibleName || '-',

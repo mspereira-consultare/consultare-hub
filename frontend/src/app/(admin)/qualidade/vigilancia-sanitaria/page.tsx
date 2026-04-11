@@ -15,6 +15,7 @@ import type { SurveillanceDocument, SurveillanceLicense, SurveillanceSummary } f
 import { SurveillanceDocumentTable } from './components/SurveillanceDocumentTable';
 import { SurveillanceFormModal } from './components/SurveillanceFormModal';
 import { SurveillanceLicenseTable } from './components/SurveillanceLicenseTable';
+import { SurveillanceSearchableSelect } from './components/SurveillanceSearchableSelect';
 import { SurveillanceSummaryView } from './components/SurveillanceSummaryView';
 import { SurveillanceTabNav } from './components/SurveillanceTabNav';
 
@@ -294,10 +295,13 @@ export default function VigilanciaSanitariaPage() {
               </select>
             </FilterField>
             <FilterField label="Licença vinculada">
-              <select value={filters.licenseId} onChange={(e) => updateFilters({ licenseId: e.target.value })} className={filterControlClassName}>
-                <option value="all">Todas as licenças</option>
-                {filteredLicenseOptions.map((license) => <option key={license.id} value={license.id}>{license.licenseName}</option>)}
-              </select>
+              <SurveillanceSearchableSelect
+                value={filters.licenseId}
+                onChange={(value) => updateFilters({ licenseId: value })}
+                options={filteredLicenseOptions.map((license) => ({ value: license.id, label: license.licenseName }))}
+                placeholder="Selecione uma licença"
+                allLabel="Todas as licenças"
+              />
             </FilterField>
           </TabFilterShell>
           <SurveillanceDocumentTable items={documents.items} loading={loading} canEdit={canEdit} onEdit={(item) => openEdit('document', item)} onDelete={(item) => deleteItem('document', item)} />

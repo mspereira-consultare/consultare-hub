@@ -9,6 +9,7 @@ import {
   SURVEILLANCE_UNITS,
 } from '@/lib/vigilancia_sanitaria/constants';
 import type { SurveillanceDocument, SurveillanceFile, SurveillanceLicense } from '@/lib/vigilancia_sanitaria/types';
+import { SurveillanceLicenseMultiSelect } from './SurveillanceLicenseMultiSelect';
 
 type ModalKind = 'license' | 'document';
 type LicenseOption = { id: string; unitName: string; licenseName: string };
@@ -39,7 +40,7 @@ const emptyDocumentForm = {
   unitName: 'SHOPPING CAMPINAS',
   documentName: '',
   documentType: 'OUTRO',
-  licenseId: '',
+  licenseIds: [] as string[],
   validUntil: '',
   responsibleName: '',
   notes: '',
@@ -81,8 +82,23 @@ export function SurveillanceFormModal({ open, kind, item, canEdit, licenseOption
 
   const filteredLicenseOptions = useMemo(() => {
     const unit = documentForm.unitName;
-    return licenseOptions.filter((option) => !unit || option.unitName === unit);
-  }, [documentForm.unitName, licenseOptions]);
+    const visibleOptions = licenseOptions.filter((option) => !unit || option.unitName === unit);
+    const merged = new Map(visibleOptions.map((option) => [option.id, option]));
+
+    if (kind === 'document' && item && 'linkedLicenses' in item) {
+      for (const license of item.linkedLicenses || []) {
+        if (!license?.id) continue;
+        if (license.unitName && unit && license.unitName !== unit) continue;
+        merged.set(license.id, {
+          id: license.id,
+          unitName: license.unitName || unit,
+          licenseName: license.active ? license.licenseName : `${license.licenseName} (inativa)`,
+        });
+      }
+    }
+
+    return Array.from(merged.values()).sort((a, b) => a.licenseName.localeCompare(b.licenseName, 'pt-BR'));
+  }, [documentForm.unitName, item, kind, licenseOptions]);
 
   useEffect(() => {
     if (!open) return;
@@ -121,7 +137,7 @@ export function SurveillanceFormModal({ open, kind, item, canEdit, licenseOption
             unitName: data.unitName || 'SHOPPING CAMPINAS',
             documentName: data.documentName || '',
             documentType: data.documentType || 'OUTRO',
-            licenseId: data.licenseId || '',
+            licenseIds: Array.isArray(data.linkedLicenseIds) ? data.linkedLicenseIds : [],
             validUntil: data.validUntil || '',
             responsibleName: data.responsibleName || '',
             notes: data.notes || '',
@@ -157,7 +173,9 @@ export function SurveillanceFormModal({ open, kind, item, canEdit, licenseOption
     setError('');
     try {
       const path = kind === 'license' ? 'licenses' : 'documents';
-      const payload = kind === 'license' ? licenseForm : { ...documentForm, licenseId: documentForm.licenseId || null, validUntil: documentForm.validUntil || null };
+      const payload = kind === 'license'
+        ? licenseForm
+        : { ...documentForm, validUntil: documentForm.validUntil || null };
       const url = entityId
         ? `/api/admin/vigilancia-sanitaria/${path}/${encodeURIComponent(entityId)}`
         : `/api/admin/vigilancia-sanitaria/${path}`;
@@ -254,7 +272,7 @@ export function SurveillanceFormModal({ open, kind, item, canEdit, licenseOption
                 ) : (
                   <div className="grid gap-4 lg:grid-cols-3">
                     <Field label="Unidade">
-                      <select disabled={!canEdit} value={documentForm.unitName} onChange={(e) => setDocumentForm((f) => ({ ...f, unitName: e.target.value, licenseId: '' }))} className={inputClassName}>
+                      <select disabled={!canEdit} value={documentForm.unitName} onChange={(e) => setDocumentForm((f) => ({ ...f, unitName: e.target.value, licenseIds: [] }))} className={inputClassName}>
                         {SURVEILLANCE_UNITS.map((unit) => <option key={unit} value={unit}>{SURVEILLANCE_UNIT_LABELS[unit]}</option>)}
                       </select>
                     </Field>
@@ -272,11 +290,14 @@ export function SurveillanceFormModal({ open, kind, item, canEdit, licenseOption
                     <Field label="Responsável interno">
                       <input disabled={!canEdit} value={documentForm.responsibleName} onChange={(e) => setDocumentForm((f) => ({ ...f, responsibleName: e.target.value }))} className={inputClassName} />
                     </Field>
-                    <Field label="Licença vinculada" className="lg:col-span-3">
-                      <select disabled={!canEdit} value={documentForm.licenseId} onChange={(e) => setDocumentForm((f) => ({ ...f, licenseId: e.target.value }))} className={inputClassName}>
-                        <option value="">Sem vínculo</option>
-                        {filteredLicenseOptions.map((license) => <option key={license.id} value={license.id}>{license.licenseName}</option>)}
-                      </select>
+                    <Field label="Licenças vinculadas" className="lg:col-span-3">
+                      <SurveillanceLicenseMultiSelect
+                        disabled={!canEdit}
+                        value={documentForm.licenseIds}
+                        options={filteredLicenseOptions.map((license) => ({ value: license.id, label: license.licenseName }))}
+                        placeholder="Selecione uma ou mais licenças"
+                        onChange={(licenseIds) => setDocumentForm((f) => ({ ...f, licenseIds }))}
+                      />
                     </Field>
                     <Field label="Observações" className="lg:col-span-3">
                       <textarea disabled={!canEdit} value={documentForm.notes} onChange={(e) => setDocumentForm((f) => ({ ...f, notes: e.target.value }))} className={textareaClassName} />

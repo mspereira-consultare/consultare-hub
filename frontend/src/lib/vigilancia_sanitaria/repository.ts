@@ -19,6 +19,7 @@ import type {
   SurveillanceDocumentInput,
   SurveillanceFile,
   SurveillanceFilters,
+  SurveillanceLinkedLicense,
   SurveillanceLicense,
   SurveillanceLicenseFilters,
   SurveillanceLicenseInput,
@@ -137,6 +138,15 @@ export const ensureSurveillanceTables = async (db: DbInterface = getDbConnection
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS health_surveillance_document_licenses (
+      document_id VARCHAR(64) NOT NULL,
+      license_id VARCHAR(64) NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (document_id, license_id)
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS health_surveillance_files (
       id VARCHAR(64) PRIMARY KEY,
       entity_type VARCHAR(20) NOT NULL,
@@ -174,7 +184,19 @@ export const ensureSurveillanceTables = async (db: DbInterface = getDbConnection
   await safeCreateIndex(db, `CREATE INDEX idx_hs_documents_unit ON health_surveillance_documents (unit_name)`);
   await safeCreateIndex(db, `CREATE INDEX idx_hs_documents_valid ON health_surveillance_documents (valid_until)`);
   await safeCreateIndex(db, `CREATE INDEX idx_hs_documents_license ON health_surveillance_documents (license_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_hs_document_links_document ON health_surveillance_document_licenses (document_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_hs_document_links_license ON health_surveillance_document_licenses (license_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_hs_files_entity ON health_surveillance_files (entity_type, entity_id)`);
+
+  await db.execute(
+    `
+    INSERT OR IGNORE INTO health_surveillance_document_licenses (document_id, license_id, created_at)
+    SELECT id, license_id, COALESCE(updated_at, created_at, ?)
+    FROM health_surveillance_documents
+    WHERE license_id IS NOT NULL AND TRIM(license_id) != ''
+    `,
+    [NOW()],
+  );
 
   tablesEnsured = true;
 };
@@ -232,11 +254,24 @@ const normalizeDocumentInput = (payload: any): SurveillanceDocumentInput => {
   const documentName = clean(payload?.documentName || payload?.document_name);
   if (!documentName) throw new SurveillanceValidationError('Nome do documento é obrigatório.');
 
+  const rawLicenseIds = Array.isArray(payload?.licenseIds)
+    ? payload.licenseIds
+    : Array.isArray(payload?.license_ids)
+      ? payload.license_ids
+      : [payload?.licenseId || payload?.license_id].filter(Boolean);
+  const licenseIds = Array.from<string>(
+    new Set(
+      rawLicenseIds
+        .map((value: any) => clean(value))
+        .filter(Boolean),
+    ),
+  );
+
   return {
     unitName,
     documentName,
     documentType: normalizeDocumentType(payload?.documentType || payload?.document_type),
-    licenseId: clean(payload?.licenseId || payload?.license_id) || null,
+    licenseIds,
     validUntil: parseDate(payload?.validUntil || payload?.valid_until),
     responsibleName: clean(payload?.responsibleName || payload?.responsible_name) || null,
     notes: clean(payload?.notes) || null,
@@ -334,7 +369,17 @@ const mapLicenseBase = (row: any, fileCount = 0): SurveillanceLicense => {
   };
 };
 
-const mapDocumentBase = (row: any, fileCount = 0): SurveillanceDocument => {
+const formatLinkedLicenseNames = (licenses: SurveillanceLinkedLicense[]) => {
+  const names = licenses
+    .map((item) => {
+      const name = clean(item.licenseName) || 'Licença removida';
+      return item.active ? name : `${name} (inativa)`;
+    })
+    .filter(Boolean);
+  return names.length ? names.join(', ') : '';
+};
+
+const mapDocumentBase = (row: any, linkedLicenses: SurveillanceLinkedLicense[], fileCount = 0): SurveillanceDocument => {
   const validUntil = parseDate(row.valid_until);
   const expirationStatus = computeExpirationStatus(validUntil);
   return {
@@ -342,9 +387,10 @@ const mapDocumentBase = (row: any, fileCount = 0): SurveillanceDocument => {
     unitName: upper(row.unit_name) as SurveillanceUnit,
     documentName: clean(row.document_name),
     documentType: clean(row.document_type) ? (upper(row.document_type) as SurveillanceDocumentType) : null,
-    licenseId: clean(row.license_id) || null,
-    licenseName: clean(row.license_name) || null,
-    licenseActive: Number(row.license_active ?? 1) === 1,
+    linkedLicenses,
+    linkedLicenseIds: linkedLicenses.map((item) => item.id),
+    linkedLicenseNamesLabel: formatLinkedLicenseNames(linkedLicenses),
+    hasInactiveLinkedLicense: linkedLicenses.some((item) => !item.active),
     validUntil,
     responsibleName: clean(row.responsible_name) || null,
     notes: clean(row.notes) || null,
@@ -356,6 +402,43 @@ const mapDocumentBase = (row: any, fileCount = 0): SurveillanceDocument => {
     createdBy: clean(row.created_by) || null,
     updatedBy: clean(row.updated_by) || null,
   };
+};
+
+const loadDocumentLicenseMap = async (db: DbInterface, documentIds: string[]) => {
+  const grouped = new Map<string, SurveillanceLinkedLicense[]>();
+  if (!documentIds.length) return grouped;
+
+  const placeholders = documentIds.map(() => '?').join(', ');
+  const rows = await db.query(
+    `
+    SELECT
+      dl.document_id,
+      dl.license_id,
+      l.license_name,
+      l.unit_name,
+      l.is_active AS license_active
+    FROM health_surveillance_document_licenses dl
+    LEFT JOIN health_surveillance_licenses l ON l.id = dl.license_id
+    WHERE dl.document_id IN (${placeholders})
+    ORDER BY COALESCE(l.license_name, dl.license_id) ASC
+    `,
+    documentIds,
+  );
+
+  for (const row of rows) {
+    const documentId = clean(row.document_id);
+    if (!documentId) continue;
+    const current = grouped.get(documentId) || [];
+    current.push({
+      id: clean(row.license_id),
+      licenseName: clean(row.license_name) || 'Licença removida',
+      active: clean(row.license_name) ? Number(row.license_active ?? 1) === 1 : false,
+      unitName: clean(row.unit_name) ? (upper(row.unit_name) as SurveillanceUnit) : null,
+    });
+    grouped.set(documentId, current);
+  }
+
+  return grouped;
 };
 
 const loadFileCountMap = async (db: DbInterface) => {
@@ -444,13 +527,19 @@ const loadDocumentsRaw = async (db: DbInterface) => {
   await ensureSurveillanceTables(db);
   const fileCounts = await loadFileCountMap(db);
   const rows = await db.query(`
-    SELECT d.*, l.license_name, l.is_active AS license_active
+    SELECT d.*
     FROM health_surveillance_documents d
-    LEFT JOIN health_surveillance_licenses l ON l.id = d.license_id
     WHERE d.is_active = 1
     ORDER BY d.valid_until ASC, d.document_name ASC
   `);
-  return rows.map((row: any) => mapDocumentBase(row, fileCounts.get(`document:${clean(row.id)}`) || 0));
+  const documentLicenseMap = await loadDocumentLicenseMap(db, rows.map((row: any) => clean(row.id)).filter(Boolean));
+  return rows.map((row: any) =>
+    mapDocumentBase(
+      row,
+      documentLicenseMap.get(clean(row.id)) || [],
+      fileCounts.get(`document:${clean(row.id)}`) || 0,
+    ),
+  );
 };
 
 export const listSurveillanceLicenses = async (db: DbInterface, filters: SurveillanceLicenseFilters) => {
@@ -467,13 +556,13 @@ export const listSurveillanceLicenses = async (db: DbInterface, filters: Surveil
 export const listSurveillanceDocuments = async (db: DbInterface, filters: SurveillanceDocumentFilters) => {
   let list = await loadDocumentsRaw(db);
   list = filterCommon(list, filters, (item) =>
-    [item.documentName, item.documentType, item.licenseName, item.responsibleName, item.notes].filter(Boolean).join(' '),
+    [item.documentName, item.documentType, item.linkedLicenseNamesLabel, item.responsibleName, item.notes].filter(Boolean).join(' '),
   );
   if (filters.documentType !== 'all') {
     list = list.filter((item) => item.documentType === filters.documentType);
   }
   if (filters.licenseId && filters.licenseId !== 'all') {
-    list = list.filter((item) => item.licenseId === filters.licenseId);
+    list = list.filter((item) => item.linkedLicenseIds.includes(filters.licenseId));
   }
   return paginate(sortByExpiration(list), filters.page, filters.pageSize);
 };
@@ -495,9 +584,8 @@ export const getSurveillanceDocumentById = async (db: DbInterface, id: string): 
   await ensureSurveillanceTables(db);
   const rows = await db.query(
     `
-    SELECT d.*, l.license_name, l.is_active AS license_active
+    SELECT d.*
     FROM health_surveillance_documents d
-    LEFT JOIN health_surveillance_licenses l ON l.id = d.license_id
     WHERE d.id = ? AND d.is_active = 1
     LIMIT 1
     `,
@@ -505,7 +593,55 @@ export const getSurveillanceDocumentById = async (db: DbInterface, id: string): 
   );
   if (!rows[0]) return null;
   const files = await listSurveillanceFiles(db, 'document', id);
-  return { ...mapDocumentBase(rows[0], files.length), files };
+  const documentLicenseMap = await loadDocumentLicenseMap(db, [id]);
+  return { ...mapDocumentBase(rows[0], documentLicenseMap.get(id) || [], files.length), files };
+};
+
+const validateDocumentLicenseIds = async (db: DbInterface, licenseIds: string[], unitName: SurveillanceUnit) => {
+  if (!licenseIds.length) return;
+
+  const placeholders = licenseIds.map(() => '?').join(', ');
+  const rows = await db.query(
+    `
+    SELECT id, unit_name, is_active
+    FROM health_surveillance_licenses
+    WHERE id IN (${placeholders})
+    `,
+    licenseIds,
+  );
+
+  const byId = new Map<string, any>();
+  for (const row of rows) {
+    byId.set(clean(row.id), row);
+  }
+
+  for (const licenseId of licenseIds) {
+    const license = byId.get(licenseId);
+    if (!license || Number(license.is_active ?? 1) !== 1) {
+      throw new SurveillanceValidationError('Uma ou mais licenças vinculadas não estão disponíveis.');
+    }
+    if (upper(license.unit_name) !== upper(unitName)) {
+      throw new SurveillanceValidationError('As licenças vinculadas devem pertencer à mesma unidade do documento.');
+    }
+  }
+};
+
+const syncDocumentLicenseLinks = async (
+  db: DbInterface,
+  documentId: string,
+  licenseIds: string[],
+  createdAt = NOW(),
+) => {
+  await db.execute(`DELETE FROM health_surveillance_document_licenses WHERE document_id = ?`, [documentId]);
+  for (const licenseId of licenseIds) {
+    await db.execute(
+      `
+      INSERT OR IGNORE INTO health_surveillance_document_licenses (document_id, license_id, created_at)
+      VALUES (?, ?, ?)
+      `,
+      [documentId, licenseId, createdAt],
+    );
+  }
 };
 
 export const createSurveillanceLicense = async (db: DbInterface, payload: any, userId: string) => {
@@ -584,6 +720,7 @@ export const deleteSurveillanceLicense = async (db: DbInterface, id: string, use
 export const createSurveillanceDocument = async (db: DbInterface, payload: any, userId: string) => {
   await ensureSurveillanceTables(db);
   const input = normalizeDocumentInput(payload);
+  await validateDocumentLicenseIds(db, input.licenseIds || [], input.unitName);
   const id = randomUUID();
   const now = NOW();
   await db.execute(
@@ -598,7 +735,7 @@ export const createSurveillanceDocument = async (db: DbInterface, payload: any, 
       input.unitName,
       input.documentName,
       input.documentType,
-      input.licenseId,
+      input.licenseIds?.[0] || null,
       input.validUntil,
       input.responsibleName,
       input.notes,
@@ -608,6 +745,7 @@ export const createSurveillanceDocument = async (db: DbInterface, payload: any, 
       now,
     ],
   );
+  await syncDocumentLicenseLinks(db, id, input.licenseIds || [], now);
   const created = await getSurveillanceDocumentById(db, id);
   if (!created) throw new Error('Falha ao carregar documento criado.');
   return created;
@@ -616,6 +754,7 @@ export const createSurveillanceDocument = async (db: DbInterface, payload: any, 
 export const updateSurveillanceDocument = async (db: DbInterface, id: string, payload: any, userId: string) => {
   await ensureSurveillanceTables(db);
   const input = normalizeDocumentInput(payload);
+  await validateDocumentLicenseIds(db, input.licenseIds || [], input.unitName);
   await db.execute(
     `
     UPDATE health_surveillance_documents
@@ -627,7 +766,7 @@ export const updateSurveillanceDocument = async (db: DbInterface, id: string, pa
       input.unitName,
       input.documentName,
       input.documentType,
-      input.licenseId,
+      input.licenseIds?.[0] || null,
       input.validUntil,
       input.responsibleName,
       input.notes,
@@ -636,6 +775,7 @@ export const updateSurveillanceDocument = async (db: DbInterface, id: string, pa
       id,
     ],
   );
+  await syncDocumentLicenseLinks(db, id, input.licenseIds || []);
   const updated = await getSurveillanceDocumentById(db, id);
   if (!updated) throw new SurveillanceValidationError('Documento não encontrado.', 404);
   return updated;
@@ -738,7 +878,7 @@ const applySummaryFilters = (
     filters.itemType === 'licenses'
       ? []
       : filterCommon(documents, filters, (item) =>
-          [item.documentName, item.documentType, item.licenseName, item.responsibleName, item.notes].filter(Boolean).join(' '),
+          [item.documentName, item.documentType, item.linkedLicenseNamesLabel, item.responsibleName, item.notes].filter(Boolean).join(' '),
         );
   return { filteredLicenses, filteredDocuments };
 };
