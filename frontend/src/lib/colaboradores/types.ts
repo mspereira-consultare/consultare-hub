@@ -4,6 +4,7 @@ import type {
   EmployeeDocumentTypeCode,
   EmployeeStatus,
   EmploymentRegime,
+  EmployeeTransportVoucherMode,
   LifeInsuranceStatus,
   LockerKeyStatus,
   MaritalStatus,
@@ -48,7 +49,13 @@ export type Employee = {
   costCenter: string | null;
   insalubrityPercent: number | null;
   transportVoucherPerDay: number | null;
+  transportVoucherMode: EmployeeTransportVoucherMode;
+  transportVoucherMonthlyFixed: number | null;
   mealVoucherPerDay: number | null;
+  totalpassDiscountFixed: number | null;
+  otherFixedDiscountAmount: number | null;
+  otherFixedDiscountDescription: string | null;
+  payrollNotes: string | null;
   lifeInsuranceStatus: LifeInsuranceStatus;
   maritalStatus: MaritalStatus | null;
   hasChildren: boolean;
@@ -173,7 +180,13 @@ export type EmployeeInput = {
   costCenter?: string | null;
   insalubrityPercent?: number | null;
   transportVoucherPerDay?: number | null;
+  transportVoucherMode?: EmployeeTransportVoucherMode | null;
+  transportVoucherMonthlyFixed?: number | null;
   mealVoucherPerDay?: number | null;
+  totalpassDiscountFixed?: number | null;
+  otherFixedDiscountAmount?: number | null;
+  otherFixedDiscountDescription?: string | null;
+  payrollNotes?: string | null;
   lifeInsuranceStatus?: LifeInsuranceStatus;
   maritalStatus?: MaritalStatus | null;
   hasChildren?: boolean;

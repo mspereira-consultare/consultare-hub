@@ -11,7 +11,7 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
    Modelo de acesso por página (`view`, `edit`, `refresh`) e regras por perfil.
 
 3. [`docs/03-arquitetura-tecnica.md`](docs/03-arquitetura-tecnica.md)  
-   Arquitetura da aplicação (frontend, APIs, workers, orquestrador, cache, autenticação e banco).
+   Arquitetura da aplicação: frontend, APIs, autenticação, workers, orquestrador e banco.
 
 4. [`docs/04-dicionario-de-dados.md`](docs/04-dicionario-de-dados.md)  
    Dicionário das tabelas, chaves e responsáveis pela atualização.
@@ -26,58 +26,35 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
    Plano técnico e evolução do módulo de Repasses.
 
 8. [`docs/08-agenda-ocupacao.md`](docs/08-agenda-ocupacao.md)  
-   Documentação funcional/técnica do módulo de Ocupação de Agenda.
+   Documentação funcional e técnica do módulo de Ocupação de Agenda.
 
 9. [`docs/09-plano-tecnico-marketing-funil.md`](docs/09-plano-tecnico-marketing-funil.md)  
    Plano técnico detalhado do módulo `/marketing/funil`, incluindo Google Ads, GA4, Clinia Ads, agenda e faturamento.
 
 10. [`docs/10-plano-tecnico-colaboradores.md`](docs/10-plano-tecnico-colaboradores.md)  
-   Plano técnico e implementação do módulo `/colaboradores` para o Departamento Pessoal.
+    Plano técnico e implementação do módulo `/colaboradores` para o Departamento Pessoal.
 
 11. [`docs/11-plano-tecnico-equipamentos.md`](docs/11-plano-tecnico-equipamentos.md)  
-   Plano técnico e implementação do módulo `/equipamentos`, incluindo cadastro, calibração, manutenção e anexos.
+    Plano técnico e implementação do módulo `/equipamentos`, incluindo cadastro, calibração, manutenção e anexos.
 
 12. [`docs/12-plano-tecnico-marketing-controle.md`](docs/12-plano-tecnico-marketing-controle.md)  
-   Plano técnico e implementação do módulo `/marketing/controle`, com cockpit mensal executivo por marca e exportação XLSX.
+    Plano técnico e implementação do módulo `/marketing/controle`, com cockpit mensal executivo por marca e exportação XLSX.
 
 13. [`docs/13-plano-tecnico-vigilancia-sanitaria.md`](docs/13-plano-tecnico-vigilancia-sanitaria.md)  
-   Plano técnico e implementação do módulo `/qualidade/vigilancia-sanitaria`, com licenças, documentos regulatórios, anexos e vencimentos.
+    Plano técnico e implementação do módulo `/qualidade/vigilancia-sanitaria`, com licenças, documentos regulatórios, anexos e vencimentos.
+
+14. [`docs/14-plano-tecnico-folha-pagamento.md`](docs/14-plano-tecnico-folha-pagamento.md)  
+    Plano técnico e implementação do módulo `/folha-pagamento`, com fechamento mensal recorrente, importação de ponto, comparação com a planilha do RH e exportação XLSX.
 
 ## Convenções
 
-- Datas: padrão `YYYY-MM-DD` no banco e filtros internos.
+- Datas: padrão `YYYY-MM-DD` no banco e nos filtros internos.
 - Timezone operacional: `America/Sao_Paulo`.
 - Heartbeat de workers: tabela `system_status`.
-- Fonte de verdade para métricas:
-- Financeiro e Dashboard financeiro: `faturamento_resumo_*` com fallback em `faturamento_analitico`.
-- O KPI `Novos pacientes` do `/financeiro` usa `feegow_appointments.patient_id` + `feegow_patients.criado_em`, com exibi??o adicional da participa??o percentual sobre o total de pacientes distintos do per?odo.
-- Relatório Geral Financeiro (PDF/XLSX): `faturamento_analitico`.
-- Filas: `espera_medica`, `recepcao_historico`, `clinia_group_snapshots`.
-- Produtividade/agendamentos: `feegow_appointments`.
-- Catálogo de procedimentos: `feegow_procedures_catalog`.
-- Procedimentos por profissional: `professional_procedure_rates`.
-- Propostas: `feegow_proposals` + `feegow_patient_contacts_cache` + `proposal_followup_control` (incluindo observa??o, ?ltimo contato e pr?ximo contato persistidos fora do worker).
-- Resolvesaúde: `feegow_contracts`.
-
-## Público-alvo
-
-- Gestão/Operação: `01` e `05`.
-- Produto/BI: `01` e `04`.
-- Engenharia/Manutenção: `02`, `03`, `04` e `05`.
+- A persistência principal atual do painel é MySQL.
 
 ## Atualizações recentes
 
-- Módulo `/profissionais` evoluído com APIs, upload de documentos, contratos e procedimentos.
-- Módulos de Qualidade (`/qualidade/*`) concluídos com indicadores e refresh em lote.
-- Módulo de Repasses evoluído com workers de consolidação, geração de relatório e controles operacionais.
-- Novo plano de agenda em `docs/08-agenda-ocupacao.md`.
-- Novo plano do módulo `/marketing/funil` em `docs/09-plano-tecnico-marketing-funil.md`.
-- Módulo `/marketing/funil` atualizado com Clinia Ads, nova regra de lead por WhatsApp e documentação técnica consolidada.
-- Módulo `/marketing/funil` reorganizado em abas (`Visão geral`, `Campanhas`, `Saúde Google Ads`) com diagnóstico de orçamento, status e estratégia de lances.
-- Novo módulo `/colaboradores` documentado em `docs/10-plano-tecnico-colaboradores.md`.
-- Módulo `/marketing/funil` recalibrado para usar `Novos contatos Clinia (Google)` como lead operacional principal e separar `Cliques em WhatsApp` como diagnóstico auxiliar.
-- Cards do `/marketing/funil` e da aba `Saúde Google Ads` agora usam hovers detalhados com fórmula, origem do dado, escopo e limitações.
-- Módulo de propostas separado entre `/propostas` (base de trabalho) e `/propostas/gerencial` (visão gerencial), com permissionamento distinto, follow-up persistente por proposta, submenu próprio em `Financeiro > Propostas`, filtros operacionais por conversão/responsável/profissional e exportação enriquecida.
-- Novo módulo `/equipamentos` documentado em `docs/11-plano-tecnico-equipamentos.md`.
-- Novo módulo `/marketing/controle` documentado em `docs/12-plano-tecnico-marketing-controle.md`, com leitura semanal/mensal por marca, blocos reais de Google/GA4/Clinia e placeholders explícitos para fontes ainda não integradas.
-- Novo módulo `/qualidade/vigilancia-sanitaria` documentado em `docs/13-plano-tecnico-vigilancia-sanitaria.md`, com licenças, documentos regulatórios, anexos e alertas de vencimento.
+- Módulo `/propostas` separado entre base operacional e visão gerencial, com follow-up persistente e exportação enriquecida.
+- Módulos de Qualidade consolidados com cadastros, anexos, alertas e documentação técnica própria.
+- Módulo `/folha-pagamento` adicionado como fluxo mensal recorrente do RH, integrado ao cadastro de colaboradores e à base de comparação em XLSX.

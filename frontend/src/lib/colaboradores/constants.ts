@@ -8,6 +8,7 @@ export type UniformDeliveryType = 'PRIMEIRA_ENTREGA' | 'REPOSICAO' | 'TROCA';
 export type UniformItemStatus = 'ATIVO' | 'DEVOLVIDO' | 'PENDENTE';
 export type LockerKeyStatus = 'COLABORADOR' | 'RH_DP' | 'PERDIDA';
 export type RecessSituation = 'QUITADAS' | 'VENCIDAS' | 'EM_ABERTO';
+export type EmployeeTransportVoucherMode = 'PER_DAY' | 'MONTHLY_FIXED' | 'NONE';
 
 export type EmployeeDocumentTypeCode =
   | 'CURRICULO'
@@ -86,6 +87,12 @@ export const MARITAL_STATUSES: Array<{ value: MaritalStatus; label: string }> = 
 export const LIFE_INSURANCE_STATUSES: Array<{ value: LifeInsuranceStatus; label: string }> = [
   { value: 'ATIVO', label: 'Ativo' },
   { value: 'INATIVO', label: 'Inativo' },
+];
+
+export const EMPLOYEE_TRANSPORT_VOUCHER_MODES: Array<{ value: EmployeeTransportVoucherMode; label: string }> = [
+  { value: 'PER_DAY', label: 'Por dia trabalhado' },
+  { value: 'MONTHLY_FIXED', label: 'Valor mensal fixo' },
+  { value: 'NONE', label: 'Não aplicável' },
 ];
 
 export const UNIFORM_DELIVERY_TYPES: Array<{ value: UniformDeliveryType; label: string }> = [

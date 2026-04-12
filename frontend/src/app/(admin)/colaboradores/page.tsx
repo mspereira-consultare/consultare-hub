@@ -29,6 +29,7 @@ import {
   EDUCATION_LEVELS,
   EMPLOYEE_DOCUMENT_TYPES,
   EMPLOYEE_STATUSES,
+  EMPLOYEE_TRANSPORT_VOUCHER_MODES,
   EMPLOYEE_UNIT_LABELS,
   EMPLOYEE_UNITS,
   EMPLOYMENT_REGIMES,
@@ -74,6 +75,7 @@ type EmployeesOptionsPayload = {
   uniformDeliveryTypes: SelectOption[];
   uniformItemStatuses: SelectOption[];
   lockerKeyStatuses: SelectOption[];
+  transportVoucherModes: SelectOption[];
   documentTypes: DocumentOption[];
   supervisors: string[];
   departments: string[];
@@ -125,7 +127,13 @@ type EmployeeFormState = {
   costCenter: string;
   insalubrityPercent: string;
   transportVoucherPerDay: string;
+  transportVoucherMode: string;
+  transportVoucherMonthlyFixed: string;
   mealVoucherPerDay: string;
+  totalpassDiscountFixed: string;
+  otherFixedDiscountAmount: string;
+  otherFixedDiscountDescription: string;
+  payrollNotes: string;
   lifeInsuranceStatus: string;
   maritalStatus: string;
   hasChildren: boolean;
@@ -206,6 +214,7 @@ const emptyOptions: EmployeesOptionsPayload = {
   uniformDeliveryTypes: UNIFORM_DELIVERY_TYPES,
   uniformItemStatuses: UNIFORM_ITEM_STATUSES,
   lockerKeyStatuses: LOCKER_KEY_STATUSES,
+  transportVoucherModes: EMPLOYEE_TRANSPORT_VOUCHER_MODES,
   documentTypes: EMPLOYEE_DOCUMENT_TYPES.map((item) => ({
     value: item.code,
     label: item.label,
@@ -265,7 +274,13 @@ const emptyEmployeeForm = (): EmployeeFormState => ({
   costCenter: '',
   insalubrityPercent: '',
   transportVoucherPerDay: '',
+  transportVoucherMode: 'PER_DAY',
+  transportVoucherMonthlyFixed: '',
   mealVoucherPerDay: '',
+  totalpassDiscountFixed: '',
+  otherFixedDiscountAmount: '',
+  otherFixedDiscountDescription: '',
+  payrollNotes: '',
   lifeInsuranceStatus: 'INATIVO',
   maritalStatus: '',
   hasChildren: false,
@@ -390,7 +405,13 @@ const mapEmployeeToForm = (employee: EmployeeListItem): EmployeeFormState => ({
   costCenter: employee.costCenter || '',
   insalubrityPercent: employee.insalubrityPercent === null ? '' : String(employee.insalubrityPercent),
   transportVoucherPerDay: employee.transportVoucherPerDay === null ? '' : String(employee.transportVoucherPerDay),
+  transportVoucherMode: employee.transportVoucherMode || 'PER_DAY',
+  transportVoucherMonthlyFixed: employee.transportVoucherMonthlyFixed === null ? '' : String(employee.transportVoucherMonthlyFixed),
   mealVoucherPerDay: employee.mealVoucherPerDay === null ? '' : String(employee.mealVoucherPerDay),
+  totalpassDiscountFixed: employee.totalpassDiscountFixed === null ? '' : String(employee.totalpassDiscountFixed),
+  otherFixedDiscountAmount: employee.otherFixedDiscountAmount === null ? '' : String(employee.otherFixedDiscountAmount),
+  otherFixedDiscountDescription: employee.otherFixedDiscountDescription || '',
+  payrollNotes: employee.payrollNotes || '',
   lifeInsuranceStatus: employee.lifeInsuranceStatus || 'INATIVO',
   maritalStatus: employee.maritalStatus || '',
   hasChildren: Boolean(employee.hasChildren),
@@ -795,7 +816,10 @@ export default function ColaboradoresPage() {
         salaryAmount: parseNumericInput(form.salaryAmount),
         insalubrityPercent: parseNumericInput(form.insalubrityPercent),
         transportVoucherPerDay: parseNumericInput(form.transportVoucherPerDay),
+        transportVoucherMonthlyFixed: parseNumericInput(form.transportVoucherMonthlyFixed),
         mealVoucherPerDay: parseNumericInput(form.mealVoucherPerDay),
+        totalpassDiscountFixed: parseNumericInput(form.totalpassDiscountFixed),
+        otherFixedDiscountAmount: parseNumericInput(form.otherFixedDiscountAmount),
         childrenCount: form.hasChildren ? form.childrenCount : '0',
       };
 
@@ -1670,18 +1694,44 @@ export default function ColaboradoresPage() {
                           <input disabled={currentEmployeeReadOnly} value={form.insalubrityPercent} onChange={(event) => setForm((prev) => ({ ...prev, insalubrityPercent: event.target.value }))} className={filterInputClassName} placeholder="0,00" />
                         </div>
                         <div className="md:col-span-3">
-                          <label className={fieldLabelClassName}>Vale transporte (R$/dia)</label>
-                          <input disabled={currentEmployeeReadOnly} value={form.transportVoucherPerDay} onChange={(event) => setForm((prev) => ({ ...prev, transportVoucherPerDay: event.target.value }))} className={filterInputClassName} placeholder="0,00" />
+                          <label className={fieldLabelClassName}>Modo do vale-transporte</label>
+                          <select disabled={currentEmployeeReadOnly} value={form.transportVoucherMode} onChange={(event) => setForm((prev) => ({ ...prev, transportVoucherMode: event.target.value }))} className={filterInputClassName}>
+                            {options.transportVoucherModes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                          </select>
                         </div>
                         <div className="md:col-span-3">
-                          <label className={fieldLabelClassName}>Vale refeição (R$/dia)</label>
+                          <label className={fieldLabelClassName}>Vale-transporte (R$/dia)</label>
+                          <input disabled={currentEmployeeReadOnly || form.transportVoucherMode !== 'PER_DAY'} value={form.transportVoucherPerDay} onChange={(event) => setForm((prev) => ({ ...prev, transportVoucherPerDay: event.target.value }))} className={filterInputClassName} placeholder="0,00" />
+                        </div>
+                        <div className="md:col-span-3">
+                          <label className={fieldLabelClassName}>Vale-transporte mensal (R$)</label>
+                          <input disabled={currentEmployeeReadOnly || form.transportVoucherMode !== 'MONTHLY_FIXED'} value={form.transportVoucherMonthlyFixed} onChange={(event) => setForm((prev) => ({ ...prev, transportVoucherMonthlyFixed: event.target.value }))} className={filterInputClassName} placeholder="0,00" />
+                        </div>
+                        <div className="md:col-span-3">
+                          <label className={fieldLabelClassName}>Vale-refeição (R$/dia)</label>
                           <input disabled={currentEmployeeReadOnly} value={form.mealVoucherPerDay} onChange={(event) => setForm((prev) => ({ ...prev, mealVoucherPerDay: event.target.value }))} className={filterInputClassName} placeholder="0,00" />
+                        </div>
+                        <div className="md:col-span-3">
+                          <label className={fieldLabelClassName}>Desconto Totalpass (R$)</label>
+                          <input disabled={currentEmployeeReadOnly} value={form.totalpassDiscountFixed} onChange={(event) => setForm((prev) => ({ ...prev, totalpassDiscountFixed: event.target.value }))} className={filterInputClassName} placeholder="0,00" />
+                        </div>
+                        <div className="md:col-span-3">
+                          <label className={fieldLabelClassName}>Outro desconto fixo (R$)</label>
+                          <input disabled={currentEmployeeReadOnly} value={form.otherFixedDiscountAmount} onChange={(event) => setForm((prev) => ({ ...prev, otherFixedDiscountAmount: event.target.value }))} className={filterInputClassName} placeholder="0,00" />
+                        </div>
+                        <div className="md:col-span-3">
+                          <label className={fieldLabelClassName}>Descrição do outro desconto</label>
+                          <input disabled={currentEmployeeReadOnly} value={form.otherFixedDiscountDescription} onChange={(event) => setForm((prev) => ({ ...prev, otherFixedDiscountDescription: event.target.value }))} className={filterInputClassName} placeholder="Ex.: adiantamento" />
                         </div>
                         <div className="md:col-span-3">
                           <label className={fieldLabelClassName}>Seguro de vida</label>
                           <select disabled={currentEmployeeReadOnly} value={form.lifeInsuranceStatus} onChange={(event) => setForm((prev) => ({ ...prev, lifeInsuranceStatus: event.target.value }))} className={filterInputClassName}>
                             {LIFE_INSURANCE_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                           </select>
+                        </div>
+                        <div className="md:col-span-12">
+                          <label className={fieldLabelClassName}>Observações da folha</label>
+                          <textarea disabled={currentEmployeeReadOnly} value={form.payrollNotes} onChange={(event) => setForm((prev) => ({ ...prev, payrollNotes: event.target.value }))} rows={3} className={filterInputClassName} placeholder="Observações recorrentes para o fechamento da folha." />
                         </div>
                       </div>
                     </SectionCard>
@@ -1839,7 +1889,7 @@ export default function ColaboradoresPage() {
                               <table className="min-w-[860px] w-full text-sm">
                                 <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
                                   <tr>
-                                    <th className="px-2 py-2">Per?odo</th>
+                                    <th className="px-2 py-2">Período</th>
                                     <th className="px-2 py-2">Unidade</th>
                                     <th className="px-2 py-2">Armário</th>
                                     <th className="px-2 py-2">Localização</th>
@@ -1856,7 +1906,7 @@ export default function ColaboradoresPage() {
                                     <tr key={item.id} className="border-t border-slate-100 align-top">
                                       <td className="px-2 py-2">
                                         {formatDateBr(item.assignedAt)}
-                                        <div className="text-xs text-slate-500">{item.returnedAt ? `At? ${formatDateBr(item.returnedAt)}` : 'At? o momento'}</div>
+                                        <div className="text-xs text-slate-500">{item.returnedAt ? `Até ${formatDateBr(item.returnedAt)}` : 'Até o momento'}</div>
                                       </td>
                                       <td className="px-2 py-2">{EMPLOYEE_UNIT_LABELS[item.unitName as keyof typeof EMPLOYEE_UNIT_LABELS] || item.unitName}</td>
                                       <td className="px-2 py-2 font-medium text-slate-700">{item.lockerCode}</td>
@@ -2049,7 +2099,7 @@ export default function ColaboradoresPage() {
                           <div className="mt-2">Obrigatórios entregues: {documentSummary.progress.done}/{documentSummary.progress.total}</div>
                           <div>ASO: <span className="font-semibold">{documentSummary.aso.status}</span>{documentSummary.aso.expiresAt ? ` (vence em ${formatDateBr(documentSummary.aso.expiresAt)})` : ''}</div>
                           <div className="mt-2 text-slate-500">
-                            Faltando: {documentSummary.missing.length > 0 ? documentSummary.missing.map(getDocumentTypeLabel).join(', ') : 'Nenhum documento obrigat?rio pendente'}
+                            Faltando: {documentSummary.missing.length > 0 ? documentSummary.missing.map(getDocumentTypeLabel).join(', ') : 'Nenhum documento obrigatório pendente'}
                           </div>
                         </div>
 
@@ -2217,7 +2267,7 @@ export default function ColaboradoresPage() {
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                               {inactiveDocuments.length === 0 ? (
-                                <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-500">Nenhum documento hist?rico.</td></tr>
+                                <tr><td colSpan={5} className="px-3 py-8 text-center text-slate-500">Nenhum documento histórico.</td></tr>
                               ) : inactiveDocuments.map((doc) => (
                                 <tr key={doc.id}>
                                   <td className="px-3 py-2 font-medium text-slate-700">{getDocumentTypeLabel(doc.docType)}</td>

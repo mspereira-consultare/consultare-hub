@@ -12,6 +12,7 @@ export type PageKey =
   | 'marketing_controle'
   | 'marketing_funil'
   | 'colaboradores'
+  | 'folha_pagamento'
   | 'equipamentos'
   | 'agenda_ocupacao'
   | 'metas_dashboard'
@@ -49,6 +50,7 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'marketing_controle', label: 'Marketing - Controle', path: '/marketing/controle' },
   { key: 'marketing_funil', label: 'Marketing - Funil', path: '/marketing/funil' },
   { key: 'colaboradores', label: 'Colaboradores', path: '/colaboradores' },
+  { key: 'folha_pagamento', label: 'Folha de Pagamento', path: '/folha-pagamento' },
   { key: 'equipamentos', label: 'Equipamentos', path: '/equipamentos' },
   { key: 'agenda_ocupacao', label: 'Ocupação de Agenda', path: '/agenda-ocupacao' },
   { key: 'metas_dashboard', label: 'Painel de Metas', path: '/metas/dashboard' },
@@ -98,9 +100,9 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda'], { view: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { edit: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil'], { refresh: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda'], { view: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao'], { edit: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil'], { refresh: true });
     return matrix;
   }
 
@@ -164,6 +166,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/marketing/controle') return 'marketing_controle';
   if (path === '/marketing/funil') return 'marketing_funil';
   if (path === '/colaboradores') return 'colaboradores';
+  if (path === '/folha-pagamento') return 'folha_pagamento';
   if (path === '/equipamentos') return 'equipamentos';
   if (path === '/agenda-ocupacao') return 'agenda_ocupacao';
   if (path === '/produtividade') return 'produtividade';
@@ -193,6 +196,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/marketing/controle')) return 'marketing_controle';
   if (path.startsWith('/api/admin/marketing/funil')) return 'marketing_funil';
   if (path.startsWith('/api/admin/colaboradores')) return 'colaboradores';
+  if (path.startsWith('/api/admin/folha-pagamento')) return 'folha_pagamento';
   if (path.startsWith('/api/admin/equipamentos')) return 'equipamentos';
   if (path.startsWith('/api/admin/agenda-ocupacao')) return 'agenda_ocupacao';
   if (path.startsWith('/api/admin/produtividade')) return 'produtividade';

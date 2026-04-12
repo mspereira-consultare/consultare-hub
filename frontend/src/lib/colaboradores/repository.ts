@@ -7,6 +7,7 @@ import {
   EMPLOYEE_DOCUMENT_TYPE_MAP,
   EMPLOYEE_DOCUMENT_TYPES,
   EMPLOYEE_STATUSES,
+  EMPLOYEE_TRANSPORT_VOUCHER_MODES,
   EMPLOYEE_UNITS,
   EMPLOYMENT_REGIMES,
   LIFE_INSURANCE_STATUSES,
@@ -18,6 +19,7 @@ import {
   type EducationLevel,
   type EmployeeDocumentTypeCode,
   type EmployeeStatus,
+  type EmployeeTransportVoucherMode,
   type EmploymentRegime,
   type LifeInsuranceStatus,
   type LockerKeyStatus,
@@ -80,6 +82,7 @@ const allowedUnits = new Set(EMPLOYEE_UNITS);
 const allowedDocTypes = new Set(EMPLOYEE_DOCUMENT_TYPES.map((item) => item.code));
 const allowedRegimes = new Set(EMPLOYMENT_REGIMES.map((item) => item.value));
 const allowedStatuses = new Set(EMPLOYEE_STATUSES.map((item) => item.value));
+const allowedTransportVoucherModes = new Set(EMPLOYEE_TRANSPORT_VOUCHER_MODES.map((item) => item.value));
 const allowedLifeInsurance = new Set(LIFE_INSURANCE_STATUSES.map((item) => item.value));
 const allowedMaritalStatuses = new Set(MARITAL_STATUSES.map((item) => item.value));
 const allowedUniformDeliveryTypes = new Set(UNIFORM_DELIVERY_TYPES.map((item) => item.value));
@@ -202,6 +205,14 @@ const normalizeLifeInsuranceStatus = (value: any): LifeInsuranceStatus => {
   return normalized as LifeInsuranceStatus;
 };
 
+const normalizeTransportVoucherMode = (value: any): EmployeeTransportVoucherMode => {
+  const normalized = upper(value || 'PER_DAY');
+  if (!allowedTransportVoucherModes.has(normalized as EmployeeTransportVoucherMode)) {
+    throw new EmployeeValidationError('Modo de vale-transporte inválido.');
+  }
+  return normalized as EmployeeTransportVoucherMode;
+};
+
 const normalizeUniformDeliveryType = (value: any): UniformDeliveryType => {
   const normalized = upper(value || 'PRIMEIRA_ENTREGA');
   if (!allowedUniformDeliveryTypes.has(normalized as UniformDeliveryType)) {
@@ -270,7 +281,13 @@ const mapEmployee = (row: any): Employee => ({
   costCenter: clean(row.cost_center) || null,
   insalubrityPercent: row.insalubrity_percent === null || row.insalubrity_percent === undefined ? null : Number(row.insalubrity_percent),
   transportVoucherPerDay: row.transport_voucher_per_day === null || row.transport_voucher_per_day === undefined ? null : Number(row.transport_voucher_per_day),
+  transportVoucherMode: upper(row.transport_voucher_mode || 'PER_DAY') as EmployeeTransportVoucherMode,
+  transportVoucherMonthlyFixed: row.transport_voucher_monthly_fixed === null || row.transport_voucher_monthly_fixed === undefined ? null : Number(row.transport_voucher_monthly_fixed),
   mealVoucherPerDay: row.meal_voucher_per_day === null || row.meal_voucher_per_day === undefined ? null : Number(row.meal_voucher_per_day),
+  totalpassDiscountFixed: row.totalpass_discount_fixed === null || row.totalpass_discount_fixed === undefined ? null : Number(row.totalpass_discount_fixed),
+  otherFixedDiscountAmount: row.other_fixed_discount_amount === null || row.other_fixed_discount_amount === undefined ? null : Number(row.other_fixed_discount_amount),
+  otherFixedDiscountDescription: clean(row.other_fixed_discount_description) || null,
+  payrollNotes: clean(row.payroll_notes) || null,
   lifeInsuranceStatus: upper(row.life_insurance_status || 'INATIVO') as LifeInsuranceStatus,
   maritalStatus: clean(row.marital_status) ? (upper(row.marital_status) as MaritalStatus) : null,
   hasChildren: bool(row.has_children),
@@ -518,7 +535,13 @@ const normalizeInput = (payload: any): EmployeeInput => {
     costCenter: clean(payload?.costCenter || payload?.cost_center) || null,
     insalubrityPercent: toMoneyNumber(payload?.insalubrityPercent || payload?.insalubrity_percent),
     transportVoucherPerDay: toMoneyNumber(payload?.transportVoucherPerDay || payload?.transport_voucher_per_day),
+    transportVoucherMode: normalizeTransportVoucherMode(payload?.transportVoucherMode || payload?.transport_voucher_mode || 'PER_DAY'),
+    transportVoucherMonthlyFixed: toMoneyNumber(payload?.transportVoucherMonthlyFixed || payload?.transport_voucher_monthly_fixed),
     mealVoucherPerDay: toMoneyNumber(payload?.mealVoucherPerDay || payload?.meal_voucher_per_day),
+    totalpassDiscountFixed: toMoneyNumber(payload?.totalpassDiscountFixed || payload?.totalpass_discount_fixed),
+    otherFixedDiscountAmount: toMoneyNumber(payload?.otherFixedDiscountAmount || payload?.other_fixed_discount_amount),
+    otherFixedDiscountDescription: clean(payload?.otherFixedDiscountDescription || payload?.other_fixed_discount_description) || null,
+    payrollNotes: clean(payload?.payrollNotes || payload?.payroll_notes) || null,
     lifeInsuranceStatus: normalizeLifeInsuranceStatus(payload?.lifeInsuranceStatus || payload?.life_insurance_status || 'INATIVO'),
     maritalStatus,
     hasChildren,
@@ -545,6 +568,14 @@ const normalizeInput = (payload: any): EmployeeInput => {
     input.terminationDate = null;
     input.terminationReason = null;
     input.terminationNotes = null;
+  }
+
+  if (input.transportVoucherMode !== 'MONTHLY_FIXED') {
+    input.transportVoucherMonthlyFixed = null;
+  }
+  if (input.transportVoucherMode === 'NONE') {
+    input.transportVoucherPerDay = null;
+    input.transportVoucherMonthlyFixed = null;
   }
 
   return input;
@@ -627,7 +658,13 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
       cost_center VARCHAR(180) NULL,
       insalubrity_percent DECIMAL(8,2) NULL,
       transport_voucher_per_day DECIMAL(12,2) NULL,
+      transport_voucher_mode VARCHAR(20) NOT NULL DEFAULT 'PER_DAY',
+      transport_voucher_monthly_fixed DECIMAL(12,2) NULL,
       meal_voucher_per_day DECIMAL(12,2) NULL,
+      totalpass_discount_fixed DECIMAL(12,2) NULL,
+      other_fixed_discount_amount DECIMAL(12,2) NULL,
+      other_fixed_discount_description TEXT NULL,
+      payroll_notes TEXT NULL,
       life_insurance_status VARCHAR(20) NOT NULL DEFAULT 'INATIVO',
       marital_status VARCHAR(20) NULL,
       has_children INTEGER NOT NULL DEFAULT 0,
@@ -758,6 +795,12 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN bank_account VARCHAR(80) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN pix_key VARCHAR(180) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN notes TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN transport_voucher_mode VARCHAR(20) NOT NULL DEFAULT 'PER_DAY'`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN transport_voucher_monthly_fixed DECIMAL(12,2) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN totalpass_discount_fixed DECIMAL(12,2) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN other_fixed_discount_amount DECIMAL(12,2) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN other_fixed_discount_description TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN payroll_notes TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN location_detail VARCHAR(180) NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN notes TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN returned_at DATE NULL`);
@@ -854,9 +897,11 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
       work_schedule, salary_amount, contract_duration_text, admission_date, contract_end_date,
       termination_date, termination_reason, termination_notes, units_json, job_title, department,
       supervisor_name, cost_center, insalubrity_percent, transport_voucher_per_day,
-      meal_voucher_per_day, life_insurance_status, marital_status, has_children, children_count,
+      transport_voucher_mode, transport_voucher_monthly_fixed, meal_voucher_per_day,
+      totalpass_discount_fixed, other_fixed_discount_amount, other_fixed_discount_description,
+      payroll_notes, life_insurance_status, marital_status, has_children, children_count,
       bank_name, bank_agency, bank_account, pix_key, notes, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -894,7 +939,13 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
       input.costCenter,
       input.insalubrityPercent,
       input.transportVoucherPerDay,
+      input.transportVoucherMode,
+      input.transportVoucherMonthlyFixed,
       input.mealVoucherPerDay,
+      input.totalpassDiscountFixed,
+      input.otherFixedDiscountAmount,
+      input.otherFixedDiscountDescription,
+      input.payrollNotes,
       input.lifeInsuranceStatus,
       input.maritalStatus,
       input.hasChildren ? 1 : 0,
@@ -967,7 +1018,13 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
       cost_center = ?,
       insalubrity_percent = ?,
       transport_voucher_per_day = ?,
+      transport_voucher_mode = ?,
+      transport_voucher_monthly_fixed = ?,
       meal_voucher_per_day = ?,
+      totalpass_discount_fixed = ?,
+      other_fixed_discount_amount = ?,
+      other_fixed_discount_description = ?,
+      payroll_notes = ?,
       life_insurance_status = ?,
       marital_status = ?,
       has_children = ?,
@@ -1015,7 +1072,13 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
       input.costCenter,
       input.insalubrityPercent,
       input.transportVoucherPerDay,
+      input.transportVoucherMode,
+      input.transportVoucherMonthlyFixed,
       input.mealVoucherPerDay,
+      input.totalpassDiscountFixed,
+      input.otherFixedDiscountAmount,
+      input.otherFixedDiscountDescription,
+      input.payrollNotes,
       input.lifeInsuranceStatus,
       input.maritalStatus,
       input.hasChildren ? 1 : 0,
@@ -1721,6 +1784,7 @@ export const getEmployeesOptions = async (db: DbInterface) => {
     uniformDeliveryTypes: UNIFORM_DELIVERY_TYPES,
     uniformItemStatuses: UNIFORM_ITEM_STATUSES,
     lockerKeyStatuses: LOCKER_KEY_STATUSES,
+    transportVoucherModes: EMPLOYEE_TRANSPORT_VOUCHER_MODES,
     documentTypes: EMPLOYEE_DOCUMENT_TYPES.map((item) => ({
       value: item.code,
       label: item.label,
