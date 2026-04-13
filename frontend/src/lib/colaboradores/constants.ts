@@ -60,6 +60,7 @@ export const EMPLOYEE_UNITS = [
   'SHOPPING CAMPINAS',
   'CENTRO CAMBUI',
   'OURO VERDE',
+  'HUMANIZA',
   'RESOLVECARD GESTAO DE BENEFICOS E MEIOS DE PAGAMENTOS',
 ] as const;
 
@@ -67,6 +68,7 @@ export const EMPLOYEE_UNIT_LABELS: Record<(typeof EMPLOYEE_UNITS)[number], strin
   'SHOPPING CAMPINAS': 'Shopping Campinas',
   'CENTRO CAMBUI': 'Cambuí Centro',
   'OURO VERDE': 'Ouro Verde',
+  HUMANIZA: 'Humaniza',
   'RESOLVECARD GESTAO DE BENEFICOS E MEIOS DE PAGAMENTOS': 'Resolvecard',
 };
 
