@@ -1,4 +1,5 @@
 import { ChevronRight } from 'lucide-react';
+import { calculateGoalProjection, calculateGoalRemaining } from '@/lib/goals_metrics';
 import { DashboardGoal } from '../types';
 
 interface GoalsDashboardTableProps {
@@ -33,38 +34,6 @@ function buildContext(goal: DashboardGoal) {
   return parts.join(' • ') || 'Sem contexto adicional';
 }
 
-function calculateProjection(goal: DashboardGoal) {
-  const currentValue = Number(goal.current || 0);
-  const now = new Date();
-
-  if (goal.periodicity === 'daily') {
-    const workStart = 8;
-    const workEnd = 19;
-    const hoursInDay = workEnd - workStart;
-    const hoursNow = now.getHours() + now.getMinutes() / 60;
-    const hoursPassed = Math.min(Math.max(hoursNow - workStart, 0), hoursInDay);
-    const hourlyRate = hoursPassed > 0 ? currentValue / hoursPassed : 0;
-    return hourlyRate * hoursInDay;
-  }
-
-  if (goal.periodicity === 'weekly') {
-    const day = now.getDay();
-    const daysInWeek = 7;
-    const daysPassed = day === 0 ? 7 : day;
-    const dailyRate = daysPassed > 0 ? currentValue / daysPassed : 0;
-    return dailyRate * daysInWeek;
-  }
-
-  if (goal.periodicity === 'monthly') {
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const daysPassed = Math.min(now.getDate(), daysInMonth);
-    const dailyRate = daysPassed > 0 ? currentValue / daysPassed : 0;
-    return dailyRate * daysInMonth;
-  }
-
-  return currentValue;
-}
-
 export function GoalsDashboardTable({
   goals,
   formatValue,
@@ -91,8 +60,9 @@ export function GoalsDashboardTable({
               <th className="px-4 py-3 text-left">Indicador</th>
               <th className="px-4 py-3 text-left">Meta</th>
               <th className="px-4 py-3 text-left">Realizado</th>
-              <th className="px-4 py-3 text-left">%</th>
               <th className="px-4 py-3 text-left">Projeção</th>
+              <th className="px-4 py-3 text-left">Restante</th>
+              <th className="px-4 py-3 text-left">%</th>
               <th className="px-4 py-3 text-left">Contexto</th>
               <th className="px-4 py-3 text-right">Detalhe</th>
             </tr>
@@ -100,7 +70,16 @@ export function GoalsDashboardTable({
           <tbody className="divide-y divide-slate-100">
             {goals.map((goal) => {
               const boundedPercentage = Math.max(0, Math.min(goal.percentage, 100));
-              const projection = calculateProjection(goal);
+              const projection = calculateGoalProjection({
+                current: goal.current,
+                target: goal.target,
+                periodicity: goal.periodicity,
+              });
+              const remaining = calculateGoalRemaining({
+                current: goal.current,
+                target: goal.target,
+              });
+
               return (
                 <tr
                   key={goal.goal_id}
@@ -117,6 +96,14 @@ export function GoalsDashboardTable({
                   <td className="px-4 py-3 align-top font-semibold text-slate-700">{formatValue(goal.target, goal.unit)}</td>
                   <td className="px-4 py-3 align-top font-semibold text-slate-900">{formatValue(goal.current, goal.unit)}</td>
                   <td className="px-4 py-3 align-top">
+                    <div className="font-semibold text-slate-700">{formatValue(projection, goal.unit)}</div>
+                    <div className="mt-1 text-[11px] text-slate-500">{getPeriodicityLabel(goal)}</div>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <div className="font-semibold text-slate-700">{formatValue(remaining, goal.unit)}</div>
+                    <div className="mt-1 text-[11px] text-slate-500">Falta para a meta</div>
+                  </td>
+                  <td className="px-4 py-3 align-top">
                     <div className="min-w-[110px] space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-sm font-semibold text-slate-700">{goal.percentage}%</span>
@@ -131,10 +118,6 @@ export function GoalsDashboardTable({
                         />
                       </div>
                     </div>
-                  </td>
-                  <td className="px-4 py-3 align-top">
-                    <div className="font-semibold text-slate-700">{formatValue(projection, goal.unit)}</div>
-                    <div className="mt-1 text-[11px] text-slate-500">{getPeriodicityLabel(goal)}</div>
                   </td>
                   <td className="px-4 py-3 align-top text-slate-600">
                     <span className="block max-w-md line-clamp-2">{buildContext(goal)}</span>

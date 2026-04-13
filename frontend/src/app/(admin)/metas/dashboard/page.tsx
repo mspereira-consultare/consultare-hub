@@ -21,6 +21,7 @@ import { GoalsDashboardExecutiveView } from './components/GoalsDashboardExecutiv
 import { GoalsDashboardTable } from './components/GoalsDashboardTable';
 import { GoalsDashboardTabNav } from './components/GoalsDashboardTabNav';
 import { DashboardGoal, GoalFilters } from './types';
+import { calculateGoalProjection, calculateGoalRemaining } from '@/lib/goals_metrics';
 
 const DEFAULT_FILTERS: GoalFilters = {
   name: '',
@@ -361,25 +362,39 @@ export default function GoalsDashboardPage() {
       warningGoals,
       globalProgress,
     },
-    goals: goalsForExport.map((goal) => ({
-      name: goal.name,
-      scopeLabel: SCOPE_LABELS[goal.scope] || goal.scope,
-      sector: goal.sector || '—',
-      periodicityLabel: getPeriodicityLabel(goal),
-      unitLabel: UNIT_LABELS[goal.unit] || goal.unit,
-      indicatorLabel: getIndicatorLabel(goal),
-      groupLabel: goal.filter_group || '—',
-      clinicUnitLabel: goal.clinic_unit || '—',
-      collaboratorLabel: goal.collaborator || '—',
-      teamLabel: goal.team || '—',
-      startDate: goal.start_date || '—',
-      endDate: goal.end_date || '—',
-      targetLabel: formatValue(goal.target, goal.unit),
-      currentLabel: formatValue(goal.current, goal.unit),
-      percentageLabel: `${goal.percentage}%`,
-      statusLabel: STATUS_LABELS[goal.status],
-      status: goal.status,
-    })),
+    goals: goalsForExport.map((goal) => {
+      const projection = calculateGoalProjection({
+        current: goal.current,
+        target: goal.target,
+        periodicity: goal.periodicity,
+      });
+      const remaining = calculateGoalRemaining({
+        current: goal.current,
+        target: goal.target,
+      });
+
+      return {
+        name: goal.name,
+        scopeLabel: SCOPE_LABELS[goal.scope] || goal.scope,
+        sector: goal.sector || '—',
+        periodicityLabel: getPeriodicityLabel(goal),
+        unitLabel: UNIT_LABELS[goal.unit] || goal.unit,
+        indicatorLabel: getIndicatorLabel(goal),
+        groupLabel: goal.filter_group || '—',
+        clinicUnitLabel: goal.clinic_unit || '—',
+        collaboratorLabel: goal.collaborator || '—',
+        teamLabel: goal.team || '—',
+        startDate: goal.start_date || '—',
+        endDate: goal.end_date || '—',
+        targetLabel: formatValue(goal.target, goal.unit),
+        currentLabel: formatValue(goal.current, goal.unit),
+        projectionLabel: formatValue(projection, goal.unit),
+        remainingLabel: formatValue(remaining, goal.unit),
+        percentageLabel: `${goal.percentage}%`,
+        statusLabel: STATUS_LABELS[goal.status],
+        status: goal.status,
+      };
+    }),
   });
 
   const handleExport = async (format: 'xlsx' | 'pdf') => {
