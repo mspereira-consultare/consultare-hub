@@ -50,6 +50,13 @@ let tablesEnsured = false;
 const NOW = () => new Date().toISOString();
 const clean = (value: unknown) => String(value ?? '').trim();
 const upper = (value: unknown) => clean(value).toUpperCase();
+const textTypes = new Set(['tinytext', 'text', 'mediumtext', 'longtext']);
+const isMysqlProvider = () => {
+  const provider = clean(process.env.DB_PROVIDER).toLowerCase();
+  if (provider === 'mysql') return true;
+  if (provider === 'turso') return false;
+  return Boolean(process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL);
+};
 const bool = (value: unknown) =>
   value === true || value === 1 || String(value || '').trim() === '1' || String(value || '').toLowerCase() === 'true';
 
@@ -182,6 +189,39 @@ const safeCreateIndex = async (db: DbInterface, sql: string) => {
     const message = String(error?.message || '');
     if (code === 'ER_DUP_KEYNAME' || /already exists/i.test(message)) return;
     throw error;
+  }
+};
+
+const ensureMysqlColumnDefinition = async (
+  db: DbInterface,
+  tableName: string,
+  columnName: string,
+  definitionSql: string,
+) => {
+  if (!isMysqlProvider()) return;
+
+  const rows = await db.query(
+    `
+      SELECT DATA_TYPE as data_type, COLUMN_TYPE as column_type
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+        AND column_name = ?
+      LIMIT 1
+    `,
+    [tableName, columnName],
+  );
+
+  const row = rows?.[0] as any;
+  if (!row) return;
+
+  const dataType = clean(row.data_type).toLowerCase();
+  const currentType = clean(row.column_type).toLowerCase();
+  const targetType = clean(definitionSql).toLowerCase();
+
+  if (currentType === targetType) return;
+  if (textTypes.has(dataType) || !currentType.startsWith(targetType.split(' ')[0])) {
+    await db.execute(`ALTER TABLE ${tableName} MODIFY COLUMN ${columnName} ${definitionSql}`);
   }
 };
 
@@ -401,8 +441,8 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       min_wage_amount DECIMAL(12,2) NOT NULL,
       late_tolerance_minutes INTEGER NOT NULL DEFAULT 15,
       vt_discount_cap_percent DECIMAL(8,2) NOT NULL DEFAULT 6.00,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL,
       UNIQUE(month_ref)
     )
   `);
@@ -417,11 +457,11 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       rule_id VARCHAR(64) NULL,
       created_by VARCHAR(64) NULL,
       approved_by VARCHAR(64) NULL,
-      approved_at TEXT NULL,
-      sent_at TEXT NULL,
-      reopened_at TEXT NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
+      approved_at VARCHAR(32) NULL,
+      sent_at VARCHAR(32) NULL,
+      reopened_at VARCHAR(32) NULL,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL,
       UNIQUE(month_ref)
     )
   `);
@@ -440,8 +480,8 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       processing_status VARCHAR(20) NOT NULL,
       processing_log LONGTEXT NULL,
       uploaded_by VARCHAR(64) NULL,
-      created_at TEXT NOT NULL,
-      processed_at TEXT NULL
+      created_at VARCHAR(32) NOT NULL,
+      processed_at VARCHAR(32) NULL
     )
   `);
 
@@ -466,8 +506,8 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       inconsistency_flag INTEGER NOT NULL DEFAULT 0,
       justification_text LONGTEXT NULL,
       source_file_id VARCHAR(64) NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
     )
   `);
 
@@ -489,8 +529,8 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       size_bytes BIGINT NULL,
       created_by VARCHAR(64) NULL,
       updated_by VARCHAR(64) NULL,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
     )
   `);
 
@@ -528,8 +568,8 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       employee_snapshot_json LONGTEXT NULL,
       calculation_memory_json LONGTEXT NULL,
       comparison_status VARCHAR(20) NOT NULL DEFAULT 'SEM_BASE',
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL,
       UNIQUE(period_id, comparison_key)
     )
   `);
@@ -553,9 +593,26 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       notes LONGTEXT NULL,
       raw_json LONGTEXT NULL,
       comparison_key VARCHAR(255) NOT NULL,
-      created_at TEXT NOT NULL
+      created_at VARCHAR(32) NOT NULL
     )
   `);
+
+  await ensureMysqlColumnDefinition(db, 'payroll_rules', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_rules', 'updated_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_periods', 'approved_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_periods', 'sent_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_periods', 'reopened_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_periods', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_periods', 'updated_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_import_files', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_import_files', 'processed_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_daily', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_daily', 'updated_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_occurrences', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_occurrences', 'updated_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_lines', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_lines', 'updated_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_reference_rows', 'created_at', 'VARCHAR(32) NOT NULL');
 
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_periods_month_ref ON payroll_periods (month_ref)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_import_files_period ON payroll_import_files (period_id, created_at)`);
