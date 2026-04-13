@@ -106,7 +106,7 @@ export const GoalTable = ({ goals, dashboardData, onEdit, onDelete, onViewDetail
                       <th className="px-4 py-2.5">Alvo</th>
                       <th className="px-4 py-2.5">Realizado</th>
                       <th className="px-4 py-2.5">Projeção</th>
-                      <th className="px-4 py-2.5">Restante</th>
+                      <th className="px-4 py-2.5">Falta</th>
                       <th className="w-44 px-4 py-2.5">Progresso</th>
                       <th className="px-4 py-2.5 text-right">Ações</th>
                     </tr>

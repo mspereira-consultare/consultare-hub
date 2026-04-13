@@ -242,7 +242,7 @@ const buildWorkbook = async (payload: ExportPayload) => {
     { header: 'Meta', key: 'targetLabel', width: 16 },
     { header: 'Atual', key: 'currentLabel', width: 16 },
     { header: 'Projeção', key: 'projectionLabel', width: 16 },
-    { header: 'Restante', key: 'remainingLabel', width: 16 },
+    { header: 'Falta', key: 'remainingLabel', width: 16 },
     { header: '%', key: 'percentageLabel', width: 10 },
     { header: 'Status', key: 'statusLabel', width: 16 },
   ];
@@ -307,7 +307,7 @@ const buildPdf = async (payload: ExportPayload) => {
     { label: 'Meta', width: 74, align: 'right' as const, maxLines: 2 },
     { label: 'Atual', width: 74, align: 'right' as const, maxLines: 2 },
     { label: 'Projeção', width: 78, align: 'right' as const, maxLines: 2 },
-    { label: 'Restante', width: 82, align: 'right' as const, maxLines: 2 },
+    { label: 'Falta', width: 82, align: 'right' as const, maxLines: 2 },
     { label: '%', width: 32, align: 'center' as const, maxLines: 1 },
     { label: 'Status', width: 69, align: 'center' as const, maxLines: 2 },
   ];

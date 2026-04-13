@@ -61,7 +61,7 @@ export function GoalsDashboardTable({
               <th className="px-4 py-3 text-left">Meta</th>
               <th className="px-4 py-3 text-left">Realizado</th>
               <th className="px-4 py-3 text-left">Projeção</th>
-              <th className="px-4 py-3 text-left">Restante</th>
+              <th className="px-4 py-3 text-left">Falta</th>
               <th className="px-4 py-3 text-left">%</th>
               <th className="px-4 py-3 text-left">Contexto</th>
               <th className="px-4 py-3 text-right">Detalhe</th>
