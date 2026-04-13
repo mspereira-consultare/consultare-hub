@@ -198,6 +198,14 @@ type FiltersState = {
   pendencyStatus: 'all' | 'pending' | 'complete';
 };
 
+const areFiltersEqual = (left: FiltersState, right: FiltersState) =>
+  left.search === right.search &&
+  left.status === right.status &&
+  left.regime === right.regime &&
+  left.unit === right.unit &&
+  left.asoStatus === right.asoStatus &&
+  left.pendencyStatus === right.pendencyStatus;
+
 const filterInputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-200';
 const sectionClassName = 'rounded-xl border border-slate-200 bg-slate-50/70 p-4';
@@ -673,6 +681,19 @@ export default function ColaboradoresPage() {
     if (!canView) return;
     loadList();
   }, [canView, loadList]);
+
+  useEffect(() => {
+    if (!canView) return;
+    if (areFiltersEqual(filters, appliedFilters)) return;
+
+    const waitMs = filters.search !== appliedFilters.search ? 300 : 0;
+    const timer = window.setTimeout(() => {
+      setPagination((prev) => (prev.page === 1 ? prev : { ...prev, page: 1 }));
+      setAppliedFilters(filters);
+    }, waitMs);
+
+    return () => window.clearTimeout(timer);
+  }, [appliedFilters, canView, filters]);
 
   const resetModalState = () => {
     setCurrentEmployeeId(null);
@@ -1181,17 +1202,7 @@ export default function ColaboradoresPage() {
             </select>
           </div>
           <div className="lg:col-span-3 flex flex-wrap items-center gap-2 lg:justify-end">
-            <button
-              type="button"
-              onClick={() => {
-                setPagination((prev) => ({ ...prev, page: 1 }));
-                setAppliedFilters(filters);
-              }}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-medium text-white"
-            >
-              <Search size={14} />
-              Aplicar filtros
-            </button>
+            <span className="text-xs text-slate-500">Filtros aplicados automaticamente</span>
             <button
               type="button"
               disabled={!filtersApplied}
