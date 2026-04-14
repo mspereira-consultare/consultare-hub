@@ -1,7 +1,7 @@
-﻿import { NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { requirePayrollPermission } from '@/lib/payroll/auth';
 import { parsePayrollLineFilters } from '@/lib/payroll/filters';
-import { listPayrollComparison } from '@/lib/payroll/repository';
+import { listPayrollPreviewRows } from '@/lib/payroll/repository';
 
 type ParamsContext = { params: Promise<{ id: string }> };
 
@@ -14,10 +14,10 @@ export async function GET(request: Request, context: ParamsContext) {
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const { id } = await context.params;
     const { searchParams } = new URL(request.url);
-    const data = await listPayrollComparison(auth.db, String(id || ''), parsePayrollLineFilters(searchParams));
+    const data = await listPayrollPreviewRows(auth.db, String(id || ''), parsePayrollLineFilters(searchParams));
     return NextResponse.json({ status: 'success', data });
   } catch (error: any) {
-    console.error('Erro ao listar comparação da folha:', error);
-    return NextResponse.json({ error: error?.message || 'Erro interno ao listar comparação.' }, { status: Number(error?.status) || 500 });
+    console.error('Erro ao listar prévia da folha:', error);
+    return NextResponse.json({ error: error?.message || 'Erro interno ao listar prévia da folha.' }, { status: Number(error?.status) || 500 });
   }
 }

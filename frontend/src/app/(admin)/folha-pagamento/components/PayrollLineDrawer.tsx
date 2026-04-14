@@ -1,8 +1,8 @@
-﻿'use client';
+'use client';
 
 import { Loader2, X } from 'lucide-react';
 import type { PayrollLine, PayrollLineDetail } from '@/lib/payroll/types';
-import { formatDateBr, formatMoney } from './formatters';
+import { formatDateBr, formatMoney, formatSheetInsalubrity } from './formatters';
 
 type DraftState = {
   adjustmentsAmount: string;
@@ -37,6 +37,7 @@ export function PayrollLineDrawer({
     payrollNotes: current.payrollNotes || '',
     lineStatus: current.lineStatus,
   };
+  const preview = detail?.previewRow || null;
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30">
@@ -44,9 +45,15 @@ export function PayrollLineDrawer({
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-5">
           <div>
             <h2 className="text-lg font-bold text-slate-900">{line.employeeName}</h2>
-            <p className="mt-1 text-sm text-slate-500">Memória de cálculo, ponto do período e ajustes da folha.</p>
+            <p className="mt-1 text-sm text-slate-500">Memória de cálculo, ponto do período, ocorrências e prévia da planilha operacional.</p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"><X size={16} /></button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+          >
+            <X size={16} />
+          </button>
         </div>
 
         <div className="space-y-6 px-6 py-6">
@@ -98,20 +105,44 @@ export function PayrollLineDrawer({
                 ) : null}
               </div>
             </Card>
-            <Card title="Comparação com a base do RH">
-              {detail?.differences?.length ? (
-                <div className="space-y-2">
-                  {detail.differences.map((item, index) => (
-                    <div key={`${item.field}-${index}`} className="rounded-lg bg-rose-50 px-3 py-2 text-sm text-rose-700">
-                      <strong>{item.field}:</strong> sistema {item.systemValue} | base {item.referenceValue}
-                    </div>
-                  ))}
+
+            <Card title="Prévia da linha exportada">
+              {preview ? (
+                <div className="grid gap-3 text-sm sm:grid-cols-2">
+                  <Info label="E-mail" value={preview.email || '-'} />
+                  <Info label="Função" value={preview.roleName || '-'} />
+                  <Info label="Centro de custo" value={preview.centerCost || '-'} />
+                  <Info label="Contrato" value={preview.contractType || '-'} />
+                  <Info label="VT a.d" value={preview.vtPerDay === null ? '-' : formatMoney(preview.vtPerDay)} />
+                  <Info label="VT a.m" value={preview.vtMonth === null ? '-' : formatMoney(preview.vtMonth)} />
+                  <Info label="D.V.T." value={preview.vtDiscount === null ? '-' : formatMoney(preview.vtDiscount)} />
+                  <Info label="Insalubridade" value={formatSheetInsalubrity(preview.insalubrityValue)} />
+                  <div className="sm:col-span-2">
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Observação</div>
+                    <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-700">{preview.observation || '-'}</div>
+                  </div>
                 </div>
               ) : (
-                <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-700">Sem divergências no recorte comparado.</div>
+                <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">A prévia da planilha ficará disponível depois da geração da folha.</div>
               )}
             </Card>
           </section>
+
+          <Card title="Ocorrências da competência">
+            {detail?.occurrences?.length ? (
+              <div className="space-y-2">
+                {detail.occurrences.map((occurrence) => (
+                  <div key={occurrence.id} className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                    <strong>{occurrence.occurrenceType}</strong> · {formatDateBr(occurrence.dateStart)}
+                    {occurrence.dateEnd && occurrence.dateEnd !== occurrence.dateStart ? ` a ${formatDateBr(occurrence.dateEnd)}` : ''}
+                    {occurrence.notes ? ` · ${occurrence.notes}` : ''}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Nenhuma ocorrência lançada para esta linha.</div>
+            )}
+          </Card>
 
           <Card title="Ponto do período">
             <div className="max-h-64 overflow-auto">
@@ -163,6 +194,15 @@ function Stat({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">{label}</div>
       <div className="mt-2 text-xl font-bold text-slate-900">{value}</div>
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</div>
+      <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-700">{value}</div>
     </div>
   );
 }

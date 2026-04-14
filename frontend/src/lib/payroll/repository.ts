@@ -3,12 +3,10 @@ import type { DbInterface } from '@/lib/db';
 import { ensureEmployeesTables } from '@/lib/colaboradores/repository';
 import {
   DEFAULT_PAYROLL_RULES,
-  PAYROLL_COMPARISON_STATUSES,
   PAYROLL_LINE_STATUSES,
   PAYROLL_OCCURRENCE_TYPES,
   PAYROLL_PERIOD_STATUSES,
   PAYROLL_TRANSPORT_VOUCHER_MODES,
-  type PayrollComparisonStatus,
   type PayrollImportFileType,
   type PayrollImportStatus,
   type PayrollLineStatus,
@@ -16,9 +14,8 @@ import {
   type PayrollPeriodStatus,
   type PayrollTransportVoucherMode,
 } from '@/lib/payroll/constants';
-import { parsePointPdfBuffer, parseReferenceWorkbookBuffer } from '@/lib/payroll/parsers';
+import { parsePointPdfBuffer } from '@/lib/payroll/parsers';
 import type {
-  PayrollComparisonRow,
   PayrollCreatePeriodInput,
   PayrollImportFile,
   PayrollLine,
@@ -32,7 +29,7 @@ import type {
   PayrollPeriodDetail,
   PayrollPeriodSummary,
   PayrollPointDaily,
-  PayrollReferenceRow,
+  PayrollPreviewRow,
   PayrollRule,
 } from '@/lib/payroll/types';
 
@@ -105,8 +102,6 @@ const normalizeSearch = (value: unknown) =>
 
 const buildComparisonKey = (employeeName: string, employeeCpf: string | null) => employeeCpf || normalizeSearch(employeeName);
 const roundMoney = (value: number) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
-const moneyEquals = (left: number | null | undefined, right: number | null | undefined) =>
-  Math.abs(Number(left || 0) - Number(right || 0)) < 0.01;
 
 const normalizeMonthRef = (value: unknown) => {
   const raw = clean(value);
@@ -238,7 +233,7 @@ const mapRule = (row: any): PayrollRule => ({
 const mapImportFile = (row: any): PayrollImportFile => ({
   id: clean(row.id),
   periodId: clean(row.period_id),
-  fileType: upper(row.file_type) as PayrollImportFileType,
+  fileType: upper(row.file_type) as PayrollImportFile['fileType'],
   fileName: clean(row.file_name),
   mimeType: clean(row.mime_type),
   sizeBytes: Number(row.size_bytes || 0),
@@ -328,36 +323,16 @@ const mapLine = (row: any): PayrollLine => ({
   payrollNotes: clean(row.payroll_notes) || null,
   employeeSnapshotJson: clean(row.employee_snapshot_json) || null,
   calculationMemoryJson: clean(row.calculation_memory_json) || null,
-  comparisonStatus: upper(row.comparison_status || 'SEM_BASE') as PayrollComparisonStatus,
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
-});
-
-const mapReferenceRow = (row: any): PayrollReferenceRow => ({
-  id: clean(row.id),
-  periodId: clean(row.period_id),
-  employeeName: clean(row.employee_name),
-  employeeCpf: normalizeCpf(row.employee_cpf),
-  centerCost: clean(row.center_cost) || null,
-  roleName: clean(row.role_name) || null,
-  contractType: clean(row.contract_type) || null,
-  salaryBase: toNullableNumber(row.salary_base),
-  insalubrityPercent: toNullableNumber(row.insalubrity_percent),
-  vtDay: toNullableNumber(row.vt_day),
-  vtMonth: toNullableNumber(row.vt_month),
-  vtDiscount: toNullableNumber(row.vt_discount),
-  otherDiscounts: toNullableNumber(row.other_discounts),
-  totalpassDiscount: toNullableNumber(row.totalpass_discount),
-  notes: clean(row.notes) || null,
-  rawJson: clean(row.raw_json) || null,
-  comparisonKey: clean(row.comparison_key),
-  createdAt: clean(row.created_at),
 });
 
 type EmployeePayrollSource = {
   id: string;
   fullName: string;
+  email: string | null;
   cpf: string | null;
+  jobTitle: string | null;
   costCenter: string | null;
   units: string[];
   employmentRegime: string;
@@ -378,7 +353,9 @@ type EmployeePayrollSource = {
 const mapEmployeePayrollSource = (row: any): EmployeePayrollSource => ({
   id: clean(row.id),
   fullName: clean(row.full_name),
+  email: clean(row.email) || null,
   cpf: normalizeCpf(row.cpf),
+  jobTitle: clean(row.job_title) || null,
   costCenter: clean(row.cost_center) || null,
   units: parseUnitsJson(row.units_json),
   employmentRegime: upper(row.employment_regime || 'CLT'),
@@ -401,8 +378,6 @@ const buildSummaryFromLines = (lines: PayrollLine[], imports: PayrollImportFile[
   totalNet: roundMoney(lines.reduce((sum, line) => sum + line.netOperational, 0)),
   totalDiscounts: roundMoney(lines.reduce((sum, line) => sum + line.totalDiscounts, 0)),
   totalProvents: roundMoney(lines.reduce((sum, line) => sum + line.totalProvents, 0)),
-  divergentLines: lines.filter((line) => line.comparisonStatus === 'DIVERGENTE').length,
-  linesWithoutReference: lines.filter((line) => line.comparisonStatus === 'SEM_BASE').length,
   importsCompleted: imports.filter((item) => item.processingStatus === 'COMPLETED').length,
 });
 
@@ -670,10 +645,6 @@ const listLinesRaw = async (db: DbInterface, periodId: string) => {
   return rows.map(mapLine);
 };
 
-const listReferenceRowsRaw = async (db: DbInterface, periodId: string) => {
-  const rows = await db.query(`SELECT * FROM payroll_reference_rows WHERE period_id = ? ORDER BY employee_name ASC`, [periodId]);
-  return rows.map(mapReferenceRow);
-};
 
 const listOccurrencesRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
   const rows = await db.query(
@@ -702,57 +673,6 @@ const getLatestRuleSeed = async (db: DbInterface) => {
   };
 };
 
-const buildComparisonMap = (referenceRows: PayrollReferenceRow[]) => {
-  const map = new Map<string, PayrollReferenceRow>();
-  for (const row of referenceRows) {
-    if (!map.has(row.comparisonKey)) map.set(row.comparisonKey, row);
-  }
-  return map;
-};
-
-const compareLineToReference = (line: PayrollLine, referenceRow: PayrollReferenceRow | null) => {
-  if (!referenceRow) {
-    return {
-      status: 'SEM_BASE' as PayrollComparisonStatus,
-      differences: [] as Array<{ field: string; systemValue: string; referenceValue: string }>,
-    };
-  }
-
-  const differences: Array<{ field: string; systemValue: string; referenceValue: string }> = [];
-  const expectedVtProvisioned = referenceRow.vtMonth ?? (referenceRow.vtDay !== null ? referenceRow.vtDay * Math.max(line.daysWorked, 0) : null);
-
-  const pushMoneyDiff = (field: string, systemValue: number, referenceValue: number | null) => {
-    if (referenceValue === null || moneyEquals(systemValue, referenceValue)) return;
-    differences.push({
-      field,
-      systemValue: systemValue.toFixed(2),
-      referenceValue: Number(referenceValue || 0).toFixed(2),
-    });
-  };
-
-  const pushTextDiff = (field: string, systemValue: string | null, referenceValue: string | null) => {
-    if (normalizeSearch(systemValue) === normalizeSearch(referenceValue)) return;
-    differences.push({
-      field,
-      systemValue: clean(systemValue) || '-',
-      referenceValue: clean(referenceValue) || '-',
-    });
-  };
-
-  pushMoneyDiff('Salário base', line.salaryBase, referenceRow.salaryBase);
-  pushMoneyDiff('Insalubridade (%)', line.insalubrityPercent, referenceRow.insalubrityPercent);
-  pushTextDiff('Contrato', line.contractType, referenceRow.contractType);
-  pushTextDiff('Centro de custo', line.centerCost, referenceRow.centerCost);
-  pushMoneyDiff('VT provisionado', line.vtProvisioned, expectedVtProvisioned);
-  pushMoneyDiff('D.V.T.', line.vtDiscount, referenceRow.vtDiscount);
-  pushMoneyDiff('Totalpass', line.totalpassDiscount, referenceRow.totalpassDiscount);
-  pushMoneyDiff('Outros descontos', line.otherFixedDiscount, referenceRow.otherDiscounts);
-
-  return {
-    status: differences.length === 0 ? ('IGUAL' as PayrollComparisonStatus) : ('DIVERGENTE' as PayrollComparisonStatus),
-    differences,
-  };
-};
 
 export const listPayrollPeriods = async (db: DbInterface) => {
   await ensurePayrollTables(db);
@@ -840,7 +760,6 @@ export const getPayrollOptions = async (db: DbInterface): Promise<PayrollOptions
     contractTypes: contractRows.map((row: any) => clean(row.value)).filter(Boolean),
     periodStatuses: PAYROLL_PERIOD_STATUSES,
     lineStatuses: PAYROLL_LINE_STATUSES,
-    comparisonStatuses: PAYROLL_COMPARISON_STATUSES,
     transportVoucherModes: PAYROLL_TRANSPORT_VOUCHER_MODES,
     occurrenceTypes: PAYROLL_OCCURRENCE_TYPES,
   };
@@ -1015,75 +934,12 @@ export const processPayrollPointImport = async (
   return mapImportFile(rows[0]);
 };
 
-export const processPayrollReferenceImport = async (
-  db: DbInterface,
-  params: {
-    periodId: string;
-    fileName: string;
-    mimeType: string;
-    sizeBytes: number;
-    storageProvider: string;
-    storageBucket: string | null;
-    storageKey: string;
-    uploadedBy: string;
-    buffer: Buffer;
-  },
-) => {
-  await ensurePayrollTables(db);
-  const period = await getPeriodOrThrow(db, params.periodId);
-  const importId = await createImportRecord(db, { ...params, fileType: 'REFERENCE_XLSX' });
-
-  try {
-    const parsedRows = await parseReferenceWorkbookBuffer(params.buffer);
-    await db.execute(`DELETE FROM payroll_reference_rows WHERE period_id = ?`, [period.id]);
-
-    for (const row of parsedRows) {
-      await db.execute(
-        `INSERT INTO payroll_reference_rows (
-          id, period_id, employee_name, employee_cpf, center_cost, role_name, contract_type,
-          salary_base, insalubrity_percent, vt_day, vt_month, vt_discount, other_discounts,
-          totalpass_discount, notes, raw_json, comparison_key, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          randomUUID(),
-          period.id,
-          row.employeeName,
-          row.employeeCpf,
-          row.centerCost,
-          row.roleName,
-          row.contractType,
-          row.salaryBase,
-          row.insalubrityPercent,
-          row.vtDay,
-          row.vtMonth,
-          row.vtDiscount,
-          row.otherDiscounts,
-          row.totalpassDiscount,
-          row.notes,
-          row.rawJson,
-          row.comparisonKey,
-          NOW(),
-        ],
-      );
-    }
-
-    await finalizeImportRecord(db, importId, 'COMPLETED', `Planilha de referência processada com ${parsedRows.length} linhas válidas.`);
-  } catch (error: any) {
-    await finalizeImportRecord(db, importId, 'FAILED', String(error?.message || error || 'Falha no processamento do XLSX.'));
-    throw error;
-  }
-
-  const rows = await db.query(`SELECT * FROM payroll_import_files WHERE id = ? LIMIT 1`, [importId]);
-  return mapImportFile(rows[0]);
-};
-
 const buildLineRecord = (
   employee: EmployeePayrollSource,
   period: PayrollPeriod,
   rules: PayrollRule,
   pointRows: PayrollPointDaily[],
   occurrences: PayrollOccurrence[],
-  referenceRow: PayrollReferenceRow | null,
   existingLine: PayrollLine | null,
   recessRows: any[],
 ): PayrollLine => {
@@ -1188,7 +1044,9 @@ const buildLineRecord = (
     employeeSnapshotJson: safeJson({
       id: employee.id,
       fullName: employee.fullName,
+      email: employee.email,
       cpf: employee.cpf,
+      jobTitle: employee.jobTitle,
       costCenter: employee.costCenter,
       units: employee.units,
       employmentRegime: employee.employmentRegime,
@@ -1231,13 +1089,10 @@ const buildLineRecord = (
         adjustmentsAmount,
       },
     }),
-    comparisonStatus: 'SEM_BASE',
     createdAt: existingLine?.createdAt || NOW(),
     updatedAt: NOW(),
   };
 
-  const comparison = compareLineToReference(draftLine, referenceRow);
-  draftLine.comparisonStatus = comparison.status;
   return draftLine;
 };
 
@@ -1246,11 +1101,10 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
   const period = await getPeriodOrThrow(db, periodId);
   if (!period.rules) throw new PayrollValidationError('Regras da competência não encontradas.', 500);
 
-  const [employees, pointRows, occurrenceRows, referenceRows, existingLines, recessRows] = await Promise.all([
+  const [employees, pointRows, occurrenceRows, existingLines, recessRows] = await Promise.all([
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
     listPointRowsRaw(db, period.id),
     listOccurrencesRaw(db, period.id),
-    listReferenceRowsRaw(db, period.id),
     listLinesRaw(db, period.id),
     db.query(`SELECT * FROM employee_recess_periods ORDER BY vacation_start_date ASC`),
   ]);
@@ -1278,7 +1132,6 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
     recessMap.set(key, list);
   }
 
-  const referenceMap = buildComparisonMap(referenceRows);
   const existingMap = new Map<string, PayrollLine>();
   for (const line of existingLines) {
     const key = line.employeeId || buildComparisonKey(line.employeeName, line.employeeCpf);
@@ -1292,7 +1145,6 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
       period.rules!,
       pointMap.get(employee.id) || pointMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || [],
       occurrenceMap.get(employee.id) || [],
-      referenceMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || null,
       existingMap.get(employee.id) || existingMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || null,
       recessMap.get(employee.id) || [],
     ),
@@ -1342,7 +1194,7 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
         line.payrollNotes,
         line.employeeSnapshotJson,
         line.calculationMemoryJson,
-        line.comparisonStatus,
+        'SEM_BASE',
         line.createdAt,
         line.updatedAt,
       ],
@@ -1357,7 +1209,6 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
     unit: 'all',
     contractType: 'all',
     lineStatus: 'all',
-    comparisonStatus: 'all',
   });
 };
 
@@ -1370,7 +1221,6 @@ const matchesLineFilters = (line: PayrollLine, filters: PayrollLineFilters) => {
   if (filters.unit !== 'all' && clean(line.unitName) !== clean(filters.unit)) return false;
   if (filters.contractType !== 'all' && clean(line.contractType) !== clean(filters.contractType)) return false;
   if (filters.lineStatus !== 'all' && line.lineStatus !== filters.lineStatus) return false;
-  if (filters.comparisonStatus !== 'all' && line.comparisonStatus !== filters.comparisonStatus) return false;
   return true;
 };
 
@@ -1386,45 +1236,183 @@ export const listPayrollLines = async (db: DbInterface, periodId: string, filter
   };
 };
 
-export const listPayrollComparison = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
+type PayrollEmployeePreviewSource = Pick<
+  EmployeePayrollSource,
+  'id' | 'fullName' | 'email' | 'cpf' | 'jobTitle' | 'costCenter' | 'units' | 'employmentRegime' | 'transportVoucherPerDay' | 'insalubrityPercent'
+>;
+
+type PayrollLineSnapshot = Partial<{
+  id: string;
+  fullName: string;
+  email: string | null;
+  cpf: string | null;
+  jobTitle: string | null;
+  costCenter: string | null;
+  units: string[];
+  employmentRegime: string;
+  transportVoucherPerDay: number;
+  insalubrityPercent: number;
+}>;
+
+const occurrenceTypeLabelMap: Record<PayrollOccurrenceType, string> = {
+  ATESTADO: 'Atestado',
+  DECLARACAO: 'Declaração',
+  AJUSTE_BATIDA: 'Ajuste de batida',
+  AUSENCIA_AUTORIZADA: 'Ausência autorizada',
+  FALTA_INJUSTIFICADA: 'Falta injustificada',
+  FERIAS: 'Férias',
+};
+
+const parsePayrollLineSnapshot = (value: string | null | undefined): PayrollLineSnapshot => {
+  const raw = clean(value);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const formatShortDateBr = (value: string | null | undefined) => {
+  const parsed = parseDate(value);
+  if (!parsed) return null;
+  return `${parsed.slice(8, 10)}/${parsed.slice(5, 7)}`;
+};
+
+const normalizeInsalubrityForSheet = (value: number | null | undefined) => {
+  const amount = Number(value || 0);
+  if (!Number.isFinite(amount) || Math.abs(amount) < 0.0001) return null;
+  return roundMoney(amount > 1 ? amount / 100 : amount);
+};
+
+const nullableSheetMoney = (value: number | null | undefined) => {
+  const amount = roundMoney(Number(value || 0));
+  return Math.abs(amount) < 0.01 ? null : amount;
+};
+
+const buildOccurrenceSummary = (occurrence: PayrollOccurrence) => {
+  const start = formatShortDateBr(occurrence.dateStart);
+  const end = formatShortDateBr(occurrence.dateEnd);
+  const dateLabel = start && end && start !== end ? `${start} a ${end}` : start || end || '';
+  const label = occurrenceTypeLabelMap[occurrence.occurrenceType] || occurrence.occurrenceType;
+  const notes = clean(occurrence.notes);
+  return [label, dateLabel ? `(${dateLabel})` : '', notes ? `- ${notes}` : ''].filter(Boolean).join(' ');
+};
+
+const buildPreviewObservation = (line: PayrollLine, occurrences: PayrollOccurrence[]) => {
+  const parts: string[] = [];
+  if (clean(line.payrollNotes)) parts.push(clean(line.payrollNotes));
+  if (clean(line.adjustmentsNotes)) parts.push(`Ajuste: ${clean(line.adjustmentsNotes)}`);
+  if (clean(line.otherFixedDiscountDescription)) parts.push(`Desconto: ${clean(line.otherFixedDiscountDescription)}`);
+
+  const occurrenceText = occurrences.map(buildOccurrenceSummary).filter(Boolean).join('; ');
+  if (occurrenceText) parts.push(occurrenceText);
+
+  if (line.absencesCount > 0) parts.push(`Faltas consideradas: ${line.absencesCount}`);
+  if (line.lateMinutes > 0) parts.push(`Atrasos considerados: ${line.lateMinutes} min`);
+
+  return parts.join(' | ') || null;
+};
+
+const loadEmployeePreviewMap = async (db: DbInterface, employeeIds: string[]) => {
+  const uniqueIds = Array.from(new Set(employeeIds.map((item) => clean(item)).filter(Boolean)));
+  if (!uniqueIds.length) return new Map<string, PayrollEmployeePreviewSource>();
+
+  const placeholders = uniqueIds.map(() => '?').join(', ');
+  const rows = await db.query(
+    `
+      SELECT id, full_name, email, cpf, job_title, cost_center, units_json, employment_regime, transport_voucher_per_day, insalubrity_percent
+      FROM employees
+      WHERE id IN (${placeholders})
+    `,
+    uniqueIds,
+  );
+
+  return new Map(
+    rows.map((row: any) => {
+      const mapped: PayrollEmployeePreviewSource = {
+        id: clean(row.id),
+        fullName: clean(row.full_name),
+        email: clean(row.email) || null,
+        cpf: normalizeCpf(row.cpf),
+        jobTitle: clean(row.job_title) || null,
+        costCenter: clean(row.cost_center) || null,
+        units: parseUnitsJson(row.units_json),
+        employmentRegime: upper(row.employment_regime || 'CLT'),
+        transportVoucherPerDay: toNumber(row.transport_voucher_per_day),
+        insalubrityPercent: toNumber(row.insalubrity_percent),
+      };
+      return [mapped.id, mapped] as const;
+    }),
+  );
+};
+
+const buildPayrollPreviewRow = (
+  line: PayrollLine,
+  employeeFallback: PayrollEmployeePreviewSource | null,
+  occurrences: PayrollOccurrence[],
+): PayrollPreviewRow => {
+  const snapshot = parsePayrollLineSnapshot(line.employeeSnapshotJson);
+  const email = clean(snapshot.email) || employeeFallback?.email || null;
+  const roleName = clean(snapshot.jobTitle) || employeeFallback?.jobTitle || null;
+  const centerCost = clean(snapshot.costCenter) || employeeFallback?.costCenter || line.centerCost || null;
+  const contractType = clean(snapshot.employmentRegime) || employeeFallback?.employmentRegime || line.contractType || null;
+  const vtPerDay = nullableSheetMoney(
+    toNullableNumber(snapshot.transportVoucherPerDay) ?? employeeFallback?.transportVoucherPerDay ?? 0,
+  );
+  const insalubrityValue = normalizeInsalubrityForSheet(
+    toNullableNumber(snapshot.insalubrityPercent) ?? employeeFallback?.insalubrityPercent ?? line.insalubrityPercent,
+  );
+
+  return {
+    key: line.id,
+    lineId: line.id,
+    employeeName: line.employeeName,
+    email,
+    employeeCpf: line.employeeCpf,
+    centerCost,
+    roleName,
+    contractType,
+    salaryBase: roundMoney(line.salaryBase),
+    insalubrityValue,
+    vtPerDay,
+    vtMonth: nullableSheetMoney(line.vtProvisioned),
+    vtDiscount: nullableSheetMoney(line.vtDiscount),
+    otherDiscounts: nullableSheetMoney(line.otherFixedDiscount),
+    totalpassDiscount: nullableSheetMoney(line.totalpassDiscount),
+    observation: buildPreviewObservation(line, occurrences),
+  };
+};
+
+export const listPayrollPreviewRows = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
   await ensurePayrollTables(db);
   await getPeriodOrThrow(db, periodId);
-  const [lines, referenceRows] = await Promise.all([listLinesRaw(db, periodId), listReferenceRowsRaw(db, periodId)]);
-  const lineMap = new Map(lines.map((line) => [buildComparisonKey(line.employeeName, line.employeeCpf), line] as const));
-  const rows: PayrollComparisonRow[] = [];
+  const [linesResult, occurrenceRows] = await Promise.all([
+    listPayrollLines(db, periodId, filters),
+    listOccurrencesRaw(db, periodId),
+  ]);
 
-  for (const line of lines) {
-    const key = buildComparisonKey(line.employeeName, line.employeeCpf);
-    const referenceRow = referenceRows.find((item) => item.comparisonKey === key) || null;
-    const comparison = compareLineToReference(line, referenceRow);
-    rows.push({ key, employeeName: line.employeeName, employeeCpf: line.employeeCpf, status: comparison.status, systemLine: line, referenceRow, differences: comparison.differences });
-  }
+  const employeeMap = await loadEmployeePreviewMap(
+    db,
+    linesResult.items.map((line) => line.employeeId || '').filter(Boolean),
+  );
 
-  for (const referenceRow of referenceRows) {
-    if (lineMap.has(referenceRow.comparisonKey)) continue;
-    rows.push({
-      key: referenceRow.comparisonKey,
-      employeeName: referenceRow.employeeName,
-      employeeCpf: referenceRow.employeeCpf,
-      status: 'SO_NA_BASE',
-      systemLine: null,
-      referenceRow,
-      differences: [{ field: 'Linha', systemValue: '-', referenceValue: 'Existe apenas na base de referência' }],
-    });
+  const occurrenceMap = new Map<string, PayrollOccurrence[]>();
+  for (const occurrence of occurrenceRows) {
+    const list = occurrenceMap.get(occurrence.employeeId) || [];
+    list.push(occurrence);
+    occurrenceMap.set(occurrence.employeeId, list);
   }
 
   return {
-    items: rows
-      .filter((row) => {
-        if (filters.search) {
-          const hay = `${row.employeeName} ${row.employeeCpf || ''}`.toLowerCase();
-          if (!hay.includes(filters.search.toLowerCase())) return false;
-        }
-        if (filters.comparisonStatus !== 'all' && row.status !== filters.comparisonStatus) return false;
-        if (!row.systemLine) return true;
-        return matchesLineFilters(row.systemLine, { ...filters, comparisonStatus: 'all' });
-      })
-      .sort((a, b) => a.employeeName.localeCompare(b.employeeName, 'pt-BR', { sensitivity: 'base' })),
+    items: linesResult.items.map((line) =>
+      buildPayrollPreviewRow(
+        line,
+        line.employeeId ? employeeMap.get(line.employeeId) || null : null,
+        line.employeeId ? occurrenceMap.get(line.employeeId) || [] : [],
+      ),
+    ),
   };
 };
 
@@ -1433,14 +1421,19 @@ export const getPayrollLineDetail = async (db: DbInterface, lineId: string): Pro
   const rows = await db.query(`SELECT * FROM payroll_lines WHERE id = ? LIMIT 1`, [lineId]);
   if (!rows[0]) throw new PayrollValidationError('Linha da folha não encontrada.', 404);
   const line = mapLine(rows[0]);
-  const [pointDays, occurrences, referenceRows] = await Promise.all([
+  const [pointDays, occurrences, employeeMap] = await Promise.all([
     listPointRowsRaw(db, line.periodId, line.employeeId || undefined),
     line.employeeId ? listOccurrencesRaw(db, line.periodId, line.employeeId) : Promise.resolve([]),
-    listReferenceRowsRaw(db, line.periodId),
+    line.employeeId ? loadEmployeePreviewMap(db, [line.employeeId]) : Promise.resolve(new Map<string, PayrollEmployeePreviewSource>()),
   ]);
-  const referenceRow = referenceRows.find((item) => item.comparisonKey === buildComparisonKey(line.employeeName, line.employeeCpf)) || null;
-  const comparison = compareLineToReference(line, referenceRow);
-  return { line, pointDays, occurrences, referenceRow, differences: comparison.differences };
+
+  const previewRow = buildPayrollPreviewRow(
+    line,
+    line.employeeId ? employeeMap.get(line.employeeId) || null : null,
+    occurrences,
+  );
+
+  return { line, pointDays, occurrences, previewRow };
 };
 
 export const patchPayrollLine = async (db: DbInterface, lineId: string, input: PayrollLinePatchInput) => {
@@ -1553,11 +1546,11 @@ export const buildPayrollExportData = async (db: DbInterface, periodId: string, 
   const period = await getPeriodOrThrow(db, periodId);
   const detail = await getPayrollPeriodDetail(db, periodId);
   const linesResult = await listPayrollLines(db, periodId, filters);
-  const comparisonResult = await listPayrollComparison(db, periodId, filters);
+  const previewResult = await listPayrollPreviewRows(db, periodId, filters);
   return {
     period,
     summary: detail.summary,
     lines: linesResult.items,
-    comparisonRows: comparisonResult.items,
+    previewRows: previewResult.items,
   };
 };

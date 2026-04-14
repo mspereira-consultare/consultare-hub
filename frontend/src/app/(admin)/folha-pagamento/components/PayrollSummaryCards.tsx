@@ -17,8 +17,6 @@ export function PayrollSummaryCards({ summary }: { summary: PayrollPeriodSummary
     totalNet: 0,
     totalDiscounts: 0,
     totalProvents: 0,
-    divergentLines: 0,
-    linesWithoutReference: 0,
     importsCompleted: 0,
   };
 

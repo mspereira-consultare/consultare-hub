@@ -1,8 +1,7 @@
 export type PayrollPeriodStatus = 'ABERTA' | 'EM_REVISAO' | 'APROVADA' | 'ENVIADA';
-export type PayrollImportFileType = 'POINT_PDF' | 'REFERENCE_XLSX';
+export type PayrollImportFileType = 'POINT_PDF';
 export type PayrollImportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 export type PayrollLineStatus = 'RASCUNHO' | 'EM_REVISAO' | 'APROVADO';
-export type PayrollComparisonStatus = 'IGUAL' | 'DIVERGENTE' | 'SEM_BASE' | 'SO_NA_BASE';
 export type PayrollTransportVoucherMode = 'PER_DAY' | 'MONTHLY_FIXED' | 'NONE';
 export type PayrollOccurrenceType =
   | 'ATESTADO'
@@ -21,7 +20,6 @@ export const PAYROLL_PERIOD_STATUSES: Array<{ value: PayrollPeriodStatus; label:
 
 export const PAYROLL_IMPORT_FILE_TYPES: Array<{ value: PayrollImportFileType; label: string }> = [
   { value: 'POINT_PDF', label: 'Relatório de ponto (PDF)' },
-  { value: 'REFERENCE_XLSX', label: 'Planilha de referência (XLSX)' },
 ];
 
 export const PAYROLL_IMPORT_STATUSES: Array<{ value: PayrollImportStatus; label: string }> = [
@@ -35,13 +33,6 @@ export const PAYROLL_LINE_STATUSES: Array<{ value: PayrollLineStatus; label: str
   { value: 'RASCUNHO', label: 'Rascunho' },
   { value: 'EM_REVISAO', label: 'Em revisão' },
   { value: 'APROVADO', label: 'Aprovado' },
-];
-
-export const PAYROLL_COMPARISON_STATUSES: Array<{ value: PayrollComparisonStatus; label: string }> = [
-  { value: 'IGUAL', label: 'Igual' },
-  { value: 'DIVERGENTE', label: 'Divergente' },
-  { value: 'SEM_BASE', label: 'Sem base' },
-  { value: 'SO_NA_BASE', label: 'Só na base' },
 ];
 
 export const PAYROLL_OCCURRENCE_TYPES: Array<{ value: PayrollOccurrenceType; label: string }> = [
@@ -64,4 +55,3 @@ export const DEFAULT_PAYROLL_RULES = {
   lateToleranceMinutes: Number(process.env.PAYROLL_DEFAULT_LATE_TOLERANCE || '15'),
   vtDiscountCapPercent: Number(process.env.PAYROLL_DEFAULT_VT_CAP_PERCENT || '6'),
 };
-

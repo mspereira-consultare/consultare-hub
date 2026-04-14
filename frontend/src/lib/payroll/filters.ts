@@ -1,4 +1,4 @@
-﻿import type { PayrollLineFilters } from '@/lib/payroll/types';
+import type { PayrollLineFilters } from '@/lib/payroll/types';
 
 type SearchParamsLike = {
   get(name: string): string | null;
@@ -10,7 +10,6 @@ export const DEFAULT_PAYROLL_LINE_FILTERS: PayrollLineFilters = {
   unit: 'all',
   contractType: 'all',
   lineStatus: 'all',
-  comparisonStatus: 'all',
 };
 
 export const parsePayrollLineFilters = (searchParams: SearchParamsLike): PayrollLineFilters => ({
@@ -19,5 +18,4 @@ export const parsePayrollLineFilters = (searchParams: SearchParamsLike): Payroll
   unit: String(searchParams.get('unit') || 'all').trim() || 'all',
   contractType: String(searchParams.get('contractType') || 'all').trim() || 'all',
   lineStatus: String(searchParams.get('lineStatus') || 'all').trim() || 'all',
-  comparisonStatus: String(searchParams.get('comparisonStatus') || 'all').trim() || 'all',
 });

@@ -44,7 +44,7 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
     Plano técnico e implementação do módulo `/qualidade/vigilancia-sanitaria`, com licenças, documentos regulatórios, anexos e vencimentos.
 
 14. [`docs/14-plano-tecnico-folha-pagamento.md`](docs/14-plano-tecnico-folha-pagamento.md)  
-    Plano técnico e implementação do módulo `/folha-pagamento`, com fechamento mensal recorrente, importação de ponto, comparação com a planilha do RH e exportação XLSX.
+    Plano técnico e implementação do módulo `/folha-pagamento`, com fechamento mensal recorrente, importação de ponto, prévia da planilha operacional e exportação XLSX.
 
 ## Convenções
 
@@ -57,4 +57,4 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 
 - Módulo `/propostas` separado entre base operacional e visão gerencial, com follow-up persistente e exportação enriquecida.
 - Módulos de Qualidade consolidados com cadastros, anexos, alertas e documentação técnica própria.
-- Módulo `/folha-pagamento` adicionado como fluxo mensal recorrente do RH, integrado ao cadastro de colaboradores e à base de comparação em XLSX.
+- Módulo `/folha-pagamento` adicionado como fluxo mensal recorrente do RH, integrado ao cadastro de colaboradores e à geração da planilha operacional padrão em XLSX.

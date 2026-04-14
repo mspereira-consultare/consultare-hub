@@ -1,5 +1,4 @@
 import type {
-  PayrollComparisonStatus,
   PayrollImportFileType,
   PayrollImportStatus,
   PayrollLineStatus,
@@ -38,7 +37,7 @@ export type PayrollPeriod = {
 export type PayrollImportFile = {
   id: string;
   periodId: string;
-  fileType: PayrollImportFileType;
+  fileType: PayrollImportFileType | 'REFERENCE_XLSX';
   fileName: string;
   mimeType: string;
   sizeBytes: number;
@@ -128,30 +127,27 @@ export type PayrollLine = {
   payrollNotes: string | null;
   employeeSnapshotJson: string | null;
   calculationMemoryJson: string | null;
-  comparisonStatus: PayrollComparisonStatus;
   createdAt: string;
   updatedAt: string;
 };
 
-export type PayrollReferenceRow = {
-  id: string;
-  periodId: string;
+export type PayrollPreviewRow = {
+  key: string;
+  lineId: string;
   employeeName: string;
+  email: string | null;
   employeeCpf: string | null;
   centerCost: string | null;
   roleName: string | null;
   contractType: string | null;
-  salaryBase: number | null;
-  insalubrityPercent: number | null;
-  vtDay: number | null;
+  salaryBase: number;
+  insalubrityValue: number | null;
+  vtPerDay: number | null;
   vtMonth: number | null;
   vtDiscount: number | null;
   otherDiscounts: number | null;
   totalpassDiscount: number | null;
-  notes: string | null;
-  rawJson: string | null;
-  comparisonKey: string;
-  createdAt: string;
+  observation: string | null;
 };
 
 export type PayrollOptions = {
@@ -161,7 +157,6 @@ export type PayrollOptions = {
   contractTypes: string[];
   periodStatuses: Array<{ value: PayrollPeriodStatus; label: string }>;
   lineStatuses: Array<{ value: PayrollLineStatus; label: string }>;
-  comparisonStatuses: Array<{ value: PayrollComparisonStatus; label: string }>;
   transportVoucherModes: Array<{ value: PayrollTransportVoucherMode; label: string }>;
   occurrenceTypes: Array<{ value: PayrollOccurrenceType; label: string }>;
 };
@@ -171,8 +166,6 @@ export type PayrollPeriodSummary = {
   totalNet: number;
   totalDiscounts: number;
   totalProvents: number;
-  divergentLines: number;
-  linesWithoutReference: number;
   importsCompleted: number;
 };
 
@@ -182,25 +175,13 @@ export type PayrollLineFilters = {
   unit: string;
   contractType: string;
   lineStatus: string;
-  comparisonStatus: string;
-};
-
-export type PayrollComparisonRow = {
-  key: string;
-  employeeName: string;
-  employeeCpf: string | null;
-  status: PayrollComparisonStatus;
-  systemLine: PayrollLine | null;
-  referenceRow: PayrollReferenceRow | null;
-  differences: Array<{ field: string; systemValue: string; referenceValue: string }>;
 };
 
 export type PayrollLineDetail = {
   line: PayrollLine;
   pointDays: PayrollPointDaily[];
   occurrences: PayrollOccurrence[];
-  referenceRow: PayrollReferenceRow | null;
-  differences: Array<{ field: string; systemValue: string; referenceValue: string }>;
+  previewRow: PayrollPreviewRow | null;
 };
 
 export type PayrollPeriodDetail = {
@@ -260,22 +241,4 @@ export type ParsedPointEmployee = {
   scheduleStart: string | null;
   scheduleEnd: string | null;
   days: ParsedPointDay[];
-};
-
-export type ParsedReferenceRow = {
-  employeeName: string;
-  employeeCpf: string | null;
-  centerCost: string | null;
-  roleName: string | null;
-  contractType: string | null;
-  salaryBase: number | null;
-  insalubrityPercent: number | null;
-  vtDay: number | null;
-  vtMonth: number | null;
-  vtDiscount: number | null;
-  otherDiscounts: number | null;
-  totalpassDiscount: number | null;
-  notes: string | null;
-  rawJson: string;
-  comparisonKey: string;
 };

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
@@ -6,20 +6,20 @@ import { Calculator, CheckCircle2, Download, Loader2, Plus, RefreshCw, SendHoriz
 import { hasPermission } from '@/lib/permissions';
 import { DEFAULT_PAYROLL_LINE_FILTERS } from '@/lib/payroll/filters';
 import type {
-  PayrollComparisonRow,
   PayrollImportFile,
   PayrollLine,
   PayrollLineDetail,
   PayrollLineFilters,
   PayrollOptions,
   PayrollPeriodDetail,
+  PayrollPreviewRow,
 } from '@/lib/payroll/types';
 import { PayrollClosingTable } from './components/PayrollClosingTable';
-import { PayrollComparisonTable } from './components/PayrollComparisonTable';
 import { formatDateBr, formatMoney, statusLabelMap } from './components/formatters';
 import { PayrollImportsPanel } from './components/PayrollImportsPanel';
 import { PayrollLineDrawer } from './components/PayrollLineDrawer';
 import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
+import { PayrollPreviewTable } from './components/PayrollPreviewTable';
 import { PayrollSummaryCards } from './components/PayrollSummaryCards';
 import { PayrollTabNav, type PayrollTabKey } from './components/PayrollTabNav';
 
@@ -30,7 +30,6 @@ const emptyOptions: PayrollOptions = {
   contractTypes: [],
   periodStatuses: [],
   lineStatuses: [],
-  comparisonStatuses: [],
   transportVoucherModes: [],
   occurrenceTypes: [],
 };
@@ -68,20 +67,18 @@ export default function FolhaPagamentoPage() {
   const [selectedPeriodId, setSelectedPeriodId] = useState('');
   const [detail, setDetail] = useState<PayrollPeriodDetail | null>(emptyDetail);
   const [lines, setLines] = useState<PayrollLine[]>([]);
-  const [comparisonRows, setComparisonRows] = useState<PayrollComparisonRow[]>([]);
+  const [previewRows, setPreviewRows] = useState<PayrollPreviewRow[]>([]);
   const [filters, setFilters] = useState<PayrollLineFilters>(DEFAULT_PAYROLL_LINE_FILTERS);
   const [filterOptions, setFilterOptions] = useState({ centersCost: [] as string[], units: [] as string[], contracts: [] as string[] });
   const [activeTab, setActiveTab] = useState<PayrollTabKey>('fechamento');
   const [loading, setLoading] = useState(true);
-  const [lineLoading, setLineLoading] = useState(false);
-  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState('');
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [newPeriodOpen, setNewPeriodOpen] = useState(false);
   const [creatingPeriod, setCreatingPeriod] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
   const [uploadingPoint, setUploadingPoint] = useState(false);
-  const [uploadingReference, setUploadingReference] = useState(false);
   const [selectedLine, setSelectedLine] = useState<PayrollLine | null>(null);
   const [lineDetail, setLineDetail] = useState<PayrollLineDetail | null>(null);
   const [lineDetailOpen, setLineDetailOpen] = useState(false);
@@ -112,16 +109,22 @@ export default function FolhaPagamentoPage() {
   const loadPeriod = useCallback(async () => {
     if (!canView || !selectedPeriodId) return;
     setLoading(true);
+    setPreviewLoading(true);
     setError('');
     try {
-      const [detailPayload, linesPayload, comparisonPayload] = await Promise.all([
+      const [detailPayload, linesPayload, previewPayload] = await Promise.all([
         fetchJson<{ status: string; data: PayrollPeriodDetail }>(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}`),
-        fetchJson<{ status: string; data: { items: PayrollLine[]; availableCentersCost: string[]; availableUnits: string[]; availableContracts: string[] } }>(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/lines?${buildFilterQuery()}`),
-        fetchJson<{ status: string; data: { items: PayrollComparisonRow[] } }>(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/comparison?${buildFilterQuery()}`),
+        fetchJson<{ status: string; data: { items: PayrollLine[]; availableCentersCost: string[]; availableUnits: string[]; availableContracts: string[] } }>(
+          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/lines?${buildFilterQuery()}`,
+        ),
+        fetchJson<{ status: string; data: { items: PayrollPreviewRow[] } }>(
+          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/preview?${buildFilterQuery()}`,
+        ),
       ]);
+
       setDetail(detailPayload.data || emptyDetail);
       setLines(linesPayload.data?.items || []);
-      setComparisonRows(comparisonPayload.data?.items || []);
+      setPreviewRows(previewPayload.data?.items || []);
       setFilterOptions({
         centersCost: linesPayload.data?.availableCentersCost || [],
         units: linesPayload.data?.availableUnits || [],
@@ -131,6 +134,7 @@ export default function FolhaPagamentoPage() {
       setError(String(fetchError?.message || fetchError));
     } finally {
       setLoading(false);
+      setPreviewLoading(false);
     }
   }, [buildFilterQuery, canView, selectedPeriodId]);
 
@@ -187,14 +191,14 @@ export default function FolhaPagamentoPage() {
     }
   };
 
-  const handleUpload = async (file: File, kind: 'point' | 'reference') => {
+  const handlePointUpload = async (file: File) => {
     if (!selectedPeriodId) return;
     const formData = new FormData();
     formData.set('file', file);
-    kind === 'point' ? setUploadingPoint(true) : setUploadingReference(true);
+    setUploadingPoint(true);
     setError('');
     try {
-      await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/imports/${kind === 'point' ? 'point' : 'reference'}`, {
+      await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/imports/point`, {
         method: 'POST',
         body: formData,
       });
@@ -202,7 +206,7 @@ export default function FolhaPagamentoPage() {
     } catch (fetchError: any) {
       setError(String(fetchError?.message || fetchError));
     } finally {
-      kind === 'point' ? setUploadingPoint(false) : setUploadingReference(false);
+      setUploadingPoint(false);
     }
   };
 
@@ -216,6 +220,12 @@ export default function FolhaPagamentoPage() {
     } catch (fetchError: any) {
       setError(String(fetchError?.message || fetchError));
     }
+  };
+
+  const openPreviewLine = async (lineId: string) => {
+    const line = lines.find((item) => item.id === lineId);
+    if (!line) return;
+    await openLineDetail(line);
   };
 
   const handleSaveLine = async (draft: { adjustmentsAmount: string; adjustmentsNotes: string; payrollNotes: string; lineStatus: string }) => {
@@ -245,10 +255,14 @@ export default function FolhaPagamentoPage() {
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 p-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md"><Calculator size={20} /></div>
+            <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md">
+              <Calculator size={20} />
+            </div>
             <div>
               <h1 className="text-xl font-bold text-slate-800">Folha de pagamento</h1>
-              <p className="mt-1 text-xs text-slate-500">Fechamento mensal recorrente por competência, com base no cadastro do colaborador, relatório de ponto e planilha de referência.</p>
+              <p className="mt-1 text-xs text-slate-500">
+                Fechamento mensal recorrente por competência, com base no cadastro do colaborador, relatório de ponto e planilha operacional padrão do RH.
+              </p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -258,7 +272,11 @@ export default function FolhaPagamentoPage() {
               </button>
             ) : null}
             {selectedPeriodId ? (
-              <button type="button" onClick={() => window.open(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/export?${buildFilterQuery()}`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+              <button
+                type="button"
+                onClick={() => window.open(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/export?${buildFilterQuery()}`, '_blank', 'noopener,noreferrer')}
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700"
+              >
                 <Download size={16} /> Exportar XLSX
               </button>
             ) : null}
@@ -276,7 +294,9 @@ export default function FolhaPagamentoPage() {
             <select value={selectedPeriodId} onChange={(event) => setSelectedPeriodId(event.target.value)} className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#17407E] focus:ring-2 focus:ring-blue-100">
               <option value="">Selecione uma competência</option>
               {options.periods.map((period) => (
-                <option key={period.id} value={period.id}>{formatMonthRef(period.monthRef)} | {formatDateBr(period.periodStart)} a {formatDateBr(period.periodEnd)}</option>
+                <option key={period.id} value={period.id}>
+                  {formatMonthRef(period.monthRef)} | {formatDateBr(period.periodStart)} a {formatDateBr(period.periodEnd)}
+                </option>
               ))}
             </select>
           </label>
@@ -293,7 +313,11 @@ export default function FolhaPagamentoPage() {
         </div>
       </section>
 
-      {error ? <div className={`rounded-lg border px-4 py-3 text-sm ${error.includes('sucesso') ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{error}</div> : null}
+      {error ? (
+        <div className={`rounded-lg border px-4 py-3 text-sm ${error.includes('sucesso') ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
+          {error}
+        </div>
+      ) : null}
 
       <PayrollSummaryCards summary={detail?.summary || null} />
 
@@ -308,18 +332,43 @@ export default function FolhaPagamentoPage() {
           </button>
         </div>
         {filtersExpanded ? (
-          <div className="grid gap-3 p-6 md:grid-cols-2 xl:grid-cols-6">
-            <Field label="Buscar colaborador"><input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} className={filterInputClassName} placeholder="Nome ou CPF" /></Field>
-            <Field label="Centro de custo"><select value={filters.centerCost} onChange={(event) => setFilters((current) => ({ ...current, centerCost: event.target.value }))} className={filterInputClassName}><option value="all">Todos</option>{filterOptions.centersCost.map((item) => <option key={item} value={item}>{item}</option>)}</select></Field>
-            <Field label="Unidade"><select value={filters.unit} onChange={(event) => setFilters((current) => ({ ...current, unit: event.target.value }))} className={filterInputClassName}><option value="all">Todas</option>{filterOptions.units.map((item) => <option key={item} value={item}>{item}</option>)}</select></Field>
-            <Field label="Contrato"><select value={filters.contractType} onChange={(event) => setFilters((current) => ({ ...current, contractType: event.target.value }))} className={filterInputClassName}><option value="all">Todos</option>{filterOptions.contracts.map((item) => <option key={item} value={item}>{item}</option>)}</select></Field>
-            <Field label="Status da linha"><select value={filters.lineStatus} onChange={(event) => setFilters((current) => ({ ...current, lineStatus: event.target.value }))} className={filterInputClassName}><option value="all">Todos</option>{options.lineStatuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
-            <Field label="Status da comparação"><select value={filters.comparisonStatus} onChange={(event) => setFilters((current) => ({ ...current, comparisonStatus: event.target.value }))} className={filterInputClassName}><option value="all">Todos</option>{options.comparisonStatuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></Field>
+          <div className="grid gap-3 p-6 md:grid-cols-2 xl:grid-cols-5">
+            <Field label="Buscar colaborador">
+              <input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} className={filterInputClassName} placeholder="Nome ou CPF" />
+            </Field>
+            <Field label="Centro de custo">
+              <select value={filters.centerCost} onChange={(event) => setFilters((current) => ({ ...current, centerCost: event.target.value }))} className={filterInputClassName}>
+                <option value="all">Todos</option>
+                {filterOptions.centersCost.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </Field>
+            <Field label="Unidade">
+              <select value={filters.unit} onChange={(event) => setFilters((current) => ({ ...current, unit: event.target.value }))} className={filterInputClassName}>
+                <option value="all">Todas</option>
+                {filterOptions.units.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </Field>
+            <Field label="Contrato">
+              <select value={filters.contractType} onChange={(event) => setFilters((current) => ({ ...current, contractType: event.target.value }))} className={filterInputClassName}>
+                <option value="all">Todos</option>
+                {filterOptions.contracts.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </Field>
+            <Field label="Status da linha">
+              <select value={filters.lineStatus} onChange={(event) => setFilters((current) => ({ ...current, lineStatus: event.target.value }))} className={filterInputClassName}>
+                <option value="all">Todos</option>
+                {options.lineStatuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+            </Field>
           </div>
         ) : null}
         <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-6 py-4">
-          <button type="button" onClick={() => setFilters(DEFAULT_PAYROLL_LINE_FILTERS)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">Limpar filtros</button>
-          <button type="button" onClick={() => loadPeriod()} className="rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white">Aplicar filtros</button>
+          <button type="button" onClick={() => setFilters(DEFAULT_PAYROLL_LINE_FILTERS)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
+            Limpar filtros
+          </button>
+          <button type="button" onClick={() => loadPeriod()} className="rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white">
+            Aplicar filtros
+          </button>
         </div>
       </section>
 
@@ -346,9 +395,9 @@ export default function FolhaPagamentoPage() {
 
       <PayrollTabNav activeTab={activeTab} onChange={setActiveTab} />
 
-      {activeTab === 'fechamento' ? <PayrollClosingTable rows={lines} loading={loading || lineLoading} onOpenDetail={openLineDetail} /> : null}
-      {activeTab === 'comparacao' ? <PayrollComparisonTable rows={comparisonRows} loading={loading || comparisonLoading} /> : null}
-      {activeTab === 'importacoes' ? <PayrollImportsPanel imports={detail?.imports || ([] as PayrollImportFile[])} uploadingPoint={uploadingPoint} uploadingReference={uploadingReference} onUploadPoint={(file) => handleUpload(file, 'point')} onUploadReference={(file) => handleUpload(file, 'reference')} /> : null}
+      {activeTab === 'fechamento' ? <PayrollClosingTable rows={lines} loading={loading} onOpenDetail={openLineDetail} /> : null}
+      {activeTab === 'previa' ? <PayrollPreviewTable rows={previewRows} loading={loading || previewLoading} onOpenLine={openPreviewLine} /> : null}
+      {activeTab === 'importacoes' ? <PayrollImportsPanel imports={detail?.imports || ([] as PayrollImportFile[])} uploadingPoint={uploadingPoint} onUploadPoint={handlePointUpload} /> : null}
 
       <PayrollNewPeriodModal open={newPeriodOpen} saving={creatingPeriod} onClose={() => setNewPeriodOpen(false)} onSubmit={handleCreatePeriod} />
       <PayrollLineDrawer line={selectedLine} detail={lineDetail} open={lineDetailOpen} canEdit={canEdit} saving={lineSaving} onClose={() => setLineDetailOpen(false)} onSave={handleSaveLine} />

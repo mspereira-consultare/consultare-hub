@@ -1,173 +1,157 @@
-﻿# Plano Técnico — Folha de Pagamento
+﻿# Plano Técnico — `/folha-pagamento`
 
 ## Objetivo
-O módulo `/folha-pagamento` automatiza o fechamento mensal recorrente do RH por competência, usando o cadastro de colaboradores como base mestre e cruzando as informações com o relatório de ponto em PDF e a planilha XLSX atualmente usada pela equipe.
+Automatizar o fechamento mensal recorrente da folha operacional do RH por competência, usando:
 
-O V1 foi desenhado como **folha operacional auditável**, não como motor completo de DP/eSocial. O foco é reproduzir e profissionalizar o fechamento mensal que hoje é feito manualmente em planilha.
+- cadastro de `/colaboradores`;
+- relatório de ponto em PDF;
+- ocorrências e ajustes lançados pelo RH.
 
-## Estrutura do módulo
-- rota: `/folha-pagamento`;
-- page key: `folha_pagamento`;
-- grupo da sidebar: `Gestão de Pessoas`;
-- abas principais:
-  - `Fechamento`
-  - `Comparação`
-  - `Importações`
+No desenho atual, o módulo **não depende mais de upload da planilha de referência**. O sistema passa a gerar a planilha operacional padrão do RH em XLSX, com layout versionado em código.
 
-## Competência mensal
-Cada fechamento é organizado por uma única competência mensal (`YYYY-MM`).
+## Escopo do V1
 
-Regra operacional fixa:
-- início do período: dia `21` do mês anterior;
-- fim do período: dia `20` do mês selecionado.
+### O que o módulo faz
+- organiza o fechamento por competência mensal (`YYYY-MM`);
+- calcula o período operacional automático de `21` do mês anterior até `20` do mês selecionado;
+- importa apenas o relatório de ponto em PDF;
+- gera a folha operacional por colaborador;
+- exibe a prévia da planilha final dentro da página;
+- exporta o XLSX no layout padrão do RH;
+- preserva memória de cálculo e histórico de ajustes por competência.
+
+### O que fica fora do V1
+- eSocial e folha legal completa de DP;
+- importação manual de XLSX da folha;
+- comparação contra planilha externa enviada pelo usuário;
+- cálculo completo de férias, 13º, rescisão, horas extras e adicional noturno.
+
+## Fluxo funcional
+
+### 1. Competência
+Cada fechamento nasce em uma competência mensal única.
 
 Exemplo:
-- competência `2026-04`;
-- período operacional: `2026-03-21` até `2026-04-20`.
+- competência: `2026-04`
+- período operacional: `2026-03-21` até `2026-04-20`
 
-Status suportados:
+Estados da competência:
 - `ABERTA`
 - `EM_REVISAO`
 - `APROVADA`
 - `ENVIADA`
 
-## Integração com colaboradores
-O módulo reutiliza o cadastro de `/colaboradores` e passou a depender também destes campos adicionais:
-- `transportVoucherMode`
-- `transportVoucherMonthlyFixed`
-- `totalpassDiscountFixed`
-- `otherFixedDiscountAmount`
-- `otherFixedDiscountDescription`
-- `payrollNotes`
+Regras:
+- existe apenas um fechamento por competência;
+- competências anteriores permanecem consultáveis;
+- reabertura é permitida apenas para perfis com permissão adequada.
 
-Esses campos ficam no cadastro do colaborador e são copiados para snapshot em cada competência, garantindo auditabilidade histórica mesmo se o cadastro mudar no futuro.
+### 2. Abas da página
+O módulo `/folha-pagamento` é dividido em:
 
-## Modelo de dados
-### `payroll_rules`
-Regras versionadas por competência:
-- salário mínimo da competência;
-- tolerância padrão de atraso;
-- teto percentual para desconto de vale-transporte.
+- `Fechamento`
+- `Prévia da planilha`
+- `Importações`
 
-### `payroll_periods`
-Cabeçalho da competência mensal:
-- competência (`month_ref`);
-- período inicial/final;
-- status;
-- vínculo com as regras vigentes;
-- auditoria básica.
-
-### `payroll_import_files`
-Histórico dos arquivos importados na competência:
-- tipo (`POINT_PDF`, `REFERENCE_XLSX`);
-- nome do arquivo;
-- storage;
-- status de processamento;
-- log resumido.
-
-### `payroll_point_daily`
-Base diária derivada do relatório de ponto:
-- colaborador;
-- data;
-- marcações;
-- horário/jornada;
-- minutos trabalhados;
-- atraso;
-- falta;
-- inconsistência;
-- justificativa textual capturada do PDF.
-
-### `payroll_occurrences`
-Ocorrências e exceções do RH por competência:
-- colaborador;
-- tipo da ocorrência;
-- data inicial/final;
-- observação;
-- auditoria.
-
-### `payroll_lines`
-Linha final da folha operacional por colaborador e competência:
-- snapshot do cadastro;
-- componentes calculados;
-- ajustes manuais;
-- totais;
-- status da linha;
-- memória de cálculo em JSON.
-
-### `payroll_reference_rows`
-Linhas normalizadas da planilha manual do RH, usadas somente para comparação e auditoria.
-
-## Regras de cálculo do V1
-### Base salarial
-- salário base vem do cadastro do colaborador;
-- insalubridade = percentual cadastrado sobre o salário mínimo da competência.
-
-### Faltas
-- desconto em base de `30` avos para mensalistas;
-- faltas justificadas por ocorrência ou férias/recesso cadastrado não entram como falta indevida.
-
-### Atrasos
-- atraso diário acima da tolerância da competência entra como débito;
-- o valor-hora usa divisor mensal padrão derivado da jornada quando disponível, com fallback de mercado para `220` horas em CLT e `150` horas em estágio quando a jornada não puder ser inferida.
-
-### Vale-transporte
-- modo `PER_DAY`: provisiona por dia trabalhado;
-- modo `MONTHLY_FIXED`: usa valor mensal fixo cadastrado;
-- modo `NONE`: zera o benefício;
-- desconto do empregado limitado ao menor valor entre o custo provisionado e `6%` do salário básico;
-- estágio não aplica desconto automático de `6%` no V1.
-
-### Outros componentes
-- `totalpassDiscountFixed` entra como desconto fixo;
-- `otherFixedDiscountAmount` entra como desconto fixo;
-- `adjustmentsAmount` pode ser positivo ou negativo e afeta proventos/descontos;
-- `payrollNotes` registra contexto recorrente do RH.
-
-## Importações
-### Relatório de ponto em PDF
-O parser do V1 lê o layout atual do relatório enviado pelo RH e extrai:
-- código do colaborador;
-- nome;
-- CPF;
-- departamento;
-- horário/jornada;
-- linhas diárias com marcações;
-- atrasos;
-- faltas;
-- inconsistências;
-- textos como `ATESTADO MEDICO` e `F A L T O U`.
-
-Implementação:
-- parser Python: `frontend/scripts/payroll_parse_point_pdf.py`;
-- orquestração server-side: `frontend/src/lib/payroll/parsers.ts`.
-
-### Planilha XLSX de referência
-A importação lê as abas mensais do arquivo modelo e normaliza as colunas principais:
-- nome;
-- CPF;
-- centro de custo;
-- função;
-- contrato;
+#### Fechamento
+Mostra a linha operacional da folha por colaborador, com:
 - salário base;
 - insalubridade;
-- VT diário e mensal;
+- dias trabalhados;
+- faltas;
+- atrasos;
+- VT;
 - D.V.T.;
-- outros descontos;
 - Totalpass;
-- observação.
+- outros descontos;
+- proventos;
+- descontos;
+- líquido operacional;
+- status da linha.
 
-## APIs principais
+Ao abrir uma linha, o drawer exibe:
+- memória de cálculo;
+- eventos do ponto;
+- ocorrências da competência;
+- ajustes manuais;
+- prévia da linha exportada.
+
+#### Prévia da planilha
+Substitui a antiga aba de comparação.
+
+Mostra exatamente a estrutura que será exportada no XLSX padrão do RH, com as colunas:
+- `Nome Funcionário`
+- `E-mail`
+- `CPF`
+- `Centro de custo`
+- `Função`
+- `Contrato`
+- `Salário Base`
+- `Insalubridade`
+- `VT a.d`
+- `VT a.m`
+- `D.V.T`
+- `Outros Descontos`
+- `Desconto Totalpass`
+- `Observação`
+
+#### Importações
+Aceita apenas:
+- `Relatório de ponto (PDF)`
+
+O histórico de importações continua salvo em `payroll_import_files`.
+
+## Estrutura técnica
+
+### Rota da página
+- `frontend/src/app/(admin)/folha-pagamento/page.tsx`
+
+### Componentes principais
+- `PayrollClosingTable.tsx`
+- `PayrollPreviewTable.tsx`
+- `PayrollImportsPanel.tsx`
+- `PayrollLineDrawer.tsx`
+- `PayrollSummaryCards.tsx`
+- `PayrollTabNav.tsx`
+
+### Domínio
+- `frontend/src/lib/payroll/repository.ts`
+- `frontend/src/lib/payroll/types.ts`
+- `frontend/src/lib/payroll/constants.ts`
+- `frontend/src/lib/payroll/filters.ts`
+- `frontend/src/lib/payroll/parsers.ts`
+
+### Parser do ponto
+- `frontend/scripts/payroll_parse_point_pdf.py`
+
+## Persistência
+
+### Tabelas ativas do módulo
+- `payroll_periods`
+- `payroll_import_files`
+- `payroll_point_daily`
+- `payroll_occurrences`
+- `payroll_lines`
+- `payroll_rules`
+
+### Tabela legada mantida por compatibilidade
+- `payroll_reference_rows`
+
+Observação:
+- a tabela legada permanece no banco, mas o fluxo atual não grava nem lê mais essa base para operação da página.
+
+## APIs
+
+### Ativas no fluxo atual
 - `GET /api/admin/folha-pagamento/options`
 - `GET /api/admin/folha-pagamento/periods`
 - `POST /api/admin/folha-pagamento/periods`
 - `GET /api/admin/folha-pagamento/periods/[id]`
 - `POST /api/admin/folha-pagamento/periods/[id]/imports/point`
-- `POST /api/admin/folha-pagamento/periods/[id]/imports/reference`
 - `POST /api/admin/folha-pagamento/periods/[id]/generate`
 - `GET /api/admin/folha-pagamento/periods/[id]/lines`
-- `GET /api/admin/folha-pagamento/lines/[lineId]`
+- `GET /api/admin/folha-pagamento/periods/[id]/preview`
 - `PATCH /api/admin/folha-pagamento/lines/[lineId]`
-- `GET /api/admin/folha-pagamento/periods/[id]/comparison`
 - `POST /api/admin/folha-pagamento/occurrences`
 - `PUT /api/admin/folha-pagamento/occurrences/[id]`
 - `POST /api/admin/folha-pagamento/periods/[id]/approve`
@@ -175,21 +159,72 @@ A importação lê as abas mensais do arquivo modelo e normaliza as colunas prin
 - `POST /api/admin/folha-pagamento/periods/[id]/reopen`
 - `GET /api/admin/folha-pagamento/periods/[id]/export`
 
-## Permissões padrão
+### Removidas do fluxo ativo
+- `POST /api/admin/folha-pagamento/periods/[id]/imports/reference`
+- `GET /api/admin/folha-pagamento/periods/[id]/comparison`
+
+## Cálculo operacional
+
+### Fontes
+- cadastro do colaborador;
+- ponto importado;
+- ocorrências da competência;
+- regras vigentes da competência.
+
+### Regras principais do V1
+- salário-hora do mensalista com base no art. 64 da CLT;
+- falta de mensalista em base de `30` avos;
+- insalubridade calculada sobre o salário mínimo da competência;
+- desconto de VT limitado ao menor valor entre custo do VT e `6%` do salário básico;
+- estágio sem desconto automático de `6%` de VT por padrão;
+- horas extras e adicional noturno ficam fora desta etapa.
+
+### Auditabilidade
+Cada competência guarda:
+- arquivos importados;
+- snapshots de cadastro usados na linha;
+- memória de cálculo em JSON;
+- ajustes manuais;
+- ocorrências lançadas pelo RH.
+
+## Exportação XLSX
+
+### Padrão adotado
+O sistema exporta o XLSX já no formato operacional do RH, inspirado no arquivo modelo homologado.
+
+### Estrutura atual
+- aba principal nomeada pelo mês da competência;
+- linha superior com o período operacional;
+- colunas no padrão operacional do RH;
+- aba secundária `Memória de cálculo` para auditoria.
+
+### Origem das colunas
+- nome, e-mail, CPF, função, contrato e centro de custo: cadastro do colaborador;
+- salário base: linha calculada da competência;
+- insalubridade, VT mensal, D.V.T., Totalpass e outros descontos: cálculo da competência;
+- observação: concatenação de notas da folha, ocorrências e observações relevantes do RH.
+
+## Filtros
+Filtros disponíveis na página:
+- busca por nome ou CPF;
+- centro de custo;
+- unidade;
+- contrato;
+- status da linha.
+
+Não existe mais filtro de comparação com planilha de referência.
+
+## Permissões
+`pageKey`: `folha_pagamento`
+
+Padrão do módulo:
 - `ADMIN`: `view`, `edit`, `refresh`
 - `GESTOR`: `view`, `edit`, `refresh`
-- `OPERADOR`: sem acesso por padrão no V1
+- `OPERADOR`: sem acesso por padrão
 
-## Exportação
-O módulo exporta XLSX com três abas:
-- `Folha`
-- `Memória de cálculo`
-- `Divergências`
-
-A exportação respeita o mesmo recorte filtrado da interface.
-
-## Observações de operação
-- o V1 não tem worker nem heartbeat;
-- o processamento dos arquivos é síncrono;
-- a planilha manual do RH continua sendo base de conferência, não fonte final;
-- a competência aprovada fica preservada para consulta e auditoria futura.
+## Validações importantes
+- a página funciona sem upload de XLSX manual;
+- a aba `Importações` aceita somente PDF de ponto;
+- a aba `Prévia da planilha` reflete o mesmo recorte do XLSX exportado;
+- o drawer continua auditável sem depender de base externa;
+- competências antigas com registros legados continuam abrindo sem quebra.
