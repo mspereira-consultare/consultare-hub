@@ -77,7 +77,22 @@ const toNumber = (value: unknown, fallback = 0) => {
   if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
   const raw = clean(value);
   if (!raw) return fallback;
-  const normalized = raw.replace(/\s+/g, '').replace(/\./g, '').replace(',', '.').replace(/[^0-9.-]/g, '');
+  let normalized = raw.replace(/\s+/g, '').replace(/[^0-9,.-]/g, '');
+  const hasDot = normalized.includes('.');
+  const hasComma = normalized.includes(',');
+
+  if (hasDot && hasComma) {
+    const lastDot = normalized.lastIndexOf('.');
+    const lastComma = normalized.lastIndexOf(',');
+    if (lastComma > lastDot) {
+      normalized = normalized.replace(/\./g, '').replace(',', '.');
+    } else {
+      normalized = normalized.replace(/,/g, '');
+    }
+  } else if (hasComma) {
+    normalized = normalized.replace(',', '.');
+  }
+
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
