@@ -46,12 +46,16 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 14. [`docs/14-plano-tecnico-folha-pagamento.md`](docs/14-plano-tecnico-folha-pagamento.md)  
     Plano técnico e implementação do módulo `/folha-pagamento`, com fechamento mensal recorrente, importação de ponto, prévia da planilha operacional e exportação XLSX.
 
+15. [`docs/database/README.md`](docs/database/README.md)  
+    Base dedicada de documentação do MySQL vivo do painel, com inventário do schema real, relacionamentos lógicos e dicionário completo de tabelas/colunas.
+
 ## Convenções
 
 - Datas: padrão `YYYY-MM-DD` no banco e nos filtros internos.
 - Timezone operacional: `America/Sao_Paulo`.
 - Heartbeat de workers: tabela `system_status`.
 - A persistência principal atual do painel é MySQL.
+- A documentação canônica do banco MySQL agora está consolidada em `docs/database/`.
 
 ## Atualizações recentes
 

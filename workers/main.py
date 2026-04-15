@@ -69,6 +69,7 @@ try:
         enqueue_agenda_occupancy_job,
         process_pending_agenda_occupancy_jobs_once,
     )
+    from worker_payroll_point_import import process_pending_payroll_point_jobs_once
     from worker_marketing_funnel_google import process_pending_marketing_funnel_jobs_once
     from worker_clinia_crm import process_pending_clinia_crm_jobs_once
     from worker_clinia_ads import process_pending_clinia_ads_jobs_once
@@ -164,6 +165,7 @@ KNOWN_ACTIONS = {
     'monitor_medico', # Espera para atendimento médico
     'monitor_recepcao', # Espera para atendimento recepção
     'agenda_occupancy', # Ocupacao da agenda por especialidade
+    'payroll_point_import', # Importacao ass?ncrona do ponto da folha
     'marketing_funnel', # Funil de Marketing (Google Ads + GA4)
     'clinia_crm', # CRM Clinia (boards e cards)
     'clinia_ads', # Estatisticas de anuncios do Clinia
@@ -231,6 +233,10 @@ ALIAS_ACTION_MAP = {
     'agenda_occupancy': 'agenda_occupancy',
     'agenda_ocupacao': 'agenda_occupancy',
     'ocupacao_agenda': 'agenda_occupancy',
+    'payroll_point_import': 'payroll_point_import',
+    'folha_pagamento_ponto': 'payroll_point_import',
+    'folha_ponto_import': 'payroll_point_import',
+    'worker_payroll_point_import': 'payroll_point_import',
     'marketing_funnel': 'marketing_funnel',
     'marketing_funil': 'marketing_funnel',
     'funil_marketing': 'marketing_funnel',
@@ -260,6 +266,7 @@ CANONICAL_NAME = {
     'monitor_medico': 'Monitor Médico',
     'monitor_recepcao': 'Monitor Recepção',
     'agenda_occupancy': 'Agenda Ocupacao (Feegow API)',
+    'payroll_point_import': 'Folha de Pagamento - Importacao de Ponto',
     'marketing_funnel': 'Marketing Funil (Google API)',
     'clinia_crm': 'CRM Clinia (API nao oficial)',
     'clinia_ads': 'Clinia Ads (API nao oficial)',
@@ -433,6 +440,11 @@ def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
             clinia_cycle()
         elif action == "agenda_occupancy":
             process_pending_agenda_occupancy_jobs_once()
+        elif action == "payroll_point_import":
+            drained = 0
+            while process_pending_payroll_point_jobs_once():
+                drained += 1
+            print(f"Folha de pagamento: jobs drenados={drained}")
         elif action == "marketing_funnel":
             drained = 0
             while process_pending_marketing_funnel_jobs_once(

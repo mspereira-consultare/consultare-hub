@@ -14,7 +14,6 @@ import {
   type PayrollPeriodStatus,
   type PayrollTransportVoucherMode,
 } from '@/lib/payroll/constants';
-import { parsePointPdfBuffer } from '@/lib/payroll/parsers';
 import type {
   PayrollCreatePeriodInput,
   PayrollImportFile,
@@ -43,6 +42,7 @@ export class PayrollValidationError extends Error {
 }
 
 let tablesEnsured = false;
+type PayrollPointImportJobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
 
 const NOW = () => new Date().toISOString();
 const clean = (value: unknown) => String(value ?? '').trim();
@@ -476,6 +476,20 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS payroll_point_import_jobs (
+      id VARCHAR(64) PRIMARY KEY,
+      period_id VARCHAR(64) NOT NULL,
+      import_file_id VARCHAR(64) NOT NULL,
+      status VARCHAR(20) NOT NULL,
+      requested_by VARCHAR(64) NULL,
+      error_message LONGTEXT NULL,
+      created_at VARCHAR(32) NOT NULL,
+      started_at VARCHAR(32) NULL,
+      finished_at VARCHAR(32) NULL
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS payroll_point_daily (
       id VARCHAR(64) PRIMARY KEY,
       period_id VARCHAR(64) NOT NULL,
@@ -596,6 +610,9 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await ensureMysqlColumnDefinition(db, 'payroll_periods', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_import_files', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_import_files', 'processed_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_import_jobs', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_import_jobs', 'started_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_import_jobs', 'finished_at', 'VARCHAR(32) NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_daily', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_daily', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_occurrences', 'created_at', 'VARCHAR(32) NOT NULL');
@@ -606,6 +623,9 @@ export const ensurePayrollTables = async (db: DbInterface) => {
 
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_periods_month_ref ON payroll_periods (month_ref)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_import_files_period ON payroll_import_files (period_id, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_status ON payroll_point_import_jobs (status, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_period ON payroll_point_import_jobs (period_id, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_import_file ON payroll_point_import_jobs (import_file_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_period ON payroll_point_daily (period_id, point_date)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_employee ON payroll_point_daily (period_id, employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_occurrences_period ON payroll_occurrences (period_id, employee_id, date_start)`);
@@ -828,10 +848,14 @@ const createImportRecord = async (
     storageBucket: string | null;
     storageKey: string;
     uploadedBy: string;
+    initialStatus?: PayrollImportStatus;
+    initialLog?: string;
   },
 ) => {
   const id = randomUUID();
   const now = NOW();
+  const initialStatus = params.initialStatus || 'PENDING';
+  const initialLog = params.initialLog || 'Arquivo enviado e enfileirado para processamento.';
   await db.execute(
     `INSERT INTO payroll_import_files (id, period_id, file_type, file_name, mime_type, size_bytes, storage_provider, storage_bucket, storage_key, processing_status, processing_log, uploaded_by, created_at, processed_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -845,8 +869,8 @@ const createImportRecord = async (
       params.storageProvider,
       params.storageBucket,
       params.storageKey,
-      'PROCESSING',
-      'Arquivo recebido para processamento.',
+      initialStatus,
+      initialLog,
       params.uploadedBy,
       now,
       null,
@@ -855,16 +879,52 @@ const createImportRecord = async (
   return id;
 };
 
-const finalizeImportRecord = async (db: DbInterface, importId: string, status: PayrollImportStatus, log: string) => {
-  await db.execute(`UPDATE payroll_import_files SET processing_status = ?, processing_log = ?, processed_at = ? WHERE id = ?`, [
-    status,
-    log,
-    NOW(),
-    importId,
-  ]);
+const createPointImportJob = async (
+  db: DbInterface,
+  params: {
+    periodId: string;
+    importFileId: string;
+    requestedBy: string;
+    initialStatus?: PayrollPointImportJobStatus;
+    errorMessage?: string | null;
+  },
+) => {
+  const id = randomUUID();
+  const now = NOW();
+  const initialStatus = params.initialStatus || 'PENDING';
+  await db.execute(
+    `INSERT INTO payroll_point_import_jobs (id, period_id, import_file_id, status, requested_by, error_message, created_at, started_at, finished_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      params.periodId,
+      params.importFileId,
+      initialStatus,
+      params.requestedBy,
+      params.errorMessage || null,
+      now,
+      initialStatus === 'RUNNING' ? now : null,
+      initialStatus === 'COMPLETED' || initialStatus === 'FAILED' ? now : null,
+    ],
+  );
+  return { id, status: initialStatus, createdAt: now };
 };
 
-export const processPayrollPointImport = async (
+const countPointImportsInProgress = async (db: DbInterface, periodId: string) => {
+  const rows = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM payroll_import_files
+     WHERE period_id = ?
+       AND file_type = 'POINT_PDF'
+      AND processing_status IN ('PENDING', 'PROCESSING')`,
+    [periodId],
+  );
+  const firstRow = rows?.[0] as any;
+  if (!firstRow) return 0;
+  return Number(firstRow.total ?? firstRow.TOTAL ?? Object.values(firstRow)[0] ?? 0);
+};
+
+export const enqueuePayrollPointImport = async (
   db: DbInterface,
   params: {
     periodId: string;
@@ -875,78 +935,27 @@ export const processPayrollPointImport = async (
     storageBucket: string | null;
     storageKey: string;
     uploadedBy: string;
-    buffer: Buffer;
   },
 ) => {
   await ensurePayrollTables(db);
-  const period = await getPeriodOrThrow(db, params.periodId);
-  const importId = await createImportRecord(db, { ...params, fileType: 'POINT_PDF' });
-
-  try {
-    const employees = await loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd);
-    const lookup = buildEmployeeLookup(employees);
-    const parsedEmployees = await parsePointPdfBuffer(params.buffer);
-
-    await db.execute(`DELETE FROM payroll_point_daily WHERE period_id = ?`, [period.id]);
-
-    let insertedDays = 0;
-    for (const parsedEmployee of parsedEmployees) {
-      const matchedEmployee =
-        (parsedEmployee.employeeCpf ? lookup.byCpf.get(normalizeCpf(parsedEmployee.employeeCpf) || '') : null) ||
-        lookup.byName.get(normalizeSearch(parsedEmployee.employeeName)) ||
-        null;
-
-      for (const day of parsedEmployee.days) {
-        if (!day.pointDate || day.pointDate < period.periodStart || day.pointDate > period.periodEnd) continue;
-        const now = NOW();
-        await db.execute(
-          `INSERT INTO payroll_point_daily (
-            id, period_id, employee_id, employee_code, employee_name, employee_cpf, point_date,
-            department, schedule_label, schedule_start, schedule_end, marks_json, raw_day_text,
-            worked_minutes, late_minutes, absence_flag, inconsistency_flag, justification_text,
-            source_file_id, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            randomUUID(),
-            period.id,
-            matchedEmployee?.id || null,
-            parsedEmployee.employeeCode,
-            parsedEmployee.employeeName,
-            normalizeCpf(parsedEmployee.employeeCpf),
-            day.pointDate,
-            parsedEmployee.department,
-            parsedEmployee.scheduleLabel,
-            parsedEmployee.scheduleStart,
-            parsedEmployee.scheduleEnd,
-            safeJson(day.marks || []),
-            day.rawDayText,
-            Number(day.workedMinutes || 0),
-            Number(day.lateMinutes || 0),
-            day.absenceFlag ? 1 : 0,
-            day.inconsistencyFlag ? 1 : 0,
-            day.justificationText || null,
-            importId,
-            now,
-            now,
-          ],
-        );
-        insertedDays += 1;
-      }
-    }
-
-    await finalizeImportRecord(
-      db,
-      importId,
-      'COMPLETED',
-      `Relatório de ponto processado com ${parsedEmployees.length} colaboradores e ${insertedDays} registros diários.`,
-    );
-  } catch (error: any) {
-    await finalizeImportRecord(db, importId, 'FAILED', String(error?.message || error || 'Falha no processamento do PDF.'));
-    throw error;
-  }
+  await getPeriodOrThrow(db, params.periodId);
+  const importId = await createImportRecord(db, {
+    ...params,
+    fileType: 'POINT_PDF',
+    initialStatus: 'PENDING',
+    initialLog: 'Arquivo enviado e enfileirado para processamento.',
+  });
+  const job = await createPointImportJob(db, {
+    periodId: params.periodId,
+    importFileId: importId,
+    requestedBy: params.uploadedBy,
+  });
 
   const rows = await db.query(`SELECT * FROM payroll_import_files WHERE id = ? LIMIT 1`, [importId]);
-  return mapImportFile(rows[0]);
+  return {
+    importFile: mapImportFile(rows[0]),
+    job,
+  };
 };
 
 const buildLineRecord = (
@@ -1115,6 +1124,11 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
   await ensurePayrollTables(db);
   const period = await getPeriodOrThrow(db, periodId);
   if (!period.rules) throw new PayrollValidationError('Regras da competência não encontradas.', 500);
+
+  const importsInProgress = await countPointImportsInProgress(db, period.id);
+  if (importsInProgress > 0) {
+    throw new PayrollValidationError('Ainda há importações de ponto pendentes ou em processamento nesta competência. Aguarde a conclusão antes de gerar a folha.', 409);
+  }
 
   const [employees, pointRows, occurrenceRows, existingLines, recessRows] = await Promise.all([
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),

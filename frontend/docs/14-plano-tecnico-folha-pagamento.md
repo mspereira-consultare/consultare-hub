@@ -1,4 +1,4 @@
-﻿# Plano Técnico — `/folha-pagamento`
+# Plano Técnico — `/folha-pagamento`
 
 ## Objetivo
 Automatizar o fechamento mensal recorrente da folha operacional do RH por competência, usando:
@@ -122,7 +122,9 @@ O histórico de importações continua salvo em `payroll_import_files`.
 - `frontend/src/lib/payroll/parsers.ts`
 
 ### Parser do ponto
-- `frontend/scripts/payroll_parse_point_pdf.py`
+- `workers/payroll_parse_point_pdf.py`
+- `workers/worker_payroll_point_import.py`
+- `workers/storage_s3.py`
 
 ## Persistência
 
@@ -147,7 +149,7 @@ Observação:
 - `GET /api/admin/folha-pagamento/periods`
 - `POST /api/admin/folha-pagamento/periods`
 - `GET /api/admin/folha-pagamento/periods/[id]`
-- `POST /api/admin/folha-pagamento/periods/[id]/imports/point`
+- `POST /api/admin/folha-pagamento/periods/[id]/imports/point` -> responde `202 Accepted` e enfileira o processamento
 - `POST /api/admin/folha-pagamento/periods/[id]/generate`
 - `GET /api/admin/folha-pagamento/periods/[id]/lines`
 - `GET /api/admin/folha-pagamento/periods/[id]/preview`

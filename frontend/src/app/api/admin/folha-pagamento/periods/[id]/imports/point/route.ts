@@ -1,6 +1,6 @@
 ﻿import { NextResponse } from 'next/server';
 import { requirePayrollPermission } from '@/lib/payroll/auth';
-import { processPayrollPointImport } from '@/lib/payroll/repository';
+import { enqueuePayrollPointImport } from '@/lib/payroll/repository';
 import { sanitizeStoragePart } from '@/lib/payroll/parsers';
 import { getStorageProvider } from '@/lib/storage';
 
@@ -34,7 +34,7 @@ export async function POST(request: Request, context: ParamsContext) {
       metadata: { periodId, fileType: 'POINT_PDF' },
     });
 
-    const data = await processPayrollPointImport(auth.db, {
+    const data = await enqueuePayrollPointImport(auth.db, {
       periodId,
       fileName: String(filePart.name || 'ponto.pdf'),
       mimeType: String(filePart.type || 'application/pdf'),
@@ -43,10 +43,28 @@ export async function POST(request: Request, context: ParamsContext) {
       storageBucket: upload.bucket,
       storageKey: upload.key,
       uploadedBy: auth.userId,
-      buffer,
     });
 
-    return NextResponse.json({ status: 'success', data }, { status: 201 });
+    await auth.db.execute(
+      `
+      INSERT INTO system_status (service_name, status, last_run, details)
+      VALUES ('payroll_point_import', 'PENDING', datetime('now'), ?)
+      ON CONFLICT(service_name) DO UPDATE SET
+        status = excluded.status,
+        last_run = excluded.last_run,
+        details = excluded.details
+      `,
+      [`Job ${data.job.id} enfileirado para a competência ${periodId}`],
+    );
+
+    return NextResponse.json(
+      {
+        status: 'accepted',
+        data,
+        message: 'Arquivo enviado e enfileirado para processamento.',
+      },
+      { status: 202 },
+    );
   } catch (error: any) {
     console.error('Erro ao importar ponto da folha:', error);
     return NextResponse.json({ error: error?.message || 'Erro interno ao importar ponto.' }, { status: Number(error?.status) || 500 });

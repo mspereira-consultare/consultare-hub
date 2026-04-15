@@ -74,6 +74,7 @@ export default function FolhaPagamentoPage() {
   const [loading, setLoading] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [newPeriodOpen, setNewPeriodOpen] = useState(false);
   const [creatingPeriod, setCreatingPeriod] = useState(false);
@@ -87,6 +88,13 @@ export default function FolhaPagamentoPage() {
   const currentPeriod = useMemo(
     () => options.periods.find((item) => item.id === selectedPeriodId) || detail?.period || null,
     [detail?.period, options.periods, selectedPeriodId],
+  );
+  const hasPointImportInProgress = useMemo(
+    () =>
+      (detail?.imports || []).some(
+        (item) => item.fileType === 'POINT_PDF' && ['PENDING', 'PROCESSING'].includes(item.processingStatus),
+      ),
+    [detail?.imports],
   );
 
   const loadOptions = useCallback(async () => {
@@ -154,6 +162,7 @@ export default function FolhaPagamentoPage() {
   const handleCreatePeriod = async (payload: { monthRef: string; minWageAmount: string; lateToleranceMinutes: string; vtDiscountCapPercent: string }) => {
     setCreatingPeriod(true);
     setError('');
+    setSuccessMessage('');
     try {
       const body = {
         monthRef: payload.monthRef,
@@ -180,10 +189,11 @@ export default function FolhaPagamentoPage() {
     if (!selectedPeriodId) return;
     setActionLoading(path);
     setError('');
+    setSuccessMessage('');
     try {
       await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/${path}`, { method: 'POST' });
       await reloadAll();
-      if (successMessage) setError(successMessage);
+      if (successMessage) setSuccessMessage(successMessage);
     } catch (fetchError: any) {
       setError(String(fetchError?.message || fetchError));
     } finally {
@@ -197,12 +207,14 @@ export default function FolhaPagamentoPage() {
     formData.set('file', file);
     setUploadingPoint(true);
     setError('');
+    setSuccessMessage('');
     try {
       await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/imports/point`, {
         method: 'POST',
         body: formData,
       });
       await reloadAll();
+      setSuccessMessage('Arquivo enviado com sucesso e enfileirado para processamento.');
     } catch (fetchError: any) {
       setError(String(fetchError?.message || fetchError));
     } finally {
@@ -245,6 +257,14 @@ export default function FolhaPagamentoPage() {
       setLineSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!selectedPeriodId || !hasPointImportInProgress) return;
+    const intervalId = window.setInterval(() => {
+      loadPeriod().catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
+    }, 8000);
+    return () => window.clearInterval(intervalId);
+  }, [hasPointImportInProgress, loadPeriod, selectedPeriodId]);
 
   if (!canView) {
     return <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">Você não possui permissão para acessar a folha de pagamento.</div>;
@@ -313,13 +333,16 @@ export default function FolhaPagamentoPage() {
         </div>
       </section>
 
-      {error ? (
-        <div className={`rounded-lg border px-4 py-3 text-sm ${error.includes('sucesso') ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>
-          {error}
-        </div>
-      ) : null}
+      {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
+      {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
       <PayrollSummaryCards summary={detail?.summary || null} />
+
+      {hasPointImportInProgress ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Há um relatório de ponto em processamento nesta competência. A tela está atualizando automaticamente e a geração da folha ficará disponível após a conclusão.
+        </div>
+      ) : null}
 
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
@@ -376,7 +399,21 @@ export default function FolhaPagamentoPage() {
         <div className="flex flex-wrap gap-2">
           {canEdit ? (
             <>
-              <button type="button" onClick={() => runPeriodAction('generate')} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+              <button
+                type="button"
+                onClick={() => runPeriodAction('generate')}
+                disabled={hasPointImportInProgress || actionLoading === 'generate'}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${
+                  hasPointImportInProgress
+                    ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                    : 'border-slate-200 bg-white text-slate-700'
+                }`}
+                title={
+                  hasPointImportInProgress
+                    ? 'Aguarde a conclusão da importação do ponto para gerar a folha.'
+                    : 'Gerar folha'
+                }
+              >
                 {actionLoading === 'generate' ? <Loader2 size={16} className="animate-spin" /> : <Calculator size={16} />} Gerar folha
               </button>
               <button type="button" onClick={() => runPeriodAction('approve')} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">

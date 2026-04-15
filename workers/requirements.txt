@@ -14,3 +14,7 @@ beautifulsoup4
 
 # --- Scraping ---
 playwright
+
+# --- Storage / PDF ---
+boto3
+pypdf
