@@ -1,76 +1,76 @@
-﻿# DicionÃ¡rio de Dados
+# Dicionário de Dados
 
 > Nota de migracao: a base canonica e atualizada do banco MySQL agora fica em [docs/database/README.md](docs/database/README.md), incluindo inventario extraido diretamente do schema vivo, relacionamentos logicos e dicionario completo de colunas. Este arquivo permanece como referencia legada/historica e resumo funcional.
 
-Este documento lista as principais tabelas usadas pelo sistema, com objetivo funcional, chaves e responsÃ¡veis por escrita.
+Este documento lista as principais tabelas usadas pelo sistema, com objetivo funcional, chaves e responsáveis por escrita.
 
-## ConvenÃ§Ãµes
+## Convenções
 
 - Campos de data/hora em UTC/local conforme origem do worker.
-- Chaves textuais podem estar normalizadas sem acento em algumas integraÃ§Ãµes.
-- Tabelas de resumo sÃ£o derivadas do analÃ­tico e devem ser tratadas como materializaÃ§Ã£o.
+- Chaves textuais podem estar normalizadas sem acento em algumas integrações.
+- Tabelas de resumo são derivadas do analítico e devem ser tratadas como materialização.
 
 ---
 
-## 1) Controle e ConfiguraÃ§Ã£o
+## 1) Controle e Configuração
 
 ### `system_status`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
-| `service_name` (PK) | Nome lÃ³gico do serviÃ§o/worker |
+| `service_name` (PK) | Nome lógico do serviço/worker |
 | `status` | Estado atual (`PENDING`, `RUNNING`, `ONLINE`, etc.) |
-| `last_run` | Ãšltima execuÃ§Ã£o |
+| `last_run` | Última execução |
 | `details` | Mensagem de status/erro |
 
 Escrita: orquestrador e APIs de refresh.
 
 ### `integrations_config`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
-| `service` | ServiÃ§o (`feegow`, `clinia`) |
-| `unit_id` | Unidade (quando aplicÃ¡vel) |
-| `username` | UsuÃ¡rio da integraÃ§Ã£o |
-| `password` | Senha (quando aplicÃ¡vel) |
+| `service` | Serviço (`feegow`, `clinia`) |
+| `unit_id` | Unidade (quando aplicável) |
+| `username` | Usuário da integração |
+| `password` | Senha (quando aplicável) |
 | `token` | Token/cookie |
 | `cookies` | Cookies adicionais |
-| `updated_at` | Data/hora de atualizaÃ§Ã£o |
+| `updated_at` | Data/hora de atualização |
 
 Escrita: Settings, worker auth, database manager.
 
 ### `users`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
-| `id` (PK) | UUID do usuÃ¡rio |
+| `id` (PK) | UUID do usuário |
 | `name` | Nome |
 | `email` | Login |
 | `password` | Hash bcrypt |
 | `role` | `ADMIN`, `GESTOR`, `OPERADOR` |
 | `department` | Departamento |
 | `status` | `ATIVO`/`INATIVO` |
-| `last_access` | Ãšltimo acesso |
-| `created_at`, `updated_at` | Auditoria bÃ¡sica |
+| `last_access` | Último acesso |
+| `created_at`, `updated_at` | Auditoria básica |
 
-Escrita: API de usuÃ¡rios.
+Escrita: API de usuários.
 
 ### `user_page_permissions`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
-| `user_id` (PK composta) | UsuÃ¡rio |
-| `page_key` (PK composta) | PÃ¡gina |
-| `can_view` | PermissÃ£o de visualizaÃ§Ã£o |
-| `can_edit` | PermissÃ£o de ediÃ§Ã£o |
-| `can_refresh` | PermissÃ£o de refresh |
-| `updated_at` | AtualizaÃ§Ã£o |
+| `user_id` (PK composta) | Usuário |
+| `page_key` (PK composta) | Página |
+| `can_view` | Permissão de visualização |
+| `can_edit` | Permissão de edição |
+| `can_refresh` | Permissão de refresh |
+| `updated_at` | Atualização |
 
-Escrita: API de permissÃµes de usuÃ¡rio.
+Escrita: API de permissões de usuário.
 
 ### `teams_master`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `id` (PK) | Identificador da equipe |
 | `name` | Nome da equipe |
@@ -81,11 +81,11 @@ Escrita: API de equipes.
 
 ### `feegow_appointments`
 
-| Campo | DescriÃƒÂ§ÃƒÂ£o |
+| Campo | DescriÃ§Ã£o |
 |---|---|
 | `appointment_id` (PK) | Identificador do agendamento |
 | `date` | Data da consulta/agendamento em `YYYY-MM-DD` |
-| `status_id` | Status numÃƒÂ©rico do agendamento |
+| `status_id` | Status numÃ©rico do agendamento |
 | `value` | Valor total do agendamento |
 | `specialty` | Especialidade normalizada |
 | `professional_name` | Profissional normalizado |
@@ -94,10 +94,10 @@ Escrita: API de equipes.
 | `procedure_id` | Procedimento principal do agendamento |
 | `procedure_name` | Nome do procedimento principal |
 | `first_appointment_flag` | Flag de primeiro agendamento (`primeiro_agendamento`) |
-| `scheduled_by` | ResponsÃƒÂ¡vel pelo agendamento |
+| `scheduled_by` | ResponsÃ¡vel pelo agendamento |
 | `unit_name` | Unidade/`nome_fantasia` |
 | `scheduled_at` | Data/hora em que o agendamento foi marcado |
-| `updated_at` | ÃƒÂšltima atualizaÃƒÂ§ÃƒÂ£o local |
+| `updated_at` | Ãltima atualizaÃ§Ã£o local |
 
 Escrita: `worker_feegow_appointments.py` e `worker_feegow_appointments_backfill.py`
 
@@ -132,68 +132,68 @@ Escrita: `worker_feegow_patients.py`
 
 Escrita: `worker_feegow_patients.py`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
-| `id` (PK) | Identificador da relaÃ§Ã£o |
+| `id` (PK) | Identificador da relação |
 | `user_name` | Nome do agendador/profissional |
 | `team_id` | FK para `teams_master` |
-| `created_at` | Data de vÃ­nculo |
+| `created_at` | Data de vínculo |
 
-Escrita: API de associaÃ§Ã£o usuÃ¡rio-equipe.
+Escrita: API de associação usuário-equipe.
 
 ---
 
-## 2) OperaÃ§Ã£o em Tempo Real
+## 2) Operação em Tempo Real
 
 ### `espera_medica`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
-| `hash_id` (PK) | Identificador tÃ©cnico do paciente na fila |
+| `hash_id` (PK) | Identificador técnico do paciente na fila |
 | `unidade` | Unidade |
 | `paciente` | Nome do paciente |
-| `chegada` | HorÃ¡rio de chegada |
+| `chegada` | Horário de chegada |
 | `espera_minutos` | Espera em minutos |
 | `status` | Estado (aguardando, em atendimento, finalizado) |
 | `profissional` | Profissional relacionado |
-| `updated_at` | Ãšltima atualizaÃ§Ã£o |
+| `updated_at` | Última atualização |
 
-Escrita: monitor mÃ©dico.
+Escrita: monitor médico.
 
 ### `recepcao_historico`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
-| `hash_id` (PK) | Identificador tÃ©cnico |
+| `hash_id` (PK) | Identificador técnico |
 | `id_externo` | ID do registro na origem |
 | `unidade_id`, `unidade_nome` | Unidade |
 | `paciente_nome` | Paciente |
 | `dt_chegada`, `dt_atendimento` | Tempos de fila/atendimento |
 | `status` | Estado |
-| `dia_referencia` | Data de referÃªncia |
-| `updated_at` | Ãšltima atualizaÃ§Ã£o |
+| `dia_referencia` | Data de referência |
+| `updated_at` | Última atualização |
 
-Escrita: monitor recepÃ§Ã£o.
+Escrita: monitor recepção.
 
 ### `clinia_group_snapshots`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `group_id` (PK) | Grupo Clinia |
 | `group_name` | Nome do grupo |
 | `queue_size` | Conversas abertas |
-| `avg_wait_seconds` | Espera mÃ©dia em segundos |
-| `updated_at` | AtualizaÃ§Ã£o |
+| `avg_wait_seconds` | Espera média em segundos |
+| `updated_at` | Atualização |
 
 Escrita: worker Clinia.
 
 ### `clinia_chat_stats`
 
-MÃ©tricas diÃ¡rias de chat (conversas, sem resposta, espera mÃ©dia).
+Métricas diárias de chat (conversas, sem resposta, espera média).
 
 ### `clinia_appointment_stats`
 
-MÃ©tricas diÃ¡rias de agendamentos da Clinia (total, bot, CRC).
+Métricas diárias de agendamentos da Clinia (total, bot, CRC).
 
 ---
 
@@ -201,7 +201,7 @@ MÃ©tricas diÃ¡rias de agendamentos da Clinia (total, bot, CRC).
 
 ### `feegow_appointments`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `appointment_id` (PK) | ID do agendamento |
 | `date` | Data da consulta |
@@ -212,73 +212,73 @@ MÃ©tricas diÃ¡rias de agendamentos da Clinia (total, bot, CRC).
 | `procedure_group` | Grupo de procedimento |
 | `scheduled_by` | Colaborador que criou |
 | `unit_name` | Unidade |
-| `scheduled_at` | Data/hora de criaÃ§Ã£o do agendamento |
-| `updated_at` | AtualizaÃ§Ã£o |
+| `scheduled_at` | Data/hora de criação do agendamento |
+| `updated_at` | Atualização |
 
 Escrita: worker Feegow de agendamentos (`appointments`) e backfills.
 
 ### `feegow_proposals`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `proposal_id` (PK) | ID da proposta |
 | `date` | Data da proposta |
-| `status` | SituaÃ§Ã£o da proposta |
+| `status` | Situação da proposta |
 | `unit_name` | Unidade |
 | `professional_name` | Profissional |
-| `total_value` | Valor total lÃ­quido calculado |
+| `total_value` | Valor total líquido calculado |
 | `items_json` | Itens da proposta |
 | `patient_id` | ID do paciente na Feegow |
-| `proposal_last_update` | Ãšltima atualizaÃ§Ã£o informada pela API de propostas |
-| `updated_at` | AtualizaÃ§Ã£o local |
+| `proposal_last_update` | Última atualização informada pela API de propostas |
+| `updated_at` | Atualização local |
 
 Escrita: worker de propostas.
 
 ### `feegow_patient_contacts_cache`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `patient_id` (PK) | ID do paciente na Feegow |
 | `patient_name` | Nome do paciente |
 | `phone_primary` | Telefone/celular principal |
 | `email_primary` | E-mail principal |
 | `cpf` | CPF retornado pela Feegow |
-| `updated_at` | Momento do Ãºltimo refresh do cache |
+| `updated_at` | Momento do último refresh do cache |
 
 Escrita: worker de propostas e fallback on-demand das APIs de `/propostas/details` e `/propostas/export`.
 
 ### `proposal_followup_control`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `proposal_id` (PK) | ID da proposta vinculada a `feegow_proposals` |
-| `conversion_status` | SituaÃ§Ã£o operacional da equipe (`PENDENTE`, `EM_CONTATO`, `CONVERTIDO`, `NAO_CONVERTIDO`) |
-| `conversion_reason` | Motivo associado Ã  situaÃ§Ã£o, quando aplicÃ¡vel |
-| `responsible_user_id` | ID do usuÃ¡rio responsÃ¡vel pelo follow-up |
-| `responsible_user_name` | Nome do responsÃ¡vel salvo em snapshot |
-| `updated_by_user_id` | ID do usuÃ¡rio que fez a Ãºltima ediÃ§Ã£o |
-| `updated_by_user_name` | Nome do usuÃ¡rio que fez a Ãºltima ediÃ§Ã£o |
-| `updated_at` | Data/hora da Ãºltima ediÃ§Ã£o |
+| `conversion_status` | Situação operacional da equipe (`PENDENTE`, `EM_CONTATO`, `CONVERTIDO`, `NAO_CONVERTIDO`) |
+| `conversion_reason` | Motivo associado à situação, quando aplicável |
+| `responsible_user_id` | ID do usuário responsável pelo follow-up |
+| `responsible_user_name` | Nome do responsável salvo em snapshot |
+| `updated_by_user_id` | ID do usuário que fez a última edição |
+| `updated_by_user_name` | Nome do usuário que fez a última edição |
+| `updated_at` | Data/hora da última edição |
 
-Leitura: pÃ¡gina operacional `/propostas`, exportaÃ§Ã£o XLSX e APIs de follow-up.
+Leitura: página operacional `/propostas`, exportação XLSX e APIs de follow-up.
 
 Escrita: API `/api/admin/propostas/followup/[proposalId]`.
 
 
 ### `feegow_contracts`
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
-| `registration_number` (PK) | MatrÃ­cula do contrato/paciente |
+| `registration_number` (PK) | Matrícula do contrato/paciente |
 | `contract_id` | ID do contrato |
 | `created_at`, `start_date` | Datas |
 | `patient_name` | Paciente |
 | `plan_name` | Plano |
-| `status_contract` | SituaÃ§Ã£o contratual |
-| `status_financial` | SituaÃ§Ã£o financeira |
+| `status_contract` | Situação contratual |
+| `status_financial` | Situação financeira |
 | `recurrence_value` | Mensalidade recorrente |
-| `membership_value` | Valor de adesÃ£o |
-| `updated_at` | AtualizaÃ§Ã£o |
+| `membership_value` | Valor de adesão |
+| `updated_at` | Atualização |
 
 Escrita: worker de contratos.
 
@@ -288,14 +288,14 @@ Escrita: worker de contratos.
 
 ### `goals_config`
 
-Tabela de configuraÃ§Ã£o de metas.
+Tabela de configuração de metas.
 
 Campos relevantes:
 
-- identificaÃ§Ã£o: `id`, `name`, `scope`, `sector`
-- vigÃªncia: `start_date`, `end_date`, `periodicity`
+- identificação: `id`, `name`, `scope`, `sector`
+- vigência: `start_date`, `end_date`, `periodicity`
 - meta: `target_value`, `unit`
-- automaÃ§Ã£o: `linked_kpi_id`
+- automação: `linked_kpi_id`
 - filtros: `filter_group`, `clinic_unit`, `collaborator`, `team`
 - auditoria: `created_at`, `updated_at` (quando presente no schema)
 
@@ -307,28 +307,28 @@ Escrita: API de metas.
 
 ### `faturamento_analitico`
 
-Base analÃ­tica de faturamento, alimentada por scraping.
+Base analítica de faturamento, alimentada por scraping.
 
-Campos tÃ­picos usados no sistema:
+Campos típicos usados no sistema:
 
 - `data_do_pagamento`
 - `unidade`
 - `grupo`
 - `procedimento`
 - `total_pago`
-- `usuario_da_conta` (quando disponÃ­vel)
+- `usuario_da_conta` (quando disponível)
 - `updated_at`
 
-Escrita: worker de faturamento (janela mÃ³vel dos Ãºltimos 7 dias, por padrÃ£o) e worker de backfill histÃ³rico.
+Escrita: worker de faturamento (janela móvel dos últimos 7 dias, por padrão) e worker de backfill histórico.
 
 ### `faturamento_resumo_diario`
 
-MaterializaÃ§Ã£o diÃ¡ria derivada de `faturamento_analitico`.
+Materialização diária derivada de `faturamento_analitico`.
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `data_ref` | Dia (YYYY-MM-DD) |
-| `unidade`, `grupo`, `procedimento` | DimensÃµes |
+| `unidade`, `grupo`, `procedimento` | Dimensões |
 
 ---
 
@@ -336,11 +336,11 @@ MaterializaÃ§Ã£o diÃ¡ria derivada de `faturamento_analitico`.
 
 ### `raw_google_ads_campaign_daily`
 
-Snapshot diÃ¡rio bruto de campanhas Google Ads.
+Snapshot diário bruto de campanhas Google Ads.
 
-Campos relevantes para o mÃ³dulo:
+Campos relevantes para o módulo:
 
-- identificaÃ§Ã£o:
+- identificação:
   - `date_ref`
   - `brand_slug`
   - `ads_customer_id`
@@ -357,7 +357,7 @@ Campos relevantes para o mÃ³dulo:
   - `all_conversions`
   - `conversions_value`
   - `cost_per_conversion`
-- diagnÃ³stico/snapshot:
+- diagnóstico/snapshot:
   - `campaign_status`
   - `campaign_primary_status`
   - `campaign_primary_status_reasons_json`
@@ -376,27 +376,27 @@ Escrita: `worker_marketing_funnel_google.py`
 Uso:
 
 - enriquecer a tabela de campanhas;
-- alimentar a aba `SaÃºde Google Ads`;
-- compor o diagnÃ³stico atual das campanhas atÃ© a data final selecionada.
-| `procedimento_key` | Chave tÃ©cnica do procedimento (MySQL) |
+- alimentar a aba `Saúde Google Ads`;
+- compor o diagnóstico atual das campanhas até a data final selecionada.
+| `procedimento_key` | Chave técnica do procedimento (MySQL) |
 | `total_pago` | Soma do valor pago |
 | `qtd` | Quantidade agregada |
-| `updated_at` | AtualizaÃ§Ã£o |
+| `updated_at` | Atualização |
 
-Escrita: worker de faturamento (rebuild por perÃ­odo).
+Escrita: worker de faturamento (rebuild por período).
 
 ### `faturamento_resumo_mensal`
 
-MaterializaÃ§Ã£o mensal derivada de `faturamento_resumo_diario`.
+Materialização mensal derivada de `faturamento_resumo_diario`.
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
-| `month_ref` | MÃªs (YYYY-MM) |
-| `unidade`, `grupo`, `procedimento` | DimensÃµes |
-| `procedimento_key` | Chave tÃ©cnica do procedimento (MySQL) |
+| `month_ref` | Mês (YYYY-MM) |
+| `unidade`, `grupo`, `procedimento` | Dimensões |
+| `procedimento_key` | Chave técnica do procedimento (MySQL) |
 | `total_pago` | Soma mensal |
 | `qtd` | Quantidade agregada |
-| `updated_at` | AtualizaÃ§Ã£o |
+| `updated_at` | Atualização |
 
 Escrita: worker de faturamento e backfill.
 
@@ -404,11 +404,11 @@ Escrita: worker de faturamento e backfill.
 
 Checkpoint de backfill mensal.
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `year` (PK composta) | Ano |
-| `month` (PK composta) | MÃªs |
-| `completed_at` | Data/hora de conclusÃ£o |
+| `month` (PK composta) | Mês |
+| `completed_at` | Data/hora de conclusão |
 
 Escrita: `worker_faturamento_scraping_2025.py`.
 
@@ -418,37 +418,37 @@ Escrita: `worker_faturamento_scraping_2025.py`.
 
 ### `crc_checklist_daily`
 
-PersistÃªncia diÃ¡ria do checklist CRC.
+Persistência diária do checklist CRC.
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `date_ref` (PK) | Dia |
-| `calls_made` | LigaÃ§Ãµes realizadas |
+| `calls_made` | Ligações realizadas |
 | `abandon_rate` | Taxa de abandono (texto) |
-| `updated_at` | AtualizaÃ§Ã£o |
+| `updated_at` | Atualização |
 
 Escrita: API do checklist CRC.
 
 ### `recepcao_checklist_manual`
 
-PersistÃªncia por unidade do checklist recepÃ§Ã£o.
+Persistência por unidade do checklist recepção.
 
-| Campo | DescriÃ§Ã£o |
+| Campo | Descrição |
 |---|---|
 | `scope_key` (PK) | Chave da unidade |
 | `meta_resolve_target`, `meta_checkup_target` | Alvos manuais |
-| `nf_status`, `contas_status` | ValidaÃ§Ãµes manuais |
+| `nf_status`, `contas_status` | Validações manuais |
 | `google_rating`, `google_comments` | Qualidade |
 | `pendencias_urgentes`, `situacoes_criticas` | Textos operacionais |
-| `situacao_prazo`, `situacao_responsavel` | GestÃ£o de aÃ§Ã£o |
-| `acoes_realizadas` | ExecuÃ§Ã£o |
-| `updated_at` | AtualizaÃ§Ã£o |
+| `situacao_prazo`, `situacao_responsavel` | Gestão de ação |
+| `acoes_realizadas` | Execução |
+| `updated_at` | Atualização |
 
-Escrita: API do checklist recepÃ§Ã£o.
+Escrita: API do checklist recepção.
 
 ### `recepcao_checklist_daily` (legado)
 
-Tabela de persistÃªncia antiga por dia/unidade. Mantida para fallback de leitura.
+Tabela de persistência antiga por dia/unidade. Mantida para fallback de leitura.
 
 ---
 
@@ -680,7 +680,7 @@ Escrita: APIs de criacao/edicao do modulo.
 
 ### Nota de escrita
 
-No estado atual, `professional_documents` Ã© alimentada por `POST /api/admin/profissionais/:id/documentos` com storage S3.
+No estado atual, `professional_documents` é alimentada por `POST /api/admin/profissionais/:id/documentos` com storage S3.
 Contratos gerados automaticamente ficam em `professional_contracts` e sao baixados por endpoint proprio.
 O modulo opera em modo hibrido: checklist manual + upload em S3 no mesmo fluxo.
 ## Tabelas - Modulo Qualidade (Sprint 1)
@@ -930,14 +930,14 @@ Campos principais:
 - `file_name`, `size_bytes`
 - `created_at`, `updated_at`
 
-## AtualizaÃ§Ã£o de 25/03/2026 â€” Contrato analÃ­tico do summary de Marketing / Funil
+## Atualização de 25/03/2026 — Contrato analítico do summary de Marketing / Funil
 
 Leitura adicional retornada por `GET /api/admin/marketing/funil/summary`:
 
 ### `performanceFunnel`
 
 Finalidade:
-- consolidar a leitura principal do funil atribuÃ­da ao Google.
+- consolidar a leitura principal do funil atribuída ao Google.
 
 Campos principais:
 - `scopeMode`
@@ -953,7 +953,7 @@ Campos principais:
 ### `diagnostics`
 
 Finalidade:
-- separar sinais auxiliares e volumes ainda nÃ£o mapeados ao Google Ads.
+- separar sinais auxiliares e volumes ainda não mapeados ao Google Ads.
 
 Campos principais:
 - `whatsappClicks`
@@ -965,7 +965,7 @@ Campos principais:
 ### `operationalContext`
 
 Finalidade:
-- expor agenda e faturamento como contexto da clÃ­nica, sem atribuiÃ§Ã£o direta por campanha.
+- expor agenda e faturamento como contexto da clínica, sem atribuição direta por campanha.
 
 Campos principais:
 - `appointmentsValid`
@@ -1038,7 +1038,7 @@ Escrita: APIs de eventos do m?dulo `/equipamentos`.
 
 Escrita: APIs de upload do m?dulo `/equipamentos`.
 
-## Atualizacao de 30/03/2026 â€” Marketing / Controle
+## Atualizacao de 30/03/2026 — Marketing / Controle
 
 O modulo `/marketing/controle` nao cria tabelas novas no MVP.
 
@@ -1053,7 +1053,7 @@ Ele reutiliza as seguintes fontes:
   - `appointments_converted`
   - filtro `origin='google'`
 - `system_status`
-  - heartbeat exibido no cabeÃ§alho do modulo
+  - heartbeat exibido no cabeçalho do modulo
 
 Contratos de leitura:
 
@@ -1068,50 +1068,50 @@ Observacao:
 
 ---
 
-## VigilÃ¢ncia SanitÃ¡ria
+## Vigilância Sanitária
 
 ### `health_surveillance_licenses`
 
-| Coluna | DescriÃ§Ã£o |
+| Coluna | Descrição |
 |---|---|
-| `id` | Identificador da licenÃ§a |
+| `id` | Identificador da licença |
 | `unit_name` | Unidade |
-| `license_name` | Nome da licenÃ§a |
+| `license_name` | Nome da licença |
 | `cnae` | CNAE associado |
-| `license_number` | NÃºmero/protocolo |
-| `issuer` | Ã“rgÃ£o emissor |
+| `license_number` | Número/protocolo |
+| `issuer` | Órgão emissor |
 | `valid_until` | Data de validade |
-| `renewal_status` | Status de renovaÃ§Ã£o |
-| `responsible_name` | ResponsÃ¡vel interno |
-| `notes` | ObservaÃ§Ãµes |
-| `is_active` | ExclusÃ£o lÃ³gica |
-| `created_by`, `updated_by` | Auditoria bÃ¡sica |
+| `renewal_status` | Status de renovação |
+| `responsible_name` | Responsável interno |
+| `notes` | Observações |
+| `is_active` | Exclusão lógica |
+| `created_by`, `updated_by` | Auditoria básica |
 | `created_at`, `updated_at` | Timestamps |
 
 ### `health_surveillance_documents`
 
-| Coluna | DescriÃ§Ã£o |
+| Coluna | Descrição |
 |---|---|
 | `id` | Identificador do documento |
 | `unit_name` | Unidade |
 | `document_name` | Nome do documento |
 | `document_type` | Tipo do documento |
-| `license_id` | LicenÃ§a vinculada, opcional |
+| `license_id` | Licença vinculada, opcional |
 | `valid_until` | Data de validade, opcional |
-| `responsible_name` | ResponsÃ¡vel interno |
-| `notes` | ObservaÃ§Ãµes |
-| `is_active` | ExclusÃ£o lÃ³gica |
-| `created_by`, `updated_by` | Auditoria bÃ¡sica |
+| `responsible_name` | Responsável interno |
+| `notes` | Observações |
+| `is_active` | Exclusão lógica |
+| `created_by`, `updated_by` | Auditoria básica |
 | `created_at`, `updated_at` | Timestamps |
 
 ### `health_surveillance_files`
 
-| Coluna | DescriÃ§Ã£o |
+| Coluna | Descrição |
 |---|---|
 | `id` | Identificador do arquivo |
 | `entity_type` | `license` ou `document` |
-| `entity_id` | ID da licenÃ§a/documento |
-| `storage_provider`, `storage_bucket`, `storage_key` | LocalizaÃ§Ã£o no storage |
+| `entity_id` | ID da licença/documento |
+| `storage_provider`, `storage_bucket`, `storage_key` | Localização no storage |
 | `original_name`, `mime_type`, `size_bytes` | Metadados do arquivo |
 | `uploaded_by`, `created_at` | Auditoria do upload |
 

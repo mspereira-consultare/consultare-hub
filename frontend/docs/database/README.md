@@ -22,6 +22,14 @@ Esta pasta consolida a documentacao do banco MySQL efetivamente em uso pelo pain
    Dicionario completo de tabelas e colunas do MySQL vivo.
 5. `database/mysql-schema-live.json`
    Extracao estruturada do `information_schema` usada como base para estes documentos.
+6. `database/04-guia-de-integracao-mysql.md`
+   Guia pratico para leitura, escrita, APIs e webhooks sobre o banco.
+7. `database/05-matriz-de-escrita-e-consumo.md`
+   Matriz de ownership, leitura permitida e escrita permitida por familia de tabelas.
+8. `database/06-contratos-operacionais-por-dominio.md`
+   Contratos operacionais por dominio para integracoes, APIs e webhooks.
+9. `database/07-mapa-api-rotas-tabelas.md`
+   Mapa consolidado das rotas atuais do projeto para tabelas lidas e escritas no MySQL.
 
 ## Fontes reaproveitadas/migradas
 
