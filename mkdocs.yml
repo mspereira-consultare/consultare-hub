@@ -1,5 +1,5 @@
 site_name: Hub Consultare Docs
-site_description: Documentacao tecnica do painel Hub Consultare
+site_description: Documentacao tecnica do banco de dados
 site_url: https://mspereira-consultare.github.io/consultare-hub/
 repo_url: https://github.com/mspereira-consultare/consultare-hub
 edit_uri: edit/main/
@@ -31,7 +31,7 @@ markdown_extensions:
       permalink: true
 
 nav:
-  - Inicio: README.md
+  - Início: index.md
   - Banco MySQL:
       - Base do Banco: database/README.md
       - Visao Geral do Schema: database/01-visao-geral-do-schema-mysql.md
@@ -41,18 +41,3 @@ nav:
       - Matriz de Escrita e Consumo: database/05-matriz-de-escrita-e-consumo.md
       - Contratos por Dominio: database/06-contratos-operacionais-por-dominio.md
       - Mapa API Rota para Tabelas: database/07-mapa-api-rotas-tabelas.md
-  - Documentacao Geral:
-      - Visao Funcional e Indicadores: 01-visao-funcional-e-indicadores.md
-      - Matriz de Permissoes: 02-matriz-de-permissoes.md
-      - Arquitetura Tecnica: 03-arquitetura-tecnica.md
-      - Dicionario de Dados Legado: 04-dicionario-de-dados.md
-      - Runbook Operacional: 05-runbook-operacional.md
-      - Qualidade e Treinamentos: 06-plano-tecnico-qualidade-treinamentos.md
-      - Repasses: 07-plano-tecnico-repasses.md
-      - Agenda Ocupacao: 08-agenda-ocupacao.md
-      - Marketing Funil: 09-plano-tecnico-marketing-funil.md
-      - Colaboradores: 10-plano-tecnico-colaboradores.md
-      - Equipamentos: 11-plano-tecnico-equipamentos.md
-      - Marketing Controle: 12-plano-tecnico-marketing-controle.md
-      - Vigilancia Sanitaria: 13-plano-tecnico-vigilancia-sanitaria.md
-      - Folha Pagamento: 14-plano-tecnico-folha-pagamento.md
