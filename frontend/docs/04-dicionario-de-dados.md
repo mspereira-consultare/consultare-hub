@@ -5,7 +5,7 @@
 Este documento lista as principais tabelas usadas pelo sistema, com objetivo funcional, chaves e responsáveis por escrita.
 
 ## Convenções
-
+k
 - Campos de data/hora em UTC/local conforme origem do worker.
 - Chaves textuais podem estar normalizadas sem acento em algumas integrações.
 - Tabelas de resumo são derivadas do analítico e devem ser tratadas como materialização.
