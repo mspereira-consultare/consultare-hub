@@ -1,7 +1,7 @@
 site_name: Hub Consultare Docs
 site_description: Documentacao tecnica do painel Hub Consultare
-site_url: https://SEU-USUARIO.github.io/NOME-DO-REPO/
-repo_url: https://github.com/SEU-USUARIO/NOME-DO-REPO
+site_url: https://mspereira-consultare.github.io/consultare-hub/
+repo_url: https://github.com/mspereira-consultare/consultare-hub
 edit_uri: edit/main/
 
 docs_dir: frontend/docs
