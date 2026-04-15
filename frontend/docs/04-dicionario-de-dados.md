@@ -1,6 +1,6 @@
 # Dicionário de Dados
 
-> Nota de migracao: a base canonica e atualizada do banco MySQL agora fica em [docs/database/README.md](docs/database/README.md), incluindo inventario extraido diretamente do schema vivo, relacionamentos logicos e dicionario completo de colunas. Este arquivo permanece como referencia legada/historica e resumo funcional.
+> Nota de migracao: a base canonica e atualizada do banco MySQL agora fica em [database/README.md](database/README.md), incluindo inventario extraido diretamente do schema vivo, relacionamentos logicos e dicionario completo de colunas. Este arquivo permanece como referencia legada/historica e resumo funcional.
 
 Este documento lista as principais tabelas usadas pelo sistema, com objetivo funcional, chaves e responsáveis por escrita.
 
