@@ -22,6 +22,15 @@ type ImportsPanelState = {
   inProgress: PayrollImportFile | null;
 };
 
+type HighlightState = {
+  kind: 'pending' | 'processing' | 'preserved' | 'active' | 'failed' | 'latest' | 'empty';
+  title: string;
+  description: string;
+  item: PayrollImportFile | null;
+  tone: SurfaceTone;
+  actionLabel: string;
+};
+
 const buildPanelState = (imports: PayrollImportFile[]): ImportsPanelState => {
   const latestAttempt = imports[0] || null;
   const activeImport = imports.find((item) => item.processingStatus === 'COMPLETED') || null;
@@ -68,7 +77,7 @@ const resolveLatestAttemptTone = (status: string | null | undefined): SurfaceTon
   return 'slate';
 };
 
-const resolveHighlightState = (state: ImportsPanelState) => {
+const resolveHighlightState = (state: ImportsPanelState): HighlightState => {
   if (state.inProgress) {
     const isPending = state.inProgress.processingStatus === 'PENDING';
     return {
