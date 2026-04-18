@@ -1,18 +1,26 @@
+from __future__ import annotations
+
 import json
 import re
 import sys
 from datetime import date
 from pathlib import Path
 
-from pypdf import PdfReader
+try:
+    from pypdf import PdfReader
+except Exception:
+    PdfReader = None
 
 
 TIME_RE = re.compile(r"\b(\d{2}:\d{2})\b")
-DATE_RANGE_RE = re.compile(r"(\d{2}/\d{2}/\d{4})\s*[àA]\s*(\d{2}/\d{2}/\d{4})", re.IGNORECASE)
-EMPLOYEE_RE = re.compile(r"Empregado\s*:.*?-(\d+)\s+(.+?)\s+Horario\s*:\s*(.+)", re.IGNORECASE)
+DATE_RE = re.compile(r"\b(\d{2}/\d{2}/\d{4})\b")
+DATE_RANGE_RE = re.compile(r"(\d{2}/\d{2}/\d{4})\s*[^\d]{1,12}\s*(\d{2}/\d{2}/\d{4})", re.IGNORECASE)
+EMPLOYEE_RE = re.compile(r"Empregado\s*:\s*-?(\d+)\s+(.+?)\s+Horario\s*:\s*(.+)", re.IGNORECASE)
 CPF_RE = re.compile(r"C\.?P\.?F\.?\s*:?\s*([0-9.\-]+)")
 DEPARTMENT_RE = re.compile(r"Departamento:\s*(.*?)\s+Cargo:", re.IGNORECASE)
-SCHEDULE_RE = re.compile(r"(\d{2}:\d{2})\s+AS\s+(\d{2}:\d{2})", re.IGNORECASE)
+SCHEDULE_TIME_RE = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*[Hh]\b|\b(\d{2}):(\d{2})\b")
+JUSTIFICATION_KEYWORDS = ("ATESTADO", "DECLARACAO", "DECLARAÇÃO", "FERIAS", "FÉRIAS")
+INCONSISTENCY_KEYWORDS = ("INCONSIST", "BATIDAS INVAL", "BATIDA INVAL", "MARCACAO INCORRETA", "MARCAÇÃO INCORRETA")
 
 
 def parse_br_date(raw: str) -> date:
@@ -57,6 +65,61 @@ def parse_marks(mark_text: str) -> list[str]:
     return TIME_RE.findall(mark_text or "")
 
 
+def extract_report_date_range(text: str) -> tuple[date | None, date | None]:
+    range_match = DATE_RANGE_RE.search(text or "")
+    if range_match:
+        return parse_br_date(range_match.group(1)), parse_br_date(range_match.group(2))
+
+    found_dates = DATE_RE.findall(text or "")
+    if len(found_dates) >= 2:
+        return parse_br_date(found_dates[0]), parse_br_date(found_dates[1])
+    return None, None
+
+
+def resolve_point_date(day_value: int, period_start: date, period_end: date) -> str:
+    if period_start.year == period_end.year and period_start.month == period_end.month:
+        return iso_from_parts(period_start.year, period_start.month, day_value)
+
+    if day_value >= period_start.day:
+        return iso_from_parts(period_start.year, period_start.month, day_value)
+    return iso_from_parts(period_end.year, period_end.month, day_value)
+
+
+def extract_schedule_times(schedule_label: str) -> list[str]:
+    times = []
+    for match in SCHEDULE_TIME_RE.finditer(schedule_label or ""):
+        if match.group(3) is not None:
+            hour = int(match.group(3))
+            minute = int(match.group(4))
+        else:
+            hour = int(match.group(1))
+            minute = int(match.group(2) or 0)
+        times.append(f"{hour:02d}:{minute:02d}")
+    return times
+
+
+def extract_schedule_bounds(schedule_label: str) -> tuple[str | None, str | None]:
+    times = extract_schedule_times(schedule_label)
+    if not times:
+        return None, None
+    if len(times) == 1:
+        return times[0], None
+    if len(times) == 2:
+        return times[0], times[1]
+    return times[0], None
+
+
+def build_marks(mark_text: str, journey_text: str) -> list[str]:
+    marks = parse_marks(mark_text)
+    if marks:
+        return marks
+    intervals = re.findall(r"(\d{2}:\d{2})-(\d{2}:\d{2})", journey_text or "")
+    derived_marks = []
+    for start, end in intervals:
+        derived_marks.extend([start, end])
+    return derived_marks
+
+
 def parse_worked_minutes(journey_text: str, marks: list[str]) -> int:
     if journey_text:
         intervals = re.findall(r"(\d{2}:\d{2})-(\d{2}:\d{2})", journey_text)
@@ -75,8 +138,7 @@ def parse_page(text: str) -> dict | None:
     if not lines:
         return None
 
-    range_match = DATE_RANGE_RE.search(text)
-    start_range = parse_br_date(range_match.group(1)) if range_match else None
+    start_range, end_range = extract_report_date_range(text)
 
     employee_match = EMPLOYEE_RE.search(text)
     if not employee_match:
@@ -87,7 +149,7 @@ def parse_page(text: str) -> dict | None:
 
     cpf_match = CPF_RE.search(text)
     department_match = DEPARTMENT_RE.search(text)
-    schedule_match = SCHEDULE_RE.search(schedule_label)
+    schedule_start, schedule_end = extract_schedule_bounds(schedule_label)
 
     employee = {
         "employeeCode": employee_code or None,
@@ -95,40 +157,54 @@ def parse_page(text: str) -> dict | None:
         "employeeCpf": clean(cpf_match.group(1)) if cpf_match else None,
         "department": clean(department_match.group(1)) if department_match else None,
         "scheduleLabel": schedule_label or None,
-        "scheduleStart": schedule_match.group(1) if schedule_match else None,
-        "scheduleEnd": schedule_match.group(2) if schedule_match else None,
+        "scheduleStart": schedule_start,
+        "scheduleEnd": schedule_end,
         "days": [],
     }
 
     daily_rows = []
-    for idx, line in enumerate(lines):
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
         if not re.match(r"^\d{2}-", line):
+            idx += 1
             continue
+
+        continuation_lines = []
+        lookahead = idx + 1
+        while lookahead < len(lines):
+            next_line = lines[lookahead]
+            if re.match(r"^\d{2}-", next_line):
+                break
+            if "|" not in next_line:
+                break
+            continuation_lines.append(next_line)
+            lookahead += 1
+
         parts = [part.strip() for part in line.split("|")]
         if len(parts) < 3:
+            idx = lookahead
             continue
         day_raw = parts[0]
         try:
             day_number = int(day_raw.split("-")[0])
         except Exception:
+            idx = lookahead
             continue
 
         marks_text = parts[1] if len(parts) > 1 else ""
         journey_text = parts[2] if len(parts) > 2 else ""
-        raw_text = clean(" | ".join(parts))
+        combined_text = clean(" ".join([line, *continuation_lines]))
+        upper_text = combined_text.upper()
         upper_journey = clean(journey_text).upper()
-        marks = parse_marks(marks_text)
+        marks = build_marks(marks_text, journey_text)
         worked_minutes = parse_worked_minutes(journey_text, marks)
-        absence_flag = "FALTOU" in upper_journey
+        absence_flag = "FALTOU" in upper_text
         justification_text = None
-        if any(token in raw_text.upper() for token in ["ATESTADO", "DECLARACAO", "DECLARAÇÃO", "FERIAS", "FÉRIAS"]):
-            justification_text = clean(journey_text or raw_text)
+        if any(token in upper_text for token in JUSTIFICATION_KEYWORDS):
+            justification_text = combined_text
 
-        inconsistency_flag = False
-        if idx + 1 < len(lines):
-            next_line = clean(lines[idx + 1])
-            if next_line and not re.match(r"^\d{2}-", next_line) and "INCONSIST" in next_line.upper():
-                inconsistency_flag = True
+        inconsistency_flag = any(token in upper_text for token in INCONSISTENCY_KEYWORDS)
 
         late_minutes = 0
         if employee["scheduleStart"] and marks and not absence_flag:
@@ -138,7 +214,7 @@ def parse_page(text: str) -> dict | None:
             {
                 "dayNumber": day_number,
                 "marks": marks,
-                "rawDayText": raw_text,
+                "rawDayText": combined_text,
                 "workedMinutes": worked_minutes,
                 "lateMinutes": late_minutes,
                 "absenceFlag": absence_flag,
@@ -146,8 +222,13 @@ def parse_page(text: str) -> dict | None:
                 "justificationText": justification_text,
             }
         )
+        idx = lookahead
 
-    if start_range and daily_rows:
+    if start_range and end_range and daily_rows:
+        for row in daily_rows:
+            row["pointDate"] = resolve_point_date(row["dayNumber"], start_range, end_range)
+            row.pop("dayNumber", None)
+    elif start_range and daily_rows:
         iso_dates = infer_daily_iso_dates([row["dayNumber"] for row in daily_rows], start_range)
         for idx, row in enumerate(daily_rows):
             row["pointDate"] = iso_dates[idx]
@@ -160,6 +241,9 @@ def parse_page(text: str) -> dict | None:
 def main():
     if len(sys.argv) < 2:
         raise SystemExit("usage: payroll_parse_point_pdf.py <pdf_path>")
+
+    if PdfReader is None:
+        raise SystemExit("pypdf não está instalado no ambiente atual.")
 
     pdf_path = Path(sys.argv[1])
     reader = PdfReader(str(pdf_path))
@@ -175,4 +259,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -200,6 +200,19 @@ def _download_pdf_to_tempfile(storage_key: str, storage_bucket: Optional[str], f
     return target_path
 
 
+def _build_parsed_employee_key(parsed_employee: Dict) -> str:
+    cpf = _normalize_cpf(parsed_employee.get("employeeCpf"))
+    if cpf:
+        return f"cpf:{cpf}"
+    name = _normalize_name(parsed_employee.get("employeeName"))
+    if name:
+        return f"name:{name}"
+    code = _clean(parsed_employee.get("employeeCode"))
+    if code:
+        return f"code:{code}"
+    return uuid.uuid4().hex
+
+
 def _rebuild_point_rows(db: DatabaseManager, job: Dict):
     by_cpf, by_name = _load_employee_lookup(db, job["period_start"], job["period_end"])
     pdf_path = _download_pdf_to_tempfile(job["storage_key"], job["storage_bucket"], job["file_name"])
@@ -218,6 +231,9 @@ def _rebuild_point_rows(db: DatabaseManager, job: Dict):
     _execute(db, "DELETE FROM payroll_point_daily WHERE period_id = ?", (job["period_id"],))
 
     inserted_days = 0
+    matched_keys = set()
+    unmatched_keys = set()
+    unmatched_samples = []
     for parsed_employee in parsed_employees:
         matched_employee = None
         employee_cpf = _normalize_cpf(parsed_employee.get("employeeCpf"))
@@ -225,6 +241,15 @@ def _rebuild_point_rows(db: DatabaseManager, job: Dict):
             matched_employee = by_cpf.get(employee_cpf)
         if matched_employee is None:
             matched_employee = by_name.get(_normalize_name(parsed_employee.get("employeeName")))
+
+        parsed_key = _build_parsed_employee_key(parsed_employee)
+        if matched_employee is not None:
+            matched_keys.add(parsed_key)
+        elif parsed_key not in unmatched_keys:
+            unmatched_keys.add(parsed_key)
+            sample_name = _clean(parsed_employee.get("employeeName")) or _clean(parsed_employee.get("employeeCode")) or "sem identificação"
+            sample_cpf = employee_cpf or "sem cpf"
+            unmatched_samples.append(f"{sample_name} ({sample_cpf})")
 
         for day in parsed_employee.get("days", []):
             point_date = _clean(day.get("pointDate"))
@@ -270,25 +295,48 @@ def _rebuild_point_rows(db: DatabaseManager, job: Dict):
             )
             inserted_days += 1
 
-    return len(parsed_employees), inserted_days
+    return {
+        "parsed_employees": len(parsed_employees),
+        "inserted_days": inserted_days,
+        "matched_employees": len(matched_keys),
+        "unmatched_employees": len(unmatched_keys),
+        "unmatched_samples": unmatched_samples[:5],
+    }
 
 
 def _process_job(db: DatabaseManager, job: Dict):
     _update_import_status(db, job["import_file_id"], "PROCESSING", "Processamento iniciado pelo worker da folha.")
     db.update_heartbeat(SERVICE_NAME, STATUS_RUNNING, f"job={job['id']} import={job['import_file_id']}")
 
-    employees_count, inserted_days = _rebuild_point_rows(db, job)
+    result = _rebuild_point_rows(db, job)
+    employees_count = result["parsed_employees"]
+    inserted_days = result["inserted_days"]
+    matched_employees = result["matched_employees"]
+    unmatched_employees = result["unmatched_employees"]
+    unmatched_suffix = ""
+    if unmatched_employees:
+        unmatched_suffix = f" Não vinculados: {unmatched_employees}."
+        if result["unmatched_samples"]:
+            unmatched_suffix += f" Exemplos: {', '.join(result['unmatched_samples'])}."
     log_message = (
-        f"Relatório de ponto processado com {employees_count} colaboradores e {inserted_days} registros diários."
+        f"Relatório de ponto processado com {employees_count} colaboradores/páginas, "
+        f"{inserted_days} registros diários e {matched_employees} vínculos com cadastro.{unmatched_suffix}"
     )
     _update_import_status(db, job["import_file_id"], STATUS_COMPLETED, log_message)
     _mark_job_done(db, job["id"], STATUS_COMPLETED)
     db.update_heartbeat(
         SERVICE_NAME,
         STATUS_COMPLETED,
-        f"job={job['id']} import={job['import_file_id']} colaboradores={employees_count} registros={inserted_days}",
+        (
+            f"job={job['id']} import={job['import_file_id']} colaboradores={employees_count} "
+            f"registros={inserted_days} vinculados={matched_employees} nao_vinculados={unmatched_employees}"
+        ),
     )
-    print(f"[payroll_point_import] job concluido | id={job['id']} colaboradores={employees_count} registros={inserted_days}")
+    print(
+        "[payroll_point_import] job concluido | "
+        f"id={job['id']} colaboradores={employees_count} registros={inserted_days} "
+        f"vinculados={matched_employees} nao_vinculados={unmatched_employees}"
+    )
 
 
 def process_pending_payroll_point_jobs_once() -> bool:
