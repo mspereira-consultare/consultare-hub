@@ -15,7 +15,7 @@ Resumo do estado atual:
 - ainda permanecem pendentes exportacao do modulo, endpoints de `specialties/capacity` e uma atribuicao mais robusta de receita por campanha.
 
 Para uma visao executiva comparando o que foi planejado e o que ja existe, consultar tambem:
-- `planejamentos/STATUS_MODULOS_MARKETING_2026-03-30.md`
+- `planejamentos/marketing/STATUS_MODULOS_MARKETING_2026-03-30.md`
 
 ## Objetivo
 Consolidar a leitura de performance de marketing da Consultare em um único módulo, cruzando:
@@ -467,4 +467,3 @@ Arquivos novos ou evoluídos nesta etapa:
 - `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilKpis.tsx`
 - `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilFunnelVisual.tsx`
 - `frontend/src/app/(admin)/marketing/funil/components/MarketingFunilGoogleAdsHealthSection.tsx`
-

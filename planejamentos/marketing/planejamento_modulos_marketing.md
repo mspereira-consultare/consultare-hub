@@ -2,7 +2,7 @@
 
 ## Base usada para este refinamento
 
-Este planejamento foi ajustado com base no arquivo **`relatorio semanal mkt.xlsx`**, que trouxe um detalhe importante: o módulo de marketing não é apenas um painel de SEO/performance, e sim um **cockpit semanal e mensal por marca**.
+Este planejamento foi ajustado com base no arquivo **`planejamentos/marketing/relatorio semanal mkt.xlsx`**, que trouxe um detalhe importante: o módulo de marketing não é apenas um painel de SEO/performance, e sim um **cockpit semanal e mensal por marca**.
 
 ### O que o arquivo mostrou
 

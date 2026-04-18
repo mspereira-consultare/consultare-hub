@@ -1,9 +1,9 @@
 # Status dos modulos de Marketing - 2026-03-30
 
 ## Documentos analisados
-- `planejamentos/blueprint_operacional_modulos_marketing.md`
-- `planejamentos/planejamento_modulos_marketing.md`
-- `planejamentos/PROGRESS_MARKETING_FUNIL_2026-03-20.md`
+- `planejamentos/marketing/blueprint_operacional_modulos_marketing.md`
+- `planejamentos/marketing/planejamento_modulos_marketing.md`
+- `planejamentos/marketing/PROGRESS_MARKETING_FUNIL_2026-03-20.md`
 
 ## Resumo executivo
 Hoje o dominio de Marketing do painel nao foi implementado por completo conforme o blueprint original. O que existe em producao e o modulo **`/marketing/funil`**, ja bem mais evoluido do que o V1 Google-first inicial, com integracao de **Google Ads + GA4 + Clinia Ads + Feegow + faturamento**, abas de navegacao, diagnosticos do Google Ads e tooltips explicativos.
@@ -108,7 +108,7 @@ Itens previstos em versoes anteriores do plano que ainda nao estao entregues:
 - limpeza definitiva dos vestigios antigos de CRM/CRC no namespace `marketing/funil`
 
 ## Observacoes importantes para retomada
-- `planejamentos/PROGRESS_MARKETING_FUNIL_2026-03-20.md` esta desatualizado e representa um estado intermediario anterior as entregas de Clinia Ads, recalibracao do funil e aba `Saude Google Ads`.
+- `planejamentos/marketing/PROGRESS_MARKETING_FUNIL_2026-03-20.md` esta desatualizado e representa um estado intermediario anterior as entregas de Clinia Ads, recalibracao do funil e aba `Saude Google Ads`.
 - O documento principal mais confiavel do modulo ativo hoje e `frontend/docs/09-plano-tecnico-marketing-funil.md`.
 - O namespace `frontend/src/app/api/admin/marketing/funil/crm/` ainda existe como sobra estrutural, mas nao representa a frente ativa atual do modulo.
 

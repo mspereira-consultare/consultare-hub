@@ -4,7 +4,7 @@
 
 Servir como contexto operacional para implementar a frente de marketing do Hub com o menor risco possível, respeitando:
 
-- a estrutura real do arquivo `relatorio semanal mkt.xlsx`;
+- a estrutura real do arquivo `planejamentos/marketing/relatorio semanal mkt.xlsx`;
 - a necessidade de crescer por etapas;
 - a necessidade de manter números auditáveis;
 - a realidade de integrações que podem depender de permissão, licenciamento ou saneamento de base.
@@ -893,7 +893,7 @@ Prazo:
 
 ## 17. Prompt operacional resumido para usar no Codex
 
-Implemente a frente de marketing do Hub Gerencial como um domínio próprio, com adapters por provedor, tabelas raw + marts analíticos, páginas `/marketing/controle`, `/marketing/funil` e `/marketing/reputacao`, mantendo aderência visual ao arquivo “relatorio semanal mkt.xlsx”.
+Implemente a frente de marketing do Hub Gerencial como um domínio próprio, com adapters por provedor, tabelas raw + marts analíticos, páginas `/marketing/controle`, `/marketing/funil` e `/marketing/reputacao`, mantendo aderência visual ao arquivo `planejamentos/marketing/relatorio semanal mkt.xlsx`.
 
 Regras:
 
