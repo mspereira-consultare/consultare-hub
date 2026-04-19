@@ -152,7 +152,7 @@ export function PayrollLineDrawer({
                     <th className="px-3 py-2 text-left">Data</th>
                     <th className="px-3 py-2 text-left">Marcações</th>
                     <th className="px-3 py-2 text-center">Trabalhado</th>
-                    <th className="px-3 py-2 text-center">Atraso</th>
+                    <th className="px-3 py-2 text-center">Atraso (min)</th>
                     <th className="px-3 py-2 text-left">Observação</th>
                   </tr>
                 </thead>

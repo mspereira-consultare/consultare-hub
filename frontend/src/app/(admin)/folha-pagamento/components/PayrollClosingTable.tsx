@@ -30,7 +30,7 @@ export function PayrollClosingTable({
               <th className="px-3 py-3 text-right">Insal.</th>
               <th className="px-3 py-3 text-center">Dias</th>
               <th className="px-3 py-3 text-center">Faltas</th>
-              <th className="px-3 py-3 text-center">Atrasos</th>
+              <th className="px-3 py-3 text-center">Atrasos (min)</th>
               <th className="px-3 py-3 text-right">VT</th>
               <th className="px-3 py-3 text-right">D.V.T.</th>
               <th className="px-3 py-3 text-right">Totalpass</th>

@@ -59,7 +59,7 @@ Mostra a linha operacional da folha por colaborador, com:
 - insalubridade;
 - dias trabalhados;
 - faltas;
-- atrasos;
+- atrasos em minutos;
 - VT;
 - D.V.T.;
 - Totalpass;
@@ -75,6 +75,10 @@ Ao abrir uma linha, o drawer exibe:
 - ocorrências da competência;
 - ajustes manuais;
 - prévia da linha exportada.
+
+Na UI atual:
+- a coluna `Atrasos` do fechamento explicita a unidade em minutos;
+- o bloco `Regras da competência` descreve a forma de apuração do atraso e como o desconto é convertido.
 
 #### Prévia da planilha
 Substitui a antiga aba de comparação.
@@ -177,6 +181,9 @@ Observação:
 - salário-hora do mensalista com base no art. 64 da CLT;
 - falta de mensalista em base de `30` avos;
 - insalubridade calculada sobre o salário mínimo da competência;
+- atraso diário apurado pela diferença entre a primeira batida do dia e o horário de entrada extraído do cabeçalho do relatório de ponto;
+- atrasos consolidados exibidos no painel em minutos;
+- desconto de atraso convertido de minutos para horas após aplicar a tolerância diária da competência;
 - desconto de VT limitado ao menor valor entre custo do VT e `6%` do salário básico;
 - estágio sem desconto automático de `6%` de VT por padrão;
 - horas extras e adicional noturno ficam fora desta etapa.
