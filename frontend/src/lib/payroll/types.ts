@@ -169,6 +169,41 @@ export type PayrollPeriodSummary = {
   importsCompleted: number;
 };
 
+export type PayrollReadinessStatus = 'READY' | 'ATTENTION' | 'BLOCKED';
+export type PayrollReadinessSeverity = 'BLOCKING' | 'WARNING';
+export type PayrollReadinessIssueCode =
+  | 'NO_COMPLETED_POINT_IMPORT'
+  | 'POINT_ROWS_UNMATCHED'
+  | 'EMPLOYEE_MISSING_SALARY'
+  | 'EMPLOYEE_WITHOUT_POINT_ROWS'
+  | 'POINT_INCONSISTENCY'
+  | 'MISSING_COST_CENTER'
+  | 'FALLBACK_SCHEDULE_DIVISOR'
+  | 'LATEST_IMPORT_FAILED_WITH_ACTIVE_BASE';
+
+export type PayrollReadinessEmployeeSample = {
+  employeeId: string | null;
+  employeeName: string;
+  employeeCpf: string | null;
+};
+
+export type PayrollReadinessIssue = {
+  code: PayrollReadinessIssueCode;
+  severity: PayrollReadinessSeverity;
+  title: string;
+  description: string;
+  count: number;
+  sampleEmployees: PayrollReadinessEmployeeSample[];
+};
+
+export type PayrollPeriodReadiness = {
+  status: PayrollReadinessStatus;
+  blockingCount: number;
+  warningCount: number;
+  issues: PayrollReadinessIssue[];
+  guidance: string;
+};
+
 export type PayrollLineFilters = {
   search: string;
   centerCost: string;
@@ -188,6 +223,7 @@ export type PayrollPeriodDetail = {
   period: PayrollPeriod;
   summary: PayrollPeriodSummary;
   imports: PayrollImportFile[];
+  readiness: PayrollPeriodReadiness;
 };
 
 export type PayrollCreatePeriodInput = {

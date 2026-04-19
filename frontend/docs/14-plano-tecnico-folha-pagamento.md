@@ -116,6 +116,7 @@ O histórico de importações continua salvo em `payroll_import_files`.
 - `PayrollImportsPanel.tsx`
 - `PayrollLineDrawer.tsx`
 - `PayrollSummaryCards.tsx`
+- `PayrollReadinessPanel.tsx`
 - `PayrollTabNav.tsx`
 
 ### Domínio
@@ -152,7 +153,7 @@ Observação:
 - `GET /api/admin/folha-pagamento/options`
 - `GET /api/admin/folha-pagamento/periods`
 - `POST /api/admin/folha-pagamento/periods`
-- `GET /api/admin/folha-pagamento/periods/[id]`
+- `GET /api/admin/folha-pagamento/periods/[id]` -> inclui `readiness` da competência
 - `POST /api/admin/folha-pagamento/periods/[id]/imports/point` -> responde `202 Accepted` e enfileira o processamento
 - `POST /api/admin/folha-pagamento/periods/[id]/generate`
 - `GET /api/admin/folha-pagamento/periods/[id]/lines`
@@ -188,6 +189,31 @@ Observação:
 - estágio sem desconto automático de `6%` de VT por padrão;
 - horas extras e adicional noturno ficam fora desta etapa.
 
+### Prontidão da competência
+Antes de gerar a folha, o módulo avalia a prontidão operacional da competência e expõe isso no payload de detalhe e na UI.
+
+Estados:
+- `READY`
+- `ATTENTION`
+- `BLOCKED`
+
+Bloqueios críticos do MVP:
+- ausência de base de ponto concluída;
+- registros do ponto sem vínculo com `employees`;
+- colaborador ativo com salário base ausente ou zerado.
+
+Alertas do MVP:
+- colaborador ativo sem ponto na competência;
+- ponto com inconsistências;
+- centro de custo ausente;
+- uso de divisor padrão por falta de jornada identificável;
+- última tentativa de importação falhada com base ativa preservada.
+
+Regra de geração:
+- `Gerar folha` continua sendo a ação principal do módulo;
+- a mesma ação também recalcula/reprocessa a competência após correções de cadastro ou importação;
+- quando a prontidão estiver `BLOCKED`, a geração retorna `409` no backend e a UI mantém o botão indisponível.
+
 ### Auditabilidade
 Cada competência guarda:
 - arquivos importados;
@@ -195,6 +221,12 @@ Cada competência guarda:
 - memória de cálculo em JSON;
 - ajustes manuais;
 - ocorrências lançadas pelo RH.
+
+Além disso, a memória de cálculo passa a registrar avisos automáticos de prontidão por linha, como:
+- sem ponto na competência;
+- centro de custo ausente;
+- jornada não identificada com divisor padrão aplicado;
+- inconsistências no ponto do período.
 
 ## Exportação XLSX
 

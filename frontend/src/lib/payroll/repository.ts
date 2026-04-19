@@ -26,9 +26,15 @@ import type {
   PayrollOptions,
   PayrollPeriod,
   PayrollPeriodDetail,
+  PayrollPeriodReadiness,
   PayrollPeriodSummary,
   PayrollPointDaily,
   PayrollPreviewRow,
+  PayrollReadinessEmployeeSample,
+  PayrollReadinessIssue,
+  PayrollReadinessIssueCode,
+  PayrollReadinessSeverity,
+  PayrollReadinessStatus,
   PayrollRule,
 } from '@/lib/payroll/types';
 
@@ -43,6 +49,7 @@ export class PayrollValidationError extends Error {
 
 let tablesEnsured = false;
 type PayrollPointImportJobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+const JUSTIFIED_OCCURRENCE_TYPES = new Set<PayrollOccurrenceType>(['ATESTADO', 'DECLARACAO', 'AJUSTE_BATIDA', 'AUSENCIA_AUTORIZADA', 'FERIAS']);
 
 const NOW = () => new Date().toISOString();
 const clean = (value: unknown) => String(value ?? '').trim();
@@ -800,14 +807,278 @@ export const getPayrollOptions = async (db: DbInterface): Promise<PayrollOptions
   };
 };
 
+const buildReadinessSampleKey = (sample: PayrollReadinessEmployeeSample) =>
+  clean(sample.employeeId) || sample.employeeCpf || normalizeSearch(sample.employeeName);
+
+const uniqueEmployeeSamples = (samples: PayrollReadinessEmployeeSample[]) => {
+  const unique = new Map<string, PayrollReadinessEmployeeSample>();
+  for (const sample of samples) {
+    const key = buildReadinessSampleKey(sample);
+    if (!key || unique.has(key)) continue;
+    unique.set(key, sample);
+  }
+  return Array.from(unique.values());
+};
+
+const employeeToReadinessSample = (employee: EmployeePayrollSource): PayrollReadinessEmployeeSample => ({
+  employeeId: employee.id || null,
+  employeeName: employee.fullName,
+  employeeCpf: employee.cpf,
+});
+
+const pointRowToReadinessSample = (row: PayrollPointDaily): PayrollReadinessEmployeeSample => ({
+  employeeId: row.employeeId,
+  employeeName: row.employeeName,
+  employeeCpf: row.employeeCpf,
+});
+
+const createReadinessIssue = (params: {
+  code: PayrollReadinessIssueCode;
+  severity: PayrollReadinessSeverity;
+  title: string;
+  description: string;
+  count: number;
+  sampleEmployees?: PayrollReadinessEmployeeSample[];
+}): PayrollReadinessIssue => ({
+  code: params.code,
+  severity: params.severity,
+  title: params.title,
+  description: params.description,
+  count: params.count,
+  sampleEmployees: uniqueEmployeeSamples(params.sampleEmployees || []).slice(0, 5),
+});
+
+const buildReadinessGuidance = (status: PayrollReadinessStatus) => {
+  if (status === 'BLOCKED') {
+    return 'Resolva os bloqueios críticos abaixo e use Gerar folha novamente para recalcular a competência.';
+  }
+  if (status === 'ATTENTION') {
+    return 'A competência pode ser gerada, mas há alertas operacionais para revisar. Após qualquer correção, use Gerar folha novamente.';
+  }
+  return 'A competência está pronta para geração. Se houver ajuste posterior de cadastro ou importação, use Gerar folha novamente para recalcular.';
+};
+
+const buildReadinessBlockingMessage = (readiness: PayrollPeriodReadiness) => {
+  const blockingIssues = readiness.issues.filter((issue) => issue.severity === 'BLOCKING');
+  if (!blockingIssues.length) return readiness.guidance;
+  const summary = blockingIssues
+    .slice(0, 3)
+    .map((issue) => issue.title)
+    .join('; ');
+  return `A competência possui bloqueios críticos: ${summary}. ${readiness.guidance}`;
+};
+
+const hasFullPeriodCoverageWithoutPoint = (
+  employeeId: string,
+  period: PayrollPeriod,
+  occurrenceMap: Map<string, PayrollOccurrence[]>,
+  recessMap: Map<string, any[]>,
+) => {
+  const employeeOccurrences = occurrenceMap.get(employeeId) || [];
+  const hasOccurrenceCoverage = employeeOccurrences.some((occurrence) => {
+    if (!JUSTIFIED_OCCURRENCE_TYPES.has(occurrence.occurrenceType)) return false;
+    const start = occurrence.dateStart || null;
+    const end = occurrence.dateEnd || occurrence.dateStart || null;
+    if (!start || !end) return false;
+    return start <= period.periodStart && end >= period.periodEnd;
+  });
+  if (hasOccurrenceCoverage) return true;
+
+  const employeeRecessRows = recessMap.get(employeeId) || [];
+  return employeeRecessRows.some((row) => {
+    const start = parseDate(row.vacation_start_date);
+    const duration = Number(row.vacation_duration_days || 0);
+    if (!start || duration <= 0) return false;
+    const end = addDays(start, duration - 1);
+    return start <= period.periodStart && end >= period.periodEnd;
+  });
+};
+
+const evaluatePayrollPeriodReadiness = (
+  period: PayrollPeriod,
+  imports: PayrollImportFile[],
+  employees: EmployeePayrollSource[],
+  pointRows: PayrollPointDaily[],
+  occurrences: PayrollOccurrence[],
+  recessRows: any[],
+): PayrollPeriodReadiness => {
+  const issues: PayrollReadinessIssue[] = [];
+  const pointImports = imports.filter((item) => item.fileType === 'POINT_PDF');
+  const activeImport = pointImports.find((item) => item.processingStatus === 'COMPLETED') || null;
+  const latestAttempt = pointImports[0] || null;
+  const hasCompletedPointImport = Boolean(activeImport);
+  const hasPointBase = hasCompletedPointImport || pointRows.length > 0;
+
+  const pointRowsByEmployee = new Map<string, PayrollPointDaily[]>();
+  for (const row of pointRows) {
+    if (!row.employeeId) continue;
+    const list = pointRowsByEmployee.get(row.employeeId) || [];
+    list.push(row);
+    pointRowsByEmployee.set(row.employeeId, list);
+  }
+
+  const occurrenceMap = new Map<string, PayrollOccurrence[]>();
+  for (const occurrence of occurrences) {
+    const key = clean(occurrence.employeeId);
+    const list = occurrenceMap.get(key) || [];
+    list.push(occurrence);
+    occurrenceMap.set(key, list);
+  }
+
+  const recessMap = new Map<string, any[]>();
+  for (const row of recessRows) {
+    const key = clean(row.employee_id);
+    const list = recessMap.get(key) || [];
+    list.push(row);
+    recessMap.set(key, list);
+  }
+
+  if (!hasCompletedPointImport) {
+    issues.push(
+      createReadinessIssue({
+        code: 'NO_COMPLETED_POINT_IMPORT',
+        severity: 'BLOCKING',
+        title: 'Sem base de ponto concluída',
+        description: 'Nenhum relatório de ponto concluído está disponível como base ativa para esta competência.',
+        count: 1,
+      }),
+    );
+  }
+
+  const unmatchedPointRows = pointRows.filter((row) => !row.employeeId);
+  if (unmatchedPointRows.length > 0) {
+    const unmatchedSamples = uniqueEmployeeSamples(unmatchedPointRows.map(pointRowToReadinessSample));
+    issues.push(
+      createReadinessIssue({
+        code: 'POINT_ROWS_UNMATCHED',
+        severity: 'BLOCKING',
+        title: 'Ponto sem vínculo com cadastro',
+        description: `${unmatchedSamples.length} colaborador(es) do relatório de ponto não foram vinculados ao cadastro de colaboradores.`,
+        count: unmatchedSamples.length,
+        sampleEmployees: unmatchedSamples,
+      }),
+    );
+  }
+
+  const employeesMissingSalary = employees.filter((employee) => employee.salaryAmount <= 0);
+  if (employeesMissingSalary.length > 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'EMPLOYEE_MISSING_SALARY',
+        severity: 'BLOCKING',
+        title: 'Cadastro sem salário base',
+        description: `${employeesMissingSalary.length} colaborador(es) ativo(s) estão com salário base ausente ou zerado para esta competência.`,
+        count: employeesMissingSalary.length,
+        sampleEmployees: employeesMissingSalary.map(employeeToReadinessSample),
+      }),
+    );
+  }
+
+  if (hasPointBase) {
+    const employeesWithoutPointRows = employees.filter((employee) => {
+      if ((pointRowsByEmployee.get(employee.id) || []).length > 0) return false;
+      return !hasFullPeriodCoverageWithoutPoint(employee.id, period, occurrenceMap, recessMap);
+    });
+    if (employeesWithoutPointRows.length > 0) {
+      issues.push(
+        createReadinessIssue({
+          code: 'EMPLOYEE_WITHOUT_POINT_ROWS',
+          severity: 'WARNING',
+          title: 'Colaborador ativo sem ponto na competência',
+          description: `${employeesWithoutPointRows.length} colaborador(es) ativo(s) não possuem registros de ponto nesta competência.`,
+          count: employeesWithoutPointRows.length,
+          sampleEmployees: employeesWithoutPointRows.map(employeeToReadinessSample),
+        }),
+      );
+    }
+
+    const inconsistentPointRows = pointRows.filter((row) => row.inconsistencyFlag);
+    if (inconsistentPointRows.length > 0) {
+      issues.push(
+        createReadinessIssue({
+          code: 'POINT_INCONSISTENCY',
+          severity: 'WARNING',
+          title: 'Ponto com inconsistências',
+          description: `${inconsistentPointRows.length} registro(s) diário(s) do ponto possuem inconsistência nesta competência.`,
+          count: inconsistentPointRows.length,
+          sampleEmployees: inconsistentPointRows.map(pointRowToReadinessSample),
+        }),
+      );
+    }
+  }
+
+  const employeesMissingCostCenter = employees.filter((employee) => !clean(employee.costCenter));
+  if (employeesMissingCostCenter.length > 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'MISSING_COST_CENTER',
+        severity: 'WARNING',
+        title: 'Cadastro sem centro de custo',
+        description: `${employeesMissingCostCenter.length} colaborador(es) ativo(s) estão sem centro de custo preenchido.`,
+        count: employeesMissingCostCenter.length,
+        sampleEmployees: employeesMissingCostCenter.map(employeeToReadinessSample),
+      }),
+    );
+  }
+
+  const fallbackScheduleEmployees = employees.filter((employee) => {
+    const employeePointRows = pointRowsByEmployee.get(employee.id) || [];
+    return parseScheduleMinutes(employeePointRows[0]?.scheduleStart || null, employeePointRows[0]?.scheduleEnd || null, employee.workSchedule) === null;
+  });
+  if (fallbackScheduleEmployees.length > 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'FALLBACK_SCHEDULE_DIVISOR',
+        severity: 'WARNING',
+        title: 'Divisor padrão de jornada aplicado',
+        description: `${fallbackScheduleEmployees.length} colaborador(es) usarão divisor padrão por falta de jornada identificável no cadastro ou no ponto.`,
+        count: fallbackScheduleEmployees.length,
+        sampleEmployees: fallbackScheduleEmployees.map(employeeToReadinessSample),
+      }),
+    );
+  }
+
+  if (latestAttempt && activeImport && latestAttempt.id !== activeImport.id && latestAttempt.processingStatus === 'FAILED') {
+    issues.push(
+      createReadinessIssue({
+        code: 'LATEST_IMPORT_FAILED_WITH_ACTIVE_BASE',
+        severity: 'WARNING',
+        title: 'Última tentativa falhou com base ativa preservada',
+        description: 'A tentativa mais recente falhou, mas a competência continua usando a última base de ponto concluída.',
+        count: 1,
+      }),
+    );
+  }
+
+  const blockingCount = issues.filter((issue) => issue.severity === 'BLOCKING').length;
+  const warningCount = issues.filter((issue) => issue.severity === 'WARNING').length;
+  const status: PayrollReadinessStatus = blockingCount > 0 ? 'BLOCKED' : warningCount > 0 ? 'ATTENTION' : 'READY';
+
+  return {
+    status,
+    blockingCount,
+    warningCount,
+    issues,
+    guidance: buildReadinessGuidance(status),
+  };
+};
+
 export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string): Promise<PayrollPeriodDetail> => {
   await ensurePayrollTables(db);
   const period = await getPeriodOrThrow(db, periodId);
-  const [imports, lines] = await Promise.all([listImportsByPeriod(db, periodId), listLinesRaw(db, periodId)]);
+  const [imports, lines, employees, pointRows, occurrenceRows, recessRows] = await Promise.all([
+    listImportsByPeriod(db, periodId),
+    listLinesRaw(db, periodId),
+    loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
+    listPointRowsRaw(db, periodId),
+    listOccurrencesRaw(db, periodId),
+    db.query(`SELECT * FROM employee_recess_periods ORDER BY vacation_start_date ASC`),
+  ]);
   return {
     period,
     imports,
     summary: buildSummaryFromLines(lines, imports),
+    readiness: evaluatePayrollPeriodReadiness(period, imports, employees, pointRows, occurrenceRows, recessRows),
   };
 };
 
@@ -823,17 +1094,6 @@ const loadEmployeeRosterForPeriod = async (db: DbInterface, periodStart: string,
     [periodEnd, periodStart],
   );
   return rows.map(mapEmployeePayrollSource);
-};
-
-const buildEmployeeLookup = (employees: EmployeePayrollSource[]) => {
-  const byCpf = new Map<string, EmployeePayrollSource>();
-  const byName = new Map<string, EmployeePayrollSource>();
-  for (const employee of employees) {
-    if (employee.cpf && !byCpf.has(employee.cpf)) byCpf.set(employee.cpf, employee);
-    const key = normalizeSearch(employee.fullName);
-    if (key && !byName.has(key)) byName.set(key, employee);
-  }
-  return { byCpf, byName };
 };
 
 const createImportRecord = async (
@@ -967,7 +1227,7 @@ const buildLineRecord = (
   existingLine: PayrollLine | null,
   recessRows: any[],
 ): PayrollLine => {
-  const justifiedTypes = new Set<PayrollOccurrenceType>(['ATESTADO', 'DECLARACAO', 'AJUSTE_BATIDA', 'AUSENCIA_AUTORIZADA', 'FERIAS']);
+  const pointRowsInPeriod = pointRows.filter((item) => item.pointDate >= period.periodStart && item.pointDate <= period.periodEnd);
   const isCoveredByRecess = (pointDate: string) =>
     recessRows.some((row) => {
       const vacationStart = parseDate(row.vacation_start_date);
@@ -980,14 +1240,33 @@ const buildLineRecord = (
   const getOccurrenceForDate = (pointDate: string) =>
     occurrences.find((item) => overlapsDateRange(pointDate, item.dateStart, item.dateEnd || item.dateStart));
 
+  const hasFullPeriodCoverageWithoutPoint = () => {
+    const hasOccurrenceCoverage = occurrences.some((occurrence) => {
+      if (!JUSTIFIED_OCCURRENCE_TYPES.has(occurrence.occurrenceType)) return false;
+      const start = occurrence.dateStart || null;
+      const end = occurrence.dateEnd || occurrence.dateStart || null;
+      if (!start || !end) return false;
+      return start <= period.periodStart && end >= period.periodEnd;
+    });
+    if (hasOccurrenceCoverage) return true;
+
+    return recessRows.some((row) => {
+      const vacationStart = parseDate(row.vacation_start_date);
+      const duration = Number(row.vacation_duration_days || 0);
+      if (!vacationStart || duration <= 0) return false;
+      const vacationEnd = addDays(vacationStart, duration - 1);
+      return vacationStart <= period.periodStart && vacationEnd >= period.periodEnd;
+    });
+  };
+
   let daysWorked = 0;
   let absencesCount = 0;
   let lateMinutes = 0;
   let workedMinutesTotal = 0;
 
-  for (const row of pointRows.filter((item) => item.pointDate >= period.periodStart && item.pointDate <= period.periodEnd)) {
+  for (const row of pointRowsInPeriod) {
     const occurrence = getOccurrenceForDate(row.pointDate);
-    const justified = Boolean(occurrence && justifiedTypes.has(occurrence.occurrenceType)) || isCoveredByRecess(row.pointDate);
+    const justified = Boolean(occurrence && JUSTIFIED_OCCURRENCE_TYPES.has(occurrence.occurrenceType)) || isCoveredByRecess(row.pointDate);
     const forcedAbsence = Boolean(occurrence && occurrence.occurrenceType === 'FALTA_INJUSTIFICADA');
     const isAbsence = forcedAbsence || (row.absenceFlag && !justified);
 
@@ -1006,9 +1285,36 @@ const buildLineRecord = (
     }
   }
 
-  const scheduleMinutes = parseScheduleMinutes(pointRows[0]?.scheduleStart || null, pointRows[0]?.scheduleEnd || null, employee.workSchedule);
+  const scheduleMinutes = parseScheduleMinutes(pointRowsInPeriod[0]?.scheduleStart || null, pointRowsInPeriod[0]?.scheduleEnd || null, employee.workSchedule);
   const monthlyDivisor = scheduleMinutes && scheduleMinutes > 0 ? (scheduleMinutes / 60) * 25 : employee.employmentRegime === 'ESTAGIO' ? 150 : 220;
   const salaryHour = monthlyDivisor > 0 ? employee.salaryAmount / monthlyDivisor : 0;
+  const inconsistencyCount = pointRowsInPeriod.filter((row) => row.inconsistencyFlag).length;
+
+  const warnings: Array<{ code: string; message: string }> = [];
+  if (!pointRowsInPeriod.length && !hasFullPeriodCoverageWithoutPoint()) {
+    warnings.push({
+      code: 'EMPLOYEE_WITHOUT_POINT_ROWS',
+      message: 'Colaborador ativo sem registros de ponto na competência.',
+    });
+  }
+  if (!clean(employee.costCenter)) {
+    warnings.push({
+      code: 'MISSING_COST_CENTER',
+      message: 'Centro de custo ausente no cadastro do colaborador.',
+    });
+  }
+  if (scheduleMinutes === null) {
+    warnings.push({
+      code: 'FALLBACK_SCHEDULE_DIVISOR',
+      message: `Jornada não identificada; divisor padrão ${monthlyDivisor} aplicado no cálculo do salário-hora.`,
+    });
+  }
+  if (inconsistencyCount > 0) {
+    warnings.push({
+      code: 'POINT_INCONSISTENCY',
+      message: `${inconsistencyCount} registro(s) diário(s) do ponto com inconsistência nesta competência.`,
+    });
+  }
 
   const absenceDiscount = roundMoney((employee.salaryAmount / 30) * absencesCount);
   const lateDiscount = roundMoney((salaryHour * lateMinutes) / 60);
@@ -1112,6 +1418,7 @@ const buildLineRecord = (
         otherFixedDiscount,
         adjustmentsAmount,
       },
+      warnings,
     }),
     createdAt: existingLine?.createdAt || NOW(),
     updatedAt: NOW(),
@@ -1137,6 +1444,12 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
     listLinesRaw(db, period.id),
     db.query(`SELECT * FROM employee_recess_periods ORDER BY vacation_start_date ASC`),
   ]);
+
+  const imports = await listImportsByPeriod(db, period.id);
+  const readiness = evaluatePayrollPeriodReadiness(period, imports, employees, pointRows, occurrenceRows, recessRows);
+  if (readiness.status === 'BLOCKED') {
+    throw new PayrollValidationError(buildReadinessBlockingMessage(readiness), 409);
+  }
 
   const pointMap = new Map<string, PayrollPointDaily[]>();
   for (const row of pointRows) {

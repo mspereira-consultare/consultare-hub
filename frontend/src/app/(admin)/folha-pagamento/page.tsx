@@ -20,6 +20,7 @@ import { PayrollImportsPanel } from './components/PayrollImportsPanel';
 import { PayrollLineDrawer } from './components/PayrollLineDrawer';
 import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
 import { PayrollPreviewTable } from './components/PayrollPreviewTable';
+import { PayrollReadinessPanel } from './components/PayrollReadinessPanel';
 import { PayrollSummaryCards } from './components/PayrollSummaryCards';
 import { PayrollTabNav, type PayrollTabKey } from './components/PayrollTabNav';
 
@@ -96,6 +97,13 @@ export default function FolhaPagamentoPage() {
       ),
     [detail?.imports],
   );
+  const readiness = detail?.readiness || null;
+  const generationBlockedByReadiness = readiness?.status === 'BLOCKED';
+  const generateActionTitle = hasPointImportInProgress
+    ? 'Aguarde a conclusão da importação do ponto para gerar a folha.'
+    : generationBlockedByReadiness
+      ? readiness?.guidance || 'Resolva os bloqueios críticos da competência antes de gerar a folha.'
+      : 'Gerar folha';
 
   const loadOptions = useCallback(async () => {
     if (!canView) return;
@@ -341,6 +349,8 @@ export default function FolhaPagamentoPage() {
       {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
+      {readiness ? <PayrollReadinessPanel readiness={readiness} /> : null}
+
       <PayrollSummaryCards summary={detail?.summary || null} />
 
       {hasPointImportInProgress ? (
@@ -407,17 +417,13 @@ export default function FolhaPagamentoPage() {
               <button
                 type="button"
                 onClick={() => runPeriodAction('generate')}
-                disabled={hasPointImportInProgress || actionLoading === 'generate'}
+                disabled={hasPointImportInProgress || generationBlockedByReadiness || actionLoading === 'generate'}
                 className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${
-                  hasPointImportInProgress
+                  hasPointImportInProgress || generationBlockedByReadiness
                     ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
                     : 'border-slate-200 bg-white text-slate-700'
                 }`}
-                title={
-                  hasPointImportInProgress
-                    ? 'Aguarde a conclusão da importação do ponto para gerar a folha.'
-                    : 'Gerar folha'
-                }
+                title={generateActionTitle}
               >
                 {actionLoading === 'generate' ? <Loader2 size={16} className="animate-spin" /> : <Calculator size={16} />} Gerar folha
               </button>
