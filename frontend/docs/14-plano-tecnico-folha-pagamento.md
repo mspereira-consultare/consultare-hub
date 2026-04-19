@@ -78,7 +78,7 @@ Ao abrir uma linha, o drawer exibe:
 
 Na UI atual:
 - a coluna `Atrasos` do fechamento explicita a unidade em minutos;
-- o bloco `Regras da competência` descreve a forma de apuração do atraso e como o desconto é convertido.
+- uma observação abaixo do subtítulo da página descreve a forma de apuração do atraso e como o desconto é convertido.
 
 #### Prévia da planilha
 Substitui a antiga aba de comparação.

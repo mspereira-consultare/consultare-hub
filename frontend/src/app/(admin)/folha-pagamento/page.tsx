@@ -283,6 +283,11 @@ export default function FolhaPagamentoPage() {
               <p className="mt-1 text-xs text-slate-500">
                 Fechamento mensal recorrente por competência, com base no cadastro do colaborador, relatório de ponto e planilha operacional padrão do RH.
               </p>
+              {detail?.period.rules ? (
+                <p className="mt-2 max-w-3xl text-xs text-slate-500">
+                  Atrasos são exibidos em minutos. O desconto converte os minutos considerados em horas, após a tolerância diária, com base na diferença entre a primeira batida do dia e o horário de entrada do relatório.
+                </p>
+              ) : null}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -328,14 +333,7 @@ export default function FolhaPagamentoPage() {
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Regras da competência</div>
             <div className="mt-2 text-sm font-semibold text-slate-800">{detail?.period.rules ? `${formatMoney(detail.period.rules.minWageAmount)} | atraso ${detail.period.rules.lateToleranceMinutes} min` : 'Carregue uma competência'}</div>
-            {detail?.period.rules ? (
-              <div className="mt-1 space-y-1 text-xs text-slate-500">
-                <div>Teto de VT: {detail.period.rules.vtDiscountCapPercent}% do salário básico</div>
-                <div>
-                  Atrasos no fechamento são exibidos em minutos. O desconto converte os minutos considerados em horas, após a tolerância diária, com base na diferença entre a primeira batida do dia e o horário de entrada do relatório.
-                </div>
-              </div>
-            ) : null}
+            {detail?.period.rules ? <div className="mt-1 text-xs text-slate-500">Teto de VT: {detail.period.rules.vtDiscountCapPercent}% do salário básico</div> : null}
           </div>
         </div>
       </section>
