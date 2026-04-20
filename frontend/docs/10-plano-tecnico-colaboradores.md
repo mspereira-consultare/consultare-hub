@@ -4,6 +4,7 @@
 
 O modulo `/colaboradores` centraliza a operacao do Departamento Pessoal no painel, cobrindo:
 - cadastro e desligamento de colaboradores;
+- dashboard gerencial de funcionários;
 - beneficios;
 - uniforme e armario;
 - recessos;
@@ -35,6 +36,7 @@ O desenho segue o mesmo padrao funcional de `/profissionais`:
 
 - `GET/POST /api/admin/colaboradores`
 - `GET/PUT /api/admin/colaboradores/[id]`
+- `GET /api/admin/colaboradores/dashboard`
 - `GET /api/admin/colaboradores/options`
 - `GET/POST /api/admin/colaboradores/[id]/documentos`
 - `GET /api/admin/colaboradores/documentos/[documentId]/download`
@@ -290,6 +292,20 @@ Etapas da aba:
 O checklist inicial de admissão cobre cadastro contratual, documentos obrigatórios, ASO, benefícios iniciais, uniforme, armário e observações finais.
 
 O checklist inicial de desligamento cobre data/motivo de desligamento, devolução de uniforme, devolução de armário/chave, documentos finais, revisão de benefícios/descontos e observações finais.
+
+### Aba `Dashboard`
+
+Implementação da Onda 4 do plano RH.
+
+A aba funciona como visão gerencial sobre o cadastro oficial, sem novas tabelas:
+- agregação server-side em `getEmployeeDashboard`;
+- rota `GET /api/admin/colaboradores/dashboard`;
+- filtros por unidade, setor, regime contratual e status;
+- indicadores de headcount, admissões do mês, desligamentos do mês, turnover mensal/acumulado, pendências documentais e ASO;
+- listas operacionais de aniversariantes do mês, aniversariantes dos próximos 30 dias, admissões, desligamentos e pendências documentais;
+- distribuição de tempo de empresa e status de ASO.
+
+O turnover do MVP é calculado sobre `quadro ativo + saídas do período`, usando as datas de desligamento registradas no cadastro.
 
 ### Modal com abas
 

@@ -209,6 +209,11 @@ Principais mudanças esperadas:
 - camada de agregação própria do módulo de colaboradores
 - componentes de leitura gerencial coerentes com o padrão visual atual do painel
 
+Status de implementação:
+- iniciada com a aba `Dashboard` em `/colaboradores`;
+- criada a rota `GET /api/admin/colaboradores/dashboard`;
+- agregação atual cobre headcount, aniversários, admissões, desligamentos, turnover, tempo de empresa, ASO e pendências documentais.
+
 ### Onda 5 — `2.19 Processo de triagem de currículos`
 Objetivo da onda:
 - criar o primeiro fluxo estruturado de recrutamento dentro do painel

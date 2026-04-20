@@ -58,6 +58,7 @@ import type {
   EmployeeUniformItem,
 } from '@/lib/colaboradores/types';
 import { ColaboradoresHelpModal } from './components/ColaboradoresHelpModal';
+import { EmployeeDashboardPanel } from './components/EmployeeDashboardPanel';
 import { EmployeeLifecyclePanel } from './components/EmployeeLifecyclePanel';
 
 type SessionUser = {
@@ -191,7 +192,7 @@ type PendingUpload = {
 };
 
 type ModalTab = 'cadastro' | 'beneficios' | 'uniforme' | 'recesso' | 'documentos';
-type PageSection = 'cadastro' | 'lifecycle';
+type PageSection = 'cadastro' | 'dashboard' | 'lifecycle';
 
 type FiltersState = {
   search: string;
@@ -1145,7 +1146,7 @@ export default function ColaboradoresPage() {
             <div>
               <h1 className="text-xl font-bold text-slate-800">Gestão de Colaboradores</h1>
               <p className="mt-1 text-xs text-slate-500">
-                Cadastro, benefícios, documentos, uniforme, recesso e fluxos de admissão/desligamento do Departamento Pessoal.
+                Cadastro, indicadores, benefícios, documentos, uniforme, recesso e fluxos de admissão/desligamento do Departamento Pessoal.
               </p>
             </div>
           </div>
@@ -1203,6 +1204,13 @@ export default function ColaboradoresPage() {
           className={`rounded-lg border px-3 py-1.5 text-sm transition ${activeSection === 'cadastro' ? 'border-[#17407E] bg-[#17407E] text-white shadow-sm' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white'}`}
         >
           Cadastro
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSection('dashboard')}
+          className={`rounded-lg border px-3 py-1.5 text-sm transition ${activeSection === 'dashboard' ? 'border-[#17407E] bg-[#17407E] text-white shadow-sm' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white'}`}
+        >
+          Dashboard
         </button>
         <button
           type="button"
@@ -1436,6 +1444,8 @@ export default function ColaboradoresPage() {
         </div>
       </div>
         </>
+      ) : activeSection === 'dashboard' ? (
+        <EmployeeDashboardPanel options={options} />
       ) : (
         <EmployeeLifecyclePanel canEdit={canEdit} onOpenEmployee={openEdit} onCreateEmployee={openCreate} />
       )}

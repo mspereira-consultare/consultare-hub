@@ -223,6 +223,58 @@ export type EmployeeFilters = {
   pageSize: number;
 };
 
+export type EmployeeDashboardFilters = {
+  status: 'all' | EmployeeStatus;
+  regime: 'all' | EmploymentRegime;
+  unit: string;
+  department: string;
+};
+
+export type EmployeeDashboardPerson = {
+  employeeId: string;
+  fullName: string;
+  employeeCpf: string | null;
+  jobTitle: string | null;
+  department: string | null;
+  units: string[];
+  date: string | null;
+  daysUntil?: number | null;
+  description?: string | null;
+};
+
+export type EmployeeDashboardCountItem = {
+  key: string;
+  label: string;
+  count: number;
+};
+
+export type EmployeeDashboardData = {
+  generatedAt: string;
+  filters: EmployeeDashboardFilters;
+  summary: {
+    totalCount: number;
+    activeCount: number;
+    preAdmissionCount: number;
+    inactiveCount: number;
+    admissionsThisMonth: number;
+    terminationsThisMonth: number;
+    terminationsYtd: number;
+    turnoverMonthlyPct: number;
+    turnoverYtdPct: number;
+    documentPendingCount: number;
+    asoPendingCount: number;
+    asoExpiringCount: number;
+    asoExpiredCount: number;
+  };
+  birthdaysThisMonth: EmployeeDashboardPerson[];
+  birthdaysNext30: EmployeeDashboardPerson[];
+  admissionsThisMonth: EmployeeDashboardPerson[];
+  terminationsThisMonth: EmployeeDashboardPerson[];
+  tenureBands: EmployeeDashboardCountItem[];
+  asoBreakdown: EmployeeDashboardCountItem[];
+  documentPendencies: EmployeeDashboardPerson[];
+};
+
 export type EmployeeLifecycleCaseType = 'ADMISSION' | 'TERMINATION';
 export type EmployeeLifecycleStage = 'PRE_ADMISSION' | 'ADMISSION_IN_PROGRESS' | 'TERMINATION_IN_PROGRESS' | 'CLOSED';
 export type EmployeeLifecycleTaskStatus = 'PENDING' | 'DONE' | 'BLOCKED' | 'WAIVED';

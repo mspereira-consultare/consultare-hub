@@ -38,6 +38,9 @@ import type {
   Employee,
   EmployeeDocument,
   EmployeeDocumentUploadInput,
+  EmployeeDashboardData,
+  EmployeeDashboardFilters,
+  EmployeeDashboardPerson,
   EmployeeFilters,
   EmployeeInput,
   EmployeeListItem,
@@ -936,6 +939,189 @@ export const getEmployeeById = async (db: DbInterface, employeeId: string): Prom
   const employee = mapEmployee(row);
   const docsMap = await loadDocumentsMap(db, [employee.id]);
   return mergeEmployee(employee, docsMap.get(employee.id) || []);
+};
+
+const normalizeDashboardFilters = (filters: Partial<EmployeeDashboardFilters> = {}): EmployeeDashboardFilters => {
+  const status = upper(filters.status || 'all');
+  const regime = upper(filters.regime || 'all');
+  return {
+    status: status === 'PRE_ADMISSAO' || status === 'ATIVO' || status === 'DESLIGADO' ? status : 'all',
+    regime: regime === 'CLT' || regime === 'PJ' || regime === 'ESTAGIO' ? regime : 'all',
+    unit: clean(filters.unit || 'all') || 'all',
+    department: clean(filters.department || 'all') || 'all',
+  };
+};
+
+const isoToUtcDate = (value: string) => new Date(`${value}T00:00:00Z`);
+
+const addDaysIso = (value: string, days: number) => {
+  const date = isoToUtcDate(value);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+const diffDays = (fromIso: string, toIso: string) =>
+  Math.round((isoToUtcDate(toIso).getTime() - isoToUtcDate(fromIso).getTime()) / 86_400_000);
+
+const sameYearMonth = (dateIso: string | null, currentIso: string) =>
+  Boolean(dateIso && dateIso.slice(0, 7) === currentIso.slice(0, 7));
+
+const sameYear = (dateIso: string | null, currentIso: string) =>
+  Boolean(dateIso && dateIso.slice(0, 4) === currentIso.slice(0, 4));
+
+const nextBirthdayOccurrence = (birthDate: string | null, currentIso: string) => {
+  if (!birthDate) return null;
+  const monthDay = birthDate.slice(5, 10);
+  if (!/^\d{2}-\d{2}$/.test(monthDay)) return null;
+  let occurrence = `${currentIso.slice(0, 4)}-${monthDay}`;
+  if (occurrence < currentIso) {
+    occurrence = `${Number(currentIso.slice(0, 4)) + 1}-${monthDay}`;
+  }
+  return occurrence;
+};
+
+const monthsBetween = (fromIso: string | null, toIso: string) => {
+  if (!fromIso) return null;
+  const from = isoToUtcDate(fromIso);
+  const to = isoToUtcDate(toIso);
+  let months = (to.getUTCFullYear() - from.getUTCFullYear()) * 12 + (to.getUTCMonth() - from.getUTCMonth());
+  if (to.getUTCDate() < from.getUTCDate()) months -= 1;
+  return Math.max(0, months);
+};
+
+const toDashboardPerson = (
+  employee: EmployeeListItem,
+  date: string | null,
+  extra: Pick<EmployeeDashboardPerson, 'daysUntil' | 'description'> = {},
+): EmployeeDashboardPerson => ({
+  employeeId: employee.id,
+  fullName: employee.fullName,
+  employeeCpf: employee.cpf,
+  jobTitle: employee.jobTitle,
+  department: employee.department,
+  units: employee.units,
+  date,
+  daysUntil: extra.daysUntil ?? null,
+  description: extra.description ?? null,
+});
+
+export const getEmployeeDashboard = async (
+  db: DbInterface,
+  rawFilters: Partial<EmployeeDashboardFilters> = {},
+): Promise<EmployeeDashboardData> => {
+  await ensureEmployeesTables(db);
+  const filters = normalizeDashboardFilters(rawFilters);
+  const rows = await db.query(`SELECT * FROM employees ORDER BY full_name ASC`);
+  const employees = rows.map(mapEmployee);
+  const docsMap = await loadDocumentsMap(db, employees.map((item) => item.id));
+
+  let list = employees.map((employee) => mergeEmployee(employee, docsMap.get(employee.id) || []));
+
+  if (filters.status !== 'all') {
+    list = list.filter((item) => item.status === filters.status);
+  }
+  if (filters.regime !== 'all') {
+    list = list.filter((item) => item.employmentRegime === filters.regime);
+  }
+  if (filters.unit !== 'all') {
+    const targetUnit = upper(filters.unit);
+    list = list.filter((item) => item.units.some((unit) => upper(unit) === targetUnit));
+  }
+  if (filters.department !== 'all') {
+    const targetDepartment = upper(filters.department);
+    list = list.filter((item) => upper(item.department) === targetDepartment);
+  }
+
+  const today = TODAY_SAO_PAULO();
+  const activeCount = list.filter((item) => item.status === 'ATIVO').length;
+  const preAdmissionCount = list.filter((item) => item.status === 'PRE_ADMISSAO').length;
+  const inactiveCount = list.filter((item) => item.status === 'DESLIGADO').length;
+  const admissionsThisMonth = list
+    .filter((item) => sameYearMonth(item.admissionDate, today))
+    .map((item) => toDashboardPerson(item, item.admissionDate))
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const terminationsThisMonth = list
+    .filter((item) => sameYearMonth(item.terminationDate, today))
+    .map((item) => toDashboardPerson(item, item.terminationDate, { description: item.terminationReason }))
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
+  const terminationsYtd = list.filter((item) => sameYear(item.terminationDate, today)).length;
+  const turnoverDenominator = Math.max(1, activeCount + terminationsThisMonth.length);
+  const turnoverYtdDenominator = Math.max(1, activeCount + terminationsYtd);
+  const peopleEventsBase = list.filter((item) => item.status !== 'DESLIGADO');
+  const birthdaysThisMonth = peopleEventsBase
+    .filter((item) => item.birthDate?.slice(5, 7) === today.slice(5, 7))
+    .map((item) => toDashboardPerson(item, item.birthDate))
+    .sort((a, b) => String(a.date || '').slice(5).localeCompare(String(b.date || '').slice(5)));
+  const birthdaysNext30 = peopleEventsBase
+    .map((item) => {
+      const nextDate = nextBirthdayOccurrence(item.birthDate, today);
+      if (!nextDate) return null;
+      const daysUntil = diffDays(today, nextDate);
+      if (daysUntil < 0 || nextDate > addDaysIso(today, 30)) return null;
+      return toDashboardPerson(item, item.birthDate, { daysUntil });
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(a?.daysUntil || 0) - Number(b?.daysUntil || 0)) as EmployeeDashboardPerson[];
+
+  const tenureBands = [
+    { key: 'UP_TO_3_MONTHS', label: 'Até 3 meses', count: 0 },
+    { key: 'THREE_TO_12_MONTHS', label: '3 a 12 meses', count: 0 },
+    { key: 'ONE_TO_3_YEARS', label: '1 a 3 anos', count: 0 },
+    { key: 'THREE_TO_5_YEARS', label: '3 a 5 anos', count: 0 },
+    { key: 'ABOVE_5_YEARS', label: 'Acima de 5 anos', count: 0 },
+    { key: 'MISSING_ADMISSION', label: 'Sem admissão', count: 0 },
+  ];
+  for (const employee of list.filter((item) => item.status === 'ATIVO')) {
+    const months = monthsBetween(employee.admissionDate, today);
+    if (months === null) tenureBands[5].count += 1;
+    else if (months < 3) tenureBands[0].count += 1;
+    else if (months < 12) tenureBands[1].count += 1;
+    else if (months < 36) tenureBands[2].count += 1;
+    else if (months < 60) tenureBands[3].count += 1;
+    else tenureBands[4].count += 1;
+  }
+
+  const asoBreakdown = ASO_STATUSES.map((status) => ({
+    key: status.value,
+    label: status.label,
+    count: list.filter((item) => item.asoStatus === status.value).length,
+  }));
+  const documentPendencies = list
+    .filter((item) => item.pendingDocuments)
+    .sort((a, b) => b.missingDocs.length - a.missingDocs.length || a.fullName.localeCompare(b.fullName, 'pt-BR'))
+    .slice(0, 12)
+    .map((item) =>
+      toDashboardPerson(item, null, {
+        description: `${item.missingDocs.length} documento(s) pendente(s)`,
+      }),
+    );
+
+  return {
+    generatedAt: NOW(),
+    filters,
+    summary: {
+      totalCount: list.length,
+      activeCount,
+      preAdmissionCount,
+      inactiveCount,
+      admissionsThisMonth: admissionsThisMonth.length,
+      terminationsThisMonth: terminationsThisMonth.length,
+      terminationsYtd,
+      turnoverMonthlyPct: Number(((terminationsThisMonth.length / turnoverDenominator) * 100).toFixed(1)),
+      turnoverYtdPct: Number(((terminationsYtd / turnoverYtdDenominator) * 100).toFixed(1)),
+      documentPendingCount: list.filter((item) => item.pendingDocuments).length,
+      asoPendingCount: list.filter((item) => item.asoStatus === 'PENDENTE').length,
+      asoExpiringCount: list.filter((item) => item.asoStatus === 'VENCENDO').length,
+      asoExpiredCount: list.filter((item) => item.asoStatus === 'VENCIDO').length,
+    },
+    birthdaysThisMonth,
+    birthdaysNext30,
+    admissionsThisMonth,
+    terminationsThisMonth,
+    tenureBands,
+    asoBreakdown,
+    documentPendencies,
+  };
 };
 export const createEmployee = async (db: DbInterface, payload: any, actorUserId: string) => {
   await ensureEmployeesTables(db);
