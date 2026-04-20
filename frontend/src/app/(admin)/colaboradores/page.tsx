@@ -1136,44 +1136,52 @@ export default function ColaboradoresPage() {
 
   return (
     <div className="mx-auto max-w-[1700px] p-8">
-      <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Gestão de Colaboradores</h1>
-          <p className="text-slate-500">Cadastro, benefícios, documentos, uniforme e recessos do Departamento Pessoal.</p>
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={() => setHelpOpen(true)}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
-          >
-            <CircleHelp size={14} />
-            Como funciona
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              loadOptions();
-              loadList(pagination.page, appliedFilters);
-            }}
-            disabled={loading || optionsLoading || !canRefresh}
-            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading || optionsLoading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Recarregar lista
-          </button>
-          {canEdit ? (
+      <section className="mb-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 p-6 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md">
+              <UserRound size={20} />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-800">Gestão de Colaboradores</h1>
+              <p className="mt-1 text-xs text-slate-500">
+                Cadastro, benefícios, documentos, uniforme, recesso e fluxos de admissão/desligamento do Departamento Pessoal.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 lg:ml-auto lg:max-w-[660px] lg:justify-end">
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <CircleHelp size={16} /> Como funciona
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                loadOptions();
+                loadList(pagination.page, appliedFilters);
+              }}
+              disabled={loading || optionsLoading || !canRefresh}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading || optionsLoading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+              Atualizar
+            </button>
+            {canEdit ? (
             <button
               type="button"
               onClick={openCreate}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-medium text-white"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white"
             >
-              <Plus size={14} />
+              <Plus size={16} />
               Novo colaborador
             </button>
-          ) : null}
+            ) : null}
+          </div>
         </div>
-      </div>
+      </section>
 
       {error ? (
         <div className="mb-4 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
