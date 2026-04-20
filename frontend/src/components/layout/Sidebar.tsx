@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import {
+  Calculator,
   LayoutDashboard,
   PhoneCall,
   DollarSign,
@@ -112,6 +113,14 @@ const menuItems: MenuItem[] = [
     group: "GESTÃO DE PESSOAS",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "colaboradores",
+  },
+  {
+    href: "/folha-pagamento",
+    label: "Folha de Pagamento",
+    icon: Calculator,
+    group: "GESTÃO DE PESSOAS",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "folha_pagamento",
   },
   {
     href: "/equipamentos",

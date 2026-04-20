@@ -150,6 +150,46 @@ export type PayrollPreviewRow = {
   observation: string | null;
 };
 
+export type PayrollBenefitStatus = 'OK' | 'ATENCAO' | 'PENDENTE_CADASTRO';
+
+export type PayrollBenefitIssue = {
+  code: string;
+  severity: 'CADASTRO' | 'OPERACIONAL';
+  message: string;
+};
+
+export type PayrollBenefitRow = {
+  key: string;
+  lineId: string;
+  employeeId: string | null;
+  employeeName: string;
+  employeeCpf: string | null;
+  centerCost: string | null;
+  unitName: string | null;
+  contractType: string | null;
+  daysEligible: number;
+  mealVoucherPerDay: number | null;
+  mealVoucherAmount: number;
+  transportVoucherMode: PayrollTransportVoucherMode;
+  transportVoucherPerDay: number | null;
+  transportVoucherMonthlyFixed: number | null;
+  transportVoucherAmount: number;
+  transportVoucherDiscount: number;
+  totalpassDiscount: number;
+  otherFixedDiscount: number;
+  status: PayrollBenefitStatus;
+  issues: PayrollBenefitIssue[];
+};
+
+export type PayrollBenefitsSummary = {
+  totalEmployees: number;
+  totalMealVoucher: number;
+  totalTransportVoucher: number;
+  totalBenefitDiscounts: number;
+  pendingEmployees: number;
+  attentionEmployees: number;
+};
+
 export type PayrollOptions = {
   periods: PayrollPeriod[];
   centersCost: string[];

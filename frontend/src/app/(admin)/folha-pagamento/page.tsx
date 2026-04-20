@@ -6,6 +6,8 @@ import { Calculator, CheckCircle2, Download, Loader2, Plus, RefreshCw, SendHoriz
 import { hasPermission } from '@/lib/permissions';
 import { DEFAULT_PAYROLL_LINE_FILTERS } from '@/lib/payroll/filters';
 import type {
+  PayrollBenefitRow,
+  PayrollBenefitsSummary,
   PayrollImportFile,
   PayrollLine,
   PayrollLineDetail,
@@ -14,6 +16,7 @@ import type {
   PayrollPeriodDetail,
   PayrollPreviewRow,
 } from '@/lib/payroll/types';
+import { PayrollBenefitsPanel } from './components/PayrollBenefitsPanel';
 import { PayrollClosingTable } from './components/PayrollClosingTable';
 import { formatDateBr, formatMoney, statusLabelMap } from './components/formatters';
 import { PayrollImportsPanel } from './components/PayrollImportsPanel';
@@ -68,6 +71,8 @@ export default function FolhaPagamentoPage() {
   const [selectedPeriodId, setSelectedPeriodId] = useState('');
   const [detail, setDetail] = useState<PayrollPeriodDetail | null>(emptyDetail);
   const [lines, setLines] = useState<PayrollLine[]>([]);
+  const [benefitRows, setBenefitRows] = useState<PayrollBenefitRow[]>([]);
+  const [benefitsSummary, setBenefitsSummary] = useState<PayrollBenefitsSummary | null>(null);
   const [previewRows, setPreviewRows] = useState<PayrollPreviewRow[]>([]);
   const [filters, setFilters] = useState<PayrollLineFilters>(DEFAULT_PAYROLL_LINE_FILTERS);
   const [filterOptions, setFilterOptions] = useState({ centersCost: [] as string[], units: [] as string[], contracts: [] as string[] });
@@ -128,7 +133,10 @@ export default function FolhaPagamentoPage() {
     setPreviewLoading(true);
     setError('');
     try {
-      const [detailPayload, linesPayload, previewPayload] = await Promise.all([
+      const [benefitsPayload, detailPayload, linesPayload, previewPayload] = await Promise.all([
+        fetchJson<{ status: string; data: { items: PayrollBenefitRow[]; summary: PayrollBenefitsSummary } }>(
+          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/benefits?${buildFilterQuery()}`,
+        ),
         fetchJson<{ status: string; data: PayrollPeriodDetail }>(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}`),
         fetchJson<{ status: string; data: { items: PayrollLine[]; availableCentersCost: string[]; availableUnits: string[]; availableContracts: string[] } }>(
           `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/lines?${buildFilterQuery()}`,
@@ -138,6 +146,8 @@ export default function FolhaPagamentoPage() {
         ),
       ]);
 
+      setBenefitRows(benefitsPayload.data?.items || []);
+      setBenefitsSummary(benefitsPayload.data?.summary || null);
       setDetail(detailPayload.data || emptyDetail);
       setLines(linesPayload.data?.items || []);
       setPreviewRows(previewPayload.data?.items || []);
@@ -362,8 +372,8 @@ export default function FolhaPagamentoPage() {
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
           <div>
-            <h2 className="text-sm font-semibold text-slate-800">Filtros do fechamento</h2>
-            <p className="mt-1 text-xs text-slate-500">Refine a visualização por colaborador, centro de custo, unidade, contrato e status.</p>
+            <h2 className="text-sm font-semibold text-slate-800">Filtros da competência</h2>
+            <p className="mt-1 text-xs text-slate-500">Refine o recorte do fechamento, da memória de benefícios e da prévia por colaborador, centro de custo, unidade, contrato e status.</p>
           </div>
           <button type="button" onClick={() => setFiltersExpanded((value) => !value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
             {filtersExpanded ? 'Recolher filtros' : 'Expandir filtros'}
@@ -444,6 +454,9 @@ export default function FolhaPagamentoPage() {
       <PayrollTabNav activeTab={activeTab} onChange={setActiveTab} />
 
       {activeTab === 'fechamento' ? <PayrollClosingTable rows={lines} loading={loading} onOpenDetail={openLineDetail} /> : null}
+      {activeTab === 'beneficios' ? (
+        <PayrollBenefitsPanel rows={benefitRows} summary={benefitsSummary} loading={loading || previewLoading} onOpenLine={openPreviewLine} />
+      ) : null}
       {activeTab === 'previa' ? <PayrollPreviewTable rows={previewRows} loading={loading || previewLoading} onOpenLine={openPreviewLine} /> : null}
       {activeTab === 'importacoes' ? <PayrollImportsPanel imports={detail?.imports || ([] as PayrollImportFile[])} uploadingPoint={uploadingPoint} onUploadPoint={handlePointUpload} /> : null}
 

@@ -50,6 +50,7 @@ Regras:
 O módulo `/folha-pagamento` é dividido em:
 
 - `Fechamento`
+- `Benefícios`
 - `Prévia da planilha`
 - `Importações`
 
@@ -105,6 +106,23 @@ Aceita apenas:
 
 O histórico de importações continua salvo em `payroll_import_files`.
 
+#### Benefícios
+Primeiro corte da Onda 2 do RH dentro do mesmo módulo da folha.
+
+Mostra a memória mensal por colaborador para:
+- `VR por dia` e `VR no período`;
+- `VT por dia`, `VT mensal` e `VT no período`;
+- desconto de VT;
+- desconto de Totalpass;
+- outros descontos fixos;
+- status operacional da linha para compra e conferência.
+
+Nesta etapa:
+- a aba reaproveita o snapshot da competência já consolidado em `payroll_lines`;
+- os dias elegíveis vêm do fechamento já calculado da competência;
+- pendências de cadastro e alertas operacionais são reaproveitados da memória de cálculo e do snapshot do colaborador;
+- após corrigir cadastro ou ponto, o RH deve usar `Gerar folha` novamente para atualizar a visão de benefícios.
+
 ## Estrutura técnica
 
 ### Rota da página
@@ -112,6 +130,7 @@ O histórico de importações continua salvo em `payroll_import_files`.
 
 ### Componentes principais
 - `PayrollClosingTable.tsx`
+- `PayrollBenefitsPanel.tsx`
 - `PayrollPreviewTable.tsx`
 - `PayrollImportsPanel.tsx`
 - `PayrollLineDrawer.tsx`
@@ -157,6 +176,7 @@ Observação:
 - `POST /api/admin/folha-pagamento/periods/[id]/imports/point` -> responde `202 Accepted` e enfileira o processamento
 - `POST /api/admin/folha-pagamento/periods/[id]/generate`
 - `GET /api/admin/folha-pagamento/periods/[id]/lines`
+- `GET /api/admin/folha-pagamento/periods/[id]/benefits`
 - `GET /api/admin/folha-pagamento/periods/[id]/preview`
 - `PATCH /api/admin/folha-pagamento/lines/[lineId]`
 - `POST /api/admin/folha-pagamento/occurrences`
@@ -218,6 +238,7 @@ Regra de geração:
 Cada competência guarda:
 - arquivos importados;
 - snapshots de cadastro usados na linha;
+- memória mensal de benefícios derivada do mesmo snapshot da linha;
 - memória de cálculo em JSON;
 - ajustes manuais;
 - ocorrências lançadas pelo RH.

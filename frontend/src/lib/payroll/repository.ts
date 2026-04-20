@@ -15,6 +15,8 @@ import {
   type PayrollTransportVoucherMode,
 } from '@/lib/payroll/constants';
 import type {
+  PayrollBenefitRow,
+  PayrollBenefitsSummary,
   PayrollCreatePeriodInput,
   PayrollImportFile,
   PayrollLine,
@@ -360,6 +362,7 @@ type EmployeePayrollSource = {
   employmentRegime: string;
   salaryAmount: number;
   insalubrityPercent: number;
+  mealVoucherPerDay: number;
   transportVoucherPerDay: number;
   transportVoucherMode: PayrollTransportVoucherMode;
   transportVoucherMonthlyFixed: number;
@@ -383,6 +386,7 @@ const mapEmployeePayrollSource = (row: any): EmployeePayrollSource => ({
   employmentRegime: upper(row.employment_regime || 'CLT'),
   salaryAmount: toNumber(row.salary_amount),
   insalubrityPercent: toNumber(row.insalubrity_percent),
+  mealVoucherPerDay: toNumber(row.meal_voucher_per_day),
   transportVoucherPerDay: toNumber(row.transport_voucher_per_day),
   transportVoucherMode: upper(row.transport_voucher_mode || 'PER_DAY') as PayrollTransportVoucherMode,
   transportVoucherMonthlyFixed: toNumber(row.transport_voucher_monthly_fixed),
@@ -1382,6 +1386,7 @@ const buildLineRecord = (
       employmentRegime: employee.employmentRegime,
       salaryAmount: employee.salaryAmount,
       insalubrityPercent: employee.insalubrityPercent,
+      mealVoucherPerDay: employee.mealVoucherPerDay,
       transportVoucherMode: employee.transportVoucherMode,
       transportVoucherPerDay: employee.transportVoucherPerDay,
       transportVoucherMonthlyFixed: employee.transportVoucherMonthlyFixed,
@@ -1583,6 +1588,23 @@ type PayrollEmployeePreviewSource = Pick<
   'id' | 'fullName' | 'email' | 'cpf' | 'jobTitle' | 'costCenter' | 'units' | 'employmentRegime' | 'transportVoucherPerDay' | 'insalubrityPercent'
 >;
 
+type PayrollEmployeeBenefitsSource = Pick<
+  EmployeePayrollSource,
+  | 'id'
+  | 'fullName'
+  | 'cpf'
+  | 'costCenter'
+  | 'units'
+  | 'employmentRegime'
+  | 'mealVoucherPerDay'
+  | 'transportVoucherMode'
+  | 'transportVoucherPerDay'
+  | 'transportVoucherMonthlyFixed'
+  | 'totalpassDiscountFixed'
+  | 'otherFixedDiscountAmount'
+  | 'otherFixedDiscountDescription'
+>;
+
 type PayrollLineSnapshot = Partial<{
   id: string;
   fullName: string;
@@ -1592,9 +1614,20 @@ type PayrollLineSnapshot = Partial<{
   costCenter: string | null;
   units: string[];
   employmentRegime: string;
+  mealVoucherPerDay: number;
+  transportVoucherMode: PayrollTransportVoucherMode;
   transportVoucherPerDay: number;
+  transportVoucherMonthlyFixed: number;
   insalubrityPercent: number;
+  totalpassDiscountFixed: number;
+  otherFixedDiscountAmount: number;
+  otherFixedDiscountDescription: string | null;
 }>;
+
+type PayrollCalculationWarning = {
+  code: string;
+  message: string;
+};
 
 const occurrenceTypeLabelMap: Record<PayrollOccurrenceType, string> = {
   ATESTADO: 'Atestado',
@@ -1613,6 +1646,23 @@ const parsePayrollLineSnapshot = (value: string | null | undefined): PayrollLine
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     return {};
+  }
+};
+
+const parsePayrollCalculationWarnings = (value: string | null | undefined): PayrollCalculationWarning[] => {
+  const raw = clean(value);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    const warnings = Array.isArray(parsed?.warnings) ? parsed.warnings : [];
+    return warnings
+      .map((warning) => ({
+        code: clean((warning as Record<string, unknown>)?.code),
+        message: clean((warning as Record<string, unknown>)?.message),
+      }))
+      .filter((warning) => warning.code && warning.message);
+  } catch {
+    return [];
   }
 };
 
@@ -1690,6 +1740,55 @@ const loadEmployeePreviewMap = async (db: DbInterface, employeeIds: string[]) =>
   );
 };
 
+const loadEmployeeBenefitsMap = async (db: DbInterface, employeeIds: string[]) => {
+  const uniqueIds = Array.from(new Set(employeeIds.map((item) => clean(item)).filter(Boolean)));
+  if (!uniqueIds.length) return new Map<string, PayrollEmployeeBenefitsSource>();
+
+  const placeholders = uniqueIds.map(() => '?').join(', ');
+  const rows = await db.query(
+    `
+      SELECT
+        id,
+        full_name,
+        cpf,
+        cost_center,
+        units_json,
+        employment_regime,
+        meal_voucher_per_day,
+        transport_voucher_mode,
+        transport_voucher_per_day,
+        transport_voucher_monthly_fixed,
+        totalpass_discount_fixed,
+        other_fixed_discount_amount,
+        other_fixed_discount_description
+      FROM employees
+      WHERE id IN (${placeholders})
+    `,
+    uniqueIds,
+  );
+
+  return new Map(
+    rows.map((row: any) => {
+      const mapped: PayrollEmployeeBenefitsSource = {
+        id: clean(row.id),
+        fullName: clean(row.full_name),
+        cpf: normalizeCpf(row.cpf),
+        costCenter: clean(row.cost_center) || null,
+        units: parseUnitsJson(row.units_json),
+        employmentRegime: upper(row.employment_regime || 'CLT'),
+        mealVoucherPerDay: toNumber(row.meal_voucher_per_day),
+        transportVoucherMode: upper(row.transport_voucher_mode || 'PER_DAY') as PayrollTransportVoucherMode,
+        transportVoucherPerDay: toNumber(row.transport_voucher_per_day),
+        transportVoucherMonthlyFixed: toNumber(row.transport_voucher_monthly_fixed),
+        totalpassDiscountFixed: toNumber(row.totalpass_discount_fixed),
+        otherFixedDiscountAmount: toNumber(row.other_fixed_discount_amount),
+        otherFixedDiscountDescription: clean(row.other_fixed_discount_description) || null,
+      };
+      return [mapped.id, mapped] as const;
+    }),
+  );
+};
+
 const buildPayrollPreviewRow = (
   line: PayrollLine,
   employeeFallback: PayrollEmployeePreviewSource | null,
@@ -1755,6 +1854,157 @@ export const listPayrollPreviewRows = async (db: DbInterface, periodId: string, 
         line.employeeId ? occurrenceMap.get(line.employeeId) || [] : [],
       ),
     ),
+  };
+};
+
+const upsertBenefitIssue = (
+  issues: Array<{ code: string; severity: 'CADASTRO' | 'OPERACIONAL'; message: string }>,
+  nextIssue: { code: string; severity: 'CADASTRO' | 'OPERACIONAL'; message: string },
+) => {
+  if (issues.some((issue) => issue.code === nextIssue.code)) return;
+  issues.push(nextIssue);
+};
+
+const buildPayrollBenefitsSummary = (rows: PayrollBenefitRow[]): PayrollBenefitsSummary => ({
+  totalEmployees: rows.length,
+  totalMealVoucher: roundMoney(rows.reduce((sum, row) => sum + row.mealVoucherAmount, 0)),
+  totalTransportVoucher: roundMoney(rows.reduce((sum, row) => sum + row.transportVoucherAmount, 0)),
+  totalBenefitDiscounts: roundMoney(
+    rows.reduce((sum, row) => sum + row.transportVoucherDiscount + row.totalpassDiscount + row.otherFixedDiscount, 0),
+  ),
+  pendingEmployees: rows.filter((row) => row.status === 'PENDENTE_CADASTRO').length,
+  attentionEmployees: rows.filter((row) => row.status === 'ATENCAO').length,
+});
+
+const buildPayrollBenefitRow = (
+  line: PayrollLine,
+  employeeFallback: PayrollEmployeeBenefitsSource | null,
+): PayrollBenefitRow => {
+  const snapshot = parsePayrollLineSnapshot(line.employeeSnapshotJson);
+  const calculationWarnings = parsePayrollCalculationWarnings(line.calculationMemoryJson);
+  const snapshotUnits = Array.isArray(snapshot.units) ? snapshot.units.map((item) => clean(item)).filter(Boolean) : [];
+  const centerCost = clean(snapshot.costCenter) || employeeFallback?.costCenter || line.centerCost || null;
+  const unitName = line.unitName || snapshotUnits[0] || employeeFallback?.units[0] || null;
+  const contractType = clean(snapshot.employmentRegime) || employeeFallback?.employmentRegime || line.contractType || null;
+  const mealVoucherPerDay = toNullableNumber(snapshot.mealVoucherPerDay) ?? employeeFallback?.mealVoucherPerDay ?? null;
+  const transportVoucherMode = (
+    clean(snapshot.transportVoucherMode) ||
+    employeeFallback?.transportVoucherMode ||
+    'PER_DAY'
+  ) as PayrollTransportVoucherMode;
+  const transportVoucherPerDay =
+    toNullableNumber(snapshot.transportVoucherPerDay) ?? employeeFallback?.transportVoucherPerDay ?? null;
+  const transportVoucherMonthlyFixed =
+    toNullableNumber(snapshot.transportVoucherMonthlyFixed) ?? employeeFallback?.transportVoucherMonthlyFixed ?? null;
+  const mealVoucherAmount = roundMoney((mealVoucherPerDay || 0) * line.daysWorked);
+
+  const issues: Array<{ code: string; severity: 'CADASTRO' | 'OPERACIONAL'; message: string }> = [];
+
+  if (!centerCost) {
+    upsertBenefitIssue(issues, {
+      code: 'MISSING_COST_CENTER',
+      severity: 'CADASTRO',
+      message: 'Centro de custo ausente no cadastro para conferência e agrupamento da compra.',
+    });
+  }
+
+  if (line.daysWorked > 0 && (!mealVoucherPerDay || mealVoucherPerDay <= 0)) {
+    upsertBenefitIssue(issues, {
+      code: 'MISSING_MEAL_VOUCHER_RULE',
+      severity: 'CADASTRO',
+      message: `VR por dia ausente ou zerado para ${line.daysWorked} dia(s) elegível(is) nesta competência.`,
+    });
+  }
+
+  if (transportVoucherMode === 'PER_DAY' && line.daysWorked > 0 && (!transportVoucherPerDay || transportVoucherPerDay <= 0)) {
+    upsertBenefitIssue(issues, {
+      code: 'MISSING_TRANSPORT_VOUCHER_RULE',
+      severity: 'CADASTRO',
+      message: `VT por dia ausente ou zerado para ${line.daysWorked} dia(s) elegível(is) nesta competência.`,
+    });
+  }
+
+  if (transportVoucherMode === 'MONTHLY_FIXED' && (!transportVoucherMonthlyFixed || transportVoucherMonthlyFixed <= 0)) {
+    upsertBenefitIssue(issues, {
+      code: 'MISSING_TRANSPORT_VOUCHER_RULE',
+      severity: 'CADASTRO',
+      message: 'VT mensal fixo ausente ou zerado no cadastro do colaborador.',
+    });
+  }
+
+  for (const warning of calculationWarnings) {
+    if (warning.code === 'EMPLOYEE_WITHOUT_POINT_ROWS') {
+      upsertBenefitIssue(issues, {
+        code: warning.code,
+        severity: 'OPERACIONAL',
+        message: warning.message,
+      });
+    }
+    if (warning.code === 'FALLBACK_SCHEDULE_DIVISOR') {
+      upsertBenefitIssue(issues, {
+        code: warning.code,
+        severity: 'OPERACIONAL',
+        message: warning.message,
+      });
+    }
+    if (warning.code === 'POINT_INCONSISTENCY') {
+      upsertBenefitIssue(issues, {
+        code: warning.code,
+        severity: 'OPERACIONAL',
+        message: warning.message,
+      });
+    }
+  }
+
+  const status = issues.some((issue) => issue.severity === 'CADASTRO')
+    ? 'PENDENTE_CADASTRO'
+    : issues.some((issue) => issue.severity === 'OPERACIONAL')
+      ? 'ATENCAO'
+      : 'OK';
+
+  return {
+    key: line.id,
+    lineId: line.id,
+    employeeId: line.employeeId,
+    employeeName: line.employeeName,
+    employeeCpf: line.employeeCpf,
+    centerCost,
+    unitName,
+    contractType,
+    daysEligible: line.daysWorked,
+    mealVoucherPerDay,
+    mealVoucherAmount,
+    transportVoucherMode,
+    transportVoucherPerDay,
+    transportVoucherMonthlyFixed,
+    transportVoucherAmount: roundMoney(line.vtProvisioned),
+    transportVoucherDiscount: roundMoney(line.vtDiscount),
+    totalpassDiscount: roundMoney(line.totalpassDiscount),
+    otherFixedDiscount: roundMoney(line.otherFixedDiscount),
+    status,
+    issues,
+  };
+};
+
+export const listPayrollBenefitRows = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
+  await ensurePayrollTables(db);
+  await getPeriodOrThrow(db, periodId);
+  const linesResult = await listPayrollLines(db, periodId, filters);
+  const employeeMap = await loadEmployeeBenefitsMap(
+    db,
+    linesResult.items.map((line) => line.employeeId || '').filter(Boolean),
+  );
+
+  const items = linesResult.items.map((line) =>
+    buildPayrollBenefitRow(
+      line,
+      line.employeeId ? employeeMap.get(line.employeeId) || null : null,
+    ),
+  );
+
+  return {
+    items,
+    summary: buildPayrollBenefitsSummary(items),
   };
 };
 

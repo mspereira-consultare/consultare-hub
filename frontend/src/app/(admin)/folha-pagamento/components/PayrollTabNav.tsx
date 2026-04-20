@@ -1,11 +1,12 @@
 'use client';
 
-import { FileSpreadsheet, LayoutTemplate, UploadCloud } from 'lucide-react';
+import { FileSpreadsheet, LayoutTemplate, Ticket, UploadCloud } from 'lucide-react';
 
-export type PayrollTabKey = 'fechamento' | 'previa' | 'importacoes';
+export type PayrollTabKey = 'fechamento' | 'beneficios' | 'previa' | 'importacoes';
 
 const tabs: Array<{ key: PayrollTabKey; label: string; helper: string; icon: typeof FileSpreadsheet }> = [
   { key: 'fechamento', label: 'Fechamento', helper: 'Folha operacional por colaborador.', icon: FileSpreadsheet },
+  { key: 'beneficios', label: 'Benefícios', helper: 'VR, VT e descontos da competência.', icon: Ticket },
   { key: 'previa', label: 'Prévia da planilha', helper: 'Estrutura final do XLSX mensal do RH.', icon: LayoutTemplate },
   { key: 'importacoes', label: 'Importações', helper: 'Arquivos, parsing e histórico do período.', icon: UploadCloud },
 ];
@@ -19,7 +20,7 @@ export function PayrollTabNav({
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
-      <div className="grid gap-2 md:grid-cols-3">
+      <div className="grid gap-2 md:grid-cols-4">
         {tabs.map((tab) => {
           const active = activeTab === tab.key;
           const Icon = tab.icon;
