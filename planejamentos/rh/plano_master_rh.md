@@ -260,27 +260,57 @@ Implementação iniciada:
 - conversão de candidato aprovado para `employees.status = PRE_ADMISSAO`, com validação de duplicidade por CPF/e-mail.
 
 ### Onda 6 — `2.21 Qualidade incluir no painel (meta funcionários)`
+Status: implementada no MVP operacional.
+
 Objetivo da onda:
-- fechar a visão transversal de pessoas com qualidade e metas
+- fechar a visão transversal de pessoas com qualidade e metas sem criar cadastros paralelos nem duplicar funcionalidades já existentes
 
 Entregas:
-- nova seção ou aba `Qualidade & Metas` acoplada ao contexto de `/colaboradores`
-- leitura por colaborador e por equipe
+- nova aba read-only `Qualidade & Metas` dentro de `/colaboradores`
+- leitura gerencial por colaborador e por equipe
+- composição a partir das fontes oficiais já existentes:
+  - `employees` como fonte oficial de pessoas
+  - `/metas` e `goals_config` como fonte oficial de metas
+  - `/qualidade` e tabelas QMS como fonte oficial de documentos, treinamentos e auditorias
 - exibição MVP de:
   - conformidade documental
   - treinamentos pendentes
   - treinamentos vencidos
+  - treinamentos concluídos
   - metas atribuídas a colaborador
   - metas atribuídas a equipe
   - atingimento
   - pendências críticas para o RH
+- links/atalhos para abrir a meta ou treinamento no módulo oficial, sem edição direta dentro de `/colaboradores`
 
 Critério de pronto:
-- RH consegue cruzar situação cadastral, qualidade e metas sem trocar de módulo
+- RH consegue cruzar situação cadastral, qualidade e metas em `/colaboradores`, com rastreabilidade clara da origem de cada informação
 
 Principais mudanças esperadas:
-- composição a partir das APIs já existentes de Qualidade e Metas
-- criação de agregador novo apenas se o acoplamento no cliente ficar excessivo
+- criar endpoint agregador read-only em `/api/admin/colaboradores/quality-goals`
+- adicionar vínculo canônico `employee_id` em `goals_config`, mantendo o campo textual `collaborator` para compatibilidade com o cálculo atual dos KPIs
+- atualizar `/metas` para permitir selecionar um colaborador oficial de `employees` ao criar ou editar metas individuais
+- tratar metas legadas sem `employee_id` como `metas sem vínculo oficial`, sem assumir vínculo por nome automaticamente
+- criar vínculo oficial de participantes de treinamento no QMS, preferencialmente em tabela `qms_training_assignments`, apontando para `employees.id`
+- atualizar `/qualidade/treinamentos` para gerenciar participantes por colaborador, mantendo QMS como fonte oficial dos status de treinamento
+- preservar `/colaboradores` como tela de consulta gerencial: sem CRUD próprio de metas, treinamentos ou documentos de qualidade
+
+Regras para evitar duplicidade:
+- metas continuam sendo criadas, editadas e excluídas apenas em `/metas`
+- treinamentos continuam sendo planejados, executados e atualizados apenas em `/qualidade/treinamentos`
+- documentos oficiais do colaborador continuam em `employee_documents`
+- documentos, POPs, evidências e auditorias de qualidade continuam nas tabelas QMS
+- a aba `Qualidade & Metas` não grava resultados próprios; ela apenas consolida e exibe dados oficiais
+
+Implementação realizada:
+- aba `Qualidade & Metas` adicionada em `/colaboradores`;
+- rota `GET /api/admin/colaboradores/quality-goals`;
+- agregação por colaborador e por equipe com documentos/ASO, metas, treinamentos e alertas críticos;
+- vínculo oficial `goals_config.employee_id` para metas individuais;
+- seletor de colaborador oficial no cadastro/edição de metas em `/metas`;
+- tabela runtime `qms_training_assignments` para participantes de treinamentos vinculados a `employees.id`;
+- seleção de participantes oficiais em `/qualidade/treinamentos`;
+- modal `Como funciona` de colaboradores atualizado para explicar fontes oficiais e evitar duplicidade.
 
 ## APIs, interfaces e contratos
 
@@ -298,12 +328,20 @@ Persistência esperada:
 Adicionar:
 - aba `Admissões & Demissões`
 - aba `Dashboard`
-- seção ou aba `Qualidade & Metas`
+- aba `Qualidade & Metas`
 
 Contratos necessários:
 - agregação gerencial de colaboradores
 - workflow e checklist por colaborador
 - leitura consolidada de pendências
+- leitura consolidada de qualidade e metas via `/api/admin/colaboradores/quality-goals`
+
+Contrato esperado para `Qualidade & Metas`:
+- read-only
+- filtros por unidade, setor, regime contratual e status
+- retorno por colaborador com documentos/ASO, metas, treinamentos e alertas críticos
+- retorno por equipe com metas, atingimento e pendências agregadas
+- indicação explícita de itens sem vínculo oficial
 
 ### `/recrutamento`
 Criar:
@@ -319,6 +357,7 @@ Criar uma camada compartilhada de validação do cadastro por contexto para evit
 - admissões
 - desligamentos
 - dashboard
+- qualidade e metas
 
 ## Critérios de aceite
 - folha e benefícios devem bloquear cálculo quando faltarem campos críticos do cadastro, com pendência acionável
@@ -326,7 +365,10 @@ Criar uma camada compartilhada de validação do cadastro por contexto para evit
 - admissões e desligamentos devem funcionar com checklist persistido, responsável e prazo
 - dashboard de funcionários deve bater com os números do cadastro para headcount, aniversários, admissões, desligamentos e turnover
 - recrutamento deve permitir cadastrar vaga, anexar currículo, mover candidato no funil e converter aprovado em rascunho de colaborador
-- qualidade e metas devem refletir os mesmos indicadores-base já existentes, reorganizados para consumo do RH
+- qualidade e metas devem refletir os mesmos indicadores-base já existentes, reorganizados para consumo do RH sem duplicar criação/edição
+- metas individuais com `employee_id` devem aparecer vinculadas ao colaborador correto
+- metas legadas apenas com `collaborator` devem aparecer como pendência de vínculo oficial, não como associação confirmada
+- treinamentos individuais devem ser exibidos apenas quando houver vínculo oficial entre QMS e `employees.id`
 - todas as ondas devem sair com empty states, permissões coerentes e regressão preservada nos módulos atuais
 
 ## Ordem prática de execução

@@ -11,6 +11,13 @@ interface GoalModalProps {
     initialData?: Goal;
 }
 
+type EmployeeOption = {
+    id: string;
+    fullName: string;
+    department: string | null;
+    status: string;
+};
+
 export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalProps) => {
     
     const RESOLVECARD_UNIT = 'RESOLVECARD GESTÃO DE BENEFICOS E MEIOS DE PAGAMENTOS';
@@ -28,6 +35,7 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
         linked_kpi_id: 'manual',
         filter_group: '',
         clinic_unit: 'all',
+        employee_id: null,
         collaborator: 'all',
         team: 'all'
     };
@@ -82,6 +90,8 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
     const [loadingUnits, setLoadingUnits] = useState(false);
     const [professionals, setProfessionals] = useState<string[]>([]);
     const [loadingProfessionals, setLoadingProfessionals] = useState(false);
+    const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
+    const [loadingEmployees, setLoadingEmployees] = useState(false);
     const [teams, setTeams] = useState<any[]>([]);
     const [loadingTeams, setLoadingTeams] = useState(false);
 
@@ -168,6 +178,52 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
 
         return () => { mounted = false; };
     }, [isOpen]);
+
+    // Carrega colaboradores oficiais do DP para vinculo canonico com employees.id.
+    useEffect(() => {
+        if (!isOpen) return;
+        let mounted = true;
+        (async () => {
+            setLoadingEmployees(true);
+            try {
+                const res = await fetch('/api/admin/colaboradores?status=all&pageSize=100', { cache: 'no-store' });
+                if (res.ok) {
+                    const data = await res.json();
+                    const list = Array.isArray(data?.data) ? data.data : [];
+                    if (mounted) {
+                        setEmployeeOptions(
+                            list
+                                .map((item: any) => ({
+                                    id: String(item?.id || ''),
+                                    fullName: String(item?.fullName || ''),
+                                    department: item?.department ? String(item.department) : null,
+                                    status: String(item?.status || ''),
+                                }))
+                                .filter((item: EmployeeOption) => item.id && item.fullName)
+                                .sort((a: EmployeeOption, b: EmployeeOption) => a.fullName.localeCompare(b.fullName, 'pt-BR'))
+                        );
+                    }
+                } else if (mounted) {
+                    setEmployeeOptions([]);
+                }
+            } catch (e) {
+                if (mounted) setEmployeeOptions([]);
+            } finally {
+                if (mounted) setLoadingEmployees(false);
+            }
+        })();
+
+        return () => { mounted = false; };
+    }, [isOpen]);
+
+    const handleEmployeeLinkChange = (employeeId: string) => {
+        const employee = employeeOptions.find((item) => item.id === employeeId);
+        setFormData((current) => ({
+            ...current,
+            employee_id: employee?.id || null,
+            collaborator: employee?.fullName || 'all',
+        }));
+    };
 
     // Carrega equipes quando o modal abre
     useEffect(() => {
@@ -344,6 +400,31 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
 
                             {/* Campo de Unidade movido para a Seção 1 */}
 
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
+                                    Vínculo oficial do colaborador
+                                    <span title="Usado pela aba Qualidade & Metas em Colaboradores. A meta continua sendo calculada pelo nome operacional abaixo.">
+                                        <HelpCircle size={12} />
+                                    </span>
+                                </label>
+                                {loadingEmployees ? (
+                                    <div className="text-sm text-slate-400">Carregando cadastro oficial...</div>
+                                ) : (
+                                    <select
+                                        className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
+                                        value={formData.employee_id || ''}
+                                        onChange={e => handleEmployeeLinkChange(e.target.value)}
+                                    >
+                                        <option value="">Sem vínculo oficial</option>
+                                        {employeeOptions.map((employee) => (
+                                            <option key={employee.id} value={employee.id}>
+                                                {employee.fullName} · {employee.department || 'Setor não informado'}
+                                            </option>
+                                        ))}
+                                    </select>
+                                )}
+                            </div>
+
                             {/* Campo de Filtro de Colaborador (SEMPRE VISÍVEL) */}
                             <div className="space-y-1.5">
                                 <label className="text-xs font-bold uppercase text-blue-700 flex items-center justify-between">
@@ -359,7 +440,15 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                     <select
                                         className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
                                         value={(formData as any).collaborator ?? 'all'}
-                                        onChange={e => setFormData({...formData, collaborator: e.target.value})}
+                                        onChange={e => {
+                                            const collaborator = e.target.value;
+                                            const linkedEmployee = employeeOptions.find((employee) => employee.id === formData.employee_id);
+                                            setFormData({
+                                                ...formData,
+                                                collaborator,
+                                                employee_id: linkedEmployee?.fullName === collaborator ? linkedEmployee.id : null,
+                                            });
+                                        }}
                                     >
                                         <option value="all">Todos os Colaboradores (padrão)</option>
                                         {professionals.map(p => <option key={p} value={p}>{p}</option>)}

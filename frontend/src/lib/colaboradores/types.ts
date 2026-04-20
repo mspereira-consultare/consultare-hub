@@ -275,6 +275,89 @@ export type EmployeeDashboardData = {
   documentPendencies: EmployeeDashboardPerson[];
 };
 
+export type EmployeeQualityGoalStatus = 'SUCCESS' | 'WARNING' | 'DANGER' | 'UNLINKED';
+
+export type EmployeeQualityGoalItem = {
+  id: string;
+  name: string;
+  sector: string | null;
+  target: number;
+  current: number;
+  percentage: number;
+  unit: string | null;
+  periodicity: string | null;
+  status: EmployeeQualityGoalStatus;
+  employeeId: string | null;
+  collaborator: string | null;
+  team: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  sourcePath: string;
+};
+
+export type EmployeeQualityTrainingStatus = 'pendente' | 'concluido' | 'vencido' | 'dispensado';
+
+export type EmployeeQualityTrainingItem = {
+  id: string;
+  trainingId: string;
+  name: string;
+  sector: string | null;
+  status: EmployeeQualityTrainingStatus;
+  trainingStatus: string | null;
+  dueDate: string | null;
+  completedAt: string | null;
+  performedAt: string | null;
+  nextTrainingDate: string | null;
+  sourcePath: string;
+};
+
+export type EmployeeQualityGoalPerson = {
+  employeeId: string;
+  fullName: string;
+  employeeCpf: string | null;
+  status: EmployeeStatus;
+  jobTitle: string | null;
+  department: string | null;
+  units: string[];
+  documentStatus: {
+    pending: boolean;
+    missingCount: number;
+    requiredDone: number;
+    requiredTotal: number;
+  };
+  asoStatus: AsoStatus;
+  asoExpiresAt: string | null;
+  goals: EmployeeQualityGoalItem[];
+  trainings: EmployeeQualityTrainingItem[];
+  criticalAlerts: string[];
+};
+
+export type EmployeeQualityGoalsData = {
+  generatedAt: string;
+  filters: EmployeeDashboardFilters;
+  summary: {
+    employeesCount: number;
+    criticalEmployees: number;
+    goalsLinked: number;
+    goalsBelow70: number;
+    trainingsPending: number;
+    trainingsExpired: number;
+    documentsPending: number;
+    asoCritical: number;
+    unlinkedGoals: number;
+  };
+  people: EmployeeQualityGoalPerson[];
+  teams: Array<{
+    key: string;
+    label: string;
+    goalsCount: number;
+    averagePercentage: number | null;
+    trainingsPending: number;
+    trainingsExpired: number;
+  }>;
+  unlinkedGoals: EmployeeQualityGoalItem[];
+};
+
 export type EmployeeLifecycleCaseType = 'ADMISSION' | 'TERMINATION';
 export type EmployeeLifecycleStage = 'PRE_ADMISSION' | 'ADMISSION_IN_PROGRESS' | 'TERMINATION_IN_PROGRESS' | 'CLOSED';
 export type EmployeeLifecycleTaskStatus = 'PENDING' | 'DONE' | 'BLOCKED' | 'WAIVED';

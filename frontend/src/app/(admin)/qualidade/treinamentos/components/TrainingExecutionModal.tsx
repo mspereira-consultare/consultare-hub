@@ -10,6 +10,14 @@ type PlanOption = {
   status: string;
 };
 
+type EmployeeOption = {
+  id: string;
+  fullName: string;
+  cpf: string | null;
+  department: string | null;
+  status: string;
+};
+
 export type TrainingExecutionPayload = {
   code: string;
   planId: string;
@@ -26,6 +34,7 @@ export type TrainingExecutionPayload = {
   status: 'planejado' | 'em_andamento' | 'concluido' | 'cancelado';
   participantsPlanned: string;
   participantsActual: string;
+  assignedEmployeeIds: string[];
   resultPostTraining: string;
   notes: string;
 };
@@ -36,6 +45,7 @@ type Props = {
   saving: boolean;
   initialData: QmsTraining | null;
   plans: PlanOption[];
+  employeeOptions: EmployeeOption[];
   onClose: () => void;
   onSubmit: (payload: TrainingExecutionPayload, file: File | null, fileType: string) => void;
 };
@@ -56,6 +66,7 @@ const emptyForm = (): TrainingExecutionPayload => ({
   status: 'planejado',
   participantsPlanned: '',
   participantsActual: '',
+  assignedEmployeeIds: [],
   resultPostTraining: '',
   notes: '',
 });
@@ -66,6 +77,7 @@ export function TrainingExecutionModal({
   saving,
   initialData,
   plans,
+  employeeOptions,
   onClose,
   onSubmit,
 }: Props) {
@@ -110,6 +122,9 @@ export function TrainingExecutionModal({
         initialData.participantsActual === null || initialData.participantsActual === undefined
           ? ''
           : String(initialData.participantsActual),
+      assignedEmployeeIds: Array.isArray(initialData.assignments)
+        ? initialData.assignments.map((assignment) => assignment.employeeId).filter(Boolean)
+        : [],
       resultPostTraining: initialData.resultPostTraining || '',
       notes: initialData.notes || '',
     });
@@ -292,6 +307,49 @@ export function TrainingExecutionModal({
               />
             </label>
           </div>
+
+          <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-semibold text-slate-700">Participantes vinculados ao cadastro oficial</span>
+              <span className="text-xs text-slate-500">
+                Selecione colaboradores do cadastro oficial. A aba Qualidade & Metas em Colaboradores usa este vínculo como fonte gerencial.
+              </span>
+            </div>
+            <div className="mt-3 grid max-h-56 gap-2 overflow-y-auto md:grid-cols-2">
+              {employeeOptions.length ? (
+                employeeOptions.map((employee) => {
+                  const checked = form.assignedEmployeeIds.includes(employee.id);
+                  return (
+                    <label key={employee.id} className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={checked}
+                        onChange={(event) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            assignedEmployeeIds: event.target.checked
+                              ? [...prev.assignedEmployeeIds, employee.id]
+                              : prev.assignedEmployeeIds.filter((id) => id !== employee.id),
+                          }))
+                        }
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium text-slate-700">{employee.fullName}</span>
+                        <span className="block truncate text-xs text-slate-500">
+                          {employee.department || 'Setor nao informado'} · {employee.status}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-6 text-center text-sm text-slate-500 md:col-span-2">
+                  Nenhum colaborador carregado para vínculo.
+                </div>
+              )}
+            </div>
+          </section>
 
           <label className="space-y-1 text-sm flex items-end">
             <span className="inline-flex items-center gap-2 text-slate-700">

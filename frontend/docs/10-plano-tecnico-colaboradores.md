@@ -5,6 +5,7 @@
 O modulo `/colaboradores` centraliza a operacao do Departamento Pessoal no painel, cobrindo:
 - cadastro e desligamento de colaboradores;
 - dashboard gerencial de funcionários;
+- leitura gerencial de Qualidade & Metas;
 - beneficios;
 - uniforme e armario;
 - recessos;
@@ -37,6 +38,7 @@ O desenho segue o mesmo padrao funcional de `/profissionais`:
 - `GET/POST /api/admin/colaboradores`
 - `GET/PUT /api/admin/colaboradores/[id]`
 - `GET /api/admin/colaboradores/dashboard`
+- `GET /api/admin/colaboradores/quality-goals`
 - `GET /api/admin/colaboradores/options`
 - `GET/POST /api/admin/colaboradores/[id]/documentos`
 - `GET /api/admin/colaboradores/documentos/[documentId]/download`
@@ -168,6 +170,21 @@ Campos principais:
 Regra importante:
 - `source_type` e `source_ref` indicam a fonte oficial da informação; o checklist acompanha o andamento, mas não duplica documentos, uniforme, armário ou dados contratuais.
 
+### Integração `Qualidade & Metas`
+
+Implementação da Onda 6 do plano RH como leitura consolidada, sem cadastro paralelo.
+
+Fontes oficiais:
+- metas continuam em `goals_config`;
+- treinamentos e evidências continuam no módulo de Qualidade;
+- cadastro, documentos e ASO continuam em `employees` e `employee_documents`.
+
+A integração adiciona:
+- `goals_config.employee_id`, campo opcional usado para vincular uma meta ao cadastro oficial do colaborador;
+- `qms_training_assignments`, tabela do módulo de Qualidade que vincula treinamentos a `employees.id` com status, prazo, conclusão e observações.
+
+A aba `/colaboradores > Qualidade & Metas` apenas consulta e agrega essas fontes. Ela não cria nem edita metas, treinamentos, documentos ou ASO.
+
 ### `employee_audit_log`
 
 Trilha de auditoria do modulo.
@@ -267,6 +284,7 @@ O cabeçalho possui o botão `Como funciona`, que abre uma ajuda guiada explican
 - uso atual do cadastro de colaboradores;
 - vínculo entre cadastro, documentos, benefícios, uniforme, armário e recesso;
 - regra da Onda 3 para Admissões & Demissões: workflow/checklist usa o cadastro como fonte única da verdade, sem duplicar documentos, uniforme, armário ou dados de desligamento;
+- regra da Onda 6 para Qualidade & Metas: a aba consolida dados oficiais de Metas, Qualidade e cadastro, mas a edição continua nos módulos de origem;
 - campos críticos que alimentam folha, benefícios, dashboard e desligamentos.
 
 ### Aba `Admissões & Demissões`
@@ -306,6 +324,26 @@ A aba funciona como visão gerencial sobre o cadastro oficial, sem novas tabelas
 - distribuição de tempo de empresa e status de ASO.
 
 O turnover do MVP é calculado sobre `quadro ativo + saídas do período`, usando as datas de desligamento registradas no cadastro.
+
+### Aba `Qualidade & Metas`
+
+Implementação da Onda 6 do plano RH.
+
+A aba funciona como visão transversal e somente leitura:
+- agregação server-side em `getEmployeeQualityGoals`;
+- rota `GET /api/admin/colaboradores/quality-goals`;
+- filtros por unidade, setor, regime contratual e status;
+- indicadores de colaboradores críticos, metas vinculadas, metas abaixo de 70%, treinamentos vencidos/pendentes, pendências documentais e ASO;
+- leitura por colaborador com metas oficialmente vinculadas, treinamentos atribuídos, status documental, ASO e alertas críticos;
+- leitura por equipe/setor com média de metas e pendências de treinamento.
+
+Regras de fonte da verdade:
+- metas são criadas e editadas no módulo `/metas`;
+- o vínculo oficial com o colaborador usa `goals_config.employee_id`;
+- metas antigas com colaborador textual, mas sem `employee_id`, aparecem como "metas sem vínculo" para revisão operacional;
+- treinamentos são criados e editados em `/qualidade/treinamentos`;
+- participantes de treinamento são vinculados ao cadastro oficial por `qms_training_assignments.employee_id`;
+- documentos e ASO continuam sendo atualizados na ficha do colaborador.
 
 ### Modal com abas
 

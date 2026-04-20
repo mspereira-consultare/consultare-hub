@@ -13,6 +13,7 @@ export interface Goal {
     linked_kpi_id: string; // ID do KPI para automação
     filter_group?: string; // Filtro avançado (ex.: Consultas, Exames)
     clinic_unit?: string; // Filtro de unidade clínica (ex.: Matriz, Filial)
+    employee_id?: string | null; // Vinculo oficial com employees.id quando a meta for individual
     collaborator?: string; // Nome do colaborador (ex.: Profissional / Agendador)
     team?: string; // Equipe/setor alvo da meta (ex.: CRC, Recepção)
 }

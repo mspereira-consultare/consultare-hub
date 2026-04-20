@@ -128,6 +128,22 @@ export type QmsTrainingType = 'inicial' | 'reciclagem';
 export type QmsTrainingPlanStatus = 'planejado' | 'em_andamento' | 'concluido' | 'cancelado';
 export type QmsTrainingExecutionStatus = 'planejado' | 'em_andamento' | 'concluido' | 'cancelado';
 export type QmsTrainingFileType = 'attendance_list' | 'evaluation' | 'evidence' | 'other';
+export type QmsTrainingAssignmentStatus = 'pendente' | 'concluido' | 'vencido' | 'dispensado';
+
+export type QmsTrainingAssignment = {
+  id: string;
+  trainingId: string;
+  employeeId: string;
+  employeeName: string;
+  employeeCpf: string | null;
+  employeeStatus: string | null;
+  status: QmsTrainingAssignmentStatus;
+  dueDate: string | null;
+  completedAt: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 export type QmsTrainingPlan = {
   id: string;
@@ -196,6 +212,7 @@ export type QmsTraining = {
   resultPostTraining: string | null;
   notes: string | null;
   filesCount: number;
+  assignments: QmsTrainingAssignment[];
   createdBy: string;
   createdAt: string;
   updatedBy: string;
@@ -220,6 +237,7 @@ export type QmsTrainingInput = {
   participantsActual?: number | null;
   resultPostTraining?: string | null;
   notes?: string | null;
+  assignedEmployeeIds?: string[];
 };
 
 export type QmsTrainingFile = {

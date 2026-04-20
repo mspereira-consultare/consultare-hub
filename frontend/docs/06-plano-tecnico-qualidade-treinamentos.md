@@ -109,12 +109,27 @@ Decisao de desenho:
 - `storage_provider`, `bucket`, `key`, `filename`, `mime_type`, `size_bytes`
 - `uploaded_by`, `uploaded_at`
 
-7. `qms_document_training_links`
+7. `qms_training_assignments`
+- `id` (PK)
+- `training_id` (FK `qms_trainings.id`)
+- `employee_id` (FK lógica para `employees.id`)
+- `status` (`pendente`, `concluido`, `vencido`, `dispensado`)
+- `due_date`
+- `completed_at`
+- `notes`
+- `created_at`, `updated_at`
+
+Uso:
+- vincula participantes de treinamentos ao cadastro oficial de colaboradores;
+- alimenta a aba `/colaboradores > Qualidade & Metas`;
+- não substitui anexos/evidências do treinamento, apenas cria o vínculo gerencial com a pessoa.
+
+8. `qms_document_training_links`
 - `document_id` (FK)
 - `training_plan_id` (FK)
 - PK composta (`document_id`, `training_plan_id`)
 
-8. `qms_audits`
+9. `qms_audits`
 - `id` (PK)
 - `code` (unico, legivel: `AUD-2026-0001`)
 - `document_id` (FK)
@@ -130,7 +145,7 @@ Decisao de desenho:
 - `criticality` (`baixa`, `media`, `alta`)
 - `status` (`aberta`, `em_tratativa`, `encerrada`)
 
-9. `qms_audit_actions`
+10. `qms_audit_actions`
 - `id` (PK)
 - `audit_id` (FK)
 - `description`
@@ -139,7 +154,7 @@ Decisao de desenho:
 - `status` (`aberta`, `em_andamento`, `concluida`, `atrasada`)
 - `completion_note`
 
-10. `qms_audit_log`
+11. `qms_audit_log`
 - `id` (PK)
 - `entity_type`
 - `entity_id`
@@ -185,6 +200,7 @@ Base: `frontend/src/app/api/admin/qms/...`
 - `PATCH /trainings/:id`
 - `POST /trainings/:id/files`
 - `GET /trainings/:id/files/:fileId/download`
+- `assignedEmployeeIds` no payload de criação/edição de realização, para sincronizar participantes vinculados ao cadastro oficial;
 - `POST /training-plans/:id/link-document` (N:N)
 - `DELETE /training-plans/:id/link-document/:documentId`
 
@@ -321,6 +337,7 @@ Entrega tecnica:
 - pagina `Treinamentos` com abas `Cronograma Anual` e `Realizacoes`
 - modais separados para planejamento e execucao
 - filtros por setor, status, periodo
+- seleção opcional de participantes vinculados ao cadastro oficial de colaboradores, usada pela visão de RH em `/colaboradores > Qualidade & Metas`
 
 4. Permissoes:
 - `qualidade_treinamentos`

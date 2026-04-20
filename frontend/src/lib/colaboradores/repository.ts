@@ -1,6 +1,8 @@
 
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
+import { calculateKpi } from '@/lib/kpi_engine';
+import { ensureQmsTrainingTables } from '@/lib/qms/trainings_repository';
 import {
   ASO_STATUSES,
   DEFAULT_PAGE_SIZE,
@@ -44,6 +46,11 @@ import type {
   EmployeeFilters,
   EmployeeInput,
   EmployeeListItem,
+  EmployeeQualityGoalItem,
+  EmployeeQualityGoalsData,
+  EmployeeQualityGoalStatus,
+  EmployeeQualityTrainingItem,
+  EmployeeQualityTrainingStatus,
   EmployeeLifecycleCase,
   EmployeeLifecycleCaseInput,
   EmployeeLifecycleCaseType,
@@ -1121,6 +1128,272 @@ export const getEmployeeDashboard = async (
     tenureBands,
     asoBreakdown,
     documentPendencies,
+  };
+};
+
+const normalizeGoalStatus = (percentage: number, unlinked = false): EmployeeQualityGoalStatus => {
+  if (unlinked) return 'UNLINKED';
+  if (percentage >= 100) return 'SUCCESS';
+  if (percentage >= 70) return 'WARNING';
+  return 'DANGER';
+};
+
+const normalizeUnitFilterForGoal = (goal: any) => {
+  const raw = clean(goal?.clinic_unit);
+  if (raw && raw !== 'all') return raw;
+
+  const unitField = clean(goal?.unit);
+  if (unitField && !['currency', 'qtd', 'percent', 'minutes'].includes(unitField)) {
+    return unitField;
+  }
+  return undefined;
+};
+
+const calculateGoalCurrentValue = async (goal: any, today: string) => {
+  let calcStart = parseDate(goal.start_date) || today;
+  let calcEnd = parseDate(goal.end_date) || today;
+  const periodicity = clean(goal.periodicity).toLowerCase();
+
+  if (periodicity === 'daily') {
+    calcStart = today;
+    calcEnd = today;
+  } else if (periodicity === 'monthly') {
+    calcStart = `${today.slice(0, 7)}-01`;
+    const date = new Date(`${calcStart}T12:00:00Z`);
+    date.setUTCMonth(date.getUTCMonth() + 1);
+    date.setUTCDate(0);
+    calcEnd = date.toISOString().slice(0, 10);
+  }
+
+  const kpiId = clean(goal.linked_kpi_id);
+  if (!kpiId || kpiId === 'manual') return 0;
+
+  const result = await calculateKpi(kpiId, calcStart, calcEnd, {
+    group_filter: clean(goal.filter_group) || undefined,
+    unit_filter: normalizeUnitFilterForGoal(goal),
+    collaborator: clean(goal.collaborator) || undefined,
+    team: clean(goal.team) || undefined,
+    scope: upper(goal.scope) === 'CARD' ? 'CARD' : 'CLINIC',
+  });
+
+  return Number(result.currentValue || 0);
+};
+
+const mapGoalItem = async (goal: any, today: string, unlinked = false): Promise<EmployeeQualityGoalItem> => {
+  const target = Number(goal.target_value || 0);
+  const current = unlinked ? 0 : await calculateGoalCurrentValue(goal, today).catch(() => 0);
+  const percentage = target > 0 ? Math.round((current / target) * 100) : 0;
+  const id = clean(goal.id);
+
+  return {
+    id,
+    name: clean(goal.name),
+    sector: clean(goal.sector) || null,
+    target,
+    current,
+    percentage,
+    unit: clean(goal.unit) || null,
+    periodicity: clean(goal.periodicity) || null,
+    status: normalizeGoalStatus(percentage, unlinked),
+    employeeId: clean(goal.employee_id) || null,
+    collaborator: clean(goal.collaborator) || null,
+    team: clean(goal.team) || null,
+    startDate: parseDate(goal.start_date),
+    endDate: parseDate(goal.end_date),
+    sourcePath: `/metas?goalId=${encodeURIComponent(id)}`,
+  };
+};
+
+const normalizeTrainingAssignmentStatus = (row: any, today: string): EmployeeQualityTrainingStatus => {
+  const status = clean(row.assignment_status).toLowerCase() as EmployeeQualityTrainingStatus;
+  if (status === 'concluido' || status === 'dispensado') return status;
+  const dueDate = parseDate(row.due_date) || parseDate(row.next_training_date) || parseDate(row.performed_at);
+  if (dueDate && dueDate < today) return 'vencido';
+  if (status === 'vencido') return 'vencido';
+  return 'pendente';
+};
+
+const mapTrainingItem = (row: any, today: string): EmployeeQualityTrainingItem => {
+  const assignmentId = clean(row.assignment_id);
+  const trainingId = clean(row.training_id);
+  const status = normalizeTrainingAssignmentStatus(row, today);
+  return {
+    id: assignmentId,
+    trainingId,
+    name: clean(row.training_name),
+    sector: clean(row.sector) || null,
+    status,
+    trainingStatus: clean(row.training_status) || null,
+    dueDate: parseDate(row.due_date) || parseDate(row.next_training_date) || parseDate(row.performed_at),
+    completedAt: parseDate(row.completed_at),
+    performedAt: parseDate(row.performed_at),
+    nextTrainingDate: parseDate(row.next_training_date),
+    sourcePath: `/qualidade/treinamentos?trainingId=${encodeURIComponent(trainingId)}`,
+  };
+};
+
+export const getEmployeeQualityGoals = async (
+  db: DbInterface,
+  rawFilters: Partial<EmployeeDashboardFilters> = {},
+): Promise<EmployeeQualityGoalsData> => {
+  await ensureEmployeesTables(db);
+  await ensureQmsTrainingTables(db);
+  const filters = normalizeDashboardFilters(rawFilters);
+  const today = TODAY_SAO_PAULO();
+
+  const rows = await db.query(`SELECT * FROM employees ORDER BY full_name ASC`);
+  const employees = rows.map(mapEmployee);
+  const docsMap = await loadDocumentsMap(db, employees.map((item) => item.id));
+
+  let list = employees.map((employee) => mergeEmployee(employee, docsMap.get(employee.id) || []));
+  if (filters.status !== 'all') list = list.filter((item) => item.status === filters.status);
+  if (filters.regime !== 'all') list = list.filter((item) => item.employmentRegime === filters.regime);
+  if (filters.unit !== 'all') {
+    const targetUnit = upper(filters.unit);
+    list = list.filter((item) => item.units.some((unit) => upper(unit) === targetUnit));
+  }
+  if (filters.department !== 'all') {
+    const targetDepartment = upper(filters.department);
+    list = list.filter((item) => upper(item.department) === targetDepartment);
+  }
+
+  const employeeIds = list.map((item) => item.id);
+  const goalsByEmployee = new Map<string, EmployeeQualityGoalItem[]>();
+  let unlinkedGoals: EmployeeQualityGoalItem[] = [];
+
+  try {
+    await safeAddColumn(db, `ALTER TABLE goals_config ADD COLUMN employee_id TEXT NULL`);
+    const goalRows = await db.query(
+      `
+      SELECT *
+      FROM goals_config
+      WHERE (start_date IS NULL OR start_date <= ?)
+        AND (end_date IS NULL OR end_date >= ?)
+      ORDER BY created_at DESC
+      `,
+      [today, today],
+    );
+
+    const linkedRows = (goalRows || []).filter((goal: any) => employeeIds.includes(clean(goal.employee_id)));
+    const unlinkedRows = (goalRows || []).filter((goal: any) => {
+      const employeeId = clean(goal.employee_id);
+      const collaborator = clean(goal.collaborator);
+      return !employeeId && collaborator && collaborator !== 'all';
+    });
+
+    const linkedItems = await Promise.all(linkedRows.map((goal: any) => mapGoalItem(goal, today)));
+    for (const item of linkedItems) {
+      if (!item.employeeId) continue;
+      goalsByEmployee.set(item.employeeId, [...(goalsByEmployee.get(item.employeeId) || []), item]);
+    }
+
+    unlinkedGoals = await Promise.all(unlinkedRows.map((goal: any) => mapGoalItem(goal, today, true)));
+  } catch {
+    unlinkedGoals = [];
+  }
+
+  const trainingsByEmployee = new Map<string, EmployeeQualityTrainingItem[]>();
+  if (employeeIds.length) {
+    const trainingRows = await db.query(
+      `
+      SELECT
+        a.id AS assignment_id,
+        a.employee_id,
+        a.status AS assignment_status,
+        a.due_date,
+        a.completed_at,
+        t.id AS training_id,
+        t.name AS training_name,
+        t.sector,
+        t.status AS training_status,
+        t.performed_at,
+        t.next_training_date
+      FROM qms_training_assignments a
+      INNER JOIN qms_trainings t ON t.id = a.training_id
+      WHERE a.employee_id IN (${employeeIds.map(() => '?').join(',')})
+      ORDER BY t.next_training_date ASC, t.performed_at ASC, t.name ASC
+      `,
+      employeeIds,
+    ).catch(() => []);
+
+    for (const row of trainingRows || []) {
+      const employeeId = clean(row.employee_id);
+      const item = mapTrainingItem(row, today);
+      trainingsByEmployee.set(employeeId, [...(trainingsByEmployee.get(employeeId) || []), item]);
+    }
+  }
+
+  const people = list.map((employee) => {
+    const goals = goalsByEmployee.get(employee.id) || [];
+    const trainings = trainingsByEmployee.get(employee.id) || [];
+    const criticalAlerts: string[] = [];
+    if (employee.pendingDocuments) criticalAlerts.push(`${employee.missingDocs.length} documento(s) pendente(s)`);
+    if (employee.asoStatus === 'PENDENTE') criticalAlerts.push('ASO pendente');
+    if (employee.asoStatus === 'VENCIDO') criticalAlerts.push('ASO vencido');
+    if (goals.some((goal) => goal.status === 'DANGER')) criticalAlerts.push('Meta abaixo de 70%');
+    if (trainings.some((training) => training.status === 'vencido')) criticalAlerts.push('Treinamento vencido');
+
+    return {
+      employeeId: employee.id,
+      fullName: employee.fullName,
+      employeeCpf: employee.cpf,
+      status: employee.status,
+      jobTitle: employee.jobTitle,
+      department: employee.department,
+      units: employee.units,
+      documentStatus: {
+        pending: employee.pendingDocuments,
+        missingCount: employee.missingDocs.length,
+        requiredDone: employee.requiredDocsDone,
+        requiredTotal: employee.requiredDocsTotal,
+      },
+      asoStatus: employee.asoStatus,
+      asoExpiresAt: employee.asoExpiresAt,
+      goals,
+      trainings,
+      criticalAlerts,
+    };
+  });
+
+  const teamsMap = new Map<string, { label: string; goals: EmployeeQualityGoalItem[]; trainings: EmployeeQualityTrainingItem[] }>();
+  for (const person of people) {
+    const key = person.department || 'Sem setor';
+    const current = teamsMap.get(key) || { label: key, goals: [], trainings: [] };
+    current.goals.push(...person.goals);
+    current.trainings.push(...person.trainings);
+    teamsMap.set(key, current);
+  }
+
+  const allGoals = people.flatMap((person) => person.goals);
+  const allTrainings = people.flatMap((person) => person.trainings);
+  const teams = Array.from(teamsMap.entries()).map(([key, item]) => ({
+    key,
+    label: item.label,
+    goalsCount: item.goals.length,
+    averagePercentage: item.goals.length
+      ? Math.round(item.goals.reduce((sum, goal) => sum + goal.percentage, 0) / item.goals.length)
+      : null,
+    trainingsPending: item.trainings.filter((training) => training.status === 'pendente').length,
+    trainingsExpired: item.trainings.filter((training) => training.status === 'vencido').length,
+  }));
+
+  return {
+    generatedAt: NOW(),
+    filters,
+    summary: {
+      employeesCount: people.length,
+      criticalEmployees: people.filter((person) => person.criticalAlerts.length > 0).length,
+      goalsLinked: allGoals.length,
+      goalsBelow70: allGoals.filter((goal) => goal.status === 'DANGER').length,
+      trainingsPending: allTrainings.filter((training) => training.status === 'pendente').length,
+      trainingsExpired: allTrainings.filter((training) => training.status === 'vencido').length,
+      documentsPending: people.filter((person) => person.documentStatus.pending).length,
+      asoCritical: people.filter((person) => ['PENDENTE', 'VENCIDO'].includes(person.asoStatus)).length,
+      unlinkedGoals: unlinkedGoals.length,
+    },
+    people,
+    teams,
+    unlinkedGoals,
   };
 };
 export const createEmployee = async (db: DbInterface, payload: any, actorUserId: string) => {

@@ -3,6 +3,8 @@ import type { DbInterface } from '@/lib/db';
 import { ensureQmsTables, QmsValidationError } from '@/lib/qms/repository';
 import type {
   QmsTraining,
+  QmsTrainingAssignment,
+  QmsTrainingAssignmentStatus,
   QmsTrainingExecutionStatus,
   QmsTrainingFile,
   QmsTrainingFileInput,
@@ -66,6 +68,12 @@ const ALLOWED_FILE_TYPES = new Set<QmsTrainingFileType>([
   'evidence',
   'other',
 ]);
+const ALLOWED_ASSIGNMENT_STATUS = new Set<QmsTrainingAssignmentStatus>([
+  'pendente',
+  'concluido',
+  'vencido',
+  'dispensado',
+]);
 
 const normalizeType = (value: unknown, fallback: QmsTrainingType = 'inicial'): QmsTrainingType => {
   const normalized = clean(value).toLowerCase() as QmsTrainingType;
@@ -94,6 +102,14 @@ const normalizeFileType = (
 ): QmsTrainingFileType => {
   const normalized = clean(value).toLowerCase() as QmsTrainingFileType;
   return ALLOWED_FILE_TYPES.has(normalized) ? normalized : fallback;
+};
+
+const normalizeAssignmentStatus = (
+  value: unknown,
+  fallback: QmsTrainingAssignmentStatus = 'pendente'
+): QmsTrainingAssignmentStatus => {
+  const normalized = clean(value).toLowerCase() as QmsTrainingAssignmentStatus;
+  return ALLOWED_ASSIGNMENT_STATUS.has(normalized) ? normalized : fallback;
 };
 
 const safeAddColumn = async (db: DbInterface, sql: string) => {
@@ -200,9 +216,25 @@ const mapTraining = (row: any): QmsTraining => ({
   resultPostTraining: clean(row.result_post_training) || null,
   notes: clean(row.notes) || null,
   filesCount: Number(row.files_count || 0),
+  assignments: [],
   createdBy: clean(row.created_by),
   createdAt: clean(row.created_at),
   updatedBy: clean(row.updated_by),
+  updatedAt: clean(row.updated_at),
+});
+
+const mapAssignment = (row: any): QmsTrainingAssignment => ({
+  id: clean(row.id),
+  trainingId: clean(row.training_id),
+  employeeId: clean(row.employee_id),
+  employeeName: clean(row.employee_name || row.full_name),
+  employeeCpf: clean(row.employee_cpf || row.cpf) || null,
+  employeeStatus: clean(row.employee_status || row.status) || null,
+  status: normalizeAssignmentStatus(row.status, 'pendente'),
+  dueDate: parseDate(row.due_date),
+  completedAt: parseDate(row.completed_at),
+  notes: clean(row.notes) || null,
+  createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
 
@@ -354,11 +386,118 @@ export const ensureQmsTrainingTables = async (db: DbInterface) => {
     )
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS qms_training_assignments (
+      id VARCHAR(64) PRIMARY KEY,
+      training_id VARCHAR(64) NOT NULL,
+      employee_id VARCHAR(64) NOT NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'pendente',
+      due_date TEXT,
+      completed_at TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(training_id, employee_id)
+    )
+  `);
+
   await safeAddColumn(db, `ALTER TABLE qms_training_plans ADD COLUMN notes TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE qms_trainings ADD COLUMN notes TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE qms_training_files ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1`);
+  await safeAddColumn(db, `ALTER TABLE qms_training_assignments ADD COLUMN due_date TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE qms_training_assignments ADD COLUMN completed_at TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE qms_training_assignments ADD COLUMN notes TEXT NULL`);
 
   trainingTablesEnsured = true;
+};
+
+const loadAssignmentsByTraining = async (db: DbInterface, trainingIds: string[]) => {
+  const ids = Array.from(new Set(trainingIds.map((id) => clean(id)).filter(Boolean)));
+  const map = new Map<string, QmsTrainingAssignment[]>();
+  if (!ids.length) return map;
+
+  const rows = await db.query(
+    `
+    SELECT
+      a.*,
+      e.full_name AS employee_name,
+      e.cpf AS employee_cpf,
+      e.status AS employee_status
+    FROM qms_training_assignments a
+    LEFT JOIN employees e ON e.id = a.employee_id
+    WHERE a.training_id IN (${ids.map(() => '?').join(',')})
+    ORDER BY COALESCE(e.full_name, a.employee_id) ASC
+    `,
+    ids
+  ).catch(() =>
+    db.query(
+      `
+      SELECT
+        a.*,
+        a.employee_id AS employee_name,
+        NULL AS employee_cpf,
+        NULL AS employee_status
+      FROM qms_training_assignments a
+      WHERE a.training_id IN (${ids.map(() => '?').join(',')})
+      ORDER BY a.employee_id ASC
+      `,
+      ids
+    )
+  );
+
+  for (const row of rows || []) {
+    const assignment = mapAssignment(row);
+    map.set(assignment.trainingId, [...(map.get(assignment.trainingId) || []), assignment]);
+  }
+
+  return map;
+};
+
+const trainingAssignmentStatus = (training: {
+  status: QmsTrainingExecutionStatus;
+  nextTrainingDate?: string | null;
+  performedAt?: string | null;
+}): QmsTrainingAssignmentStatus => {
+  if (training.status === 'concluido') return 'concluido';
+  if (training.status === 'cancelado') return 'dispensado';
+  const dueDate = training.nextTrainingDate || training.performedAt || null;
+  const today = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+  if (dueDate && dueDate < today) return 'vencido';
+  return 'pendente';
+};
+
+const syncTrainingAssignments = async (
+  db: DbInterface,
+  training: QmsTraining,
+  employeeIds: string[] | undefined,
+) => {
+  if (!Array.isArray(employeeIds)) return;
+
+  const normalized = Array.from(new Set(employeeIds.map((id) => clean(id)).filter(Boolean)));
+  const now = nowIso();
+  await db.execute(`DELETE FROM qms_training_assignments WHERE training_id = ?`, [training.id]);
+
+  if (!normalized.length) return;
+
+  const status = trainingAssignmentStatus(training);
+  const completedAt = status === 'concluido' ? training.performedAt || now.slice(0, 10) : null;
+  const dueDate = training.nextTrainingDate || training.performedAt || null;
+
+  for (const employeeId of normalized) {
+    await db.execute(
+      `
+      INSERT INTO qms_training_assignments (
+        id, training_id, employee_id, status, due_date, completed_at, notes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [randomUUID(), training.id, employeeId, status, dueDate, completedAt, null, now, now]
+    );
+  }
 };
 
 export const listQmsTrainingPlans = async (
@@ -649,7 +788,12 @@ export const listQmsTrainings = async (
     params
   );
 
-  return rows.map(mapTraining);
+  const trainings = rows.map(mapTraining);
+  const assignments = await loadAssignmentsByTraining(db, trainings.map((item) => item.id));
+  return trainings.map((training) => ({
+    ...training,
+    assignments: assignments.get(training.id) || [],
+  }));
 };
 
 export const getQmsTrainingById = async (
@@ -675,7 +819,12 @@ export const getQmsTrainingById = async (
     [trainingId]
   );
   if (!rows?.[0]) return null;
-  return mapTraining(rows[0]);
+  const training = mapTraining(rows[0]);
+  const assignments = await loadAssignmentsByTraining(db, [training.id]);
+  return {
+    ...training,
+    assignments: assignments.get(training.id) || [],
+  };
 };
 
 export const createQmsTraining = async (
@@ -727,8 +876,10 @@ export const createQmsTraining = async (
 
   const created = await getQmsTrainingById(db, id);
   if (!created) throw new Error('Falha ao carregar treinamento criado.');
-  await insertAuditLog(db, 'training', id, 'create', actorUserId, null, created);
-  return created;
+  await syncTrainingAssignments(db, created, input.assignedEmployeeIds);
+  const withAssignments = await getQmsTrainingById(db, id);
+  await insertAuditLog(db, 'training', id, 'create', actorUserId, null, withAssignments || created);
+  return withAssignments || created;
 };
 
 export const updateQmsTraining = async (
@@ -826,8 +977,10 @@ export const updateQmsTraining = async (
 
   const updated = await getQmsTrainingById(db, trainingId);
   if (!updated) throw new Error('Falha ao carregar treinamento atualizado.');
-  await insertAuditLog(db, 'training', trainingId, 'update', actorUserId, current, updated);
-  return updated;
+  await syncTrainingAssignments(db, updated, input.assignedEmployeeIds);
+  const withAssignments = await getQmsTrainingById(db, trainingId);
+  await insertAuditLog(db, 'training', trainingId, 'update', actorUserId, current, withAssignments || updated);
+  return withAssignments || updated;
 };
 
 export const deleteQmsTraining = async (
@@ -839,6 +992,7 @@ export const deleteQmsTraining = async (
   const current = await getQmsTrainingById(db, trainingId);
   if (!current) throw new QmsValidationError('Treinamento nao encontrado.', 404);
 
+  await db.execute(`DELETE FROM qms_training_assignments WHERE training_id = ?`, [trainingId]);
   await db.execute(`DELETE FROM qms_training_files WHERE training_id = ?`, [trainingId]);
   await db.execute(`DELETE FROM qms_trainings WHERE id = ?`, [trainingId]);
   await insertAuditLog(db, 'training', trainingId, 'delete', actorUserId, current, null);

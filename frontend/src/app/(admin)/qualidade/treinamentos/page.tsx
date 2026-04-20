@@ -30,6 +30,14 @@ type PlanOption = {
   status: string;
 };
 
+type EmployeeOption = {
+  id: string;
+  fullName: string;
+  cpf: string | null;
+  department: string | null;
+  status: string;
+};
+
 type ServiceStatus = {
   service_name: string;
   status: string;
@@ -92,6 +100,7 @@ const buildExecutionPayload = (form: TrainingExecutionPayload) => ({
   status: form.status,
   participantsPlanned: form.participantsPlanned ? Number(form.participantsPlanned) : null,
   participantsActual: form.participantsActual ? Number(form.participantsActual) : null,
+  assignedEmployeeIds: form.assignedEmployeeIds || [],
   resultPostTraining: form.resultPostTraining || null,
   notes: form.notes || null,
 });
@@ -113,6 +122,7 @@ export default function QualidadeTreinamentosPage() {
   const [executions, setExecutions] = useState<QmsTraining[]>([]);
   const [documentOptions, setDocumentOptions] = useState<DocumentOption[]>([]);
   const [planOptions, setPlanOptions] = useState<PlanOption[]>([]);
+  const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
 
   const [planModalOpen, setPlanModalOpen] = useState(false);
   const [planModalMode, setPlanModalMode] = useState<'create' | 'edit'>('create');
@@ -142,15 +152,34 @@ export default function QualidadeTreinamentosPage() {
   }, []);
 
   const loadOptions = useCallback(async () => {
-    const res = await fetch(`/api/admin/qms/treinamentos/opcoes?refresh=${Date.now()}`, {
-      cache: 'no-store',
-    });
+    const res = await fetch(`/api/admin/qms/treinamentos/opcoes?refresh=${Date.now()}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(await normalizeError(res));
     const json = await res.json();
     const documents = Array.isArray(json?.data?.documents) ? json.data.documents : [];
     const plansList = Array.isArray(json?.data?.plans) ? json.data.plans : [];
     setDocumentOptions(documents);
     setPlanOptions(plansList);
+
+    const employeesRes = await fetch(`/api/admin/colaboradores?status=all&pageSize=100&refresh=${Date.now()}`, { cache: 'no-store' }).catch(() => null);
+    if (!employeesRes?.ok) {
+      setEmployeeOptions([]);
+      return;
+    }
+
+    const employeesJson = await employeesRes.json().catch(() => ({}));
+    const employeesList = Array.isArray(employeesJson?.data) ? employeesJson.data : [];
+    setEmployeeOptions(
+      employeesList
+        .map((employee: any) => ({
+          id: String(employee?.id || ''),
+          fullName: String(employee?.fullName || ''),
+          cpf: employee?.cpf ? String(employee.cpf) : null,
+          department: employee?.department ? String(employee.department) : null,
+          status: String(employee?.status || ''),
+        }))
+        .filter((employee: EmployeeOption) => employee.id && employee.fullName)
+        .sort((a: EmployeeOption, b: EmployeeOption) => a.fullName.localeCompare(b.fullName, 'pt-BR')),
+    );
   }, []);
 
   const loadData = useCallback(
@@ -554,6 +583,7 @@ export default function QualidadeTreinamentosPage() {
         saving={saving}
         initialData={selectedExecution}
         plans={planOptions}
+        employeeOptions={employeeOptions}
         onClose={() => {
           if (saving) return;
           setExecutionModalOpen(false);

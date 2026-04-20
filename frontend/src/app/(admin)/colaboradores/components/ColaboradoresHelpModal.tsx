@@ -36,6 +36,10 @@ const currentFlowSteps = [
     title: '8. Acompanhe pendências',
     description: 'A listagem mostra ASO e progresso documental para orientar correções antes de folha, benefícios, admissão, desligamento e indicadores.',
   },
+  {
+    title: '9. Consulte qualidade e metas',
+    description: 'Use Qualidade & Metas para enxergar, por colaborador e equipe, metas vinculadas, treinamentos e pendências críticas sem criar novos cadastros paralelos.',
+  },
 ];
 
 const sourceOfTruthRules = [
@@ -43,6 +47,8 @@ const sourceOfTruthRules = [
   'Documentos obrigatórios, ASO e anexos ficam na aba Documentos.',
   'Uniformes, entregas e devoluções ficam em Uniforme & Armário.',
   'Armário, chave e devolução ficam no controle de armário do colaborador.',
+  'Metas continuam sendo criadas e mantidas no módulo Metas.',
+  'Treinamentos e evidências continuam sendo mantidos em Qualidade.',
   'O checklist apenas orienta o processo; ele não substitui o cadastro oficial.',
 ];
 
@@ -84,6 +90,25 @@ const criticalFields = [
   },
 ];
 
+const qualityGoalsRules = [
+  {
+    title: 'Leitura gerencial',
+    description: 'A aba Qualidade & Metas cruza cadastro, metas e treinamentos para mostrar pendências por colaborador e por equipe.',
+  },
+  {
+    title: 'Metas',
+    description: 'Para a meta aparecer vinculada ao colaborador, edite a meta no módulo Metas e selecione o vínculo oficial do colaborador.',
+  },
+  {
+    title: 'Treinamentos',
+    description: 'Para o treinamento aparecer no colaborador, registre os participantes no módulo Qualidade > Treinamentos.',
+  },
+  {
+    title: 'Sem duplicidade',
+    description: 'Esta aba não cria nem edita metas ou treinamentos; ela apenas consolida as fontes oficiais para consulta do RH.',
+  },
+];
+
 export function ColaboradoresHelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   useEffect(() => {
     if (!open) return;
@@ -121,7 +146,7 @@ export function ColaboradoresHelpModal({ open, onClose }: { open: boolean; onClo
         </div>
 
         <div className="max-h-[72vh] overflow-y-auto px-5 py-4">
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {currentFlowSteps.map((step) => (
               <div key={step.title} className="rounded-xl border border-slate-200 bg-white p-4">
                 <div className="text-sm font-semibold text-slate-900">{step.title}</div>
@@ -135,7 +160,7 @@ export function ColaboradoresHelpModal({ open, onClose }: { open: boolean; onClo
             <p className="mt-2 text-sm leading-6 text-slate-600">
               O checklist de admissão e desligamento orienta o trabalho do RH, mas documentos, uniforme, armário e dados contratuais continuam nos controles oficiais já existentes.
             </p>
-            <div className="mt-3 grid gap-2 md:grid-cols-5">
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
               {sourceOfTruthRules.map((rule) => (
                 <div key={rule} className="rounded-lg border border-blue-100 bg-white/80 px-3 py-2 text-xs leading-5 text-slate-600">
                   {rule}
@@ -154,6 +179,21 @@ export function ColaboradoresHelpModal({ open, onClose }: { open: boolean; onClo
                 <div key={step.title} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
                   <div className="text-xs font-semibold text-slate-800">{step.title}</div>
                   <div className="mt-1 text-xs leading-5 text-slate-500">{step.description}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/70 p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">Qualidade & Metas</div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Esta visão ajuda a gestora a cruzar metas, treinamentos, ASO e documentos sem tirar a responsabilidade dos módulos oficiais.
+            </p>
+            <div className="mt-3 grid gap-2 md:grid-cols-4">
+              {qualityGoalsRules.map((rule) => (
+                <div key={rule.title} className="rounded-lg border border-emerald-100 bg-white/80 px-3 py-2">
+                  <div className="text-xs font-semibold text-slate-800">{rule.title}</div>
+                  <div className="mt-1 text-xs leading-5 text-slate-500">{rule.description}</div>
                 </div>
               ))}
             </div>

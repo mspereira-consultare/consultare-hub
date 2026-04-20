@@ -297,6 +297,7 @@ Campos relevantes:
 - meta: `target_value`, `unit`
 - automação: `linked_kpi_id`
 - filtros: `filter_group`, `clinic_unit`, `collaborator`, `team`
+- vínculo oficial de pessoa: `employee_id` (opcional, aponta logicamente para `employees.id` e alimenta `/colaboradores > Qualidade & Metas`)
 - auditoria: `created_at`, `updated_at` (quando presente no schema)
 
 Escrita: API de metas.
@@ -729,6 +730,7 @@ Campos principais:
 - `filename`, `mime_type`, `size_bytes`
 - `uploaded_by`, `uploaded_at`
 - `is_active`
+- `is_active`
 
 ### `qms_audit_log`
 
@@ -791,7 +793,24 @@ Campos principais:
 - `storage_provider`, `storage_bucket`, `storage_key`
 - `filename`, `mime_type`, `size_bytes`
 - `uploaded_by`, `uploaded_at`
-- `is_active`
+
+### `qms_training_assignments`
+
+Participantes de treinamentos vinculados ao cadastro oficial de colaboradores.
+
+Campos principais:
+- `id`
+- `training_id`
+- `employee_id`
+- `status`
+- `due_date`
+- `completed_at`
+- `notes`
+- `created_at`, `updated_at`
+
+Uso:
+- mantém o QMS como fonte oficial de treinamentos;
+- permite que `/colaboradores > Qualidade & Metas` leia treinamentos por colaborador sem duplicar cadastro nem evidências.
 
 ### `qms_document_training_links`
 
@@ -1114,7 +1133,5 @@ Observacao:
 | `storage_provider`, `storage_bucket`, `storage_key` | Localização no storage |
 | `original_name`, `mime_type`, `size_bytes` | Metadados do arquivo |
 | `uploaded_by`, `created_at` | Auditoria do upload |
-
-
 
 

@@ -60,6 +60,7 @@ import type {
 import { ColaboradoresHelpModal } from './components/ColaboradoresHelpModal';
 import { EmployeeDashboardPanel } from './components/EmployeeDashboardPanel';
 import { EmployeeLifecyclePanel } from './components/EmployeeLifecyclePanel';
+import { EmployeeQualityGoalsPanel } from './components/EmployeeQualityGoalsPanel';
 
 type SessionUser = {
   role?: string;
@@ -192,7 +193,7 @@ type PendingUpload = {
 };
 
 type ModalTab = 'cadastro' | 'beneficios' | 'uniforme' | 'recesso' | 'documentos';
-type PageSection = 'cadastro' | 'dashboard' | 'lifecycle';
+type PageSection = 'cadastro' | 'dashboard' | 'lifecycle' | 'qualityGoals';
 
 type FiltersState = {
   search: string;
@@ -1214,6 +1215,13 @@ export default function ColaboradoresPage() {
         </button>
         <button
           type="button"
+          onClick={() => setActiveSection('qualityGoals')}
+          className={`rounded-lg border px-3 py-1.5 text-sm transition ${activeSection === 'qualityGoals' ? 'border-[#17407E] bg-[#17407E] text-white shadow-sm' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white'}`}
+        >
+          Qualidade & Metas
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveSection('lifecycle')}
           className={`rounded-lg border px-3 py-1.5 text-sm transition ${activeSection === 'lifecycle' ? 'border-[#17407E] bg-[#17407E] text-white shadow-sm' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white'}`}
         >
@@ -1446,6 +1454,8 @@ export default function ColaboradoresPage() {
         </>
       ) : activeSection === 'dashboard' ? (
         <EmployeeDashboardPanel options={options} />
+      ) : activeSection === 'qualityGoals' ? (
+        <EmployeeQualityGoalsPanel options={options} />
       ) : (
         <EmployeeLifecyclePanel canEdit={canEdit} onOpenEmployee={openEdit} onCreateEmployee={openCreate} />
       )}
