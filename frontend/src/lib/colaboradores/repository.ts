@@ -2182,6 +2182,24 @@ export const updateEmployeeLifecycleCase = async (db: DbInterface, caseId: strin
   return listEmployeeLifecycleCases(db);
 };
 
+export const deleteEmployeeLifecycleCase = async (db: DbInterface, caseId: string, actorUserId: string) => {
+  await ensureEmployeesTables(db);
+  const rows = await db.query(`SELECT * FROM employee_lifecycle_cases WHERE id = ? LIMIT 1`, [caseId]);
+  const existing = rows[0];
+  if (!existing) throw new EmployeeValidationError('Processo não encontrado.', 404);
+
+  await db.execute(`DELETE FROM employee_lifecycle_tasks WHERE case_id = ?`, [caseId]);
+  await db.execute(`DELETE FROM employee_lifecycle_cases WHERE id = ?`, [caseId]);
+
+  await insertAudit(db, 'EMPLOYEE_LIFECYCLE_DELETED', actorUserId, clean(existing.employee_id), {
+    caseId,
+    caseType: upper(existing.case_type || ''),
+    stage: upper(existing.stage || ''),
+  });
+
+  return listEmployeeLifecycleCases(db);
+};
+
 export const updateEmployeeLifecycleTask = async (db: DbInterface, caseId: string, payload: any, actorUserId: string) => {
   await ensureEmployeesTables(db);
   const input: EmployeeLifecycleTaskUpdateInput = {

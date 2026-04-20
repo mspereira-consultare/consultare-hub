@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, CheckCircle2, ChevronDown, Loader2, Plus, RefreshCw, Search, UserRound, X } from 'lucide-react';
+import { Check, CheckCircle2, ChevronDown, Loader2, Plus, RefreshCw, Search, Trash2, UserRound, X } from 'lucide-react';
 import type {
   EmployeeLifecycleCase,
   EmployeeLifecycleCaseType,
@@ -236,6 +236,7 @@ export function EmployeeLifecyclePanel({
   const [form, setForm] = useState<LifecycleFormState>(emptyLifecycleForm());
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deletingCaseId, setDeletingCaseId] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -331,6 +332,29 @@ export function EmployeeLifecyclePanel({
       updateCaseList(payload.data);
     } catch (updateError: unknown) {
       setError(getErrorMessage(updateError, 'Falha ao atualizar tarefa.'));
+    }
+  };
+
+  const deleteCase = async (item: EmployeeLifecycleCase) => {
+    const confirmed = window.confirm(
+      `Excluir o processo de ${item.employeeName}? O cadastro oficial, documentos, uniformes e armário do colaborador serão preservados.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingCaseId(item.id);
+    setError('');
+    setNotice('');
+    try {
+      const payload = await fetchJson<{ status: string; data: EmployeeLifecycleCase[] }>(
+        `/api/admin/colaboradores/lifecycle/${encodeURIComponent(item.id)}`,
+        { method: 'DELETE' },
+      );
+      updateCaseList(payload.data);
+      setNotice('Processo excluído. O cadastro oficial do colaborador foi preservado.');
+    } catch (deleteError: unknown) {
+      setError(getErrorMessage(deleteError, 'Falha ao excluir processo.'));
+    } finally {
+      setDeletingCaseId('');
     }
   };
 
@@ -451,6 +475,8 @@ export function EmployeeLifecyclePanel({
                     onOpenEmployee={onOpenEmployee}
                     onUpdateCase={updateCase}
                     onUpdateTask={updateTask}
+                    onDeleteCase={deleteCase}
+                    deleting={deletingCaseId === item.id}
                   />
                 ))
               )}
@@ -472,12 +498,16 @@ function LifecycleCaseCard({
   onOpenEmployee,
   onUpdateCase,
   onUpdateTask,
+  onDeleteCase,
+  deleting,
 }: {
   item: EmployeeLifecycleCase;
   canEdit: boolean;
   onOpenEmployee: (employeeId: string) => void;
   onUpdateCase: (item: EmployeeLifecycleCase, patch: Partial<LifecycleFormState> & { closeCase?: boolean }) => void;
   onUpdateTask: (item: EmployeeLifecycleCase, task: EmployeeLifecycleTask, patch: Partial<EmployeeLifecycleTask>) => void;
+  onDeleteCase: (item: EmployeeLifecycleCase) => void;
+  deleting: boolean;
 }) {
   const progressLabel = item.totalTasks ? `${item.doneTasks}/${item.totalTasks}` : '0/0';
 
@@ -525,10 +555,24 @@ function LifecycleCaseCard({
         </div>
       ) : null}
 
-      <button type="button" onClick={() => onOpenEmployee(item.employeeId)} className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#17407E] hover:underline">
-        <UserRound size={12} />
-        Abrir cadastro oficial
-      </button>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+        <button type="button" onClick={() => onOpenEmployee(item.employeeId)} className="inline-flex items-center gap-1 text-xs font-semibold text-[#17407E] hover:underline">
+          <UserRound size={12} />
+          Abrir cadastro oficial
+        </button>
+        {canEdit ? (
+          <button
+            type="button"
+            onClick={() => onDeleteCase(item)}
+            disabled={deleting}
+            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+            title="Excluir somente este processo/checklist"
+          >
+            {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+            Excluir processo
+          </button>
+        ) : null}
+      </div>
 
       <div className="mt-3 space-y-2">
         {item.tasks.map((task) => (
