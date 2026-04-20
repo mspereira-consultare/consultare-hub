@@ -152,10 +152,18 @@ export type PayrollPreviewRow = {
 
 export type PayrollBenefitStatus = 'OK' | 'ATENCAO' | 'PENDENTE_CADASTRO';
 
+export type PayrollBenefitIssueDetail = {
+  date: string | null;
+  reason: string;
+  rawText: string | null;
+  marks: string[];
+};
+
 export type PayrollBenefitIssue = {
   code: string;
   severity: 'CADASTRO' | 'OPERACIONAL';
   message: string;
+  details?: PayrollBenefitIssueDetail[];
 };
 
 export type PayrollBenefitRow = {
@@ -260,6 +268,7 @@ export type PayrollReadinessIssue = {
   description: string;
   count: number;
   sampleEmployees: PayrollReadinessEmployeeSample[];
+  details?: PayrollBenefitIssueDetail[];
 };
 
 export type PayrollPeriodReadiness = {

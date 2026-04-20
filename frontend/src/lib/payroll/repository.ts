@@ -15,6 +15,8 @@ import {
   type PayrollTransportVoucherMode,
 } from '@/lib/payroll/constants';
 import type {
+  PayrollBenefitIssue,
+  PayrollBenefitIssueDetail,
   PayrollBenefitRow,
   PayrollBenefitsSummary,
   PayrollCreatePeriodInput,
@@ -175,6 +177,12 @@ const safeJson = (value: unknown) => {
   } catch {
     return '{}';
   }
+};
+
+const truncateText = (value: string | null | undefined, maxLength = 220) => {
+  const text = clean(value);
+  if (!text) return null;
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text;
 };
 
 const addDays = (dateIso: string, days: number) => {
@@ -836,6 +844,22 @@ const pointRowToReadinessSample = (row: PayrollPointDaily): PayrollReadinessEmpl
   employeeCpf: row.employeeCpf,
 });
 
+const resolvePointInconsistencyReason = (row: Pick<PayrollPointDaily, 'rawDayText' | 'marks'>) => {
+  const text = upper(row.rawDayText || '');
+  if (text.includes('BATIDAS INVAL') || text.includes('BATIDA INVAL')) return 'Batida inválida indicada no relatório.';
+  if (text.includes('MARCACAO INCORRETA') || text.includes('MARCAÇÃO INCORRETA')) return 'Marcação incorreta indicada no relatório.';
+  if (text.includes('INCONSIST')) return 'Inconsistência indicada no relatório de ponto.';
+  if ((row.marks || []).length % 2 !== 0) return 'Quantidade ímpar de marcações no dia.';
+  return 'Registro diário marcado como inconsistente no relatório.';
+};
+
+const buildPointInconsistencyDetail = (row: PayrollPointDaily): PayrollBenefitIssueDetail => ({
+  date: row.pointDate || null,
+  reason: resolvePointInconsistencyReason(row),
+  rawText: truncateText(row.rawDayText, 260),
+  marks: row.marks || [],
+});
+
 const createReadinessIssue = (params: {
   code: PayrollReadinessIssueCode;
   severity: PayrollReadinessSeverity;
@@ -843,6 +867,7 @@ const createReadinessIssue = (params: {
   description: string;
   count: number;
   sampleEmployees?: PayrollReadinessEmployeeSample[];
+  details?: PayrollBenefitIssueDetail[];
 }): PayrollReadinessIssue => ({
   code: params.code,
   severity: params.severity,
@@ -850,6 +875,7 @@ const createReadinessIssue = (params: {
   description: params.description,
   count: params.count,
   sampleEmployees: uniqueEmployeeSamples(params.sampleEmployees || []).slice(0, 5),
+  details: (params.details || []).slice(0, 5),
 });
 
 const buildReadinessGuidance = (status: PayrollReadinessStatus) => {
@@ -998,14 +1024,16 @@ const evaluatePayrollPeriodReadiness = (
 
     const inconsistentPointRows = pointRows.filter((row) => row.inconsistencyFlag);
     if (inconsistentPointRows.length > 0) {
+      const details = inconsistentPointRows.map(buildPointInconsistencyDetail);
       issues.push(
         createReadinessIssue({
           code: 'POINT_INCONSISTENCY',
           severity: 'WARNING',
           title: 'Ponto com inconsistências',
-          description: `${inconsistentPointRows.length} registro(s) diário(s) do ponto possuem inconsistência nesta competência.`,
+          description: `${inconsistentPointRows.length} registro(s) diário(s) do ponto possuem inconsistência. Abra os exemplos para conferir data, motivo detectado e trecho do relatório.`,
           count: inconsistentPointRows.length,
           sampleEmployees: inconsistentPointRows.map(pointRowToReadinessSample),
+          details,
         }),
       );
     }
@@ -1292,9 +1320,11 @@ const buildLineRecord = (
   const scheduleMinutes = parseScheduleMinutes(pointRowsInPeriod[0]?.scheduleStart || null, pointRowsInPeriod[0]?.scheduleEnd || null, employee.workSchedule);
   const monthlyDivisor = scheduleMinutes && scheduleMinutes > 0 ? (scheduleMinutes / 60) * 25 : employee.employmentRegime === 'ESTAGIO' ? 150 : 220;
   const salaryHour = monthlyDivisor > 0 ? employee.salaryAmount / monthlyDivisor : 0;
-  const inconsistencyCount = pointRowsInPeriod.filter((row) => row.inconsistencyFlag).length;
+  const inconsistentPointRows = pointRowsInPeriod.filter((row) => row.inconsistencyFlag);
+  const inconsistencyDetails = inconsistentPointRows.map(buildPointInconsistencyDetail).slice(0, 5);
+  const inconsistencyCount = inconsistentPointRows.length;
 
-  const warnings: Array<{ code: string; message: string }> = [];
+  const warnings: Array<{ code: string; message: string; details?: PayrollBenefitIssueDetail[] }> = [];
   if (!pointRowsInPeriod.length && !hasFullPeriodCoverageWithoutPoint()) {
     warnings.push({
       code: 'EMPLOYEE_WITHOUT_POINT_ROWS',
@@ -1316,7 +1346,8 @@ const buildLineRecord = (
   if (inconsistencyCount > 0) {
     warnings.push({
       code: 'POINT_INCONSISTENCY',
-      message: `${inconsistencyCount} registro(s) diário(s) do ponto com inconsistência nesta competência.`,
+      message: `${inconsistencyCount} registro(s) diário(s) do ponto com inconsistência nesta competência. Confira os detalhes para revisar data e motivo detectado.`,
+      details: inconsistencyDetails,
     });
   }
 
@@ -1627,6 +1658,7 @@ type PayrollLineSnapshot = Partial<{
 type PayrollCalculationWarning = {
   code: string;
   message: string;
+  details?: PayrollBenefitIssueDetail[];
 };
 
 const occurrenceTypeLabelMap: Record<PayrollOccurrenceType, string> = {
@@ -1656,10 +1688,26 @@ const parsePayrollCalculationWarnings = (value: string | null | undefined): Payr
     const parsed = JSON.parse(raw);
     const warnings: unknown[] = Array.isArray(parsed?.warnings) ? parsed.warnings : [];
     return warnings
-      .map((warning: unknown) => ({
-        code: clean((warning as Record<string, unknown>)?.code),
-        message: clean((warning as Record<string, unknown>)?.message),
-      }))
+      .map((warning: unknown) => {
+        const warningRecord = warning as Record<string, unknown>;
+        const detailRows: unknown[] = Array.isArray(warningRecord?.details) ? warningRecord.details : [];
+        const details = detailRows
+          .map((detail: unknown): PayrollBenefitIssueDetail => {
+            const detailRecord = detail as Record<string, unknown>;
+            return {
+              date: parseDate(detailRecord.date) || null,
+              reason: clean(detailRecord.reason) || 'Detalhe operacional do ponto.',
+              rawText: truncateText(clean(detailRecord.rawText), 260),
+              marks: Array.isArray(detailRecord.marks) ? detailRecord.marks.map((item) => clean(item)).filter(Boolean) : [],
+            };
+          })
+          .filter((detail) => detail.reason || detail.rawText || detail.marks.length);
+        return {
+          code: clean(warningRecord?.code),
+          message: clean(warningRecord?.message),
+          details,
+        };
+      })
       .filter((warning) => warning.code && warning.message);
   } catch {
     return [];
@@ -1858,8 +1906,8 @@ export const listPayrollPreviewRows = async (db: DbInterface, periodId: string, 
 };
 
 const upsertBenefitIssue = (
-  issues: Array<{ code: string; severity: 'CADASTRO' | 'OPERACIONAL'; message: string }>,
-  nextIssue: { code: string; severity: 'CADASTRO' | 'OPERACIONAL'; message: string },
+  issues: PayrollBenefitIssue[],
+  nextIssue: PayrollBenefitIssue,
 ) => {
   if (issues.some((issue) => issue.code === nextIssue.code)) return;
   issues.push(nextIssue);
@@ -1917,9 +1965,14 @@ const buildPayrollBenefitsSummary = (rows: PayrollBenefitRow[]): PayrollBenefits
 const buildPayrollBenefitRow = (
   line: PayrollLine,
   employeeFallback: PayrollEmployeeBenefitsSource | null,
+  pointRowsInPeriod: PayrollPointDaily[],
 ): PayrollBenefitRow => {
   const snapshot = parsePayrollLineSnapshot(line.employeeSnapshotJson);
   const calculationWarnings = parsePayrollCalculationWarnings(line.calculationMemoryJson);
+  const pointInconsistencyDetails = pointRowsInPeriod
+    .filter((row) => row.inconsistencyFlag)
+    .map(buildPointInconsistencyDetail)
+    .slice(0, 5);
   const snapshotUnits = Array.isArray(snapshot.units) ? snapshot.units.map((item) => clean(item)).filter(Boolean) : [];
   const centerCost = clean(snapshot.costCenter) || employeeFallback?.costCenter || line.centerCost || null;
   const unitName = line.unitName || snapshotUnits[0] || employeeFallback?.units[0] || null;
@@ -1941,7 +1994,7 @@ const buildPayrollBenefitRow = (
   const otherPayrollDiscount = roundMoney(line.otherFixedDiscount);
   const payrollDiscountsTotal = roundMoney(transportVoucherPayrollDiscount + totalpassPayrollDiscount + otherPayrollDiscount);
 
-  const issues: Array<{ code: string; severity: 'CADASTRO' | 'OPERACIONAL'; message: string }> = [];
+  const issues: PayrollBenefitIssue[] = [];
 
   if (!centerCost) {
     upsertBenefitIssue(issues, {
@@ -1995,6 +2048,7 @@ const buildPayrollBenefitRow = (
         code: warning.code,
         severity: 'OPERACIONAL',
         message: warning.message,
+        details: warning.details?.length ? warning.details : pointInconsistencyDetails,
       });
     }
   }
@@ -2040,16 +2094,32 @@ const buildPayrollBenefitRow = (
 export const listPayrollBenefitRows = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
   await ensurePayrollTables(db);
   await getPeriodOrThrow(db, periodId);
-  const linesResult = await listPayrollLines(db, periodId, filters);
+  const [linesResult, pointRows] = await Promise.all([
+    listPayrollLines(db, periodId, filters),
+    listPointRowsRaw(db, periodId),
+  ]);
   const employeeMap = await loadEmployeeBenefitsMap(
     db,
     linesResult.items.map((line) => line.employeeId || '').filter(Boolean),
   );
+  const pointMap = new Map<string, PayrollPointDaily[]>();
+  for (const row of pointRows) {
+    const keys = new Set<string>();
+    if (row.employeeId) keys.add(row.employeeId);
+    const comparisonKey = buildComparisonKey(row.employeeName, row.employeeCpf);
+    if (comparisonKey) keys.add(comparisonKey);
+    for (const key of keys) {
+      const list = pointMap.get(key) || [];
+      list.push(row);
+      pointMap.set(key, list);
+    }
+  }
 
   const items = linesResult.items.map((line) =>
     buildPayrollBenefitRow(
       line,
       line.employeeId ? employeeMap.get(line.employeeId) || null : null,
+      pointMap.get(line.employeeId || '') || pointMap.get(buildComparisonKey(line.employeeName, line.employeeCpf)) || [],
     ),
   );
 

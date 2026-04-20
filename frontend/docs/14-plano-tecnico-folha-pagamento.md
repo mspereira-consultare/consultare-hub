@@ -123,6 +123,8 @@ Nesta etapa:
 - `Total a providenciar` representa `VR a comprar + VT pago em folha`;
 - `Total descontado em folha` representa `D.V.T. + Totalpass + outros descontos`;
 - pendências de cadastro e alertas operacionais são reaproveitados da memória de cálculo e do snapshot do colaborador;
+- a coluna `Status e pendências` usa resumo compacto por colaborador, e os detalhes ficam em modal próprio para evitar linhas longas na tabela;
+- inconsistências de ponto exibem, quando disponível, data, motivo detectado, marcações e trecho resumido do relatório;
 - após corrigir cadastro ou ponto, o RH deve usar `Gerar folha` novamente para atualizar a visão de benefícios.
 
 ## Estrutura técnica
@@ -133,6 +135,7 @@ Nesta etapa:
 ### Componentes principais
 - `PayrollClosingTable.tsx`
 - `PayrollBenefitsPanel.tsx`
+- `PayrollHelpModal.tsx`
 - `PayrollPreviewTable.tsx`
 - `PayrollImportsPanel.tsx`
 - `PayrollLineDrawer.tsx`
@@ -217,6 +220,8 @@ Observação:
 ### Prontidão da competência
 Antes de gerar a folha, o módulo avalia a prontidão operacional da competência e expõe isso no payload de detalhe e na UI.
 
+A UI mostra a prontidão recolhida por padrão para preservar espaço útil no topo da página. O cabeçalho permanece sempre visível com status, contagem de bloqueios e contagem de alertas; o detalhamento abre em `Ver pendências`.
+
 Estados:
 - `READY`
 - `ATTENTION`
@@ -253,6 +258,25 @@ Além disso, a memória de cálculo passa a registrar avisos automáticos de pro
 - centro de custo ausente;
 - jornada não identificada com divisor padrão aplicado;
 - inconsistências no ponto do período.
+
+Para inconsistências de ponto, a memória pode guardar exemplos limitados com `point_date`, motivo inferido a partir de `raw_day_text`/`marks`, trecho resumido do relatório e marcações do dia. Esses exemplos alimentam o modal de pendências da aba `Benefícios` e o detalhe expandido da prontidão.
+
+### Ajuda contextual
+A página possui um modal `Como funciona`, acessível no cabeçalho, com o fluxo esperado de uso:
+- selecionar ou criar competência;
+- importar ponto;
+- revisar prontidão;
+- gerar ou recalcular folha;
+- conferir fechamento;
+- validar benefícios;
+- revisar prévia e exportar XLSX;
+- aprovar, marcar como enviada ou reabrir competência.
+
+O mesmo modal explica os campos solicitados ao abrir `Nova competência`:
+- `Competência (mês)`: define o mês de referência e cria o período operacional automático de 21 do mês anterior até 20 do mês selecionado;
+- `Salário mínimo`: base para adicionais vinculados ao mínimo, como insalubridade;
+- `Tolerância de atraso (min)`: minutos diários ignorados antes do desconto de atraso;
+- `Teto de VT (%)`: percentual máximo do salário básico usado no desconto de vale-transporte.
 
 ## Exportação XLSX
 

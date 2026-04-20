@@ -2,7 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { Calculator, CheckCircle2, Download, Loader2, Plus, RefreshCw, SendHorizontal } from 'lucide-react';
+import { Calculator, CheckCircle2, CircleHelp, Download, Loader2, Plus, RefreshCw, SendHorizontal } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
 import { DEFAULT_PAYROLL_LINE_FILTERS } from '@/lib/payroll/filters';
 import type {
@@ -19,6 +19,7 @@ import type {
 import { PayrollBenefitsPanel } from './components/PayrollBenefitsPanel';
 import { PayrollClosingTable } from './components/PayrollClosingTable';
 import { formatDateBr, formatMoney, statusLabelMap } from './components/formatters';
+import { PayrollHelpModal } from './components/PayrollHelpModal';
 import { PayrollImportsPanel } from './components/PayrollImportsPanel';
 import { PayrollLineDrawer } from './components/PayrollLineDrawer';
 import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
@@ -90,6 +91,7 @@ export default function FolhaPagamentoPage() {
   const [lineDetail, setLineDetail] = useState<PayrollLineDetail | null>(null);
   const [lineDetailOpen, setLineDetailOpen] = useState(false);
   const [lineSaving, setLineSaving] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const currentPeriod = useMemo(
     () => options.periods.find((item) => item.id === selectedPeriodId) || detail?.period || null,
@@ -309,6 +311,13 @@ export default function FolhaPagamentoPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <CircleHelp size={16} /> Como funciona
+            </button>
             {canRefresh ? (
               <button type="button" onClick={() => reloadAll()} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
                 <RefreshCw size={16} /> Atualizar
@@ -461,6 +470,7 @@ export default function FolhaPagamentoPage() {
       {activeTab === 'importacoes' ? <PayrollImportsPanel imports={detail?.imports || ([] as PayrollImportFile[])} uploadingPoint={uploadingPoint} onUploadPoint={handlePointUpload} /> : null}
 
       <PayrollNewPeriodModal open={newPeriodOpen} saving={creatingPeriod} onClose={() => setNewPeriodOpen(false)} onSubmit={handleCreatePeriod} />
+      <PayrollHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
       <PayrollLineDrawer line={selectedLine} detail={lineDetail} open={lineDetailOpen} canEdit={canEdit} saving={lineSaving} onClose={() => setLineDetailOpen(false)} onSave={handleSaveLine} />
     </div>
   );

@@ -1,7 +1,9 @@
 'use client';
 
-import { AlertTriangle, CheckCircle2, CircleAlert } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, CircleAlert } from 'lucide-react';
 import type { PayrollPeriodReadiness, PayrollReadinessIssue, PayrollReadinessStatus } from '@/lib/payroll/types';
+import { formatDateBr } from './formatters';
 
 const readinessStatusMap: Record<
   PayrollReadinessStatus,
@@ -47,9 +49,11 @@ const formatSampleEmployee = (issue: PayrollReadinessIssue) =>
     .join(', ');
 
 export function PayrollReadinessPanel({ readiness }: { readiness: PayrollPeriodReadiness }) {
+  const [expanded, setExpanded] = useState(false);
   const statusConfig = readinessStatusMap[readiness.status];
   const blockingIssues = readiness.issues.filter((issue) => issue.severity === 'BLOCKING');
   const warningIssues = readiness.issues.filter((issue) => issue.severity === 'WARNING');
+  const hasIssues = readiness.issues.length > 0;
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -72,10 +76,21 @@ export function PayrollReadinessPanel({ readiness }: { readiness: PayrollPeriodR
           <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
             {readiness.warningCount} alerta(s)
           </span>
+          {hasIssues ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((value) => !value)}
+              aria-expanded={expanded}
+              className="inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600 hover:border-[#17407E] hover:text-[#17407E]"
+            >
+              {expanded ? 'Ocultar pendências' : 'Ver pendências'}
+              {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+            </button>
+          ) : null}
         </div>
       </div>
 
-      {readiness.issues.length ? (
+      {expanded && hasIssues ? (
         <div className="grid gap-3 p-4 lg:grid-cols-2">
           <IssueGroup
             title="Bloqueios críticos"
@@ -90,9 +105,7 @@ export function PayrollReadinessPanel({ readiness }: { readiness: PayrollPeriodR
             severity="WARNING"
           />
         </div>
-      ) : (
-        <div className="px-4 py-4 text-sm text-slate-600">Nenhuma pendência foi encontrada. A competência está pronta para geração.</div>
-      )}
+      ) : null}
     </section>
   );
 }
@@ -125,6 +138,30 @@ function IssueGroup({
             {issue.sampleEmployees.length ? (
               <div className="mt-2 text-xs leading-5 text-slate-500">
                 <span className="font-semibold text-slate-700">Exemplos:</span> {formatSampleEmployee(issue)}
+              </div>
+            ) : null}
+            {issue.details?.length ? (
+              <div className="mt-3 space-y-2">
+                {issue.details.map((detail, index) => (
+                  <div key={`${issue.code}-${detail.date || index}-${index}`} className="rounded-lg border border-white/80 bg-white/70 px-3 py-2 text-xs leading-5 text-slate-600">
+                    <div>
+                      <span className="font-semibold text-slate-800">Data:</span> {formatDateBr(detail.date)}
+                    </div>
+                    <div>
+                      <span className="font-semibold text-slate-800">Motivo:</span> {detail.reason}
+                    </div>
+                    {detail.marks.length ? (
+                      <div>
+                        <span className="font-semibold text-slate-800">Marcações:</span> {detail.marks.join(' · ')}
+                      </div>
+                    ) : null}
+                    {detail.rawText ? (
+                      <div>
+                        <span className="font-semibold text-slate-800">Trecho:</span> {detail.rawText}
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             ) : null}
           </div>

@@ -62,7 +62,7 @@ export const ComparisonHistoryChart = ({
               tickFormatter={(value) => `${Math.round(value / 1000)}k`}
             />
             <Tooltip
-              formatter={(value: number | string | undefined, name: string | undefined) => {
+              formatter={(value, name) => {
                 if (name === 'periodoA') return [fmtMoney(Number(value || 0)), `Periodo A (${labelA})`];
                 if (name === 'periodoB') return [fmtMoney(Number(value || 0)), `Periodo B (${labelB})`];
                 return [fmtMoney(Number(value || 0)), 'Delta (A - B)'];
@@ -90,5 +90,4 @@ export const ComparisonHistoryChart = ({
     </div>
   );
 };
-
 
