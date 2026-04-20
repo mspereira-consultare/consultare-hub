@@ -29,6 +29,10 @@ import type {
   RecruitmentJobStatus,
 } from '@/lib/recrutamento/types';
 
+type CandidateCreateResponse = RecruitmentDashboard & {
+  createdCandidateId?: string;
+};
+
 type SessionUser = {
   role?: string;
   permissions?: unknown;
@@ -185,6 +189,8 @@ export default function RecrutamentoPage() {
   const [dashboard, setDashboard] = useState<RecruitmentDashboard>(emptyDashboard);
   const [jobForm, setJobForm] = useState<JobFormState>(initialJobForm);
   const [candidateForm, setCandidateForm] = useState<CandidateFormState>(initialCandidateForm);
+  const [candidateResumeFile, setCandidateResumeFile] = useState<File | null>(null);
+  const [candidateResumeInputKey, setCandidateResumeInputKey] = useState(0);
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const [candidateDraft, setCandidateDraft] = useState<CandidateDraftState | null>(null);
   const [convertAdmissionDate, setConvertAdmissionDate] = useState(todaySaoPaulo());
@@ -285,14 +291,37 @@ export default function RecrutamentoPage() {
     setError('');
     setNotice('');
     try {
-      const payload = await fetchJson<{ status: string; data: RecruitmentDashboard }>('/api/admin/recrutamento/candidates', {
+      const payload = await fetchJson<{ status: string; data: CandidateCreateResponse }>('/api/admin/recrutamento/candidates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(candidateForm),
       });
       applyDashboard(payload.data);
+      let uploadedResume = false;
+      let resumeWarning = '';
+
+      if (candidateResumeFile && payload.data.createdCandidateId) {
+        const formData = new FormData();
+        formData.append('file', candidateResumeFile);
+        try {
+          const uploadPayload = await fetchJson<{ status: string; data: RecruitmentDashboard }>(
+            `/api/admin/recrutamento/candidates/${encodeURIComponent(payload.data.createdCandidateId)}/files`,
+            { method: 'POST', body: formData },
+          );
+          applyDashboard(uploadPayload.data);
+          uploadedResume = true;
+        } catch (uploadError: unknown) {
+          resumeWarning = `Candidato cadastrado, mas não foi possível anexar o currículo automaticamente: ${errorMessage(uploadError)}`;
+        }
+      } else if (candidateResumeFile) {
+        resumeWarning = 'Candidato cadastrado, mas o currículo não foi anexado automaticamente. Abra os detalhes do candidato para anexar o arquivo.';
+      }
+
       setCandidateForm({ ...initialCandidateForm, jobId: candidateForm.jobId });
-      setNotice('Candidato cadastrado no funil.');
+      setCandidateResumeFile(null);
+      setCandidateResumeInputKey((current) => current + 1);
+      setNotice(uploadedResume ? 'Candidato cadastrado com currículo anexado.' : 'Candidato cadastrado no funil.');
+      if (resumeWarning) setError(resumeWarning);
     } catch (fetchError: unknown) {
       setError(errorMessage(fetchError));
     } finally {
@@ -585,6 +614,20 @@ export default function RecrutamentoPage() {
                 <Field label="Origem">
                   <input value={candidateForm.source} onChange={(event) => setCandidateForm((current) => ({ ...current, source: event.target.value }))} className={fieldClassName} placeholder="Indicação, banco, site..." />
                 </Field>
+                <Field label="Currículo">
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-3">
+                    <input
+                      key={candidateResumeInputKey}
+                      type="file"
+                      accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      onChange={(event) => setCandidateResumeFile(event.target.files?.[0] || null)}
+                      className="w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700"
+                    />
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      Anexe o CV já no cadastro. Ele ficará no processo seletivo e poderá ser usado futuramente para análise de aderência com IA.
+                    </p>
+                  </div>
+                </Field>
                 <button type="submit" disabled={saving === 'candidate' || !dashboard.jobs.length} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
                   {saving === 'candidate' ? <Loader2 size={16} className="animate-spin" /> : <UserRoundPlus size={16} />}
                   Cadastrar candidato
@@ -864,13 +907,13 @@ function RecruitmentHelpModal({ open, onClose }: { open: boolean; onClose: () =>
               Informe o título, setor, unidade, regime e responsável. A vaga serve como eixo do funil e ajuda o RH a entender para qual posição cada candidato está sendo avaliado.
             </HelpStep>
             <HelpStep title="2. Cadastre o candidato">
-              Vincule a pessoa a uma vaga e preencha os contatos principais. CPF e e-mail ajudam a evitar duplicidade, mas o CPF pode ser completado antes da conversão.
+              Vincule a pessoa a uma vaga, preencha os contatos principais e, se já tiver o arquivo, anexe o currículo no próprio cadastro. CPF e e-mail ajudam a evitar duplicidade, mas o CPF pode ser completado antes da conversão.
             </HelpStep>
             <HelpStep title="3. Use o funil para acompanhar etapas">
               Abra o card do candidato para mudar entre recebido, triagem, entrevista, banco, aprovado, recusado ou contratado. Cada mudança fica registrada no histórico.
             </HelpStep>
             <HelpStep title="4. Anexe currículo e arquivos de apoio">
-              Os anexos desta tela são do processo seletivo. Documentos admissionais oficiais continuam sendo controlados no cadastro de colaboradores após a conversão.
+              Os anexos desta tela são do processo seletivo e ficam disponíveis para consulta do RH. Essa base também prepara a evolução futura de análise de currículo com IA contra a descrição da vaga. Documentos admissionais oficiais continuam sendo controlados no cadastro de colaboradores após a conversão.
             </HelpStep>
             <HelpStep title="5. Converta aprovado em pré-admissão">
               Quando o candidato estiver aprovado, use a conversão para criar o rascunho no cadastro oficial. A partir daí, colaboradores passa a ser a fonte da verdade para documentos, benefícios, folha e processos de admissão.

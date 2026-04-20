@@ -455,7 +455,8 @@ export const createRecruitmentCandidate = async (db: DbInterface, payload: Paylo
     [candidateId, input.jobId, input.fullName, input.cpf, input.email, input.phone, input.stage, input.source, input.notes, null, now, now],
   );
   await insertHistory(db, candidateId, 'CANDIDATE_CREATED', actorUserId, null, input.stage || 'RECEBIDO', 'Candidato cadastrado.');
-  return listRecruitmentDashboard(db);
+  const dashboard = await listRecruitmentDashboard(db);
+  return { ...dashboard, createdCandidateId: candidateId };
 };
 
 export const updateRecruitmentCandidate = async (db: DbInterface, candidateId: string, payload: Payload, actorUserId: string) => {

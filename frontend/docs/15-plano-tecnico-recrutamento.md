@@ -9,7 +9,7 @@ O MVP cobre:
 - cadastro de vagas;
 - cadastro de candidatos vinculados a vagas;
 - funil com etapas fechadas;
-- anexos do candidato, como currículo e arquivos de apoio;
+- anexos do candidato, como currículo já no cadastro inicial e arquivos de apoio;
 - histórico de movimentações;
 - conversão de candidato aprovado em rascunho de colaborador.
 
@@ -31,7 +31,7 @@ Defaults atuais:
 ## Fluxo operacional
 
 1. O RH cria uma vaga com título, setor, unidade, regime, responsável e observações.
-2. O RH cadastra candidatos vinculados a uma vaga.
+2. O RH cadastra candidatos vinculados a uma vaga e pode anexar o currículo no mesmo fluxo.
 3. O candidato avança pelo funil: `Recebido`, `Triagem`, `Entrevista`, `Banco`, `Aprovado`, `Recusado` e `Contratado`.
 4. Currículos e arquivos de apoio são anexados ao candidato.
 5. Quando aprovado, o candidato pode ser convertido em `PRE_ADMISSAO` no cadastro oficial de colaboradores.
@@ -76,6 +76,7 @@ As tabelas do MVP são criadas pelo repositório em runtime quando o módulo é 
 - A visão principal usa cards de resumo, lista de vagas e funil em colunas.
 - O card do candidato é compacto; edição, anexos, histórico e conversão ficam no modal de detalhes.
 - O modal `Como funciona` explica o fluxo esperado para o usuário final.
+- O upload do currículo no cadastro inicial usa a mesma tabela/API de anexos do candidato, preparando a evolução futura de análise de CV com IA sem criar outra fonte de arquivos.
 
 ## Critérios de aceite
 
