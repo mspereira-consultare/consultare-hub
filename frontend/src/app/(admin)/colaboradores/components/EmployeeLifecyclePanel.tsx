@@ -68,6 +68,8 @@ type LifecycleFormState = {
   notes: string;
 };
 
+type LifecycleCasePatch = Partial<LifecycleFormState> & { closeCase?: boolean };
+
 const emptyLifecycleForm = (): LifecycleFormState => ({
   employeeId: '',
   caseType: 'ADMISSION',
@@ -237,6 +239,7 @@ export function EmployeeLifecyclePanel({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deletingCaseId, setDeletingCaseId] = useState('');
+  const [selectedCaseId, setSelectedCaseId] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -247,6 +250,11 @@ export function EmployeeLifecyclePanel({
         items: cases.filter((item) => item.stage === stage),
       })),
     [cases],
+  );
+
+  const selectedCase = useMemo(
+    () => cases.find((item) => item.id === selectedCaseId) || null,
+    [cases, selectedCaseId],
   );
 
   const loadData = useCallback(async () => {
@@ -298,7 +306,7 @@ export function EmployeeLifecyclePanel({
     }
   };
 
-  const updateCase = async (item: EmployeeLifecycleCase, patch: Partial<LifecycleFormState> & { closeCase?: boolean }) => {
+  const updateCase = async (item: EmployeeLifecycleCase, patch: LifecycleCasePatch) => {
     setError('');
     setNotice('');
     try {
@@ -312,8 +320,10 @@ export function EmployeeLifecyclePanel({
       );
       updateCaseList(payload.data);
       setNotice(patch.closeCase ? 'Processo encerrado.' : 'Processo atualizado.');
+      return true;
     } catch (updateError: unknown) {
       setError(getErrorMessage(updateError, 'Falha ao atualizar processo.'));
+      return false;
     }
   };
 
@@ -339,7 +349,7 @@ export function EmployeeLifecyclePanel({
     const confirmed = window.confirm(
       `Excluir o processo de ${item.employeeName}? O cadastro oficial, documentos, uniformes e armário do colaborador serão preservados.`,
     );
-    if (!confirmed) return;
+    if (!confirmed) return false;
 
     setDeletingCaseId(item.id);
     setError('');
@@ -351,8 +361,11 @@ export function EmployeeLifecyclePanel({
       );
       updateCaseList(payload.data);
       setNotice('Processo excluído. O cadastro oficial do colaborador foi preservado.');
+      if (selectedCaseId === item.id) setSelectedCaseId('');
+      return true;
     } catch (deleteError: unknown) {
       setError(getErrorMessage(deleteError, 'Falha ao excluir processo.'));
+      return false;
     } finally {
       setDeletingCaseId('');
     }
@@ -471,12 +484,7 @@ export function EmployeeLifecyclePanel({
                   <LifecycleCaseCard
                     key={item.id}
                     item={item}
-                    canEdit={canEdit}
-                    onOpenEmployee={onOpenEmployee}
-                    onUpdateCase={updateCase}
-                    onUpdateTask={updateTask}
-                    onDeleteCase={deleteCase}
-                    deleting={deletingCaseId === item.id}
+                    onOpenDetails={() => setSelectedCaseId(item.id)}
                   />
                 ))
               )}
@@ -488,37 +496,45 @@ export function EmployeeLifecyclePanel({
       <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-4 text-sm text-slate-600">
         Precisa iniciar uma pré-admissão que ainda não está na lista? Use <button type="button" onClick={onCreateEmployee} className="font-semibold text-[#17407E] hover:underline">Novo colaborador</button> e selecione o status Pré-admissão.
       </div>
+
+      {selectedCase ? (
+        <LifecycleCaseModal
+          key={selectedCase.id}
+          item={selectedCase}
+          canEdit={canEdit}
+          deleting={deletingCaseId === selectedCase.id}
+          onClose={() => setSelectedCaseId('')}
+          onOpenEmployee={onOpenEmployee}
+          onUpdateCase={updateCase}
+          onUpdateTask={updateTask}
+          onDeleteCase={deleteCase}
+        />
+      ) : null}
     </div>
   );
 }
 
 function LifecycleCaseCard({
   item,
-  canEdit,
-  onOpenEmployee,
-  onUpdateCase,
-  onUpdateTask,
-  onDeleteCase,
-  deleting,
+  onOpenDetails,
 }: {
   item: EmployeeLifecycleCase;
-  canEdit: boolean;
-  onOpenEmployee: (employeeId: string) => void;
-  onUpdateCase: (item: EmployeeLifecycleCase, patch: Partial<LifecycleFormState> & { closeCase?: boolean }) => void;
-  onUpdateTask: (item: EmployeeLifecycleCase, task: EmployeeLifecycleTask, patch: Partial<EmployeeLifecycleTask>) => void;
-  onDeleteCase: (item: EmployeeLifecycleCase) => void;
-  deleting: boolean;
+  onOpenDetails: () => void;
 }) {
   const progressLabel = item.totalTasks ? `${item.doneTasks}/${item.totalTasks}` : '0/0';
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="text-sm font-semibold text-slate-900">{item.employeeName}</div>
-          <div className="mt-1 text-xs text-slate-500">{item.employeeCpf || 'CPF não informado'} · {caseTypeLabels[item.caseType]}</div>
+    <button
+      type="button"
+      onClick={onOpenDetails}
+      className="block w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-[#17407E]/40 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-100"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold text-slate-900">{item.employeeName}</div>
+          <div className="mt-1 truncate text-xs text-slate-500">{item.employeeCpf || 'CPF não informado'} · {caseTypeLabels[item.caseType]}</div>
         </div>
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${stageToneMap[item.stage]}`}>{stageLabels[item.stage]}</span>
+        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${stageToneMap[item.stage]}`}>{stageLabels[item.stage]}</span>
       </div>
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-center text-xs">
@@ -541,87 +557,278 @@ function LifecycleCaseCard({
         <div>Prazo: <span className="font-medium text-slate-700">{item.targetDate || '-'}</span></div>
       </div>
 
-      {canEdit && item.stage !== 'CLOSED' ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <select value={item.stage} onChange={(event) => onUpdateCase(item, { stage: event.target.value as EmployeeLifecycleStage })} className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700">
-            {item.caseType === 'ADMISSION' ? <option value="PRE_ADMISSION">Pré-admissão</option> : null}
-            {item.caseType === 'ADMISSION' ? <option value="ADMISSION_IN_PROGRESS">Admissão em andamento</option> : null}
-            {item.caseType === 'TERMINATION' ? <option value="TERMINATION_IN_PROGRESS">Desligamento em andamento</option> : null}
-          </select>
-          <button type="button" onClick={() => onUpdateCase(item, { closeCase: true })} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-semibold text-emerald-700">
-            <CheckCircle2 size={12} />
-            Encerrar
-          </button>
-        </div>
-      ) : null}
+      <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-[#17407E]">
+        Ver detalhes
+        <ChevronDown size={12} className="-rotate-90" />
+      </span>
+    </button>
+  );
+}
 
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-        <button type="button" onClick={() => onOpenEmployee(item.employeeId)} className="inline-flex items-center gap-1 text-xs font-semibold text-[#17407E] hover:underline">
-          <UserRound size={12} />
-          Abrir cadastro oficial
-        </button>
-        {canEdit ? (
-          <button
-            type="button"
-            onClick={() => onDeleteCase(item)}
-            disabled={deleting}
-            className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-white px-2 py-1.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
-            title="Excluir somente este processo/checklist"
-          >
-            {deleting ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
-            Excluir processo
-          </button>
-        ) : null}
-      </div>
+function LifecycleCaseModal({
+  item,
+  canEdit,
+  deleting,
+  onClose,
+  onOpenEmployee,
+  onUpdateCase,
+  onUpdateTask,
+  onDeleteCase,
+}: {
+  item: EmployeeLifecycleCase;
+  canEdit: boolean;
+  deleting: boolean;
+  onClose: () => void;
+  onOpenEmployee: (employeeId: string) => void;
+  onUpdateCase: (item: EmployeeLifecycleCase, patch: LifecycleCasePatch) => Promise<boolean>;
+  onUpdateTask: (item: EmployeeLifecycleCase, task: EmployeeLifecycleTask, patch: Partial<EmployeeLifecycleTask>) => Promise<void>;
+  onDeleteCase: (item: EmployeeLifecycleCase) => Promise<boolean>;
+}) {
+  const [draft, setDraft] = useState({
+    stage: item.stage,
+    ownerName: item.ownerName || '',
+    targetDate: item.targetDate || '',
+    notes: item.notes || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const processEditable = canEdit && item.stage !== 'CLOSED';
+  const progressLabel = item.totalTasks ? `${item.doneTasks}/${item.totalTasks}` : '0/0';
 
-      <div className="mt-3 space-y-2">
-        {item.tasks.map((task) => (
-          <div key={task.id} className="rounded-lg border border-slate-200 bg-slate-50/70 p-2">
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="text-xs font-semibold text-slate-800">{task.title}</div>
-                <div className="mt-1 text-[11px] leading-4 text-slate-500">{task.sourceSummary}</div>
-              </div>
-              <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${task.sourceReady ? 'border-emerald-200 bg-white text-emerald-700' : 'border-amber-200 bg-white text-amber-700'}`}>
-                {task.sourceReady ? 'fonte ok' : 'fonte pend.'}
-              </span>
-            </div>
-            <div className="mt-2 grid gap-2">
-              <select
-                value={task.status}
-                disabled={!canEdit}
-                onChange={(event) => onUpdateTask(item, task, { status: event.target.value as EmployeeLifecycleTaskStatus })}
-                className={`rounded-md border px-2 py-1.5 text-xs font-semibold ${taskToneMap[task.status]}`}
-              >
-                {taskStatuses.map((status) => <option key={status} value={status}>{taskStatusLabels[status]}</option>)}
-              </select>
-              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-1">
-                <input
-                  disabled={!canEdit}
-                  onBlur={(event) => onUpdateTask(item, task, { ownerName: event.target.value })}
-                  placeholder="Responsável"
-                  className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
-                  defaultValue={task.ownerName || ''}
-                />
-                <input
-                  type="date"
-                  disabled={!canEdit}
-                  defaultValue={task.dueDate || ''}
-                  onBlur={(event) => onUpdateTask(item, task, { dueDate: event.target.value })}
-                  className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
-                />
-              </div>
-              <textarea
-                disabled={!canEdit}
-                defaultValue={task.notes || ''}
-                onBlur={(event) => onUpdateTask(item, task, { notes: event.target.value })}
-                placeholder="Observação"
-                rows={2}
-                className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
-              />
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const saveCase = async () => {
+    setSaving(true);
+    try {
+      await onUpdateCase(item, draft);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const closeCase = async () => {
+    setClosing(true);
+    try {
+      const ok = await onUpdateCase(item, { closeCase: true });
+      if (ok) onClose();
+    } finally {
+      setClosing(false);
+    }
+  };
+
+  const deleteCase = async () => {
+    const ok = await onDeleteCase(item);
+    if (ok) onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6" onMouseDown={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="lifecycle-case-modal-title"
+        className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="min-w-0">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Detalhes do processo</div>
+            <h3 id="lifecycle-case-modal-title" className="mt-1 truncate text-lg font-bold text-slate-900">{item.employeeName}</h3>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span>{item.employeeCpf || 'CPF não informado'}</span>
+              <span>·</span>
+              <span>{caseTypeLabels[item.caseType]}</span>
+              <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${stageToneMap[item.stage]}`}>{stageLabels[item.stage]}</span>
             </div>
           </div>
-        ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenEmployee(item.employeeId);
+              }}
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-[#17407E] hover:bg-blue-100"
+            >
+              <UserRound size={14} />
+              Abrir cadastro oficial
+            </button>
+            <button type="button" onClick={onClose} className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Fechar detalhes">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-center">
+              <div className="text-sm font-semibold text-slate-900">{progressLabel}</div>
+              <div className="mt-1 text-xs text-slate-500">tarefas concluídas</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-center">
+              <div className="text-sm font-semibold text-slate-900">{item.sourcePendingTasks}</div>
+              <div className="mt-1 text-xs text-slate-500">fontes pendentes</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3 text-center">
+              <div className="text-sm font-semibold text-slate-900">{item.blockedTasks}</div>
+              <div className="mt-1 text-xs text-slate-500">bloqueios</div>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Dados do processo</div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Etapa</span>
+                <select
+                  value={draft.stage}
+                  disabled={!processEditable || item.caseType === 'TERMINATION'}
+                  onChange={(event) => setDraft((current) => ({ ...current, stage: event.target.value as EmployeeLifecycleStage }))}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 disabled:bg-slate-100"
+                >
+                  {item.caseType === 'ADMISSION' ? <option value="PRE_ADMISSION">Pré-admissão</option> : null}
+                  {item.caseType === 'ADMISSION' ? <option value="ADMISSION_IN_PROGRESS">Admissão em andamento</option> : null}
+                  {item.caseType === 'TERMINATION' ? <option value="TERMINATION_IN_PROGRESS">Desligamento em andamento</option> : null}
+                  {item.stage === 'CLOSED' ? <option value="CLOSED">Encerrados</option> : null}
+                </select>
+              </label>
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Responsável</span>
+                <input
+                  value={draft.ownerName}
+                  disabled={!processEditable}
+                  onChange={(event) => setDraft((current) => ({ ...current, ownerName: event.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 disabled:bg-slate-100"
+                />
+              </label>
+              <label>
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Prazo</span>
+                <input
+                  type="date"
+                  value={draft.targetDate}
+                  disabled={!processEditable}
+                  onChange={(event) => setDraft((current) => ({ ...current, targetDate: event.target.value }))}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 disabled:bg-slate-100"
+                />
+              </label>
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={saveCase}
+                  disabled={!processEditable || saving}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-3 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                  Salvar alterações
+                </button>
+              </div>
+            </div>
+            <label className="mt-3 block">
+              <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Observações</span>
+              <textarea
+                value={draft.notes}
+                disabled={!processEditable}
+                onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value }))}
+                rows={3}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 disabled:bg-slate-100"
+              />
+            </label>
+          </div>
+
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Checklist operacional</div>
+                <p className="mt-1 text-xs text-slate-500">Atualize cada tarefa conforme as fontes oficiais forem concluídas.</p>
+              </div>
+              <span className="text-xs font-semibold text-slate-600">{progressLabel} tarefas</span>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              {item.tasks.map((task) => (
+                <div key={task.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">{task.title}</div>
+                      <div className="mt-1 text-xs leading-5 text-slate-500">{task.sourceSummary}</div>
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${task.sourceReady ? 'border-emerald-200 bg-white text-emerald-700' : 'border-amber-200 bg-white text-amber-700'}`}>
+                      {task.sourceReady ? 'fonte ok' : 'fonte pend.'}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-4">
+                    <select
+                      value={task.status}
+                      disabled={!processEditable}
+                      onChange={(event) => onUpdateTask(item, task, { status: event.target.value as EmployeeLifecycleTaskStatus })}
+                      className={`rounded-md border px-2 py-2 text-xs font-semibold disabled:opacity-70 ${taskToneMap[task.status]}`}
+                    >
+                      {taskStatuses.map((status) => <option key={status} value={status}>{taskStatusLabels[status]}</option>)}
+                    </select>
+                    <input
+                      disabled={!processEditable}
+                      onBlur={(event) => onUpdateTask(item, task, { ownerName: event.target.value })}
+                      placeholder="Responsável"
+                      className="rounded-md border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700 disabled:bg-slate-100"
+                      defaultValue={task.ownerName || ''}
+                    />
+                    <input
+                      type="date"
+                      disabled={!processEditable}
+                      defaultValue={task.dueDate || ''}
+                      onBlur={(event) => onUpdateTask(item, task, { dueDate: event.target.value })}
+                      className="rounded-md border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700 disabled:bg-slate-100"
+                    />
+                    <textarea
+                      disabled={!processEditable}
+                      defaultValue={task.notes || ''}
+                      onBlur={(event) => onUpdateTask(item, task, { notes: event.target.value })}
+                      placeholder="Observação"
+                      rows={1}
+                      className="min-h-9 rounded-md border border-slate-200 bg-white px-2 py-2 text-xs text-slate-700 disabled:bg-slate-100"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 border-t border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="text-xs text-slate-500">
+            As ações abaixo alteram apenas o processo/checklist. O cadastro oficial permanece separado.
+          </div>
+          <div className="flex flex-wrap justify-end gap-2">
+            {canEdit && item.stage !== 'CLOSED' ? (
+              <button
+                type="button"
+                onClick={closeCase}
+                disabled={closing}
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-60"
+              >
+                {closing ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                Encerrar processo
+              </button>
+            ) : null}
+            {canEdit ? (
+              <button
+                type="button"
+                onClick={deleteCase}
+                disabled={deleting}
+                className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-white px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60"
+              >
+                {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                Excluir processo
+              </button>
+            ) : null}
+          </div>
+        </div>
       </div>
     </div>
   );
