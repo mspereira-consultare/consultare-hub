@@ -294,7 +294,7 @@ export default function FolhaPagamentoPage() {
     <div className="space-y-6">
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 p-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start gap-3">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
             <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md">
               <Calculator size={20} />
             </div>
@@ -303,14 +303,9 @@ export default function FolhaPagamentoPage() {
               <p className="mt-1 text-xs text-slate-500">
                 Fechamento mensal recorrente por competência, com base no cadastro do colaborador, relatório de ponto e planilha operacional padrão do RH.
               </p>
-              {detail?.period.rules ? (
-                <p className="mt-2 max-w-3xl text-xs text-slate-500">
-                  Atrasos são exibidos em minutos. O desconto converte os minutos considerados em horas, após a tolerância diária, com base na diferença entre a primeira batida do dia e o horário de entrada do relatório.
-                </p>
-              ) : null}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 lg:ml-auto lg:max-w-[660px] lg:justify-end">
             <button
               type="button"
               onClick={() => setHelpOpen(true)}

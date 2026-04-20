@@ -220,7 +220,7 @@ export function PayrollBenefitsPanel({
                 <th className="px-3 py-3 text-right">Desconto Totalpass</th>
                 <th className="px-3 py-3 text-right">Outros desc.</th>
                 <th className="px-3 py-3 text-right">Total desc.</th>
-                <th className="px-3 py-3 text-left">Status e pendências</th>
+                <th className="w-[250px] px-3 py-3 text-left">Status e pendências</th>
               </tr>
             </thead>
             <tbody>
@@ -271,16 +271,21 @@ export function PayrollBenefitsPanel({
                           {badgeLabelByStatus[row.status]}
                         </span>
                         {row.issues.length ? (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setSelectedIssueRow(row);
-                            }}
-                            className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 hover:border-[#17407E] hover:text-[#17407E]"
-                          >
-                            {row.issues.length} pendência(s) · Ver detalhes
-                          </button>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                              {row.issues.length} pend.
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedIssueRow(row);
+                              }}
+                              className="inline-flex h-6 items-center whitespace-nowrap rounded-md border border-slate-200 bg-white px-2 text-[10px] font-semibold text-slate-600 hover:border-[#17407E] hover:text-[#17407E]"
+                            >
+                              Detalhes
+                            </button>
+                          </div>
                         ) : (
                           <span className="text-xs text-slate-500">Sem pendências</span>
                         )}
