@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { CheckCircle2, Loader2, Plus, RefreshCw, UserRound } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Check, CheckCircle2, ChevronDown, Loader2, Plus, RefreshCw, Search, UserRound, X } from 'lucide-react';
 import type {
   EmployeeLifecycleCase,
   EmployeeLifecycleCaseType,
@@ -36,6 +36,15 @@ const taskStatuses: EmployeeLifecycleTaskStatus[] = ['PENDING', 'DONE', 'BLOCKED
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
+const normalizeSearch = (value: string) =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+const employeeMeta = (employee: EmployeeListItem) =>
+  [employee.cpf || 'CPF não informado', employee.email, employee.status].filter(Boolean).join(' · ');
+
 const stageToneMap: Record<EmployeeLifecycleStage, string> = {
   PRE_ADMISSION: 'border-blue-200 bg-blue-50 text-[#17407E]',
   ADMISSION_IN_PROGRESS: 'border-emerald-200 bg-emerald-50 text-emerald-700',
@@ -68,6 +77,14 @@ const emptyLifecycleForm = (): LifecycleFormState => ({
   notes: '',
 });
 
+type EmployeeListPayload = {
+  status: string;
+  data: EmployeeListItem[];
+  pagination?: {
+    totalPages?: number;
+  };
+};
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { cache: 'no-store', ...init });
   const payload = await response.json().catch(() => ({}));
@@ -75,6 +92,134 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     throw new Error(String((payload as { error?: unknown })?.error || 'Falha ao carregar dados.'));
   }
   return payload as T;
+}
+
+async function fetchAllEmployeesForLifecycle() {
+  const firstPage = await fetchJson<EmployeeListPayload>('/api/admin/colaboradores?status=all&page=1&pageSize=100');
+  const totalPages = Math.max(1, Number(firstPage.pagination?.totalPages || 1));
+  if (totalPages <= 1) return firstPage.data || [];
+
+  const nextPages = await Promise.all(
+    Array.from({ length: totalPages - 1 }, (_, index) =>
+      fetchJson<EmployeeListPayload>(`/api/admin/colaboradores?status=all&page=${index + 2}&pageSize=100`),
+    ),
+  );
+
+  return [firstPage, ...nextPages].flatMap((page) => page.data || []);
+}
+
+function EmployeeSearchableSelect({
+  employees,
+  value,
+  disabled,
+  onChange,
+}: {
+  employees: EmployeeListItem[];
+  value: string;
+  disabled: boolean;
+  onChange: (employeeId: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleOutside = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setOpen(false);
+        setSearch('');
+      }
+    };
+    document.addEventListener('mousedown', handleOutside);
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, []);
+
+  const selectedEmployee = useMemo(
+    () => employees.find((employee) => employee.id === value) || null,
+    [employees, value],
+  );
+
+  const filteredEmployees = useMemo(() => {
+    const query = normalizeSearch(search.trim());
+    const list = query
+      ? employees.filter((employee) =>
+          normalizeSearch(`${employee.fullName} ${employee.cpf || ''} ${employee.email || ''} ${employee.status}`).includes(query),
+        )
+      : employees;
+    return list.slice(0, 60);
+  }, [employees, search]);
+
+  return (
+    <div ref={wrapperRef} className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          if (open) setSearch('');
+          setOpen((current) => !current);
+        }}
+        className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm text-slate-700 outline-none transition hover:bg-slate-50 focus:border-[#17407E] focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+      >
+        <span className={selectedEmployee ? 'truncate text-slate-800' : 'truncate text-slate-500'}>
+          {selectedEmployee ? selectedEmployee.fullName : 'Pesquisar colaborador'}
+        </span>
+        <ChevronDown size={15} className={`shrink-0 text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open ? (
+        <div className="absolute left-0 top-full z-40 mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl sm:min-w-[320px]">
+          <div className="border-b border-slate-100 bg-slate-50 p-2">
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3">
+              <Search size={14} className="text-slate-400" />
+              <input
+                autoFocus
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Digite nome, CPF ou e-mail..."
+                className="w-full bg-transparent py-2 text-sm text-slate-700 outline-none"
+              />
+              {search ? (
+                <button type="button" onClick={() => setSearch('')} className="text-slate-400 hover:text-slate-600" aria-label="Limpar busca">
+                  <X size={14} />
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="max-h-72 overflow-y-auto py-1">
+            {filteredEmployees.length ? (
+              filteredEmployees.map((employee) => {
+                const selected = value === employee.id;
+                return (
+                  <button
+                    key={employee.id}
+                    type="button"
+                    onClick={() => {
+                      onChange(employee.id);
+                      setSearch('');
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-start justify-between gap-3 border-t border-slate-50 px-4 py-2.5 text-left transition hover:bg-blue-50 hover:text-[#17407E] ${
+                      selected ? 'bg-blue-50 text-[#17407E]' : 'text-slate-700'
+                    }`}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold">{employee.fullName}</span>
+                      <span className="mt-0.5 block truncate text-xs text-slate-500">{employeeMeta(employee)}</span>
+                    </span>
+                    {selected ? <Check size={14} className="mt-0.5 shrink-0" /> : null}
+                  </button>
+                );
+              })
+            ) : (
+              <div className="px-4 py-4 text-center text-xs text-slate-400">Nenhum colaborador encontrado.</div>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function EmployeeLifecyclePanel({
@@ -109,10 +254,10 @@ export function EmployeeLifecyclePanel({
     try {
       const [casesPayload, employeesPayload] = await Promise.all([
         fetchJson<{ status: string; data: EmployeeLifecycleCase[] }>('/api/admin/colaboradores/lifecycle'),
-        fetchJson<{ status: string; data: EmployeeListItem[] }>('/api/admin/colaboradores?status=all&page=1&pageSize=100'),
+        fetchAllEmployeesForLifecycle(),
       ]);
       setCases(casesPayload.data || []);
-      setEmployees(employeesPayload.data || []);
+      setEmployees(employeesPayload || []);
     } catch (loadError: unknown) {
       setError(getErrorMessage(loadError, 'Falha ao carregar admissões e desligamentos.'));
     } finally {
@@ -196,7 +341,7 @@ export function EmployeeLifecyclePanel({
       <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Onda 3</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Controle operacional</div>
             <h2 className="mt-1 text-lg font-bold text-slate-900">Admissões & Demissões</h2>
             <p className="mt-1 max-w-3xl text-sm text-slate-500">
               Workflow operacional em cima do cadastro oficial. O checklist referencia documentos, uniforme, armário e campos do colaborador, sem criar uma segunda fonte da verdade.
@@ -230,19 +375,12 @@ export function EmployeeLifecyclePanel({
           <div className="mt-4 grid gap-3 lg:grid-cols-12">
             <label className="lg:col-span-3">
               <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Colaborador</span>
-              <select
+              <EmployeeSearchableSelect
+                employees={employees}
                 value={form.employeeId}
-                onChange={(event) => setForm((current) => ({ ...current, employeeId: event.target.value }))}
                 disabled={!canEdit}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700"
-              >
-                <option value="">Selecione</option>
-                {employees.map((employee) => (
-                  <option key={employee.id} value={employee.id}>
-                    {employee.fullName} · {employee.status}
-                  </option>
-                ))}
-              </select>
+                onChange={(employeeId) => setForm((current) => ({ ...current, employeeId }))}
+              />
             </label>
             <label className="lg:col-span-2">
               <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-500">Tipo</span>

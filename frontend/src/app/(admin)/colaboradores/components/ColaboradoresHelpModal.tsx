@@ -6,7 +6,7 @@ import { X } from 'lucide-react';
 const currentFlowSteps = [
   {
     title: '1. Cadastre ou localize o colaborador',
-    description: 'Use a lista principal para buscar por nome, CPF ou e-mail. Ao criar um novo registro, a ficha em colaboradores passa a ser a fonte oficial da pessoa.',
+    description: 'Use a lista principal para buscar por nome, CPF ou e-mail. Ao criar um registro, a ficha em colaboradores passa a ser o cadastro oficial da pessoa.',
   },
   {
     title: '2. Complete vínculo e lotação',
@@ -34,34 +34,34 @@ const currentFlowSteps = [
   },
   {
     title: '8. Acompanhe pendências',
-    description: 'A listagem mostra ASO e progresso documental para orientar correções antes de folha, benefícios, admissão, demissão e dashboard.',
+    description: 'A listagem mostra ASO e progresso documental para orientar correções antes de folha, benefícios, admissão, desligamento e indicadores.',
   },
 ];
 
 const sourceOfTruthRules = [
-  'Cadastro principal, status, salário, admissão e desligamento ficam em employees.',
-  'Documentos obrigatórios, ASO e anexos ficam em employee_documents.',
-  'Uniformes e devoluções ficam em employee_uniform_items.',
-  'Armário, chave e devolução ficam em employee_locker_assignments.',
-  'A Onda 3 deve criar checklist e workflow, mas sempre apontando para esses controles oficiais.',
+  'Dados cadastrais, status, salário, admissão e desligamento ficam no cadastro do colaborador.',
+  'Documentos obrigatórios, ASO e anexos ficam na aba Documentos.',
+  'Uniformes, entregas e devoluções ficam em Uniforme & Armário.',
+  'Armário, chave e devolução ficam no controle de armário do colaborador.',
+  'O checklist apenas orienta o processo; ele não substitui o cadastro oficial.',
 ];
 
-const onda3Steps = [
+const admissionDismissalSteps = [
   {
     title: 'Pré-admissão',
-    description: 'O processo deve começar vinculado a uma ficha de colaborador em rascunho ou pré-admissão, sem entrar em folha/headcount ativo até ser ativado.',
+    description: 'Use quando a pessoa já foi selecionada e precisa ter documentos, cadastro e itens iniciais acompanhados antes de virar colaboradora ativa.',
   },
   {
     title: 'Admissão em andamento',
-    description: 'O checklist acompanha cadastro contratual, documentos, benefícios iniciais, ASO, uniforme e armário, usando os cadastros já existentes.',
+    description: 'Acompanhe cadastro contratual, documentos, benefícios iniciais, ASO, uniforme e armário até a pessoa estar pronta para iniciar.',
   },
   {
     title: 'Desligamento em andamento',
-    description: 'O checklist guia devoluções, observações finais e dados de desligamento, mas a verdade final segue nos campos oficiais do colaborador.',
+    description: 'Use para colaboradores que estão saindo da empresa, acompanhando devoluções, documentos finais, data, motivo e observações.',
   },
   {
     title: 'Encerrado',
-    description: 'Ao fechar admissão ou demissão, o caso guarda rastreabilidade e o cadastro permanece como referência para consultas futuras.',
+    description: 'Use quando a admissão ou o desligamento já foi concluído e o cadastro oficial ficou atualizado para consultas futuras.',
   },
 ];
 
@@ -112,7 +112,7 @@ export function ColaboradoresHelpModal({ open, onClose }: { open: boolean; onClo
               Como usar colaboradores sem duplicar informações
             </h3>
             <p className="mt-1 max-w-3xl text-sm text-slate-500">
-              Este módulo centraliza o cadastro oficial do RH. A aba Admissões & Demissões funciona como workflow sobre essa base, não como outro cadastro paralelo.
+              Este módulo centraliza o cadastro oficial do RH. A aba Admissões & Demissões acompanha pessoas já selecionadas para admissão ou colaboradores em desligamento.
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Fechar ajuda">
@@ -131,9 +131,9 @@ export function ColaboradoresHelpModal({ open, onClose }: { open: boolean; onClo
           </div>
 
           <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#17407E]">Regra de ouro da Onda 3</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#17407E]">Regra de ouro</div>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              O checklist de admissão e demissão orienta o trabalho do RH, mas documentos, uniforme, armário e dados contratuais continuam nos controles oficiais já existentes.
+              O checklist de admissão e desligamento orienta o trabalho do RH, mas documentos, uniforme, armário e dados contratuais continuam nos controles oficiais já existentes.
             </p>
             <div className="mt-3 grid gap-2 md:grid-cols-5">
               {sourceOfTruthRules.map((rule) => (
@@ -145,9 +145,12 @@ export function ColaboradoresHelpModal({ open, onClose }: { open: boolean; onClo
           </div>
 
           <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Fluxo proposto para Admissões & Demissões</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Fluxo de Admissões & Demissões</div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Esta área não substitui um processo seletivo. Ela começa depois que a pessoa já foi selecionada para admissão, ou quando um colaborador já está em processo de desligamento.
+            </p>
             <div className="mt-3 grid gap-2 md:grid-cols-4">
-              {onda3Steps.map((step) => (
+              {admissionDismissalSteps.map((step) => (
                 <div key={step.title} className="rounded-lg border border-slate-200 bg-white px-3 py-3">
                   <div className="text-xs font-semibold text-slate-800">{step.title}</div>
                   <div className="mt-1 text-xs leading-5 text-slate-500">{step.description}</div>

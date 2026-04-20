@@ -1200,14 +1200,14 @@ export default function ColaboradoresPage() {
         <button
           type="button"
           onClick={() => setActiveSection('cadastro')}
-          className={`rounded-lg px-3 py-1.5 text-sm transition ${activeSection === 'cadastro' ? 'border border-slate-200 bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
+          className={`rounded-lg border px-3 py-1.5 text-sm transition ${activeSection === 'cadastro' ? 'border-[#17407E] bg-[#17407E] text-white shadow-sm' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white'}`}
         >
           Cadastro
         </button>
         <button
           type="button"
           onClick={() => setActiveSection('lifecycle')}
-          className={`rounded-lg px-3 py-1.5 text-sm transition ${activeSection === 'lifecycle' ? 'border border-slate-200 bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
+          className={`rounded-lg border px-3 py-1.5 text-sm transition ${activeSection === 'lifecycle' ? 'border-[#17407E] bg-[#17407E] text-white shadow-sm' : 'border-transparent text-slate-600 hover:border-slate-200 hover:bg-white'}`}
         >
           Admissões & Demissões
         </button>
