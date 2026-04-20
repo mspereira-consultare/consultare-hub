@@ -107,19 +107,21 @@ Aceita apenas:
 O histórico de importações continua salvo em `payroll_import_files`.
 
 #### Benefícios
-Primeiro corte da Onda 2 do RH dentro do mesmo módulo da folha.
+Primeiro corte da Onda 2 do RH dentro do mesmo módulo da folha, com foco em visão gerencial da competência.
 
-Mostra a memória mensal por colaborador para:
-- `VR por dia` e `VR no período`;
-- `VT por dia`, `VT mensal` e `VT no período`;
-- desconto de VT;
-- desconto de Totalpass;
-- outros descontos fixos;
-- status operacional da linha para compra e conferência.
+Mostra a memória mensal por colaborador e o consolidado por centro de custo para:
+- `VR a comprar`, calculado por dia elegível;
+- `VT pago em folha`, pago em dinheiro junto ao salário;
+- `D.V.T.`, desconto de VT lançado na folha;
+- `Desconto Totalpass`, mantido como desconto em folha até confirmação de regra operacional diferente;
+- outros descontos fixos lançados na folha;
+- pendências de cadastro e alertas operacionais.
 
 Nesta etapa:
 - a aba reaproveita o snapshot da competência já consolidado em `payroll_lines`;
 - os dias elegíveis vêm do fechamento já calculado da competência;
+- `Total a providenciar` representa `VR a comprar + VT pago em folha`;
+- `Total descontado em folha` representa `D.V.T. + Totalpass + outros descontos`;
 - pendências de cadastro e alertas operacionais são reaproveitados da memória de cálculo e do snapshot do colaborador;
 - após corrigir cadastro ou ponto, o RH deve usar `Gerar folha` novamente para atualizar a visão de benefícios.
 
@@ -176,7 +178,7 @@ Observação:
 - `POST /api/admin/folha-pagamento/periods/[id]/imports/point` -> responde `202 Accepted` e enfileira o processamento
 - `POST /api/admin/folha-pagamento/periods/[id]/generate`
 - `GET /api/admin/folha-pagamento/periods/[id]/lines`
-- `GET /api/admin/folha-pagamento/periods/[id]/benefits`
+- `GET /api/admin/folha-pagamento/periods/[id]/benefits` -> retorna linhas, totais gerenciais e consolidado por centro de custo
 - `GET /api/admin/folha-pagamento/periods/[id]/preview`
 - `PATCH /api/admin/folha-pagamento/lines/[lineId]`
 - `POST /api/admin/folha-pagamento/occurrences`
@@ -206,6 +208,9 @@ Observação:
 - atrasos consolidados exibidos no painel em minutos;
 - desconto de atraso convertido de minutos para horas após aplicar a tolerância diária da competência;
 - desconto de VT limitado ao menor valor entre custo do VT e `6%` do salário básico;
+- VT é tratado como benefício pago em dinheiro na folha, não como pagamento a fornecedor;
+- VR é tratado como valor estimado de compra/carga externa;
+- Totalpass permanece como desconto em folha até segunda ordem do RH;
 - estágio sem desconto automático de `6%` de VT por padrão;
 - horas extras e adicional noturno ficam fora desta etapa.
 

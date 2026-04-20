@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronRight, CircleAlert, Ticket, TrainFront, Wallet } from 'lucide-react';
+import { ChevronRight, CircleAlert, Landmark, TrainFront, Wallet } from 'lucide-react';
 import type { PayrollBenefitRow, PayrollBenefitsSummary } from '@/lib/payroll/types';
 import { formatMoney } from './formatters';
 
@@ -12,28 +12,28 @@ const transportVoucherModeLabelMap: Record<string, string> = {
 
 const summaryCards = [
   {
-    key: 'totalEmployees',
-    title: 'Colaboradores elegíveis',
-    helper: 'Linhas consolidadas da competência.',
-    icon: Ticket,
-    format: (summary: PayrollBenefitsSummary) => String(summary.totalEmployees),
-    tone: 'slate',
-  },
-  {
-    key: 'totalMealVoucher',
-    title: 'VR previsto',
-    helper: 'Memória mensal por dia elegível.',
+    key: 'mealVoucherPurchaseTotal',
+    title: 'VR a comprar',
+    helper: 'Valor estimado para compra/carga do período.',
     icon: Wallet,
-    format: (summary: PayrollBenefitsSummary) => formatMoney(summary.totalMealVoucher),
+    format: (summary: PayrollBenefitsSummary) => formatMoney(summary.mealVoucherPurchaseTotal),
     tone: 'emerald',
   },
   {
-    key: 'totalTransportVoucher',
-    title: 'VT previsto',
-    helper: 'Recorte consolidado do período.',
+    key: 'cashTransportBenefitTotal',
+    title: 'VT pago em folha',
+    helper: 'Valor em dinheiro junto ao salário.',
     icon: TrainFront,
-    format: (summary: PayrollBenefitsSummary) => formatMoney(summary.totalTransportVoucher),
+    format: (summary: PayrollBenefitsSummary) => formatMoney(summary.cashTransportBenefitTotal),
     tone: 'blue',
+  },
+  {
+    key: 'payrollDiscountsTotal',
+    title: 'Descontos em folha',
+    helper: 'D.V.T., Totalpass e descontos fixos.',
+    icon: Landmark,
+    format: (summary: PayrollBenefitsSummary) => formatMoney(summary.payrollDiscountsTotal),
+    tone: 'slate',
   },
   {
     key: 'pendingEmployees',
@@ -74,8 +74,17 @@ export function PayrollBenefitsPanel({
     totalMealVoucher: 0,
     totalTransportVoucher: 0,
     totalBenefitDiscounts: 0,
+    mealVoucherPurchaseTotal: 0,
+    cashTransportBenefitTotal: 0,
+    transportVoucherPayrollDiscountTotal: 0,
+    totalpassPayrollDiscountTotal: 0,
+    otherPayrollDiscountTotal: 0,
+    payrollDiscountsTotal: 0,
+    companyProvisionTotal: 0,
+    transportNetPayrollImpact: 0,
     pendingEmployees: 0,
     attentionEmployees: 0,
+    costCenters: [],
   };
 
   return (
@@ -84,10 +93,10 @@ export function PayrollBenefitsPanel({
         <div className="border-b border-slate-200 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-800">Benefícios da competência</h3>
           <p className="mt-1 text-xs text-slate-500">
-            Primeira etapa da Onda 2: memória mensal de VR, VT, Totalpass e descontos fixos com base no snapshot atual da competência.
+            Visão gerencial da competência: VR a comprar, VT pago em folha e descontos lançados na folha operacional.
           </p>
           <p className="mt-2 text-xs text-slate-500">
-            Após corrigir cadastro ou ponto, use <span className="font-semibold text-slate-700">Gerar folha</span> novamente para atualizar esta visão.
+            VR representa compra/carga. VT é pago em dinheiro na folha. Totalpass permanece como desconto em folha até confirmação da regra operacional.
           </p>
         </div>
 
@@ -118,16 +127,81 @@ export function PayrollBenefitsPanel({
             );
           })}
         </div>
+
+        <div className="grid gap-3 border-t border-slate-200 bg-slate-50/70 p-4 lg:grid-cols-3">
+          <MetricLine
+            label="Total a providenciar"
+            value={formatMoney(data.companyProvisionTotal)}
+            helper="VR a comprar + VT pago em folha."
+          />
+          <MetricLine
+            label="Total descontado em folha"
+            value={formatMoney(data.payrollDiscountsTotal)}
+            helper={`D.V.T. ${formatMoney(data.transportVoucherPayrollDiscountTotal)} | Totalpass ${formatMoney(data.totalpassPayrollDiscountTotal)} | Outros ${formatMoney(data.otherPayrollDiscountTotal)}`}
+          />
+          <MetricLine
+            label="Impacto líquido do VT"
+            value={formatMoney(data.transportNetPayrollImpact)}
+            helper="VT pago em folha menos D.V.T."
+          />
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="border-b border-slate-200 px-4 py-3">
+          <h3 className="text-sm font-semibold text-slate-800">Consolidado por centro de custo</h3>
+          <p className="mt-1 text-xs text-slate-500">Resumo para conferência gerencial antes de acionar compra/carga de VR e fechamento da folha.</p>
+        </div>
+        <div className="overflow-auto">
+          <table className="min-w-[760px] w-full text-sm">
+            <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
+              <tr>
+                <th className="px-4 py-3 text-left">Centro de custo</th>
+                <th className="px-3 py-3 text-center">Colab.</th>
+                <th className="px-3 py-3 text-right">VR a comprar</th>
+                <th className="px-3 py-3 text-right">VT pago em folha</th>
+                <th className="px-3 py-3 text-right">Descontos em folha</th>
+                <th className="px-3 py-3 text-center">Pendências</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
+                    Carregando consolidado por centro de custo...
+                  </td>
+                </tr>
+              ) : data.costCenters.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
+                    Nenhum centro de custo consolidado para a competência atual.
+                  </td>
+                </tr>
+              ) : (
+                data.costCenters.map((center) => (
+                  <tr key={center.centerCost} className="border-t border-slate-100">
+                    <td className="px-4 py-3 font-semibold text-slate-800">{center.centerCost}</td>
+                    <td className="px-3 py-3 text-center text-slate-700">{center.totalEmployees}</td>
+                    <td className="px-3 py-3 text-right">{formatMoney(center.mealVoucherPurchaseTotal)}</td>
+                    <td className="px-3 py-3 text-right">{formatMoney(center.cashTransportBenefitTotal)}</td>
+                    <td className="px-3 py-3 text-right">{formatMoney(center.payrollDiscountsTotal)}</td>
+                    <td className="px-3 py-3 text-center text-slate-700">{center.pendingEmployees}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-800">Memória mensal por colaborador</h3>
-          <p className="mt-1 text-xs text-slate-500">Dias elegíveis vêm do fechamento já consolidado da competência e abastecem o recorte operacional de compra.</p>
+          <p className="mt-1 text-xs text-slate-500">Dias elegíveis vêm do fechamento já consolidado da competência. Após corrigir cadastro ou ponto, use Gerar folha novamente.</p>
         </div>
 
         <div className="max-h-[560px] overflow-auto">
-          <table className="min-w-[1560px] w-full text-sm">
+          <table className="min-w-[1660px] w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
               <tr>
                 <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left">Colaborador</th>
@@ -135,27 +209,28 @@ export function PayrollBenefitsPanel({
                 <th className="px-3 py-3 text-left">Contrato</th>
                 <th className="px-3 py-3 text-center">Dias elegíveis</th>
                 <th className="px-3 py-3 text-right">VR / dia</th>
-                <th className="px-3 py-3 text-right">VR no período</th>
+                <th className="px-3 py-3 text-right">VR a comprar</th>
                 <th className="px-3 py-3 text-left">Modo VT</th>
                 <th className="px-3 py-3 text-right">VT por dia</th>
                 <th className="px-3 py-3 text-right">VT mensal</th>
-                <th className="px-3 py-3 text-right">VT no período</th>
-                <th className="px-3 py-3 text-right">Desc. VT</th>
-                <th className="px-3 py-3 text-right">Totalpass</th>
+                <th className="px-3 py-3 text-right">VT pago em folha</th>
+                <th className="px-3 py-3 text-right">D.V.T.</th>
+                <th className="px-3 py-3 text-right">Desconto Totalpass</th>
                 <th className="px-3 py-3 text-right">Outros desc.</th>
+                <th className="px-3 py-3 text-right">Total desc.</th>
                 <th className="px-3 py-3 text-left">Status e pendências</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-16 text-center text-slate-500">
+                  <td colSpan={15} className="px-4 py-16 text-center text-slate-500">
                     Carregando memória mensal de benefícios...
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="px-4 py-16 text-center text-slate-500">
+                  <td colSpan={15} className="px-4 py-16 text-center text-slate-500">
                     Nenhum benefício consolidado para a competência atual. Gere a folha após validar o ponto para montar a memória mensal desta aba.
                   </td>
                 </tr>
@@ -179,14 +254,15 @@ export function PayrollBenefitsPanel({
                     <td className="px-3 py-3 text-slate-700">{row.contractType || '-'}</td>
                     <td className="px-3 py-3 text-center text-slate-700">{row.daysEligible}</td>
                     <td className="px-3 py-3 text-right">{row.mealVoucherPerDay === null ? '-' : formatMoney(row.mealVoucherPerDay)}</td>
-                    <td className="px-3 py-3 text-right">{formatMoney(row.mealVoucherAmount)}</td>
+                    <td className="px-3 py-3 text-right">{formatMoney(row.mealVoucherPurchaseAmount)}</td>
                     <td className="px-3 py-3 text-slate-700">{transportVoucherModeLabelMap[row.transportVoucherMode] || row.transportVoucherMode}</td>
                     <td className="px-3 py-3 text-right">{row.transportVoucherPerDay === null ? '-' : formatMoney(row.transportVoucherPerDay)}</td>
                     <td className="px-3 py-3 text-right">{row.transportVoucherMonthlyFixed === null ? '-' : formatMoney(row.transportVoucherMonthlyFixed)}</td>
-                    <td className="px-3 py-3 text-right">{formatMoney(row.transportVoucherAmount)}</td>
-                    <td className="px-3 py-3 text-right">{formatMoney(row.transportVoucherDiscount)}</td>
-                    <td className="px-3 py-3 text-right">{formatMoney(row.totalpassDiscount)}</td>
-                    <td className="px-3 py-3 text-right">{formatMoney(row.otherFixedDiscount)}</td>
+                    <td className="px-3 py-3 text-right">{formatMoney(row.cashTransportBenefitAmount)}</td>
+                    <td className="px-3 py-3 text-right">{formatMoney(row.transportVoucherPayrollDiscount)}</td>
+                    <td className="px-3 py-3 text-right">{formatMoney(row.totalpassPayrollDiscount)}</td>
+                    <td className="px-3 py-3 text-right">{formatMoney(row.otherPayrollDiscount)}</td>
+                    <td className="px-3 py-3 text-right">{formatMoney(row.payrollDiscountsTotal)}</td>
                     <td className="px-3 py-3">
                       <div className="space-y-2">
                         <span className={`inline-flex rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClassByStatus[row.status]}`}>
@@ -212,6 +288,16 @@ export function PayrollBenefitsPanel({
           </table>
         </div>
       </section>
+    </div>
+  );
+}
+
+function MetricLine({ label, value, helper }: { label: string; value: string; helper: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">{label}</div>
+      <div className="mt-2 text-base font-bold text-slate-900">{value}</div>
+      <div className="mt-1 text-xs text-slate-500">{helper}</div>
     </div>
   );
 }

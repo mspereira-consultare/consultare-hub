@@ -1654,9 +1654,9 @@ const parsePayrollCalculationWarnings = (value: string | null | undefined): Payr
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    const warnings = Array.isArray(parsed?.warnings) ? parsed.warnings : [];
+    const warnings: unknown[] = Array.isArray(parsed?.warnings) ? parsed.warnings : [];
     return warnings
-      .map((warning) => ({
+      .map((warning: unknown) => ({
         code: clean((warning as Record<string, unknown>)?.code),
         message: clean((warning as Record<string, unknown>)?.message),
       }))
@@ -1865,16 +1865,54 @@ const upsertBenefitIssue = (
   issues.push(nextIssue);
 };
 
-const buildPayrollBenefitsSummary = (rows: PayrollBenefitRow[]): PayrollBenefitsSummary => ({
-  totalEmployees: rows.length,
-  totalMealVoucher: roundMoney(rows.reduce((sum, row) => sum + row.mealVoucherAmount, 0)),
-  totalTransportVoucher: roundMoney(rows.reduce((sum, row) => sum + row.transportVoucherAmount, 0)),
-  totalBenefitDiscounts: roundMoney(
-    rows.reduce((sum, row) => sum + row.transportVoucherDiscount + row.totalpassDiscount + row.otherFixedDiscount, 0),
-  ),
-  pendingEmployees: rows.filter((row) => row.status === 'PENDENTE_CADASTRO').length,
-  attentionEmployees: rows.filter((row) => row.status === 'ATENCAO').length,
-});
+const buildPayrollBenefitsSummary = (rows: PayrollBenefitRow[]): PayrollBenefitsSummary => {
+  const costCenterMap = new Map<string, PayrollBenefitsSummary['costCenters'][number]>();
+
+  for (const row of rows) {
+    const centerCost = clean(row.centerCost) || 'Sem centro de custo';
+    const current = costCenterMap.get(centerCost) || {
+      centerCost,
+      totalEmployees: 0,
+      mealVoucherPurchaseTotal: 0,
+      cashTransportBenefitTotal: 0,
+      payrollDiscountsTotal: 0,
+      pendingEmployees: 0,
+    };
+    current.totalEmployees += 1;
+    current.mealVoucherPurchaseTotal = roundMoney(current.mealVoucherPurchaseTotal + row.mealVoucherPurchaseAmount);
+    current.cashTransportBenefitTotal = roundMoney(current.cashTransportBenefitTotal + row.cashTransportBenefitAmount);
+    current.payrollDiscountsTotal = roundMoney(current.payrollDiscountsTotal + row.payrollDiscountsTotal);
+    if (row.status === 'PENDENTE_CADASTRO') current.pendingEmployees += 1;
+    costCenterMap.set(centerCost, current);
+  }
+
+  const mealVoucherPurchaseTotal = roundMoney(rows.reduce((sum, row) => sum + row.mealVoucherPurchaseAmount, 0));
+  const cashTransportBenefitTotal = roundMoney(rows.reduce((sum, row) => sum + row.cashTransportBenefitAmount, 0));
+  const transportVoucherPayrollDiscountTotal = roundMoney(rows.reduce((sum, row) => sum + row.transportVoucherPayrollDiscount, 0));
+  const totalpassPayrollDiscountTotal = roundMoney(rows.reduce((sum, row) => sum + row.totalpassPayrollDiscount, 0));
+  const otherPayrollDiscountTotal = roundMoney(rows.reduce((sum, row) => sum + row.otherPayrollDiscount, 0));
+  const payrollDiscountsTotal = roundMoney(transportVoucherPayrollDiscountTotal + totalpassPayrollDiscountTotal + otherPayrollDiscountTotal);
+
+  return {
+    totalEmployees: rows.length,
+    totalMealVoucher: mealVoucherPurchaseTotal,
+    totalTransportVoucher: cashTransportBenefitTotal,
+    totalBenefitDiscounts: payrollDiscountsTotal,
+    mealVoucherPurchaseTotal,
+    cashTransportBenefitTotal,
+    transportVoucherPayrollDiscountTotal,
+    totalpassPayrollDiscountTotal,
+    otherPayrollDiscountTotal,
+    payrollDiscountsTotal,
+    companyProvisionTotal: roundMoney(mealVoucherPurchaseTotal + cashTransportBenefitTotal),
+    transportNetPayrollImpact: roundMoney(cashTransportBenefitTotal - transportVoucherPayrollDiscountTotal),
+    pendingEmployees: rows.filter((row) => row.status === 'PENDENTE_CADASTRO').length,
+    attentionEmployees: rows.filter((row) => row.status === 'ATENCAO').length,
+    costCenters: Array.from(costCenterMap.values()).sort((a, b) =>
+      a.centerCost.localeCompare(b.centerCost, 'pt-BR', { sensitivity: 'base' }),
+    ),
+  };
+};
 
 const buildPayrollBenefitRow = (
   line: PayrollLine,
@@ -1897,6 +1935,11 @@ const buildPayrollBenefitRow = (
   const transportVoucherMonthlyFixed =
     toNullableNumber(snapshot.transportVoucherMonthlyFixed) ?? employeeFallback?.transportVoucherMonthlyFixed ?? null;
   const mealVoucherAmount = roundMoney((mealVoucherPerDay || 0) * line.daysWorked);
+  const cashTransportBenefitAmount = roundMoney(line.vtProvisioned);
+  const transportVoucherPayrollDiscount = roundMoney(line.vtDiscount);
+  const totalpassPayrollDiscount = roundMoney(line.totalpassDiscount);
+  const otherPayrollDiscount = roundMoney(line.otherFixedDiscount);
+  const payrollDiscountsTotal = roundMoney(transportVoucherPayrollDiscount + totalpassPayrollDiscount + otherPayrollDiscount);
 
   const issues: Array<{ code: string; severity: 'CADASTRO' | 'OPERACIONAL'; message: string }> = [];
 
@@ -1974,13 +2017,21 @@ const buildPayrollBenefitRow = (
     daysEligible: line.daysWorked,
     mealVoucherPerDay,
     mealVoucherAmount,
+    mealVoucherPurchaseAmount: mealVoucherAmount,
     transportVoucherMode,
     transportVoucherPerDay,
     transportVoucherMonthlyFixed,
-    transportVoucherAmount: roundMoney(line.vtProvisioned),
-    transportVoucherDiscount: roundMoney(line.vtDiscount),
-    totalpassDiscount: roundMoney(line.totalpassDiscount),
-    otherFixedDiscount: roundMoney(line.otherFixedDiscount),
+    transportVoucherAmount: cashTransportBenefitAmount,
+    cashTransportBenefitAmount,
+    transportVoucherDiscount: transportVoucherPayrollDiscount,
+    transportVoucherPayrollDiscount,
+    totalpassDiscount: totalpassPayrollDiscount,
+    totalpassPayrollDiscount,
+    otherFixedDiscount: otherPayrollDiscount,
+    otherPayrollDiscount,
+    payrollDiscountsTotal,
+    companyProvisionAmount: roundMoney(mealVoucherAmount + cashTransportBenefitAmount),
+    transportNetPayrollImpact: roundMoney(cashTransportBenefitAmount - transportVoucherPayrollDiscount),
     status,
     issues,
   };

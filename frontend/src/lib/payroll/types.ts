@@ -170,15 +170,32 @@ export type PayrollBenefitRow = {
   daysEligible: number;
   mealVoucherPerDay: number | null;
   mealVoucherAmount: number;
+  mealVoucherPurchaseAmount: number;
   transportVoucherMode: PayrollTransportVoucherMode;
   transportVoucherPerDay: number | null;
   transportVoucherMonthlyFixed: number | null;
   transportVoucherAmount: number;
+  cashTransportBenefitAmount: number;
   transportVoucherDiscount: number;
+  transportVoucherPayrollDiscount: number;
   totalpassDiscount: number;
+  totalpassPayrollDiscount: number;
   otherFixedDiscount: number;
+  otherPayrollDiscount: number;
+  payrollDiscountsTotal: number;
+  companyProvisionAmount: number;
+  transportNetPayrollImpact: number;
   status: PayrollBenefitStatus;
   issues: PayrollBenefitIssue[];
+};
+
+export type PayrollBenefitsCostCenterSummary = {
+  centerCost: string;
+  totalEmployees: number;
+  mealVoucherPurchaseTotal: number;
+  cashTransportBenefitTotal: number;
+  payrollDiscountsTotal: number;
+  pendingEmployees: number;
 };
 
 export type PayrollBenefitsSummary = {
@@ -186,8 +203,17 @@ export type PayrollBenefitsSummary = {
   totalMealVoucher: number;
   totalTransportVoucher: number;
   totalBenefitDiscounts: number;
+  mealVoucherPurchaseTotal: number;
+  cashTransportBenefitTotal: number;
+  transportVoucherPayrollDiscountTotal: number;
+  totalpassPayrollDiscountTotal: number;
+  otherPayrollDiscountTotal: number;
+  payrollDiscountsTotal: number;
+  companyProvisionTotal: number;
+  transportNetPayrollImpact: number;
   pendingEmployees: number;
   attentionEmployees: number;
+  costCenters: PayrollBenefitsCostCenterSummary[];
 };
 
 export type PayrollOptions = {
