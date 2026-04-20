@@ -46,7 +46,10 @@ Este diretório centraliza a documentação funcional e técnica do projeto.
 14. [`14-plano-tecnico-folha-pagamento.md`](14-plano-tecnico-folha-pagamento.md)  
     Plano técnico e implementação do módulo `/folha-pagamento`, com fechamento mensal recorrente, importação de ponto, prévia da planilha operacional e exportação XLSX.
 
-15. [`database/README.md`](database/README.md)  
+15. [`15-plano-tecnico-recrutamento.md`](15-plano-tecnico-recrutamento.md)  
+    Plano técnico e implementação do módulo `/recrutamento`, com vagas, candidatos, funil, anexos e conversão para pré-admissão.
+
+16. [`database/README.md`](database/README.md)  
     Base dedicada de documentação do MySQL vivo do painel, com inventário do schema real, relacionamentos lógicos e dicionário completo de tabelas/colunas.
 
 ## Convenções

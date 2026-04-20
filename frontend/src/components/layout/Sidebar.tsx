@@ -123,6 +123,14 @@ const menuItems: MenuItem[] = [
     pageKey: "folha_pagamento",
   },
   {
+    href: "/recrutamento",
+    label: "Recrutamento",
+    icon: Briefcase,
+    group: "GESTÃO DE PESSOAS",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "recrutamento",
+  },
+  {
     href: "/equipamentos",
     label: "Equipamentos",
     icon: Wrench,

@@ -215,6 +215,8 @@ Status de implementação:
 - agregação atual cobre headcount, aniversários, admissões, desligamentos, turnover, tempo de empresa, ASO e pendências documentais.
 
 ### Onda 5 — `2.19 Processo de triagem de currículos`
+Status: iniciada no MVP operacional.
+
 Objetivo da onda:
 - criar o primeiro fluxo estruturado de recrutamento dentro do painel
 
@@ -247,6 +249,15 @@ Principais mudanças esperadas:
 - novo conjunto de tabelas e APIs de recrutamento
 - nova permissão `recrutamento`
 - reaproveitamento do padrão de funil/lista/drawer já validado em outros módulos
+
+Implementação iniciada:
+- módulo `/recrutamento` adicionado à navegação em `GESTÃO DE PESSOAS`;
+- permissão `recrutamento` adicionada à matriz de permissões;
+- tabelas runtime `recruitment_jobs`, `recruitment_candidates`, `recruitment_candidate_files` e `recruitment_candidate_history`;
+- APIs para vagas, candidatos, anexos, download e conversão candidato -> pré-admissão;
+- funil visual com cards compactos e modal de detalhes;
+- modal `Como funciona` com fluxo guiado para o usuário final;
+- conversão de candidato aprovado para `employees.status = PRE_ADMISSAO`, com validação de duplicidade por CPF/e-mail.
 
 ### Onda 6 — `2.21 Qualidade incluir no painel (meta funcionários)`
 Objetivo da onda:

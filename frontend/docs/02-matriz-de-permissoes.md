@@ -32,6 +32,9 @@ Este documento descreve o controle de acesso atual do sistema:
 | `produtividade` | `/produtividade` |
 | `checklist_crc` | `/checklist-crc` |
 | `checklist_recepcao` | `/checklist-recepcao` |
+| `colaboradores` | `/colaboradores` |
+| `folha_pagamento` | `/folha-pagamento` |
+| `recrutamento` | `/recrutamento` |
 | `users` | `/users` |
 | `contract_templates` | `/modelos-contrato` |
 | `settings` | `/settings` |
@@ -151,6 +154,9 @@ Operações implementadas em `frontend/src/lib/permissions_server.ts`:
 | `/api/admin/profissionais/:id/contratos` | `profissionais` | `view`/`edit` |
 | `/api/admin/profissionais/:id/contratos/:contractId/reprocess` | `profissionais` | `edit` |
 | `/api/admin/profissionais/:id/contratos/:contractId/download` | `profissionais` | `view` |
+| `/api/admin/colaboradores*` | `colaboradores` | `view`/`edit` |
+| `/api/admin/folha-pagamento*` | `folha_pagamento` | `view`/`edit` |
+| `/api/admin/recrutamento*` | `recrutamento` | `view`/`edit` |
 | `/api/admin/contract-templates/:id/download` | `contract_templates` | `view` |
 | `/api/admin/refresh` | mapeado por serviço | `refresh` da página correspondente |
 
@@ -206,6 +212,35 @@ Implementacao:
 - `frontend/src/lib/profissionais/auth.ts`
 - `frontend/src/app/api/admin/profissionais/route.ts`
 - `frontend/src/app/api/admin/profissionais/[id]/route.ts`
+
+---
+
+## Atualizacao: modulo `recrutamento`
+
+O módulo `recrutamento` foi adicionado com `pageKey = recrutamento`.
+
+### Rota
+
+- `/recrutamento`
+- APIs relacionadas: `/api/admin/recrutamento*`
+
+### Defaults atuais
+
+| Perfil | view | edit | refresh |
+|---|---:|---:|---:|
+| ADMIN | sim | sim | sim |
+| GESTOR | sim | sim | sim |
+| OPERADOR | nao | nao | nao |
+
+### Regra de autorizacao
+
+- Leitura do painel, anexos e histórico: exige `view`.
+- Criação/edição de vagas, candidatos, anexos e conversão para pré-admissão: exige `edit`.
+
+Implementacao:
+- `frontend/src/lib/permissions.ts`
+- `frontend/src/lib/recrutamento/auth.ts`
+- `frontend/src/app/api/admin/recrutamento/*`
 
 ---
 
