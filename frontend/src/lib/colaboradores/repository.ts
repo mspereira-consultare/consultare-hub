@@ -31,6 +31,7 @@ import {
   computeAsoStatus,
   computeDocumentProgress,
   computeMissingDocuments,
+  getDocumentTypeLabel,
   getTodayInSaoPauloIso,
 } from '@/lib/colaboradores/status';
 import type {
@@ -40,6 +41,14 @@ import type {
   EmployeeFilters,
   EmployeeInput,
   EmployeeListItem,
+  EmployeeLifecycleCase,
+  EmployeeLifecycleCaseInput,
+  EmployeeLifecycleCaseType,
+  EmployeeLifecycleStage,
+  EmployeeLifecycleTask,
+  EmployeeLifecycleTaskSourceType,
+  EmployeeLifecycleTaskStatus,
+  EmployeeLifecycleTaskUpdateInput,
   EmployeeLockerAssignment,
   EmployeeLockerAssignmentInput,
   EmployeeRecessPeriod,
@@ -775,6 +784,39 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS employee_lifecycle_cases (
+      id VARCHAR(64) PRIMARY KEY,
+      employee_id VARCHAR(64) NOT NULL,
+      case_type VARCHAR(20) NOT NULL,
+      stage VARCHAR(40) NOT NULL,
+      owner_name VARCHAR(180) NULL,
+      target_date DATE NULL,
+      closed_at TEXT NULL,
+      notes TEXT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS employee_lifecycle_tasks (
+      id VARCHAR(64) PRIMARY KEY,
+      case_id VARCHAR(64) NOT NULL,
+      task_key VARCHAR(80) NOT NULL,
+      title VARCHAR(180) NOT NULL,
+      status VARCHAR(20) NOT NULL,
+      owner_name VARCHAR(180) NULL,
+      due_date DATE NULL,
+      notes TEXT NULL,
+      source_type VARCHAR(40) NOT NULL,
+      source_ref VARCHAR(120) NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS employee_audit_log (
       id VARCHAR(64) PRIMARY KEY,
       employee_id VARCHAR(64) NULL,
@@ -805,6 +847,16 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN notes TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN returned_at DATE NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1`);
+  await safeAddColumn(db, `ALTER TABLE employee_lifecycle_cases ADD COLUMN owner_name VARCHAR(180) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_lifecycle_cases ADD COLUMN target_date DATE NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_lifecycle_cases ADD COLUMN closed_at TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_lifecycle_cases ADD COLUMN notes TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_lifecycle_tasks ADD COLUMN owner_name VARCHAR(180) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_lifecycle_tasks ADD COLUMN due_date DATE NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_lifecycle_tasks ADD COLUMN notes TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_lifecycle_tasks ADD COLUMN source_type VARCHAR(40) NOT NULL DEFAULT 'MANUAL'`);
+  await safeAddColumn(db, `ALTER TABLE employee_lifecycle_tasks ADD COLUMN source_ref VARCHAR(120) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_lifecycle_tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`);
 
   await safeCreateIndex(db, `CREATE INDEX idx_employees_full_name ON employees (full_name)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employees_status ON employees (status)`);
@@ -814,6 +866,9 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_employee_locker_assignments_employee ON employee_locker_assignments (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_locker_assignments_active ON employee_locker_assignments (unit_name, locker_code, is_active)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_recess_periods_employee ON employee_recess_periods (employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_lifecycle_cases_employee ON employee_lifecycle_cases (employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_lifecycle_cases_stage ON employee_lifecycle_cases (stage)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_lifecycle_tasks_case ON employee_lifecycle_tasks (case_id)`);
 
   tablesEnsured = true;
 };
@@ -1753,6 +1808,431 @@ export const deleteEmployeeRecessPeriod = async (
   await insertAudit(db, 'EMPLOYEE_RECESS_DELETED', actorUserId, employeeId, { entryId });
   return listEmployeeRecessPeriods(db, employeeId);
 };
+
+const lifecycleCaseTypes = new Set<EmployeeLifecycleCaseType>(['ADMISSION', 'TERMINATION']);
+const lifecycleStages = new Set<EmployeeLifecycleStage>(['PRE_ADMISSION', 'ADMISSION_IN_PROGRESS', 'TERMINATION_IN_PROGRESS', 'CLOSED']);
+const lifecycleTaskStatuses = new Set<EmployeeLifecycleTaskStatus>(['PENDING', 'DONE', 'BLOCKED', 'WAIVED']);
+
+const normalizeLifecycleCaseType = (value: any): EmployeeLifecycleCaseType => {
+  const normalized = upper(value || 'ADMISSION') as EmployeeLifecycleCaseType;
+  if (!lifecycleCaseTypes.has(normalized)) {
+    throw new EmployeeValidationError('Tipo de processo inválido.');
+  }
+  return normalized;
+};
+
+const normalizeLifecycleStage = (value: any, caseType: EmployeeLifecycleCaseType): EmployeeLifecycleStage => {
+  const fallback = caseType === 'TERMINATION' ? 'TERMINATION_IN_PROGRESS' : 'PRE_ADMISSION';
+  const normalized = upper(value || fallback) as EmployeeLifecycleStage;
+  if (!lifecycleStages.has(normalized)) {
+    throw new EmployeeValidationError('Etapa do processo inválida.');
+  }
+  if (caseType === 'TERMINATION' && normalized === 'PRE_ADMISSION') {
+    throw new EmployeeValidationError('Desligamento não pode usar etapa de pré-admissão.');
+  }
+  if (caseType === 'ADMISSION' && normalized === 'TERMINATION_IN_PROGRESS') {
+    throw new EmployeeValidationError('Admissão não pode usar etapa de desligamento.');
+  }
+  return normalized;
+};
+
+const normalizeLifecycleTaskStatus = (value: any): EmployeeLifecycleTaskStatus => {
+  const normalized = upper(value || 'PENDING') as EmployeeLifecycleTaskStatus;
+  if (!lifecycleTaskStatuses.has(normalized)) {
+    throw new EmployeeValidationError('Status da tarefa inválido.');
+  }
+  return normalized;
+};
+
+const defaultLifecycleTasks: Record<EmployeeLifecycleCaseType, Array<{
+  key: string;
+  title: string;
+  sourceType: EmployeeLifecycleTaskSourceType;
+  sourceRef: string | null;
+}>> = {
+  ADMISSION: [
+    { key: 'contract_data', title: 'Cadastro contratual completo', sourceType: 'EMPLOYEE_FIELD', sourceRef: 'ADMISSION_DATA' },
+    { key: 'required_documents', title: 'Documentos obrigatórios entregues', sourceType: 'DOCUMENT', sourceRef: 'REQUIRED_DOCUMENTS' },
+    { key: 'aso', title: 'ASO admissional anexado e válido', sourceType: 'DOCUMENT', sourceRef: 'ASO' },
+    { key: 'initial_benefits', title: 'Benefícios iniciais conferidos', sourceType: 'EMPLOYEE_FIELD', sourceRef: 'BENEFITS' },
+    { key: 'uniform_delivery', title: 'Entrega de uniforme registrada', sourceType: 'UNIFORM', sourceRef: 'DELIVERY' },
+    { key: 'locker_delivery', title: 'Armário e chave registrados', sourceType: 'LOCKER', sourceRef: 'ASSIGNMENT' },
+    { key: 'final_notes', title: 'Observações finais da admissão', sourceType: 'MANUAL', sourceRef: null },
+  ],
+  TERMINATION: [
+    { key: 'termination_data', title: 'Data e motivo de desligamento preenchidos', sourceType: 'EMPLOYEE_FIELD', sourceRef: 'TERMINATION_DATA' },
+    { key: 'uniform_return', title: 'Devolução de uniforme conferida', sourceType: 'UNIFORM', sourceRef: 'RETURN' },
+    { key: 'locker_return', title: 'Armário e chave devolvidos', sourceType: 'LOCKER', sourceRef: 'RETURN' },
+    { key: 'final_documents', title: 'Documentos finais anexados ou dispensados', sourceType: 'DOCUMENT', sourceRef: 'TERMINATION_DOCUMENTS' },
+    { key: 'benefits_review', title: 'Benefícios e descontos finais revisados', sourceType: 'EMPLOYEE_FIELD', sourceRef: 'BENEFITS' },
+    { key: 'final_notes', title: 'Observações finais do desligamento', sourceType: 'MANUAL', sourceRef: null },
+  ],
+};
+
+const mapLifecycleTaskRow = (row: any): Omit<EmployeeLifecycleTask, 'sourceReady' | 'sourceSummary'> => ({
+  id: clean(row.id),
+  caseId: clean(row.case_id),
+  taskKey: clean(row.task_key),
+  title: clean(row.title),
+  status: upper(row.status || 'PENDING') as EmployeeLifecycleTaskStatus,
+  ownerName: clean(row.owner_name) || null,
+  dueDate: parseDate(row.due_date),
+  notes: clean(row.notes) || null,
+  sourceType: upper(row.source_type || 'MANUAL') as EmployeeLifecycleTaskSourceType,
+  sourceRef: clean(row.source_ref) || null,
+  sortOrder: parsePositiveInt(row.sort_order, 0),
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const resolveLifecycleTaskSource = (
+  task: Omit<EmployeeLifecycleTask, 'sourceReady' | 'sourceSummary'>,
+  employee: EmployeeListItem,
+  documents: EmployeeDocument[],
+  uniforms: EmployeeUniformItem[],
+  lockers: EmployeeLockerAssignment[],
+) => {
+  if (task.sourceType === 'DOCUMENT' && task.sourceRef === 'REQUIRED_DOCUMENTS') {
+    const missing = computeMissingDocuments(employee, documents);
+    return {
+      sourceReady: missing.length === 0,
+      sourceSummary: missing.length === 0
+        ? 'Todos os documentos obrigatórios do perfil estão ativos.'
+        : `${missing.length} documento(s) obrigatório(s) pendente(s): ${missing.slice(0, 3).map(getDocumentTypeLabel).join(', ')}${missing.length > 3 ? '...' : ''}`,
+    };
+  }
+
+  if (task.sourceType === 'DOCUMENT' && task.sourceRef === 'ASO') {
+    const asoStatus = computeAsoStatus(documents);
+    return {
+      sourceReady: asoStatus.status === 'OK' || asoStatus.status === 'VENCENDO',
+      sourceSummary: asoStatus.expiresAt
+        ? `ASO ${asoStatus.status.toLowerCase()} com vencimento em ${asoStatus.expiresAt}.`
+        : 'ASO ativo não encontrado.',
+    };
+  }
+
+  if (task.sourceType === 'DOCUMENT' && task.sourceRef === 'TERMINATION_DOCUMENTS') {
+    return {
+      sourceReady: task.status === 'DONE' || task.status === 'WAIVED',
+      sourceSummary: 'Use a aba Documentos para anexar termo/arquivo final ou marque a tarefa como dispensada.',
+    };
+  }
+
+  if (task.sourceType === 'EMPLOYEE_FIELD' && task.sourceRef === 'ADMISSION_DATA') {
+    const missing = [
+      !employee.fullName ? 'nome' : '',
+      !employee.cpf ? 'CPF' : '',
+      !employee.admissionDate ? 'admissão' : '',
+      !employee.employmentRegime ? 'regime' : '',
+      !employee.jobTitle ? 'cargo' : '',
+      !employee.costCenter ? 'centro de custo' : '',
+    ].filter(Boolean);
+    return {
+      sourceReady: missing.length === 0,
+      sourceSummary: missing.length === 0 ? 'Cadastro contratual mínimo preenchido.' : `Campos pendentes: ${missing.join(', ')}.`,
+    };
+  }
+
+  if (task.sourceType === 'EMPLOYEE_FIELD' && task.sourceRef === 'TERMINATION_DATA') {
+    const ready = employee.status === 'DESLIGADO' && Boolean(employee.terminationDate && employee.terminationReason);
+    return {
+      sourceReady: ready,
+      sourceSummary: ready
+        ? `Desligado em ${employee.terminationDate} com motivo preenchido.`
+        : 'Atualize o cadastro para status Desligado com data e motivo.',
+    };
+  }
+
+  if (task.sourceType === 'EMPLOYEE_FIELD' && task.sourceRef === 'BENEFITS') {
+    return {
+      sourceReady: task.status === 'DONE' || task.status === 'WAIVED',
+      sourceSummary: 'Conferência operacional: VR, VT, Totalpass, seguro, descontos fixos e observações de folha.',
+    };
+  }
+
+  if (task.sourceType === 'UNIFORM' && task.sourceRef === 'DELIVERY') {
+    return {
+      sourceReady: uniforms.length > 0,
+      sourceSummary: uniforms.length > 0 ? `${uniforms.length} registro(s) de uniforme encontrado(s).` : 'Nenhum registro de uniforme encontrado.',
+    };
+  }
+
+  if (task.sourceType === 'UNIFORM' && task.sourceRef === 'RETURN') {
+    const pending = uniforms.filter((item) => item.status !== 'DEVOLVIDO');
+    return {
+      sourceReady: pending.length === 0,
+      sourceSummary: pending.length === 0 ? 'Sem uniforme pendente de devolução.' : `${pending.length} item(ns) de uniforme ainda não devolvido(s).`,
+    };
+  }
+
+  if (task.sourceType === 'LOCKER' && task.sourceRef === 'ASSIGNMENT') {
+    const active = lockers.find((item) => item.isActive);
+    return {
+      sourceReady: Boolean(active),
+      sourceSummary: active ? `Armário ${active.lockerCode} ativo em ${active.unitName}.` : 'Nenhum armário/chave ativo registrado.',
+    };
+  }
+
+  if (task.sourceType === 'LOCKER' && task.sourceRef === 'RETURN') {
+    const active = lockers.filter((item) => item.isActive && !item.returnedAt);
+    return {
+      sourceReady: active.length === 0,
+      sourceSummary: active.length === 0 ? 'Sem armário/chave pendente de devolução.' : `${active.length} armário(s)/chave(s) ainda ativo(s).`,
+    };
+  }
+
+  return {
+    sourceReady: task.status === 'DONE' || task.status === 'WAIVED',
+    sourceSummary: 'Tarefa manual acompanhada pelo checklist.',
+  };
+};
+
+const normalizeLifecycleCaseInput = (payload: any): EmployeeLifecycleCaseInput => {
+  const caseType = normalizeLifecycleCaseType(payload?.caseType || payload?.case_type);
+  return {
+    employeeId: clean(payload?.employeeId || payload?.employee_id),
+    caseType,
+    stage: normalizeLifecycleStage(payload?.stage, caseType),
+    ownerName: clean(payload?.ownerName || payload?.owner_name) || null,
+    targetDate: parseDate(payload?.targetDate || payload?.target_date),
+    notes: clean(payload?.notes) || null,
+  };
+};
+
+export const listEmployeeLifecycleCases = async (db: DbInterface): Promise<EmployeeLifecycleCase[]> => {
+  await ensureEmployeesTables(db);
+  const rows = await db.query(`
+    SELECT
+      lc.id AS lifecycle_id,
+      lc.employee_id AS lifecycle_employee_id,
+      lc.case_type AS lifecycle_case_type,
+      lc.stage AS lifecycle_stage,
+      lc.owner_name AS lifecycle_owner_name,
+      lc.target_date AS lifecycle_target_date,
+      lc.closed_at AS lifecycle_closed_at,
+      lc.notes AS lifecycle_notes,
+      lc.created_at AS lifecycle_created_at,
+      lc.updated_at AS lifecycle_updated_at,
+      e.*
+    FROM employee_lifecycle_cases lc
+    INNER JOIN employees e ON e.id = lc.employee_id
+    ORDER BY
+      CASE lc.stage
+        WHEN 'PRE_ADMISSION' THEN 1
+        WHEN 'ADMISSION_IN_PROGRESS' THEN 2
+        WHEN 'TERMINATION_IN_PROGRESS' THEN 3
+        WHEN 'CLOSED' THEN 4
+        ELSE 9
+      END,
+      COALESCE(lc.target_date, lc.created_at) ASC
+  `);
+  const caseIds = rows.map((row: any) => clean(row.lifecycle_id)).filter(Boolean);
+  const employeeIds = rows.map((row: any) => clean(row.lifecycle_employee_id)).filter(Boolean);
+  const taskRows = caseIds.length
+    ? await db.query(
+        `SELECT * FROM employee_lifecycle_tasks WHERE case_id IN (${caseIds.map(() => '?').join(',')}) ORDER BY sort_order ASC, created_at ASC`,
+        caseIds,
+      )
+    : [];
+
+  const [docsMap, uniformsMap, lockersMap] = await Promise.all([
+    loadDocumentsMap(db, employeeIds),
+    Promise.all(employeeIds.map(async (employeeId) => [employeeId, await listEmployeeUniformItems(db, employeeId)] as const)).then((entries) => new Map(entries)),
+    Promise.all(employeeIds.map(async (employeeId) => [employeeId, await listEmployeeLockerAssignments(db, employeeId)] as const)).then((entries) => new Map(entries)),
+  ]);
+
+  const tasksByCase = new Map<string, Array<Omit<EmployeeLifecycleTask, 'sourceReady' | 'sourceSummary'>>>();
+  for (const row of taskRows) {
+    const task = mapLifecycleTaskRow(row);
+    const list = tasksByCase.get(task.caseId) || [];
+    list.push(task);
+    tasksByCase.set(task.caseId, list);
+  }
+
+  return rows.map((row: any) => {
+    const employee = mapEmployee(row);
+    const documents = docsMap.get(employee.id) || [];
+    const merged = mergeEmployee(employee, documents);
+    const uniforms = uniformsMap.get(employee.id) || [];
+    const lockers = lockersMap.get(employee.id) || [];
+    const tasks = (tasksByCase.get(clean(row.lifecycle_id)) || []).map((task) => ({
+      ...task,
+      ...resolveLifecycleTaskSource(task, merged, documents, uniforms, lockers),
+    }));
+    const doneTasks = tasks.filter((task) => task.status === 'DONE' || task.status === 'WAIVED').length;
+    const blockedTasks = tasks.filter((task) => task.status === 'BLOCKED').length;
+    const sourcePendingTasks = tasks.filter((task) => !task.sourceReady).length;
+
+    return {
+      id: clean(row.lifecycle_id),
+      employeeId: employee.id,
+      employeeName: employee.fullName,
+      employeeCpf: employee.cpf,
+      employeeStatus: employee.status,
+      caseType: upper(row.lifecycle_case_type || 'ADMISSION') as EmployeeLifecycleCaseType,
+      stage: upper(row.lifecycle_stage || 'PRE_ADMISSION') as EmployeeLifecycleStage,
+      ownerName: clean(row.lifecycle_owner_name) || null,
+      targetDate: parseDate(row.lifecycle_target_date),
+      closedAt: clean(row.lifecycle_closed_at) || null,
+      notes: clean(row.lifecycle_notes) || null,
+      totalTasks: tasks.length,
+      doneTasks,
+      blockedTasks,
+      sourcePendingTasks,
+      tasks,
+      createdAt: clean(row.lifecycle_created_at),
+      updatedAt: clean(row.lifecycle_updated_at),
+    };
+  });
+};
+
+export const createEmployeeLifecycleCase = async (db: DbInterface, payload: any, actorUserId: string) => {
+  await ensureEmployeesTables(db);
+  const input = normalizeLifecycleCaseInput(payload);
+  if (!input.employeeId) throw new EmployeeValidationError('Selecione um colaborador para iniciar o processo.');
+  await ensureEmployeeExists(db, input.employeeId);
+
+  const existing = await db.query(
+    `SELECT id FROM employee_lifecycle_cases WHERE employee_id = ? AND case_type = ? AND stage <> 'CLOSED' LIMIT 1`,
+    [input.employeeId, input.caseType],
+  );
+  if (existing[0]) {
+    throw new EmployeeValidationError('Já existe um processo aberto deste tipo para o colaborador.');
+  }
+
+  const caseId = randomUUID();
+  const now = NOW();
+  await db.execute(
+    `
+    INSERT INTO employee_lifecycle_cases (
+      id, employee_id, case_type, stage, owner_name, target_date, closed_at, notes, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [caseId, input.employeeId, input.caseType, input.stage, input.ownerName, input.targetDate, null, input.notes, now, now],
+  );
+
+  const templates = defaultLifecycleTasks[input.caseType];
+  for (const [index, task] of templates.entries()) {
+    await db.execute(
+      `
+      INSERT INTO employee_lifecycle_tasks (
+        id, case_id, task_key, title, status, owner_name, due_date, notes, source_type, source_ref, sort_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        randomUUID(),
+        caseId,
+        task.key,
+        task.title,
+        'PENDING',
+        input.ownerName,
+        input.targetDate,
+        null,
+        task.sourceType,
+        task.sourceRef,
+        index + 1,
+        now,
+        now,
+      ],
+    );
+  }
+
+  await insertAudit(db, 'EMPLOYEE_LIFECYCLE_CREATED', actorUserId, input.employeeId, {
+    caseId,
+    caseType: input.caseType,
+    stage: input.stage,
+  });
+
+  return listEmployeeLifecycleCases(db);
+};
+
+export const updateEmployeeLifecycleCase = async (db: DbInterface, caseId: string, payload: any, actorUserId: string) => {
+  await ensureEmployeesTables(db);
+  const rows = await db.query(`SELECT * FROM employee_lifecycle_cases WHERE id = ? LIMIT 1`, [caseId]);
+  const existing = rows[0];
+  if (!existing) throw new EmployeeValidationError('Processo não encontrado.', 404);
+  const caseType = upper(existing.case_type) as EmployeeLifecycleCaseType;
+  const shouldClose = bool(payload?.closeCase);
+  const stage = shouldClose ? 'CLOSED' : normalizeLifecycleStage(payload?.stage || existing.stage, caseType);
+  const now = NOW();
+
+  await db.execute(
+    `
+    UPDATE employee_lifecycle_cases
+    SET stage = ?, owner_name = ?, target_date = ?, closed_at = ?, notes = ?, updated_at = ?
+    WHERE id = ?
+    `,
+    [
+      stage,
+      clean(payload?.ownerName || payload?.owner_name) || clean(existing.owner_name) || null,
+      parseDate(payload?.targetDate || payload?.target_date) || parseDate(existing.target_date),
+      shouldClose ? now : clean(existing.closed_at) || null,
+      clean(payload?.notes) || clean(existing.notes) || null,
+      now,
+      caseId,
+    ],
+  );
+
+  await insertAudit(db, 'EMPLOYEE_LIFECYCLE_UPDATED', actorUserId, clean(existing.employee_id), {
+    caseId,
+    stage,
+  });
+
+  return listEmployeeLifecycleCases(db);
+};
+
+export const updateEmployeeLifecycleTask = async (db: DbInterface, caseId: string, payload: any, actorUserId: string) => {
+  await ensureEmployeesTables(db);
+  const input: EmployeeLifecycleTaskUpdateInput = {
+    taskId: clean(payload?.taskId || payload?.task_id),
+    status: payload?.status ? normalizeLifecycleTaskStatus(payload.status) : undefined,
+    ownerName: payload?.ownerName !== undefined || payload?.owner_name !== undefined ? clean(payload?.ownerName || payload?.owner_name) || null : undefined,
+    dueDate: payload?.dueDate !== undefined || payload?.due_date !== undefined ? parseDate(payload?.dueDate || payload?.due_date) : undefined,
+    notes: payload?.notes !== undefined ? clean(payload?.notes) || null : undefined,
+  };
+  if (!input.taskId) throw new EmployeeValidationError('Tarefa não informada.');
+
+  const rows = await db.query(
+    `
+    SELECT t.*, c.employee_id
+    FROM employee_lifecycle_tasks t
+    INNER JOIN employee_lifecycle_cases c ON c.id = t.case_id
+    WHERE t.id = ? AND t.case_id = ?
+    LIMIT 1
+    `,
+    [input.taskId, caseId],
+  );
+  const existing = rows[0];
+  if (!existing) throw new EmployeeValidationError('Tarefa não encontrada.', 404);
+  const now = NOW();
+
+  await db.execute(
+    `
+    UPDATE employee_lifecycle_tasks
+    SET status = ?, owner_name = ?, due_date = ?, notes = ?, updated_at = ?
+    WHERE id = ? AND case_id = ?
+    `,
+    [
+      input.status || upper(existing.status || 'PENDING'),
+      input.ownerName !== undefined ? input.ownerName : clean(existing.owner_name) || null,
+      input.dueDate !== undefined ? input.dueDate : parseDate(existing.due_date),
+      input.notes !== undefined ? input.notes : clean(existing.notes) || null,
+      now,
+      input.taskId,
+      caseId,
+    ],
+  );
+
+  await insertAudit(db, 'EMPLOYEE_LIFECYCLE_TASK_UPDATED', actorUserId, clean(existing.employee_id), {
+    caseId,
+    taskId: input.taskId,
+    status: input.status,
+  });
+
+  return listEmployeeLifecycleCases(db);
+};
+
 const loadDistinctStrings = async (db: DbInterface, sql: string) => {
   const rows = await db.query(sql);
   return rows

@@ -28,7 +28,9 @@ export async function GET(request: Request) {
 
     const result = await listEmployees(auth.db, {
       search: String(searchParams.get('search') || '').trim(),
-      status: (String(searchParams.get('status') || 'ATIVO').trim().toUpperCase() as any) === 'ATIVO'
+      status: (String(searchParams.get('status') || 'ATIVO').trim().toUpperCase() as any) === 'PRE_ADMISSAO'
+        ? 'PRE_ADMISSAO'
+        : (String(searchParams.get('status') || 'ATIVO').trim().toUpperCase() as any) === 'ATIVO'
         ? 'ATIVO'
         : (String(searchParams.get('status') || 'ATIVO').trim().toUpperCase() as any) === 'DESLIGADO'
           ? 'DESLIGADO'

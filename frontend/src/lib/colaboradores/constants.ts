@@ -1,5 +1,5 @@
 export type EmploymentRegime = 'CLT' | 'PJ' | 'ESTAGIO';
-export type EmployeeStatus = 'ATIVO' | 'DESLIGADO';
+export type EmployeeStatus = 'PRE_ADMISSAO' | 'ATIVO' | 'DESLIGADO';
 export type AsoStatus = 'PENDENTE' | 'OK' | 'VENCENDO' | 'VENCIDO';
 export type EducationLevel = 'MEDIO' | 'TECNICO' | 'SUPERIOR';
 export type MaritalStatus = 'SOLTEIRO' | 'CASADO' | 'UNIAO_ESTAVEL' | 'DIVORCIADO' | 'VIUVO';
@@ -52,6 +52,7 @@ export const EMPLOYMENT_REGIMES: Array<{ value: EmploymentRegime; label: string 
 ];
 
 export const EMPLOYEE_STATUSES: Array<{ value: EmployeeStatus; label: string }> = [
+  { value: 'PRE_ADMISSAO', label: 'Pré-admissão' },
   { value: 'ATIVO', label: 'Ativo' },
   { value: 'DESLIGADO', label: 'Desligado' },
 ];

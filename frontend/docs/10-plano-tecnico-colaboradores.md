@@ -21,6 +21,7 @@ O desenho segue o mesmo padrao funcional de `/profissionais`:
 ### Frontend
 
 - Pagina principal: `frontend/src/app/(admin)/colaboradores/page.tsx`
+- Ajuda guiada: `frontend/src/app/(admin)/colaboradores/components/ColaboradoresHelpModal.tsx`
 - Dominio:
   - `frontend/src/lib/colaboradores/constants.ts`
   - `frontend/src/lib/colaboradores/types.ts`
@@ -42,6 +43,9 @@ O desenho segue o mesmo padrao funcional de `/profissionais`:
 - `PUT/DELETE /api/admin/colaboradores/[id]/uniformes/[entryId]`
 - `GET/POST /api/admin/colaboradores/[id]/recessos`
 - `PUT/DELETE /api/admin/colaboradores/[id]/recessos/[entryId]`
+- `GET/POST /api/admin/colaboradores/lifecycle`
+- `PATCH /api/admin/colaboradores/lifecycle/[caseId]`
+- `PATCH /api/admin/colaboradores/lifecycle/[caseId]/tasks`
 
 ## 3. Modelo de dados
 
@@ -128,6 +132,40 @@ Campos calculados em leitura:
 - `vacationEndDate = vacationStartDate + duration - 1`
 - `situation = QUITADAS | VENCIDAS | EM_ABERTO`
 
+### `employee_lifecycle_cases`
+
+Processos de admissão e desligamento da Onda 3.
+
+Campos principais:
+- `employee_id`
+- `case_type` (`ADMISSION` ou `TERMINATION`)
+- `stage` (`PRE_ADMISSION`, `ADMISSION_IN_PROGRESS`, `TERMINATION_IN_PROGRESS`, `CLOSED`)
+- `owner_name`
+- `target_date`
+- `closed_at`
+- `notes`
+- `created_at`, `updated_at`
+
+### `employee_lifecycle_tasks`
+
+Checklist operacional vinculado ao processo.
+
+Campos principais:
+- `case_id`
+- `task_key`
+- `title`
+- `status` (`PENDING`, `DONE`, `BLOCKED`, `WAIVED`)
+- `owner_name`
+- `due_date`
+- `notes`
+- `source_type` (`EMPLOYEE_FIELD`, `DOCUMENT`, `UNIFORM`, `LOCKER`, `MANUAL`)
+- `source_ref`
+- `sort_order`
+- `created_at`, `updated_at`
+
+Regra importante:
+- `source_type` e `source_ref` indicam a fonte oficial da informação; o checklist acompanha o andamento, mas não duplica documentos, uniforme, armário ou dados contratuais.
+
 ### `employee_audit_log`
 
 Trilha de auditoria do modulo.
@@ -156,10 +194,12 @@ Regras:
 ### Status do colaborador
 
 Valores suportados:
+- `PRE_ADMISSAO`
 - `ATIVO`
 - `DESLIGADO`
 
 Regras:
+- `PRE_ADMISSAO` permite acompanhar entrada sem tratar a pessoa como colaborador ativo na visão padrão;
 - `DESLIGADO` exige `termination_date` e `termination_reason`;
 - nao existe exclusao fisica pela UI no V1.
 
@@ -220,6 +260,36 @@ Filtros do V1:
 - unidade;
 - status do ASO;
 - pendencia documental.
+
+O cabeçalho possui o botão `Como funciona`, que abre uma ajuda guiada explicando:
+- uso atual do cadastro de colaboradores;
+- vínculo entre cadastro, documentos, benefícios, uniforme, armário e recesso;
+- regra da Onda 3 para Admissões & Demissões: workflow/checklist usa o cadastro como fonte única da verdade, sem duplicar documentos, uniforme, armário ou dados de desligamento;
+- campos críticos que alimentam folha, benefícios, dashboard e desligamentos.
+
+### Aba `Admissões & Demissões`
+
+Implementação da Onda 3 do plano RH.
+
+A aba funciona como camada operacional sobre `employees`, sem criar cadastro paralelo:
+- processos de admissão e desligamento são persistidos em `employee_lifecycle_cases`;
+- tarefas/checklist são persistidas em `employee_lifecycle_tasks`;
+- cada processo aponta para um `employee_id`;
+- cada tarefa possui status, responsável, prazo, observação e referência à fonte oficial (`EMPLOYEE_FIELD`, `DOCUMENT`, `UNIFORM`, `LOCKER` ou `MANUAL`);
+- documentos continuam em `employee_documents`;
+- uniformes continuam em `employee_uniform_items`;
+- armários/chaves continuam em `employee_locker_assignments`;
+- dados de desligamento continuam em `employees.termination_date`, `employees.termination_reason` e `employees.termination_notes`.
+
+Etapas da aba:
+- `Pré-admissão`;
+- `Admissão em andamento`;
+- `Desligamento em andamento`;
+- `Encerrados`.
+
+O checklist inicial de admissão cobre cadastro contratual, documentos obrigatórios, ASO, benefícios iniciais, uniforme, armário e observações finais.
+
+O checklist inicial de desligamento cobre data/motivo de desligamento, devolução de uniforme, devolução de armário/chave, documentos finais, revisão de benefícios/descontos e observações finais.
 
 ### Modal com abas
 

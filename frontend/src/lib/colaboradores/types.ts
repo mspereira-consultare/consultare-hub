@@ -223,6 +223,75 @@ export type EmployeeFilters = {
   pageSize: number;
 };
 
+export type EmployeeLifecycleCaseType = 'ADMISSION' | 'TERMINATION';
+export type EmployeeLifecycleStage = 'PRE_ADMISSION' | 'ADMISSION_IN_PROGRESS' | 'TERMINATION_IN_PROGRESS' | 'CLOSED';
+export type EmployeeLifecycleTaskStatus = 'PENDING' | 'DONE' | 'BLOCKED' | 'WAIVED';
+export type EmployeeLifecycleTaskSourceType = 'EMPLOYEE_FIELD' | 'DOCUMENT' | 'UNIFORM' | 'LOCKER' | 'MANUAL';
+
+export type EmployeeLifecycleTask = {
+  id: string;
+  caseId: string;
+  taskKey: string;
+  title: string;
+  status: EmployeeLifecycleTaskStatus;
+  ownerName: string | null;
+  dueDate: string | null;
+  notes: string | null;
+  sourceType: EmployeeLifecycleTaskSourceType;
+  sourceRef: string | null;
+  sourceReady: boolean;
+  sourceSummary: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmployeeLifecycleCase = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  employeeCpf: string | null;
+  employeeStatus: EmployeeStatus;
+  caseType: EmployeeLifecycleCaseType;
+  stage: EmployeeLifecycleStage;
+  ownerName: string | null;
+  targetDate: string | null;
+  closedAt: string | null;
+  notes: string | null;
+  totalTasks: number;
+  doneTasks: number;
+  blockedTasks: number;
+  sourcePendingTasks: number;
+  tasks: EmployeeLifecycleTask[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EmployeeLifecycleCaseInput = {
+  employeeId: string;
+  caseType: EmployeeLifecycleCaseType;
+  stage?: EmployeeLifecycleStage;
+  ownerName?: string | null;
+  targetDate?: string | null;
+  notes?: string | null;
+};
+
+export type EmployeeLifecycleCaseUpdateInput = {
+  stage?: EmployeeLifecycleStage;
+  ownerName?: string | null;
+  targetDate?: string | null;
+  notes?: string | null;
+  closeCase?: boolean;
+};
+
+export type EmployeeLifecycleTaskUpdateInput = {
+  taskId: string;
+  status?: EmployeeLifecycleTaskStatus;
+  ownerName?: string | null;
+  dueDate?: string | null;
+  notes?: string | null;
+};
+
 export type EmployeeUniformItemInput = {
   withdrawalDate?: string | null;
   itemDescription: string;

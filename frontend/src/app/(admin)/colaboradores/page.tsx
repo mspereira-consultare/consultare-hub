@@ -7,6 +7,7 @@ import {
   Briefcase,
   CalendarClock,
   CheckCircle2,
+  CircleHelp,
   Edit3,
   FileDown,
   FileText,
@@ -56,6 +57,8 @@ import type {
   EmployeeRecessPeriod,
   EmployeeUniformItem,
 } from '@/lib/colaboradores/types';
+import { ColaboradoresHelpModal } from './components/ColaboradoresHelpModal';
+import { EmployeeLifecyclePanel } from './components/EmployeeLifecyclePanel';
 
 type SessionUser = {
   role?: string;
@@ -188,6 +191,7 @@ type PendingUpload = {
 };
 
 type ModalTab = 'cadastro' | 'beneficios' | 'uniforme' | 'recesso' | 'documentos';
+type PageSection = 'cadastro' | 'lifecycle';
 
 type FiltersState = {
   search: string;
@@ -458,7 +462,9 @@ const mapAsoBadge = (status: string) => {
 const mapStatusBadge = (status: EmployeeStatus) =>
   status === 'ATIVO'
     ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-    : 'bg-rose-100 text-rose-700 border-rose-200';
+    : status === 'PRE_ADMISSAO'
+      ? 'bg-blue-100 text-[#17407E] border-blue-200'
+      : 'bg-rose-100 text-rose-700 border-rose-200';
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { cache: 'no-store', ...init });
@@ -538,6 +544,8 @@ export default function ColaboradoresPage() {
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState<PageSection>('cadastro');
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
@@ -1133,7 +1141,15 @@ export default function ColaboradoresPage() {
           <h1 className="text-2xl font-bold text-slate-800">Gestão de Colaboradores</h1>
           <p className="text-slate-500">Cadastro, benefícios, documentos, uniforme e recessos do Departamento Pessoal.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+          >
+            <CircleHelp size={14} />
+            Como funciona
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -1172,6 +1188,25 @@ export default function ColaboradoresPage() {
         </div>
       ) : null}
 
+      <div className="mb-4 inline-flex flex-wrap rounded-xl border border-slate-200 bg-slate-50 p-1">
+        <button
+          type="button"
+          onClick={() => setActiveSection('cadastro')}
+          className={`rounded-lg px-3 py-1.5 text-sm transition ${activeSection === 'cadastro' ? 'border border-slate-200 bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
+        >
+          Cadastro
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveSection('lifecycle')}
+          className={`rounded-lg px-3 py-1.5 text-sm transition ${activeSection === 'lifecycle' ? 'border border-slate-200 bg-white text-slate-900 shadow-sm' : 'text-slate-600'}`}
+        >
+          Admissões & Demissões
+        </button>
+      </div>
+
+      {activeSection === 'cadastro' ? (
+        <>
       <div className="mb-4 rounded-xl border border-slate-200 bg-white p-4">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-12 lg:items-end">
           <div className="relative lg:col-span-5">
@@ -1392,6 +1427,10 @@ export default function ColaboradoresPage() {
           </button>
         </div>
       </div>
+        </>
+      ) : (
+        <EmployeeLifecyclePanel canEdit={canEdit} onOpenEmployee={openEdit} onCreateEmployee={openCreate} />
+      )}
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
@@ -2334,6 +2373,7 @@ export default function ColaboradoresPage() {
       <datalist id="employee-cost-centers">
         {options.costCenters.map((value) => <option key={value} value={value} />)}
       </datalist>
+      <ColaboradoresHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

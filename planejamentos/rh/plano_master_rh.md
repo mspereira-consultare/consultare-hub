@@ -136,6 +136,8 @@ Principais mudanças esperadas:
 - integração lógica com o mesmo recorte de período já usado no ponto
 
 ### Onda 3 — `2.24 Admissão e demissão`
+Status: implementada no MVP operacional.
+
 Objetivo da onda:
 - transformar o cadastro de colaboradores em fluxo operacional de entrada e saída
 
@@ -167,6 +169,15 @@ Principais mudanças esperadas:
 - workflow sobre a base já existente de colaboradores
 - checklist persistido por colaborador
 - reaproveitamento de documentos, uniforme, armário e trilha de auditoria
+
+Implementação realizada:
+- aba `Admissões & Demissões` em `/colaboradores`;
+- status `PRE_ADMISSAO` no cadastro para entrada ainda não ativa;
+- tabelas `employee_lifecycle_cases` e `employee_lifecycle_tasks`;
+- APIs `/api/admin/colaboradores/lifecycle`;
+- checklist inicial de admissão e desligamento com responsável, prazo, status e observação;
+- referência explícita às fontes oficiais `employees`, `employee_documents`, `employee_uniform_items` e `employee_locker_assignments`;
+- modal `Como funciona` atualizado para explicar a abordagem sem fonte paralela.
 
 ### Onda 4 — `2.20 Dashboard funcionários`
 Objetivo da onda:
