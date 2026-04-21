@@ -35,4 +35,4 @@ COPY --from=builder /app/packages ./packages
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start", "--workspace", "apps/painel", "--", "-H", "0.0.0.0"]
+CMD ["sh", "-c", "cd apps/painel && ../../node_modules/.bin/next start -H 0.0.0.0 -p ${PORT:-3000}"]
