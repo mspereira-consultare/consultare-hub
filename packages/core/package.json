@@ -1,0 +1,34 @@
+{
+  "name": "@consultare/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./db": "./src/db.ts",
+    "./storage": "./src/storage/index.ts",
+    "./storage/provider": "./src/storage/provider.ts",
+    "./storage/providers/s3": "./src/storage/providers/s3.ts",
+    "./colaboradores/constants": "./src/colaboradores/constants.ts",
+    "./colaboradores/types": "./src/colaboradores/types.ts",
+    "./colaboradores/status": "./src/colaboradores/status.ts",
+    "./colaboradores/portal-repository": "./src/colaboradores/portal_repository.ts",
+    "./employee-portal/auth": "./src/employee_portal/auth.ts",
+    "./employee-portal/constants": "./src/employee_portal/constants.ts",
+    "./employee-portal/errors": "./src/employee_portal/errors.ts",
+    "./employee-portal/repository": "./src/employee_portal/repository.ts",
+    "./employee-portal/storage": "./src/employee_portal/storage.ts",
+    "./employee-portal/types": "./src/employee_portal/types.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.992.0",
+    "@libsql/client": "^0.17.0",
+    "dotenv": "^17.2.3",
+    "mysql2": "^3.16.3",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.27",
+    "typescript": "^5.9.3"
+  }
+}

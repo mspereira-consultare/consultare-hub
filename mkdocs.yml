@@ -4,7 +4,7 @@ site_url: https://mspereira-consultare.github.io/consultare-hub/
 repo_url: https://github.com/mspereira-consultare/consultare-hub
 edit_uri: edit/main/
 
-docs_dir: frontend/docs
+docs_dir: apps/painel/docs
 site_dir: site
 
 theme:

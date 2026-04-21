@@ -48,9 +48,9 @@ next-env.d.ts
 
 /src/generated/prisma
 
-/frontend/node_modules
+/apps/*/node_modules
 /node_modules
-/frontend/.next
+/apps/*/.next
 /consultare-color-palette.pdf
 /faturamento-geral-janeiro-2026.pdf
 /sql

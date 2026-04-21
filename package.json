@@ -6,12 +6,21 @@
     "node": ">=20.9.0"
   },
   "workspaces": [
-    "frontend"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace frontend",
-    "build": "npm run build --workspace frontend",
-    "start": "npm run start --workspace frontend",
-    "lint": "npm run lint --workspace frontend"
+    "dev": "npm run dev --workspace apps/painel",
+    "dev:painel": "npm run dev --workspace apps/painel",
+    "dev:portal-colaborador": "npm run dev --workspace apps/portal-colaborador",
+    "build": "npm run build --workspace apps/painel",
+    "build:painel": "npm run build --workspace apps/painel",
+    "build:portal-colaborador": "npm run build --workspace apps/portal-colaborador",
+    "start": "npm run start --workspace apps/painel",
+    "start:painel": "npm run start --workspace apps/painel",
+    "start:portal-colaborador": "npm run start --workspace apps/portal-colaborador",
+    "lint": "npm run lint --workspace apps/painel",
+    "lint:painel": "npm run lint --workspace apps/painel",
+    "lint:portal-colaborador": "npm run lint --workspace apps/portal-colaborador"
   }
 }

@@ -90,7 +90,10 @@ O painel atual ja usa:
 O repositorio hoje esta organizado principalmente assim:
 
 ```text
-frontend/     -> app principal do painel
+apps/painel/  -> app principal do painel
+apps/portal-colaborador/ -> portal externo de colaboradores
+packages/core/ -> codigo compartilhado de infraestrutura e dominio
+packages/ui/ -> componentes compartilhados futuros
 workers/      -> workers Python e orquestrador
 planejamentos/ -> documentacao interna e planejamentos
 sql/          -> apoio SQL
@@ -98,14 +101,14 @@ sql/          -> apoio SQL
 
 ### 4.3 Componentes e dominios que ja existem e devem ser reutilizados
 
-- autenticacao em `frontend/src/app/api/auth/[...nextauth]/route.ts`
-- permissao por matriz em `frontend/src/lib/permissions.ts`
-- persistencia de permissoes em `frontend/src/lib/permissions_server.ts`
-- abstracao de banco em `frontend/src/lib/db.ts`
-- storage S3 em `frontend/src/lib/storage/*`
-- sidebar principal em `frontend/src/components/layout/Sidebar.tsx`
-- modulo de `POPs e Manuais` em `frontend/src/lib/qms/*`
-- modulo de `Profissionais` em `frontend/src/lib/profissionais/*`
+- autenticacao em `apps/painel/src/app/api/auth/[...nextauth]/route.ts`
+- permissao por matriz em `apps/painel/src/lib/permissions.ts`
+- persistencia de permissoes em `apps/painel/src/lib/permissions_server.ts`
+- abstracao de banco compartilhavel em `packages/core/src/db.ts`
+- storage S3 compartilhavel em `packages/core/src/storage/*`
+- sidebar principal em `apps/painel/src/components/layout/Sidebar.tsx`
+- modulo de `POPs e Manuais` em `apps/painel/src/lib/qms/*`
+- modulo de `Profissionais` em `apps/painel/src/lib/profissionais/*`
 - catalogo de procedimentos Feegow em `feegow_procedures_catalog`
 - tabela de usuarios `users`
 - tabela de permissoes `user_page_permissions`
@@ -237,8 +240,9 @@ Exemplos:
 O monorepo deve evoluir para algo proximo disto:
 
 ```text
-frontend/                     -> painel gerencial atual
-intranet/                     -> nova intranet
+apps/painel/                  -> painel gerencial atual
+apps/portal-colaborador/      -> portal externo de colaboradores
+apps/intranet/                -> nova intranet
 packages/core/                -> auth, db, permissions, storage, shared repositories
 packages/ui/                  -> componentes compartilhados de layout/base visual
 workers/                      -> workers Python, incluindo indexacao de conhecimento
@@ -247,25 +251,20 @@ planejamentos/intranet/       -> documentacao da intranet
 
 ### 8.2 Ajuste necessario no root `package.json`
 
-Hoje o workspace raiz contem apenas:
+Hoje o workspace raiz deve suportar:
 
-- `frontend`
-
-Para suportar a intranet de forma limpa, o root deve passar a suportar:
-
-- `frontend`
-- `intranet`
+- `apps/*`
 - `packages/*`
 
 ### 8.3 Regra de compartilhamento de codigo
 
 O alvo e:
 
-- tirar do `frontend` tudo que for realmente compartilhavel;
+- tirar de `apps/painel` tudo que for realmente compartilhavel;
 - mover para `packages/core` o que for infraestrutura e dominio compartilhado;
 - mover para `packages/ui` o que for componente visual generico;
-- manter no `frontend` somente o que e exclusivo do painel;
-- manter no `intranet` somente o que e exclusivo da intranet.
+- manter em `apps/painel` somente o que e exclusivo do painel;
+- manter em `apps/intranet` somente o que e exclusivo da intranet.
 
 ### 8.4 O que deve ir para `packages/core`
 
@@ -680,19 +679,19 @@ Submodulos recomendados:
 
 ### 13.3 Rotas sugeridas no painel
 
-Sugestao de estrutura em `frontend/src/app/(admin)/intranet/`:
+Sugestao de estrutura em `apps/painel/src/app/(admin)/intranet/`:
 
 ```text
-frontend/src/app/(admin)/intranet/dashboard/page.tsx
-frontend/src/app/(admin)/intranet/navegacao/page.tsx
-frontend/src/app/(admin)/intranet/paginas/page.tsx
-frontend/src/app/(admin)/intranet/noticias/page.tsx
-frontend/src/app/(admin)/intranet/faq/page.tsx
-frontend/src/app/(admin)/intranet/catalogo/page.tsx
-frontend/src/app/(admin)/intranet/audiencias/page.tsx
-frontend/src/app/(admin)/intranet/escopos/page.tsx
-frontend/src/app/(admin)/intranet/chat/page.tsx
-frontend/src/app/(admin)/intranet/chatbot/page.tsx
+apps/painel/src/app/(admin)/intranet/dashboard/page.tsx
+apps/painel/src/app/(admin)/intranet/navegacao/page.tsx
+apps/painel/src/app/(admin)/intranet/paginas/page.tsx
+apps/painel/src/app/(admin)/intranet/noticias/page.tsx
+apps/painel/src/app/(admin)/intranet/faq/page.tsx
+apps/painel/src/app/(admin)/intranet/catalogo/page.tsx
+apps/painel/src/app/(admin)/intranet/audiencias/page.tsx
+apps/painel/src/app/(admin)/intranet/escopos/page.tsx
+apps/painel/src/app/(admin)/intranet/chat/page.tsx
+apps/painel/src/app/(admin)/intranet/chatbot/page.tsx
 ```
 
 ### 13.4 APIs administrativas sugeridas
@@ -700,7 +699,7 @@ frontend/src/app/(admin)/intranet/chatbot/page.tsx
 Namespace recomendado:
 
 ```text
-frontend/src/app/api/admin/intranet/*
+apps/painel/src/app/api/admin/intranet/*
 ```
 
 Exemplos:

@@ -1,8 +1,8 @@
-import dotenv from './frontend/node_modules/dotenv/lib/main.js';
+import dotenv from 'dotenv';
 dotenv.config({ path: '.env', override: true });
 process.env.MYSQL_URL = process.env.MYSQL_PUBLIC_URL;
-import { getDbConnection } from './frontend/src/lib/db.ts';
-import { listMarketingFunnelFilterOptions, getMarketingFunnelSummary } from './frontend/src/lib/marketing_funil/repository.ts';
+import { getDbConnection } from './apps/painel/src/lib/db.ts';
+import { listMarketingFunnelFilterOptions, getMarketingFunnelSummary } from './apps/painel/src/lib/marketing_funil/repository.ts';
 
 (async () => {
   const db = getDbConnection();

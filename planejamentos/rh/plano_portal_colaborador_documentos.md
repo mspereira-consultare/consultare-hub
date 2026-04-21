@@ -23,9 +23,9 @@ Este documento deve servir como roadmap tecnico e funcional para desenvolvimento
 ## Decisoes fechadas
 
 - Aplicacao externa: sim, acessada fora do painel administrativo.
-- Implementacao: mesmo projeto Next.js, com area publica separada e layout proprio.
-- URL preferencial: subdominio apontando para o mesmo deploy, por exemplo `colaboradores.consultare...`.
-- Fallback local/desenvolvimento: rota `/portal-colaborador`.
+- Implementacao: app Next.js separado em `apps/portal-colaborador`, dentro do monorepo.
+- URL preferencial: subdominio apontando para o servico Railway do portal, por exemplo `colaboradores.consultare...`.
+- Fallback local/desenvolvimento: raiz do app do portal, normalmente `http://localhost:3001`.
 - Autenticacao do portal: convite seguro + confirmacao de CPF e data de nascimento.
 - Origem do cadastro: pre-cadastro feito pelo RH no painel.
 - Fonte oficial de colaboradores: tabela `employees`.
@@ -78,9 +78,9 @@ O modulo de colaboradores ja possui:
 - auditoria em `employee_audit_log`;
 - checklist documental calculado por perfil do colaborador;
 - upload/download autenticado via APIs administrativas;
-- storage S3 por meio de `frontend/src/lib/storage`;
-- regras de pendencia documental em `frontend/src/lib/colaboradores/status.ts`;
-- tipos documentais em `frontend/src/lib/colaboradores/constants.ts`;
+- storage S3 por meio de `packages/core/src/storage`;
+- regras de pendencia documental em `packages/core/src/colaboradores/status.ts`;
+- tipos documentais em `packages/core/src/colaboradores/constants.ts`;
 - painel de cadastro em `/colaboradores`.
 
 O portal deve ser uma camada externa conectada a esse mesmo dominio.
@@ -89,11 +89,16 @@ O portal deve ser uma camada externa conectada a esse mesmo dominio.
 
 ### Estrutura de aplicacao
 
-Criar uma nova area no App Router:
+O portal deve ser um app Next.js separado dentro do monorepo:
 
-- `frontend/src/app/(portal-colaborador)/portal-colaborador/...`
+```text
+apps/painel/                 -> painel gerencial administrativo
+apps/portal-colaborador/     -> portal externo do colaborador
+packages/core/               -> db, storage, tipos e dominio compartilhado
+packages/ui/                 -> componentes compartilhados futuros
+```
 
-Essa area deve ter:
+O app `apps/portal-colaborador` deve ter:
 - layout proprio;
 - visual limpo e responsivo;
 - ausencia de sidebar administrativa;
@@ -101,9 +106,13 @@ Essa area deve ter:
 - foco em celular;
 - linguagem simples para usuario nao tecnico.
 
-Em producao, a infraestrutura deve rotear o subdominio do portal para essa area. Existem duas opcoes aceitaveis:
-- rewrite por host no `proxy.ts`/middleware quando `Host` for o subdominio do portal;
-- configuracao externa de infraestrutura apontando o subdominio para o mesmo deploy e usando rewrite para `/portal-colaborador`.
+Em producao, o Railway deve ter servicos separados:
+- servico `painel`, com build/start do app `apps/painel`;
+- servico `portal-colaborador`, com build/start do app `apps/portal-colaborador`;
+- dominio administrativo apontando para o painel;
+- dominio publico do portal apontando para o portal.
+
+O portal nao deve depender de rewrite por host no painel. O painel deve gerar convites usando `EMPLOYEE_PORTAL_URL`.
 
 ### Separacao de responsabilidades
 
@@ -672,7 +681,7 @@ Ao pedir correcao da submissao:
 
 ### APIs do portal
 
-#### `POST /api/portal-colaborador/auth`
+#### `POST /api/auth`
 
 Entrada:
 - token;
@@ -688,11 +697,11 @@ Regras:
 - aplicar rate limit por convite/IP;
 - registrar auditoria de sucesso/falha.
 
-#### `POST /api/portal-colaborador/logout`
+#### `POST /api/logout`
 
 Encerra a sessao do portal.
 
-#### `GET /api/portal-colaborador/me`
+#### `GET /api/me`
 
 Retorna:
 - colaborador seguro;
@@ -708,7 +717,7 @@ Nao deve retornar:
 - observacoes internas;
 - dados administrativos sensiveis.
 
-#### `PUT /api/portal-colaborador/submission/personal`
+#### `PUT /api/submission/personal`
 
 Salva rascunho de dados pessoais.
 
@@ -717,7 +726,7 @@ Regras:
 - valida formatos;
 - nao atualiza `employees` diretamente.
 
-#### `POST /api/portal-colaborador/submission/documents`
+#### `POST /api/submission/documents`
 
 Upload multipart de documento.
 
@@ -736,7 +745,7 @@ Regras:
 - persistir em `employee_portal_submission_documents`;
 - limpar S3 se a persistencia falhar.
 
-#### `DELETE /api/portal-colaborador/submission/documents/[id]`
+#### `DELETE /api/submission/documents/[id]`
 
 Remove documento ainda nao enviado ou ainda nao aprovado.
 
@@ -744,7 +753,7 @@ Regras:
 - nao remover arquivo aprovado/oficial;
 - marcar como `REMOVED_BY_COLLABORATOR`.
 
-#### `POST /api/portal-colaborador/submission/submit`
+#### `POST /api/submission/submit`
 
 Envia rascunho para revisao do DP.
 
@@ -1045,8 +1054,8 @@ Validacao matematica de CPF e recomendada, mas pode entrar no mesmo pacote de va
 
 ### Dominio
 
-Criar pasta:
-- `frontend/src/lib/employee_portal`
+Criar pacote compartilhado:
+- `packages/core/src/employee_portal`
 
 Arquivos sugeridos:
 - `auth.ts`: validacao de convite, sessao e cookies;
@@ -1060,29 +1069,22 @@ Arquivos sugeridos:
 ### Rotas publicas
 
 Criar:
-- `frontend/src/app/(portal-colaborador)/portal-colaborador/page.tsx`;
-- `frontend/src/app/(portal-colaborador)/portal-colaborador/login/page.tsx`, se necessario;
-- `frontend/src/app/(portal-colaborador)/portal-colaborador/layout.tsx`;
+- `apps/portal-colaborador/src/app/page.tsx`;
+- `apps/portal-colaborador/src/app/layout.tsx`;
 - componentes internos para formulario, checklist, upload, ajuda e status.
 
 ### Rotas API
 
 Criar APIs em:
-- `frontend/src/app/api/portal-colaborador/...`;
-- `frontend/src/app/api/admin/colaboradores/[id]/portal...`;
-- `frontend/src/app/api/admin/colaboradores/portal-submissions/...`.
+- portal publico: `apps/portal-colaborador/src/app/api/...`;
+- painel administrativo: `apps/painel/src/app/api/admin/colaboradores/[id]/portal...`;
+- revisao administrativa: `apps/painel/src/app/api/admin/colaboradores/portal-submissions/...`.
 
-### Proxy/middleware
+### Separacao de apps
 
-Ajustar `frontend/src/proxy.ts` para:
-- liberar rotas `/portal-colaborador` sem NextAuth;
-- liberar APIs `/api/portal-colaborador/*` sem NextAuth administrativo;
-- manter validacao propria dentro das APIs do portal;
-- continuar protegendo `/api/admin/*`.
+O painel nao deve expor paginas ou APIs publicas do portal. O `proxy.ts`/middleware do painel deve continuar protegendo o painel administrativo normalmente, sem excecoes para `/portal-colaborador`.
 
-Se houver rewrite por subdominio:
-- detectar `Host`;
-- se host for o subdominio do portal, rewrite para `/portal-colaborador`;
+O app do portal deve ter suas proprias APIs publicas, protegidas pela sessao simplificada do portal, sem usar NextAuth administrativo.
 - preservar caminho e querystring.
 
 ## Roadmap de implementacao
@@ -1308,4 +1310,3 @@ O modulo pode ser considerado pronto para V1 quando:
 - SLA e lembretes automaticos de pendencias.
 - Configuracao pelo RH de quais documentos pedir por colaborador.
 - Suporte a multiplos anexos por documento, alem de `OUTRO`.
-
