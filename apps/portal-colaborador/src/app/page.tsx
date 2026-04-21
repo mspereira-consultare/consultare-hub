@@ -37,11 +37,11 @@ const labelClassName = 'mb-1 block text-[11px] font-semibold uppercase text-slat
 const documentStatusLabel: Record<EmployeePortalChecklistItem['status'], string> = {
   PENDING: 'Pendente',
   DRAFT: 'Enviado no rascunho',
-  PENDING_REVIEW: 'Em revisao',
+  PENDING_REVIEW: 'Em revisão',
   APPROVED: 'Aprovado',
-  REJECTED: 'Correcao solicitada',
-  OFFICIAL: 'Ja consta no cadastro',
-  NOT_APPLICABLE: 'Nao se aplica',
+  REJECTED: 'Correção solicitada',
+  OFFICIAL: 'Já consta no cadastro',
+  NOT_APPLICABLE: 'Não se aplica',
 };
 
 const documentStatusClassName: Record<EmployeePortalChecklistItem['status'], string> = {
@@ -56,8 +56,8 @@ const documentStatusClassName: Record<EmployeePortalChecklistItem['status'], str
 
 const submissionStatusLabel: Record<string, string> = {
   DRAFT: 'Rascunho',
-  SUBMITTED: 'Enviado para revisao',
-  CHANGES_REQUESTED: 'Correcao solicitada',
+  SUBMITTED: 'Enviado para revisão',
+  CHANGES_REQUESTED: 'Correção solicitada',
   PARTIALLY_APPROVED: 'Parcialmente aprovado',
   APPROVED: 'Aprovado',
   REJECTED: 'Rejeitado',
@@ -96,7 +96,7 @@ const formatDateBr = (value: string | null | undefined) => {
 
 const personalFromOverview = (overview: EmployeePortalOverview): EmployeePortalPersonalData => {
   const employee = overview.employee;
-  return {
+  const data: EmployeePortalPersonalData = {
     fullName: String(overview.submission?.personalData.fullName ?? employee.fullName ?? ''),
     rg: String(overview.submission?.personalData.rg ?? employee.rg ?? ''),
     email: String(overview.submission?.personalData.email ?? employee.email ?? ''),
@@ -115,11 +115,16 @@ const personalFromOverview = (overview: EmployeePortalOverview): EmployeePortalP
     maritalStatus: String(overview.submission?.personalData.maritalStatus ?? employee.maritalStatus ?? ''),
     hasChildren: Boolean(overview.submission?.personalData.hasChildren ?? employee.hasChildren ?? false),
     childrenCount: String(overview.submission?.personalData.childrenCount ?? employee.childrenCount ?? 0),
-    bankName: String(overview.submission?.personalData.bankName ?? employee.bankName ?? ''),
-    bankAgency: String(overview.submission?.personalData.bankAgency ?? employee.bankAgency ?? ''),
-    bankAccount: String(overview.submission?.personalData.bankAccount ?? employee.bankAccount ?? ''),
-    pixKey: String(overview.submission?.personalData.pixKey ?? employee.pixKey ?? ''),
   };
+
+  if (employee.employmentRegime === 'PJ') {
+    data.bankName = String(overview.submission?.personalData.bankName ?? employee.bankName ?? '');
+    data.bankAgency = String(overview.submission?.personalData.bankAgency ?? employee.bankAgency ?? '');
+    data.bankAccount = String(overview.submission?.personalData.bankAccount ?? employee.bankAccount ?? '');
+    data.pixKey = String(overview.submission?.personalData.pixKey ?? employee.pixKey ?? '');
+  }
+
+  return data;
 };
 
 function HelpModal({ onClose }: { onClose: () => void }) {
@@ -129,7 +134,7 @@ function HelpModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-bold text-slate-900">Precisa de ajuda?</h2>
-            <p className="mt-1 text-sm text-slate-500">Veja orientacoes rapidas para concluir seu envio.</p>
+            <p className="mt-1 text-sm text-slate-500">Veja orientações rápidas para concluir seu envio.</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
             <X size={18} />
@@ -138,12 +143,12 @@ function HelpModal({ onClose }: { onClose: () => void }) {
 
         <div className="mt-5 grid gap-3">
           {[
-            ['Acesso', 'Use o CPF e a data de nascimento informados ao RH. Se continuar aparecendo erro, peca ao RH para validar seu cadastro ou gerar um novo link.'],
-            ['Dados pessoais', 'Preencha os dados com atencao. O DP vai conferir as informacoes antes de atualizar seu cadastro oficial.'],
-            ['Documentos', 'Envie PDF ou foto legivel em JPG, JPEG, PNG ou WEBP. O limite por arquivo e 15 MB. Evite fotos cortadas, tremidas ou escuras.'],
-            ['Frente e verso', 'Quando o documento tiver frente e verso, coloque as duas partes no mesmo PDF ou na mesma imagem sempre que possivel.'],
-            ['Correcao', 'Se um documento for devolvido, veja o motivo informado, envie uma nova versao e mande novamente para revisao.'],
-            ['Privacidade', 'Seus dados serao usados apenas para cadastro, admissao, folha, beneficios e obrigacoes legais da empresa.'],
+            ['Acesso', 'Use o CPF e a data de nascimento informados ao RH. Se continuar aparecendo erro, peça ao RH para validar seu cadastro ou gerar um novo link.'],
+            ['Dados pessoais', 'Preencha os dados com atenção. O DP vai conferir as informações antes de atualizar seu cadastro oficial.'],
+            ['Documentos', 'Envie PDF ou foto legível em JPG, JPEG, PNG ou WEBP. O limite por arquivo é 15 MB. Evite fotos cortadas, tremidas ou escuras.'],
+            ['Frente e verso', 'Quando o documento tiver frente e verso, coloque as duas partes no mesmo PDF ou na mesma imagem sempre que possível.'],
+            ['Correção', 'Se um documento for devolvido, veja o motivo informado, envie uma nova versão e mande novamente para revisão.'],
+            ['Privacidade', 'Seus dados serão usados apenas para cadastro, admissão, folha, benefícios e obrigações legais da empresa.'],
           ].map(([title, body]) => (
             <div key={title} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
@@ -187,6 +192,7 @@ export default function PortalColaboradorPage() {
   const [helpOpen, setHelpOpen] = useState(false);
 
   const canEdit = !overview?.submission || ['DRAFT', 'CHANGES_REQUESTED'].includes(overview.submission.status);
+  const showBankFields = overview?.employee.employmentRegime === 'PJ';
 
   const loadMe = useCallback(async () => {
     setLoading(true);
@@ -233,7 +239,7 @@ export default function PortalColaboradorPage() {
       setNotice('Acesso validado com sucesso.');
       await loadMe();
     } catch (loginError: unknown) {
-      setError(getErrorMessage(loginError, 'Nao foi possivel validar seu acesso.'));
+      setError(getErrorMessage(loginError, 'Não foi possível validar seu acesso.'));
     } finally {
       setAuthenticating(false);
     }
@@ -301,9 +307,9 @@ export default function PortalColaboradorPage() {
       });
       setOverview(payload.data);
       setPersonal(personalFromOverview(payload.data));
-      setNotice('Informacoes enviadas para revisao do DP.');
+      setNotice('Informações enviadas para revisão do DP.');
     } catch (submitError: unknown) {
-      setError(getErrorMessage(submitError, 'Falha ao enviar para revisao.'));
+      setError(getErrorMessage(submitError, 'Falha ao enviar para revisão.'));
     } finally {
       setSubmitting(false);
     }
@@ -358,12 +364,12 @@ export default function PortalColaboradorPage() {
             </label>
             {!login.token ? (
               <label className="block">
-                <span className={labelClassName}>Codigo do convite</span>
+                <span className={labelClassName}>Código do convite</span>
                 <input
                   value={login.token}
                   onChange={(event) => setLogin((current) => ({ ...current, token: event.target.value }))}
                   className={inputClassName}
-                  placeholder="Cole o codigo recebido pelo RH"
+                  placeholder="Cole o código recebido pelo RH"
                 />
               </label>
             ) : null}
@@ -403,7 +409,7 @@ export default function PortalColaboradorPage() {
             <Image src="/logo-color.png" alt="Consultare" width={165} height={50} priority className="h-11 w-auto" />
             <div>
               <h1 className="text-xl font-bold text-slate-950">Portal do colaborador</h1>
-              <p className="text-sm text-slate-500">Ola, {overview.employee.fullName.split(' ')[0] || overview.employee.fullName}</p>
+              <p className="text-sm text-slate-500">Olá, {overview.employee.fullName.split(' ')[0] || overview.employee.fullName}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -450,12 +456,12 @@ export default function PortalColaboradorPage() {
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="text-xs font-semibold uppercase text-slate-500">Documentos</div>
           <div className="mt-2 text-lg font-bold text-slate-900">{overview.approvedCount}/{overview.checklist.length}</div>
-          <p className="mt-1 text-sm text-slate-500">Aprovados ou ja existentes</p>
+          <p className="mt-1 text-sm text-slate-500">Aprovados ou já existentes</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-xs font-semibold uppercase text-slate-500">Pendencias</div>
+          <div className="text-xs font-semibold uppercase text-slate-500">Pendências</div>
           <div className="mt-2 text-lg font-bold text-slate-900">{overview.pendingCount}</div>
-          <p className="mt-1 text-sm text-slate-500">{overview.rejectedCount} com correcao solicitada</p>
+          <p className="mt-1 text-sm text-slate-500">{overview.rejectedCount} com correção solicitada</p>
         </div>
       </section>
 
@@ -478,7 +484,7 @@ export default function PortalColaboradorPage() {
 
         {overview.submission?.personalRejectionReason ? (
           <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-            Correcao solicitada: {overview.submission.personalRejectionReason}
+            Correção solicitada: {overview.submission.personalRejectionReason}
           </div>
         ) : null}
 
@@ -516,7 +522,7 @@ export default function PortalColaboradorPage() {
             <input disabled={!canEdit} value={String(personal.street || '')} onChange={(event) => setPersonal((current) => ({ ...current, street: event.target.value }))} className={inputClassName} />
           </label>
           <label className="md:col-span-2">
-            <span className={labelClassName}>Numero</span>
+            <span className={labelClassName}>Número</span>
             <input disabled={!canEdit} value={String(personal.streetNumber || '')} onChange={(event) => setPersonal((current) => ({ ...current, streetNumber: event.target.value }))} className={inputClassName} />
           </label>
           <label className="md:col-span-2">
@@ -538,7 +544,7 @@ export default function PortalColaboradorPage() {
           <label className="md:col-span-4">
             <span className={labelClassName}>Estado civil</span>
             <select disabled={!canEdit} value={String(personal.maritalStatus || '')} onChange={(event) => setPersonal((current) => ({ ...current, maritalStatus: event.target.value }))} className={inputClassName}>
-              <option value="">Nao informado</option>
+              <option value="">Não informado</option>
               {MARITAL_STATUSES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
             </select>
           </label>
@@ -554,11 +560,11 @@ export default function PortalColaboradorPage() {
           {overview.employee.employmentRegime === 'ESTAGIO' ? (
             <>
               <label className="md:col-span-5">
-                <span className={labelClassName}>Instituicao de ensino</span>
+                <span className={labelClassName}>Instituição de ensino</span>
                 <input disabled={!canEdit} value={String(personal.educationInstitution || '')} onChange={(event) => setPersonal((current) => ({ ...current, educationInstitution: event.target.value }))} className={inputClassName} />
               </label>
               <label className="md:col-span-3">
-                <span className={labelClassName}>Nivel</span>
+                <span className={labelClassName}>Nível</span>
                 <select disabled={!canEdit} value={String(personal.educationLevel || '')} onChange={(event) => setPersonal((current) => ({ ...current, educationLevel: event.target.value }))} className={inputClassName}>
                   <option value="">Selecione</option>
                   {EDUCATION_LEVELS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
@@ -575,22 +581,26 @@ export default function PortalColaboradorPage() {
             </>
           ) : null}
 
-          <label className="md:col-span-3">
-            <span className={labelClassName}>Banco</span>
-            <input disabled={!canEdit} value={String(personal.bankName || '')} onChange={(event) => setPersonal((current) => ({ ...current, bankName: event.target.value }))} className={inputClassName} />
-          </label>
-          <label className="md:col-span-3">
-            <span className={labelClassName}>Agencia</span>
-            <input disabled={!canEdit} value={String(personal.bankAgency || '')} onChange={(event) => setPersonal((current) => ({ ...current, bankAgency: event.target.value }))} className={inputClassName} />
-          </label>
-          <label className="md:col-span-3">
-            <span className={labelClassName}>Conta</span>
-            <input disabled={!canEdit} value={String(personal.bankAccount || '')} onChange={(event) => setPersonal((current) => ({ ...current, bankAccount: event.target.value }))} className={inputClassName} />
-          </label>
-          <label className="md:col-span-3">
-            <span className={labelClassName}>Chave PIX</span>
-            <input disabled={!canEdit} value={String(personal.pixKey || '')} onChange={(event) => setPersonal((current) => ({ ...current, pixKey: event.target.value }))} className={inputClassName} />
-          </label>
+          {showBankFields ? (
+            <>
+              <label className="md:col-span-3">
+                <span className={labelClassName}>Banco</span>
+                <input disabled={!canEdit} value={String(personal.bankName || '')} onChange={(event) => setPersonal((current) => ({ ...current, bankName: event.target.value }))} className={inputClassName} />
+              </label>
+              <label className="md:col-span-3">
+                <span className={labelClassName}>Agência</span>
+                <input disabled={!canEdit} value={String(personal.bankAgency || '')} onChange={(event) => setPersonal((current) => ({ ...current, bankAgency: event.target.value }))} className={inputClassName} />
+              </label>
+              <label className="md:col-span-3">
+                <span className={labelClassName}>Conta</span>
+                <input disabled={!canEdit} value={String(personal.bankAccount || '')} onChange={(event) => setPersonal((current) => ({ ...current, bankAccount: event.target.value }))} className={inputClassName} />
+              </label>
+              <label className="md:col-span-3">
+                <span className={labelClassName}>Chave PIX</span>
+                <input disabled={!canEdit} value={String(personal.pixKey || '')} onChange={(event) => setPersonal((current) => ({ ...current, pixKey: event.target.value }))} className={inputClassName} />
+              </label>
+            </>
+          ) : null}
         </div>
       </section>
 
@@ -638,9 +648,9 @@ export default function PortalColaboradorPage() {
       </section>
 
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="text-lg font-bold text-slate-900">Enviar para revisao</h2>
+        <h2 className="text-lg font-bold text-slate-900">Enviar para revisão</h2>
         <p className="mt-1 text-sm text-slate-500">
-          Depois de enviar, o DP confere as informacoes. Se precisar de correcao, o portal sera reaberto.
+          Depois de enviar, o DP confere as informações. Se precisar de correção, o portal será reaberto.
         </p>
         <label className="mt-4 flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
           <input
@@ -650,7 +660,7 @@ export default function PortalColaboradorPage() {
             onChange={(event) => setConsentLgpd(event.target.checked)}
             className="mt-1"
           />
-          Declaro que as informacoes e documentos enviados sao verdadeiros e autorizo o uso para processos internos de cadastro, admissao, folha, beneficios e obrigacoes legais.
+          Declaro que as informações e documentos enviados são verdadeiros e autorizo o uso para processos internos de cadastro, admissão, folha, benefícios e obrigações legais.
         </label>
         <button
           type="button"
@@ -659,7 +669,7 @@ export default function PortalColaboradorPage() {
           className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#2AAE8B] px-4 py-3 text-sm font-bold text-white disabled:opacity-60 sm:w-auto"
         >
           {submitting ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-          Enviar para revisao
+          Enviar para revisão
         </button>
       </section>
 

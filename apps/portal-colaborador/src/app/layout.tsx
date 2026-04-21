@@ -3,7 +3,7 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: 'Portal do Colaborador | Consultare',
-  description: 'Envio de informacoes e documentos para colaboradores Consultare',
+  description: 'Envio de informações e documentos para colaboradores Consultare',
 };
 
 export default function RootLayout({

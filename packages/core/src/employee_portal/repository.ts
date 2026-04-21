@@ -64,7 +64,7 @@ const normalizeCpf = (value: any) => clean(value).replace(/\D/g, '').slice(0, 11
 const normalizePhone = (value: any): string | null => {
   const digits = clean(value).replace(/\D/g, '').slice(0, 11);
   if (!digits) return null;
-  if (digits.length < 10) throw new EmployeePortalError('Telefone invalido. Use DDD + numero.');
+  if (digits.length < 10) throw new EmployeePortalError('Telefone inválido. Use DDD + número.');
   return digits;
 };
 
@@ -459,7 +459,7 @@ const createSubmission = async (
     [id, employeeId, inviteId, JSON.stringify({}), now, now]
   );
   const created = await getLatestSubmission(db, employeeId);
-  if (!created) throw new EmployeePortalError('Falha ao criar submissao do portal.', 500);
+  if (!created) throw new EmployeePortalError('Falha ao criar submissão do portal.', 500);
   return created;
 };
 
@@ -474,7 +474,7 @@ const getEditableSubmission = async (
   if (existing.status === 'APPROVED' || existing.status === 'REJECTED' || existing.status === 'CANCELED') {
     return createSubmission(db, employeeId, inviteId);
   }
-  throw new EmployeePortalError('A submissao ja foi enviada e aguarda revisao do DP.', 409);
+  throw new EmployeePortalError('A submissão já foi enviada e aguarda revisão do DP.', 409);
 };
 
 export const getOrCreateEmployeePortalSubmission = async (
@@ -514,7 +514,7 @@ const normalizePersonalData = (payload: any): EmployeePortalPersonalData => {
       case 'email': {
         const email = clean(value).toLowerCase();
         if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-          throw new EmployeePortalError('E-mail invalido.');
+          throw new EmployeePortalError('E-mail inválido.');
         }
         data[field] = email || null;
         break;
@@ -530,7 +530,7 @@ const normalizePersonalData = (payload: any): EmployeePortalPersonalData => {
       case 'educationLevel': {
         const level = upper(value);
         if (level && !['MEDIO', 'TECNICO', 'SUPERIOR'].includes(level)) {
-          throw new EmployeePortalError('Nivel de escolaridade invalido.');
+          throw new EmployeePortalError('Nível de escolaridade inválido.');
         }
         data[field] = level || null;
         break;
@@ -538,7 +538,7 @@ const normalizePersonalData = (payload: any): EmployeePortalPersonalData => {
       case 'maritalStatus': {
         const status = upper(value);
         if (status && !['SOLTEIRO', 'CASADO', 'UNIAO_ESTAVEL', 'DIVORCIADO', 'VIUVO'].includes(status)) {
-          throw new EmployeePortalError('Estado civil invalido.');
+          throw new EmployeePortalError('Estado civil inválido.');
         }
         data[field] = status || null;
         break;
@@ -624,7 +624,7 @@ export const getEmployeePortalOverview = async (
 ): Promise<EmployeePortalOverview> => {
   await ensureEmployeePortalTables(db);
   const employee = await getEmployeeById(db, employeeId);
-  if (!employee) throw new EmployeePortalError('Colaborador nao encontrado.', 404);
+  if (!employee) throw new EmployeePortalError('Colaborador não encontrado.', 404);
 
   const [invites, submission, officialDocuments] = await Promise.all([
     listInvites(db, employeeId),
@@ -692,7 +692,7 @@ export const createEmployeePortalInvite = async (
 ) => {
   await ensureEmployeePortalTables(db);
   const employee = await getEmployeeById(db, employeeId);
-  if (!employee) throw new EmployeePortalError('Colaborador nao encontrado.', 404);
+  if (!employee) throw new EmployeePortalError('Colaborador não encontrado.', 404);
   if (!normalizeCpf(employee.cpf)) throw new EmployeePortalError('Informe o CPF do colaborador antes de gerar o convite.');
   if (!employee.birthDate) throw new EmployeePortalError('Informe a data de nascimento antes de gerar o convite.');
 
@@ -783,7 +783,7 @@ export const authenticateEmployeePortal = async (
     [tokenHash]
   );
   const invite = rows[0] ? mapInvite(rows[0]) : null;
-  const genericError = new EmployeePortalError('Nao foi possivel validar o acesso. Confira os dados ou fale com o RH.', 401);
+  const genericError = new EmployeePortalError('Não foi possível validar o acesso. Confira os dados ou fale com o RH.', 401);
   const now = NOW();
 
   if (!invite) throw genericError;
@@ -901,12 +901,21 @@ export const savePortalPersonalDraft = async (
   payload: any
 ) => {
   await ensureEmployeePortalTables(db);
+  const employee = await getEmployeeById(db, employeeId);
+  if (!employee) throw new EmployeePortalError('Colaborador não encontrado.', 404);
   const submission = await getEditableSubmission(db, employeeId, inviteId);
   const currentData = submission.personalData || {};
+  const normalizedData = normalizePersonalData(payload);
   const nextData = {
     ...currentData,
-    ...normalizePersonalData(payload),
+    ...normalizedData,
   };
+  if (employee.employmentRegime !== 'PJ') {
+    delete nextData.bankName;
+    delete nextData.bankAgency;
+    delete nextData.bankAccount;
+    delete nextData.pixKey;
+  }
   const now = NOW();
   await db.execute(
     `
@@ -930,20 +939,20 @@ export const createPortalSubmissionDocument = async (
 ) => {
   await ensureEmployeePortalTables(db);
   const employee = await getEmployeeById(db, employeeId);
-  if (!employee) throw new EmployeePortalError('Colaborador nao encontrado.', 404);
+  if (!employee) throw new EmployeePortalError('Colaborador não encontrado.', 404);
 
   const submission = await getEditableSubmission(db, employeeId, inviteId);
   const docType = upper(input.docType) as EmployeeDocumentTypeCode;
   const allowedTypes = new Set(getPortalExpectedDocumentTypes(employee, submission.personalData || {}));
   allowedTypes.add('OUTRO');
   if (!allowedTypes.has(docType) || EMPLOYEE_PORTAL_EXCLUDED_DOCUMENT_TYPES.has(docType)) {
-    throw new EmployeePortalError('Documento nao solicitado para este portal.');
+    throw new EmployeePortalError('Documento não solicitado para este portal.');
   }
 
   const typeDef = EMPLOYEE_DOCUMENT_TYPE_MAP.get(docType);
   const issueDate = parseDate(input.issueDate);
   const expiresAt = parseDate(input.expiresAt);
-  if (typeDef?.hasIssueDate && !issueDate) throw new EmployeePortalError('Este documento exige data de emissao.');
+  if (typeDef?.hasIssueDate && !issueDate) throw new EmployeePortalError('Este documento exige data de emissão.');
   if (typeDef?.hasExpiration && !expiresAt) throw new EmployeePortalError('Este documento exige data de vencimento.');
 
   const now = NOW();
@@ -1011,8 +1020,8 @@ export const removePortalSubmissionDocument = async (
     [documentId, employeeId]
   );
   const document = rows[0] ? mapSubmissionDocument(rows[0]) : null;
-  if (!document) throw new EmployeePortalError('Documento nao encontrado.', 404);
-  if (document.status === 'APPROVED') throw new EmployeePortalError('Documento aprovado nao pode ser removido pelo portal.', 409);
+  if (!document) throw new EmployeePortalError('Documento não encontrado.', 404);
+  if (document.status === 'APPROVED') throw new EmployeePortalError('Documento aprovado não pode ser removido pelo portal.', 409);
 
   await db.execute(
     `
@@ -1037,9 +1046,9 @@ export const submitPortalSubmissionForReview = async (
   await ensureEmployeePortalTables(db);
   const submission = await getLatestSubmission(db, employeeId);
   if (!submission || !['DRAFT', 'CHANGES_REQUESTED'].includes(submission.status)) {
-    throw new EmployeePortalError('Nao ha rascunho liberado para envio.', 409);
+    throw new EmployeePortalError('Não há rascunho liberado para envio.', 409);
   }
-  if (!consentLgpd) throw new EmployeePortalError('Aceite a declaracao de privacidade para enviar.');
+  if (!consentLgpd) throw new EmployeePortalError('Aceite a declaração de privacidade para enviar.');
 
   const overview = await getEmployeePortalOverview(db, employeeId);
   const missing = overview.checklist.filter((item) => item.status === 'PENDING');
@@ -1122,9 +1131,9 @@ export const approvePortalPersonalData = async (
 ) => {
   await ensureEmployeePortalTables(db);
   const submission = await getSubmissionById(db, submissionId);
-  if (!submission) throw new EmployeePortalError('Submissao nao encontrada.', 404);
+  if (!submission) throw new EmployeePortalError('Submissão não encontrada.', 404);
   const employee = await getEmployeeById(db, submission.employeeId);
-  if (!employee) throw new EmployeePortalError('Colaborador nao encontrado.', 404);
+  if (!employee) throw new EmployeePortalError('Colaborador não encontrado.', 404);
   const data = normalizePersonalData(submission.personalData || {});
   const assignments: string[] = [];
   const values: any[] = [];
@@ -1152,10 +1161,12 @@ export const approvePortalPersonalData = async (
   if ('maritalStatus' in data) add('marital_status', clean(data.maritalStatus) as MaritalStatus || null);
   if ('hasChildren' in data) add('has_children', bool(data.hasChildren) ? 1 : 0);
   if ('childrenCount' in data) add('children_count', Math.max(0, Math.trunc(Number(data.childrenCount || 0))));
-  if ('bankName' in data) add('bank_name', clean(data.bankName) || null);
-  if ('bankAgency' in data) add('bank_agency', clean(data.bankAgency) || null);
-  if ('bankAccount' in data) add('bank_account', clean(data.bankAccount) || null);
-  if ('pixKey' in data) add('pix_key', clean(data.pixKey) || null);
+  if (employee.employmentRegime === 'PJ') {
+    if ('bankName' in data) add('bank_name', clean(data.bankName) || null);
+    if ('bankAgency' in data) add('bank_agency', clean(data.bankAgency) || null);
+    if ('bankAccount' in data) add('bank_account', clean(data.bankAccount) || null);
+    if ('pixKey' in data) add('pix_key', clean(data.pixKey) || null);
+  }
 
   const now = NOW();
   if (assignments.length > 0) {
@@ -1197,9 +1208,9 @@ export const rejectPortalPersonalData = async (
 ) => {
   await ensureEmployeePortalTables(db);
   const submission = await getSubmissionById(db, submissionId);
-  if (!submission) throw new EmployeePortalError('Submissao nao encontrada.', 404);
+  if (!submission) throw new EmployeePortalError('Submissão não encontrada.', 404);
   const rejectionReason = clean(reason);
-  if (!rejectionReason) throw new EmployeePortalError('Informe o motivo da rejeicao.');
+  if (!rejectionReason) throw new EmployeePortalError('Informe o motivo da rejeição.');
   const now = NOW();
   await db.execute(
     `
@@ -1224,7 +1235,7 @@ export const approvePortalDocument = async (
 ) => {
   await ensureEmployeePortalTables(db);
   const document = await getPortalSubmissionDocumentById(db, documentId);
-  if (!document) throw new EmployeePortalError('Documento nao encontrado.', 404);
+  if (!document) throw new EmployeePortalError('Documento não encontrado.', 404);
   if (document.status !== 'PENDING') throw new EmployeePortalError('Apenas documentos pendentes podem ser aprovados.', 409);
 
   const created = await createEmployeeDocumentRecord(
@@ -1274,9 +1285,9 @@ export const rejectPortalDocument = async (
 ) => {
   await ensureEmployeePortalTables(db);
   const document = await getPortalSubmissionDocumentById(db, documentId);
-  if (!document) throw new EmployeePortalError('Documento nao encontrado.', 404);
+  if (!document) throw new EmployeePortalError('Documento não encontrado.', 404);
   const rejectionReason = clean(reason);
-  if (!rejectionReason) throw new EmployeePortalError('Informe o motivo da rejeicao.');
+  if (!rejectionReason) throw new EmployeePortalError('Informe o motivo da rejeição.');
   const now = NOW();
   await db.execute(
     `
@@ -1311,7 +1322,7 @@ export const requestPortalSubmissionChanges = async (
 ) => {
   await ensureEmployeePortalTables(db);
   const submission = await getSubmissionById(db, submissionId);
-  if (!submission) throw new EmployeePortalError('Submissao nao encontrada.', 404);
+  if (!submission) throw new EmployeePortalError('Submissão não encontrada.', 404);
   const now = NOW();
   await db.execute(
     `
@@ -1331,6 +1342,6 @@ export const requestPortalSubmissionChanges = async (
 export const validatePortalDocumentType = (docTypeRaw: string): EmployeeDocumentTypeCode => {
   const docType = upper(docTypeRaw) as EmployeeDocumentTypeCode;
   const allowed = new Set(EMPLOYEE_DOCUMENT_TYPES.map((item) => item.code));
-  if (!allowed.has(docType)) throw new EmployeePortalError('Tipo de documento invalido.');
+  if (!allowed.has(docType)) throw new EmployeePortalError('Tipo de documento inválido.');
   return docType;
 };

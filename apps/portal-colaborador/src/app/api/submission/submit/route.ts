@@ -20,9 +20,9 @@ export async function POST(request: Request) {
     const data = await submitPortalSubmissionForReview(db, session.employeeId, Boolean(body?.consentLgpd));
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
-    console.error('Erro ao enviar submissao do portal:', error);
+    console.error('Erro ao enviar submissão do portal:', error);
     return NextResponse.json(
-      { error: getEmployeePortalErrorMessage(error, 'Erro interno ao enviar submissao.') },
+      { error: getEmployeePortalErrorMessage(error, 'Erro interno ao enviar submissão.') },
       { status: getEmployeePortalErrorStatus(error) }
     );
   }

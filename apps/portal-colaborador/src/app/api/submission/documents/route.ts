@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const filePart = formData.get('file');
     if (!(filePart instanceof File)) {
-      return NextResponse.json({ error: 'Arquivo nao enviado.' }, { status: 400 });
+      return NextResponse.json({ error: 'Arquivo não enviado.' }, { status: 400 });
     }
 
     const docType = validatePortalDocumentType(String(formData.get('docType') || ''));

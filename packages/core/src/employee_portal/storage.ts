@@ -29,10 +29,10 @@ export const validatePortalUploadFile = (file: File) => {
     throw new EmployeePortalError('Arquivo acima do limite de 15 MB.');
   }
   if (!EMPLOYEE_PORTAL_ALLOWED_MIME_TYPES.has(mimeType)) {
-    throw new EmployeePortalError('Formato de arquivo nao permitido.');
+    throw new EmployeePortalError('Formato de arquivo não permitido.');
   }
   if (!EMPLOYEE_PORTAL_ALLOWED_EXTENSIONS.some((ext) => lowerName.endsWith(ext))) {
-    throw new EmployeePortalError('Extensao de arquivo nao permitida.');
+    throw new EmployeePortalError('Extensão de arquivo não permitida.');
   }
 
   return { originalName, mimeType, sizeBytes };
