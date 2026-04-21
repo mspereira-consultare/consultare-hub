@@ -46,14 +46,14 @@ const statusLabel: Record<string, string> = {
   REVOKED: 'Revogado',
   LOCKED: 'Bloqueado',
   DRAFT: 'Rascunho',
-  SUBMITTED: 'Enviado para revisao',
-  CHANGES_REQUESTED: 'Correcao solicitada',
+  SUBMITTED: 'Enviado para revisão',
+  CHANGES_REQUESTED: 'Correção solicitada',
   PARTIALLY_APPROVED: 'Parcialmente aprovado',
   APPROVED: 'Aprovado',
   REJECTED: 'Rejeitado',
   CANCELED: 'Cancelado',
   PENDING: 'Pendente',
-  PENDING_REVIEW: 'Em revisao',
+  PENDING_REVIEW: 'Em revisão',
 };
 
 const personalFieldLabels: Array<[keyof EmployeePortalPersonalData, string]> = [
@@ -62,7 +62,7 @@ const personalFieldLabels: Array<[keyof EmployeePortalPersonalData, string]> = [
   ['email', 'E-mail'],
   ['phone', 'Telefone'],
   ['street', 'Logradouro'],
-  ['streetNumber', 'Numero'],
+  ['streetNumber', 'Número'],
   ['addressComplement', 'Complemento'],
   ['district', 'Bairro'],
   ['city', 'Cidade'],
@@ -71,12 +71,12 @@ const personalFieldLabels: Array<[keyof EmployeePortalPersonalData, string]> = [
   ['maritalStatus', 'Estado civil'],
   ['hasChildren', 'Possui filhos'],
   ['childrenCount', 'Quantidade de filhos'],
-  ['educationInstitution', 'Instituicao de ensino'],
-  ['educationLevel', 'Nivel'],
+  ['educationInstitution', 'Instituição de ensino'],
+  ['educationLevel', 'Nível'],
   ['courseName', 'Curso'],
   ['currentSemester', 'Semestre'],
   ['bankName', 'Banco'],
-  ['bankAgency', 'Agencia'],
+  ['bankAgency', 'Agência'],
   ['bankAccount', 'Conta'],
   ['pixKey', 'Chave PIX'],
 ];
@@ -105,7 +105,7 @@ const badge = (status: string) => (
 );
 
 const valueLabel = (value: unknown) => {
-  if (typeof value === 'boolean') return value ? 'Sim' : 'Nao';
+  if (typeof value === 'boolean') return value ? 'Sim' : 'Não';
   const raw = String(value ?? '').trim();
   return raw || '-';
 };
@@ -173,7 +173,7 @@ export function EmployeePortalPanel({ employeeId, canEdit, onOfficialDocumentsCh
       setNotice(successMessage);
       if (refreshOfficialDocs && onOfficialDocumentsChanged) await onOfficialDocumentsChanged();
     } catch (actionError: unknown) {
-      setError(getErrorMessage(actionError, 'Falha ao executar acao.'));
+      setError(getErrorMessage(actionError, 'Falha ao executar ação.'));
     } finally {
       setActionLoading('');
     }
@@ -243,7 +243,7 @@ export function EmployeePortalPanel({ employeeId, canEdit, onOfficialDocumentsCh
         );
         return payload.data;
       },
-      'Dados pessoais devolvidos para correcao.'
+      'Dados pessoais devolvidos para correção.'
     );
   };
 
@@ -277,13 +277,13 @@ export function EmployeePortalPanel({ employeeId, canEdit, onOfficialDocumentsCh
         );
         return payload.data;
       },
-      'Documento devolvido para correcao.'
+      'Documento devolvido para correção.'
     );
   };
 
   const requestChanges = () => {
     if (!overview?.submission) return;
-    const notes = window.prompt('Observacao geral para a correcao:') || '';
+    const notes = window.prompt('Observação geral para a correção:') || '';
     runAction(
       'request-changes',
       async () => {
@@ -297,14 +297,14 @@ export function EmployeePortalPanel({ employeeId, canEdit, onOfficialDocumentsCh
         );
         return payload.data;
       },
-      'Submissao liberada para correcao.'
+      'Submissão liberada para correção.'
     );
   };
 
   const copyInvite = async () => {
     if (!displayInviteUrl) return;
     await navigator.clipboard?.writeText(displayInviteUrl);
-    setNotice('Link copiado para a area de transferencia.');
+    setNotice('Link copiado para a área de transferência.');
   };
 
   if (!employeeId) {
@@ -372,8 +372,8 @@ export function EmployeePortalPanel({ employeeId, canEdit, onOfficialDocumentsCh
             <div className="mt-2 text-xs text-slate-500">Expira em {formatDateTime(overview?.activeInvite?.expiresAt)}</div>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-3">
-            <div className="text-xs font-semibold uppercase text-slate-500">Submissao</div>
-            <div className="mt-2">{overview?.submission ? badge(overview.submission.status) : <span className="text-sm text-slate-500">Sem submissao</span>}</div>
+            <div className="text-xs font-semibold uppercase text-slate-500">Submissão</div>
+            <div className="mt-2">{overview?.submission ? badge(overview.submission.status) : <span className="text-sm text-slate-500">Sem submissão</span>}</div>
             <div className="mt-2 text-xs text-slate-500">Enviado em {formatDateTime(overview?.submission?.submittedAt)}</div>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white p-3">
@@ -450,7 +450,7 @@ export function EmployeePortalPanel({ employeeId, canEdit, onOfficialDocumentsCh
           {overview?.submission && canEdit ? (
             <button type="button" onClick={requestChanges} disabled={Boolean(actionLoading)} className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-amber-700">
               <RotateCcw size={14} />
-              Pedir correcao geral
+              Pedir correção geral
             </button>
           ) : null}
         </div>
@@ -462,8 +462,8 @@ export function EmployeePortalPanel({ employeeId, canEdit, onOfficialDocumentsCh
                 <th className="px-3 py-2">Documento</th>
                 <th className="px-3 py-2">Arquivo</th>
                 <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Rejeicao</th>
-                <th className="px-3 py-2">Acoes</th>
+                <th className="px-3 py-2">Rejeição</th>
+                <th className="px-3 py-2">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">

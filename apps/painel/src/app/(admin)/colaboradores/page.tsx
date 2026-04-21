@@ -523,7 +523,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`rounded-lg px-3 py-1.5 text-sm transition ${active ? 'border border-slate-200 bg-white text-slate-900 shadow-sm' : 'text-slate-600'} ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
+      className={`rounded-lg px-3 py-1.5 text-sm transition ${active ? 'bg-[#17407E] text-white shadow-sm' : 'text-slate-600 hover:bg-white/70 hover:text-slate-900'} ${disabled ? 'cursor-not-allowed opacity-50' : ''}`}
     >
       {children}
     </button>
