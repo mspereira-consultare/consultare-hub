@@ -12,6 +12,7 @@ import {
   LogOut,
   Send,
   Upload,
+  UserRound,
   X,
 } from 'lucide-react';
 import {
@@ -400,6 +401,10 @@ export default function PortalColaboradorPage() {
 
   const personalStatus = overview.submission?.personalStatus || 'DRAFT';
   const submissionStatus = overview.submission?.status || 'DRAFT';
+  const photoDocument = overview.checklist.find((item) => item.docType === 'FOTO_3X4')?.portalDocument || null;
+  const photoUrl = photoDocument?.mimeType.startsWith('image/')
+    ? `/api/submission/documents/${encodeURIComponent(photoDocument.id)}?inline=1`
+    : '';
 
   return (
     <main className="mx-auto max-w-6xl p-4 sm:p-6">
@@ -407,6 +412,20 @@ export default function PortalColaboradorPage() {
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <Image src="/logo-color.png" alt="Consultare" width={165} height={50} priority className="h-11 w-auto" />
+            {photoUrl ? (
+              <img
+                src={photoUrl}
+                alt={`Foto de ${overview.employee.fullName}`}
+                className="h-12 w-12 shrink-0 rounded-full border border-slate-200 object-cover shadow-sm"
+              />
+            ) : (
+              <div className="group relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-dashed border-slate-300 bg-slate-50 text-slate-400">
+                <UserRound size={22} aria-hidden="true" />
+                <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-48 -translate-x-1/2 rounded-lg bg-slate-900 px-3 py-2 text-center text-xs font-medium text-white opacity-0 shadow-lg transition group-hover:opacity-100">
+                  Envie a Foto 3x4 em Documentos.
+                </span>
+              </div>
+            )}
             <div>
               <h1 className="text-xl font-bold text-slate-950">Portal do colaborador</h1>
               <p className="text-sm text-slate-500">Olá, {overview.employee.fullName.split(' ')[0] || overview.employee.fullName}</p>
