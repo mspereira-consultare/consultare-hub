@@ -35,4 +35,4 @@ COPY --from=builder /app/packages ./packages
 
 EXPOSE 3000
 
-CMD ["npm", "run", "start", "--workspace", "apps/painel"]
+CMD ["npm", "run", "start", "--workspace", "apps/painel", "--", "-H", "0.0.0.0"]
