@@ -8,7 +8,7 @@ COPY apps/portal-colaborador/package.json apps/portal-colaborador/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/ui/package.json packages/ui/package.json
 
-RUN npm ci --include=dev
+RUN npm ci --include=dev --include=optional
 
 FROM node:22-slim AS builder
 

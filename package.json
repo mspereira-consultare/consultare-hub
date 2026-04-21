@@ -22,5 +22,8 @@
     "lint": "npm run lint --workspace apps/painel",
     "lint:painel": "npm run lint --workspace apps/painel",
     "lint:portal-colaborador": "npm run lint --workspace apps/portal-colaborador"
+  },
+  "optionalDependencies": {
+    "@libsql/linux-x64-gnu": "^0.5.29"
   }
 }
