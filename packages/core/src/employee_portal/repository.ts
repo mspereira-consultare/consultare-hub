@@ -1,7 +1,7 @@
 import 'server-only';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { createHash, createHmac, randomBytes, randomUUID } from 'crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from 'crypto';
 import type { DbInterface } from '../db';
 import {
   EMPLOYEE_DOCUMENT_TYPE_MAP,
@@ -111,6 +111,43 @@ export const generatePortalToken = () => randomBytes(32).toString('base64url');
 export const hashPortalToken = (token: string) =>
   createHmac('sha256', portalSecret()).update(clean(token)).digest('hex');
 
+const portalEncryptionKey = () => createHash('sha256').update(portalSecret()).digest();
+
+const encryptPortalToken = (token: string) => {
+  const iv = randomBytes(12);
+  const cipher = createCipheriv('aes-256-gcm', portalEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(clean(token), 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return [
+    'v1',
+    iv.toString('base64url'),
+    tag.toString('base64url'),
+    encrypted.toString('base64url'),
+  ].join(':');
+};
+
+const decryptPortalToken = (encryptedToken: unknown): string | null => {
+  const raw = clean(encryptedToken);
+  if (!raw) return null;
+  const [version, ivRaw, tagRaw, encryptedRaw] = raw.split(':');
+  if (version !== 'v1' || !ivRaw || !tagRaw || !encryptedRaw) return null;
+
+  try {
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      portalEncryptionKey(),
+      Buffer.from(ivRaw, 'base64url')
+    );
+    decipher.setAuthTag(Buffer.from(tagRaw, 'base64url'));
+    return Buffer.concat([
+      decipher.update(Buffer.from(encryptedRaw, 'base64url')),
+      decipher.final(),
+    ]).toString('utf8');
+  } catch {
+    return null;
+  }
+};
+
 export const checksumBuffer = (buffer: Buffer) =>
   createHash('sha256').update(buffer).digest('hex');
 
@@ -169,6 +206,7 @@ export const ensureEmployeePortalTables = async (db: DbInterface) => {
       id VARCHAR(64) PRIMARY KEY,
       employee_id VARCHAR(64) NOT NULL,
       token_hash VARCHAR(128) NOT NULL,
+      token_encrypted TEXT NULL,
       status VARCHAR(30) NOT NULL,
       expires_at TEXT NOT NULL,
       created_by VARCHAR(64) NOT NULL,
@@ -245,6 +283,7 @@ export const ensureEmployeePortalTables = async (db: DbInterface) => {
 
   await safeAddColumn(db, `ALTER TABLE employee_portal_submissions ADD COLUMN personal_status VARCHAR(30) NOT NULL DEFAULT 'DRAFT'`);
   await safeAddColumn(db, `ALTER TABLE employee_portal_submissions ADD COLUMN personal_rejection_reason TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_portal_invites ADD COLUMN token_encrypted TEXT NULL`);
 
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_invites_employee ON employee_portal_invites (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_invites_status ON employee_portal_invites (status)`);
@@ -267,19 +306,23 @@ const parseJsonObject = (value: any): Record<string, any> => {
   }
 };
 
-const mapInvite = (row: any): EmployeePortalInvite => ({
-  id: clean(row.id),
-  employeeId: clean(row.employee_id),
-  status: upper(row.status || 'ACTIVE') as EmployeePortalInviteStatus,
-  expiresAt: clean(row.expires_at),
-  createdBy: clean(row.created_by),
-  createdAt: clean(row.created_at),
-  revokedBy: clean(row.revoked_by) || null,
-  revokedAt: clean(row.revoked_at) || null,
-  lastUsedAt: clean(row.last_used_at) || null,
-  attemptCount: Number(row.attempt_count || 0),
-  lockedUntil: clean(row.locked_until) || null,
-});
+const mapInvite = (row: any, baseUrl?: string): EmployeePortalInvite => {
+  const token = baseUrl ? decryptPortalToken(row.token_encrypted) : null;
+  return {
+    id: clean(row.id),
+    employeeId: clean(row.employee_id),
+    status: upper(row.status || 'ACTIVE') as EmployeePortalInviteStatus,
+    url: token ? buildPortalInviteUrl(baseUrl || '', token) : null,
+    expiresAt: clean(row.expires_at),
+    createdBy: clean(row.created_by),
+    createdAt: clean(row.created_at),
+    revokedBy: clean(row.revoked_by) || null,
+    revokedAt: clean(row.revoked_at) || null,
+    lastUsedAt: clean(row.last_used_at) || null,
+    attemptCount: Number(row.attempt_count || 0),
+    lockedUntil: clean(row.locked_until) || null,
+  };
+};
 
 const mapSession = (row: any): EmployeePortalSession => ({
   id: clean(row.id),
@@ -375,10 +418,14 @@ const listInvites = async (db: DbInterface, employeeId: string): Promise<Employe
     `,
     [employeeId]
   );
-  return rows.map(mapInvite);
+  return rows.map((row) => mapInvite(row));
 };
 
-const getActiveInvite = async (db: DbInterface, employeeId: string): Promise<EmployeePortalInvite | null> => {
+const getActiveInvite = async (
+  db: DbInterface,
+  employeeId: string,
+  baseUrl?: string
+): Promise<EmployeePortalInvite | null> => {
   const rows = await db.query(
     `
     SELECT *
@@ -389,7 +436,7 @@ const getActiveInvite = async (db: DbInterface, employeeId: string): Promise<Emp
     `,
     [employeeId]
   );
-  const invite = rows[0] ? mapInvite(rows[0]) : null;
+  const invite = rows[0] ? mapInvite(rows[0], baseUrl) : null;
   if (!invite) return null;
   if (invite.expiresAt && invite.expiresAt <= NOW()) return null;
   return invite;
@@ -572,7 +619,8 @@ const buildChecklist = (
 
 export const getEmployeePortalOverview = async (
   db: DbInterface,
-  employeeId: string
+  employeeId: string,
+  baseUrl?: string
 ): Promise<EmployeePortalOverview> => {
   await ensureEmployeePortalTables(db);
   const employee = await getEmployeeById(db, employeeId);
@@ -583,7 +631,7 @@ export const getEmployeePortalOverview = async (
     getLatestSubmission(db, employeeId),
     listEmployeeDocuments(db, employeeId),
   ]);
-  const activeInvite = await getActiveInvite(db, employeeId);
+  const activeInvite = await getActiveInvite(db, employeeId, baseUrl);
   const documents = submission ? await listSubmissionDocuments(db, submission.id) : [];
   const checklist = buildChecklist(employee, submission, documents, officialDocuments);
 
@@ -660,17 +708,18 @@ export const createEmployeePortalInvite = async (
 
   const token = generatePortalToken();
   const tokenHash = hashPortalToken(token);
+  const tokenEncrypted = encryptPortalToken(token);
   const id = randomUUID();
   const expiresAt = addDaysIso(now, EMPLOYEE_PORTAL_INVITE_TTL_DAYS);
 
   await db.execute(
     `
     INSERT INTO employee_portal_invites (
-      id, employee_id, token_hash, status, expires_at, created_by, created_at,
+      id, employee_id, token_hash, token_encrypted, status, expires_at, created_by, created_at,
       attempt_count
-    ) VALUES (?, ?, ?, 'ACTIVE', ?, ?, ?, 0)
+    ) VALUES (?, ?, ?, ?, 'ACTIVE', ?, ?, ?, 0)
     `,
-    [id, employeeId, tokenHash, expiresAt, actorUserId, now]
+    [id, employeeId, tokenHash, tokenEncrypted, expiresAt, actorUserId, now]
   );
 
   await insertAudit(db, 'EMPLOYEE_PORTAL_INVITE_CREATED', actorUserId, employeeId, {

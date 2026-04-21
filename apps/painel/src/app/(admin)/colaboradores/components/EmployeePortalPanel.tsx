@@ -117,6 +117,7 @@ export function EmployeePortalPanel({ employeeId, canEdit, onOfficialDocumentsCh
   const [actionLoading, setActionLoading] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const displayInviteUrl = inviteUrl || overview?.activeInvite?.url || '';
 
   const loadOverview = useCallback(async () => {
     if (!employeeId) return;
@@ -203,6 +204,7 @@ export function EmployeePortalPanel({ employeeId, canEdit, onOfficialDocumentsCh
           `/api/admin/colaboradores/${encodeURIComponent(employeeId)}/portal-invites/${encodeURIComponent(inviteId)}`,
           { method: 'DELETE' }
         );
+        setInviteUrl('');
         return payload.data;
       },
       'Convite revogado.'
@@ -300,8 +302,8 @@ export function EmployeePortalPanel({ employeeId, canEdit, onOfficialDocumentsCh
   };
 
   const copyInvite = async () => {
-    if (!inviteUrl) return;
-    await navigator.clipboard?.writeText(inviteUrl);
+    if (!displayInviteUrl) return;
+    await navigator.clipboard?.writeText(displayInviteUrl);
     setNotice('Link copiado para a area de transferencia.');
   };
 
@@ -353,9 +355,9 @@ export function EmployeePortalPanel({ employeeId, canEdit, onOfficialDocumentsCh
           </div>
         </div>
 
-        {inviteUrl ? (
+        {displayInviteUrl ? (
           <div className="mt-4 grid gap-2 md:grid-cols-[1fr_auto]">
-            <input readOnly value={inviteUrl} className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-slate-700" />
+            <input readOnly value={displayInviteUrl} className="rounded-lg border border-blue-200 bg-white px-3 py-2 text-sm text-slate-700" />
             <button type="button" onClick={copyInvite} className="inline-flex items-center justify-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-[#17407E]">
               <Copy size={14} />
               Copiar link

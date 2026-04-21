@@ -23,6 +23,7 @@ export type EmployeePortalInvite = {
   id: string;
   employeeId: string;
   status: EmployeePortalInviteStatus;
+  url?: string | null;
   expiresAt: string;
   createdBy: string;
   createdAt: string;
@@ -161,4 +162,3 @@ export type CreatePortalDocumentInput = {
   storageBucket: string | null;
   storageKey: string;
 };
-
