@@ -19,7 +19,16 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@consultare/core/db": ["../../packages/core/src/db.ts"],
+      "@consultare/core/storage": ["../../packages/core/src/storage/index.ts"],
+      "@consultare/core/storage/provider": ["../../packages/core/src/storage/provider.ts"],
+      "@consultare/core/storage/providers/s3": ["../../packages/core/src/storage/providers/s3.ts"],
+      "@consultare/core/colaboradores/constants": ["../../packages/core/src/colaboradores/constants.ts"],
+      "@consultare/core/colaboradores/types": ["../../packages/core/src/colaboradores/types.ts"],
+      "@consultare/core/colaboradores/status": ["../../packages/core/src/colaboradores/status.ts"],
+      "@consultare/core/colaboradores/portal-repository": ["../../packages/core/src/colaboradores/portal_repository.ts"],
+      "@consultare/core/employee-portal/*": ["../../packages/core/src/employee_portal/*"]
     }
   },
   "include": [
