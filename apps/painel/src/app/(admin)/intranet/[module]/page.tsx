@@ -17,46 +17,61 @@ const modules = {
     title: 'Navegação',
     description: 'Estrutura do menu, hierarquia, links externos e visibilidade.',
     icon: Navigation,
+    endpoints: ['GET/POST /api/admin/intranet/navigation', 'PUT/DELETE /api/admin/intranet/navigation/[id]'],
   },
   paginas: {
     title: 'Páginas',
     description: 'CMS de páginas dinâmicas, blocos, revisões e publicação.',
     icon: FileText,
+    endpoints: ['GET/POST /api/admin/intranet/pages', 'GET/PUT/DELETE /api/admin/intranet/pages/[id]', 'GET/POST /api/admin/intranet/assets'],
   },
   noticias: {
     title: 'Notícias e Avisos',
     description: 'Conteúdos de comunicação interna exibidos na intranet.',
     icon: Newspaper,
+    endpoints: ['GET/POST /api/admin/intranet/news', 'GET/PUT/DELETE /api/admin/intranet/news/[id]'],
   },
   faq: {
     title: 'FAQ',
     description: 'Perguntas frequentes, categorias, ordem e audiências.',
     icon: CircleHelp,
+    endpoints: [
+      'GET /api/admin/intranet/faq',
+      'GET/POST /api/admin/intranet/faq/categories',
+      'PUT/DELETE /api/admin/intranet/faq/categories/[id]',
+      'GET/POST /api/admin/intranet/faq/items',
+      'GET/PUT/DELETE /api/admin/intranet/faq/items/[id]',
+    ],
   },
   catalogo: {
     title: 'Catálogo',
     description: 'Curadoria editorial de profissionais, procedimentos, exames e valores publicados.',
     icon: Stethoscope,
+    endpoints: ['Fase posterior: integração com profissionais e procedimentos'],
   },
   audiencias: {
     title: 'Audiências',
     description: 'Grupos usados para controlar quem enxerga páginas, documentos e canais.',
     icon: Users,
+    endpoints: ['GET/POST /api/admin/intranet/audiences', 'PUT/DELETE /api/admin/intranet/audiences/[id]'],
   },
   escopos: {
     title: 'Escopos Editoriais',
     description: 'Governança de quem pode editar cada área da intranet.',
     icon: ShieldCheck,
+    endpoints: ['GET/POST /api/admin/intranet/editorial-scopes', 'PUT/DELETE /api/admin/intranet/editorial-scopes/[id]'],
   },
   chat: {
     title: 'Chat Interno',
     description: 'Administração de canais, moderação e comunicação interna.',
     icon: MessageCircle,
+    endpoints: ['Fase posterior: chat interno'],
   },
   chatbot: {
     title: 'Chatbot e Conhecimento',
     description: 'Fontes, indexação, perguntas sem resposta e auditoria de conversas.',
     icon: Bot,
+    endpoints: ['Fase posterior: chatbot e base de conhecimento'],
   },
 } as const;
 
@@ -86,6 +101,19 @@ export default function IntranetAdminModulePage({ params }: { params: Params }) 
           <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">{moduleConfig.description}</p>
           <div className="mt-6 rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
             Este espaço foi criado na fundação técnica para receber as telas administrativas das próximas fases.
+          </div>
+          <div className="mt-6">
+            <h2 className="text-sm font-semibold text-slate-900">Base administrativa disponível</h2>
+            <div className="mt-3 grid gap-2">
+              {moduleConfig.endpoints.map((endpoint) => (
+                <code
+                  key={endpoint}
+                  className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+                >
+                  {endpoint}
+                </code>
+              ))}
+            </div>
           </div>
         </section>
       </div>
