@@ -90,6 +90,8 @@ Esse chatbot deve ajudar os colaboradores a encontrar respostas sobre:
 - servicos e portfolio;
 - perguntas frequentes.
 
+Quando o chatbot nao souber responder porque a informacao ainda nao esta na base de conhecimento oficial, ele nao deve inventar uma resposta. A pergunta deve ser registrada e enviada para uma area administrativa, onde gestores autorizados poderao responder. Depois de validada, a resposta passa a alimentar a base de conhecimento e, quando fizer sentido, tambem o FAQ. Nessa etapa, pergunta e resposta devem ser revisadas para garantir linguagem adequada e padrao institucional.
+
 ## 5. Chat interno entre colaboradores
 
 A proposta tambem inclui um **chat interno** para comunicacao entre colaboradores, com:
@@ -112,6 +114,7 @@ Pelo painel administrativo, eles deverao conseguir:
 - reorganizar o menu lateral;
 - publicar avisos e noticias;
 - cadastrar e manter FAQ;
+- responder perguntas que o chatbot nao conseguiu responder;
 - atualizar conteudo institucional;
 - publicar ou ocultar informacoes;
 - organizar portfolio e catalogos;
@@ -225,10 +228,11 @@ Os gestores devem validar especialmente se concordam com os pontos abaixo:
 4. Deve existir controle de acesso por pagina.
 5. A estrutura atual do Google Sites servira como base, com reorganizacao gradual.
 6. O chatbot institucional faz parte do escopo inicial.
-7. O chat interno entre colaboradores faz parte do escopo inicial.
-8. O portfolio de profissionais, procedimentos, exames e valores deve fazer parte da intranet.
-9. O projeto deve ser entregue em fases para reduzir risco.
-10. O painel gerencial sera a central administrativa da intranet.
+7. Perguntas sem resposta do chatbot devem virar pendencias para gestores, com resposta validada antes de entrar na base de conhecimento e no FAQ.
+8. O chat interno entre colaboradores faz parte do escopo inicial.
+9. O portfolio de profissionais, procedimentos, exames e valores deve fazer parte da intranet.
+10. O projeto deve ser entregue em fases para reduzir risco.
+11. O painel gerencial sera a central administrativa da intranet.
 
 ---
 
@@ -240,5 +244,6 @@ O projeto sera bem-sucedido se, ao final da primeira fase:
 - os gestores conseguirem atualizar conteudo sem acionar desenvolvimento;
 - os documentos e informacoes estiverem mais organizados e acessiveis;
 - o chatbot ajudar a responder duvidas frequentes;
+- duvidas nao respondidas pelo chatbot gerarem melhoria continua da base de conhecimento;
 - o chat interno apoiar a comunicacao operacional;
 - a empresa consiga comecar a desligar a dependencia da intranet atual no Google Sites.

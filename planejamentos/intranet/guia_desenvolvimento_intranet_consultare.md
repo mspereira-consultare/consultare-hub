@@ -1704,6 +1704,17 @@ Fluxo:
 7. sistema envia pergunta + contexto recuperado para a OpenAI;
 8. resposta volta com citacao de fontes.
 
+Quando nao houver conhecimento suficiente para responder:
+
+1. o chatbot deve informar que nao encontrou uma resposta confiavel na base oficial;
+2. a pergunta deve ser registrada como pendente de resposta;
+3. a pergunta deve aparecer em uma area administrativa para gestores autorizados;
+4. o gestor deve poder responder, revisar a pergunta e ajustar a linguagem;
+5. apos validacao, a resposta deve alimentar a base de conhecimento;
+6. quando aplicavel, pergunta e resposta revisadas tambem devem ser publicadas no FAQ.
+
+Esse fluxo transforma lacunas de conhecimento em backlog editorial e evita que o chatbot invente respostas.
+
 ### 19.4 Estrategia de embeddings
 
 Para o V1, a estrategia recomendada e:
@@ -1783,6 +1794,7 @@ O chatbot deve:
 - recusar resposta baseada em fonte inacessivel ao usuario;
 - retornar fontes usadas;
 - registrar pergunta e resposta para auditoria;
+- registrar perguntas sem resposta por falta de conhecimento oficial;
 - permitir desligar fontes especificas da indexacao;
 - evitar usar documento arquivado ou pagina nao publicada.
 
@@ -1803,6 +1815,34 @@ O chatbot deve:
 - `content`
 - `sources_json`
 - `created_at`
+
+#### `intranet_chatbot_unanswered_questions`
+
+- `id`
+- `question`
+- `normalized_question`
+- `asked_by_user_id`
+- `session_id`
+- `status` (`pending`, `answered`, `published_to_knowledge`, `published_to_faq`, `rejected`)
+- `answer_draft`
+- `answer_reviewed`
+- `review_notes`
+- `assigned_to_user_id`
+- `answered_by_user_id`
+- `approved_by_user_id`
+- `knowledge_source_id`
+- `faq_id`
+- `created_at`
+- `answered_at`
+- `approved_at`
+- `published_at`
+
+Uso:
+
+- registrar perguntas que o chatbot nao conseguiu responder por falta de informacao na base oficial;
+- permitir que gestores autorizados respondam e revisem linguagem;
+- transformar respostas aprovadas em fonte de conhecimento indexavel;
+- publicar pergunta e resposta no FAQ quando fizer sentido.
 
 ---
 
@@ -2286,6 +2326,8 @@ Mitigacao:
 - indexacao conclui com status;
 - perguntas respondem com fonte;
 - conteudo inacessivel nao entra na resposta;
+- perguntas sem resposta por falta de conhecimento viram pendencia para gestores;
+- respostas validadas por gestores podem alimentar a base de conhecimento e o FAQ;
 - conversa fica auditavel.
 
 ### 27.6 Pronto de chat interno
