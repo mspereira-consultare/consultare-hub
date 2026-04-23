@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getStorageProvider } from '@/lib/storage';
+import { getStorageProvider } from '@consultare/core/storage';
 import { requireIntranetPermission } from '@/lib/intranet/auth';
 import { createAssetRecord, IntranetValidationError, listAssets } from '@/lib/intranet/repository';
 

@@ -9,6 +9,7 @@
     "./db": "./src/db.ts",
     "./intranet/repository": "./src/intranet/repository.ts",
     "./permissions": "./src/permissions.ts",
+    "./permissions-server": "./src/permissions_server.ts",
     "./storage": "./src/storage/index.ts",
     "./storage/provider": "./src/storage/provider.ts",
     "./storage/providers/s3": "./src/storage/providers/s3.ts",

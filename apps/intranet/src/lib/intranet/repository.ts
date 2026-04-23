@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import type { DbInterface } from '@/lib/db';
+import type { DbInterface } from '@consultare/core/db';
 
 type Row = Record<string, unknown>;
 type JsonValue = Record<string, unknown> | unknown[] | string | number | boolean | null;

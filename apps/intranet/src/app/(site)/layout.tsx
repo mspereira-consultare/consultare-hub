@@ -1,9 +1,11 @@
 import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
-import { Bot, Home, MessageCircle, Search } from 'lucide-react';
+import { Bot, Home, MessageCircle, Search, ShieldCheck } from 'lucide-react';
 import { getDbConnection } from '@consultare/core/db';
 import { listPublishedNavigationNodes } from '@consultare/core/intranet/repository';
+import { hasPermission } from '@consultare/core/permissions';
+import { loadUserPermissionMatrix } from '@consultare/core/permissions-server';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import SignOutButton from './sign-out-button';
 
@@ -26,7 +28,11 @@ export default async function SiteLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getUser();
   const db = getDbConnection();
-  const navItems = await listPublishedNavigationNodes(db, user);
+  const [navItems, permissions] = await Promise.all([
+    listPublishedNavigationNodes(db, user),
+    loadUserPermissionMatrix(db, user.id, user.role),
+  ]);
+  const canManageIntranet = hasPermission(permissions, 'intranet_dashboard', 'view', user.role);
 
   return (
     <div className="min-h-screen bg-[#f4f7fb] text-slate-900">
@@ -47,6 +53,15 @@ export default async function SiteLayout({
               <Home size={17} />
               Home
             </Link>
+            {canManageIntranet ? (
+              <Link
+                href="/gestao"
+                className="mb-2 flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-[#17407E]"
+              >
+                <ShieldCheck size={17} />
+                Gestão da Intranet
+              </Link>
+            ) : null}
             {navItems.map((item) => {
               if (!item.href) {
                 return (

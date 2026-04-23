@@ -29,11 +29,9 @@ import {
   Stethoscope,
   FileText,
   BarChart3,
-  Bot,
   Wrench,
   ShieldCheck,
-  Newspaper,
-  Navigation,
+  ExternalLink,
 } from "lucide-react";
 import { hasPermission, type PageKey } from "@/lib/permissions";
 
@@ -57,6 +55,14 @@ const menuItems: MenuItem[] = [
     href: "/dashboard",
     label: "Visão Geral",
     icon: LayoutDashboard,
+    group: "PRINCIPAL",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "dashboard",
+  },
+  {
+    href: "/intranet",
+    label: "Abrir Intranet",
+    icon: ExternalLink,
     group: "PRINCIPAL",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "dashboard",
@@ -256,86 +262,6 @@ const menuItems: MenuItem[] = [
     pageKey: "marketing_funil",
   },
   {
-    href: "/intranet",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-    group: "INTRANET",
-    roles: ["ADMIN", "GESTOR"],
-    pageKey: "intranet_dashboard",
-  },
-  {
-    href: "/intranet/navegacao",
-    label: "Navegação",
-    icon: Navigation,
-    group: "INTRANET",
-    roles: ["ADMIN", "GESTOR"],
-    pageKey: "intranet_navegacao",
-  },
-  {
-    href: "/intranet/paginas",
-    label: "Páginas",
-    icon: FileText,
-    group: "INTRANET",
-    roles: ["ADMIN", "GESTOR"],
-    pageKey: "intranet_paginas",
-  },
-  {
-    href: "/intranet/noticias",
-    label: "Notícias e Avisos",
-    icon: Newspaper,
-    group: "INTRANET",
-    roles: ["ADMIN", "GESTOR"],
-    pageKey: "intranet_noticias",
-  },
-  {
-    href: "/intranet/faq",
-    label: "FAQ",
-    icon: CircleHelp,
-    group: "INTRANET",
-    roles: ["ADMIN", "GESTOR"],
-    pageKey: "intranet_faq",
-  },
-  {
-    href: "/intranet/catalogo",
-    label: "Catálogo",
-    icon: Stethoscope,
-    group: "INTRANET",
-    roles: ["ADMIN", "GESTOR"],
-    pageKey: "intranet_catalogo",
-  },
-  {
-    href: "/intranet/audiencias",
-    label: "Audiências",
-    icon: Users,
-    group: "INTRANET",
-    roles: ["ADMIN", "GESTOR"],
-    pageKey: "intranet_audiencias",
-  },
-  {
-    href: "/intranet/escopos",
-    label: "Escopos Editoriais",
-    icon: ShieldCheck,
-    group: "INTRANET",
-    roles: ["ADMIN", "GESTOR"],
-    pageKey: "intranet_escopos",
-  },
-  {
-    href: "/intranet/chat",
-    label: "Chat Interno",
-    icon: MessageCircle,
-    group: "INTRANET",
-    roles: ["ADMIN", "GESTOR"],
-    pageKey: "intranet_chat",
-  },
-  {
-    href: "/intranet/chatbot",
-    label: "Chatbot e Conhecimento",
-    icon: Bot,
-    group: "INTRANET",
-    roles: ["ADMIN", "GESTOR"],
-    pageKey: "intranet_chatbot",
-  },
-  {
     href: "/users",
     label: "Gestão de Usuários",
     icon: Users,
@@ -419,10 +345,23 @@ const buildGroupSections = (items: MenuItem[]): GroupSection[] => {
 const getCollapsedItemLabel = (item: MenuItem) =>
   item.subgroup ? `${item.subgroup} / ${item.label}` : item.label;
 
+const readStoredExpandedGroups = (): Record<string, boolean> => {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
 export function Sidebar() {
   const [isOpen, setIsOpen] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(readStoredExpandedGroups);
 
   const pathname = usePathname();
   const router = useRouter();
@@ -470,6 +409,13 @@ export function Sidebar() {
     ? getSubgroupKey(activeItem.group, activeItem.subgroup)
     : null;
 
+  const visibleExpandedGroups = useMemo(() => {
+    const next = { ...expandedGroups };
+    if (activeGroup) next[activeGroup] = true;
+    if (activeSubgroupKey) next[activeSubgroupKey] = true;
+    return next;
+  }, [activeGroup, activeSubgroupKey, expandedGroups]);
+
   const ensureExpandedKeysForItem = (item: MenuItem) => {
     setExpandedGroups((prev) => {
       const next = { ...prev, [item.group]: true };
@@ -482,41 +428,11 @@ export function Sidebar() {
 
   useEffect(() => {
     try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === "object") setExpandedGroups(parsed);
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(expandedGroups));
     } catch {
       // ignore
     }
   }, [expandedGroups]);
-
-  useEffect(() => {
-    if (!activeGroup) return;
-    setExpandedGroups((prev) => {
-      const next = prev[activeGroup]
-        ? { ...prev }
-        : { ...prev, [activeGroup]: true };
-
-      if (activeSubgroupKey) {
-        next[activeSubgroupKey] = true;
-      }
-
-      return next;
-    });
-  }, [activeGroup, activeSubgroupKey]);
-
-  useEffect(() => {
-    if (!isOpen) setSearchTerm("");
-  }, [isOpen]);
 
   const searchResultsByGroup = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -603,7 +519,10 @@ export function Sidebar() {
         </div>
 
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => {
+            if (isOpen) setSearchTerm("");
+            setIsOpen((current) => !current);
+          }}
           className="p-2 hover:bg-white/10 rounded-lg transition-colors text-white"
           aria-label={isOpen ? "Fechar sidebar" : "Abrir sidebar"}
           title={isOpen ? "Fechar" : "Abrir"}
@@ -743,7 +662,7 @@ export function Sidebar() {
                 ? true
                 : group === activeGroup
                 ? true
-                : !!expandedGroups[group];
+                : !!visibleExpandedGroups[group];
 
               // Sidebar recolhida: mais condensado também
               if (!isOpen) {
@@ -882,7 +801,7 @@ export function Sidebar() {
 
                           const subgroupKey = getSubgroupKey(group, section.label);
                           const isSubgroupActive = activeSubgroupKey === subgroupKey;
-                          const isSubgroupExpanded = isSubgroupActive ? true : !!expandedGroups[subgroupKey];
+                          const isSubgroupExpanded = isSubgroupActive ? true : !!visibleExpandedGroups[subgroupKey];
 
                           return (
                             <div key={subgroupKey} className="pt-1">

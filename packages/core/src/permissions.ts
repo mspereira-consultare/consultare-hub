@@ -76,16 +76,16 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'qualidade_auditorias', label: 'Qualidade - Auditorias', path: '/qualidade/auditorias' },
   { key: 'checklist_crc', label: 'Checklist CRC', path: '/checklist-crc' },
   { key: 'checklist_recepcao', label: 'Checklist Recepção', path: '/checklist-recepcao' },
-  { key: 'intranet_dashboard', label: 'Intranet - Dashboard', path: '/intranet' },
-  { key: 'intranet_navegacao', label: 'Intranet - Navegação', path: '/intranet/navegacao' },
-  { key: 'intranet_paginas', label: 'Intranet - Páginas', path: '/intranet/paginas' },
-  { key: 'intranet_noticias', label: 'Intranet - Notícias e Avisos', path: '/intranet/noticias' },
-  { key: 'intranet_faq', label: 'Intranet - FAQ', path: '/intranet/faq' },
-  { key: 'intranet_catalogo', label: 'Intranet - Catálogo', path: '/intranet/catalogo' },
-  { key: 'intranet_audiencias', label: 'Intranet - Audiências', path: '/intranet/audiencias' },
-  { key: 'intranet_escopos', label: 'Intranet - Escopos Editoriais', path: '/intranet/escopos' },
-  { key: 'intranet_chat', label: 'Intranet - Chat Interno', path: '/intranet/chat' },
-  { key: 'intranet_chatbot', label: 'Intranet - Chatbot e Conhecimento', path: '/intranet/chatbot' },
+  { key: 'intranet_dashboard', label: 'Intranet - Dashboard', path: '/gestao' },
+  { key: 'intranet_navegacao', label: 'Intranet - Navegação', path: '/gestao/navegacao' },
+  { key: 'intranet_paginas', label: 'Intranet - Páginas', path: '/gestao/paginas' },
+  { key: 'intranet_noticias', label: 'Intranet - Notícias e Avisos', path: '/gestao/noticias' },
+  { key: 'intranet_faq', label: 'Intranet - FAQ', path: '/gestao/faq' },
+  { key: 'intranet_catalogo', label: 'Intranet - Catálogo', path: '/gestao/catalogo' },
+  { key: 'intranet_audiencias', label: 'Intranet - Audiências', path: '/gestao/audiencias' },
+  { key: 'intranet_escopos', label: 'Intranet - Escopos Editoriais', path: '/gestao/escopos' },
+  { key: 'intranet_chat', label: 'Intranet - Chat Interno', path: '/gestao/chat' },
+  { key: 'intranet_chatbot', label: 'Intranet - Chatbot e Conhecimento', path: '/gestao/chatbot' },
   { key: 'ajuda', label: 'Ajuda', path: '/ajuda' },
   { key: 'users', label: 'Usuários', path: '/users' },
   { key: 'contract_templates', label: 'Modelos de Contrato', path: '/modelos-contrato' },
@@ -216,16 +216,16 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/metas') return 'metas';
   if (path === '/checklist-crc') return 'checklist_crc';
   if (path === '/checklist-recepcao') return 'checklist_recepcao';
-  if (path === '/intranet') return 'intranet_dashboard';
-  if (path === '/intranet/navegacao') return 'intranet_navegacao';
-  if (path === '/intranet/paginas') return 'intranet_paginas';
-  if (path === '/intranet/noticias') return 'intranet_noticias';
-  if (path === '/intranet/faq') return 'intranet_faq';
-  if (path === '/intranet/catalogo') return 'intranet_catalogo';
-  if (path === '/intranet/audiencias') return 'intranet_audiencias';
-  if (path === '/intranet/escopos') return 'intranet_escopos';
-  if (path === '/intranet/chat') return 'intranet_chat';
-  if (path === '/intranet/chatbot') return 'intranet_chatbot';
+  if (path === '/gestao') return 'intranet_dashboard';
+  if (path === '/gestao/navegacao') return 'intranet_navegacao';
+  if (path === '/gestao/paginas') return 'intranet_paginas';
+  if (path === '/gestao/noticias') return 'intranet_noticias';
+  if (path === '/gestao/faq') return 'intranet_faq';
+  if (path === '/gestao/catalogo') return 'intranet_catalogo';
+  if (path === '/gestao/audiencias') return 'intranet_audiencias';
+  if (path === '/gestao/escopos') return 'intranet_escopos';
+  if (path === '/gestao/chat') return 'intranet_chat';
+  if (path === '/gestao/chatbot') return 'intranet_chatbot';
   if (path === '/ajuda') return 'ajuda';
   if (path === '/users') return 'users';
   if (path === '/modelos-contrato') return 'contract_templates';

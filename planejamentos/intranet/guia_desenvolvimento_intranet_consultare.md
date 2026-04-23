@@ -40,7 +40,7 @@ A nova intranet deve substituir essa experiencia usando:
 - o mesmo banco quando fizer sentido;
 - a mesma base de usuarios;
 - o mesmo ecossistema de autenticacao e storage;
-- interface administrativa dentro do painel, sem depender de edicao em codigo para atualizacoes rotineiras.
+- interface administrativa dentro do app da intranet, sem depender de edicao em codigo para atualizacoes rotineiras.
 
 ---
 
@@ -50,7 +50,7 @@ As decisoes abaixo ja foram validadas e devem ser consideradas travadas para o p
 
 - a intranet sera um **app separado no mesmo repositorio**;
 - o go-live sera **faseado**;
-- a intranet nova sera administrada pelo painel gerencial atual;
+- a intranet nova sera administrada pelo proprio app `intranet`, em area de gestao separada da experiencia de consumo;
 - o CMS sera baseado em **blocos padronizados**, nao em editor totalmente livre;
 - a intranet usara os **mesmos usuarios** e a mesma base de login do painel;
 - a experiencia entre painel e intranet deve ser de **login unico / SSO**;
@@ -136,7 +136,7 @@ O V1 da intranet deve atingir os seguintes objetivos:
 
 - substituir a dependencia do Google Sites;
 - centralizar conteudo institucional e operacional em plataforma propria;
-- permitir administracao via interface do painel;
+- permitir administracao via interface de gestao da propria intranet;
 - permitir criacao de novas paginas por gestores autorizados;
 - exibir conteudo com navegacao lateral organizada e pesquisavel;
 - disponibilizar POPs e documentos oficiais de forma padronizada;
@@ -382,9 +382,9 @@ A intranet deve trabalhar com dois niveis complementares de controle:
 
 ### 10.4 Permissao de modulo fixo
 
-Esse nivel vale para as areas administrativas da intranet dentro do painel.
+Esse nivel vale para as areas administrativas da intranet dentro do app `intranet`.
 
-Devem ser criados novos `PageKey` no painel para o backoffice da intranet.
+Devem ser criados novos `PageKey` na matriz compartilhada de permissoes para a gestao da intranet.
 
 Recomendacao minima:
 
@@ -458,7 +458,7 @@ Exemplo:
 
 As regras abaixo sao obrigatorias:
 
-- API administrativa do painel valida sessao + `PageKey`;
+- API administrativa da intranet valida sessao + `PageKey`;
 - intranet valida sessao + audiencia de pagina;
 - chatbot valida sessao + fontes acessiveis;
 - endpoints de download validam acesso ao conteudo origem;
@@ -650,19 +650,23 @@ A home do V1 deve ter:
 
 ---
 
-## 13. CMS da intranet dentro do painel
+## 13. CMS da intranet dentro do app intranet
 
 ### 13.1 Regra central
 
-O painel atual sera o backoffice da intranet.
+O app `intranet` sera responsavel tanto pela experiencia de consumo quanto pela gestao do proprio conteudo.
 
-Nao deve existir area de administracao relevante dentro da intranet de consumo, exceto talvez preferencias pessoais do usuario.
+A separacao deve acontecer por rotas, layout e permissoes:
 
-### 13.2 Modulos administrativos recomendados no painel
+- rotas de consumo ficam na raiz da intranet;
+- rotas administrativas ficam em `/gestao`;
+- o painel gerencial deve ter apenas um atalho para abrir a intranet, sem listar os modulos administrativos no menu principal.
 
-Criar grupo novo na area administrativa:
+### 13.2 Modulos administrativos recomendados na intranet
 
-- `Intranet`
+Criar area administrativa dentro do app `intranet`:
+
+- `Gestao da Intranet`
 
 Submodulos recomendados:
 
@@ -677,21 +681,21 @@ Submodulos recomendados:
 - Chat Interno
 - Chatbot e Conhecimento
 
-### 13.3 Rotas sugeridas no painel
+### 13.3 Rotas sugeridas na intranet
 
-Sugestao de estrutura em `apps/painel/src/app/(admin)/intranet/`:
+Sugestao de estrutura em `apps/intranet/src/app/(site)/gestao/`:
 
 ```text
-apps/painel/src/app/(admin)/intranet/dashboard/page.tsx
-apps/painel/src/app/(admin)/intranet/navegacao/page.tsx
-apps/painel/src/app/(admin)/intranet/paginas/page.tsx
-apps/painel/src/app/(admin)/intranet/noticias/page.tsx
-apps/painel/src/app/(admin)/intranet/faq/page.tsx
-apps/painel/src/app/(admin)/intranet/catalogo/page.tsx
-apps/painel/src/app/(admin)/intranet/audiencias/page.tsx
-apps/painel/src/app/(admin)/intranet/escopos/page.tsx
-apps/painel/src/app/(admin)/intranet/chat/page.tsx
-apps/painel/src/app/(admin)/intranet/chatbot/page.tsx
+apps/intranet/src/app/(site)/gestao/page.tsx
+apps/intranet/src/app/(site)/gestao/navegacao/page.tsx
+apps/intranet/src/app/(site)/gestao/paginas/page.tsx
+apps/intranet/src/app/(site)/gestao/noticias/page.tsx
+apps/intranet/src/app/(site)/gestao/faq/page.tsx
+apps/intranet/src/app/(site)/gestao/catalogo/page.tsx
+apps/intranet/src/app/(site)/gestao/audiencias/page.tsx
+apps/intranet/src/app/(site)/gestao/escopos/page.tsx
+apps/intranet/src/app/(site)/gestao/chat/page.tsx
+apps/intranet/src/app/(site)/gestao/chatbot/page.tsx
 ```
 
 ### 13.4 APIs administrativas sugeridas
@@ -699,7 +703,7 @@ apps/painel/src/app/(admin)/intranet/chatbot/page.tsx
 Namespace recomendado:
 
 ```text
-apps/painel/src/app/api/admin/intranet/*
+apps/intranet/src/app/api/admin/intranet/*
 ```
 
 Exemplos:
@@ -2036,7 +2040,7 @@ Entregas:
 - extrair `auth`, `db`, `storage`, `permissions`;
 - definir cookie/sessao compartilhada;
 - criar novos `PageKey` do backoffice da intranet;
-- adicionar grupo `Intranet` na sidebar do painel.
+- adicionar atalho `Abrir Intranet` na sidebar do painel.
 
 ### Fase 1 - Modelo de dados e APIs administrativas
 
@@ -2381,7 +2385,7 @@ Ela deve:
 - usar SSO;
 - usar o mesmo banco e o mesmo storage quando fizer sentido;
 - reaproveitar modulos oficiais ja existentes;
-- ser administrada inteiramente pelo painel;
+- ser administrada inteiramente pela area `/gestao` do app `intranet`;
 - permitir criacao de paginas e menu por interface;
 - proteger conteudo por audiencia;
 - oferecer chatbot e chat interno;

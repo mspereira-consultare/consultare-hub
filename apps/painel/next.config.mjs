@@ -14,6 +14,7 @@ const nextConfig = {
       '@consultare/core/auth': `${coreSrcDir}/auth.ts`,
       '@consultare/core/db': `${coreSrcDir}/db.ts`,
       '@consultare/core/permissions': `${coreSrcDir}/permissions.ts`,
+      '@consultare/core/permissions-server': `${coreSrcDir}/permissions_server.ts`,
       '@consultare/core/storage': `${coreSrcDir}/storage/index.ts`,
       '@consultare/core/storage/provider': `${coreSrcDir}/storage/provider.ts`,
       '@consultare/core/storage/providers/s3': `${coreSrcDir}/storage/providers/s3.ts`,

@@ -1,8 +1,8 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { getDbConnection } from '@/lib/db';
-import { hasPermission, type PageKey, type PermissionAction } from '@/lib/permissions';
-import { loadUserPermissionMatrix } from '@/lib/permissions_server';
+import { getDbConnection } from '@consultare/core/db';
+import { hasPermission, type PageKey, type PermissionAction } from '@consultare/core/permissions';
+import { loadUserPermissionMatrix } from '@consultare/core/permissions-server';
 
 type IntranetPageKey = Extract<
   PageKey,
