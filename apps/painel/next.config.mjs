@@ -11,7 +11,9 @@ const nextConfig = {
   turbopack: {
     root: path.resolve(appDir, '../..'),
     resolveAlias: {
+      '@consultare/core/auth': `${coreSrcDir}/auth.ts`,
       '@consultare/core/db': `${coreSrcDir}/db.ts`,
+      '@consultare/core/permissions': `${coreSrcDir}/permissions.ts`,
       '@consultare/core/storage': `${coreSrcDir}/storage/index.ts`,
       '@consultare/core/storage/provider': `${coreSrcDir}/storage/provider.ts`,
       '@consultare/core/storage/providers/s3': `${coreSrcDir}/storage/providers/s3.ts`,

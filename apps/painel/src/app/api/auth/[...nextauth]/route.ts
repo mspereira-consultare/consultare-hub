@@ -1,32 +1,31 @@
-import NextAuth, { NextAuthOptions } from "next-auth";
+import NextAuth, { type NextAuthOptions, type Session, type User } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { getDbConnection } from "@/lib/db"; 
 import { compare } from "bcryptjs";
 import { getUserPermissions } from "@/lib/permissions_server";
-
-const normalizeAuthUrl = (raw?: string) => {
-  const input = String(raw || "").trim();
-  if (!input) return "";
-
-  let value = input.replace(/\s+/g, "");
-  value = value
-    .replace(/^https:\/\/https:\/\//i, "https://")
-    .replace(/^http:\/\/http:\/\//i, "http://")
-    .replace(/^https:\/\/http:\/\//i, "https://")
-    .replace(/^http:\/\/https:\/\//i, "https://");
-
-  try {
-    const parsed = new URL(value);
-    return parsed.origin;
-  } catch {
-    return "";
-  }
-};
+import type { JWT } from "next-auth/jwt";
+import {
+  PANEL_SIGN_IN_PATH,
+  SHARED_SESSION_MAX_AGE_SECONDS,
+  buildSharedNextAuthCookies,
+  normalizeAuthUrl,
+} from "@consultare/core/auth";
 
 const normalizedAuthUrl = normalizeAuthUrl(process.env.NEXTAUTH_URL || process.env.AUTH_URL);
 if (normalizedAuthUrl) {
   process.env.NEXTAUTH_URL = normalizedAuthUrl;
 }
+
+type ConsultareAuthFields = {
+  id?: string;
+  role?: string;
+  department?: string;
+  permissions?: unknown;
+};
+
+type ConsultareToken = JWT & ConsultareAuthFields;
+type ConsultareUser = User & ConsultareAuthFields;
+type ConsultareSessionUser = NonNullable<Session['user']> & ConsultareAuthFields;
 
 export const authOptions: NextAuthOptions = {
   // Debug apenas em desenvolvimento
@@ -35,12 +34,13 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 
   pages: {
-    signIn: "/login",
+    signIn: PANEL_SIGN_IN_PATH,
   },
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60, // 30 dias
+    maxAge: SHARED_SESSION_MAX_AGE_SECONDS,
   },
+  cookies: buildSharedNextAuthCookies(),
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -119,34 +119,39 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }: any) {
+    async jwt({ token, user }: { token: JWT; user?: User }) {
+      const nextToken = token as ConsultareToken;
+      const nextUser = user as ConsultareUser | undefined;
+
       if (user) {
-        token.id = user.id;
-        token.role = user.role;
-        token.department = user.department;
-        token.permissions = user.permissions;
+        nextToken.id = nextUser?.id;
+        nextToken.role = nextUser?.role;
+        nextToken.department = nextUser?.department;
+        nextToken.permissions = nextUser?.permissions;
       }
 
-      if (token?.id) {
+      if (nextToken?.id) {
         try {
           const permissions = await getUserPermissions(
-            String(token.id),
-            String(token.role || 'OPERADOR')
+            String(nextToken.id),
+            String(nextToken.role || 'OPERADOR')
           );
-          token.permissions = permissions;
+          nextToken.permissions = permissions;
         } catch (error) {
           console.error('Erro ao recarregar permissoes no JWT:', error);
         }
       }
 
-      return token;
+      return nextToken;
     },
-    async session({ session, token }: any) {
+    async session({ session, token }: { session: Session; token: JWT }) {
+      const nextToken = token as ConsultareToken;
       if (session.user) {
-        session.user.id = token.id;
-        session.user.role = token.role;
-        session.user.department = token.department;
-        session.user.permissions = token.permissions;
+        const sessionUser = session.user as ConsultareSessionUser;
+        sessionUser.id = nextToken.id;
+        sessionUser.role = nextToken.role;
+        sessionUser.department = nextToken.department;
+        sessionUser.permissions = nextToken.permissions;
       }
       return session;
     }

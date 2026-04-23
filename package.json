@@ -12,15 +12,19 @@
   "scripts": {
     "dev": "npm run dev --workspace apps/painel",
     "dev:painel": "npm run dev --workspace apps/painel",
+    "dev:intranet": "npm run dev --workspace apps/intranet",
     "dev:portal-colaborador": "npm run dev --workspace apps/portal-colaborador",
     "build": "npm run build --workspace apps/painel",
     "build:painel": "npm run build --workspace apps/painel",
+    "build:intranet": "npm run build --workspace apps/intranet",
     "build:portal-colaborador": "npm run build --workspace apps/portal-colaborador",
     "start": "npm run start --workspace apps/painel",
     "start:painel": "npm run start --workspace apps/painel",
+    "start:intranet": "npm run start --workspace apps/intranet",
     "start:portal-colaborador": "npm run start --workspace apps/portal-colaborador",
     "lint": "npm run lint --workspace apps/painel",
     "lint:painel": "npm run lint --workspace apps/painel",
+    "lint:intranet": "npm run lint --workspace apps/intranet",
     "lint:portal-colaborador": "npm run lint --workspace apps/portal-colaborador"
   },
   "optionalDependencies": {

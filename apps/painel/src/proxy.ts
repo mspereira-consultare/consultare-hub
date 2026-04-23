@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { SHARED_NEXTAUTH_SESSION_COOKIE_NAME } from '@consultare/core/auth';
 import { PAGE_DEFS, getPageFromPath, hasAnyRefresh, hasPermission } from '@/lib/permissions';
 
 const isApiPath = (pathname: string) => pathname.startsWith('/api/');
@@ -37,6 +38,7 @@ export async function proxy(request: NextRequest) {
   const token = await getToken({
     req: request,
     secret: process.env.NEXTAUTH_SECRET,
+    cookieName: SHARED_NEXTAUTH_SESSION_COOKIE_NAME,
   });
   const tokenData = token as PermissionToken | null;
 

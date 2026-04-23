@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY package.json package-lock.json ./
 COPY apps/painel/package.json apps/painel/package.json
+COPY apps/intranet/package.json apps/intranet/package.json
 COPY apps/portal-colaborador/package.json apps/portal-colaborador/package.json
 COPY packages/core/package.json packages/core/package.json
 COPY packages/ui/package.json packages/ui/package.json

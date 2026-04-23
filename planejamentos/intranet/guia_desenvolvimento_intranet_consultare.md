@@ -2031,7 +2031,7 @@ Objetivo:
 
 Entregas:
 
-- adicionar workspace `intranet`;
+- adicionar workspace `intranet` em `apps`;
 - criar `packages/core`;
 - extrair `auth`, `db`, `storage`, `permissions`;
 - definir cookie/sessao compartilhada;
