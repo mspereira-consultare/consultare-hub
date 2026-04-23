@@ -13,6 +13,7 @@ const nextConfig = {
     resolveAlias: {
       '@consultare/core/auth': `${coreSrcDir}/auth.ts`,
       '@consultare/core/db': `${coreSrcDir}/db.ts`,
+      '@consultare/core/intranet/repository': `${coreSrcDir}/intranet/repository.ts`,
       '@consultare/core/permissions': `${coreSrcDir}/permissions.ts`,
       '@consultare/core/storage': `${coreSrcDir}/storage/index.ts`,
       '@consultare/core/storage/provider': `${coreSrcDir}/storage/provider.ts`,
