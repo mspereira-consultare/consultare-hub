@@ -54,7 +54,7 @@ export const authOptions: NextAuthOptions = {
         try {
           const db = getDbConnection();
           const rows = await db.query(
-            'SELECT id, name, email, role, department, password, password_hash FROM users WHERE email = ? LIMIT 1',
+            'SELECT * FROM users WHERE email = ? LIMIT 1',
             [credentials.email]
           );
           const user = rows[0] as Record<string, unknown> | undefined;
