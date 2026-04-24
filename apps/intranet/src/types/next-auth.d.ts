@@ -1,4 +1,5 @@
 import { DefaultSession } from 'next-auth';
+import type { PermissionMatrix } from '@consultare/core/permissions';
 
 declare module 'next-auth' {
   interface Session {
@@ -6,12 +7,15 @@ declare module 'next-auth' {
       id?: string;
       role?: string;
       department?: string;
+      permissions?: PermissionMatrix;
     };
   }
 
   interface User {
+    id?: string;
     role?: string;
     department?: string;
+    permissions?: PermissionMatrix;
   }
 }
 
@@ -20,5 +24,6 @@ declare module 'next-auth/jwt' {
     id?: string;
     role?: string;
     department?: string;
+    permissions?: PermissionMatrix;
   }
 }

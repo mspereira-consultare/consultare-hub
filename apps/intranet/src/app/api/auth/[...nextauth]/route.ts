@@ -9,6 +9,7 @@ import {
   normalizeAuthUrl,
 } from '@consultare/core/auth';
 import { getDbConnection } from '@consultare/core/db';
+import { loadUserPermissionMatrix } from '@consultare/core/permissions-server';
 
 const normalizedAuthUrl = normalizeAuthUrl(process.env.NEXTAUTH_URL || process.env.AUTH_URL);
 if (normalizedAuthUrl) {
@@ -19,6 +20,7 @@ type ConsultareAuthFields = {
   id?: string;
   role?: string;
   department?: string;
+  permissions?: unknown;
 };
 
 type ConsultareToken = JWT & ConsultareAuthFields;
@@ -48,30 +50,51 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Dados de login incompletos');
         }
 
-        const db = getDbConnection();
-        const rows = await db.query(
-          'SELECT id, name, email, role, department, password, password_hash, status FROM users WHERE email = ? LIMIT 1',
-          [credentials.email]
-        );
-        const user = rows[0] as Record<string, unknown> | undefined;
-        if (!user) return null;
+        try {
+          const db = getDbConnection();
+          const rows = await db.query(
+            'SELECT id, name, email, role, department, password, password_hash FROM users WHERE email = ? LIMIT 1',
+            [credentials.email]
+          );
+          const user = rows[0] as Record<string, unknown> | undefined;
+          if (!user) {
+            console.log('LOGIN INTRANET FALHOU: Usuario nao encontrado:', credentials.email);
+            return null;
+          }
 
-        const status = String(user.status || 'ATIVO').toUpperCase();
-        if (status && status !== 'ATIVO') return null;
+          const storedHash = String(user.password || user.password_hash || '');
+          if (!storedHash) {
+            console.log('LOGIN INTRANET FALHOU: Usuario sem senha definida:', credentials.email);
+            return null;
+          }
 
-        const storedHash = String(user.password || user.password_hash || '');
-        if (!storedHash) return null;
+          const valid = await compare(credentials.password, storedHash);
+          if (!valid) {
+            console.log('LOGIN INTRANET FALHOU: Senha incorreta para:', credentials.email);
+            return null;
+          }
 
-        const valid = await compare(credentials.password, storedHash);
-        if (!valid) return null;
+          const role = String(user.role || 'OPERADOR');
+          const permissions = await loadUserPermissionMatrix(db, String(user.id), role);
 
-        return {
-          id: String(user.id),
-          name: String(user.name || user.email || ''),
-          email: String(user.email || ''),
-          role: String(user.role || 'OPERADOR'),
-          department: String(user.department || ''),
-        };
+          try {
+            await db.execute('UPDATE users SET last_access = ? WHERE id = ?', [new Date().toISOString(), user.id]);
+          } catch (error) {
+            console.error('Erro update last_access intranet', error);
+          }
+
+          return {
+            id: String(user.id),
+            name: String(user.name || user.email || ''),
+            email: String(user.email || ''),
+            role,
+            department: String(user.department || ''),
+            permissions,
+          };
+        } catch (error) {
+          console.error('ERRO CRITICO NO LOGIN INTRANET:', error);
+          return null;
+        }
       },
     }),
   ],
@@ -84,6 +107,16 @@ export const authOptions: NextAuthOptions = {
         nextToken.id = nextUser.id;
         nextToken.role = nextUser.role;
         nextToken.department = nextUser.department;
+        nextToken.permissions = nextUser.permissions;
+      }
+
+      if (nextToken?.id) {
+        try {
+          const db = getDbConnection();
+          nextToken.permissions = await loadUserPermissionMatrix(db, String(nextToken.id), String(nextToken.role || 'OPERADOR'));
+        } catch (error) {
+          console.error('Erro ao recarregar permissoes no JWT da intranet:', error);
+        }
       }
 
       return nextToken;
@@ -95,6 +128,7 @@ export const authOptions: NextAuthOptions = {
         sessionUser.id = nextToken.id;
         sessionUser.role = nextToken.role;
         sessionUser.department = nextToken.department;
+        sessionUser.permissions = nextToken.permissions;
       }
       return session;
     },

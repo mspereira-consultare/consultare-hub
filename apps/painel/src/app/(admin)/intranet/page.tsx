@@ -3,7 +3,11 @@ import { redirect } from 'next/navigation';
 import { ExternalLink } from 'lucide-react';
 
 const getIntranetUrl = () =>
-  String(process.env.INTRANET_PUBLIC_URL || process.env.NEXT_PUBLIC_INTRANET_URL || '').trim();
+  String(
+    process.env.INTRANET_PUBLIC_URL ||
+      process.env.NEXT_PUBLIC_INTRANET_URL ||
+      'https://intranet.consultare.com.br'
+  ).trim();
 
 export default function OpenIntranetPage() {
   const intranetUrl = getIntranetUrl();
