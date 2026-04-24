@@ -1,6 +1,20 @@
 import Link from 'next/link';
-import { AlertCircle, Bot, ExternalLink, FileText, Link as LinkIcon, Phone } from 'lucide-react';
+import {
+  AlertCircle,
+  Bot,
+  Download,
+  ExternalLink,
+  FileText,
+  Link as LinkIcon,
+  Phone,
+  Stethoscope,
+} from 'lucide-react';
 import { getDbConnection } from '@consultare/core/db';
+import {
+  listIntranetProfessionals,
+  listIntranetProcedures,
+  listIntranetQmsDocuments,
+} from '@consultare/core/intranet/catalog';
 import {
   listFaqItemsByCategoryIds,
   listRecentNewsPosts,
@@ -13,6 +27,7 @@ const clean = (value: unknown) => String(value ?? '').trim();
 const asObject = (value: unknown) =>
   value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 const asArray = (value: unknown) => (Array.isArray(value) ? value : []);
+const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const blockData = (block: IntranetBlock) => asObject(block.data || block);
 
@@ -78,7 +93,7 @@ function QuickLinksBlock({ data }: { data: Record<string, unknown> }) {
 
 async function NewsFeedBlock({ data }: { data: Record<string, unknown> }) {
   const db = getDbConnection();
-  const title = clean(data.title) || 'Noticias e avisos';
+  const title = clean(data.title) || 'Notícias e avisos';
   const posts: IntranetNewsPost[] = await listRecentNewsPosts(db, Number(data.limit || 5));
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
@@ -187,6 +202,111 @@ function PlaceholderBlock({ title, description }: { title: string; description: 
   );
 }
 
+async function QmsDocumentsBlock({ data }: { data: Record<string, unknown> }) {
+  const db = getDbConnection();
+  const title = clean(data.title) || 'POPs e manuais';
+  const documents = await listIntranetQmsDocuments(db, {
+    sector: clean(data.sector),
+    status: clean(data.status_filter || data.status),
+    featuredOnly: data.featured_only === true || data.featured_only === '1',
+    limit: Number(data.limit || 8),
+  });
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        {documents.length === 0 ? <p className="text-sm text-slate-500">Nenhum documento QMS publicado para este bloco.</p> : null}
+        {documents.map((document) => (
+          <article key={document.id} className="rounded-md border border-slate-200 p-4">
+            <p className="text-xs font-semibold uppercase text-[#229A8A]">{document.code || document.sector}</p>
+            <h3 className="mt-1 font-semibold text-slate-900">{document.name}</h3>
+            <p className="mt-1 text-xs text-slate-500">{[document.sector, document.versionLabel, document.status].filter(Boolean).join(' · ')}</p>
+            {document.objective ? <p className="mt-2 text-sm leading-6 text-slate-600">{document.objective}</p> : null}
+            {document.fileUrl ? (
+              <Link
+                href={document.fileUrl}
+                className="mt-4 inline-flex items-center gap-2 rounded-md border border-slate-200 px-3 py-2 text-xs font-semibold text-[#17407E]"
+              >
+                <Download size={14} />
+                Baixar arquivo
+              </Link>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+async function ProfessionalCatalogBlock({ data }: { data: Record<string, unknown> }) {
+  const db = getDbConnection();
+  const title = clean(data.title) || 'Portfólio de profissionais';
+  const professionals = await listIntranetProfessionals(db, {
+    specialties: asArray(data.specialties).map(clean).filter(Boolean),
+    featuredOnly: data.featured_only === true || data.featured_only === '1',
+    limit: Number(data.limit || 9),
+  });
+
+  return (
+    <section>
+      <h2 className="mb-3 text-lg font-semibold text-slate-900">{title}</h2>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {professionals.length === 0 ? <p className="text-sm text-slate-500">Nenhum profissional publicado para este bloco.</p> : null}
+        {professionals.map((professional) => (
+          <article key={professional.professionalId} className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-md bg-blue-50 text-[#17407E]">
+              <Stethoscope size={19} />
+            </div>
+            <h3 className="font-semibold text-slate-900">{professional.displayName}</h3>
+            {professional.cardHighlight ? <p className="mt-1 text-sm font-medium text-[#229A8A]">{professional.cardHighlight}</p> : null}
+            {professional.shortBio ? <p className="mt-2 text-sm leading-6 text-slate-600">{professional.shortBio}</p> : null}
+            {professional.specialties.length ? <p className="mt-3 text-xs text-slate-500">{professional.specialties.join(' · ')}</p> : null}
+            {professional.serviceUnits.length ? <p className="mt-1 text-xs text-slate-500">{professional.serviceUnits.join(' · ')}</p> : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+async function ProcedureCatalogBlock({ data }: { data: Record<string, unknown> }) {
+  const db = getDbConnection();
+  const title = clean(data.title) || 'Procedimentos e exames';
+  const showPrices = data.show_prices !== false && data.show_prices !== '0';
+  const procedures = await listIntranetProcedures(db, {
+    categories: asArray(data.categories).map(clean).filter(Boolean),
+    featuredOnly: data.featured_only === true || data.featured_only === '1',
+    limit: Number(data.limit || 10),
+  });
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
+      <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+      <div className="mt-4 divide-y divide-slate-100">
+        {procedures.length === 0 ? <p className="text-sm text-slate-500">Nenhum procedimento publicado para este bloco.</p> : null}
+        {procedures.map((procedure) => (
+          <article key={procedure.procedimentoId} className="py-4 first:pt-0 last:pb-0">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase text-[#229A8A]">{[procedure.category, procedure.subcategory].filter(Boolean).join(' · ') || 'Catálogo'}</p>
+                <h3 className="mt-1 font-semibold text-slate-900">{procedure.displayName}</h3>
+              </div>
+              {showPrices && procedure.showPrice && procedure.publishedPrice !== null ? (
+                <p className="text-sm font-semibold text-[#17407E]">{money.format(procedure.publishedPrice)}</p>
+              ) : null}
+            </div>
+            {procedure.summary ? <p className="mt-2 text-sm leading-6 text-slate-600">{procedure.summary}</p> : null}
+            {procedure.preparationInstructions ? (
+              <p className="mt-2 text-xs leading-5 text-slate-500">Preparo: {procedure.preparationInstructions}</p>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ChatbotEntryBlock({ data }: { data: Record<string, unknown> }) {
   return (
     <section className="rounded-lg border border-[#17407E]/20 bg-[#17407E] p-6 text-white shadow-sm">
@@ -205,8 +325,8 @@ export async function BlockRenderer({ blocks }: { blocks: IntranetBlock[] }) {
   if (!blocks.length) {
     return (
       <PlaceholderBlock
-        title="Pagina sem blocos publicados"
-        description="O conteudo desta pagina sera exibido aqui quando for publicado pelo painel."
+        title="Página sem blocos publicados"
+        description="O conteúdo desta página será exibido aqui quando for publicado pelo painel."
       />
     );
   }
@@ -234,15 +354,15 @@ export async function BlockRenderer({ blocks }: { blocks: IntranetBlock[] }) {
           case 'chatbot_entry':
             return <ChatbotEntryBlock key={key} data={data} />;
           case 'file_list':
-            return <PlaceholderBlock key={key} title={clean(data.title) || 'Arquivos'} description="Lista de arquivos sera conectada aos assets da intranet." />;
+            return <PlaceholderBlock key={key} title={clean(data.title) || 'Arquivos'} description="Lista de arquivos será conectada aos assets da intranet." />;
           case 'professional_catalog':
-            return <PlaceholderBlock key={key} title={clean(data.title) || 'Profissionais'} description="Catalogo de profissionais sera conectado na fase de integracoes." />;
+            return <ProfessionalCatalogBlock key={key} data={data} />;
           case 'procedure_catalog':
-            return <PlaceholderBlock key={key} title={clean(data.title) || 'Procedimentos e exames'} description="Catalogo de procedimentos sera conectado na fase de integracoes." />;
+            return <ProcedureCatalogBlock key={key} data={data} />;
           case 'qms_documents':
-            return <PlaceholderBlock key={key} title={clean(data.title) || 'POPs e manuais'} description="Documentos QMS serao conectados na fase de integracoes." />;
+            return <QmsDocumentsBlock key={key} data={data} />;
           default:
-            return <PlaceholderBlock key={key} title="Bloco nao suportado" description={`Tipo recebido: ${block.type}`} />;
+            return <PlaceholderBlock key={key} title="Bloco não suportado" description={`Tipo recebido: ${block.type}`} />;
         }
       }))}
     </div>

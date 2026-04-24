@@ -48,7 +48,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
         {!q ? (
           <div className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-600">
-            Use a busca para encontrar paginas, noticias e perguntas frequentes.
+            Use a busca para encontrar páginas, notícias e perguntas frequentes.
           </div>
         ) : null}
 

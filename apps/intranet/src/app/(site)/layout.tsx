@@ -16,7 +16,7 @@ const getUser = async () => {
   if (!session?.user?.id) redirect('/login');
   return {
     id: String(session.user.id),
-    name: String(session.user.name || session.user.email || 'Usuario'),
+    name: String(session.user.name || session.user.email || 'Usuário'),
     email: String(session.user.email || ''),
     role: String(session.user.role || 'OPERADOR'),
     department: String(session.user.department || ''),

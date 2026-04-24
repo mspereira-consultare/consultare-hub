@@ -13,7 +13,7 @@ export default function IntranetAiPage() {
         </div>
         <h1 className="mt-2 text-3xl font-semibold text-slate-900">Assistente institucional</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-          O assistente sera conectado aos conteudos oficiais publicados na intranet na fase de chatbot.
+          O assistente será conectado aos conteúdos oficiais publicados na intranet na fase de chatbot.
         </p>
       </header>
 
@@ -22,9 +22,9 @@ export default function IntranetAiPage() {
           <div className="flex h-11 w-11 items-center justify-center rounded-md bg-blue-50 text-[#17407E]">
             <Sparkles size={21} />
           </div>
-          <h2 className="mt-5 text-xl font-semibold text-slate-900">Preparado para a proxima fase</h2>
+          <h2 className="mt-5 text-xl font-semibold text-slate-900">Preparado para a próxima fase</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Esta tela ja faz parte da navegacao da intranet. A conversa com IA, fontes citadas e registro de perguntas
+            Esta tela já faz parte da navegação da intranet. A conversa com IA, fontes citadas e registro de perguntas
             sem resposta entram quando a base de conhecimento for conectada.
           </p>
         </div>
@@ -32,7 +32,7 @@ export default function IntranetAiPage() {
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Enquanto isso</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Use a busca para encontrar paginas, noticias e perguntas frequentes ja publicadas.
+            Use a busca para encontrar páginas, notícias e perguntas frequentes já publicadas.
           </p>
           <Link
             href="/busca"

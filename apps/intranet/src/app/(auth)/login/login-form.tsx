@@ -31,11 +31,11 @@ export default function LoginForm() {
 
     if (result?.error) {
       if (result.error === 'AUTH_CONFIG_ERROR') {
-        setError('Falha na configuracao da intranet. Verifique as variaveis de banco/autenticacao no Railway.');
+        setError('Falha na configuração da intranet. Verifique as variáveis de banco/autenticação no Railway.');
         return;
       }
 
-      setError('E-mail ou senha invalidos.');
+      setError('E-mail ou senha inválidos.');
       return;
     }
 

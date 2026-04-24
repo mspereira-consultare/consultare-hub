@@ -22,6 +22,7 @@
       "@/*": ["./src/*"],
       "@consultare/core/auth": ["../../packages/core/src/auth.ts"],
       "@consultare/core/db": ["../../packages/core/src/db.ts"],
+      "@consultare/core/intranet/catalog": ["../../packages/core/src/intranet/catalog.ts"],
       "@consultare/core/intranet/repository": ["../../packages/core/src/intranet/repository.ts"],
       "@consultare/core/permissions": ["../../packages/core/src/permissions.ts"],
       "@consultare/core/permissions-server": ["../../packages/core/src/permissions_server.ts"],

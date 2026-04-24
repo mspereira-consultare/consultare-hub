@@ -8,7 +8,7 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 export const dynamic = 'force-dynamic';
 
 const cards = [
-  { label: 'Buscar informacoes', href: '/busca', icon: Search },
+  { label: 'Buscar informações', href: '/busca', icon: Search },
   { label: 'IA Consultare', href: '/ia', icon: Bot },
   { label: 'Chat interno', href: '/chat', icon: MessageCircle },
   { label: 'POPs e documentos', href: '/qualidade', icon: FileText },
@@ -55,7 +55,7 @@ export default async function IntranetHomePage() {
 
       <section className="mt-6 grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Navegacao publicada</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Navegação publicada</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             {navItems.length === 0 ? <p className="text-sm text-slate-500">Nenhum item publicado ainda.</p> : null}
             {navItems.filter((item) => item.href).slice(0, 8).map((item) => (
@@ -67,7 +67,7 @@ export default async function IntranetHomePage() {
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">Noticias e avisos</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Notícias e avisos</h2>
           <div className="mt-4 divide-y divide-slate-100">
             {newsPosts.length === 0 ? <p className="text-sm text-slate-500">Nenhum aviso publicado ainda.</p> : null}
             {newsPosts.map((post) => (

@@ -55,7 +55,12 @@ const modules = {
     description: 'Curadoria editorial de profissionais, procedimentos, exames e valores publicados.',
     icon: Stethoscope,
     pageKey: 'intranet_catalogo',
-    endpoints: ['Fase posterior: integração com profissionais e procedimentos'],
+    endpoints: [
+      'GET/POST /api/admin/intranet/catalog/qms',
+      'GET/POST /api/admin/intranet/catalog/professionals',
+      'GET/POST /api/admin/intranet/catalog/procedures',
+      'GET/POST /api/admin/intranet/catalog/professional-procedures',
+    ],
   },
   audiencias: {
     title: 'Audiências',

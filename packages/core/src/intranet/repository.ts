@@ -1,4 +1,9 @@
 import type { DbInterface } from '../db';
+import {
+  listIntranetProfessionals,
+  listIntranetProcedures,
+  listIntranetQmsDocuments,
+} from './catalog';
 
 type Row = Record<string, unknown>;
 
@@ -63,7 +68,7 @@ export type IntranetFaqItem = {
 
 export type IntranetSearchResult = {
   id: string;
-  entityType: 'page' | 'news' | 'faq';
+  entityType: 'page' | 'news' | 'faq' | 'qms_document' | 'professional' | 'procedure';
   title: string;
   summary: string | null;
   url: string;
@@ -357,6 +362,42 @@ export const searchIntranet = async (
       entityType: 'faq',
       title: clean(row.question),
       summary: null,
+      url: `/busca?q=${encodeURIComponent(query)}`,
+    });
+  }
+
+  const [qmsDocuments, professionals, procedures] = await Promise.all([
+    listIntranetQmsDocuments(db, { search: query, limit: 8 }),
+    listIntranetProfessionals(db, { search: query, limit: 8 }),
+    listIntranetProcedures(db, { search: query, limit: 8 }),
+  ]);
+
+  for (const document of qmsDocuments) {
+    results.push({
+      id: document.id,
+      entityType: 'qms_document',
+      title: document.name,
+      summary: [document.code, document.sector, document.objective].filter(Boolean).join(' · ') || null,
+      url: document.fileUrl || '/busca',
+    });
+  }
+
+  for (const professional of professionals) {
+    results.push({
+      id: professional.professionalId,
+      entityType: 'professional',
+      title: professional.displayName,
+      summary: [professional.cardHighlight, professional.specialties.join(', ')].filter(Boolean).join(' · ') || null,
+      url: `/busca?q=${encodeURIComponent(query)}`,
+    });
+  }
+
+  for (const procedure of procedures) {
+    results.push({
+      id: String(procedure.procedimentoId),
+      entityType: 'procedure',
+      title: procedure.displayName,
+      summary: [procedure.category, procedure.summary].filter(Boolean).join(' · ') || null,
       url: `/busca?q=${encodeURIComponent(query)}`,
     });
   }

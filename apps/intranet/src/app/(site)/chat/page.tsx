@@ -5,11 +5,11 @@ export const dynamic = 'force-dynamic';
 const previewMessages = [
   {
     author: 'Sistema',
-    body: 'O chat interno sera habilitado em uma fase posterior do projeto.',
+    body: 'O chat interno será habilitado em uma fase posterior do projeto.',
   },
   {
     author: 'Consultare',
-    body: 'A estrutura da rota ja esta pronta para receber conversas e mensagens.',
+    body: 'A estrutura da rota já está pronta para receber conversas e mensagens.',
   },
 ];
 
@@ -23,14 +23,14 @@ export default function IntranetChatPage() {
         </div>
         <h1 className="mt-2 text-3xl font-semibold text-slate-900">Conversas internas</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-          Area reservada para comunicacao interna entre colaboradores e equipes.
+          Área reservada para comunicação interna entre colaboradores e equipes.
         </p>
       </header>
 
       <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h2 className="font-semibold text-slate-900">Canal inicial</h2>
-          <p className="text-sm text-slate-500">Aguardando integracao de conversas.</p>
+          <p className="text-sm text-slate-500">Aguardando integração de conversas.</p>
         </div>
 
         <div className="space-y-3 p-5">
@@ -45,7 +45,7 @@ export default function IntranetChatPage() {
         <div className="flex items-center gap-2 border-t border-slate-200 p-4">
           <input
             disabled
-            placeholder="Mensagens serao habilitadas em fase futura"
+            placeholder="Mensagens serão habilitadas em fase futura"
             className="min-w-0 flex-1 rounded-md border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm text-slate-500 outline-none"
           />
           <button
