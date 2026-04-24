@@ -9,6 +9,7 @@ import {
   normalizeAuthUrl,
 } from '@consultare/core/auth';
 import { getDbConnection } from '@consultare/core/db';
+import { getDefaultMatrixByRole } from '@consultare/core/permissions';
 import { loadUserPermissionMatrix } from '@consultare/core/permissions-server';
 
 const normalizedAuthUrl = normalizeAuthUrl(process.env.NEXTAUTH_URL || process.env.AUTH_URL);
@@ -75,7 +76,12 @@ export const authOptions: NextAuthOptions = {
           }
 
           const role = String(user.role || 'OPERADOR');
-          const permissions = await loadUserPermissionMatrix(db, String(user.id), role);
+          let permissions = getDefaultMatrixByRole(role);
+          try {
+            permissions = await loadUserPermissionMatrix(db, String(user.id), role);
+          } catch (error) {
+            console.error('Erro ao carregar permissoes no login da intranet:', error);
+          }
 
           try {
             await db.execute('UPDATE users SET last_access = ? WHERE id = ?', [new Date().toISOString(), user.id]);
@@ -93,7 +99,7 @@ export const authOptions: NextAuthOptions = {
           };
         } catch (error) {
           console.error('ERRO CRITICO NO LOGIN INTRANET:', error);
-          return null;
+          throw new Error('AUTH_CONFIG_ERROR');
         }
       },
     }),
