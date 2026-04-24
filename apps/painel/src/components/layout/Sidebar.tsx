@@ -46,6 +46,7 @@ interface MenuItem {
   icon: React.ElementType;
   group: string;
   subgroup?: string;
+  openInNewTab?: boolean;
   roles: UserRole[];
   pageKey: PageKey;
 }
@@ -64,6 +65,7 @@ const menuItems: MenuItem[] = [
     label: "Abrir Intranet",
     icon: ExternalLink,
     group: "PRINCIPAL",
+    openInNewTab: true,
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "dashboard",
   },
@@ -345,6 +347,11 @@ const buildGroupSections = (items: MenuItem[]): GroupSection[] => {
 const getCollapsedItemLabel = (item: MenuItem) =>
   item.subgroup ? `${item.subgroup} / ${item.label}` : item.label;
 
+const getLinkProps = (item: MenuItem) =>
+  item.openInNewTab
+    ? { target: "_blank", rel: "noopener noreferrer" }
+    : {};
+
 const readStoredExpandedGroups = (): Record<string, boolean> => {
   if (typeof window === "undefined") return {};
 
@@ -415,6 +422,30 @@ export function Sidebar() {
     if (activeSubgroupKey) next[activeSubgroupKey] = true;
     return next;
   }, [activeGroup, activeSubgroupKey, expandedGroups]);
+
+  useEffect(() => {
+    if (!activeGroup && !activeSubgroupKey) return;
+    const timer = window.setTimeout(() => {
+      setExpandedGroups((prev) => {
+        const next = { ...prev };
+        let changed = false;
+
+        if (activeGroup && !next[activeGroup]) {
+          next[activeGroup] = true;
+          changed = true;
+        }
+
+        if (activeSubgroupKey && !next[activeSubgroupKey]) {
+          next[activeSubgroupKey] = true;
+          changed = true;
+        }
+
+        return changed ? next : prev;
+      });
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [activeGroup, activeSubgroupKey]);
 
   const ensureExpandedKeysForItem = (item: MenuItem) => {
     setExpandedGroups((prev) => {
@@ -612,6 +643,7 @@ export function Sidebar() {
                             <Link
                               key={item.href}
                               href={item.href}
+                              {...getLinkProps(item)}
                               onClick={() => {
                                   ensureExpandedKeysForItem(item);
                                   clearSearch();
@@ -675,6 +707,7 @@ export function Sidebar() {
                         <Link
                           key={item.href}
                           href={item.href}
+                          {...getLinkProps(item)}
                           onClick={() => {
                             ensureExpandedKeysForItem(item);
                             clearSearch();
@@ -766,6 +799,7 @@ export function Sidebar() {
                               <Link
                                 key={item.href}
                                 href={item.href}
+                                {...getLinkProps(item)}
                                 onClick={() => {
                                   ensureExpandedKeysForItem(item);
                                   clearSearch();
@@ -849,6 +883,7 @@ export function Sidebar() {
                                       <Link
                                         key={item.href}
                                         href={item.href}
+                                        {...getLinkProps(item)}
                                         onClick={() => {
                                           ensureExpandedKeysForItem(item);
                                           clearSearch();
