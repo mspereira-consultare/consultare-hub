@@ -6,6 +6,7 @@ import {
   BookOpen,
   Bot,
   ChevronDown,
+  CircleHelp,
   ExternalLink,
   Eye,
   EyeOff,
@@ -142,6 +143,7 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [form, setForm] = useState<NavFormState>(() => emptyForm());
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -321,6 +323,10 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => setHelpOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+                <CircleHelp size={16} />
+                Como funciona
+              </button>
               <button type="button" onClick={loadData} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                 <RefreshCw size={16} />
                 Recarregar
@@ -424,6 +430,7 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
           onSubmit={saveNode}
         />
       ) : null}
+      <NavigationHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </main>
   );
 }
@@ -689,6 +696,116 @@ function IconPicker({ value, onChange }: { value: string; onChange: (value: stri
           })}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function NavigationHelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const sections = [
+    {
+      icon: Archive,
+      title: 'Seções',
+      items: [
+        'Use seções como títulos de grupo no menu lateral, por exemplo RH, Processos, Documentos ou Sistemas.',
+        'A seção não abre página; ela apenas organiza os itens filhos.',
+        'Ao excluir uma seção, os itens filhos ficam salvos e voltam para o primeiro nível do menu.',
+      ],
+    },
+    {
+      icon: FileText,
+      title: 'Páginas internas',
+      items: [
+        'Itens de página só podem apontar para páginas publicadas no CMS.',
+        'Rascunhos e páginas arquivadas não aparecem no menu público, mesmo que exista item de navegação.',
+        'Ao escolher uma página, o sistema sugere título e ícone quando esses dados já existem no cadastro da página.',
+      ],
+    },
+    {
+      icon: ExternalLink,
+      title: 'Links externos',
+      items: [
+        'Use para sistemas, documentos externos, portais ou links úteis que não são páginas da intranet.',
+        'Links com http, https, mailto ou tel abrem como destinos externos quando aplicável.',
+        'Prefira URLs completas para reduzir erro de navegação.',
+      ],
+    },
+    {
+      icon: Eye,
+      title: 'Publicação',
+      items: [
+        'Visível exibe o item no menu lateral para usuários com acesso.',
+        'Oculto mantém o item salvo na gestão sem aparecer publicamente.',
+        'A prévia da direita ajuda a conferir ordem, hierarquia e itens ocultos antes de salvar novas mudanças.',
+      ],
+    },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 px-4 py-8 backdrop-blur-sm">
+      <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#17407E]">
+              <CircleHelp size={14} />
+              Ajuda da navegação
+            </div>
+            <h2 className="mt-3 text-xl font-semibold text-slate-900">Como organizar o menu da intranet</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              Esta tela controla a estrutura do menu lateral: grupos, links para páginas publicadas e atalhos externos usados pela equipe.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50" aria-label="Fechar ajuda">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="grid gap-4 p-6 md:grid-cols-2">
+          {sections.map((section) => {
+            const Icon = section.icon;
+            return (
+              <section key={section.title} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#17407E] shadow-sm">
+                    <Icon size={18} />
+                  </div>
+                  <h3 className="font-semibold text-slate-900">{section.title}</h3>
+                </div>
+                <ul className="space-y-2 text-sm leading-6 text-slate-600">
+                  {section.items.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#229A8A]" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+
+        <div className="border-t border-slate-200 bg-white px-6 py-5">
+          <h3 className="font-semibold text-slate-900">Boas práticas</h3>
+          <div className="mt-3 grid gap-3 text-sm leading-6 text-slate-600 md:grid-cols-3">
+            <p><strong className="text-slate-800">Ordem:</strong> valores menores aparecem antes dentro da mesma seção.</p>
+            <p><strong className="text-slate-800">Hierarquia:</strong> use no máximo poucos níveis para manter o menu fácil de escanear.</p>
+            <p><strong className="text-slate-800">Títulos:</strong> prefira nomes curtos, objetivos e reconhecíveis pela equipe.</p>
+            <p><strong className="text-slate-800">Ícones:</strong> ajudam na leitura, mas não precisam ser únicos em todos os itens.</p>
+            <p><strong className="text-slate-800">Visibilidade:</strong> oculte itens temporários sem excluir a configuração.</p>
+            <p><strong className="text-slate-800">Páginas:</strong> publique primeiro no CMS para depois vincular no menu.</p>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
