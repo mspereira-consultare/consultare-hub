@@ -22,6 +22,8 @@ const AUDIENCE_MODES = new Set(['inherit', 'custom']);
 const POST_TYPES = new Set(['news', 'notice', 'banner']);
 const NEWS_CATEGORIES = new Set(['geral', 'rh', 'operacional', 'comunicado', 'qualidade', 'ti', 'eventos']);
 const NEWS_HIGHLIGHT_LEVELS = new Set(['info', 'attention', 'important', 'urgent']);
+const FAQ_SOURCE_TYPES = new Set(['manual', 'chatbot_unanswered']);
+const FAQ_KNOWLEDGE_STATUSES = new Set(['pending_index', 'indexed', 'reindex_needed']);
 const SCOPE_TYPES = new Set(['section', 'catalog', 'faq', 'news', 'global']);
 const RULE_TYPES = new Set(['role', 'department', 'team']);
 
@@ -88,6 +90,10 @@ const ensureColumns = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE intranet_news_posts ADD COLUMN cover_asset_id VARCHAR(64) NULL`);
   await safeAddColumn(db, `ALTER TABLE intranet_news_posts ADD COLUMN category VARCHAR(40) DEFAULT 'geral'`);
   await safeAddColumn(db, `ALTER TABLE intranet_news_posts ADD COLUMN highlight_level VARCHAR(40) DEFAULT 'info'`);
+  await safeAddColumn(db, `ALTER TABLE intranet_faq_items ADD COLUMN source_type VARCHAR(40) DEFAULT 'manual'`);
+  await safeAddColumn(db, `ALTER TABLE intranet_faq_items ADD COLUMN source_question_id VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE intranet_faq_items ADD COLUMN knowledge_status VARCHAR(40) DEFAULT 'pending_index'`);
+  await safeAddColumn(db, `ALTER TABLE intranet_faq_items ADD COLUMN approved_at TEXT NULL`);
 };
 
 export const ensureIntranetTables = async (db: DbInterface) => {
@@ -284,6 +290,10 @@ export const ensureIntranetTables = async (db: DbInterface) => {
       answer_json LONGTEXT NOT NULL,
       sort_order INTEGER NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
+      source_type VARCHAR(40) NOT NULL DEFAULT 'manual',
+      source_question_id VARCHAR(64),
+      knowledge_status VARCHAR(40) NOT NULL DEFAULT 'pending_index',
+      approved_at TEXT,
       created_by VARCHAR(64),
       created_at TEXT NOT NULL,
       updated_by VARCHAR(64),
@@ -1035,6 +1045,7 @@ export const updateFaqCategory = async (db: DbInterface, id: string, input: Row)
 
 export const deleteFaqCategory = async (db: DbInterface, id: string) => {
   await ensureIntranetTables(db);
+  await db.execute(`UPDATE intranet_faq_items SET category_id = NULL WHERE category_id = ?`, [id]);
   await db.execute(`DELETE FROM intranet_faq_categories WHERE id = ?`, [id]);
   return { id };
 };
@@ -1048,6 +1059,10 @@ const mapFaqItem = async (db: DbInterface, row: Row) => {
     answer: parseJson(row.answer_json, {}),
     sortOrder: Number(row.sort_order || 0),
     isActive: fromDbBool(row.is_active),
+    sourceType: pickEnum(row.source_type, FAQ_SOURCE_TYPES, 'manual'),
+    sourceQuestionId: clean(row.source_question_id) || null,
+    knowledgeStatus: pickEnum(row.knowledge_status, FAQ_KNOWLEDGE_STATUSES, 'pending_index'),
+    approvedAt: clean(row.approved_at) || null,
     audienceGroupIds: await listJoinIds(db, 'intranet_faq_item_audiences', 'faq_item_id', id, 'audience_group_id'),
     createdBy: clean(row.created_by) || null,
     createdAt: clean(row.created_at),
@@ -1082,8 +1097,27 @@ export const createFaqItem = async (db: DbInterface, input: Row, actorUserId: st
   const id = randomUUID();
   const createdAt = nowIso();
   await db.execute(
-    `INSERT INTO intranet_faq_items (id, category_id, question, answer_json, sort_order, is_active, created_by, created_at, updated_by, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, nullable(input.categoryId), question, stringifyJson(input.answer, {}), Number(input.sortOrder || 0), input.isActive === false ? 0 : 1, actorUserId, createdAt, actorUserId, createdAt]
+    `INSERT INTO intranet_faq_items (
+      id, category_id, question, answer_json, sort_order, is_active,
+      source_type, source_question_id, knowledge_status, approved_at,
+      created_by, created_at, updated_by, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      nullable(input.categoryId),
+      question,
+      stringifyJson(input.answer, {}),
+      Number(input.sortOrder || 0),
+      input.isActive === false ? 0 : 1,
+      pickEnum(input.sourceType, FAQ_SOURCE_TYPES, 'manual'),
+      nullable(input.sourceQuestionId),
+      pickEnum(input.knowledgeStatus, FAQ_KNOWLEDGE_STATUSES, 'pending_index'),
+      nullable(input.approvedAt),
+      actorUserId,
+      createdAt,
+      actorUserId,
+      createdAt,
+    ]
   );
   await replaceJoinRows(db, 'intranet_faq_item_audiences', 'faq_item_id', id, 'audience_group_id', parseStringList(input.audienceGroupIds));
   return getFaqItemById(db, id);
@@ -1095,13 +1129,21 @@ export const updateFaqItem = async (db: DbInterface, id: string, input: Row, act
   if (!current) throw new IntranetValidationError('Item de FAQ nao encontrado.', 404);
   const question = clean(input.question ?? current.question);
   await db.execute(
-    `UPDATE intranet_faq_items SET category_id = ?, question = ?, answer_json = ?, sort_order = ?, is_active = ?, updated_by = ?, updated_at = ? WHERE id = ?`,
+    `UPDATE intranet_faq_items SET
+      category_id = ?, question = ?, answer_json = ?, sort_order = ?, is_active = ?,
+      source_type = ?, source_question_id = ?, knowledge_status = ?, approved_at = ?,
+      updated_by = ?, updated_at = ?
+    WHERE id = ?`,
     [
       input.categoryId === undefined ? current.categoryId : nullable(input.categoryId),
       question,
       stringifyJson(input.answer ?? current.answer, {}),
       Number(input.sortOrder ?? current.sortOrder ?? 0),
       input.isActive === undefined ? toDbBool(current.isActive) : toDbBool(input.isActive),
+      pickEnum(input.sourceType ?? current.sourceType, FAQ_SOURCE_TYPES, 'manual'),
+      input.sourceQuestionId === undefined ? current.sourceQuestionId : nullable(input.sourceQuestionId),
+      pickEnum(input.knowledgeStatus ?? current.knowledgeStatus, FAQ_KNOWLEDGE_STATUSES, 'pending_index'),
+      input.approvedAt === undefined ? current.approvedAt : nullable(input.approvedAt),
       actorUserId,
       nowIso(),
       id,

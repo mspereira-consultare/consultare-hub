@@ -67,6 +67,19 @@ export type IntranetFaqItem = {
   categoryId: string | null;
   question: string;
   answer: Record<string, unknown>;
+  sortOrder?: number;
+};
+
+export type IntranetFaqCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  sortOrder: number;
+};
+
+export type IntranetFaqCategoryWithItems = IntranetFaqCategory & {
+  items: IntranetFaqItem[];
 };
 
 export type IntranetSearchResult = {
@@ -164,6 +177,25 @@ export const canUserAccessPage = async (
     db,
     `SELECT audience_group_id FROM intranet_page_audiences WHERE page_id = ?`,
     [pageId]
+  );
+  if (rows.length === 0) return true;
+
+  for (const row of rows as Row[]) {
+    if (await userMatchesAudience(db, clean(row.audience_group_id), user)) return true;
+  }
+
+  return false;
+};
+
+const canUserAccessFaqItem = async (
+  db: DbInterface,
+  faqItemId: string,
+  user: IntranetSessionUser
+) => {
+  const rows = await safeQuery(
+    db,
+    `SELECT audience_group_id FROM intranet_faq_item_audiences WHERE faq_item_id = ?`,
+    [faqItemId]
   );
   if (rows.length === 0) return true;
 
@@ -291,6 +323,69 @@ export const listFaqItemsByCategoryIds = async (db: DbInterface, categoryIds: st
   }));
 };
 
+export const listPublishedFaqCategoriesWithItems = async (
+  db: DbInterface,
+  user: IntranetSessionUser,
+  queryRaw = '',
+  categoryIdRaw = ''
+): Promise<IntranetFaqCategoryWithItems[]> => {
+  const query = clean(queryRaw).toLowerCase();
+  const categoryId = clean(categoryIdRaw);
+  const like = `%${query}%`;
+  const categories = await safeQuery(
+    db,
+    `
+    SELECT id, name, slug, description, sort_order
+    FROM intranet_faq_categories
+    WHERE is_active = 1
+      ${categoryId ? 'AND id = ?' : ''}
+    ORDER BY sort_order ASC, name ASC
+    `,
+    categoryId ? [categoryId] : []
+  );
+
+  const out: IntranetFaqCategoryWithItems[] = [];
+  for (const category of categories as Row[]) {
+    const rows = await safeQuery(
+      db,
+      `
+      SELECT id, category_id, question, answer_json, sort_order
+      FROM intranet_faq_items
+      WHERE is_active = 1
+        AND category_id = ?
+        ${query ? "AND (LOWER(question) LIKE ? OR LOWER(COALESCE(answer_json, '')) LIKE ?)" : ''}
+      ORDER BY sort_order ASC, created_at DESC
+      `,
+      query ? [clean(category.id), like, like] : [clean(category.id)]
+    );
+
+    const items: IntranetFaqItem[] = [];
+    for (const row of rows as Row[]) {
+      if (!(await canUserAccessFaqItem(db, clean(row.id), user))) continue;
+      items.push({
+        id: clean(row.id),
+        categoryId: clean(row.category_id) || null,
+        question: clean(row.question),
+        answer: parseJson<Record<string, unknown>>(row.answer_json, {}),
+        sortOrder: Number(row.sort_order || 0),
+      });
+    }
+
+    if (items.length > 0 || (!query && !categoryId)) {
+      out.push({
+        id: clean(category.id),
+        name: clean(category.name),
+        slug: clean(category.slug),
+        description: clean(category.description) || null,
+        sortOrder: Number(category.sort_order || 0),
+        items,
+      });
+    }
+  }
+
+  return out;
+};
+
 export const searchIntranet = async (
   db: DbInterface,
   queryRaw: string,
@@ -363,12 +458,13 @@ export const searchIntranet = async (
   );
 
   for (const row of faq as Row[]) {
+    if (!(await canUserAccessFaqItem(db, clean(row.id), user))) continue;
     results.push({
       id: clean(row.id),
       entityType: 'faq',
       title: clean(row.question),
       summary: null,
-      url: `/busca?q=${encodeURIComponent(query)}`,
+      url: `/faq?q=${encodeURIComponent(query)}`,
     });
   }
 
