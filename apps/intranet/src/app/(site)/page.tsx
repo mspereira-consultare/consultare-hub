@@ -12,7 +12,7 @@ const cards = [
   { label: 'IA Consultare', href: '/ia', icon: Bot },
   { label: 'Chat interno', href: '/chat', icon: MessageCircle },
   { label: 'POPs e documentos', href: '/qualidade', icon: FileText },
-  { label: 'Areas internas', href: '/', icon: Navigation },
+  { label: 'Áreas internas', href: '/', icon: Navigation },
   { label: 'Acesso seguro', href: '/', icon: ShieldCheck },
 ];
 
@@ -33,9 +33,9 @@ export default async function IntranetHomePage() {
     <div className="px-4 py-6 lg:px-8">
       <section className="rounded-lg bg-[#053F74] p-6 text-white shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">Intranet Consultare</p>
-        <h1 className="mt-3 text-3xl font-semibold">Referencia interna para o dia a dia</h1>
+        <h1 className="mt-3 text-3xl font-semibold">Referência interna para o dia a dia</h1>
         <p className="mt-3 max-w-3xl text-sm leading-6 text-blue-50">
-          Acesse paginas, comunicados, documentos e ferramentas internas publicadas pela Consultare.
+          Acesse páginas, comunicados, documentos e ferramentas internas publicadas pela Consultare.
         </p>
       </section>
 
