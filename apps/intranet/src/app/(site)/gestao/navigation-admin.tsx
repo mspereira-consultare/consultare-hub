@@ -19,7 +19,6 @@ import {
   Navigation,
   Pencil,
   Plus,
-  RefreshCw,
   Save,
   Search,
   Trash2,
@@ -311,8 +310,8 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
     <main className="min-h-screen bg-slate-50 px-4 py-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
         <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-center lg:justify-between">
-            <div>
+          <div className="flex flex-col gap-5 border-b border-slate-200 p-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="max-w-2xl">
               <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-[#17407E]">
                 <Navigation size={24} />
               </div>
@@ -322,26 +321,14 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
                 Organize o menu lateral com seções, páginas publicadas e links externos usados no dia a dia.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={() => setHelpOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+            <div className="flex flex-wrap items-center gap-2 xl:max-w-[760px] xl:justify-end xl:pt-16">
+              <button type="button" onClick={() => setHelpOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
                 <CircleHelp size={16} />
                 Como funciona
               </button>
-              <button type="button" onClick={loadData} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                <RefreshCw size={16} />
-                Recarregar
-              </button>
-              <button type="button" onClick={() => openCreate('label')} disabled={!canEdit} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
-                <Archive size={16} />
-                Nova seção
-              </button>
-              <button type="button" onClick={() => openCreate('external_link')} disabled={!canEdit} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60">
-                <ExternalLink size={16} />
-                Link externo
-              </button>
-              <button type="button" onClick={() => openCreate('page')} disabled={!canEdit} className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white transition hover:bg-[#123463] disabled:cursor-not-allowed disabled:opacity-60">
+              <button type="button" onClick={() => openCreate('page')} disabled={!canEdit} className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#17407E] px-3.5 text-sm font-semibold text-white transition hover:bg-[#123463] disabled:cursor-not-allowed disabled:opacity-60">
                 <Plus size={16} />
-                Item de página
+                Novo item
               </button>
             </div>
           </div>
