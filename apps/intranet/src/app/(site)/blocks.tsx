@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element -- CMS images come from dynamic private asset URLs. */
 import Link from 'next/link';
 import {
   AlertCircle,
@@ -35,16 +36,34 @@ function RichTextBlock({ data }: { data: Record<string, unknown> }) {
   const title = clean(data.title);
   const html = clean(data.body_html);
   const body = clean(data.body || data.body_text);
+  const imageUrl = clean(data.image_url || data.imageUrl);
+  const imageAlt = clean(data.image_alt || data.imageAlt) || title || 'Imagem da página';
+  const imagePosition = clean(data.image_position || data.imagePosition) || 'above';
+  const image = imageUrl ? (
+    <img src={imageUrl} alt={imageAlt} className="h-auto w-full rounded-lg border border-slate-200 object-cover" />
+  ) : null;
+  const text = html ? (
+    <div
+      className="prose prose-slate max-w-none text-sm leading-7"
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  ) : (
+    <p className="whitespace-pre-line text-sm leading-7 text-slate-700">{body}</p>
+  );
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       {title ? <h2 className="mb-3 text-xl font-semibold text-slate-900">{title}</h2> : null}
-      {html ? (
-        <div
-          className="prose prose-slate max-w-none text-sm leading-7"
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+      {image && imagePosition === 'side' ? (
+        <div className="grid gap-5 md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] md:items-start">
+          {image}
+          {text}
+        </div>
       ) : (
-        <p className="whitespace-pre-line text-sm leading-7 text-slate-700">{body}</p>
+        <>
+          {image ? <div className="mb-4">{image}</div> : null}
+          {text}
+        </>
       )}
     </section>
   );
@@ -53,16 +72,43 @@ function RichTextBlock({ data }: { data: Record<string, unknown> }) {
 function CalloutBlock({ data }: { data: Record<string, unknown> }) {
   const title = clean(data.title);
   const body = clean(data.body);
+  const severity = clean(data.severity) || 'info';
+  const styles: Record<string, { section: string; icon: string; label: string }> = {
+    info: { section: 'border-blue-200 bg-blue-50 text-slate-800', icon: 'text-[#17407E]', label: 'Informativo' },
+    success: { section: 'border-emerald-200 bg-emerald-50 text-slate-800', icon: 'text-emerald-700', label: 'Orientação' },
+    warning: { section: 'border-amber-200 bg-amber-50 text-slate-900', icon: 'text-amber-700', label: 'Atenção' },
+    danger: { section: 'border-rose-200 bg-rose-50 text-slate-900', icon: 'text-rose-700', label: 'Crítico' },
+  };
+  const style = styles[severity] || styles.info;
   return (
-    <section className="rounded-lg border border-[#229A8A]/30 bg-emerald-50 p-5 text-slate-800">
+    <section className={`rounded-lg border p-5 ${style.section}`}>
       <div className="flex gap-3">
-        <AlertCircle className="mt-0.5 text-[#229A8A]" size={20} />
+        <AlertCircle className={`mt-0.5 ${style.icon}`} size={20} />
         <div>
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide opacity-75">{style.label}</div>
           {title ? <h2 className="font-semibold">{title}</h2> : null}
           {body ? <p className="mt-1 text-sm leading-6">{body}</p> : null}
         </div>
       </div>
     </section>
+  );
+}
+
+function ImageBlock({ data }: { data: Record<string, unknown> }) {
+  const title = clean(data.title);
+  const imageUrl = clean(data.image_url || data.imageUrl || data.url);
+  const imageAlt = clean(data.image_alt || data.imageAlt) || title || 'Imagem da página';
+  const caption = clean(data.caption);
+  if (!imageUrl) {
+    return <PlaceholderBlock title={title || 'Imagem'} description="Imagem ainda não selecionada." />;
+  }
+
+  return (
+    <figure className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+      {title ? <h2 className="mb-3 text-lg font-semibold text-slate-900">{title}</h2> : null}
+      <img src={imageUrl} alt={imageAlt} className="h-auto w-full rounded-lg object-cover" />
+      {caption ? <figcaption className="mt-2 text-xs leading-5 text-slate-500">{caption}</figcaption> : null}
+    </figure>
   );
 }
 
@@ -341,6 +387,8 @@ export async function BlockRenderer({ blocks }: { blocks: IntranetBlock[] }) {
             return <RichTextBlock key={key} data={data} />;
           case 'callout':
             return <CalloutBlock key={key} data={data} />;
+          case 'image':
+            return <ImageBlock key={key} data={data} />;
           case 'quick_links':
             return <QuickLinksBlock key={key} data={data} />;
           case 'news_feed':

@@ -1,21 +1,33 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element -- Admin previews render dynamic private asset URLs. */
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Archive,
+  AlertTriangle,
   Bot,
+  BookOpen,
   ChevronDown,
   ChevronUp,
+  CircleHelp,
   Eye,
   FileText,
+  Home,
+  Image as ImageIcon,
+  Info,
+  LayoutGrid,
   Link as LinkIcon,
+  ListChecks,
   Loader2,
+  Megaphone,
   Plus,
   RefreshCw,
   Save,
   Search,
   Sparkles,
   Table,
+  Trash2,
   Users,
   X,
 } from 'lucide-react';
@@ -28,6 +40,11 @@ type SelectOption = {
 type IntranetBlock = {
   type: string;
   data: Record<string, unknown>;
+};
+
+type AssetUploadResult = {
+  id: string;
+  originalName: string;
 };
 
 type IntranetPage = {
@@ -95,11 +112,31 @@ const pageStatuses: SelectOption[] = [
 
 const blockTypes: Array<SelectOption & { icon: typeof FileText }> = [
   { value: 'rich_text', label: 'Texto simples', icon: FileText },
+  { value: 'image', label: 'Imagem', icon: ImageIcon },
   { value: 'callout', label: 'Destaque / aviso', icon: Sparkles },
   { value: 'quick_links', label: 'Links rápidos', icon: LinkIcon },
   { value: 'table', label: 'Tabela simples', icon: Table },
   { value: 'contact_cards', label: 'Contatos', icon: Users },
   { value: 'chatbot_entry', label: 'Entrada IA Consultare', icon: Bot },
+];
+
+const iconOptions: Array<SelectOption & { icon: typeof FileText }> = [
+  { value: '', label: 'Sem ícone', icon: FileText },
+  { value: 'file-text', label: 'Documento', icon: FileText },
+  { value: 'home', label: 'Institucional', icon: Home },
+  { value: 'book-open', label: 'Manual', icon: BookOpen },
+  { value: 'megaphone', label: 'Comunicado', icon: Megaphone },
+  { value: 'list-checks', label: 'Processo', icon: ListChecks },
+  { value: 'layout-grid', label: 'Catálogo', icon: LayoutGrid },
+  { value: 'users', label: 'Equipe', icon: Users },
+  { value: 'bot', label: 'IA Consultare', icon: Bot },
+];
+
+const calloutSeverities: SelectOption[] = [
+  { value: 'info', label: 'Informativo' },
+  { value: 'success', label: 'Orientação' },
+  { value: 'warning', label: 'Atenção' },
+  { value: 'danger', label: 'Crítico' },
 ];
 
 const emptyBlockData = (type: string): Record<string, unknown> => {
@@ -109,11 +146,17 @@ const emptyBlockData = (type: string): Record<string, unknown> => {
   if (type === 'table') {
     return { title: '', columns: ['Coluna 1', 'Coluna 2'], rows: [['', '']] };
   }
+  if (type === 'image') {
+    return { title: '', imageUrl: '', imageAlt: '', caption: '' };
+  }
   if (type === 'contact_cards') {
     return { title: 'Contatos', contacts: [{ name: '', role: '', phone: '', email: '', notes: '' }] };
   }
   if (type === 'chatbot_entry') {
     return { title: 'IA Consultare', description: 'Assistente institucional da intranet.' };
+  }
+  if (type === 'callout') {
+    return { title: '', body: '', severity: 'info' };
   }
   return { title: '', body: '' };
 };
@@ -216,6 +259,8 @@ export function PagesAdmin({ canEdit }: PagesAdminProps) {
   const [selectedPage, setSelectedPage] = useState<IntranetPage | null>(null);
   const [form, setForm] = useState<PageFormState>(() => emptyForm());
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [uploadingBlockIndex, setUploadingBlockIndex] = useState<number | null>(null);
 
   const filteredParentPages = useMemo(
     () => pages.filter((page) => page.id !== selectedPage?.id && page.status !== 'archived'),
@@ -300,6 +345,35 @@ export function PagesAdmin({ canEdit }: PagesAdminProps) {
     const [item] = next.splice(index, 1);
     next.splice(nextIndex, 0, item);
     updateBlocks(next);
+  };
+
+  const uploadBlockImage = async (index: number, file: File | null) => {
+    if (!file) return;
+    try {
+      setError(null);
+      setUploadingBlockIndex(index);
+      const body = new FormData();
+      body.set('file', file);
+      body.set('entityType', 'page-image');
+      if (selectedPage?.id) body.set('entityId', selectedPage.id);
+      const res = await fetch('/api/admin/intranet/assets', { method: 'POST', body });
+      if (!res.ok) throw new Error(await normalizeError(res));
+      const json = await res.json();
+      const asset = json?.data as AssetUploadResult | undefined;
+      if (!asset?.id) throw new Error('Falha ao recuperar o asset enviado.');
+      const imageUrl = `/api/intranet/assets/${encodeURIComponent(asset.id)}/download`;
+      const imageAlt = asset.originalName || 'Imagem da página';
+      updateBlocks(form.blocks.map((block, currentIndex) =>
+        currentIndex === index
+          ? { ...block, data: { ...blockData(block), imageUrl, imageAlt } }
+          : block,
+      ));
+      setNotice('Imagem enviada e vinculada ao bloco.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setUploadingBlockIndex(null);
+    }
   };
 
   const applyAdvancedJson = () => {
@@ -404,6 +478,14 @@ export function PagesAdmin({ canEdit }: PagesAdminProps) {
             >
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
               Recarregar
+            </button>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-[#17407E]"
+            >
+              <CircleHelp size={16} />
+              Como funciona
             </button>
             <button
               type="button"
@@ -549,9 +631,13 @@ export function PagesAdmin({ canEdit }: PagesAdminProps) {
           onUpdateBlock={updateBlock}
           onRemoveBlock={removeBlock}
           onMoveBlock={moveBlock}
+          onUploadBlockImage={uploadBlockImage}
+          uploadingBlockIndex={uploadingBlockIndex}
           onApplyAdvancedJson={applyAdvancedJson}
         />
       ) : null}
+
+      <PagesHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </main>
   );
 }
@@ -572,6 +658,8 @@ function PageModal({
   onUpdateBlock,
   onRemoveBlock,
   onMoveBlock,
+  onUploadBlockImage,
+  uploadingBlockIndex,
   onApplyAdvancedJson,
 }: {
   canEdit: boolean;
@@ -589,6 +677,8 @@ function PageModal({
   onUpdateBlock: (index: number, key: string, value: unknown) => void;
   onRemoveBlock: (index: number) => void;
   onMoveBlock: (index: number, direction: -1 | 1) => void;
+  onUploadBlockImage: (index: number, file: File | null) => void;
+  uploadingBlockIndex: number | null;
   onApplyAdvancedJson: () => void;
 }) {
   const updateField = (key: keyof PageFormState, value: PageFormState[keyof PageFormState]) => {
@@ -612,7 +702,7 @@ function PageModal({
           <aside className="overflow-y-auto border-b border-slate-200 p-5 xl:border-b-0 xl:border-r">
             <div className="grid gap-3 md:grid-cols-2">
               <label className="block md:col-span-2">
-                <span className={labelClassName}>Título</span>
+                <FieldLabel label="Título" help="Nome exibido no topo da página e na lista administrativa. Use algo claro para o colaborador." />
                 <input
                   className={inputClassName}
                   value={form.title}
@@ -623,46 +713,46 @@ function PageModal({
                 />
               </label>
               <label className="block">
-                <span className={labelClassName}>Slug</span>
+                <FieldLabel label="Slug" help="Parte final do endereço. Ex.: politica-atendimento vira /politica-atendimento." />
                 <input className={inputClassName} value={form.slug} onChange={(event) => updateField('slug', slugify(event.target.value))} />
               </label>
               <label className="block">
-                <span className={labelClassName}>Status</span>
+                <FieldLabel label="Status" help="Rascunho não aparece publicamente. Publicado aparece no endereço da página. Arquivado remove da experiência pública." />
                 <select className={inputClassName} value={form.status} onChange={(event) => updateField('status', event.target.value)}>
                   {pageStatuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
               </label>
               <label className="block">
-                <span className={labelClassName}>Tipo</span>
+                <FieldLabel label="Tipo" help="Classificação interna da página. Para páginas comuns, mantenha Conteúdo." />
                 <select className={inputClassName} value={form.pageType} onChange={(event) => updateField('pageType', event.target.value)}>
                   {pageTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
               </label>
               <label className="block">
-                <span className={labelClassName}>Ordem</span>
+                <FieldLabel label="Ordem" help="Número usado para ordenar páginas e listas. Valores menores aparecem antes." />
                 <input type="number" className={inputClassName} value={form.sortOrder} onChange={(event) => updateField('sortOrder', event.target.value)} />
               </label>
               <label className="block md:col-span-2">
-                <span className={labelClassName}>Página pai</span>
+                <FieldLabel label="Página pai" help="Use para criar hierarquia e caminhos como /rh/beneficios. Deixe vazio para página raiz." />
                 <select className={inputClassName} value={form.parentPageId} onChange={(event) => updateField('parentPageId', event.target.value)}>
                   <option value="">Sem página pai</option>
                   {pages.map((page) => <option key={page.id} value={page.id}>{page.title} (/{page.fullPath})</option>)}
                 </select>
               </label>
+              <div className="block">
+                <FieldLabel label="Ícone" help="Ícone sugerido para menu e cartões administrativos. A navegação poderá reaproveitar esse visual." />
+                <IconPicker value={form.iconName} onChange={(value) => updateField('iconName', value)} />
+              </div>
               <label className="block">
-                <span className={labelClassName}>Ícone</span>
-                <input className={inputClassName} value={form.iconName} onChange={(event) => updateField('iconName', event.target.value)} placeholder="file-text" />
-              </label>
-              <label className="block">
-                <span className={labelClassName}>Meta título</span>
+                <FieldLabel label="Meta título" help="Título técnico para busca e SEO interno. Pode ficar vazio para usar o título da página." />
                 <input className={inputClassName} value={form.metaTitle} onChange={(event) => updateField('metaTitle', event.target.value)} />
               </label>
               <label className="block md:col-span-2">
-                <span className={labelClassName}>Descrição / resumo</span>
+                <FieldLabel label="Descrição / resumo" help="Resumo exibido no cabeçalho da página e usado pela busca interna." />
                 <textarea className={`${inputClassName} min-h-[96px] resize-y`} value={form.metaDescription} onChange={(event) => updateField('metaDescription', event.target.value)} />
               </label>
               <label className="block md:col-span-2">
-                <span className={labelClassName}>Resumo da alteração</span>
+                <FieldLabel label="Resumo da alteração" help="Comentário salvo na revisão para explicar o que mudou." />
                 <input className={inputClassName} value={form.changeSummary} onChange={(event) => updateField('changeSummary', event.target.value)} placeholder="Ex.: Ajuste de conteúdo institucional" />
               </label>
             </div>
@@ -736,6 +826,8 @@ function PageModal({
                   onUpdate={onUpdateBlock}
                   onRemove={onRemoveBlock}
                   onMove={onMoveBlock}
+                  onUploadImage={onUploadBlockImage}
+                  uploading={uploadingBlockIndex === index}
                 />
               ))}
             </div>
@@ -791,6 +883,66 @@ function PageModal({
   );
 }
 
+function FieldLabel({ label, help }: { label: string; help: string }) {
+  return (
+    <span className={`${labelClassName} flex items-center gap-1.5`}>
+      {label}
+      <span className="group relative inline-flex">
+        <Info size={13} className="text-slate-400" />
+        <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-64 -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs normal-case leading-5 tracking-normal text-slate-600 shadow-lg group-hover:block">
+          {help}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+function IconPicker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const selected = iconOptions.find((item) => item.value === value) || iconOptions[0];
+  const SelectedIcon = selected.icon;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className="flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition hover:border-[#17407E]"
+      >
+        <span className="inline-flex items-center gap-2">
+          <SelectedIcon size={16} className="text-[#17407E]" />
+          {selected.label}
+        </span>
+        <ChevronDown size={15} className="text-slate-400" />
+      </button>
+      {open ? (
+        <div className="absolute left-0 right-0 z-30 mt-2 max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2 shadow-xl">
+          {iconOptions.map((item) => {
+            const Icon = item.icon;
+            const active = item.value === value;
+            return (
+              <button
+                key={`${item.value}-${item.label}`}
+                type="button"
+                onClick={() => {
+                  onChange(item.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
+                  active ? 'bg-blue-50 text-[#17407E]' : 'text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Icon size={16} />
+                {item.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function BlockEditor({
   block,
   index,
@@ -799,6 +951,8 @@ function BlockEditor({
   onUpdate,
   onRemove,
   onMove,
+  onUploadImage,
+  uploading,
 }: {
   block: IntranetBlock;
   index: number;
@@ -807,6 +961,8 @@ function BlockEditor({
   onUpdate: (index: number, key: string, value: unknown) => void;
   onRemove: (index: number) => void;
   onMove: (index: number, direction: -1 | 1) => void;
+  onUploadImage: (index: number, file: File | null) => void;
+  uploading: boolean;
 }) {
   const data = blockData(block);
 
@@ -830,9 +986,19 @@ function BlockEditor({
         </div>
       </div>
       <div className="grid gap-3 p-4">
-        {block.type === 'rich_text' || block.type === 'callout' || block.type === 'chatbot_entry' ? (
-          <SimpleTextFields data={data} index={index} onUpdate={onUpdate} descriptionLabel={block.type === 'chatbot_entry' ? 'Descrição' : 'Texto'} />
+        {block.type === 'rich_text' || block.type === 'chatbot_entry' ? (
+          <SimpleTextFields
+            data={data}
+            index={index}
+            onUpdate={onUpdate}
+            descriptionLabel={block.type === 'chatbot_entry' ? 'Descrição' : 'Texto'}
+            imageEnabled={block.type === 'rich_text'}
+            onUploadImage={onUploadImage}
+            uploading={uploading}
+          />
         ) : null}
+        {block.type === 'callout' ? <CalloutFields data={data} index={index} onUpdate={onUpdate} /> : null}
+        {block.type === 'image' ? <ImageFields data={data} index={index} onUpdate={onUpdate} onUploadImage={onUploadImage} uploading={uploading} /> : null}
         {block.type === 'quick_links' ? <QuickLinksFields data={data} index={index} onUpdate={onUpdate} /> : null}
         {block.type === 'table' ? <TableFields data={data} index={index} onUpdate={onUpdate} /> : null}
         {block.type === 'contact_cards' ? <ContactFields data={data} index={index} onUpdate={onUpdate} /> : null}
@@ -845,26 +1011,123 @@ function SimpleTextFields({
   data,
   index,
   descriptionLabel,
+  imageEnabled,
   onUpdate,
+  onUploadImage,
+  uploading,
 }: {
   data: Record<string, unknown>;
   index: number;
   descriptionLabel: string;
+  imageEnabled?: boolean;
   onUpdate: (index: number, key: string, value: unknown) => void;
+  onUploadImage: (index: number, file: File | null) => void;
+  uploading: boolean;
 }) {
   return (
     <>
       <label className="block">
-        <span className={labelClassName}>Título</span>
+        <FieldLabel label="Título" help="Título do bloco. Pode ficar vazio se o texto já tiver contexto suficiente." />
         <input className={inputClassName} value={asString(data.title)} onChange={(event) => onUpdate(index, 'title', event.target.value)} />
       </label>
       <label className="block">
-        <span className={labelClassName}>{descriptionLabel}</span>
+        <FieldLabel label={descriptionLabel} help="Conteúdo principal do bloco. Quebras de linha são preservadas na renderização." />
         <textarea
           className={`${inputClassName} min-h-[120px] resize-y`}
           value={asString(data.body || data.description)}
           onChange={(event) => onUpdate(index, data.description !== undefined ? 'description' : 'body', event.target.value)}
         />
+      </label>
+      {imageEnabled ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <FieldLabel label="Imagem no texto" help="Use para colocar uma imagem acima do texto ou ao lado dele em telas maiores." />
+          {asString(data.imageUrl) ? (
+            <img src={asString(data.imageUrl)} alt={asString(data.imageAlt) || 'Imagem do bloco'} className="mb-3 max-h-44 rounded-lg border border-slate-200 object-cover" />
+          ) : null}
+          <div className="grid gap-2 md:grid-cols-[1fr_180px]">
+            <label className="block">
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(event) => onUploadImage(index, event.target.files?.[0] || null)}
+                disabled={uploading}
+                className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#17407E] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white disabled:opacity-60"
+              />
+            </label>
+            <select className={inputClassName} value={asString(data.imagePosition) || 'above'} onChange={(event) => onUpdate(index, 'imagePosition', event.target.value)}>
+              <option value="above">Acima do texto</option>
+              <option value="side">Ao lado do texto</option>
+            </select>
+          </div>
+          <input className={`${inputClassName} mt-2`} placeholder="Texto alternativo da imagem" value={asString(data.imageAlt)} onChange={(event) => onUpdate(index, 'imageAlt', event.target.value)} />
+          {uploading ? <div className="mt-2 inline-flex items-center gap-2 text-xs text-slate-500"><Loader2 size={13} className="animate-spin" /> Enviando imagem...</div> : null}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function CalloutFields({ data, index, onUpdate }: { data: Record<string, unknown>; index: number; onUpdate: (index: number, key: string, value: unknown) => void }) {
+  return (
+    <>
+      <label className="block">
+        <FieldLabel label="Criticidade" help="Define cor e destaque do aviso publicado." />
+        <select className={inputClassName} value={asString(data.severity) || 'info'} onChange={(event) => onUpdate(index, 'severity', event.target.value)}>
+          {calloutSeverities.map((severity) => <option key={severity.value} value={severity.value}>{severity.label}</option>)}
+        </select>
+      </label>
+      <label className="block">
+        <FieldLabel label="Título" help="Mensagem curta que resume o aviso." />
+        <input className={inputClassName} value={asString(data.title)} onChange={(event) => onUpdate(index, 'title', event.target.value)} />
+      </label>
+      <label className="block">
+        <FieldLabel label="Texto" help="Explique o alerta, orientação ou regra que precisa aparecer em destaque." />
+        <textarea className={`${inputClassName} min-h-[120px] resize-y`} value={asString(data.body)} onChange={(event) => onUpdate(index, 'body', event.target.value)} />
+      </label>
+    </>
+  );
+}
+
+function ImageFields({
+  data,
+  index,
+  onUpdate,
+  onUploadImage,
+  uploading,
+}: {
+  data: Record<string, unknown>;
+  index: number;
+  onUpdate: (index: number, key: string, value: unknown) => void;
+  onUploadImage: (index: number, file: File | null) => void;
+  uploading: boolean;
+}) {
+  return (
+    <>
+      <label className="block">
+        <FieldLabel label="Título" help="Título opcional exibido acima da imagem." />
+        <input className={inputClassName} value={asString(data.title)} onChange={(event) => onUpdate(index, 'title', event.target.value)} />
+      </label>
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <FieldLabel label="Arquivo de imagem" help="Envie uma imagem para ser exibida como um bloco próprio na página." />
+        {asString(data.imageUrl) ? (
+          <img src={asString(data.imageUrl)} alt={asString(data.imageAlt) || 'Imagem do bloco'} className="mb-3 max-h-72 rounded-lg border border-slate-200 object-cover" />
+        ) : null}
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(event) => onUploadImage(index, event.target.files?.[0] || null)}
+          disabled={uploading}
+          className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#17407E] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white disabled:opacity-60"
+        />
+        {uploading ? <div className="mt-2 inline-flex items-center gap-2 text-xs text-slate-500"><Loader2 size={13} className="animate-spin" /> Enviando imagem...</div> : null}
+      </div>
+      <label className="block">
+        <FieldLabel label="Texto alternativo" help="Descrição curta para acessibilidade e quando a imagem não carregar." />
+        <input className={inputClassName} value={asString(data.imageAlt)} onChange={(event) => onUpdate(index, 'imageAlt', event.target.value)} />
+      </label>
+      <label className="block">
+        <FieldLabel label="Legenda" help="Texto opcional exibido abaixo da imagem." />
+        <input className={inputClassName} value={asString(data.caption)} onChange={(event) => onUpdate(index, 'caption', event.target.value)} />
       </label>
     </>
   );
@@ -875,19 +1138,45 @@ function QuickLinksFields({ data, index, onUpdate }: { data: Record<string, unkn
   const updateItem = (itemIndex: number, key: string, value: string) => {
     onUpdate(index, 'items', items.map((item, currentIndex) => currentIndex === itemIndex ? { ...item, [key]: value } : item));
   };
+  const removeItem = (itemIndex: number) => {
+    onUpdate(index, 'items', items.filter((_, currentIndex) => currentIndex !== itemIndex));
+  };
 
   return (
     <>
       <label className="block">
-        <span className={labelClassName}>Título</span>
+        <FieldLabel label="Título" help="Nome opcional exibido acima do conjunto de links." />
         <input className={inputClassName} value={asString(data.title)} onChange={(event) => onUpdate(index, 'title', event.target.value)} />
       </label>
       <div className="space-y-3">
         {items.map((item, itemIndex) => (
-          <div key={itemIndex} className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-3">
-            <input className={inputClassName} placeholder="Rótulo" value={asString(item.label)} onChange={(event) => updateItem(itemIndex, 'label', event.target.value)} />
-            <input className={inputClassName} placeholder="/caminho ou URL" value={asString(item.url)} onChange={(event) => updateItem(itemIndex, 'url', event.target.value)} />
-            <input className={inputClassName} placeholder="Descrição" value={asString(item.description)} onChange={(event) => updateItem(itemIndex, 'description', event.target.value)} />
+          <div key={itemIndex} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Link {itemIndex + 1}</span>
+              <button
+                type="button"
+                onClick={() => removeItem(itemIndex)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-rose-100 bg-white px-2.5 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
+                aria-label={`Remover link ${itemIndex + 1}`}
+              >
+                <Trash2 size={13} />
+                Remover
+              </button>
+            </div>
+            <div className="grid gap-2 md:grid-cols-3">
+              <label>
+                <FieldLabel label="Rótulo" help="Texto curto que aparece no cartão do link." />
+                <input className={inputClassName} placeholder="Portal RH" value={asString(item.label)} onChange={(event) => updateItem(itemIndex, 'label', event.target.value)} />
+              </label>
+              <label>
+                <FieldLabel label="Destino" help="Use um caminho interno, como /documentos, ou uma URL completa." />
+                <input className={inputClassName} placeholder="/caminho ou URL" value={asString(item.url)} onChange={(event) => updateItem(itemIndex, 'url', event.target.value)} />
+              </label>
+              <label>
+                <FieldLabel label="Descrição" help="Resumo opcional para orientar o usuário antes de abrir o link." />
+                <input className={inputClassName} placeholder="Descrição" value={asString(item.description)} onChange={(event) => updateItem(itemIndex, 'description', event.target.value)} />
+              </label>
+            </div>
           </div>
         ))}
       </div>
@@ -905,15 +1194,15 @@ function TableFields({ data, index, onUpdate }: { data: Record<string, unknown>;
   return (
     <>
       <label className="block">
-        <span className={labelClassName}>Título</span>
+        <FieldLabel label="Título" help="Título opcional exibido acima da tabela." />
         <input className={inputClassName} value={asString(data.title)} onChange={(event) => onUpdate(index, 'title', event.target.value)} />
       </label>
       <label className="block">
-        <span className={labelClassName}>Colunas</span>
+        <FieldLabel label="Colunas" help="Separe os nomes das colunas por vírgula." />
         <input className={inputClassName} value={columns.join(', ')} onChange={(event) => onUpdate(index, 'columns', event.target.value.split(',').map((item) => item.trim()).filter(Boolean))} />
       </label>
       <label className="block">
-        <span className={labelClassName}>Linhas</span>
+        <FieldLabel label="Linhas" help="Digite uma linha por registro e separe as células com barra vertical." />
         <textarea
           className={`${inputClassName} min-h-[120px] font-mono text-xs`}
           value={rows.map((row) => (Array.isArray(row) ? row.map(asString).join(' | ') : '')).join('\n')}
@@ -930,21 +1219,53 @@ function ContactFields({ data, index, onUpdate }: { data: Record<string, unknown
   const updateContact = (contactIndex: number, key: string, value: string) => {
     onUpdate(index, 'contacts', contacts.map((item, currentIndex) => currentIndex === contactIndex ? { ...item, [key]: value } : item));
   };
+  const removeContact = (contactIndex: number) => {
+    onUpdate(index, 'contacts', contacts.filter((_, currentIndex) => currentIndex !== contactIndex));
+  };
 
   return (
     <>
       <label className="block">
-        <span className={labelClassName}>Título</span>
+        <FieldLabel label="Título" help="Nome opcional exibido acima dos cartões de contato." />
         <input className={inputClassName} value={asString(data.title)} onChange={(event) => onUpdate(index, 'title', event.target.value)} />
       </label>
       <div className="space-y-3">
         {contacts.map((contact, contactIndex) => (
-          <div key={contactIndex} className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 md:grid-cols-2">
-            <input className={inputClassName} placeholder="Nome" value={asString(contact.name)} onChange={(event) => updateContact(contactIndex, 'name', event.target.value)} />
-            <input className={inputClassName} placeholder="Função" value={asString(contact.role)} onChange={(event) => updateContact(contactIndex, 'role', event.target.value)} />
-            <input className={inputClassName} placeholder="Telefone" value={asString(contact.phone)} onChange={(event) => updateContact(contactIndex, 'phone', event.target.value)} />
-            <input className={inputClassName} placeholder="E-mail" value={asString(contact.email)} onChange={(event) => updateContact(contactIndex, 'email', event.target.value)} />
-            <input className={`${inputClassName} md:col-span-2`} placeholder="Observações" value={asString(contact.notes)} onChange={(event) => updateContact(contactIndex, 'notes', event.target.value)} />
+          <div key={contactIndex} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">Contato {contactIndex + 1}</span>
+              <button
+                type="button"
+                onClick={() => removeContact(contactIndex)}
+                className="inline-flex items-center gap-1.5 rounded-md border border-rose-100 bg-white px-2.5 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-50"
+                aria-label={`Remover contato ${contactIndex + 1}`}
+              >
+                <Trash2 size={13} />
+                Remover
+              </button>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <label>
+                <FieldLabel label="Nome" help="Pessoa, setor ou canal que deve aparecer no cartão." />
+                <input className={inputClassName} placeholder="Nome" value={asString(contact.name)} onChange={(event) => updateContact(contactIndex, 'name', event.target.value)} />
+              </label>
+              <label>
+                <FieldLabel label="Função" help="Cargo, responsabilidade ou contexto do contato." />
+                <input className={inputClassName} placeholder="Função" value={asString(contact.role)} onChange={(event) => updateContact(contactIndex, 'role', event.target.value)} />
+              </label>
+              <label>
+                <FieldLabel label="Telefone" help="Telefone, ramal ou WhatsApp de referência." />
+                <input className={inputClassName} placeholder="Telefone" value={asString(contact.phone)} onChange={(event) => updateContact(contactIndex, 'phone', event.target.value)} />
+              </label>
+              <label>
+                <FieldLabel label="E-mail" help="E-mail do contato ou da caixa compartilhada." />
+                <input className={inputClassName} placeholder="E-mail" value={asString(contact.email)} onChange={(event) => updateContact(contactIndex, 'email', event.target.value)} />
+              </label>
+              <label className="md:col-span-2">
+                <FieldLabel label="Observações" help="Instrução curta, horário de atendimento ou regra de uso do contato." />
+                <input className={inputClassName} placeholder="Observações" value={asString(contact.notes)} onChange={(event) => updateContact(contactIndex, 'notes', event.target.value)} />
+              </label>
+            </div>
           </div>
         ))}
       </div>
@@ -952,5 +1273,114 @@ function ContactFields({ data, index, onUpdate }: { data: Record<string, unknown
         Adicionar contato
       </button>
     </>
+  );
+}
+
+function PagesHelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const sections = [
+    {
+      icon: BookOpen,
+      title: 'Fluxo recomendado',
+      items: [
+        'Crie a página como rascunho para revisar título, slug e conteúdo sem publicar.',
+        'Use Publicado apenas quando o conteúdo estiver pronto para aparecer no acesso público.',
+        'Arquivar remove a página da experiência pública sem apagar o histórico administrativo.',
+      ],
+    },
+    {
+      icon: LayoutGrid,
+      title: 'Blocos de conteúdo',
+      items: [
+        'Texto simples serve para orientações, normas e páginas institucionais.',
+        'Imagem pode ser usada como bloco próprio; no texto simples, a imagem pode ficar acima ou ao lado.',
+        'Links rápidos, contatos e tabelas ajudam a transformar páginas em ferramentas de consulta.',
+      ],
+    },
+    {
+      icon: AlertTriangle,
+      title: 'Avisos e criticidade',
+      items: [
+        'Informativo é neutro, Orientação destaca boas práticas, Atenção sinaliza cuidado e Crítico chama mais atenção.',
+        'Prefira avisos curtos; regras longas funcionam melhor em texto simples abaixo do destaque.',
+      ],
+    },
+    {
+      icon: ImageIcon,
+      title: 'Imagens e arquivos',
+      items: [
+        'Envie imagens diretamente no bloco; o sistema salva o arquivo e preenche o caminho de exibição.',
+        'Use texto alternativo sempre que a imagem carregar informação importante.',
+        'Para documentos, mantenha links rápidos por enquanto; a biblioteca visual de arquivos fica para um próximo corte.',
+      ],
+    },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 px-4 py-8 backdrop-blur-sm">
+      <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-6 py-5">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-[#17407E]">
+              <CircleHelp size={14} />
+              Ajuda do CMS
+            </div>
+            <h2 className="mt-3 text-xl font-semibold text-slate-900">Como criar e manter páginas da intranet</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              Use esta tela para estruturar conteúdo interno de forma padronizada, com revisão simples e blocos reutilizáveis.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50" aria-label="Fechar ajuda">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="grid gap-4 p-6 md:grid-cols-2">
+          {sections.map((section) => {
+            const Icon = section.icon;
+            return (
+              <section key={section.title} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="mb-3 flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white text-[#17407E] shadow-sm">
+                    <Icon size={18} />
+                  </div>
+                  <h3 className="font-semibold text-slate-900">{section.title}</h3>
+                </div>
+                <ul className="space-y-2 text-sm leading-6 text-slate-600">
+                  {section.items.map((item) => (
+                    <li key={item} className="flex gap-2">
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#229A8A]" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            );
+          })}
+        </div>
+
+        <div className="border-t border-slate-200 bg-white px-6 py-5">
+          <h3 className="font-semibold text-slate-900">Campos principais</h3>
+          <div className="mt-3 grid gap-3 text-sm leading-6 text-slate-600 md:grid-cols-3">
+            <p><strong className="text-slate-800">Slug:</strong> define o endereço público da página.</p>
+            <p><strong className="text-slate-800">Página pai:</strong> monta caminhos hierárquicos, como setor/manual.</p>
+            <p><strong className="text-slate-800">Público:</strong> restringe a página aos grupos selecionados quando houver grupos ativos.</p>
+            <p><strong className="text-slate-800">Ícone:</strong> ajuda a identificar a página em listagens e menus.</p>
+            <p><strong className="text-slate-800">Ordem:</strong> prepara a organização visual em navegação e listas.</p>
+            <p><strong className="text-slate-800">JSON avançado:</strong> é um escape técnico para blocos ainda sem formulário visual.</p>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
