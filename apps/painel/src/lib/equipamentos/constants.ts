@@ -14,6 +14,14 @@ export const EQUIPMENT_UNIT_LABELS: Record<(typeof EQUIPMENT_UNITS)[number], str
 
 export type EquipmentUnit = (typeof EQUIPMENT_UNITS)[number];
 
+export const EQUIPMENT_TYPES = [
+  { value: 'ADMINISTRATIVO', label: 'Administrativo' },
+  { value: 'OPERACIONAL', label: 'Operacional' },
+  { value: 'TI', label: 'TI' },
+] as const;
+
+export type EquipmentType = (typeof EQUIPMENT_TYPES)[number]['value'];
+
 export const EQUIPMENT_OPERATIONAL_STATUSES = [
   { value: 'ATIVO', label: 'Ativo' },
   { value: 'EM_MANUTENCAO', label: 'Em manutenção' },

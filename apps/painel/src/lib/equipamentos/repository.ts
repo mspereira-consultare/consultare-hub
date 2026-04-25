@@ -7,6 +7,7 @@ import {
   EQUIPMENT_EVENT_TYPES,
   EQUIPMENT_FILE_TYPES,
   EQUIPMENT_OPERATIONAL_STATUSES,
+  EQUIPMENT_TYPES,
   EQUIPMENT_UNIT_LABELS,
   EQUIPMENT_UNITS,
   MAX_PAGE_SIZE,
@@ -15,6 +16,7 @@ import {
   type EquipmentEventType,
   type EquipmentFileType,
   type EquipmentOperationalStatus,
+  type EquipmentType,
   type EquipmentUnit,
 } from '@/lib/equipamentos/constants';
 import { computeCalibrationStatus, getCalibrationStatusLabel } from '@/lib/equipamentos/status';
@@ -48,6 +50,7 @@ const bool = (value: any) =>
   value === true || value === 1 || String(value) === '1' || String(value ?? '').toLowerCase() === 'true';
 
 const allowedUnits = new Set(EQUIPMENT_UNITS);
+const allowedEquipmentTypes = new Set(EQUIPMENT_TYPES.map((item) => item.value));
 const allowedOperationalStatuses = new Set(EQUIPMENT_OPERATIONAL_STATUSES.map((item) => item.value));
 const allowedCalibrationStatuses = new Set(EQUIPMENT_CALIBRATION_STATUSES.map((item) => item.value));
 const allowedEventTypes = new Set(EQUIPMENT_EVENT_TYPES.map((item) => item.value));
@@ -123,6 +126,7 @@ const mapEquipment = (row: any): Equipment => ({
   description: clean(row.description),
   identificationNumber: clean(row.identification_number),
   barcodeValue: clean(row.barcode_value) || null,
+  equipmentType: upper(row.equipment_type || 'OPERACIONAL') as EquipmentType,
   category: clean(row.category) || null,
   manufacturer: clean(row.manufacturer) || null,
   model: clean(row.model) || null,
@@ -187,6 +191,14 @@ const normalizeOperationalStatus = (value: any): EquipmentOperationalStatus => {
   return normalized as EquipmentOperationalStatus;
 };
 
+const normalizeEquipmentType = (value: any): EquipmentType => {
+  const normalized = upper(value || 'OPERACIONAL');
+  if (!allowedEquipmentTypes.has(normalized as EquipmentType)) {
+    throw new EquipmentValidationError('Tipo de equipamento inválido.');
+  }
+  return normalized as EquipmentType;
+};
+
 const normalizeEventType = (value: any): EquipmentEventType => {
   const normalized = upper(value);
   if (!allowedEventTypes.has(normalized as EquipmentEventType)) {
@@ -230,6 +242,7 @@ const normalizeEquipmentInput = (payload: any): EquipmentInput => {
     description,
     identificationNumber,
     barcodeValue: clean(payload?.barcodeValue || payload?.barcode_value) || null,
+    equipmentType: normalizeEquipmentType(payload?.equipmentType || payload?.equipment_type || payload?.type || 'OPERACIONAL'),
     category: clean(payload?.category) || null,
     manufacturer: clean(payload?.manufacturer) || null,
     model: clean(payload?.model) || null,
@@ -343,12 +356,17 @@ export const normalizeEquipmentFilters = (params: URLSearchParams | Record<strin
 
   const page = clamp(Number(getParam('page') || 1), 1, 999999);
   const pageSize = clamp(Number(getParam('pageSize') || DEFAULT_PAGE_SIZE), 1, MAX_PAGE_SIZE);
+  const equipmentType = upper(getParam('equipmentType') || getParam('type') || 'ALL');
   const calibrationStatus = upper(getParam('calibrationStatus') || 'ALL');
   const operationalStatus = upper(getParam('operationalStatus') || 'ATIVO');
 
   return {
     search: clean(getParam('search')),
     unit: clean(getParam('unit')) || 'all',
+    equipmentType:
+      equipmentType === 'ALL' || !allowedEquipmentTypes.has(equipmentType as EquipmentType)
+        ? 'all'
+        : (equipmentType as EquipmentType),
     calibrationStatus:
       calibrationStatus === 'ALL' || !allowedCalibrationStatuses.has(calibrationStatus as EquipmentCalibrationStatus)
         ? 'all'
@@ -372,6 +390,7 @@ export const ensureEquipmentTables = async (db: DbInterface = getDbConnection())
       description VARCHAR(255) NOT NULL,
       identification_number VARCHAR(120) NOT NULL,
       barcode_value VARCHAR(180) NULL,
+      equipment_type VARCHAR(30) NOT NULL DEFAULT 'OPERACIONAL',
       category VARCHAR(120) NULL,
       manufacturer VARCHAR(180) NULL,
       model VARCHAR(180) NULL,
@@ -423,6 +442,7 @@ export const ensureEquipmentTables = async (db: DbInterface = getDbConnection())
   `);
 
   await safeAddColumn(db, `ALTER TABLE clinic_equipment ADD COLUMN barcode_value VARCHAR(180) NULL`);
+  await safeAddColumn(db, `ALTER TABLE clinic_equipment ADD COLUMN equipment_type VARCHAR(30) NOT NULL DEFAULT 'OPERACIONAL'`);
   await safeAddColumn(db, `ALTER TABLE clinic_equipment ADD COLUMN category VARCHAR(120) NULL`);
   await safeAddColumn(db, `ALTER TABLE clinic_equipment ADD COLUMN manufacturer VARCHAR(180) NULL`);
   await safeAddColumn(db, `ALTER TABLE clinic_equipment ADD COLUMN model VARCHAR(180) NULL`);
@@ -438,6 +458,7 @@ export const ensureEquipmentTables = async (db: DbInterface = getDbConnection())
   await safeAddColumn(db, `ALTER TABLE clinic_equipment ADD COLUMN notes TEXT NULL`);
 
   await safeCreateIndex(db, `CREATE INDEX idx_clinic_equipment_unit ON clinic_equipment (unit_name)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_clinic_equipment_type ON clinic_equipment (equipment_type)`);
   await safeCreateIndex(db, `CREATE INDEX idx_clinic_equipment_status ON clinic_equipment (operational_status)`);
   await safeCreateIndex(db, `CREATE INDEX idx_clinic_equipment_next_calibration ON clinic_equipment (next_calibration_date)`);
   await safeCreateIndex(db, `CREATE INDEX idx_clinic_equipment_events_equipment ON clinic_equipment_events (equipment_id)`);
@@ -467,6 +488,7 @@ export const listEquipment = async (
           item.description,
           item.identificationNumber,
           item.barcodeValue,
+          item.equipmentType,
           item.category,
           item.manufacturer,
           item.model,
@@ -484,6 +506,10 @@ export const listEquipment = async (
   if (filters.unit && filters.unit !== 'all') {
     const targetUnit = upper(filters.unit);
     list = list.filter((item) => upper(item.unitName) === targetUnit);
+  }
+
+  if (filters.equipmentType !== 'all') {
+    list = list.filter((item) => item.equipmentType === filters.equipmentType);
   }
 
   if (filters.operationalStatus !== 'all') {
@@ -546,12 +572,12 @@ export const createEquipment = async (db: DbInterface, payload: any): Promise<Eq
   await db.execute(
     `
     INSERT INTO clinic_equipment (
-      id, unit_name, description, identification_number, barcode_value, category,
+      id, unit_name, description, identification_number, barcode_value, equipment_type, category,
       manufacturer, model, serial_number, location_detail, operational_status,
       calibration_required, calibration_frequency_days, last_calibration_date,
       next_calibration_date, calibration_responsible, calibration_notes, notes,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -559,6 +585,7 @@ export const createEquipment = async (db: DbInterface, payload: any): Promise<Eq
       input.description,
       input.identificationNumber,
       input.barcodeValue,
+      input.equipmentType,
       input.category,
       input.manufacturer,
       input.model,
@@ -599,6 +626,7 @@ export const updateEquipment = async (
         description = ?,
         identification_number = ?,
         barcode_value = ?,
+        equipment_type = ?,
         category = ?,
         manufacturer = ?,
         model = ?,
@@ -620,6 +648,7 @@ export const updateEquipment = async (
       input.description,
       input.identificationNumber,
       input.barcodeValue,
+      input.equipmentType,
       input.category,
       input.manufacturer,
       input.model,
@@ -823,6 +852,7 @@ export const listEquipmentOptions = async (db: DbInterface) => {
 
   return {
     units: EQUIPMENT_UNITS.map((value) => ({ value, label: EQUIPMENT_UNIT_LABELS[value] })),
+    equipmentTypes: EQUIPMENT_TYPES,
     operationalStatuses: EQUIPMENT_OPERATIONAL_STATUSES,
     calibrationStatuses: EQUIPMENT_CALIBRATION_STATUSES,
     eventTypes: EQUIPMENT_EVENT_TYPES,

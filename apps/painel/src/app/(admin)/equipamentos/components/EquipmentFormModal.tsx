@@ -17,6 +17,7 @@ type SelectOption = { value: string; label: string };
 
 type EquipmentFormState = {
   unitName: string;
+  equipmentType: string;
   description: string;
   identificationNumber: string;
   barcodeValue: string;
@@ -46,6 +47,7 @@ type EventFormState = {
 
 type EquipmentOptionsPayload = {
   units: SelectOption[];
+  equipmentTypes: SelectOption[];
   operationalStatuses: SelectOption[];
   calibrationStatuses: SelectOption[];
   eventTypes: SelectOption[];
@@ -78,6 +80,7 @@ const sectionClassName = 'rounded-xl border border-slate-200 bg-slate-50/70 p-4'
 
 const emptyForm = (options: EquipmentOptionsPayload): EquipmentFormState => ({
   unitName: options.units[0]?.value || '',
+  equipmentType: options.equipmentTypes.find((item) => item.value === 'OPERACIONAL')?.value || options.equipmentTypes[0]?.value || 'OPERACIONAL',
   description: '',
   identificationNumber: '',
   barcodeValue: '',
@@ -98,6 +101,7 @@ const emptyForm = (options: EquipmentOptionsPayload): EquipmentFormState => ({
 
 const formFromEquipment = (item: EquipmentListItem, options: EquipmentOptionsPayload): EquipmentFormState => ({
   unitName: item.unitName || options.units[0]?.value || '',
+  equipmentType: item.equipmentType || options.equipmentTypes.find((option) => option.value === 'OPERACIONAL')?.value || options.equipmentTypes[0]?.value || 'OPERACIONAL',
   description: item.description || '',
   identificationNumber: item.identificationNumber || '',
   barcodeValue: item.barcodeValue || '',
@@ -234,6 +238,7 @@ export function EquipmentFormModal({
       setSuccessMessage(null);
       const payload = {
         unitName: form.unitName,
+        equipmentType: form.equipmentType,
         description: form.description,
         identificationNumber: form.identificationNumber,
         barcodeValue: form.barcodeValue || null,
@@ -470,6 +475,14 @@ export function EquipmentFormModal({
                       ))}
                     </select>
                   </label>
+                  <label className="block">
+                    <span className={labelClassName}>Tipo</span>
+                    <select className={inputClassName} value={form.equipmentType} onChange={(event) => setForm({ ...form, equipmentType: event.target.value })}>
+                      {options.equipmentTypes.map((item) => (
+                        <option key={item.value} value={item.value}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
                   <label className="block md:col-span-2">
                     <span className={labelClassName}>Descrição do equipamento</span>
                     <input className={inputClassName} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} />
@@ -683,4 +696,3 @@ export function EquipmentFormModal({
     </div>
   );
 }
-

@@ -4,6 +4,7 @@ import type {
   EquipmentEventType,
   EquipmentFileType,
   EquipmentOperationalStatus,
+  EquipmentType,
   EquipmentUnit,
 } from '@/lib/equipamentos/constants';
 
@@ -13,6 +14,7 @@ export type Equipment = {
   description: string;
   identificationNumber: string;
   barcodeValue: string | null;
+  equipmentType: EquipmentType;
   category: string | null;
   manufacturer: string | null;
   model: string | null;
@@ -70,6 +72,7 @@ export type EquipmentInput = {
   description: string;
   identificationNumber: string;
   barcodeValue?: string | null;
+  equipmentType: EquipmentType;
   category?: string | null;
   manufacturer?: string | null;
   model?: string | null;
@@ -109,6 +112,7 @@ export type EquipmentFileUploadInput = {
 export type EquipmentFilters = {
   search: string;
   unit: string;
+  equipmentType: 'all' | EquipmentType;
   calibrationStatus: 'all' | EquipmentCalibrationStatus;
   operationalStatus: 'all' | EquipmentOperationalStatus;
   page: number;

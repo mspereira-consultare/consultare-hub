@@ -5,6 +5,7 @@ type SelectOption = { value: string; label: string };
 type FiltersState = {
   search: string;
   unit: string;
+  equipmentType: string;
   calibrationStatus: string;
   operationalStatus: string;
 };
@@ -12,6 +13,7 @@ type FiltersState = {
 type EquipmentFiltersBarProps = {
   filters: FiltersState;
   units: SelectOption[];
+  equipmentTypes: SelectOption[];
   calibrationStatuses: SelectOption[];
   operationalStatuses: SelectOption[];
   canEdit: boolean;
@@ -30,6 +32,7 @@ const inputClassName =
 export function EquipmentFiltersBar({
   filters,
   units,
+  equipmentTypes,
   calibrationStatuses,
   operationalStatuses,
   canEdit,
@@ -42,7 +45,7 @@ export function EquipmentFiltersBar({
   onCreate,
 }: EquipmentFiltersBarProps) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(220px,1fr)_minmax(220px,1fr)_minmax(220px,1fr)_auto_auto_auto] xl:items-end">
+    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(190px,0.9fr)_minmax(190px,0.9fr)_minmax(220px,1fr)_minmax(220px,1fr)_auto_auto_auto] xl:items-end">
       <label className="block">
         <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Busca</span>
         <div className="relative">
@@ -54,6 +57,22 @@ export function EquipmentFiltersBar({
             onChange={(event) => onChange({ ...filters, search: event.target.value })}
           />
         </div>
+      </label>
+
+      <label className="block">
+        <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tipo</span>
+        <select
+          className={inputClassName}
+          value={filters.equipmentType}
+          onChange={(event) => onChange({ ...filters, equipmentType: event.target.value })}
+        >
+          <option value="all">Todos os tipos</option>
+          {equipmentTypes.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
       </label>
 
       <label className="block">
@@ -136,4 +155,3 @@ export function EquipmentFiltersBar({
     </div>
   );
 }
-

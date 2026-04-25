@@ -14,6 +14,7 @@ type SelectOption = { value: string; label: string };
 
 type EquipmentOptionsPayload = {
   units: SelectOption[];
+  equipmentTypes: SelectOption[];
   operationalStatuses: SelectOption[];
   calibrationStatuses: SelectOption[];
   eventTypes: SelectOption[];
@@ -30,6 +31,7 @@ type EquipmentOptionsPayload = {
 type FiltersState = {
   search: string;
   unit: string;
+  equipmentType: string;
   calibrationStatus: string;
   operationalStatus: string;
 };
@@ -45,6 +47,7 @@ const emptySummary: EquipmentListSummary = {
 
 const emptyOptions: EquipmentOptionsPayload = {
   units: [],
+  equipmentTypes: [],
   operationalStatuses: [],
   calibrationStatuses: [],
   eventTypes: [],
@@ -75,6 +78,7 @@ export default function EquipamentosPage() {
   const [filters, setFilters] = useState<FiltersState>({
     search: '',
     unit: 'all',
+    equipmentType: 'all',
     calibrationStatus: 'all',
     operationalStatus: 'ATIVO',
   });
@@ -118,6 +122,7 @@ export default function EquipamentosPage() {
         const query = new URLSearchParams({
           search: filters.search,
           unit: filters.unit,
+          equipmentType: filters.equipmentType,
           calibrationStatus: filters.calibrationStatus,
           operationalStatus: filters.operationalStatus,
           page: String(page),
@@ -208,6 +213,7 @@ export default function EquipamentosPage() {
     const query = new URLSearchParams({
       search: filters.search,
       unit: filters.unit,
+      equipmentType: filters.equipmentType,
       calibrationStatus: filters.calibrationStatus,
       operationalStatus: filters.operationalStatus,
     });
@@ -240,7 +246,7 @@ export default function EquipamentosPage() {
             <div>
               <h1 className="text-xl font-bold text-slate-800">Equipamentos</h1>
               <p className="mt-1 max-w-4xl text-xs text-slate-500">
-                Acompanhe vencimentos de calibração, manutenções, responsáveis e evidências documentais dos equipamentos por unidade.
+                Controle o patrimônio da clínica em um só lugar, acompanhando tipo, unidade, calibração, manutenções, responsáveis e evidências documentais.
               </p>
             </div>
           </div>
@@ -250,6 +256,7 @@ export default function EquipamentosPage() {
           <EquipmentFiltersBar
             filters={filters}
             units={options.units}
+            equipmentTypes={options.equipmentTypes}
             calibrationStatuses={options.calibrationStatuses}
             operationalStatuses={options.operationalStatuses}
             canEdit={canEdit}
@@ -314,4 +321,3 @@ export default function EquipamentosPage() {
     </div>
   );
 }
-

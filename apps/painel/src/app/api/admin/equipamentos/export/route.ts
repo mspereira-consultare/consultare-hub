@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
-import { EQUIPMENT_UNIT_LABELS } from '@/lib/equipamentos/constants';
+import { EQUIPMENT_TYPES, EQUIPMENT_UNIT_LABELS } from '@/lib/equipamentos/constants';
 import { requireEquipamentosPermission } from '@/lib/equipamentos/auth';
 import { listEquipmentExportRows, normalizeEquipmentFilters } from '@/lib/equipamentos/repository';
 
@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const formatDate = (value?: string | null) => value || '-';
+const equipmentTypeLabel = Object.fromEntries(EQUIPMENT_TYPES.map((item) => [item.value, item.label]));
 
 export async function GET(request: Request) {
   try {
@@ -25,6 +26,7 @@ export async function GET(request: Request) {
     const worksheet = workbook.addWorksheet('Equipamentos');
     worksheet.columns = [
       { header: 'Unidade', key: 'unitName', width: 24 },
+      { header: 'Tipo', key: 'equipmentType', width: 18 },
       { header: 'Descrição', key: 'description', width: 36 },
       { header: 'Identificação', key: 'identificationNumber', width: 22 },
       { header: 'Categoria', key: 'category', width: 20 },
@@ -37,13 +39,13 @@ export async function GET(request: Request) {
       { header: 'Observações', key: 'notes', width: 42 },
     ];
 
-    worksheet.mergeCells('A1:K1');
+    worksheet.mergeCells('A1:L1');
     worksheet.getCell('A1').value = 'Equipamentos da clínica';
     worksheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
     worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17407E' } };
 
-    worksheet.mergeCells('A2:K2');
-    worksheet.getCell('A2').value = `Unidade: ${filters.unit === 'all' ? 'Todas as unidades' : filters.unit} | Status operacional: ${filters.operationalStatus === 'all' ? 'Todos' : filters.operationalStatus} | Status de calibração: ${filters.calibrationStatus === 'all' ? 'Todos' : filters.calibrationStatus}`;
+    worksheet.mergeCells('A2:L2');
+    worksheet.getCell('A2').value = `Unidade: ${filters.unit === 'all' ? 'Todas as unidades' : filters.unit} | Tipo: ${filters.equipmentType === 'all' ? 'Todos' : filters.equipmentType} | Status operacional: ${filters.operationalStatus === 'all' ? 'Todos' : filters.operationalStatus} | Status de calibração: ${filters.calibrationStatus === 'all' ? 'Todos' : filters.calibrationStatus}`;
     worksheet.getCell('A2').font = { size: 10 };
 
     const headerRow = worksheet.getRow(4);
@@ -55,6 +57,7 @@ export async function GET(request: Request) {
     for (const row of rows) {
       worksheet.getRow(rowIndex).values = [
         EQUIPMENT_UNIT_LABELS[row.unitName] || row.unitName,
+        equipmentTypeLabel[row.equipmentType] || row.equipmentType,
         row.description,
         row.identificationNumber,
         row.category || '-',

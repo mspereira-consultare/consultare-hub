@@ -1,5 +1,5 @@
 import { Edit3, FileText, Trash2, Wrench } from 'lucide-react';
-import { EQUIPMENT_UNIT_LABELS } from '@/lib/equipamentos/constants';
+import { EQUIPMENT_TYPES, EQUIPMENT_UNIT_LABELS } from '@/lib/equipamentos/constants';
 import type { EquipmentListItem } from '@/lib/equipamentos/types';
 
 const operationalStatusLabel: Record<string, string> = {
@@ -7,6 +7,14 @@ const operationalStatusLabel: Record<string, string> = {
   EM_MANUTENCAO: 'Em manutenção',
   INATIVO: 'Inativo',
   DESCARTADO: 'Descartado',
+};
+
+const equipmentTypeLabel = Object.fromEntries(EQUIPMENT_TYPES.map((item) => [item.value, item.label]));
+
+const equipmentTypeBadgeClassName = (type: string) => {
+  if (type === 'ADMINISTRATIVO') return 'bg-sky-50 text-sky-700 ring-sky-200';
+  if (type === 'TI') return 'bg-violet-50 text-violet-700 ring-violet-200';
+  return 'bg-indigo-50 text-indigo-700 ring-indigo-200';
 };
 
 const calibrationBadgeClassName = (status: string) => {
@@ -48,6 +56,7 @@ export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete }: Eq
           <thead className="sticky top-0 z-10 bg-white">
             <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               <th className="px-4 py-3">Unidade</th>
+              <th className="px-4 py-3">Tipo</th>
               <th className="px-4 py-3">Equipamento</th>
               <th className="px-4 py-3">Categoria</th>
               <th className="px-4 py-3">Localização</th>
@@ -62,13 +71,13 @@ export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete }: Eq
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={11} className="px-4 py-8 text-center text-slate-500">
                   Carregando equipamentos...
                 </td>
               </tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-8 text-center text-slate-500">
+                <td colSpan={11} className="px-4 py-8 text-center text-slate-500">
                   Nenhum equipamento encontrado para os filtros atuais.
                 </td>
               </tr>
@@ -76,6 +85,11 @@ export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete }: Eq
               items.map((item) => (
                 <tr key={item.id} className="border-b border-slate-100 align-top hover:bg-slate-50/80">
                   <td className="px-4 py-4 font-medium text-slate-700">{EQUIPMENT_UNIT_LABELS[item.unitName] || item.unitName}</td>
+                  <td className="px-4 py-4">
+                    <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${equipmentTypeBadgeClassName(item.equipmentType)}`}>
+                      {equipmentTypeLabel[item.equipmentType] || item.equipmentType}
+                    </span>
+                  </td>
                   <td className="px-4 py-4">
                     <div className="font-semibold text-slate-900">{item.description}</div>
                     <div className="mt-1 text-xs text-slate-500">Identificação: {item.identificationNumber}</div>
@@ -137,4 +151,3 @@ export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete }: Eq
     </div>
   );
 }
-
