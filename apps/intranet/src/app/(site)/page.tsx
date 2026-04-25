@@ -1,6 +1,7 @@
+/* eslint-disable @next/next/no-img-element -- Home cards render authenticated intranet asset URLs. */
 import Link from 'next/link';
 import { getServerSession } from 'next-auth';
-import { Bot, FileText, MessageCircle, Navigation, Search, ShieldCheck } from 'lucide-react';
+import { Bot, FileText, Megaphone, MessageCircle, Navigation, Search, ShieldCheck, Sparkles } from 'lucide-react';
 import { getDbConnection } from '@consultare/core/db';
 import { listPublishedNavigationNodes, listRecentNewsPosts } from '@consultare/core/intranet/repository';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
@@ -15,6 +16,51 @@ const cards = [
   { label: 'Áreas internas', href: '/', icon: Navigation },
   { label: 'Acesso seguro', href: '/', icon: ShieldCheck },
 ];
+
+const newsCategoryLabels: Record<string, string> = {
+  geral: 'Geral',
+  rh: 'RH',
+  operacional: 'Operacional',
+  comunicado: 'Comunicado',
+  qualidade: 'Qualidade',
+  ti: 'TI',
+  eventos: 'Eventos',
+};
+
+const newsTypeLabels: Record<string, string> = {
+  news: 'Notícia',
+  notice: 'Aviso',
+  banner: 'Banner',
+};
+
+const highlightStyles: Record<string, { card: string; badge: string; visual: string; label: string }> = {
+  info: {
+    card: 'border-blue-100',
+    badge: 'bg-blue-50 text-[#17407E] ring-blue-100',
+    visual: 'bg-blue-50 text-[#17407E]',
+    label: 'Informativo',
+  },
+  attention: {
+    card: 'border-amber-200',
+    badge: 'bg-amber-50 text-amber-700 ring-amber-100',
+    visual: 'bg-amber-50 text-amber-700',
+    label: 'Atenção',
+  },
+  important: {
+    card: 'border-indigo-200',
+    badge: 'bg-indigo-50 text-indigo-700 ring-indigo-100',
+    visual: 'bg-indigo-50 text-indigo-700',
+    label: 'Importante',
+  },
+  urgent: {
+    card: 'border-rose-200',
+    badge: 'bg-rose-50 text-rose-700 ring-rose-100',
+    visual: 'bg-rose-50 text-rose-700',
+    label: 'Urgente',
+  },
+};
+
+const coverUrl = (assetId: string | null | undefined) => assetId ? `/api/intranet/assets/${encodeURIComponent(assetId)}/download` : '';
 
 export default async function IntranetHomePage() {
   const session = await getServerSession(authOptions);
@@ -68,15 +114,38 @@ export default async function IntranetHomePage() {
 
         <div className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Notícias e avisos</h2>
-          <div className="mt-4 divide-y divide-slate-100">
+          <div className="mt-4 grid gap-3">
             {newsPosts.length === 0 ? <p className="text-sm text-slate-500">Nenhum aviso publicado ainda.</p> : null}
-            {newsPosts.map((post) => (
-              <article key={post.id} className="py-3 first:pt-0 last:pb-0">
-                <p className="text-xs font-semibold uppercase text-[#229A8A]">{post.postType}</p>
-                <h3 className="mt-1 font-semibold text-slate-900">{post.title}</h3>
-                {post.summary ? <p className="mt-1 text-sm leading-6 text-slate-600">{post.summary}</p> : null}
-              </article>
-            ))}
+            {newsPosts.map((post) => {
+              const style = highlightStyles[post.highlightLevel] || highlightStyles.info;
+              const imageUrl = coverUrl(post.coverAssetId);
+              return (
+                <article key={post.id} className={`overflow-hidden rounded-lg border bg-white shadow-sm ${style.card}`}>
+                  <div className="grid gap-0 sm:grid-cols-[112px_minmax(0,1fr)]">
+                    {imageUrl ? (
+                      <img src={imageUrl} alt="" className="h-28 w-full object-cover sm:h-full" />
+                    ) : (
+                      <div className={`flex min-h-24 items-center justify-center ${style.visual}`}>
+                        {post.isFeatured ? <Sparkles size={24} /> : <Megaphone size={24} />}
+                      </div>
+                    )}
+                    <div className="p-4">
+                      <div className="mb-2 flex flex-wrap gap-2">
+                        <span className="rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 ring-1 ring-slate-100">
+                          {newsCategoryLabels[post.category] || 'Geral'}
+                        </span>
+                        <span className={`rounded-full px-2 py-1 text-[11px] font-semibold uppercase tracking-wide ring-1 ${style.badge}`}>
+                          {style.label}
+                        </span>
+                      </div>
+                      <p className="text-xs font-semibold uppercase text-[#229A8A]">{newsTypeLabels[post.postType] || post.postType}</p>
+                      <h3 className="mt-1 font-semibold text-slate-900">{post.title}</h3>
+                      {post.summary ? <p className="mt-1 line-clamp-2 text-sm leading-6 text-slate-600">{post.summary}</p> : null}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </div>
       </section>

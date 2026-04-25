@@ -20,6 +20,8 @@ const PAGE_STATUSES = new Set(['draft', 'published', 'archived']);
 const NODE_TYPES = new Set(['page', 'external_link', 'label']);
 const AUDIENCE_MODES = new Set(['inherit', 'custom']);
 const POST_TYPES = new Set(['news', 'notice', 'banner']);
+const NEWS_CATEGORIES = new Set(['geral', 'rh', 'operacional', 'comunicado', 'qualidade', 'ti', 'eventos']);
+const NEWS_HIGHLIGHT_LEVELS = new Set(['info', 'attention', 'important', 'urgent']);
 const SCOPE_TYPES = new Set(['section', 'catalog', 'faq', 'news', 'global']);
 const RULE_TYPES = new Set(['role', 'department', 'team']);
 
@@ -84,6 +86,8 @@ const ensureColumns = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE intranet_pages ADD COLUMN current_revision_id VARCHAR(64) NULL`);
   await safeAddColumn(db, `ALTER TABLE intranet_navigation_nodes ADD COLUMN audience_mode VARCHAR(20) NULL`);
   await safeAddColumn(db, `ALTER TABLE intranet_news_posts ADD COLUMN cover_asset_id VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE intranet_news_posts ADD COLUMN category VARCHAR(40) DEFAULT 'geral'`);
+  await safeAddColumn(db, `ALTER TABLE intranet_news_posts ADD COLUMN highlight_level VARCHAR(40) DEFAULT 'info'`);
 };
 
 export const ensureIntranetTables = async (db: DbInterface) => {
@@ -236,6 +240,8 @@ export const ensureIntranetTables = async (db: DbInterface) => {
       summary TEXT,
       body_json LONGTEXT NOT NULL,
       cover_asset_id VARCHAR(64),
+      category VARCHAR(40) NOT NULL DEFAULT 'geral',
+      highlight_level VARCHAR(40) NOT NULL DEFAULT 'info',
       is_featured INTEGER NOT NULL DEFAULT 0,
       status VARCHAR(30) NOT NULL,
       publish_start_at TEXT,
@@ -845,6 +851,8 @@ const mapNewsPost = async (db: DbInterface, row: Row) => {
     summary: clean(row.summary) || null,
     body: parseJson(row.body_json, {}),
     coverAssetId: clean(row.cover_asset_id) || null,
+    category: pickEnum(row.category, NEWS_CATEGORIES, 'geral'),
+    highlightLevel: pickEnum(row.highlight_level, NEWS_HIGHLIGHT_LEVELS, 'info'),
     isFeatured: fromDbBool(row.is_featured),
     status: clean(row.status),
     publishStartAt: clean(row.publish_start_at) || null,
@@ -858,7 +866,7 @@ const mapNewsPost = async (db: DbInterface, row: Row) => {
   };
 };
 
-export const listNewsPosts = async (db: DbInterface, filters: { status?: string; search?: string; postType?: string }) => {
+export const listNewsPosts = async (db: DbInterface, filters: { status?: string; search?: string; postType?: string; category?: string }) => {
   await ensureIntranetTables(db);
   const where = ['1=1'];
   const params: unknown[] = [];
@@ -871,6 +879,11 @@ export const listNewsPosts = async (db: DbInterface, filters: { status?: string;
   if (postType && postType !== 'all') {
     where.push('LOWER(post_type) = ?');
     params.push(postType);
+  }
+  const category = clean(filters.category).toLowerCase();
+  if (category && category !== 'all') {
+    where.push('LOWER(category) = ?');
+    params.push(category);
   }
   const search = clean(filters.search).toLowerCase();
   if (search) {
@@ -897,9 +910,9 @@ export const createNewsPost = async (db: DbInterface, input: Row, actorUserId: s
   await db.execute(
     `
     INSERT INTO intranet_news_posts (
-      id, post_type, title, slug, summary, body_json, cover_asset_id, is_featured, status,
+      id, post_type, title, slug, summary, body_json, cover_asset_id, category, highlight_level, is_featured, status,
       publish_start_at, publish_end_at, created_by, created_at, updated_by, updated_at, published_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -909,6 +922,8 @@ export const createNewsPost = async (db: DbInterface, input: Row, actorUserId: s
       nullable(input.summary),
       stringifyJson(input.body, {}),
       nullable(input.coverAssetId),
+      pickEnum(input.category, NEWS_CATEGORIES, 'geral'),
+      pickEnum(input.highlightLevel, NEWS_HIGHLIGHT_LEVELS, 'info'),
       toDbBool(input.isFeatured),
       status,
       nullable(input.publishStartAt),
@@ -935,7 +950,7 @@ export const updateNewsPost = async (db: DbInterface, id: string, input: Row, ac
     `
     UPDATE intranet_news_posts
     SET post_type = ?, title = ?, slug = ?, summary = ?, body_json = ?, cover_asset_id = ?,
-        is_featured = ?, status = ?, publish_start_at = ?, publish_end_at = ?,
+        category = ?, highlight_level = ?, is_featured = ?, status = ?, publish_start_at = ?, publish_end_at = ?,
         updated_by = ?, updated_at = ?, published_at = ?
     WHERE id = ?
     `,
@@ -946,6 +961,8 @@ export const updateNewsPost = async (db: DbInterface, id: string, input: Row, ac
       input.summary === undefined ? current.summary : nullable(input.summary),
       stringifyJson(input.body ?? current.body, {}),
       input.coverAssetId === undefined ? current.coverAssetId : nullable(input.coverAssetId),
+      pickEnum(input.category ?? current.category, NEWS_CATEGORIES, current.category || 'geral'),
+      pickEnum(input.highlightLevel ?? current.highlightLevel, NEWS_HIGHLIGHT_LEVELS, current.highlightLevel || 'info'),
       input.isFeatured === undefined ? toDbBool(current.isFeatured) : toDbBool(input.isFeatured),
       status,
       input.publishStartAt === undefined ? current.publishStartAt : nullable(input.publishStartAt),

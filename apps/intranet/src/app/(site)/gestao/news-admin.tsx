@@ -29,6 +29,8 @@ type NewsPost = {
   summary: string | null;
   body: Record<string, unknown>;
   coverAssetId: string | null;
+  category: string;
+  highlightLevel: string;
   isFeatured: boolean;
   status: string;
   publishStartAt: string | null;
@@ -52,6 +54,8 @@ type NewsFormState = {
   summary: string;
   bodyText: string;
   coverAssetId: string;
+  category: string;
+  highlightLevel: string;
   isFeatured: boolean;
   status: string;
   publishStartAt: string;
@@ -85,6 +89,23 @@ const postStatuses: SelectOption[] = [
   { value: 'archived', label: 'Arquivado' },
 ];
 
+const newsCategories: SelectOption[] = [
+  { value: 'geral', label: 'Geral' },
+  { value: 'rh', label: 'RH' },
+  { value: 'operacional', label: 'Operacional' },
+  { value: 'comunicado', label: 'Comunicado' },
+  { value: 'qualidade', label: 'Qualidade' },
+  { value: 'ti', label: 'TI' },
+  { value: 'eventos', label: 'Eventos' },
+];
+
+const highlightLevels: Array<SelectOption & { badge: string; card: string }> = [
+  { value: 'info', label: 'Informativo', badge: 'bg-blue-50 text-[#17407E] ring-blue-100', card: 'border-blue-100' },
+  { value: 'attention', label: 'Atenção', badge: 'bg-amber-50 text-amber-700 ring-amber-100', card: 'border-amber-200' },
+  { value: 'important', label: 'Importante', badge: 'bg-indigo-50 text-indigo-700 ring-indigo-100', card: 'border-indigo-200' },
+  { value: 'urgent', label: 'Urgente', badge: 'bg-rose-50 text-rose-700 ring-rose-100', card: 'border-rose-200' },
+];
+
 const inputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100';
 const labelClassName = 'mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500';
@@ -96,6 +117,8 @@ const emptyForm = (): NewsFormState => ({
   summary: '',
   bodyText: '',
   coverAssetId: '',
+  category: 'geral',
+  highlightLevel: 'info',
   isFeatured: false,
   status: 'draft',
   publishStartAt: '',
@@ -125,6 +148,8 @@ const slugify = (value: string) =>
 
 const statusLabel = (status: string) => postStatuses.find((item) => item.value === status)?.label || status;
 const postTypeLabel = (type: string) => postTypes.find((item) => item.value === type)?.label || type;
+const categoryLabel = (category: string) => newsCategories.find((item) => item.value === category)?.label || category || 'Geral';
+const highlightOption = (level: string) => highlightLevels.find((item) => item.value === level) || highlightLevels[0];
 const coverUrl = (assetId: string | null | undefined) => assetId ? `/api/intranet/assets/${encodeURIComponent(assetId)}/download` : '';
 
 const formatDate = (value: string | null) => {
@@ -155,6 +180,8 @@ const formFromPost = (post: NewsPost): NewsFormState => ({
   summary: post.summary || '',
   bodyText: asString(post.body?.text || post.body?.body || ''),
   coverAssetId: post.coverAssetId || '',
+  category: post.category || 'geral',
+  highlightLevel: post.highlightLevel || 'info',
   isFeatured: Boolean(post.isFeatured),
   status: post.status || 'draft',
   publishStartAt: toDatetimeLocal(post.publishStartAt),
@@ -168,6 +195,7 @@ export function NewsAdmin({ canEdit }: NewsAdminProps) {
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('all');
   const [postType, setPostType] = useState('all');
+  const [category, setCategory] = useState('all');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingCover, setUploadingCover] = useState(false);
@@ -182,7 +210,7 @@ export function NewsAdmin({ canEdit }: NewsAdminProps) {
     try {
       setError(null);
       setLoading(true);
-      const query = new URLSearchParams({ search, status, postType });
+      const query = new URLSearchParams({ search, status, postType, category });
       const res = await fetch(`/api/admin/intranet/news?${query.toString()}`, { cache: 'no-store' });
       if (!res.ok) throw new Error(await normalizeError(res));
       const json = await res.json();
@@ -192,7 +220,7 @@ export function NewsAdmin({ canEdit }: NewsAdminProps) {
     } finally {
       setLoading(false);
     }
-  }, [postType, search, status]);
+  }, [category, postType, search, status]);
 
   const loadAudiences = useCallback(async () => {
     try {
@@ -283,6 +311,8 @@ export function NewsAdmin({ canEdit }: NewsAdminProps) {
         summary: form.summary,
         body: { text: form.bodyText },
         coverAssetId: form.coverAssetId || null,
+        category: form.category,
+        highlightLevel: form.highlightLevel,
         isFeatured: form.isFeatured,
         status: form.status,
         publishStartAt: fromDatetimeLocal(form.publishStartAt),
@@ -343,7 +373,7 @@ export function NewsAdmin({ canEdit }: NewsAdminProps) {
         </>
       )}
       filters={(
-        <div className="grid gap-3 lg:grid-cols-[minmax(280px,1fr)_220px_220px]">
+        <div className="grid gap-3 xl:grid-cols-[minmax(280px,1fr)_200px_200px_200px]">
           <div className="relative">
             <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input className={`${inputClassName} pl-9`} placeholder="Buscar por título ou resumo" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -351,6 +381,10 @@ export function NewsAdmin({ canEdit }: NewsAdminProps) {
           <select className={inputClassName} value={postType} onChange={(event) => setPostType(event.target.value)}>
             <option value="all">Todos os tipos</option>
             {postTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
+          <select className={inputClassName} value={category} onChange={(event) => setCategory(event.target.value)}>
+            <option value="all">Todas as categorias</option>
+            {newsCategories.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
           <select className={inputClassName} value={status} onChange={(event) => setStatus(event.target.value)}>
             <option value="all">Todos</option>
@@ -382,7 +416,7 @@ export function NewsAdmin({ canEdit }: NewsAdminProps) {
           ) : (
             <div className="space-y-3">
               {posts.map((post) => (
-                <article key={post.id} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+                <article key={post.id} className={`rounded-lg border bg-white p-4 shadow-sm ${highlightOption(post.highlightLevel).card}`}>
                   <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -394,6 +428,8 @@ export function NewsAdmin({ canEdit }: NewsAdminProps) {
                           <p className="text-xs text-slate-500">{postTypeLabel(post.postType)} • Atualizado em {formatDate(post.updatedAt)}</p>
                         </div>
                         <span className="rounded-full bg-blue-50 px-2 py-1 text-xs font-semibold text-[#17407E] ring-1 ring-blue-100">{statusLabel(post.status)}</span>
+                        <span className="rounded-full bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-100">{categoryLabel(post.category)}</span>
+                        <span className={`rounded-full px-2 py-1 text-xs font-semibold ring-1 ${highlightOption(post.highlightLevel).badge}`}>{highlightOption(post.highlightLevel).label}</span>
                         {post.isFeatured ? <span className="rounded-full bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 ring-1 ring-amber-100">Destaque</span> : null}
                       </div>
                       <p className="mt-3 text-sm text-slate-500">/{post.slug}</p>
@@ -559,16 +595,31 @@ function NewsModal({
                 </select>
               </label>
               <label className="block">
+                <FieldLabel label="Categoria" help="Agrupa o conteúdo por tema para facilitar leitura e filtro editorial." />
+                <select className={inputClassName} value={form.category} onChange={(event) => onUpdate('category', event.target.value)}>
+                  {newsCategories.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+              </label>
+              <label className="block">
                 <FieldLabel label="Status" help="Rascunho não aparece publicamente. Publicado entra nas listagens. Arquivado remove da experiência pública." />
                 <select className={inputClassName} value={form.status} onChange={(event) => onUpdate('status', event.target.value)}>
                   {postStatuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
+              </label>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">
+              <label className="block">
+                <FieldLabel label="Nível de destaque" help="Define a cor e a formatação visual do card na home e na gestão." />
+                <select className={inputClassName} value={form.highlightLevel} onChange={(event) => onUpdate('highlightLevel', event.target.value)}>
+                  {highlightLevels.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
                 </select>
               </label>
               <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <input type="checkbox" checked={form.isFeatured} onChange={(event) => onUpdate('isFeatured', event.target.checked)} className="mt-1 h-4 w-4 rounded border-slate-300 text-[#17407E]" />
                 <span>
                   <FieldLabel label="Destaque" help="Marca o conteúdo como prioritário em listas e chamadas editoriais." />
-                  <span className="block text-xs leading-5 text-slate-500">Use com moderação.</span>
+                  <span className="block text-xs leading-5 text-slate-500">Prioriza a ordem; a cor vem do nível de destaque.</span>
                 </span>
               </label>
             </div>
@@ -682,11 +733,20 @@ function NewsHelpModal({ open, onClose }: { open: boolean; onClose: () => void }
       ],
     },
     {
-      icon: Sparkles,
-      title: 'Destaques',
+      icon: Info,
+      title: 'Categorias',
       items: [
-        'Marque destaque apenas para conteúdo prioritário.',
-        'Destaques ajudam a ordenar chamadas editoriais e devem ser revisados periodicamente.',
+        'Use categorias fixas para agrupar comunicados por tema sem criar variações de escrita.',
+        'A categoria aparece como badge na gestão e nos cards da home.',
+      ],
+    },
+    {
+      icon: Sparkles,
+      title: 'Destaque visual',
+      items: [
+        'O nível de destaque define cor e formatação do card.',
+        'A opção Destaque continua servindo para priorizar a ordem do conteúdo.',
+        'Urgente deve ser reservado para comunicações realmente críticas.',
       ],
     },
     {

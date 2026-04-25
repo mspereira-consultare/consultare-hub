@@ -55,6 +55,9 @@ export type IntranetNewsPost = {
   title: string;
   slug: string;
   summary: string | null;
+  coverAssetId: string | null;
+  category: string;
+  highlightLevel: string;
   isFeatured: boolean;
   publishedAt: string | null;
 };
@@ -240,7 +243,7 @@ export const listRecentNewsPosts = async (db: DbInterface, limitRaw = 5) => {
   const rows = await safeQuery(
     db,
     `
-    SELECT id, post_type, title, slug, summary, is_featured, published_at
+    SELECT id, post_type, title, slug, summary, cover_asset_id, category, highlight_level, is_featured, published_at
     FROM intranet_news_posts
     WHERE LOWER(status) = 'published'
       AND (publish_start_at IS NULL OR publish_start_at = '' OR publish_start_at <= ?)
@@ -257,6 +260,9 @@ export const listRecentNewsPosts = async (db: DbInterface, limitRaw = 5) => {
     title: clean(row.title),
     slug: clean(row.slug),
     summary: clean(row.summary) || null,
+    coverAssetId: clean(row.cover_asset_id) || null,
+    category: clean(row.category) || 'geral',
+    highlightLevel: clean(row.highlight_level) || 'info',
     isFeatured: fromDbBool(row.is_featured),
     publishedAt: clean(row.published_at) || null,
   }));

@@ -22,6 +22,7 @@ export async function GET(request: Request) {
     const data = await listNewsPosts(auth.db, {
       status: String(searchParams.get('status') || 'all'),
       postType: String(searchParams.get('postType') || 'all'),
+      category: String(searchParams.get('category') || 'all'),
       search: String(searchParams.get('search') || ''),
     });
     return NextResponse.json({ status: 'success', data });
