@@ -1,7 +1,20 @@
 import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { redirect } from 'next/navigation';
-import { Bot, Home, MessageCircle, Search, ShieldCheck } from 'lucide-react';
+import {
+  Bot,
+  BookOpen,
+  ExternalLink,
+  FileText,
+  Home,
+  LayoutGrid,
+  ListChecks,
+  Megaphone,
+  MessageCircle,
+  Search,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
 import { getDbConnection } from '@consultare/core/db';
 import { listPublishedNavigationNodes } from '@consultare/core/intranet/repository';
 import { hasPermission } from '@consultare/core/permissions';
@@ -23,6 +36,87 @@ const getUser = async () => {
   };
 };
 
+type SidebarNavItem = {
+  id: string;
+  parentNodeId: string | null;
+  nodeType: string;
+  label: string;
+  href: string | null;
+  iconName: string | null;
+};
+
+type SidebarNavTreeNode = SidebarNavItem & {
+  children: SidebarNavTreeNode[];
+};
+
+const iconMap = {
+  'file-text': FileText,
+  home: Home,
+  'book-open': BookOpen,
+  megaphone: Megaphone,
+  'list-checks': ListChecks,
+  'layout-grid': LayoutGrid,
+  users: Users,
+  bot: Bot,
+  'external-link': ExternalLink,
+};
+
+const buildSidebarTree = (items: SidebarNavItem[]) => {
+  const byId = new Map<string, SidebarNavTreeNode>();
+  const roots: SidebarNavTreeNode[] = [];
+
+  for (const item of items) {
+    byId.set(item.id, { ...item, children: [] });
+  }
+
+  for (const item of byId.values()) {
+    if (item.parentNodeId && byId.has(item.parentNodeId)) {
+      byId.get(item.parentNodeId)!.children.push(item);
+    } else {
+      roots.push(item);
+    }
+  }
+
+  return roots;
+};
+
+const isExternalHref = (href: string) => /^https?:\/\//i.test(href) || href.startsWith('mailto:') || href.startsWith('tel:');
+
+function SidebarNavNode({ node, depth = 0 }: { node: SidebarNavTreeNode; depth?: number }) {
+  if (node.nodeType === 'label') {
+    return (
+      <div className={depth ? 'pt-2' : ''}>
+        <div className="px-3 pb-1 pt-4 text-xs font-semibold uppercase text-slate-400">
+          {node.label}
+        </div>
+        <div className={depth ? 'ml-3 border-l border-slate-100 pl-2' : ''}>
+          {node.children.map((child) => <SidebarNavNode key={child.id} node={child} depth={depth + 1} />)}
+        </div>
+      </div>
+    );
+  }
+
+  const href = node.href || '#';
+  const Icon = iconMap[node.iconName as keyof typeof iconMap] || (node.nodeType === 'external_link' ? ExternalLink : FileText);
+  const className = 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-[#17407E]';
+
+  if (isExternalHref(href)) {
+    return (
+      <a key={node.id} href={href} target="_blank" rel="noreferrer" className={className}>
+        <Icon size={16} className="text-[#229A8A]" />
+        <span className="truncate">{node.label}</span>
+      </a>
+    );
+  }
+
+  return (
+    <Link key={node.id} href={href} className={className}>
+      <Icon size={16} className="text-[#229A8A]" />
+      <span className="truncate">{node.label}</span>
+    </Link>
+  );
+}
+
 export default async function SiteLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -33,6 +127,7 @@ export default async function SiteLayout({
     loadUserPermissionMatrix(db, user.id, user.role),
   ]);
   const canManageIntranet = hasPermission(permissions, 'intranet_dashboard', 'view', user.role);
+  const navTree = buildSidebarTree(navItems);
 
   return (
     <div className="min-h-screen bg-[#f4f7fb] text-slate-900">
@@ -62,25 +157,7 @@ export default async function SiteLayout({
                 Gestão da Intranet
               </Link>
             ) : null}
-            {navItems.map((item) => {
-              if (!item.href) {
-                return (
-                  <div key={item.id} className="px-3 pb-1 pt-4 text-xs font-semibold uppercase text-slate-400">
-                    {item.label}
-                  </div>
-                );
-              }
-              return (
-                <Link
-                  key={item.id}
-                  href={item.href}
-                  className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-[#17407E]"
-                >
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#229A8A]" />
-                  {item.label}
-                </Link>
-              );
-            })}
+            {navTree.map((item) => <SidebarNavNode key={item.id} node={item} />)}
           </nav>
 
           <div className="border-t border-slate-200 p-4">

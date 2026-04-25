@@ -579,6 +579,10 @@ export const createNavigationNode = async (db: DbInterface, input: Row, actorUse
   const label = clean(input.label);
   if (!label) throw new IntranetValidationError('Titulo do item de navegacao e obrigatorio.');
   const nodeType = pickEnum(input.nodeType, NODE_TYPES, 'page');
+  const pageId = nullable(input.pageId);
+  const url = nullable(input.url);
+  if (nodeType === 'page' && !pageId) throw new IntranetValidationError('Pagina vinculada e obrigatoria para item de pagina.');
+  if (nodeType === 'external_link' && !url) throw new IntranetValidationError('URL e obrigatoria para link externo.');
   const id = randomUUID();
   const createdAt = nowIso();
   await db.execute(
@@ -592,9 +596,9 @@ export const createNavigationNode = async (db: DbInterface, input: Row, actorUse
       id,
       nullable(input.parentNodeId),
       nodeType,
-      nullable(input.pageId),
+      nodeType === 'page' ? pageId : null,
       label,
-      nullable(input.url),
+      nodeType === 'external_link' ? url : null,
       nullable(input.iconName),
       Number(input.sortOrder || 0),
       input.isVisible === false ? 0 : 1,
@@ -614,6 +618,11 @@ export const updateNavigationNode = async (db: DbInterface, id: string, input: R
   if (!current) throw new IntranetValidationError('Item de navegacao nao encontrado.', 404);
   const label = clean(input.label ?? current.label);
   if (!label) throw new IntranetValidationError('Titulo do item de navegacao e obrigatorio.');
+  const nodeType = pickEnum(input.nodeType ?? current.node_type, NODE_TYPES, clean(current.node_type) || 'page');
+  const pageId = input.pageId === undefined ? nullable(current.page_id) : nullable(input.pageId);
+  const url = input.url === undefined ? nullable(current.url) : nullable(input.url);
+  if (nodeType === 'page' && !pageId) throw new IntranetValidationError('Pagina vinculada e obrigatoria para item de pagina.');
+  if (nodeType === 'external_link' && !url) throw new IntranetValidationError('URL e obrigatoria para link externo.');
   await db.execute(
     `
     UPDATE intranet_navigation_nodes
@@ -623,10 +632,10 @@ export const updateNavigationNode = async (db: DbInterface, id: string, input: R
     `,
     [
       input.parentNodeId === undefined ? nullable(current.parent_node_id) : nullable(input.parentNodeId),
-      pickEnum(input.nodeType ?? current.node_type, NODE_TYPES, clean(current.node_type) || 'page'),
-      input.pageId === undefined ? nullable(current.page_id) : nullable(input.pageId),
+      nodeType,
+      nodeType === 'page' ? pageId : null,
       label,
-      input.url === undefined ? nullable(current.url) : nullable(input.url),
+      nodeType === 'external_link' ? url : null,
       input.iconName === undefined ? nullable(current.icon_name) : nullable(input.iconName),
       Number(input.sortOrder ?? current.sort_order ?? 0),
       input.isVisible === undefined ? toDbBool(current.is_visible) : toDbBool(input.isVisible),
@@ -641,6 +650,7 @@ export const updateNavigationNode = async (db: DbInterface, id: string, input: R
 
 export const deleteNavigationNode = async (db: DbInterface, id: string) => {
   await ensureIntranetTables(db);
+  await db.execute(`UPDATE intranet_navigation_nodes SET parent_node_id = NULL WHERE parent_node_id = ?`, [id]);
   await db.execute(`DELETE FROM intranet_navigation_nodes WHERE id = ?`, [id]);
   return { id };
 };
