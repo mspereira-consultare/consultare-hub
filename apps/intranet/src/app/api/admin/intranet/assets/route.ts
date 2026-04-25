@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getStorageProvider } from '@consultare/core/storage';
-import { requireIntranetPermission } from '@/lib/intranet/auth';
+import { requireAnyIntranetPermission } from '@/lib/intranet/auth';
 import { createAssetRecord, IntranetValidationError, listAssets } from '@/lib/intranet/repository';
 
 export const dynamic = 'force-dynamic';
@@ -36,7 +36,7 @@ const errorResponse = (error: unknown, fallback: string) => {
 
 export async function GET(request: Request) {
   try {
-    const auth = await requireIntranetPermission('intranet_paginas', 'view');
+    const auth = await requireAnyIntranetPermission(['intranet_paginas', 'intranet_noticias'], 'view');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const { searchParams } = new URL(request.url);
     const data = await listAssets(auth.db, {
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const auth = await requireIntranetPermission('intranet_paginas', 'edit');
+    const auth = await requireAnyIntranetPermission(['intranet_paginas', 'intranet_noticias'], 'edit');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const formData = await request.formData();
