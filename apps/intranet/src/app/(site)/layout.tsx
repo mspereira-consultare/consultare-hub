@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import {
   Bot,
   BookOpen,
+  CircleHelp,
   ExternalLink,
   FileText,
   Home,
@@ -147,6 +148,13 @@ export default async function SiteLayout({
             >
               <Home size={17} />
               Home
+            </Link>
+            <Link
+              href="/faq"
+              className="mb-2 flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-[#17407E]"
+            >
+              <CircleHelp size={17} />
+              FAQ
             </Link>
             {canManageIntranet ? (
               <Link
