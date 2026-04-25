@@ -2,7 +2,7 @@
 
 /* eslint-disable @next/next/no-img-element -- Admin previews render dynamic private asset URLs. */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Archive,
   AlertTriangle,
@@ -884,14 +884,43 @@ function PageModal({
 }
 
 function FieldLabel({ label, help }: { label: string; help: string }) {
+  const iconRef = useRef<HTMLSpanElement | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<{ top: number; left: number } | null>(null);
+
+  const showTooltip = () => {
+    const rect = iconRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const tooltipWidth = 288;
+    const margin = 12;
+    const left = Math.min(
+      Math.max(rect.left + rect.width / 2 - tooltipWidth / 2, margin),
+      window.innerWidth - tooltipWidth - margin,
+    );
+    const top = Math.min(rect.bottom + 8, window.innerHeight - 120);
+    setTooltipPosition({ top, left });
+  };
+
   return (
     <span className={`${labelClassName} flex items-center gap-1.5`}>
       {label}
-      <span className="group relative inline-flex">
+      <span
+        ref={iconRef}
+        className="inline-flex"
+        onMouseEnter={showTooltip}
+        onMouseLeave={() => setTooltipPosition(null)}
+        onFocus={showTooltip}
+        onBlur={() => setTooltipPosition(null)}
+        tabIndex={0}
+      >
         <Info size={13} className="text-slate-400" />
-        <span className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-2 hidden w-64 -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs normal-case leading-5 tracking-normal text-slate-600 shadow-lg group-hover:block">
-          {help}
-        </span>
+        {tooltipPosition ? (
+          <span
+            className="pointer-events-none fixed z-[70] w-72 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs normal-case leading-5 tracking-normal text-slate-600 shadow-xl"
+            style={{ top: tooltipPosition.top, left: tooltipPosition.left }}
+          >
+            {help}
+          </span>
+        ) : null}
       </span>
     </span>
   );
