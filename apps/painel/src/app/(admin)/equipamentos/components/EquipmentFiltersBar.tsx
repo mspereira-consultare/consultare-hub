@@ -1,4 +1,4 @@
-import { Download, Plus, RefreshCw, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 
 type SelectOption = { value: string; label: string };
 
@@ -16,14 +16,7 @@ type EquipmentFiltersBarProps = {
   equipmentTypes: SelectOption[];
   calibrationStatuses: SelectOption[];
   operationalStatuses: SelectOption[];
-  canEdit: boolean;
-  canRefresh: boolean;
-  loading?: boolean;
-  refreshing?: boolean;
   onChange: (next: FiltersState) => void;
-  onRefresh: () => void;
-  onExport: () => void;
-  onCreate: () => void;
 };
 
 const inputClassName =
@@ -35,18 +28,11 @@ export function EquipmentFiltersBar({
   equipmentTypes,
   calibrationStatuses,
   operationalStatuses,
-  canEdit,
-  canRefresh,
-  loading,
-  refreshing,
   onChange,
-  onRefresh,
-  onExport,
-  onCreate,
 }: EquipmentFiltersBarProps) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(190px,0.9fr)_minmax(190px,0.9fr)_minmax(220px,1fr)_minmax(220px,1fr)_auto_auto_auto] xl:items-end">
-      <label className="block">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(340px,1.6fr)_minmax(170px,0.8fr)_minmax(240px,1fr)_minmax(220px,1fr)_minmax(220px,1fr)] xl:items-end">
+      <label className="block md:col-span-2 xl:col-span-1">
         <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Busca</span>
         <div className="relative">
           <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -122,36 +108,6 @@ export function EquipmentFiltersBar({
           ))}
         </select>
       </label>
-
-      <button
-        type="button"
-        onClick={onRefresh}
-        disabled={!canRefresh || refreshing}
-        className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-        {refreshing ? 'Recarregando' : 'Recarregar'}
-      </button>
-
-      <button
-        type="button"
-        onClick={onExport}
-        disabled={loading}
-        className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <Download size={16} />
-        Exportar XLSX
-      </button>
-
-      <button
-        type="button"
-        onClick={onCreate}
-        disabled={!canEdit}
-        className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#143768] disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        <Plus size={16} />
-        Novo equipamento
-      </button>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { ShieldCheck } from 'lucide-react';
+import { Download, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
 import type { EquipmentListItem, EquipmentListSummary } from '@/lib/equipamentos/types';
 import { EquipmentFiltersBar } from './components/EquipmentFiltersBar';
@@ -239,15 +239,47 @@ export default function EquipamentosPage() {
     <div className="space-y-6">
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="p-6">
-          <div className="flex items-start gap-3">
-            <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md">
-              <ShieldCheck size={20} />
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="shrink-0 rounded-xl bg-blue-900 p-3 text-white shadow-md">
+                <ShieldCheck size={20} />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold text-slate-800">Equipamentos</h1>
+                <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-500">
+                  Controle o patrimônio da clínica em um só lugar, acompanhando tipo, unidade, calibração, manutenções, responsáveis e evidências documentais.
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-slate-800">Equipamentos</h1>
-              <p className="mt-1 max-w-4xl text-xs text-slate-500">
-                Controle o patrimônio da clínica em um só lugar, acompanhando tipo, unidade, calibração, manutenções, responsáveis e evidências documentais.
-              </p>
+
+            <div className="flex flex-wrap gap-2 xl:justify-end">
+              <button
+                type="button"
+                onClick={() => loadItems(true)}
+                disabled={!canRefresh || refreshing}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+                {refreshing ? 'Recarregando' : 'Recarregar'}
+              </button>
+              <button
+                type="button"
+                onClick={onExport}
+                disabled={loading}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Download size={16} />
+                Exportar XLSX
+              </button>
+              <button
+                type="button"
+                onClick={openCreate}
+                disabled={!canEdit}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#143768] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Plus size={16} />
+                Novo equipamento
+              </button>
             </div>
           </div>
         </div>
@@ -259,17 +291,10 @@ export default function EquipamentosPage() {
             equipmentTypes={options.equipmentTypes}
             calibrationStatuses={options.calibrationStatuses}
             operationalStatuses={options.operationalStatuses}
-            canEdit={canEdit}
-            canRefresh={canRefresh}
-            loading={loading}
-            refreshing={refreshing}
             onChange={(next) => {
               setFilters(next);
               setPage(1);
             }}
-            onRefresh={() => loadItems(true)}
-            onExport={onExport}
-            onCreate={openCreate}
           />
         </div>
       </section>
