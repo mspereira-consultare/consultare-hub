@@ -24,7 +24,7 @@ export default async function ExamesPage() {
         </header>
         <CatalogIndexClient
           items={exams.map((item) => ({
-            id: String(item.procedimentoId),
+            id: item.id,
             title: item.displayName,
             href: `/servicos/exames/${item.slug}`,
             summary: item.summary,

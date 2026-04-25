@@ -1,15 +1,19 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element -- Pré-visualizações administrativas usam URLs autenticadas de assets da intranet. */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   CircleHelp,
+  Image as ImageIcon,
   Info,
   Link2,
   Loader2,
   Save,
   Search,
   Stethoscope,
+  Upload,
   X,
 } from 'lucide-react';
 import { AdminModuleShell } from './admin-module-shell';
@@ -45,7 +49,8 @@ type Professional = {
 };
 
 type CatalogItem = {
-  procedimentoId: number;
+  id: string;
+  procedimentoId: number | null;
   slug: string;
   displayName: string;
   catalogType: 'consultation' | 'procedure' | 'exam';
@@ -78,10 +83,15 @@ type ProfessionalSpecialty = {
 type ProfessionalProcedure = {
   id: string;
   professionalId: string;
-  procedimentoId: number;
+  itemId: string;
+  procedimentoId: number | null;
   notes: string | null;
   displayOrder: number;
   isPublished: boolean;
+};
+
+type AssetUploadResult = {
+  id: string;
 };
 
 type CatalogAdminProps = {
@@ -143,6 +153,33 @@ const blankSpecialty = (): Specialty => ({
   updatedAt: null,
 });
 
+const blankCatalogItem = (): CatalogItem => ({
+  id: '',
+  procedimentoId: null,
+  slug: '',
+  displayName: '',
+  catalogType: 'procedure',
+  category: '',
+  subcategory: '',
+  summary: '',
+  description: '',
+  requiresPreparation: false,
+  whoPerforms: '',
+  howItWorks: '',
+  patientInstructions: '',
+  preparationInstructions: '',
+  contraindications: '',
+  estimatedDurationText: '',
+  recoveryNotes: '',
+  showPrice: true,
+  publishedPrice: null,
+  basePrice: null,
+  isFeatured: false,
+  isPublished: false,
+  displayOrder: 0,
+  updatedAt: null,
+});
+
 export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('specialties');
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
@@ -156,20 +193,22 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const [selectedSpecialty, setSelectedSpecialty] = useState<Specialty>(() => blankSpecialty());
   const [selectedProfessionalId, setSelectedProfessionalId] = useState('');
-  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const [selectedItemId, setSelectedItemId] = useState('');
+  const [draftItem, setDraftItem] = useState<CatalogItem | null>(null);
   const [selectedLinkProfessionalId, setSelectedLinkProfessionalId] = useState('');
-  const [selectedLinkProcedureId, setSelectedLinkProcedureId] = useState<number | null>(null);
+  const [selectedLinkItemId, setSelectedLinkItemId] = useState('');
   const [linkNotes, setLinkNotes] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const selectedProfessional = useMemo(
     () => professionals.find((item) => item.professionalId === selectedProfessionalId) || professionals[0] || null,
     [professionals, selectedProfessionalId]
   );
   const selectedItem = useMemo(
-    () => items.find((item) => item.procedimentoId === selectedItemId) || items[0] || null,
-    [items, selectedItemId]
+    () => draftItem || items.find((item) => item.id === selectedItemId) || items[0] || null,
+    [draftItem, items, selectedItemId]
   );
 
   const selectedProfessionalSpecialtyIds = useMemo(
@@ -210,9 +249,10 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
       setProfessionalProcedures(Array.isArray(profProceduresJson?.data) ? profProceduresJson.data : []);
       setSelectedSpecialty((current) => current.id ? current : nextSpecialties[0] || blankSpecialty());
       setSelectedProfessionalId((current) => current || nextProfessionals[0]?.professionalId || '');
-      setSelectedItemId((current) => current || nextItems[0]?.procedimentoId || null);
+      setSelectedItemId((current) => current || nextItems[0]?.id || '');
+      setDraftItem(null);
       setSelectedLinkProfessionalId((current) => current || nextProfessionals[0]?.professionalId || '');
-      setSelectedLinkProcedureId((current) => current || nextItems[0]?.procedimentoId || null);
+      setSelectedLinkItemId((current) => current || nextItems[0]?.id || '');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar catálogo.');
     } finally {
@@ -291,6 +331,9 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
         body: JSON.stringify(selectedItem),
       });
       if (!res.ok) throw new Error(await normalizeError(res));
+      const json = await res.json();
+      const saved = json?.data as CatalogItem | undefined;
+      if (saved?.id) setSelectedItemId(saved.id);
       setNotice('Item de catálogo salvo.');
       await loadAll();
     } catch (err: unknown) {
@@ -301,7 +344,7 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
   };
 
   const saveProcedureLink = async () => {
-    if (!canEdit || saving || !selectedLinkProfessionalId || !selectedLinkProcedureId) return;
+    if (!canEdit || saving || !selectedLinkProfessionalId || !selectedLinkItemId) return;
     setSaving(true);
     setError(null);
     try {
@@ -310,7 +353,7 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           professionalId: selectedLinkProfessionalId,
-          procedimentoId: selectedLinkProcedureId,
+          itemId: selectedLinkItemId,
           notes: linkNotes,
           isPublished: true,
         }),
@@ -335,7 +378,34 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
   const updateItem = <K extends keyof CatalogItem>(key: K, value: CatalogItem[K]) => {
     if (!selectedItem) return;
     const updated = { ...selectedItem, [key]: value };
-    setItems((current) => current.map((item) => item.procedimentoId === updated.procedimentoId ? updated : item));
+    if (!updated.id) {
+      setDraftItem(updated);
+      return;
+    }
+    setItems((current) => current.map((item) => item.id === updated.id ? updated : item));
+  };
+
+  const uploadProfessionalPhoto = async (file: File) => {
+    if (!selectedProfessional || !canEdit) return;
+    setUploadingPhoto(true);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      body.append('entityType', 'professional-photo');
+      body.append('entityId', selectedProfessional.professionalId);
+      const res = await fetch('/api/admin/intranet/assets', { method: 'POST', body });
+      if (!res.ok) throw new Error(await normalizeError(res));
+      const json = await res.json();
+      const asset = json?.data as AssetUploadResult | undefined;
+      if (!asset?.id) throw new Error('Upload concluído sem ID de asset.');
+      updateProfessional('photoAssetId', asset.id);
+      setNotice('Foto do profissional enviada. Salve o cadastro para publicar a alteração.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao enviar foto do profissional.');
+    } finally {
+      setUploadingPhoto(false);
+    }
   };
 
   const toggleProfessionalSpecialty = (specialtyId: string) => {
@@ -414,9 +484,26 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
             ) : null}
 
             {activeTab === 'items' ? (
-              <CatalogList title="Procedimentos e exames" count={filteredItems.length}>
+              <CatalogList
+                title="Procedimentos e exames"
+                count={filteredItems.length}
+                actionLabel="Novo"
+                onAction={() => {
+                  setDraftItem(blankCatalogItem());
+                  setSelectedItemId('');
+                }}
+              >
                 {filteredItems.map((item) => (
-                  <ListButton key={item.procedimentoId} active={selectedItem?.procedimentoId === item.procedimentoId} onClick={() => setSelectedItemId(item.procedimentoId)} title={item.displayName} meta={`${typeLabel(item.catalogType)} • ${item.isPublished ? 'Publicado' : 'Não publicado'}`} />
+                  <ListButton
+                    key={item.id}
+                    active={!draftItem && selectedItem?.id === item.id}
+                    onClick={() => {
+                      setDraftItem(null);
+                      setSelectedItemId(item.id);
+                    }}
+                    title={item.displayName}
+                    meta={`${typeLabel(item.catalogType)} • ${item.isPublished ? 'Publicado' : 'Não publicado'}`}
+                  />
                 ))}
               </CatalogList>
             ) : null}
@@ -425,11 +512,11 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
               <CatalogList title="Vínculos publicados" count={professionalProcedures.length}>
                 {professionalProcedures.map((link) => {
                   const professional = professionals.find((item) => item.professionalId === link.professionalId);
-                  const item = items.find((entry) => entry.procedimentoId === link.procedimentoId);
+                  const item = items.find((entry) => entry.id === link.itemId);
                   return (
                     <div key={link.id} className="rounded-lg border border-slate-200 bg-white p-3 text-sm">
                       <p className="font-semibold text-slate-900">{professional?.displayName || link.professionalId}</p>
-                      <p className="mt-1 text-xs text-slate-500">{item?.displayName || link.procedimentoId}</p>
+                      <p className="mt-1 text-xs text-slate-500">{item?.displayName || link.itemId}</p>
                     </div>
                   );
                 })}
@@ -446,8 +533,10 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
                 selectedSpecialtyIds={selectedProfessionalSpecialtyIds}
                 onChange={updateProfessional}
                 onToggleSpecialty={toggleProfessionalSpecialty}
+                onUploadPhoto={uploadProfessionalPhoto}
                 onSave={saveProfessional}
                 saving={saving}
+                uploadingPhoto={uploadingPhoto}
                 canEdit={canEdit}
               />
             ) : null}
@@ -457,10 +546,10 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
                 professionals={professionals.filter((item) => item.isPublished)}
                 items={items.filter((item) => item.isPublished)}
                 professionalId={selectedLinkProfessionalId}
-                procedimentoId={selectedLinkProcedureId}
+                itemId={selectedLinkItemId}
                 notes={linkNotes}
                 onProfessionalChange={setSelectedLinkProfessionalId}
-                onProcedureChange={setSelectedLinkProcedureId}
+                onItemChange={setSelectedLinkItemId}
                 onNotesChange={setLinkNotes}
                 onSave={saveProcedureLink}
                 saving={saving}
@@ -524,7 +613,7 @@ function CatalogList({ title, count, actionLabel, onAction, children }: { title:
           </button>
         ) : null}
       </div>
-      <div className="space-y-2">{children}</div>
+      <div className="max-h-[520px] space-y-2 overflow-y-auto pr-1">{children}</div>
     </div>
   );
 }
@@ -556,19 +645,54 @@ function SpecialtyForm({ value, onChange, onSave, saving, canEdit }: { value: Sp
   );
 }
 
-function ProfessionalForm({ value, specialties, selectedSpecialtyIds, onChange, onToggleSpecialty, onSave, saving, canEdit }: {
+function ProfessionalForm({ value, specialties, selectedSpecialtyIds, onChange, onToggleSpecialty, onUploadPhoto, onSave, saving, uploadingPhoto, canEdit }: {
   value: Professional;
   specialties: Specialty[];
   selectedSpecialtyIds: string[];
   onChange: <K extends keyof Professional>(key: K, value: Professional[K]) => void;
   onToggleSpecialty: (specialtyId: string) => void;
+  onUploadPhoto: (file: File) => void;
   onSave: () => void;
   saving: boolean;
+  uploadingPhoto: boolean;
   canEdit: boolean;
 }) {
   return (
     <FormShell title="Curadoria do profissional" onSave={onSave} saving={saving} canEdit={canEdit}>
+      <div className="mb-5 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-[#17407E]">
+        Profissionais aparecem aqui a partir do cadastro do painel. Cadastre ou ative o profissional no painel primeiro; na intranet você faz a curadoria dos textos, foto, publicação e vínculos.
+      </div>
       <div className="grid gap-4 md:grid-cols-2">
+        <section className="md:col-span-2 rounded-lg border border-slate-200 p-4">
+          <FieldLabel label="Foto do profissional" help="Imagem exibida nos cards públicos das especialidades. Use retrato claro e institucional." />
+          <div className="mt-3 flex flex-wrap items-center gap-4">
+            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 text-slate-400">
+              {value.photoAssetId ? (
+                <img src={`/api/intranet/assets/${encodeURIComponent(value.photoAssetId)}/download`} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <ImageIcon size={28} />
+              )}
+            </div>
+            <div>
+              <label className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 ${!canEdit || uploadingPhoto ? 'pointer-events-none opacity-60' : ''}`}>
+                {uploadingPhoto ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+                {uploadingPhoto ? 'Enviando...' : 'Enviar foto'}
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  disabled={!canEdit || uploadingPhoto}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) onUploadPhoto(file);
+                    event.target.value = '';
+                  }}
+                />
+              </label>
+              <p className="mt-2 text-xs leading-5 text-slate-500">A foto só passa a valer no site público depois de salvar o profissional.</p>
+            </div>
+          </div>
+        </section>
         <TextField label="Nome público" help="Nome exibido nos cards e páginas públicas." value={value.displayName} onChange={(next) => onChange('displayName', next)} />
         <TextField label="Slug" help="Identificador técnico para uso futuro." value={value.slug} onChange={(next) => onChange('slug', next)} />
         <TextField label="Destaque do card" help="Frase curta, como especialidade principal ou diferencial." value={value.cardHighlight || ''} onChange={(next) => onChange('cardHighlight', next)} className="md:col-span-2" />
@@ -582,7 +706,7 @@ function ProfessionalForm({ value, specialties, selectedSpecialtyIds, onChange, 
       </div>
       <section className="mt-5 rounded-lg border border-slate-200 p-4">
         <FieldLabel label="Especialidades vinculadas" help="Define em quais páginas de especialidade este profissional aparece." />
-        <div className="mt-2 grid gap-2 md:grid-cols-2">
+        <div className="mt-2 grid max-h-72 gap-2 overflow-y-auto pr-1 md:grid-cols-2">
           {specialties.map((specialty) => (
             <label key={specialty.id} className="flex items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm">
               <input type="checkbox" checked={selectedSpecialtyIds.includes(specialty.id)} onChange={() => onToggleSpecialty(specialty.id)} className="h-4 w-4 rounded border-slate-300 text-[#17407E]" />
@@ -634,14 +758,14 @@ function CatalogItemForm({ value, onChange, onSave, saving, canEdit }: {
   );
 }
 
-function LinkForm({ professionals, items, professionalId, procedimentoId, notes, onProfessionalChange, onProcedureChange, onNotesChange, onSave, saving, canEdit }: {
+function LinkForm({ professionals, items, professionalId, itemId, notes, onProfessionalChange, onItemChange, onNotesChange, onSave, saving, canEdit }: {
   professionals: Professional[];
   items: CatalogItem[];
   professionalId: string;
-  procedimentoId: number | null;
+  itemId: string;
   notes: string;
   onProfessionalChange: (value: string) => void;
-  onProcedureChange: (value: number | null) => void;
+  onItemChange: (value: string) => void;
   onNotesChange: (value: string) => void;
   onSave: () => void;
   saving: boolean;
@@ -658,8 +782,8 @@ function LinkForm({ professionals, items, professionalId, procedimentoId, notes,
         </label>
         <label>
           <FieldLabel label="Procedimento ou exame" help="Item publicado relacionado ao profissional." />
-          <select className={inputClassName} value={procedimentoId || ''} onChange={(event) => onProcedureChange(event.target.value ? Number(event.target.value) : null)}>
-            {items.map((item) => <option key={item.procedimentoId} value={item.procedimentoId}>{item.displayName} • {typeLabel(item.catalogType)}</option>)}
+          <select className={inputClassName} value={itemId} onChange={(event) => onItemChange(event.target.value)}>
+            {items.map((item) => <option key={item.id} value={item.id}>{item.displayName} • {typeLabel(item.catalogType)}</option>)}
           </select>
         </label>
         <TextArea label="Observações do vínculo" help="Use para regras específicas desse profissional no item selecionado." value={notes} onChange={onNotesChange} className="md:col-span-2" />
@@ -738,8 +862,8 @@ function CatalogHelpModal({ open, onClose }: { open: boolean; onClose: () => voi
         <div className="grid gap-3 p-5 md:grid-cols-2">
           {[
             ['Especialidades', 'Criam páginas de consulta com descrição e profissionais vinculados.'],
-            ['Profissionais', 'A base vem do painel, mas a intranet define publicação, textos, unidades e vínculos.'],
-            ['Procedimentos e exames', 'Use tipo fixo para separar páginas públicas. Exames devem deixar preparo claro.'],
+            ['Profissionais', 'A base vem do painel, mas a intranet define publicação, foto, textos, unidades e vínculos. Cadastre o profissional no painel para ele aparecer aqui.'],
+            ['Procedimentos e exames', 'São cadastrados diretamente na intranet, sem usar a base Feegow do painel. Use tipo fixo para separar páginas públicas e deixe preparo claro nos exames.'],
             ['Vínculos', 'Relacione profissionais aos itens que executam ou orientam.'],
           ].map(([title, text]) => (
             <div key={title} className="rounded-lg border border-slate-200 bg-slate-50 p-4">

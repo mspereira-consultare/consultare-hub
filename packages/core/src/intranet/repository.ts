@@ -509,7 +509,7 @@ export const searchIntranet = async (
   for (const procedure of procedures) {
     const basePath = procedure.catalogType === 'exam' ? '/servicos/exames' : '/servicos/procedimentos';
     results.push({
-      id: String(procedure.procedimentoId),
+      id: procedure.id,
       entityType: 'procedure',
       title: procedure.displayName,
       summary: [procedure.category, procedure.summary].filter(Boolean).join(' · ') || null,

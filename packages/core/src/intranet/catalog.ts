@@ -79,7 +79,8 @@ export type IntranetProfessionalProfile = {
 };
 
 export type IntranetProcedureProfile = {
-  procedimentoId: number;
+  id: string;
+  procedimentoId: number | null;
   slug: string;
   displayName: string;
   catalogType: 'consultation' | 'procedure' | 'exam';
@@ -107,7 +108,8 @@ export type IntranetProcedureProfile = {
 export type IntranetProfessionalProcedure = {
   id: string;
   professionalId: string;
-  procedimentoId: number;
+  itemId: string;
+  procedimentoId: number | null;
   notes: string | null;
   displayOrder: number;
   isPublished: boolean;
@@ -208,12 +210,62 @@ const safeAddColumn = async (db: DbInterface, sql: string) => {
   }
 };
 
+const safeExecute = async (db: DbInterface, sql: string) => {
+  try {
+    await db.execute(sql);
+  } catch (error: unknown) {
+    const err = error as { message?: string; code?: string };
+    const message = String(err?.message || '');
+    const code = String(err?.code || '');
+    if (code === 'ER_NO_SUCH_TABLE' || /doesn't exist|no such table|Table .* doesn't exist/i.test(message)) return;
+    throw error;
+  }
+};
+
 const ensureCatalogColumns = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE intranet_procedure_profiles ADD COLUMN catalog_type VARCHAR(40) DEFAULT 'procedure'`);
   await safeAddColumn(db, `ALTER TABLE intranet_procedure_profiles ADD COLUMN requires_preparation INTEGER NOT NULL DEFAULT 0`);
   await safeAddColumn(db, `ALTER TABLE intranet_procedure_profiles ADD COLUMN who_performs TEXT`);
   await safeAddColumn(db, `ALTER TABLE intranet_procedure_profiles ADD COLUMN how_it_works LONGTEXT`);
   await safeAddColumn(db, `ALTER TABLE intranet_procedure_profiles ADD COLUMN patient_instructions LONGTEXT`);
+};
+
+const migrateLegacyProcedureProfiles = async (db: DbInterface) => {
+  await safeExecute(
+    db,
+    `
+    INSERT INTO intranet_catalog_items (
+      id, slug, display_name, catalog_type, category, subcategory, summary, description,
+      requires_preparation, who_performs, how_it_works, patient_instructions, preparation_instructions,
+      contraindications, estimated_duration_text, recovery_notes, show_price, published_price,
+      is_featured, is_published, display_order, updated_by, updated_at
+    )
+    SELECT
+      CAST(procedimento_id AS CHAR), slug, display_name, catalog_type, category, subcategory, summary, description,
+      requires_preparation, who_performs, how_it_works, patient_instructions, preparation_instructions,
+      contraindications, estimated_duration_text, recovery_notes, show_price, published_price,
+      is_featured, is_published, display_order, updated_by, updated_at
+    FROM intranet_procedure_profiles old
+    WHERE NOT EXISTS (
+      SELECT 1 FROM intranet_catalog_items current_items WHERE current_items.id = CAST(old.procedimento_id AS CHAR)
+    )
+    `
+  );
+
+  await safeExecute(
+    db,
+    `
+    INSERT INTO intranet_professional_catalog_items (
+      id, professional_id, catalog_item_id, notes, display_order, is_published, created_at, updated_at
+    )
+    SELECT
+      id, professional_id, CAST(procedimento_id AS CHAR), notes, display_order, is_published, created_at, updated_at
+    FROM intranet_professional_procedures old
+    WHERE NOT EXISTS (
+      SELECT 1 FROM intranet_professional_catalog_items current_items WHERE current_items.id = old.id
+    )
+    `
+  );
 };
 
 let catalogTablesEnsured = false;
@@ -272,6 +324,34 @@ export const ensureIntranetCatalogTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS intranet_catalog_items (
+      id VARCHAR(64) PRIMARY KEY,
+      slug VARCHAR(180) NOT NULL,
+      display_name VARCHAR(220) NOT NULL,
+      catalog_type VARCHAR(40) NOT NULL DEFAULT 'procedure',
+      category VARCHAR(140),
+      subcategory VARCHAR(140),
+      summary TEXT,
+      description LONGTEXT,
+      requires_preparation INTEGER NOT NULL DEFAULT 0,
+      who_performs TEXT,
+      how_it_works LONGTEXT,
+      patient_instructions LONGTEXT,
+      preparation_instructions LONGTEXT,
+      contraindications LONGTEXT,
+      estimated_duration_text VARCHAR(120),
+      recovery_notes LONGTEXT,
+      show_price INTEGER NOT NULL DEFAULT 1,
+      published_price DECIMAL(12,2),
+      is_featured INTEGER NOT NULL DEFAULT 0,
+      is_published INTEGER NOT NULL DEFAULT 0,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      updated_by VARCHAR(64),
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_procedure_profiles (
       procedimento_id BIGINT PRIMARY KEY,
       slug VARCHAR(180) NOT NULL,
@@ -295,6 +375,19 @@ export const ensureIntranetCatalogTables = async (db: DbInterface) => {
       is_published INTEGER NOT NULL DEFAULT 0,
       display_order INTEGER NOT NULL DEFAULT 0,
       updated_by VARCHAR(64),
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS intranet_professional_catalog_items (
+      id VARCHAR(64) PRIMARY KEY,
+      professional_id VARCHAR(64) NOT NULL,
+      catalog_item_id VARCHAR(64) NOT NULL,
+      notes TEXT,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      is_published INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   `);
@@ -326,6 +419,7 @@ export const ensureIntranetCatalogTables = async (db: DbInterface) => {
   `);
 
   await ensureCatalogColumns(db);
+  await migrateLegacyProcedureProfiles(db);
   catalogTablesEnsured = true;
 };
 
@@ -392,11 +486,12 @@ const mapProfessional = (row: Row): IntranetProfessionalProfile => {
 };
 
 const mapProcedure = (row: Row): IntranetProcedureProfile => {
-  const procedimentoId = Number(row.procedimento_id || 0);
+  const procedimentoId = toNumber(row.procedimento_id);
+  const id = clean(row.id) || (procedimentoId ? String(procedimentoId) : '');
   const name = clean(row.display_name) || clean(row.nome);
-  const basePrice = toNumber(row.valor);
   const publishedPrice = toNumber(row.published_price);
   return {
+    id,
     procedimentoId,
     slug: clean(row.slug) || normalizeSlug(name || procedimentoId),
     displayName: name,
@@ -414,8 +509,8 @@ const mapProcedure = (row: Row): IntranetProcedureProfile => {
     estimatedDurationText: clean(row.estimated_duration_text) || null,
     recoveryNotes: clean(row.recovery_notes) || null,
     showPrice: row.show_price === undefined || row.show_price === null ? true : bool(row.show_price),
-    publishedPrice: publishedPrice ?? basePrice,
-    basePrice,
+    publishedPrice,
+    basePrice: null,
     isFeatured: bool(row.is_featured),
     isPublished: bool(row.is_published),
     displayOrder: Number(row.display_order || 0),
@@ -802,28 +897,27 @@ export const replaceIntranetProfessionalSpecialties = async (db: DbInterface, in
 
 export const listIntranetProcedures = async (db: DbInterface, filters: IntranetProcedureFilters = {}) => {
   await ensureIntranetCatalogTables(db);
-  const where = ['COALESCE(ip.is_published, 0) = 1'];
+  const where = ['is_published = 1'];
   const params: unknown[] = [];
   const search = clean(filters.search).toLowerCase();
   if (search) {
-    where.push("(LOWER(c.nome) LIKE ? OR LOWER(COALESCE(ip.display_name, '')) LIKE ? OR LOWER(COALESCE(ip.summary, '')) LIKE ?)");
+    where.push("(LOWER(display_name) LIKE ? OR LOWER(COALESCE(summary, '')) LIKE ? OR LOWER(COALESCE(description, '')) LIKE ?)");
     const like = `%${search}%`;
     params.push(like, like, like);
   }
-  if (filters.featuredOnly) where.push('COALESCE(ip.is_featured, 0) = 1');
+  if (filters.featuredOnly) where.push('is_featured = 1');
   const catalogTypes = (filters.catalogTypes || []).map((item) => clean(item).toLowerCase()).filter((item) => CATALOG_TYPES.has(item));
   if (catalogTypes.length) {
-    where.push(`LOWER(COALESCE(ip.catalog_type, 'procedure')) IN (${catalogTypes.map(() => '?').join(', ')})`);
+    where.push(`LOWER(catalog_type) IN (${catalogTypes.map(() => '?').join(', ')})`);
     params.push(...catalogTypes);
   }
   const rows = await safeQuery(
     db,
     `
-    SELECT c.*, ip.*
-    FROM feegow_procedures_catalog c
-    INNER JOIN intranet_procedure_profiles ip ON ip.procedimento_id = c.procedimento_id
+    SELECT *
+    FROM intranet_catalog_items
     WHERE ${where.join(' AND ')}
-    ORDER BY COALESCE(ip.is_featured, 0) DESC, ip.display_order ASC, c.nome ASC
+    ORDER BY is_featured DESC, display_order ASC, display_name ASC
     LIMIT ${limitValue(filters.limit, 12)}
     `,
     params
@@ -841,23 +935,22 @@ export const listIntranetProcedureProfiles = async (db: DbInterface, filters: In
   const params: unknown[] = [];
   const search = clean(filters.search).toLowerCase();
   if (search) {
-    where.push("(LOWER(c.nome) LIKE ? OR LOWER(COALESCE(ip.display_name, '')) LIKE ? OR LOWER(COALESCE(ip.summary, '')) LIKE ?)");
+    where.push("(LOWER(display_name) LIKE ? OR LOWER(COALESCE(summary, '')) LIKE ? OR LOWER(COALESCE(description, '')) LIKE ?)");
     const like = `%${search}%`;
     params.push(like, like, like);
   }
   const catalogTypes = (filters.catalogTypes || []).map((item) => clean(item).toLowerCase()).filter((item) => CATALOG_TYPES.has(item));
   if (catalogTypes.length) {
-    where.push(`LOWER(COALESCE(ip.catalog_type, 'procedure')) IN (${catalogTypes.map(() => '?').join(', ')})`);
+    where.push(`LOWER(catalog_type) IN (${catalogTypes.map(() => '?').join(', ')})`);
     params.push(...catalogTypes);
   }
   const rows = await safeQuery(
     db,
     `
-    SELECT c.*, ip.*
-    FROM feegow_procedures_catalog c
-    LEFT JOIN intranet_procedure_profiles ip ON ip.procedimento_id = c.procedimento_id
+    SELECT *
+    FROM intranet_catalog_items
     WHERE ${where.join(' AND ')}
-    ORDER BY COALESCE(ip.is_published, 0) DESC, COALESCE(ip.display_order, 0) ASC, c.nome ASC
+    ORDER BY is_published DESC, display_order ASC, display_name ASC
     LIMIT ${limitValue(filters.limit, 80, 200)}
     `,
     params
@@ -872,10 +965,9 @@ export const getPublishedIntranetProcedureBySlug = async (db: DbInterface, catal
   const rows = await safeQuery(
     db,
     `
-    SELECT c.*, ip.*
-    FROM feegow_procedures_catalog c
-    INNER JOIN intranet_procedure_profiles ip ON ip.procedimento_id = c.procedimento_id
-    WHERE ip.slug = ? AND ip.catalog_type = ? AND ip.is_published = 1
+    SELECT *
+    FROM intranet_catalog_items
+    WHERE slug = ? AND catalog_type = ? AND is_published = 1
     LIMIT 1
     `,
     [slug, catalogType]
@@ -885,14 +977,14 @@ export const getPublishedIntranetProcedureBySlug = async (db: DbInterface, catal
 
 export const saveIntranetProcedureProfile = async (db: DbInterface, input: Row, actorUserId: string) => {
   await ensureIntranetCatalogTables(db);
-  const procedimentoId = Number(input.procedimentoId || input.procedimento_id || 0);
-  if (!Number.isFinite(procedimentoId) || procedimentoId <= 0) throw new Error('procedimentoId é obrigatório.');
+  const inputId = clean(input.id);
   const displayName = clean(input.displayName || input.display_name);
   if (!displayName) throw new Error('displayName é obrigatório.');
   const now = nowIso();
-  const existing = await db.query(`SELECT procedimento_id FROM intranet_procedure_profiles WHERE procedimento_id = ? LIMIT 1`, [procedimentoId]);
+  const existing = inputId ? await db.query(`SELECT id FROM intranet_catalog_items WHERE id = ? LIMIT 1`, [inputId]) : [];
+  const id = clean((existing[0] as Row | undefined)?.id) || inputId || randomUUID();
   const values = [
-    normalizeSlug(input.slug || displayName || procedimentoId),
+    normalizeSlug(input.slug || displayName || id),
     displayName,
     pickCatalogType(input.catalogType || input.catalog_type),
     nullable(input.category),
@@ -914,34 +1006,34 @@ export const saveIntranetProcedureProfile = async (db: DbInterface, input: Row, 
     Number(input.displayOrder ?? input.display_order ?? 0),
     actorUserId,
     now,
-    procedimentoId,
+    id,
   ];
   if (existing.length) {
     await db.execute(
       `
-      UPDATE intranet_procedure_profiles
+      UPDATE intranet_catalog_items
       SET slug = ?, display_name = ?, catalog_type = ?, category = ?, subcategory = ?, summary = ?, description = ?,
         requires_preparation = ?, who_performs = ?, how_it_works = ?, patient_instructions = ?,
         preparation_instructions = ?, contraindications = ?, estimated_duration_text = ?, recovery_notes = ?,
         show_price = ?, published_price = ?, is_featured = ?, is_published = ?, display_order = ?, updated_by = ?, updated_at = ?
-      WHERE procedimento_id = ?
+      WHERE id = ?
       `,
       values
     );
   } else {
     await db.execute(
       `
-      INSERT INTO intranet_procedure_profiles (
+      INSERT INTO intranet_catalog_items (
         slug, display_name, catalog_type, category, subcategory, summary, description,
         requires_preparation, who_performs, how_it_works, patient_instructions, preparation_instructions,
         contraindications, estimated_duration_text, recovery_notes, show_price, published_price,
-        is_featured, is_published, display_order, updated_by, updated_at, procedimento_id
+        is_featured, is_published, display_order, updated_by, updated_at, id
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       values
     );
   }
-  return (await listIntranetProcedureProfiles(db, { search: displayName, limit: 1 }))[0] || null;
+  return (await listIntranetProcedureProfiles(db, { search: displayName, limit: 200 })).find((item) => item.id === id) || null;
 };
 
 export const listIntranetProfessionalProcedures = async (db: DbInterface, professionalIdRaw?: string) => {
@@ -950,13 +1042,14 @@ export const listIntranetProfessionalProcedures = async (db: DbInterface, profes
   const where = professionalId ? 'WHERE professional_id = ?' : '';
   const rows = await safeQuery(
     db,
-    `SELECT * FROM intranet_professional_procedures ${where} ORDER BY display_order ASC, created_at DESC`,
+    `SELECT * FROM intranet_professional_catalog_items ${where} ORDER BY display_order ASC, created_at DESC`,
     professionalId ? [professionalId] : []
   );
   return (rows as Row[]).map((row) => ({
     id: clean(row.id),
     professionalId: clean(row.professional_id),
-    procedimentoId: Number(row.procedimento_id || 0),
+    itemId: clean(row.catalog_item_id),
+    procedimentoId: null,
     notes: clean(row.notes) || null,
     displayOrder: Number(row.display_order || 0),
     isPublished: bool(row.is_published),
@@ -969,21 +1062,21 @@ export const saveIntranetProfessionalProcedure = async (db: DbInterface, input: 
   await ensureIntranetCatalogTables(db);
   const inputId = clean(input.id);
   const professionalId = clean(input.professionalId || input.professional_id);
-  const procedimentoId = Number(input.procedimentoId || input.procedimento_id || 0);
-  if (!professionalId || !Number.isFinite(procedimentoId) || procedimentoId <= 0) {
-    throw new Error('professionalId e procedimentoId são obrigatórios.');
+  const itemId = clean(input.itemId || input.catalogItemId || input.catalog_item_id || input.procedimentoId || input.procedimento_id);
+  if (!professionalId || !itemId) {
+    throw new Error('professionalId e itemId são obrigatórios.');
   }
   const now = nowIso();
   const existing = inputId
-    ? await db.query(`SELECT id FROM intranet_professional_procedures WHERE id = ? LIMIT 1`, [inputId])
+    ? await db.query(`SELECT id FROM intranet_professional_catalog_items WHERE id = ? LIMIT 1`, [inputId])
     : await db.query(
-        `SELECT id FROM intranet_professional_procedures WHERE professional_id = ? AND procedimento_id = ? LIMIT 1`,
-        [professionalId, procedimentoId]
+        `SELECT id FROM intranet_professional_catalog_items WHERE professional_id = ? AND catalog_item_id = ? LIMIT 1`,
+        [professionalId, itemId]
       );
   const id = clean((existing[0] as Row | undefined)?.id) || inputId || randomUUID();
   const values = [
     professionalId,
-    procedimentoId,
+    itemId,
     nullable(input.notes),
     Number(input.displayOrder ?? input.display_order ?? 0),
     input.isPublished === undefined && input.is_published === undefined ? 1 : toDbBool(input.isPublished ?? input.is_published),
@@ -992,12 +1085,12 @@ export const saveIntranetProfessionalProcedure = async (db: DbInterface, input: 
   ];
   if (existing.length) {
     await db.execute(
-      `UPDATE intranet_professional_procedures SET professional_id = ?, procedimento_id = ?, notes = ?, display_order = ?, is_published = ?, updated_at = ? WHERE id = ?`,
+      `UPDATE intranet_professional_catalog_items SET professional_id = ?, catalog_item_id = ?, notes = ?, display_order = ?, is_published = ?, updated_at = ? WHERE id = ?`,
       values
     );
   } else {
     await db.execute(
-      `INSERT INTO intranet_professional_procedures (professional_id, procedimento_id, notes, display_order, is_published, updated_at, id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO intranet_professional_catalog_items (professional_id, catalog_item_id, notes, display_order, is_published, updated_at, id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [...values, now]
     );
   }

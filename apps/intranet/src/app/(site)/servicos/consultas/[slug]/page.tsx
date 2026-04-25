@@ -3,6 +3,8 @@ import { Stethoscope, Users } from 'lucide-react';
 import { getDbConnection } from '@consultare/core/db';
 import { getPublishedIntranetSpecialtyBySlug, listIntranetProfessionalsBySpecialty } from '@consultare/core/intranet/catalog';
 
+/* eslint-disable @next/next/no-img-element -- Fotos dos profissionais vêm do endpoint autenticado de assets da intranet. */
+
 export const dynamic = 'force-dynamic';
 
 export default async function SpecialtyPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -49,9 +51,20 @@ export default async function SpecialtyPage({ params }: { params: Promise<{ slug
               {professionals.length === 0 ? <p className="text-sm text-slate-500">Nenhum profissional publicado para esta especialidade.</p> : null}
               {professionals.map((professional) => (
                 <article key={professional.professionalId} className="rounded-lg border border-slate-200 p-4">
-                  <h3 className="font-semibold text-slate-900">{professional.displayName}</h3>
-                  {professional.cardHighlight ? <p className="mt-1 text-sm font-medium text-[#229A8A]">{professional.cardHighlight}</p> : null}
-                  {professional.shortBio ? <p className="mt-2 text-sm leading-6 text-slate-600">{professional.shortBio}</p> : null}
+                  <div className="flex gap-3">
+                    <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-blue-50 text-sm font-semibold text-[#17407E]">
+                      {professional.photoAssetId ? (
+                        <img src={`/api/intranet/assets/${encodeURIComponent(professional.photoAssetId)}/download`} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        professional.displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('')
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="font-semibold text-slate-900">{professional.displayName}</h3>
+                      {professional.cardHighlight ? <p className="mt-1 text-sm font-medium text-[#229A8A]">{professional.cardHighlight}</p> : null}
+                      {professional.shortBio ? <p className="mt-2 text-sm leading-6 text-slate-600">{professional.shortBio}</p> : null}
+                    </div>
+                  </div>
                   {professional.serviceUnits.length ? <p className="mt-3 text-xs text-slate-500">{professional.serviceUnits.join(' · ')}</p> : null}
                   {professional.contactNotes ? <p className="mt-2 text-xs leading-5 text-slate-500">{professional.contactNotes}</p> : null}
                 </article>
