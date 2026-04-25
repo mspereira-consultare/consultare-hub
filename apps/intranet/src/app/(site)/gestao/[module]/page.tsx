@@ -14,6 +14,7 @@ import {
   Users,
 } from 'lucide-react';
 import { requireIntranetPermission } from '@/lib/intranet/auth';
+import { PagesAdmin } from '../pages-admin';
 
 const modules = {
   navegacao: {
@@ -103,6 +104,11 @@ export default async function IntranetAdminModulePage({ params }: { params: Prom
 
   const auth = await requireIntranetPermission(moduleConfig.pageKey, 'view');
   if (!auth.ok) notFound();
+  const editAuth = await requireIntranetPermission(moduleConfig.pageKey, 'edit');
+
+  if (module === 'paginas') {
+    return <PagesAdmin canEdit={editAuth.ok} />;
+  }
 
   const Icon = moduleConfig.icon;
 
