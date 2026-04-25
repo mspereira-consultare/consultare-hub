@@ -49,6 +49,12 @@ type PageOption = {
   status: string;
 };
 
+type ParentOption = {
+  id: string;
+  label: string;
+  fixed?: boolean;
+};
+
 type NavFormState = {
   id: string | null;
   parentNodeId: string;
@@ -76,6 +82,11 @@ const nodeTypes = [
   { value: 'external_link', label: 'Link externo', description: 'Aponta para um sistema, documento ou URL fora da intranet.' },
   { value: 'label', label: 'Seção', description: 'Agrupa itens no menu lateral, sem link próprio.' },
 ] as const;
+
+const fixedParentOptions: ParentOption[] = [
+  { id: '__fixed_services__', label: 'Serviços', fixed: true },
+  { id: '__fixed_system__', label: 'Sistema', fixed: true },
+];
 
 const iconOptions: IconOption[] = [
   { value: '', label: 'Sem ícone', icon: FileText },
@@ -177,7 +188,13 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
   const pageById = useMemo(() => new Map(pages.map((page) => [page.id, page])), [pages]);
   const tree = useMemo(() => buildTree(nodes), [nodes]);
   const parentOptions = useMemo(
-    () => nodes.filter((node) => node.nodeType === 'label' && node.id !== form.id).sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label)),
+    () => [
+      ...fixedParentOptions,
+      ...nodes
+        .filter((node) => node.nodeType === 'label' && node.id !== form.id)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label))
+        .map((node) => ({ id: node.id, label: node.label })),
+    ],
     [form.id, nodes],
   );
   const filteredNodes = useMemo(() => {
@@ -389,9 +406,11 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
               <p className="mt-1 text-sm leading-6 text-slate-500">A prévia segue ordem, hierarquia e visibilidade. Páginas arquivadas ou rascunhos não aparecem no menu público.</p>
               <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
                 <PreviewNodes tree={tree} pageById={pageById} parentId="root" />
+                <PreviewFixedSection label="Serviços" tree={tree} pageById={pageById} parentId="__fixed_services__" />
+                <PreviewFixedSection label="Sistema" tree={tree} pageById={pageById} parentId="__fixed_system__" />
               </div>
               <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-[#17407E]">
-                Use seções para organizar áreas como RH, Processos e Documentos. Itens sem seção aparecem no primeiro nível do menu.
+                Use seções para organizar áreas como RH, Processos e Documentos. Também é possível colocar páginas nas seções fixas Serviços e Sistema.
               </div>
             </aside>
           </div>
@@ -511,6 +530,22 @@ function PreviewNodes({
   );
 }
 
+function PreviewFixedSection({ label, tree, pageById, parentId }: {
+  label: string;
+  tree: Map<string, NavigationNode[]>;
+  pageById: Map<string, PageOption>;
+  parentId: string;
+}) {
+  const children = tree.get(parentId) || [];
+  if (!children.some((node) => node.isVisible)) return null;
+  return (
+    <div className="pt-2">
+      <div className="px-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400">{label}</div>
+      <PreviewNodes tree={tree} pageById={pageById} parentId={parentId} />
+    </div>
+  );
+}
+
 function NavigationModal({
   form,
   pages,
@@ -524,7 +559,7 @@ function NavigationModal({
 }: {
   form: NavFormState;
   pages: PageOption[];
-  parentOptions: NavigationNode[];
+  parentOptions: ParentOption[];
   canEdit: boolean;
   saving: boolean;
   onClose: () => void;
@@ -576,7 +611,7 @@ function NavigationModal({
               <span className={labelClassName}>Seção pai</span>
               <select className={inputClassName} value={form.parentNodeId} onChange={(event) => onUpdate('parentNodeId', event.target.value)}>
                 <option value="">Sem seção pai</option>
-                {parentOptions.map((node) => <option key={node.id} value={node.id}>{node.label}</option>)}
+                {parentOptions.map((node) => <option key={node.id} value={node.id}>{node.fixed ? `${node.label} (seção fixa)` : node.label}</option>)}
               </select>
             </label>
           </div>

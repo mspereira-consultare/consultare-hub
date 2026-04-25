@@ -53,6 +53,9 @@ type SidebarNavTreeNode = SidebarNavItem & {
   children: SidebarNavTreeNode[];
 };
 
+const FIXED_SERVICES_SECTION_ID = '__fixed_services__';
+const FIXED_SYSTEM_SECTION_ID = '__fixed_system__';
+
 const iconMap = {
   'file-text': FileText,
   home: Home,
@@ -82,6 +85,41 @@ const buildSidebarTree = (items: SidebarNavItem[]) => {
   }
 
   return roots;
+};
+
+const splitNavByFixedSections = (items: SidebarNavItem[]) => {
+  const serviceIds = new Set([FIXED_SERVICES_SECTION_ID]);
+  const systemIds = new Set([FIXED_SYSTEM_SECTION_ID]);
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    for (const item of items) {
+      if (item.parentNodeId && serviceIds.has(item.parentNodeId) && !serviceIds.has(item.id)) {
+        serviceIds.add(item.id);
+        changed = true;
+      }
+      if (item.parentNodeId && systemIds.has(item.parentNodeId) && !systemIds.has(item.id)) {
+        systemIds.add(item.id);
+        changed = true;
+      }
+    }
+  }
+
+  return {
+    services: items.filter((item) => serviceIds.has(item.id)),
+    system: items.filter((item) => systemIds.has(item.id)),
+    regular: items.filter((item) => !serviceIds.has(item.id) && !systemIds.has(item.id)),
+  };
+};
+
+const renderSidebarChildren = (nodes: SidebarNavTreeNode[]) => {
+  if (!nodes.length) return null;
+  return (
+    <div className="ml-3 border-l border-slate-100 pl-2">
+      {nodes.map((item) => <SidebarNavNode key={item.id} node={item} depth={1} />)}
+    </div>
+  );
 };
 
 const isExternalHref = (href: string) => /^https?:\/\//i.test(href) || href.startsWith('mailto:') || href.startsWith('tel:');
@@ -131,7 +169,10 @@ export default async function SiteLayout({
     loadUserPermissionMatrix(db, user.id, user.role),
   ]);
   const canManageIntranet = hasPermission(permissions, 'intranet_dashboard', 'view', user.role);
-  const navTree = buildSidebarTree(navItems);
+  const splitNav = splitNavByFixedSections(navItems);
+  const serviceNavTree = buildSidebarTree(splitNav.services);
+  const systemNavTree = buildSidebarTree(splitNav.system);
+  const navTree = buildSidebarTree(splitNav.regular);
 
   return (
     <div className="min-h-screen bg-[#f4f7fb] text-slate-900">
@@ -183,16 +224,25 @@ export default async function SiteLayout({
               <Microscope size={17} className="text-[#229A8A]" />
               Exames
             </Link>
-            {canManageIntranet ? (
-              <Link
-                href="/gestao"
-                className="mb-2 flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-[#17407E]"
-              >
-                <ShieldCheck size={17} />
-                Gestão da Intranet
-              </Link>
-            ) : null}
+            {renderSidebarChildren(serviceNavTree)}
             {navTree.map((item) => <SidebarNavNode key={item.id} node={item} />)}
+            {canManageIntranet || systemNavTree.length ? (
+              <>
+                <div className="px-3 pb-1 pt-4 text-xs font-semibold uppercase text-slate-400">
+                  Sistema
+                </div>
+                {canManageIntranet ? (
+                  <Link
+                    href="/gestao"
+                    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-[#17407E]"
+                  >
+                    <ShieldCheck size={17} />
+                    Gestão da Intranet
+                  </Link>
+                ) : null}
+                {renderSidebarChildren(systemNavTree)}
+              </>
+            ) : null}
           </nav>
 
           <div className="border-t border-slate-200 p-4">
