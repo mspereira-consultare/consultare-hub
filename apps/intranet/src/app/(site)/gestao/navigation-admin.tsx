@@ -25,6 +25,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { AdminModuleShell } from './admin-module-shell';
 
 type NavigationNode = {
   id: string;
@@ -307,47 +308,40 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-6 lg:px-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-col gap-5 border-b border-slate-200 p-5 xl:flex-row xl:items-start xl:justify-between">
-            <div className="max-w-2xl">
-              <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-50 text-[#17407E]">
-                <Navigation size={24} />
-              </div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#229A8A]">Gestão da intranet</p>
-              <h1 className="mt-1 text-2xl font-semibold text-slate-900">Navegação</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Organize o menu lateral com seções, páginas publicadas e links externos usados no dia a dia.
-              </p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 xl:max-w-[760px] xl:justify-end xl:pt-16">
-              <button type="button" onClick={() => setHelpOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
-                <CircleHelp size={16} />
-                Como funciona
-              </button>
-              <button type="button" onClick={() => openCreate('page')} disabled={!canEdit} className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#17407E] px-3.5 text-sm font-semibold text-white transition hover:bg-[#123463] disabled:cursor-not-allowed disabled:opacity-60">
-                <Plus size={16} />
-                Novo item
-              </button>
-            </div>
+    <AdminModuleShell
+      icon={Navigation}
+      title="Navegação"
+      description="Organize o menu lateral com seções, páginas publicadas e links externos usados no dia a dia."
+      actions={(
+        <>
+          <button type="button" onClick={() => setHelpOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
+            <CircleHelp size={16} />
+            Como funciona
+          </button>
+          <button type="button" onClick={() => openCreate('page')} disabled={!canEdit} className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#17407E] px-3.5 text-sm font-semibold text-white transition hover:bg-[#123463] disabled:cursor-not-allowed disabled:opacity-60">
+            <Plus size={16} />
+            Novo item
+          </button>
+        </>
+      )}
+      filters={(
+        <div className="grid gap-3 lg:grid-cols-[minmax(280px,1fr)_220px_220px]">
+          <div className="relative">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por título, página ou URL" className={`${inputClassName} pl-9`} />
           </div>
-
-          <div className="grid gap-3 border-b border-slate-200 p-5 lg:grid-cols-[minmax(280px,1fr)_220px_220px]">
-            <div className="relative">
-              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar por título, página ou URL" className={`${inputClassName} pl-9`} />
-            </div>
-            <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className={inputClassName}>
-              <option value="all">Todos os tipos</option>
-              {nodeTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-            </select>
-            <select value={visibilityFilter} onChange={(event) => setVisibilityFilter(event.target.value)} className={inputClassName}>
-              <option value="all">Todos</option>
-              <option value="visible">Visíveis</option>
-              <option value="hidden">Ocultos</option>
-            </select>
-          </div>
+          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className={inputClassName}>
+            <option value="all">Todos os tipos</option>
+            {nodeTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </select>
+          <select value={visibilityFilter} onChange={(event) => setVisibilityFilter(event.target.value)} className={inputClassName}>
+            <option value="all">Todos</option>
+            <option value="visible">Visíveis</option>
+            <option value="hidden">Ocultos</option>
+          </select>
+        </div>
+      )}
+    >
 
           {notice ? <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-3 text-sm text-emerald-800">{notice}</div> : null}
           {error ? <div className="border-b border-rose-100 bg-rose-50 px-5 py-3 text-sm text-rose-800">{error}</div> : null}
@@ -401,9 +395,6 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
               </div>
             </aside>
           </div>
-        </div>
-      </div>
-
       {modalOpen ? (
         <NavigationModal
           form={form}
@@ -418,7 +409,7 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
         />
       ) : null}
       <NavigationHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
-    </main>
+    </AdminModuleShell>
   );
 }
 

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { ElementType } from 'react';
 import type { PageKey } from '@consultare/core/permissions';
@@ -14,6 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import { requireIntranetPermission } from '@/lib/intranet/auth';
+import { AdminModuleShell } from '../admin-module-shell';
 import { NavigationAdmin } from '../navigation-admin';
 import { PagesAdmin } from '../pages-admin';
 
@@ -115,40 +115,31 @@ export default async function IntranetAdminModulePage({ params }: { params: Prom
     return <NavigationAdmin canEdit={editAuth.ok} />;
   }
 
-  const Icon = moduleConfig.icon;
-
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-8">
-      <div className="mx-auto max-w-5xl">
-        <Link href="/gestao" className="text-sm font-medium text-[#17407E] hover:underline">
-          Voltar para Gestão da Intranet
-        </Link>
-
-        <section className="mt-6 rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-md bg-blue-50 text-[#17407E]">
-            <Icon size={24} />
+    <AdminModuleShell
+      icon={moduleConfig.icon}
+      eyebrow="Módulo em preparação"
+      title={moduleConfig.title}
+      description={moduleConfig.description}
+    >
+      <section className="p-5">
+        <div className="rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
+          Este espaço foi criado na fundação técnica para receber as telas administrativas das próximas fases.
+        </div>
+        <div className="mt-6">
+          <h2 className="text-sm font-semibold text-slate-900">Base administrativa disponível</h2>
+          <div className="mt-3 grid gap-2">
+            {moduleConfig.endpoints.map((endpoint) => (
+              <code
+                key={endpoint}
+                className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
+              >
+                {endpoint}
+              </code>
+            ))}
           </div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Módulo em preparação</p>
-          <h1 className="mt-2 text-3xl font-semibold text-slate-900">{moduleConfig.title}</h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-600">{moduleConfig.description}</p>
-          <div className="mt-6 rounded-md border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-            Este espaço foi criado na fundação técnica para receber as telas administrativas das próximas fases.
-          </div>
-          <div className="mt-6">
-            <h2 className="text-sm font-semibold text-slate-900">Base administrativa disponível</h2>
-            <div className="mt-3 grid gap-2">
-              {moduleConfig.endpoints.map((endpoint) => (
-                <code
-                  key={endpoint}
-                  className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700"
-                >
-                  {endpoint}
-                </code>
-              ))}
-            </div>
-          </div>
-        </section>
-      </div>
-    </main>
+        </div>
+      </section>
+    </AdminModuleShell>
   );
 }

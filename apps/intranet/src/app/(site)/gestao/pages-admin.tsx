@@ -22,7 +22,6 @@ import {
   Loader2,
   Megaphone,
   Plus,
-  RefreshCw,
   Save,
   Search,
   Sparkles,
@@ -31,6 +30,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
+import { AdminModuleShell } from './admin-module-shell';
 
 type SelectOption = {
   value: string;
@@ -455,80 +455,62 @@ export function PagesAdmin({ canEdit }: PagesAdminProps) {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-8">
-      <div className="mx-auto max-w-7xl">
-        <div className="flex flex-col gap-4 border-b border-slate-200 pb-6 xl:flex-row xl:items-start xl:justify-between">
-          <div>
-            <div className="flex items-center gap-3 text-[#17407E]">
-              <FileText size={26} />
-              <span className="text-xs font-semibold uppercase tracking-wide">CMS da Intranet</span>
+    <AdminModuleShell
+      icon={FileText}
+      eyebrow="CMS da intranet"
+      title="Páginas"
+      description="Crie, edite, publique e arquive páginas baseadas em blocos padronizados."
+      actions={(
+        <>
+          <button
+            type="button"
+            onClick={() => setHelpOpen(true)}
+            className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            <CircleHelp size={16} />
+            Como funciona
+          </button>
+          <button
+            type="button"
+            onClick={openCreate}
+            disabled={!canEdit}
+            className="inline-flex h-11 items-center gap-2 rounded-lg bg-[#17407E] px-3.5 text-sm font-semibold text-white transition hover:bg-[#123463] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Plus size={16} />
+            Nova página
+          </button>
+        </>
+      )}
+      filters={(
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
+          <label className="block">
+            <span className={labelClassName}>Busca</span>
+            <div className="relative">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                className={`${inputClassName} pl-9`}
+                placeholder="Título ou caminho da página"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
             </div>
-            <h1 className="mt-2 text-3xl font-semibold text-slate-900">Páginas</h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Crie, edite, publique e arquive páginas baseadas em blocos padronizados.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={loadPages}
-              disabled={loading}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-[#17407E] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
-              Recarregar
-            </button>
-            <button
-              type="button"
-              onClick={() => setHelpOpen(true)}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-[#17407E]"
-            >
-              <CircleHelp size={16} />
-              Como funciona
-            </button>
-            <button
-              type="button"
-              onClick={openCreate}
-              disabled={!canEdit}
-              className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-[#123463] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Plus size={16} />
-              Nova página
-            </button>
-          </div>
+          </label>
+          <label className="block">
+            <span className={labelClassName}>Status</span>
+            <select className={inputClassName} value={status} onChange={(event) => setStatus(event.target.value)}>
+              <option value="all">Todos</option>
+              {pageStatuses.map((item) => (
+                <option key={item.value} value={item.value}>{item.label}</option>
+              ))}
+            </select>
+          </label>
         </div>
+      )}
+    >
+      {error ? <div className="border-b border-rose-100 bg-rose-50 px-5 py-3 text-sm text-rose-800">{error}</div> : null}
+      {notice ? <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-3 text-sm text-emerald-800">{notice}</div> : null}
 
-        <section className="mt-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
-            <label className="block">
-              <span className={labelClassName}>Busca</span>
-              <div className="relative">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  className={`${inputClassName} pl-9`}
-                  placeholder="Título ou caminho da página"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                />
-              </div>
-            </label>
-            <label className="block">
-              <span className={labelClassName}>Status</span>
-              <select className={inputClassName} value={status} onChange={(event) => setStatus(event.target.value)}>
-                <option value="all">Todos</option>
-                {pageStatuses.map((item) => (
-                  <option key={item.value} value={item.value}>{item.label}</option>
-                ))}
-              </select>
-            </label>
-          </div>
-        </section>
-
-        {error ? <div className="mt-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-        {notice ? <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
-
-        <section className="mt-6 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+      <section className="overflow-hidden">
           <div className="border-b border-slate-200 px-4 py-3">
             <h2 className="font-semibold text-slate-900">Páginas cadastradas</h2>
           </div>
@@ -611,8 +593,7 @@ export function PagesAdmin({ canEdit }: PagesAdminProps) {
               </tbody>
             </table>
           </div>
-        </section>
-      </div>
+      </section>
 
       {modalOpen ? (
         <PageModal
@@ -638,7 +619,7 @@ export function PagesAdmin({ canEdit }: PagesAdminProps) {
       ) : null}
 
       <PagesHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
-    </main>
+    </AdminModuleShell>
   );
 }
 
