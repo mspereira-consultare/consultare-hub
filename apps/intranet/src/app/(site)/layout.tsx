@@ -5,6 +5,7 @@ import {
   Bot,
   BookOpen,
   CircleHelp,
+  ClipboardList,
   ExternalLink,
   FileText,
   Home,
@@ -12,8 +13,10 @@ import {
   ListChecks,
   Megaphone,
   MessageCircle,
+  Microscope,
   Search,
   ShieldCheck,
+  Stethoscope,
   Users,
 } from 'lucide-react';
 import { getDbConnection } from '@consultare/core/db';
@@ -155,6 +158,30 @@ export default async function SiteLayout({
             >
               <CircleHelp size={17} />
               FAQ
+            </Link>
+            <div className="px-3 pb-1 pt-4 text-xs font-semibold uppercase text-slate-400">
+              Serviços
+            </div>
+            <Link
+              href="/servicos/consultas"
+              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-[#17407E]"
+            >
+              <Stethoscope size={17} className="text-[#229A8A]" />
+              Consultas
+            </Link>
+            <Link
+              href="/servicos/procedimentos"
+              className="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-[#17407E]"
+            >
+              <ClipboardList size={17} className="text-[#229A8A]" />
+              Procedimentos
+            </Link>
+            <Link
+              href="/servicos/exames"
+              className="mb-2 flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-[#17407E]"
+            >
+              <Microscope size={17} className="text-[#229A8A]" />
+              Exames
             </Link>
             {canManageIntranet ? (
               <Link

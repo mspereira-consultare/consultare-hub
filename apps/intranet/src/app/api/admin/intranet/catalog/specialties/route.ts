@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
-  listIntranetProcedureProfiles,
-  saveIntranetProcedureProfile,
+  listIntranetSpecialtyProfiles,
+  saveIntranetSpecialtyProfile,
 } from '@consultare/core/intranet/catalog';
 import { requireIntranetPermission } from '@/lib/intranet/auth';
 
@@ -19,18 +19,14 @@ export async function GET(request: Request) {
     const auth = await requireIntranetPermission('intranet_catalogo', 'view');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const { searchParams } = new URL(request.url);
-    const data = await listIntranetProcedureProfiles(auth.db, {
+    const data = await listIntranetSpecialtyProfiles(auth.db, {
       search: String(searchParams.get('search') || ''),
-      catalogTypes: String(searchParams.get('catalogType') || '')
-        .split(',')
-        .map((item) => item.trim())
-        .filter(Boolean),
-      limit: Number(searchParams.get('limit') || 80),
+      limit: Number(searchParams.get('limit') || 120),
     });
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
-    console.error('Erro ao listar procedimentos da intranet:', error);
-    return errorResponse(error, 'Erro interno ao listar procedimentos.');
+    console.error('Erro ao listar especialidades da intranet:', error);
+    return errorResponse(error, 'Erro interno ao listar especialidades.');
   }
 }
 
@@ -39,10 +35,10 @@ export async function POST(request: Request) {
     const auth = await requireIntranetPermission('intranet_catalogo', 'edit');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const body = await request.json();
-    const data = await saveIntranetProcedureProfile(auth.db, body, auth.userId);
+    const data = await saveIntranetSpecialtyProfile(auth.db, body, auth.userId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
-    console.error('Erro ao salvar procedimento da intranet:', error);
-    return errorResponse(error, 'Erro interno ao salvar procedimento.');
+    console.error('Erro ao salvar especialidade da intranet:', error);
+    return errorResponse(error, 'Erro interno ao salvar especialidade.');
   }
 }

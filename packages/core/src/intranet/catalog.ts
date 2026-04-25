@@ -17,10 +17,26 @@ export type IntranetQmsFilters = IntranetCatalogFilters & {
 
 export type IntranetProfessionalFilters = IntranetCatalogFilters & {
   specialties?: string[];
+  specialtyId?: string;
 };
 
 export type IntranetProcedureFilters = IntranetCatalogFilters & {
   categories?: string[];
+  catalogTypes?: string[];
+};
+
+export type IntranetSpecialtyProfile = {
+  id: string;
+  slug: string;
+  displayName: string;
+  shortDescription: string | null;
+  description: string | null;
+  serviceGuidance: string | null;
+  displayOrder: number;
+  isFeatured: boolean;
+  isPublished: boolean;
+  publishedAt: string | null;
+  updatedAt: string | null;
 };
 
 export type IntranetQmsDocument = {
@@ -54,6 +70,7 @@ export type IntranetProfessionalProfile = {
   specialties: string[];
   serviceUnits: string[];
   contactNotes: string | null;
+  specialtyIds?: string[];
   displayOrder: number;
   isFeatured: boolean;
   isPublished: boolean;
@@ -65,10 +82,15 @@ export type IntranetProcedureProfile = {
   procedimentoId: number;
   slug: string;
   displayName: string;
+  catalogType: 'consultation' | 'procedure' | 'exam';
   category: string | null;
   subcategory: string | null;
   summary: string | null;
   description: string | null;
+  requiresPreparation: boolean;
+  whoPerforms: string | null;
+  howItWorks: string | null;
+  patientInstructions: string | null;
   preparationInstructions: string | null;
   contraindications: string | null;
   estimatedDurationText: string | null;
@@ -93,11 +115,23 @@ export type IntranetProfessionalProcedure = {
   updatedAt: string;
 };
 
+export type IntranetProfessionalSpecialty = {
+  id: string;
+  professionalId: string;
+  specialtyId: string;
+  notes: string | null;
+  displayOrder: number;
+  isPublished: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
 const clean = (value: unknown) => String(value ?? '').trim();
 const bool = (value: unknown) => value === true || value === 1 || value === '1';
 const nowIso = () => new Date().toISOString();
 const nullable = (value: unknown) => clean(value) || null;
 const toDbBool = (value: unknown) => (bool(value) ? 1 : 0);
+const CATALOG_TYPES = new Set(['consultation', 'procedure', 'exam']);
 
 const limitValue = (value: unknown, fallback = 12, max = 80) => {
   const parsed = Number(value || fallback);
@@ -145,6 +179,11 @@ const normalizeSlug = (value: unknown) =>
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 
+const pickCatalogType = (value: unknown) => {
+  const raw = clean(value).toLowerCase();
+  return (CATALOG_TYPES.has(raw) ? raw : 'procedure') as 'consultation' | 'procedure' | 'exam';
+};
+
 const safeQuery = async (db: DbInterface, sql: string, params: unknown[] = []) => {
   try {
     return await db.query(sql, params);
@@ -155,6 +194,26 @@ const safeQuery = async (db: DbInterface, sql: string, params: unknown[] = []) =
     if (code === 'ER_NO_SUCH_TABLE' || /doesn't exist|no such table|Table .* doesn't exist/i.test(message)) return [];
     throw error;
   }
+};
+
+const safeAddColumn = async (db: DbInterface, sql: string) => {
+  try {
+    await db.execute(sql);
+  } catch (error: unknown) {
+    const err = error as { message?: string; code?: string };
+    const message = String(err?.message || '');
+    const code = String(err?.code || '');
+    if (code === 'ER_DUP_FIELDNAME' || /Duplicate column name|duplicate column/i.test(message)) return;
+    throw error;
+  }
+};
+
+const ensureCatalogColumns = async (db: DbInterface) => {
+  await safeAddColumn(db, `ALTER TABLE intranet_procedure_profiles ADD COLUMN catalog_type VARCHAR(40) DEFAULT 'procedure'`);
+  await safeAddColumn(db, `ALTER TABLE intranet_procedure_profiles ADD COLUMN requires_preparation INTEGER NOT NULL DEFAULT 0`);
+  await safeAddColumn(db, `ALTER TABLE intranet_procedure_profiles ADD COLUMN who_performs TEXT`);
+  await safeAddColumn(db, `ALTER TABLE intranet_procedure_profiles ADD COLUMN how_it_works LONGTEXT`);
+  await safeAddColumn(db, `ALTER TABLE intranet_procedure_profiles ADD COLUMN patient_instructions LONGTEXT`);
 };
 
 let catalogTablesEnsured = false;
@@ -169,6 +228,23 @@ export const ensureIntranetCatalogTables = async (db: DbInterface) => {
       is_featured INTEGER NOT NULL DEFAULT 0,
       default_page_id VARCHAR(64),
       display_order INTEGER NOT NULL DEFAULT 0,
+      updated_by VARCHAR(64),
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS intranet_specialty_profiles (
+      id VARCHAR(64) PRIMARY KEY,
+      slug VARCHAR(180) NOT NULL,
+      display_name VARCHAR(180) NOT NULL,
+      short_description TEXT,
+      description LONGTEXT,
+      service_guidance LONGTEXT,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      is_featured INTEGER NOT NULL DEFAULT 0,
+      is_published INTEGER NOT NULL DEFAULT 0,
+      published_at TEXT,
       updated_by VARCHAR(64),
       updated_at TEXT NOT NULL
     )
@@ -200,10 +276,15 @@ export const ensureIntranetCatalogTables = async (db: DbInterface) => {
       procedimento_id BIGINT PRIMARY KEY,
       slug VARCHAR(180) NOT NULL,
       display_name VARCHAR(220) NOT NULL,
+      catalog_type VARCHAR(40) NOT NULL DEFAULT 'procedure',
       category VARCHAR(140),
       subcategory VARCHAR(140),
       summary TEXT,
       description LONGTEXT,
+      requires_preparation INTEGER NOT NULL DEFAULT 0,
+      who_performs TEXT,
+      how_it_works LONGTEXT,
+      patient_instructions LONGTEXT,
       preparation_instructions LONGTEXT,
       contraindications LONGTEXT,
       estimated_duration_text VARCHAR(120),
@@ -214,6 +295,19 @@ export const ensureIntranetCatalogTables = async (db: DbInterface) => {
       is_published INTEGER NOT NULL DEFAULT 0,
       display_order INTEGER NOT NULL DEFAULT 0,
       updated_by VARCHAR(64),
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS intranet_professional_specialties (
+      id VARCHAR(64) PRIMARY KEY,
+      professional_id VARCHAR(64) NOT NULL,
+      specialty_id VARCHAR(64) NOT NULL,
+      notes TEXT,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      is_published INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
   `);
@@ -231,6 +325,7 @@ export const ensureIntranetCatalogTables = async (db: DbInterface) => {
     )
   `);
 
+  await ensureCatalogColumns(db);
   catalogTablesEnsured = true;
 };
 
@@ -257,6 +352,20 @@ const mapQmsDocument = (row: Row): IntranetQmsDocument => {
     updatedAt: clean(row.updated_at) || null,
   };
 };
+
+const mapSpecialty = (row: Row): IntranetSpecialtyProfile => ({
+  id: clean(row.id),
+  slug: clean(row.slug) || normalizeSlug(row.display_name),
+  displayName: clean(row.display_name),
+  shortDescription: clean(row.short_description) || null,
+  description: clean(row.description) || null,
+  serviceGuidance: clean(row.service_guidance) || null,
+  displayOrder: Number(row.display_order || 0),
+  isFeatured: bool(row.is_featured),
+  isPublished: bool(row.is_published),
+  publishedAt: clean(row.published_at) || null,
+  updatedAt: clean(row.updated_at) || null,
+});
 
 const mapProfessional = (row: Row): IntranetProfessionalProfile => {
   const professionalId = clean(row.id || row.professional_id);
@@ -291,10 +400,15 @@ const mapProcedure = (row: Row): IntranetProcedureProfile => {
     procedimentoId,
     slug: clean(row.slug) || normalizeSlug(name || procedimentoId),
     displayName: name,
+    catalogType: pickCatalogType(row.catalog_type),
     category: clean(row.category) || clean(row.grupo_procedimento) || null,
     subcategory: clean(row.subcategory) || clean(row.tipo_procedimento) || null,
     summary: clean(row.summary) || null,
     description: clean(row.description) || null,
+    requiresPreparation: bool(row.requires_preparation),
+    whoPerforms: clean(row.who_performs) || null,
+    howItWorks: clean(row.how_it_works) || null,
+    patientInstructions: clean(row.patient_instructions) || null,
     preparationInstructions: clean(row.preparation_instructions) || null,
     contraindications: clean(row.contraindications) || null,
     estimatedDurationText: clean(row.estimated_duration_text) || null,
@@ -415,6 +529,116 @@ export const saveIntranetQmsDocumentSetting = async (db: DbInterface, input: Row
   return (await listIntranetQmsDocumentSettings(db, { documentId, limit: 1 }))[0] || null;
 };
 
+export const listIntranetSpecialtyProfiles = async (db: DbInterface, filters: IntranetCatalogFilters = {}) => {
+  await ensureIntranetCatalogTables(db);
+  const where = ['1=1'];
+  const params: unknown[] = [];
+  const search = clean(filters.search).toLowerCase();
+  if (search) {
+    where.push("(LOWER(display_name) LIKE ? OR LOWER(COALESCE(short_description, '')) LIKE ? OR LOWER(COALESCE(description, '')) LIKE ?)");
+    const like = `%${search}%`;
+    params.push(like, like, like);
+  }
+  if (filters.featuredOnly) where.push('is_featured = 1');
+  const rows = await safeQuery(
+    db,
+    `
+    SELECT *
+    FROM intranet_specialty_profiles
+    WHERE ${where.join(' AND ')}
+    ORDER BY is_published DESC, is_featured DESC, display_order ASC, display_name ASC
+    LIMIT ${limitValue(filters.limit, 80, 200)}
+    `,
+    params
+  );
+  return (rows as Row[]).map(mapSpecialty);
+};
+
+export const listPublishedIntranetSpecialties = async (db: DbInterface, filters: IntranetCatalogFilters = {}) => {
+  await ensureIntranetCatalogTables(db);
+  const where = ['is_published = 1'];
+  const params: unknown[] = [];
+  const search = clean(filters.search).toLowerCase();
+  if (search) {
+    where.push("(LOWER(display_name) LIKE ? OR LOWER(COALESCE(short_description, '')) LIKE ? OR LOWER(COALESCE(description, '')) LIKE ?)");
+    const like = `%${search}%`;
+    params.push(like, like, like);
+  }
+  if (filters.featuredOnly) where.push('is_featured = 1');
+  const rows = await safeQuery(
+    db,
+    `
+    SELECT *
+    FROM intranet_specialty_profiles
+    WHERE ${where.join(' AND ')}
+    ORDER BY is_featured DESC, display_order ASC, display_name ASC
+    LIMIT ${limitValue(filters.limit, 80, 200)}
+    `,
+    params
+  );
+  return (rows as Row[]).map(mapSpecialty);
+};
+
+export const getPublishedIntranetSpecialtyBySlug = async (db: DbInterface, slugRaw: string) => {
+  await ensureIntranetCatalogTables(db);
+  const slug = normalizeSlug(slugRaw);
+  const rows = await safeQuery(
+    db,
+    `SELECT * FROM intranet_specialty_profiles WHERE slug = ? AND is_published = 1 LIMIT 1`,
+    [slug]
+  );
+  return rows[0] ? mapSpecialty(rows[0] as Row) : null;
+};
+
+export const saveIntranetSpecialtyProfile = async (db: DbInterface, input: Row, actorUserId: string) => {
+  await ensureIntranetCatalogTables(db);
+  const inputId = clean(input.id);
+  const displayName = clean(input.displayName || input.display_name);
+  if (!displayName) throw new Error('displayName é obrigatório.');
+  const now = nowIso();
+  const isPublished = toDbBool(input.isPublished ?? input.is_published);
+  const existing = inputId
+    ? await db.query(`SELECT id FROM intranet_specialty_profiles WHERE id = ? LIMIT 1`, [inputId])
+    : [];
+  const id = clean((existing[0] as Row | undefined)?.id) || inputId || randomUUID();
+  const values = [
+    normalizeSlug(input.slug || displayName),
+    displayName,
+    nullable(input.shortDescription || input.short_description),
+    nullable(input.description),
+    nullable(input.serviceGuidance || input.service_guidance),
+    Number(input.displayOrder ?? input.display_order ?? 0),
+    toDbBool(input.isFeatured ?? input.is_featured),
+    isPublished,
+    isPublished ? now : null,
+    actorUserId,
+    now,
+    id,
+  ];
+  if (existing.length) {
+    await db.execute(
+      `
+      UPDATE intranet_specialty_profiles
+      SET slug = ?, display_name = ?, short_description = ?, description = ?, service_guidance = ?,
+        display_order = ?, is_featured = ?, is_published = ?, published_at = ?, updated_by = ?, updated_at = ?
+      WHERE id = ?
+      `,
+      values
+    );
+  } else {
+    await db.execute(
+      `
+      INSERT INTO intranet_specialty_profiles (
+        slug, display_name, short_description, description, service_guidance,
+        display_order, is_featured, is_published, published_at, updated_by, updated_at, id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      values
+    );
+  }
+  return (await listIntranetSpecialtyProfiles(db, { search: displayName, limit: 1 })).find((item) => item.id === id) || null;
+};
+
 export const listIntranetProfessionals = async (db: DbInterface, filters: IntranetProfessionalFilters = {}) => {
   await ensureIntranetCatalogTables(db);
   const where = ['COALESCE(p.is_active, 1) = 1', 'COALESCE(ip.is_published, 0) = 1'];
@@ -426,6 +650,14 @@ export const listIntranetProfessionals = async (db: DbInterface, filters: Intran
     params.push(like, like, like, like);
   }
   if (filters.featuredOnly) where.push('COALESCE(ip.is_featured, 0) = 1');
+  const specialtyId = clean(filters.specialtyId);
+  if (specialtyId) {
+    where.push(`EXISTS (
+      SELECT 1 FROM intranet_professional_specialties ps
+      WHERE ps.professional_id = p.id AND ps.specialty_id = ? AND ps.is_published = 1
+    )`);
+    params.push(specialtyId);
+  }
   const rows = await safeQuery(
     db,
     `
@@ -468,6 +700,10 @@ export const listIntranetProfessionalProfiles = async (db: DbInterface, filters:
     params
   );
   return (rows as Row[]).map(mapProfessional);
+};
+
+export const listIntranetProfessionalsBySpecialty = async (db: DbInterface, specialtyId: string, filters: IntranetProfessionalFilters = {}) => {
+  return listIntranetProfessionals(db, { ...filters, specialtyId });
 };
 
 export const saveIntranetProfessionalProfile = async (db: DbInterface, input: Row, actorUserId: string) => {
@@ -523,6 +759,47 @@ export const saveIntranetProfessionalProfile = async (db: DbInterface, input: Ro
   return (await listIntranetProfessionalProfiles(db, { search: displayName, limit: 1 }))[0] || null;
 };
 
+export const listIntranetProfessionalSpecialties = async (db: DbInterface, professionalIdRaw?: string) => {
+  await ensureIntranetCatalogTables(db);
+  const professionalId = clean(professionalIdRaw);
+  const where = professionalId ? 'WHERE professional_id = ?' : '';
+  const rows = await safeQuery(
+    db,
+    `SELECT * FROM intranet_professional_specialties ${where} ORDER BY display_order ASC, created_at DESC`,
+    professionalId ? [professionalId] : []
+  );
+  return (rows as Row[]).map((row) => ({
+    id: clean(row.id),
+    professionalId: clean(row.professional_id),
+    specialtyId: clean(row.specialty_id),
+    notes: clean(row.notes) || null,
+    displayOrder: Number(row.display_order || 0),
+    isPublished: bool(row.is_published),
+    createdAt: clean(row.created_at),
+    updatedAt: clean(row.updated_at),
+  }));
+};
+
+export const replaceIntranetProfessionalSpecialties = async (db: DbInterface, input: Row) => {
+  await ensureIntranetCatalogTables(db);
+  const professionalId = clean(input.professionalId || input.professional_id);
+  if (!professionalId) throw new Error('professionalId é obrigatório.');
+  const specialtyIds = Array.isArray(input.specialtyIds) ? input.specialtyIds.map(clean).filter(Boolean) : [];
+  const now = nowIso();
+  await db.execute(`DELETE FROM intranet_professional_specialties WHERE professional_id = ?`, [professionalId]);
+  for (let index = 0; index < specialtyIds.length; index += 1) {
+    await db.execute(
+      `
+      INSERT INTO intranet_professional_specialties (
+        id, professional_id, specialty_id, notes, display_order, is_published, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [randomUUID(), professionalId, specialtyIds[index], null, index, 1, now, now]
+    );
+  }
+  return listIntranetProfessionalSpecialties(db, professionalId);
+};
+
 export const listIntranetProcedures = async (db: DbInterface, filters: IntranetProcedureFilters = {}) => {
   await ensureIntranetCatalogTables(db);
   const where = ['COALESCE(ip.is_published, 0) = 1'];
@@ -534,6 +811,11 @@ export const listIntranetProcedures = async (db: DbInterface, filters: IntranetP
     params.push(like, like, like);
   }
   if (filters.featuredOnly) where.push('COALESCE(ip.is_featured, 0) = 1');
+  const catalogTypes = (filters.catalogTypes || []).map((item) => clean(item).toLowerCase()).filter((item) => CATALOG_TYPES.has(item));
+  if (catalogTypes.length) {
+    where.push(`LOWER(COALESCE(ip.catalog_type, 'procedure')) IN (${catalogTypes.map(() => '?').join(', ')})`);
+    params.push(...catalogTypes);
+  }
   const rows = await safeQuery(
     db,
     `
@@ -563,6 +845,11 @@ export const listIntranetProcedureProfiles = async (db: DbInterface, filters: In
     const like = `%${search}%`;
     params.push(like, like, like);
   }
+  const catalogTypes = (filters.catalogTypes || []).map((item) => clean(item).toLowerCase()).filter((item) => CATALOG_TYPES.has(item));
+  if (catalogTypes.length) {
+    where.push(`LOWER(COALESCE(ip.catalog_type, 'procedure')) IN (${catalogTypes.map(() => '?').join(', ')})`);
+    params.push(...catalogTypes);
+  }
   const rows = await safeQuery(
     db,
     `
@@ -578,6 +865,24 @@ export const listIntranetProcedureProfiles = async (db: DbInterface, filters: In
   return (rows as Row[]).map(mapProcedure);
 };
 
+export const getPublishedIntranetProcedureBySlug = async (db: DbInterface, catalogTypeRaw: string, slugRaw: string) => {
+  await ensureIntranetCatalogTables(db);
+  const catalogType = pickCatalogType(catalogTypeRaw);
+  const slug = normalizeSlug(slugRaw);
+  const rows = await safeQuery(
+    db,
+    `
+    SELECT c.*, ip.*
+    FROM feegow_procedures_catalog c
+    INNER JOIN intranet_procedure_profiles ip ON ip.procedimento_id = c.procedimento_id
+    WHERE ip.slug = ? AND ip.catalog_type = ? AND ip.is_published = 1
+    LIMIT 1
+    `,
+    [slug, catalogType]
+  );
+  return rows[0] ? mapProcedure(rows[0] as Row) : null;
+};
+
 export const saveIntranetProcedureProfile = async (db: DbInterface, input: Row, actorUserId: string) => {
   await ensureIntranetCatalogTables(db);
   const procedimentoId = Number(input.procedimentoId || input.procedimento_id || 0);
@@ -589,10 +894,15 @@ export const saveIntranetProcedureProfile = async (db: DbInterface, input: Row, 
   const values = [
     normalizeSlug(input.slug || displayName || procedimentoId),
     displayName,
+    pickCatalogType(input.catalogType || input.catalog_type),
     nullable(input.category),
     nullable(input.subcategory),
     nullable(input.summary),
     nullable(input.description),
+    toDbBool(input.requiresPreparation ?? input.requires_preparation),
+    nullable(input.whoPerforms || input.who_performs),
+    nullable(input.howItWorks || input.how_it_works),
+    nullable(input.patientInstructions || input.patient_instructions),
     nullable(input.preparationInstructions || input.preparation_instructions),
     nullable(input.contraindications),
     nullable(input.estimatedDurationText || input.estimated_duration_text),
@@ -610,7 +920,8 @@ export const saveIntranetProcedureProfile = async (db: DbInterface, input: Row, 
     await db.execute(
       `
       UPDATE intranet_procedure_profiles
-      SET slug = ?, display_name = ?, category = ?, subcategory = ?, summary = ?, description = ?,
+      SET slug = ?, display_name = ?, catalog_type = ?, category = ?, subcategory = ?, summary = ?, description = ?,
+        requires_preparation = ?, who_performs = ?, how_it_works = ?, patient_instructions = ?,
         preparation_instructions = ?, contraindications = ?, estimated_duration_text = ?, recovery_notes = ?,
         show_price = ?, published_price = ?, is_featured = ?, is_published = ?, display_order = ?, updated_by = ?, updated_at = ?
       WHERE procedimento_id = ?
@@ -621,10 +932,11 @@ export const saveIntranetProcedureProfile = async (db: DbInterface, input: Row, 
     await db.execute(
       `
       INSERT INTO intranet_procedure_profiles (
-        slug, display_name, category, subcategory, summary, description, preparation_instructions,
+        slug, display_name, catalog_type, category, subcategory, summary, description,
+        requires_preparation, who_performs, how_it_works, patient_instructions, preparation_instructions,
         contraindications, estimated_duration_text, recovery_notes, show_price, published_price,
         is_featured, is_published, display_order, updated_by, updated_at, procedimento_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       values
     );

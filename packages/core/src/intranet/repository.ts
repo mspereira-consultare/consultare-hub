@@ -1,5 +1,6 @@
 import type { DbInterface } from '../db';
 import {
+  listPublishedIntranetSpecialties,
   listIntranetProfessionals,
   listIntranetProcedures,
   listIntranetQmsDocuments,
@@ -84,7 +85,7 @@ export type IntranetFaqCategoryWithItems = IntranetFaqCategory & {
 
 export type IntranetSearchResult = {
   id: string;
-  entityType: 'page' | 'news' | 'faq' | 'qms_document' | 'professional' | 'procedure';
+  entityType: 'page' | 'news' | 'faq' | 'qms_document' | 'professional' | 'specialty' | 'procedure';
   title: string;
   summary: string | null;
   url: string;
@@ -468,8 +469,9 @@ export const searchIntranet = async (
     });
   }
 
-  const [qmsDocuments, professionals, procedures] = await Promise.all([
+  const [qmsDocuments, specialties, professionals, procedures] = await Promise.all([
     listIntranetQmsDocuments(db, { search: query, limit: 8 }),
+    listPublishedIntranetSpecialties(db, { search: query, limit: 8 }),
     listIntranetProfessionals(db, { search: query, limit: 8 }),
     listIntranetProcedures(db, { search: query, limit: 8 }),
   ]);
@@ -484,23 +486,34 @@ export const searchIntranet = async (
     });
   }
 
+  for (const specialty of specialties) {
+    results.push({
+      id: specialty.id,
+      entityType: 'specialty',
+      title: specialty.displayName,
+      summary: specialty.shortDescription,
+      url: `/servicos/consultas/${specialty.slug}`,
+    });
+  }
+
   for (const professional of professionals) {
     results.push({
       id: professional.professionalId,
       entityType: 'professional',
       title: professional.displayName,
       summary: [professional.cardHighlight, professional.specialties.join(', ')].filter(Boolean).join(' · ') || null,
-      url: `/busca?q=${encodeURIComponent(query)}`,
+      url: `/servicos/consultas?q=${encodeURIComponent(query)}`,
     });
   }
 
   for (const procedure of procedures) {
+    const basePath = procedure.catalogType === 'exam' ? '/servicos/exames' : '/servicos/procedimentos';
     results.push({
       id: String(procedure.procedimentoId),
       entityType: 'procedure',
       title: procedure.displayName,
       summary: [procedure.category, procedure.summary].filter(Boolean).join(' · ') || null,
-      url: `/busca?q=${encodeURIComponent(query)}`,
+      url: `${basePath}/${procedure.slug}`,
     });
   }
 

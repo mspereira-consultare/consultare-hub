@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { requireIntranetPermission } from '@/lib/intranet/auth';
 import { AdminModuleShell } from '../admin-module-shell';
+import { CatalogAdmin } from '../catalog-admin';
 import { FaqAdmin } from '../faq-admin';
 import { NavigationAdmin } from '../navigation-admin';
 import { NewsAdmin } from '../news-admin';
@@ -123,6 +124,10 @@ export default async function IntranetAdminModulePage({ params }: { params: Prom
 
   if (module === 'faq') {
     return <FaqAdmin canEdit={editAuth.ok} />;
+  }
+
+  if (module === 'catalogo') {
+    return <CatalogAdmin canEdit={editAuth.ok} />;
   }
 
   return (
