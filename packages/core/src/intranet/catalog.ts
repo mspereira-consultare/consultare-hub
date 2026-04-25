@@ -234,7 +234,7 @@ const migrateLegacyProcedureProfiles = async (db: DbInterface) => {
   await safeExecute(
     db,
     `
-    INSERT INTO intranet_catalog_items (
+    INSERT IGNORE INTO intranet_catalog_items (
       id, slug, display_name, catalog_type, category, subcategory, summary, description,
       requires_preparation, who_performs, how_it_works, patient_instructions, preparation_instructions,
       contraindications, estimated_duration_text, recovery_notes, show_price, published_price,
@@ -246,24 +246,18 @@ const migrateLegacyProcedureProfiles = async (db: DbInterface) => {
       contraindications, estimated_duration_text, recovery_notes, show_price, published_price,
       is_featured, is_published, display_order, updated_by, updated_at
     FROM intranet_procedure_profiles old
-    WHERE NOT EXISTS (
-      SELECT 1 FROM intranet_catalog_items current_items WHERE current_items.id = CAST(old.procedimento_id AS CHAR)
-    )
     `
   );
 
   await safeExecute(
     db,
     `
-    INSERT INTO intranet_professional_catalog_items (
+    INSERT IGNORE INTO intranet_professional_catalog_items (
       id, professional_id, catalog_item_id, notes, display_order, is_published, created_at, updated_at
     )
     SELECT
       id, professional_id, CAST(procedimento_id AS CHAR), notes, display_order, is_published, created_at, updated_at
     FROM intranet_professional_procedures old
-    WHERE NOT EXISTS (
-      SELECT 1 FROM intranet_professional_catalog_items current_items WHERE current_items.id = old.id
-    )
     `
   );
 };
