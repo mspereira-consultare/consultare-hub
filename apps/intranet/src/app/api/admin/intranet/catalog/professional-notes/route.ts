@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
-  listPublishedIntranetSpecialties,
+  listIntranetProfessionalNotes,
+  saveIntranetProfessionalNote,
 } from '@consultare/core/intranet/catalog';
 import { requireIntranetPermission } from '@/lib/intranet/auth';
 
@@ -13,19 +14,15 @@ const errorResponse = (error: unknown, fallback: string) => {
   return NextResponse.json({ error: message }, { status });
 };
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
     const auth = await requireIntranetPermission('intranet_catalogo', 'view');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-    const { searchParams } = new URL(request.url);
-    const data = await listPublishedIntranetSpecialties(auth.db, {
-      search: String(searchParams.get('search') || ''),
-      limit: Number(searchParams.get('limit') || 120),
-    });
+    const data = await listIntranetProfessionalNotes(auth.db);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
-    console.error('Erro ao listar especialidades da intranet:', error);
-    return errorResponse(error, 'Erro interno ao listar especialidades.');
+    console.error('Erro ao listar observações de profissionais:', error);
+    return errorResponse(error, 'Erro interno ao listar observações de profissionais.');
   }
 }
 
@@ -33,10 +30,11 @@ export async function POST(request: Request) {
   try {
     const auth = await requireIntranetPermission('intranet_catalogo', 'edit');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-    await request.json().catch(() => null);
-    return NextResponse.json({ error: 'Especialidades são geradas pelo cadastro de profissionais do painel.' }, { status: 405 });
+    const body = await request.json();
+    const data = await saveIntranetProfessionalNote(auth.db, body, auth.userId);
+    return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
-    console.error('Erro ao bloquear edição de especialidade na intranet:', error);
-    return errorResponse(error, 'Erro interno ao processar especialidade.');
+    console.error('Erro ao salvar observação de profissional:', error);
+    return errorResponse(error, 'Erro interno ao salvar observação de profissional.');
   }
 }

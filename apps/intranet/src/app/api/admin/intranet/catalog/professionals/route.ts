@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
   listIntranetProfessionalProfiles,
-  saveIntranetProfessionalProfile,
 } from '@consultare/core/intranet/catalog';
 import { requireIntranetPermission } from '@/lib/intranet/auth';
 
@@ -34,11 +33,10 @@ export async function POST(request: Request) {
   try {
     const auth = await requireIntranetPermission('intranet_catalogo', 'edit');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-    const body = await request.json();
-    const data = await saveIntranetProfessionalProfile(auth.db, body, auth.userId);
-    return NextResponse.json({ status: 'success', data });
+    await request.json().catch(() => null);
+    return NextResponse.json({ error: 'Dados cadastrais de profissionais devem ser alterados no painel.' }, { status: 405 });
   } catch (error: unknown) {
-    console.error('Erro ao salvar perfil profissional da intranet:', error);
-    return errorResponse(error, 'Erro interno ao salvar perfil profissional.');
+    console.error('Erro ao bloquear edição de profissional na intranet:', error);
+    return errorResponse(error, 'Erro interno ao processar profissional.');
   }
 }

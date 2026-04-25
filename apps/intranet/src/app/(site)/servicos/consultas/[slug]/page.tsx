@@ -53,8 +53,8 @@ export default async function SpecialtyPage({ params }: { params: Promise<{ slug
                 <article key={professional.professionalId} className="rounded-lg border border-slate-200 p-4">
                   <div className="flex gap-3">
                     <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-blue-50 text-sm font-semibold text-[#17407E]">
-                      {professional.photoAssetId ? (
-                        <img src={`/api/intranet/assets/${encodeURIComponent(professional.photoAssetId)}/download`} alt="" className="h-full w-full object-cover" />
+                      {professional.photoUrl ? (
+                        <img src={professional.photoUrl} alt="" className="h-full w-full object-cover" />
                       ) : (
                         professional.displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('')
                       )}

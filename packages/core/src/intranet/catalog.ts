@@ -66,6 +66,8 @@ export type IntranetProfessionalProfile = {
   shortBio: string | null;
   longBio: string | null;
   photoAssetId: string | null;
+  photoDocumentId: string | null;
+  photoUrl: string | null;
   cardHighlight: string | null;
   specialties: string[];
   serviceUnits: string[];
@@ -128,6 +130,19 @@ export type IntranetProfessionalSpecialty = {
   updatedAt: string;
 };
 
+export type IntranetProfessionalNote = {
+  professionalId: string;
+  notes: string | null;
+  updatedAt: string | null;
+};
+
+export type IntranetSpecialtyNote = {
+  specialtySlug: string;
+  specialtyName: string;
+  notes: string | null;
+  updatedAt: string | null;
+};
+
 const clean = (value: unknown) => String(value ?? '').trim();
 const bool = (value: unknown) => value === true || value === 1 || value === '1';
 const nowIso = () => new Date().toISOString();
@@ -180,6 +195,21 @@ const normalizeSlug = (value: unknown) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
+
+const uniqueStrings = (values: unknown[]) => {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values.map(clean).filter(Boolean)) {
+    const key = value.toLocaleLowerCase('pt-BR');
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+};
+
+const specialtyMatchesSlug = (specialties: string[], slug: string) =>
+  specialties.some((specialty) => normalizeSlug(specialty) === slug);
 
 const pickCatalogType = (value: unknown) => {
   const raw = clean(value).toLowerCase();
@@ -387,6 +417,25 @@ export const ensureIntranetCatalogTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS intranet_professional_notes (
+      professional_id VARCHAR(64) PRIMARY KEY,
+      notes TEXT,
+      updated_by VARCHAR(64),
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS intranet_specialty_notes (
+      specialty_slug VARCHAR(180) PRIMARY KEY,
+      specialty_name VARCHAR(180) NOT NULL,
+      notes TEXT,
+      updated_by VARCHAR(64),
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_professional_specialties (
       id VARCHAR(64) PRIMARY KEY,
       professional_id VARCHAR(64) NOT NULL,
@@ -457,24 +506,27 @@ const mapSpecialty = (row: Row): IntranetSpecialtyProfile => ({
 
 const mapProfessional = (row: Row): IntranetProfessionalProfile => {
   const professionalId = clean(row.id || row.professional_id);
-  const name = clean(row.display_name) || clean(row.name);
-  const specialties = parseStringArray(row.specialties_override_json);
-  const serviceUnits = parseStringArray(row.service_units_override_json);
+  const name = clean(row.name || row.display_name);
+  const specialties = uniqueStrings(parseStringArray(row.specialties_json).concat(clean(row.primary_specialty || row.specialty)));
+  const serviceUnits = parseStringArray(row.service_units_json);
+  const photoDocumentId = clean(row.photo_document_id) || null;
   return {
     professionalId,
     slug: clean(row.slug) || normalizeSlug(name || professionalId),
     displayName: name,
-    shortBio: clean(row.short_bio) || null,
-    longBio: clean(row.long_bio) || null,
-    photoAssetId: clean(row.photo_asset_id) || null,
-    cardHighlight: clean(row.card_highlight) || null,
-    specialties: specialties.length ? specialties : parseStringArray(row.specialties_json).concat(clean(row.primary_specialty || row.specialty)).filter(Boolean),
-    serviceUnits: serviceUnits.length ? serviceUnits : parseStringArray(row.service_units_json),
-    contactNotes: clean(row.contact_notes) || null,
+    shortBio: null,
+    longBio: null,
+    photoAssetId: photoDocumentId,
+    photoDocumentId,
+    photoUrl: photoDocumentId ? `/api/intranet/professionals/${encodeURIComponent(professionalId)}/photo` : null,
+    cardHighlight: clean(row.primary_specialty || row.specialty) || null,
+    specialties,
+    serviceUnits,
+    contactNotes: clean(row.intranet_notes) || null,
     displayOrder: Number(row.display_order || 0),
-    isFeatured: bool(row.is_featured),
-    isPublished: bool(row.is_published),
-    publishedAt: clean(row.published_at) || null,
+    isFeatured: false,
+    isPublished: bool(row.is_active),
+    publishedAt: null,
     updatedAt: clean(row.updated_at) || null,
   };
 };
@@ -645,38 +697,49 @@ export const listIntranetSpecialtyProfiles = async (db: DbInterface, filters: In
 
 export const listPublishedIntranetSpecialties = async (db: DbInterface, filters: IntranetCatalogFilters = {}) => {
   await ensureIntranetCatalogTables(db);
-  const where = ['is_published = 1'];
-  const params: unknown[] = [];
   const search = clean(filters.search).toLowerCase();
-  if (search) {
-    where.push("(LOWER(display_name) LIKE ? OR LOWER(COALESCE(short_description, '')) LIKE ? OR LOWER(COALESCE(description, '')) LIKE ?)");
-    const like = `%${search}%`;
-    params.push(like, like, like);
-  }
-  if (filters.featuredOnly) where.push('is_featured = 1');
-  const rows = await safeQuery(
+  const professionalRows = await safeQuery(
     db,
     `
-    SELECT *
-    FROM intranet_specialty_profiles
-    WHERE ${where.join(' AND ')}
-    ORDER BY is_featured DESC, display_order ASC, display_name ASC
-    LIMIT ${limitValue(filters.limit, 80, 200)}
-    `,
-    params
+    SELECT specialty, primary_specialty, specialties_json
+    FROM professionals
+    WHERE COALESCE(is_active, 1) = 1
+    `
   );
-  return (rows as Row[]).map(mapSpecialty);
+  const noteRows = await safeQuery(db, `SELECT * FROM intranet_specialty_notes`);
+  const notesBySlug = new Map((noteRows as Row[]).map((row) => [clean(row.specialty_slug), row]));
+  const bySlug = new Map<string, IntranetSpecialtyProfile>();
+  for (const row of professionalRows as Row[]) {
+    const specialties = uniqueStrings(parseStringArray(row.specialties_json).concat(clean(row.primary_specialty || row.specialty)));
+    for (const specialty of specialties) {
+      const slug = normalizeSlug(specialty);
+      if (!slug || bySlug.has(slug)) continue;
+      const note = notesBySlug.get(slug);
+      bySlug.set(slug, {
+        id: slug,
+        slug,
+        displayName: clean(note?.specialty_name) || specialty,
+        shortDescription: clean(note?.notes) || null,
+        description: null,
+        serviceGuidance: clean(note?.notes) || null,
+        displayOrder: 0,
+        isFeatured: false,
+        isPublished: true,
+        publishedAt: null,
+        updatedAt: clean(note?.updated_at) || null,
+      });
+    }
+  }
+  const out = Array.from(bySlug.values())
+    .filter((item) => !search || `${item.displayName} ${item.shortDescription || ''}`.toLowerCase().includes(search))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName, 'pt-BR'));
+  return out.slice(0, limitValue(filters.limit, 80, 200));
 };
 
 export const getPublishedIntranetSpecialtyBySlug = async (db: DbInterface, slugRaw: string) => {
-  await ensureIntranetCatalogTables(db);
   const slug = normalizeSlug(slugRaw);
-  const rows = await safeQuery(
-    db,
-    `SELECT * FROM intranet_specialty_profiles WHERE slug = ? AND is_published = 1 LIMIT 1`,
-    [slug]
-  );
-  return rows[0] ? mapSpecialty(rows[0] as Row) : null;
+  const specialties = await listPublishedIntranetSpecialties(db, { limit: 500 });
+  return specialties.find((item) => item.slug === slug) || null;
 };
 
 export const saveIntranetSpecialtyProfile = async (db: DbInterface, input: Row, actorUserId: string) => {
@@ -730,69 +793,119 @@ export const saveIntranetSpecialtyProfile = async (db: DbInterface, input: Row, 
 
 export const listIntranetProfessionals = async (db: DbInterface, filters: IntranetProfessionalFilters = {}) => {
   await ensureIntranetCatalogTables(db);
-  const where = ['COALESCE(p.is_active, 1) = 1', 'COALESCE(ip.is_published, 0) = 1'];
+  const where = ['COALESCE(p.is_active, 1) = 1'];
   const params: unknown[] = [];
   const search = clean(filters.search).toLowerCase();
   if (search) {
-    where.push("(LOWER(p.name) LIKE ? OR LOWER(p.specialty) LIKE ? OR LOWER(COALESCE(ip.display_name, '')) LIKE ? OR LOWER(COALESCE(ip.short_bio, '')) LIKE ?)");
+    where.push("(LOWER(p.name) LIKE ? OR LOWER(p.specialty) LIKE ? OR LOWER(COALESCE(p.primary_specialty, '')) LIKE ? OR LOWER(COALESCE(n.notes, '')) LIKE ?)");
     const like = `%${search}%`;
     params.push(like, like, like, like);
-  }
-  if (filters.featuredOnly) where.push('COALESCE(ip.is_featured, 0) = 1');
-  const specialtyId = clean(filters.specialtyId);
-  if (specialtyId) {
-    where.push(`EXISTS (
-      SELECT 1 FROM intranet_professional_specialties ps
-      WHERE ps.professional_id = p.id AND ps.specialty_id = ? AND ps.is_published = 1
-    )`);
-    params.push(specialtyId);
   }
   const rows = await safeQuery(
     db,
     `
-    SELECT p.*, ip.*
+    SELECT p.*, n.notes AS intranet_notes, photo.id AS photo_document_id
     FROM professionals p
-    INNER JOIN intranet_professional_profiles ip ON ip.professional_id = p.id
+    LEFT JOIN intranet_professional_notes n ON n.professional_id = p.id
+    LEFT JOIN professional_documents photo ON photo.id = (
+      SELECT d.id
+      FROM professional_documents d
+      WHERE d.professional_id = p.id AND d.doc_type = 'FOTO' AND COALESCE(d.is_active, 1) = 1
+      ORDER BY d.created_at DESC
+      LIMIT 1
+    )
     WHERE ${where.join(' AND ')}
-    ORDER BY COALESCE(ip.is_featured, 0) DESC, ip.display_order ASC, p.name ASC
-    LIMIT ${limitValue(filters.limit, 12)}
+    ORDER BY p.name ASC
+    LIMIT ${limitValue(filters.limit, 80, 500)}
     `,
     params
   );
   const specialties = (filters.specialties || []).map((item) => clean(item).toLowerCase()).filter(Boolean);
+  const specialtySlug = normalizeSlug(filters.specialtyId);
   return (rows as Row[]).map(mapProfessional).filter((item) => {
-    if (!specialties.length) return true;
-    return item.specialties.some((specialty) => specialties.includes(specialty.toLowerCase()));
-  });
+    const matchesNamedSpecialties = !specialties.length || item.specialties.some((specialty) => specialties.includes(specialty.toLowerCase()));
+    const matchesSlug = !specialtySlug || specialtyMatchesSlug(item.specialties, specialtySlug);
+    return matchesNamedSpecialties && matchesSlug;
+  }).slice(0, limitValue(filters.limit, 12, 500));
 };
 
 export const listIntranetProfessionalProfiles = async (db: DbInterface, filters: IntranetProfessionalFilters = {}) => {
-  await ensureIntranetCatalogTables(db);
-  const where = ['1=1'];
-  const params: unknown[] = [];
-  const search = clean(filters.search).toLowerCase();
-  if (search) {
-    where.push("(LOWER(p.name) LIKE ? OR LOWER(p.specialty) LIKE ? OR LOWER(COALESCE(ip.display_name, '')) LIKE ?)");
-    const like = `%${search}%`;
-    params.push(like, like, like);
-  }
-  const rows = await safeQuery(
-    db,
-    `
-    SELECT p.*, ip.*
-    FROM professionals p
-    LEFT JOIN intranet_professional_profiles ip ON ip.professional_id = p.id
-    WHERE ${where.join(' AND ')}
-    ORDER BY COALESCE(ip.is_published, 0) DESC, COALESCE(ip.display_order, 0) ASC, p.name ASC
-    LIMIT ${limitValue(filters.limit, 80, 200)}
-    `,
-    params
-  );
-  return (rows as Row[]).map(mapProfessional);
+  return listIntranetProfessionals(db, filters);
 };
 
 export const listIntranetProfessionalsBySpecialty = async (db: DbInterface, specialtyId: string, filters: IntranetProfessionalFilters = {}) => {
   return listIntranetProfessionals(db, { ...filters, specialtyId });
+};
+
+export const getProfessionalPhotoDocument = async (db: DbInterface, professionalIdRaw: string) => {
+  await ensureIntranetCatalogTables(db);
+  const professionalId = clean(professionalIdRaw);
+  if (!professionalId) return null;
+  const rows = await safeQuery(
+    db,
+    `
+    SELECT d.*
+    FROM professional_documents d
+    INNER JOIN professionals p ON p.id = d.professional_id
+    WHERE d.professional_id = ? AND d.doc_type = 'FOTO' AND COALESCE(d.is_active, 1) = 1 AND COALESCE(p.is_active, 1) = 1
+    ORDER BY d.created_at DESC
+    LIMIT 1
+    `,
+    [professionalId]
+  );
+  return (rows[0] as Row | undefined) || null;
+};
+
+export const listIntranetProfessionalNotes = async (db: DbInterface) => {
+  await ensureIntranetCatalogTables(db);
+  const rows = await safeQuery(db, `SELECT * FROM intranet_professional_notes ORDER BY updated_at DESC`);
+  return (rows as Row[]).map((row) => ({
+    professionalId: clean(row.professional_id),
+    notes: clean(row.notes) || null,
+    updatedAt: clean(row.updated_at) || null,
+  }));
+};
+
+export const saveIntranetProfessionalNote = async (db: DbInterface, input: Row, actorUserId: string) => {
+  await ensureIntranetCatalogTables(db);
+  const professionalId = clean(input.professionalId || input.professional_id);
+  if (!professionalId) throw new Error('professionalId é obrigatório.');
+  const now = nowIso();
+  const values = [nullable(input.notes), actorUserId, now, professionalId];
+  const existing = await db.query(`SELECT professional_id FROM intranet_professional_notes WHERE professional_id = ? LIMIT 1`, [professionalId]);
+  if (existing.length) {
+    await db.execute(`UPDATE intranet_professional_notes SET notes = ?, updated_by = ?, updated_at = ? WHERE professional_id = ?`, values);
+  } else {
+    await db.execute(`INSERT INTO intranet_professional_notes (notes, updated_by, updated_at, professional_id) VALUES (?, ?, ?, ?)`, values);
+  }
+  return (await listIntranetProfessionalNotes(db)).find((item) => item.professionalId === professionalId) || null;
+};
+
+export const listIntranetSpecialtyNotes = async (db: DbInterface) => {
+  await ensureIntranetCatalogTables(db);
+  const rows = await safeQuery(db, `SELECT * FROM intranet_specialty_notes ORDER BY specialty_name ASC`);
+  return (rows as Row[]).map((row) => ({
+    specialtySlug: clean(row.specialty_slug),
+    specialtyName: clean(row.specialty_name),
+    notes: clean(row.notes) || null,
+    updatedAt: clean(row.updated_at) || null,
+  }));
+};
+
+export const saveIntranetSpecialtyNote = async (db: DbInterface, input: Row, actorUserId: string) => {
+  await ensureIntranetCatalogTables(db);
+  const specialtyName = clean(input.specialtyName || input.specialty_name);
+  const specialtySlug = normalizeSlug(input.specialtySlug || input.specialty_slug || specialtyName);
+  if (!specialtySlug || !specialtyName) throw new Error('Especialidade é obrigatória.');
+  const now = nowIso();
+  const values = [specialtyName, nullable(input.notes), actorUserId, now, specialtySlug];
+  const existing = await db.query(`SELECT specialty_slug FROM intranet_specialty_notes WHERE specialty_slug = ? LIMIT 1`, [specialtySlug]);
+  if (existing.length) {
+    await db.execute(`UPDATE intranet_specialty_notes SET specialty_name = ?, notes = ?, updated_by = ?, updated_at = ? WHERE specialty_slug = ?`, values);
+  } else {
+    await db.execute(`INSERT INTO intranet_specialty_notes (specialty_name, notes, updated_by, updated_at, specialty_slug) VALUES (?, ?, ?, ?, ?)`, values);
+  }
+  return (await listIntranetSpecialtyNotes(db)).find((item) => item.specialtySlug === specialtySlug) || null;
 };
 
 export const saveIntranetProfessionalProfile = async (db: DbInterface, input: Row, actorUserId: string) => {
@@ -1050,6 +1163,27 @@ export const listIntranetProfessionalProcedures = async (db: DbInterface, profes
     createdAt: clean(row.created_at),
     updatedAt: clean(row.updated_at),
   }));
+};
+
+export const listIntranetProfessionalsByCatalogItem = async (db: DbInterface, itemIdRaw: string) => {
+  await ensureIntranetCatalogTables(db);
+  const itemId = clean(itemIdRaw);
+  if (!itemId) return [];
+  const links = await safeQuery(
+    db,
+    `
+    SELECT professional_id
+    FROM intranet_professional_catalog_items
+    WHERE catalog_item_id = ? AND COALESCE(is_published, 1) = 1
+    ORDER BY display_order ASC, created_at DESC
+    `,
+    [itemId]
+  );
+  const ids = (links as Row[]).map((row) => clean(row.professional_id)).filter(Boolean);
+  if (!ids.length) return [];
+  const professionals = await listIntranetProfessionals(db, { limit: 500 });
+  const byId = new Map(professionals.map((item) => [item.professionalId, item]));
+  return ids.map((id) => byId.get(id)).filter(Boolean) as IntranetProfessionalProfile[];
 };
 
 export const saveIntranetProfessionalProcedure = async (db: DbInterface, input: Row) => {

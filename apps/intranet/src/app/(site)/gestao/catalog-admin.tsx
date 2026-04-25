@@ -1,19 +1,15 @@
 'use client';
 
-/* eslint-disable @next/next/no-img-element -- Pré-visualizações administrativas usam URLs autenticadas de assets da intranet. */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
   CircleHelp,
-  Image as ImageIcon,
   Info,
   Link2,
   Loader2,
   Save,
   Search,
   Stethoscope,
-  Upload,
   X,
 } from 'lucide-react';
 import { AdminModuleShell } from './admin-module-shell';
@@ -23,29 +19,15 @@ type Specialty = {
   slug: string;
   displayName: string;
   shortDescription: string | null;
-  description: string | null;
   serviceGuidance: string | null;
-  displayOrder: number;
-  isFeatured: boolean;
-  isPublished: boolean;
-  updatedAt: string | null;
 };
 
 type Professional = {
   professionalId: string;
-  slug: string;
   displayName: string;
-  shortBio: string | null;
-  longBio: string | null;
-  photoAssetId: string | null;
-  cardHighlight: string | null;
   specialties: string[];
   serviceUnits: string[];
   contactNotes: string | null;
-  displayOrder: number;
-  isFeatured: boolean;
-  isPublished: boolean;
-  updatedAt: string | null;
 };
 
 type CatalogItem = {
@@ -75,36 +57,25 @@ type CatalogItem = {
   updatedAt: string | null;
 };
 
-type ProfessionalSpecialty = {
-  professionalId: string;
-  specialtyId: string;
-};
-
 type ProfessionalProcedure = {
   id: string;
   professionalId: string;
   itemId: string;
-  procedimentoId: number | null;
   notes: string | null;
   displayOrder: number;
   isPublished: boolean;
-};
-
-type AssetUploadResult = {
-  id: string;
 };
 
 type CatalogAdminProps = {
   canEdit: boolean;
 };
 
-type TabKey = 'specialties' | 'professionals' | 'items' | 'links';
+type TabKey = 'items' | 'links' | 'notes';
 
 const tabs: Array<{ key: TabKey; label: string }> = [
-  { key: 'specialties', label: 'Especialidades' },
-  { key: 'professionals', label: 'Profissionais' },
   { key: 'items', label: 'Procedimentos e exames' },
   { key: 'links', label: 'Vínculos' },
+  { key: 'notes', label: 'Observações' },
 ];
 
 const catalogTypes = [
@@ -117,8 +88,14 @@ const inputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100';
 const labelClassName = 'mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500';
 
-const splitLines = (value: string) => value.split('\n').map((item) => item.trim()).filter(Boolean);
-const joinLines = (value: string[] | null | undefined) => (Array.isArray(value) ? value.join('\n') : '');
+const normalizeError = async (res: Response) => {
+  try {
+    const json = await res.json();
+    return String(json?.error || `Falha HTTP ${res.status}`);
+  } catch {
+    return `Falha HTTP ${res.status}`;
+  }
+};
 
 const slugify = (value: string) =>
   value
@@ -129,29 +106,7 @@ const slugify = (value: string) =>
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 
-const normalizeError = async (res: Response) => {
-  try {
-    const json = await res.json();
-    return String(json?.error || `Falha HTTP ${res.status}`);
-  } catch {
-    return `Falha HTTP ${res.status}`;
-  }
-};
-
 const typeLabel = (value: string) => catalogTypes.find((item) => item.value === value)?.label || value;
-
-const blankSpecialty = (): Specialty => ({
-  id: '',
-  slug: '',
-  displayName: '',
-  shortDescription: '',
-  description: '',
-  serviceGuidance: '',
-  displayOrder: 0,
-  isFeatured: false,
-  isPublished: false,
-  updatedAt: null,
-});
 
 const blankCatalogItem = (): CatalogItem => ({
   id: '',
@@ -181,62 +136,59 @@ const blankCatalogItem = (): CatalogItem => ({
 });
 
 export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
-  const [activeTab, setActiveTab] = useState<TabKey>('specialties');
+  const [activeTab, setActiveTab] = useState<TabKey>('items');
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [items, setItems] = useState<CatalogItem[]>([]);
-  const [professionalSpecialties, setProfessionalSpecialties] = useState<ProfessionalSpecialty[]>([]);
   const [professionalProcedures, setProfessionalProcedures] = useState<ProfessionalProcedure[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [selectedSpecialty, setSelectedSpecialty] = useState<Specialty>(() => blankSpecialty());
-  const [selectedProfessionalId, setSelectedProfessionalId] = useState('');
   const [selectedItemId, setSelectedItemId] = useState('');
   const [draftItem, setDraftItem] = useState<CatalogItem | null>(null);
   const [selectedLinkProfessionalId, setSelectedLinkProfessionalId] = useState('');
   const [selectedLinkItemId, setSelectedLinkItemId] = useState('');
   const [linkNotes, setLinkNotes] = useState('');
+  const [selectedNoteProfessionalId, setSelectedNoteProfessionalId] = useState('');
+  const [professionalNote, setProfessionalNote] = useState('');
+  const [selectedNoteSpecialtySlug, setSelectedNoteSpecialtySlug] = useState('');
+  const [specialtyNote, setSpecialtyNote] = useState('');
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
-  const selectedProfessional = useMemo(
-    () => professionals.find((item) => item.professionalId === selectedProfessionalId) || professionals[0] || null,
-    [professionals, selectedProfessionalId]
-  );
   const selectedItem = useMemo(
     () => draftItem || items.find((item) => item.id === selectedItemId) || items[0] || null,
     [draftItem, items, selectedItemId]
   );
 
-  const selectedProfessionalSpecialtyIds = useMemo(
-    () => professionalSpecialties
-      .filter((item) => item.professionalId === selectedProfessional?.professionalId)
-      .map((item) => item.specialtyId),
-    [professionalSpecialties, selectedProfessional?.professionalId]
+  const selectedNoteProfessional = useMemo(
+    () => professionals.find((item) => item.professionalId === selectedNoteProfessionalId) || professionals[0] || null,
+    [professionals, selectedNoteProfessionalId]
+  );
+
+  const selectedNoteSpecialty = useMemo(
+    () => specialties.find((item) => item.slug === selectedNoteSpecialtySlug) || specialties[0] || null,
+    [specialties, selectedNoteSpecialtySlug]
   );
 
   const loadAll = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
-      const [specialtiesRes, professionalsRes, itemsRes, profSpecialtiesRes, profProceduresRes] = await Promise.all([
-        fetch('/api/admin/intranet/catalog/specialties?limit=200', { cache: 'no-store' }),
-        fetch('/api/admin/intranet/catalog/professionals?limit=200', { cache: 'no-store' }),
+      const [specialtiesRes, professionalsRes, itemsRes, profProceduresRes] = await Promise.all([
+        fetch('/api/admin/intranet/catalog/specialties?limit=500', { cache: 'no-store' }),
+        fetch('/api/admin/intranet/catalog/professionals?limit=500', { cache: 'no-store' }),
         fetch('/api/admin/intranet/catalog/procedures?limit=200', { cache: 'no-store' }),
-        fetch('/api/admin/intranet/catalog/professional-specialties', { cache: 'no-store' }),
         fetch('/api/admin/intranet/catalog/professional-procedures', { cache: 'no-store' }),
       ]);
-      for (const res of [specialtiesRes, professionalsRes, itemsRes, profSpecialtiesRes, profProceduresRes]) {
+      for (const res of [specialtiesRes, professionalsRes, itemsRes, profProceduresRes]) {
         if (!res.ok) throw new Error(await normalizeError(res));
       }
-      const [specialtiesJson, professionalsJson, itemsJson, profSpecialtiesJson, profProceduresJson] = await Promise.all([
+      const [specialtiesJson, professionalsJson, itemsJson, profProceduresJson] = await Promise.all([
         specialtiesRes.json(),
         professionalsRes.json(),
         itemsRes.json(),
-        profSpecialtiesRes.json(),
         profProceduresRes.json(),
       ]);
       const nextSpecialties = Array.isArray(specialtiesJson?.data) ? specialtiesJson.data : [];
@@ -245,14 +197,15 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
       setSpecialties(nextSpecialties);
       setProfessionals(nextProfessionals);
       setItems(nextItems);
-      setProfessionalSpecialties(Array.isArray(profSpecialtiesJson?.data) ? profSpecialtiesJson.data : []);
       setProfessionalProcedures(Array.isArray(profProceduresJson?.data) ? profProceduresJson.data : []);
-      setSelectedSpecialty((current) => current.id ? current : nextSpecialties[0] || blankSpecialty());
-      setSelectedProfessionalId((current) => current || nextProfessionals[0]?.professionalId || '');
       setSelectedItemId((current) => current || nextItems[0]?.id || '');
       setDraftItem(null);
       setSelectedLinkProfessionalId((current) => current || nextProfessionals[0]?.professionalId || '');
       setSelectedLinkItemId((current) => current || nextItems[0]?.id || '');
+      setSelectedNoteProfessionalId((current) => current || nextProfessionals[0]?.professionalId || '');
+      setSelectedNoteSpecialtySlug((current) => current || nextSpecialties[0]?.slug || '');
+      setProfessionalNote((current) => current || nextProfessionals[0]?.contactNotes || '');
+      setSpecialtyNote((current) => current || nextSpecialties[0]?.serviceGuidance || nextSpecialties[0]?.shortDescription || '');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar catálogo.');
     } finally {
@@ -267,58 +220,12 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
     return () => window.clearTimeout(timeoutId);
   }, [loadAll]);
 
-  const filteredSpecialties = useMemo(() => filterBySearch(specialties, search, (item) => `${item.displayName} ${item.shortDescription || ''}`), [search, specialties]);
-  const filteredProfessionals = useMemo(() => filterBySearch(professionals, search, (item) => `${item.displayName} ${item.cardHighlight || ''} ${item.specialties.join(' ')}`), [professionals, search]);
   const filteredItems = useMemo(() => filterBySearch(items, search, (item) => `${item.displayName} ${item.category || ''} ${item.summary || ''}`), [items, search]);
-
-  const saveSpecialty = async () => {
-    if (!canEdit || saving) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/admin/intranet/catalog/specialties', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...selectedSpecialty,
-          slug: selectedSpecialty.slug || slugify(selectedSpecialty.displayName),
-        }),
-      });
-      if (!res.ok) throw new Error(await normalizeError(res));
-      setNotice('Especialidade salva.');
-      await loadAll();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao salvar especialidade.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveProfessional = async () => {
-    if (!canEdit || saving || !selectedProfessional) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/admin/intranet/catalog/professionals', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(selectedProfessional),
-      });
-      if (!res.ok) throw new Error(await normalizeError(res));
-      const linkRes = await fetch('/api/admin/intranet/catalog/professional-specialties', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ professionalId: selectedProfessional.professionalId, specialtyIds: selectedProfessionalSpecialtyIds }),
-      });
-      if (!linkRes.ok) throw new Error(await normalizeError(linkRes));
-      setNotice('Profissional salvo.');
-      await loadAll();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao salvar profissional.');
-    } finally {
-      setSaving(false);
-    }
-  };
+  const filteredLinks = useMemo(() => filterBySearch(professionalProcedures, search, (link) => {
+    const professional = professionals.find((item) => item.professionalId === link.professionalId);
+    const item = items.find((entry) => entry.id === link.itemId);
+    return `${professional?.displayName || link.professionalId} ${item?.displayName || link.itemId} ${link.notes || ''}`;
+  }), [items, professionalProcedures, professionals, search]);
 
   const saveItem = async () => {
     if (!canEdit || saving || !selectedItem) return;
@@ -328,7 +235,7 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
       const res = await fetch('/api/admin/intranet/catalog/procedures', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(selectedItem),
+        body: JSON.stringify({ ...selectedItem, slug: selectedItem.slug || slugify(selectedItem.displayName) }),
       });
       if (!res.ok) throw new Error(await normalizeError(res));
       const json = await res.json();
@@ -369,10 +276,48 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
     }
   };
 
-  const updateProfessional = <K extends keyof Professional>(key: K, value: Professional[K]) => {
-    if (!selectedProfessional) return;
-    const updated = { ...selectedProfessional, [key]: value };
-    setProfessionals((current) => current.map((item) => item.professionalId === updated.professionalId ? updated : item));
+  const saveProfessionalNote = async () => {
+    if (!canEdit || saving || !selectedNoteProfessional) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/intranet/catalog/professional-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ professionalId: selectedNoteProfessional.professionalId, notes: professionalNote }),
+      });
+      if (!res.ok) throw new Error(await normalizeError(res));
+      setNotice('Observação do profissional salva.');
+      await loadAll();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar observação do profissional.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveSpecialtyNote = async () => {
+    if (!canEdit || saving || !selectedNoteSpecialty) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/intranet/catalog/specialty-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          specialtySlug: selectedNoteSpecialty.slug,
+          specialtyName: selectedNoteSpecialty.displayName,
+          notes: specialtyNote,
+        }),
+      });
+      if (!res.ok) throw new Error(await normalizeError(res));
+      setNotice('Observação da especialidade salva.');
+      await loadAll();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar observação da especialidade.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const updateItem = <K extends keyof CatalogItem>(key: K, value: CatalogItem[K]) => {
@@ -385,45 +330,23 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
     setItems((current) => current.map((item) => item.id === updated.id ? updated : item));
   };
 
-  const uploadProfessionalPhoto = async (file: File) => {
-    if (!selectedProfessional || !canEdit) return;
-    setUploadingPhoto(true);
-    setError(null);
-    try {
-      const body = new FormData();
-      body.append('file', file);
-      body.append('entityType', 'professional-photo');
-      body.append('entityId', selectedProfessional.professionalId);
-      const res = await fetch('/api/admin/intranet/assets', { method: 'POST', body });
-      if (!res.ok) throw new Error(await normalizeError(res));
-      const json = await res.json();
-      const asset = json?.data as AssetUploadResult | undefined;
-      if (!asset?.id) throw new Error('Upload concluído sem ID de asset.');
-      updateProfessional('photoAssetId', asset.id);
-      setNotice('Foto do profissional enviada. Salve o cadastro para publicar a alteração.');
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao enviar foto do profissional.');
-    } finally {
-      setUploadingPhoto(false);
-    }
+  const handleNoteProfessionalChange = (professionalId: string) => {
+    setSelectedNoteProfessionalId(professionalId);
+    const professional = professionals.find((item) => item.professionalId === professionalId);
+    setProfessionalNote(professional?.contactNotes || '');
   };
 
-  const toggleProfessionalSpecialty = (specialtyId: string) => {
-    if (!selectedProfessional) return;
-    setProfessionalSpecialties((current) => {
-      const exists = current.some((item) => item.professionalId === selectedProfessional.professionalId && item.specialtyId === specialtyId);
-      if (exists) {
-        return current.filter((item) => !(item.professionalId === selectedProfessional.professionalId && item.specialtyId === specialtyId));
-      }
-      return [...current, { professionalId: selectedProfessional.professionalId, specialtyId }];
-    });
+  const handleNoteSpecialtyChange = (slug: string) => {
+    setSelectedNoteSpecialtySlug(slug);
+    const specialty = specialties.find((item) => item.slug === slug);
+    setSpecialtyNote(specialty?.serviceGuidance || specialty?.shortDescription || '');
   };
 
   return (
     <AdminModuleShell
       icon={Stethoscope}
       title="Catálogo"
-      description="Padronize especialidades, profissionais, procedimentos e exames para orientar o atendimento."
+      description="Cadastre procedimentos e exames; médicos e especialidades vêm do painel."
       actions={(
         <button type="button" onClick={() => setHelpOpen(true)} className="inline-flex h-11 items-center gap-2 rounded-lg border border-slate-200 px-3.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50">
           <CircleHelp size={16} />
@@ -462,27 +385,6 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
       ) : (
         <div className="grid min-h-[620px] lg:grid-cols-[380px_minmax(0,1fr)]">
           <section className="border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
-            {activeTab === 'specialties' ? (
-              <CatalogList
-                title="Especialidades"
-                count={filteredSpecialties.length}
-                actionLabel="Nova"
-                onAction={() => setSelectedSpecialty(blankSpecialty())}
-              >
-                {filteredSpecialties.map((specialty) => (
-                  <ListButton key={specialty.id} active={selectedSpecialty.id === specialty.id} onClick={() => setSelectedSpecialty(specialty)} title={specialty.displayName} meta={specialty.isPublished ? 'Publicado' : 'Rascunho'} />
-                ))}
-              </CatalogList>
-            ) : null}
-
-            {activeTab === 'professionals' ? (
-              <CatalogList title="Profissionais" count={filteredProfessionals.length}>
-                {filteredProfessionals.map((professional) => (
-                  <ListButton key={professional.professionalId} active={selectedProfessional?.professionalId === professional.professionalId} onClick={() => setSelectedProfessionalId(professional.professionalId)} title={professional.displayName} meta={professional.isPublished ? 'Publicado' : 'Não publicado'} />
-                ))}
-              </CatalogList>
-            ) : null}
-
             {activeTab === 'items' ? (
               <CatalogList
                 title="Procedimentos e exames"
@@ -509,8 +411,8 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
             ) : null}
 
             {activeTab === 'links' ? (
-              <CatalogList title="Vínculos publicados" count={professionalProcedures.length}>
-                {professionalProcedures.map((link) => {
+              <CatalogList title="Vínculos publicados" count={filteredLinks.length}>
+                {filteredLinks.map((link) => {
                   const professional = professionals.find((item) => item.professionalId === link.professionalId);
                   const item = items.find((entry) => entry.id === link.itemId);
                   return (
@@ -522,28 +424,21 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
                 })}
               </CatalogList>
             ) : null}
+
+            {activeTab === 'notes' ? (
+              <CatalogList title="Dados vindos do painel" count={professionals.length + specialties.length}>
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-[#17407E]">
+                  Médicos, especialidades, unidades e fotos são alterados no painel. Use esta aba apenas para observações internas da intranet.
+                </div>
+              </CatalogList>
+            ) : null}
           </section>
 
           <section className="p-5">
-            {activeTab === 'specialties' ? <SpecialtyForm value={selectedSpecialty} onChange={setSelectedSpecialty} onSave={saveSpecialty} saving={saving} canEdit={canEdit} /> : null}
-            {activeTab === 'professionals' && selectedProfessional ? (
-              <ProfessionalForm
-                value={selectedProfessional}
-                specialties={specialties}
-                selectedSpecialtyIds={selectedProfessionalSpecialtyIds}
-                onChange={updateProfessional}
-                onToggleSpecialty={toggleProfessionalSpecialty}
-                onUploadPhoto={uploadProfessionalPhoto}
-                onSave={saveProfessional}
-                saving={saving}
-                uploadingPhoto={uploadingPhoto}
-                canEdit={canEdit}
-              />
-            ) : null}
             {activeTab === 'items' && selectedItem ? <CatalogItemForm value={selectedItem} onChange={updateItem} onSave={saveItem} saving={saving} canEdit={canEdit} /> : null}
             {activeTab === 'links' ? (
               <LinkForm
-                professionals={professionals.filter((item) => item.isPublished)}
+                professionals={professionals}
                 items={items.filter((item) => item.isPublished)}
                 professionalId={selectedLinkProfessionalId}
                 itemId={selectedLinkItemId}
@@ -552,6 +447,24 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
                 onItemChange={setSelectedLinkItemId}
                 onNotesChange={setLinkNotes}
                 onSave={saveProcedureLink}
+                saving={saving}
+                canEdit={canEdit}
+              />
+            ) : null}
+            {activeTab === 'notes' ? (
+              <NotesForm
+                professionals={professionals}
+                specialties={specialties}
+                professionalId={selectedNoteProfessionalId}
+                professionalNote={professionalNote}
+                specialtySlug={selectedNoteSpecialtySlug}
+                specialtyNote={specialtyNote}
+                onProfessionalChange={handleNoteProfessionalChange}
+                onProfessionalNoteChange={setProfessionalNote}
+                onSpecialtyChange={handleNoteSpecialtyChange}
+                onSpecialtyNoteChange={setSpecialtyNote}
+                onSaveProfessional={saveProfessionalNote}
+                onSaveSpecialty={saveSpecialtyNote}
                 saving={saving}
                 canEdit={canEdit}
               />
@@ -627,98 +540,6 @@ function ListButton({ active, onClick, title, meta }: { active: boolean; onClick
   );
 }
 
-function SpecialtyForm({ value, onChange, onSave, saving, canEdit }: { value: Specialty; onChange: (value: Specialty) => void; onSave: () => void; saving: boolean; canEdit: boolean }) {
-  const update = <K extends keyof Specialty>(key: K, next: Specialty[K]) => onChange({ ...value, [key]: next });
-  return (
-    <FormShell title={value.id ? 'Editar especialidade' : 'Nova especialidade'} onSave={onSave} saving={saving} canEdit={canEdit}>
-      <div className="grid gap-4 md:grid-cols-2">
-        <TextField label="Nome" help="Nome exibido na página pública de consultas." value={value.displayName} onChange={(next) => update('displayName', next)} />
-        <TextField label="Slug" help="Parte final da URL pública da especialidade." value={value.slug} onChange={(next) => update('slug', next)} placeholder={slugify(value.displayName)} />
-        <TextField label="Descrição curta" help="Resumo mostrado no índice de consultas." value={value.shortDescription || ''} onChange={(next) => update('shortDescription', next)} className="md:col-span-2" />
-        <TextArea label="Descrição completa" help="Explicação do que a especialidade atende." value={value.description || ''} onChange={(next) => update('description', next)} />
-        <TextArea label="Orientações para atendimento" help="Regras úteis para orientar pacientes e equipe." value={value.serviceGuidance || ''} onChange={(next) => update('serviceGuidance', next)} />
-        <TextField label="Ordem" help="Ordenação nas listas públicas." type="number" value={String(value.displayOrder)} onChange={(next) => update('displayOrder', Number(next || 0))} />
-        <CheckField label="Publicado" help="Quando ativo, aparece em /servicos/consultas." checked={value.isPublished} onChange={(next) => update('isPublished', next)} />
-        <CheckField label="Destaque" help="Prioriza a especialidade nas listagens." checked={value.isFeatured} onChange={(next) => update('isFeatured', next)} />
-      </div>
-    </FormShell>
-  );
-}
-
-function ProfessionalForm({ value, specialties, selectedSpecialtyIds, onChange, onToggleSpecialty, onUploadPhoto, onSave, saving, uploadingPhoto, canEdit }: {
-  value: Professional;
-  specialties: Specialty[];
-  selectedSpecialtyIds: string[];
-  onChange: <K extends keyof Professional>(key: K, value: Professional[K]) => void;
-  onToggleSpecialty: (specialtyId: string) => void;
-  onUploadPhoto: (file: File) => void;
-  onSave: () => void;
-  saving: boolean;
-  uploadingPhoto: boolean;
-  canEdit: boolean;
-}) {
-  return (
-    <FormShell title="Curadoria do profissional" onSave={onSave} saving={saving} canEdit={canEdit}>
-      <div className="mb-5 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-[#17407E]">
-        Profissionais aparecem aqui a partir do cadastro do painel. Cadastre ou ative o profissional no painel primeiro; na intranet você faz a curadoria dos textos, foto, publicação e vínculos.
-      </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <section className="md:col-span-2 rounded-lg border border-slate-200 p-4">
-          <FieldLabel label="Foto do profissional" help="Imagem exibida nos cards públicos das especialidades. Use retrato claro e institucional." />
-          <div className="mt-3 flex flex-wrap items-center gap-4">
-            <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 text-slate-400">
-              {value.photoAssetId ? (
-                <img src={`/api/intranet/assets/${encodeURIComponent(value.photoAssetId)}/download`} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <ImageIcon size={28} />
-              )}
-            </div>
-            <div>
-              <label className={`inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-700 transition hover:bg-slate-50 ${!canEdit || uploadingPhoto ? 'pointer-events-none opacity-60' : ''}`}>
-                {uploadingPhoto ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-                {uploadingPhoto ? 'Enviando...' : 'Enviar foto'}
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="sr-only"
-                  disabled={!canEdit || uploadingPhoto}
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) onUploadPhoto(file);
-                    event.target.value = '';
-                  }}
-                />
-              </label>
-              <p className="mt-2 text-xs leading-5 text-slate-500">A foto só passa a valer no site público depois de salvar o profissional.</p>
-            </div>
-          </div>
-        </section>
-        <TextField label="Nome público" help="Nome exibido nos cards e páginas públicas." value={value.displayName} onChange={(next) => onChange('displayName', next)} />
-        <TextField label="Slug" help="Identificador técnico para uso futuro." value={value.slug} onChange={(next) => onChange('slug', next)} />
-        <TextField label="Destaque do card" help="Frase curta, como especialidade principal ou diferencial." value={value.cardHighlight || ''} onChange={(next) => onChange('cardHighlight', next)} className="md:col-span-2" />
-        <TextArea label="Bio curta" help="Resumo objetivo para o atendimento consultar rapidamente." value={value.shortBio || ''} onChange={(next) => onChange('shortBio', next)} />
-        <TextArea label="Observações de atendimento" help="Instruções úteis de agenda, unidade ou restrições." value={value.contactNotes || ''} onChange={(next) => onChange('contactNotes', next)} />
-        <TextArea label="Unidades" help="Uma unidade por linha. Se vazio, usa a base operacional quando disponível." value={joinLines(value.serviceUnits)} onChange={(next) => onChange('serviceUnits', splitLines(next))} />
-        <TextArea label="Especialidades livres" help="Uma especialidade por linha para exibição no card." value={joinLines(value.specialties)} onChange={(next) => onChange('specialties', splitLines(next))} />
-        <TextField label="Ordem" help="Ordenação nas listas públicas." type="number" value={String(value.displayOrder)} onChange={(next) => onChange('displayOrder', Number(next || 0))} />
-        <CheckField label="Publicado" help="Quando ativo, o profissional pode aparecer em páginas públicas." checked={value.isPublished} onChange={(next) => onChange('isPublished', next)} />
-        <CheckField label="Destaque" help="Prioriza o profissional em listas." checked={value.isFeatured} onChange={(next) => onChange('isFeatured', next)} />
-      </div>
-      <section className="mt-5 rounded-lg border border-slate-200 p-4">
-        <FieldLabel label="Especialidades vinculadas" help="Define em quais páginas de especialidade este profissional aparece." />
-        <div className="mt-2 grid max-h-72 gap-2 overflow-y-auto pr-1 md:grid-cols-2">
-          {specialties.map((specialty) => (
-            <label key={specialty.id} className="flex items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm">
-              <input type="checkbox" checked={selectedSpecialtyIds.includes(specialty.id)} onChange={() => onToggleSpecialty(specialty.id)} className="h-4 w-4 rounded border-slate-300 text-[#17407E]" />
-              <span>{specialty.displayName}</span>
-            </label>
-          ))}
-        </div>
-      </section>
-    </FormShell>
-  );
-}
-
 function CatalogItemForm({ value, onChange, onSave, saving, canEdit }: {
   value: CatalogItem;
   onChange: <K extends keyof CatalogItem>(key: K, value: CatalogItem[K]) => void;
@@ -736,7 +557,7 @@ function CatalogItemForm({ value, onChange, onSave, saving, canEdit }: {
             {catalogTypes.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </select>
         </label>
-        <TextField label="Slug" help="Parte final da URL pública." value={value.slug} onChange={(next) => onChange('slug', next)} />
+        <TextField label="Slug" help="Parte final da URL pública." value={value.slug} onChange={(next) => onChange('slug', next)} placeholder={slugify(value.displayName)} />
         <TextField label="Categoria" help="Agrupamento usado em filtros e cards." value={value.category || ''} onChange={(next) => onChange('category', next)} />
         <TextField label="Subcategoria" help="Detalhe adicional, como exames de imagem ou laboratoriais." value={value.subcategory || ''} onChange={(next) => onChange('subcategory', next)} />
         <TextField label="Quem realiza" help="Setor, profissional ou equipe responsável." value={value.whoPerforms || ''} onChange={(next) => onChange('whoPerforms', next)} />
@@ -775,13 +596,13 @@ function LinkForm({ professionals, items, professionalId, itemId, notes, onProfe
     <FormShell title="Vincular profissional a procedimento/exame" onSave={onSave} saving={saving} canEdit={canEdit} saveLabel="Salvar vínculo">
       <div className="grid gap-4 md:grid-cols-2">
         <label>
-          <FieldLabel label="Profissional" help="Profissional publicado que executa ou orienta o item." />
+          <FieldLabel label="Profissional" help="Lista de profissionais ativos do painel. Dados cadastrais são alterados no painel." />
           <select className={inputClassName} value={professionalId} onChange={(event) => onProfessionalChange(event.target.value)}>
             {professionals.map((professional) => <option key={professional.professionalId} value={professional.professionalId}>{professional.displayName}</option>)}
           </select>
         </label>
         <label>
-          <FieldLabel label="Procedimento ou exame" help="Item publicado relacionado ao profissional." />
+          <FieldLabel label="Procedimento ou exame" help="Item publicado relacionado ao profissional. O vínculo é opcional para cada exame/procedimento." />
           <select className={inputClassName} value={itemId} onChange={(event) => onItemChange(event.target.value)}>
             {items.map((item) => <option key={item.id} value={item.id}>{item.displayName} • {typeLabel(item.catalogType)}</option>)}
           </select>
@@ -790,9 +611,50 @@ function LinkForm({ professionals, items, professionalId, itemId, notes, onProfe
       </div>
       <div className="mt-5 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-[#17407E]">
         <Link2 size={16} className="mb-2" />
-        Especialidades são vinculadas diretamente no formulário do profissional. Esta aba cuida dos vínculos com procedimentos e exames.
+        Exames e procedimentos podem ficar sem profissional vinculado. Crie vínculo apenas quando isso ajudar o atendimento.
       </div>
     </FormShell>
+  );
+}
+
+function NotesForm({ professionals, specialties, professionalId, professionalNote, specialtySlug, specialtyNote, onProfessionalChange, onProfessionalNoteChange, onSpecialtyChange, onSpecialtyNoteChange, onSaveProfessional, onSaveSpecialty, saving, canEdit }: {
+  professionals: Professional[];
+  specialties: Specialty[];
+  professionalId: string;
+  professionalNote: string;
+  specialtySlug: string;
+  specialtyNote: string;
+  onProfessionalChange: (value: string) => void;
+  onProfessionalNoteChange: (value: string) => void;
+  onSpecialtyChange: (value: string) => void;
+  onSpecialtyNoteChange: (value: string) => void;
+  onSaveProfessional: () => void;
+  onSaveSpecialty: () => void;
+  saving: boolean;
+  canEdit: boolean;
+}) {
+  return (
+    <div className="grid gap-5 xl:grid-cols-2">
+      <FormShell title="Observação do profissional" onSave={onSaveProfessional} saving={saving} canEdit={canEdit}>
+        <label>
+          <FieldLabel label="Profissional" help="Profissionais ativos vêm do painel. A intranet salva apenas esta observação interna." />
+          <select className={inputClassName} value={professionalId} onChange={(event) => onProfessionalChange(event.target.value)}>
+            {professionals.map((professional) => <option key={professional.professionalId} value={professional.professionalId}>{professional.displayName}</option>)}
+          </select>
+        </label>
+        <TextArea label="Observação interna" help="Informação pontual para orientar atendimento. Não substitui o cadastro oficial do painel." value={professionalNote} onChange={onProfessionalNoteChange} className="mt-4" />
+      </FormShell>
+
+      <FormShell title="Observação da especialidade" onSave={onSaveSpecialty} saving={saving} canEdit={canEdit}>
+        <label>
+          <FieldLabel label="Especialidade" help="Especialidades são geradas a partir do cadastro dos profissionais ativos no painel." />
+          <select className={inputClassName} value={specialtySlug} onChange={(event) => onSpecialtyChange(event.target.value)}>
+            {specialties.map((specialty) => <option key={specialty.slug} value={specialty.slug}>{specialty.displayName}</option>)}
+          </select>
+        </label>
+        <TextArea label="Observação interna" help="Orientação pontual exibida na página da especialidade dentro da intranet." value={specialtyNote} onChange={onSpecialtyNoteChange} className="mt-4" />
+      </FormShell>
+    </div>
   );
 }
 
@@ -853,7 +715,7 @@ function CatalogHelpModal({ open, onClose }: { open: boolean; onClose: () => voi
               Como funciona
             </div>
             <h2 className="text-xl font-semibold text-slate-900">Catálogo de serviços</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-600">Use este módulo para publicar informações oficiais que o atendimento usa para orientar pacientes.</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">Use este módulo para padronizar procedimentos, exames e observações internas de atendimento.</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50" aria-label="Fechar ajuda">
             <X size={18} />
@@ -861,10 +723,10 @@ function CatalogHelpModal({ open, onClose }: { open: boolean; onClose: () => voi
         </header>
         <div className="grid gap-3 p-5 md:grid-cols-2">
           {[
-            ['Especialidades', 'Criam páginas de consulta com descrição e profissionais vinculados.'],
-            ['Profissionais', 'A base vem do painel, mas a intranet define publicação, foto, textos, unidades e vínculos. Cadastre o profissional no painel para ele aparecer aqui.'],
-            ['Procedimentos e exames', 'São cadastrados diretamente na intranet, sem usar a base Feegow do painel. Use tipo fixo para separar páginas públicas e deixe preparo claro nos exames.'],
-            ['Vínculos', 'Relacione profissionais aos itens que executam ou orientam.'],
+            ['Médicos', 'Nome, foto, especialidades, unidades e status vêm do painel. Altere esses dados no painel.'],
+            ['Observações', 'A intranet salva apenas notas internas pontuais para orientar o atendimento.'],
+            ['Procedimentos e exames', 'São cadastrados diretamente na intranet, com preparo, preço publicado e orientações.'],
+            ['Vínculos', 'Relacione profissionais ativos aos itens quando isso ajudar. Um exame pode existir sem vínculo.'],
           ].map(([title, text]) => (
             <div key={title} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
               <h3 className="font-semibold text-slate-900">{title}</h3>

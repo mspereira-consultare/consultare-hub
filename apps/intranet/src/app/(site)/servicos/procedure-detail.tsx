@@ -1,10 +1,12 @@
-import { Clock, DollarSign, Stethoscope } from 'lucide-react';
+/* eslint-disable @next/next/no-img-element -- Fotos vêm do endpoint autenticado de profissionais da intranet. */
+
+import { Clock, DollarSign, Stethoscope, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
-import type { IntranetProcedureProfile } from '@consultare/core/intranet/catalog';
+import type { IntranetProcedureProfile, IntranetProfessionalProfile } from '@consultare/core/intranet/catalog';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
-export function ProcedureDetail({ item, kind }: { item: IntranetProcedureProfile; kind: 'procedure' | 'exam' }) {
+export function ProcedureDetail({ item, kind, professionals = [] }: { item: IntranetProcedureProfile; kind: 'procedure' | 'exam'; professionals?: IntranetProfessionalProfile[] }) {
   const eyebrow = kind === 'exam' ? 'Exame' : 'Procedimento';
   return (
     <div className="px-4 py-6 lg:px-8">
@@ -35,6 +37,30 @@ export function ProcedureDetail({ item, kind }: { item: IntranetProcedureProfile
           </section>
 
           <aside className="space-y-3">
+            {professionals.length ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <Users size={18} className="text-[#17407E]" />
+                <h2 className="mt-3 font-semibold text-slate-900">Profissionais relacionados</h2>
+                <div className="mt-3 space-y-3">
+                  {professionals.map((professional) => (
+                    <div key={professional.professionalId} className="flex gap-3 rounded-lg bg-white p-3 ring-1 ring-slate-100">
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-blue-50 text-xs font-semibold text-[#17407E]">
+                        {professional.photoUrl ? (
+                          <img src={professional.photoUrl} alt="" className="h-full w-full object-cover" />
+                        ) : (
+                          professional.displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('')
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900">{professional.displayName}</p>
+                        {professional.specialties.length ? <p className="mt-1 text-xs text-slate-500">{professional.specialties.join(' · ')}</p> : null}
+                        {professional.contactNotes ? <p className="mt-1 text-xs leading-5 text-slate-500">{professional.contactNotes}</p> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {item.whoPerforms ? (
               <InfoCard icon={Stethoscope} title="Quem realiza" text={item.whoPerforms} />
             ) : null}

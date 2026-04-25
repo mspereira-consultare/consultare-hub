@@ -57,14 +57,16 @@ const modules = {
   },
   catalogo: {
     title: 'Catálogo',
-    description: 'Curadoria editorial de profissionais, procedimentos, exames e valores publicados.',
+    description: 'Procedimentos, exames, vínculos e observações internas para atendimento.',
     icon: Stethoscope,
     pageKey: 'intranet_catalogo',
     endpoints: [
       'GET/POST /api/admin/intranet/catalog/qms',
-      'GET/POST /api/admin/intranet/catalog/professionals',
+      'GET /api/admin/intranet/catalog/professionals',
       'GET/POST /api/admin/intranet/catalog/procedures',
       'GET/POST /api/admin/intranet/catalog/professional-procedures',
+      'GET/POST /api/admin/intranet/catalog/professional-notes',
+      'GET/POST /api/admin/intranet/catalog/specialty-notes',
     ],
   },
   audiencias: {
