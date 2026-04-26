@@ -1,15 +1,28 @@
 'use client';
 
+/* eslint-disable @next/next/no-img-element -- Pré-visualizações administrativas usam URLs autenticadas de assets da intranet. */
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import {
+  Bot,
+  ChevronDown,
+  ChevronUp,
   CircleHelp,
+  FileText,
+  Image as ImageIcon,
   Info,
   Link2,
+  Link as LinkIcon,
   Loader2,
+  Plus,
   Save,
   Search,
+  Sparkles,
   Stethoscope,
+  Table,
+  Trash2,
+  Users,
   X,
 } from 'lucide-react';
 import { AdminModuleShell } from './admin-module-shell';
@@ -20,6 +33,21 @@ type Specialty = {
   displayName: string;
   shortDescription: string | null;
   serviceGuidance: string | null;
+};
+
+type IntranetBlock = {
+  type: string;
+  data: Record<string, unknown>;
+};
+
+type SpecialtyPage = {
+  specialtySlug: string;
+  specialtyName: string;
+  content: {
+    blocks?: IntranetBlock[];
+    [key: string]: unknown;
+  };
+  updatedAt: string | null;
 };
 
 type Professional = {
@@ -70,12 +98,35 @@ type CatalogAdminProps = {
   canEdit: boolean;
 };
 
-type TabKey = 'items' | 'links' | 'notes';
+type AssetUploadResult = {
+  id: string;
+  originalName: string;
+};
+
+type TabKey = 'specialties' | 'items' | 'links' | 'notes';
 
 const tabs: Array<{ key: TabKey; label: string }> = [
+  { key: 'specialties', label: 'Especialidades' },
   { key: 'items', label: 'Procedimentos e exames' },
   { key: 'links', label: 'Vínculos' },
   { key: 'notes', label: 'Observações' },
+];
+
+const blockTypes: Array<{ value: string; label: string; icon: typeof FileText }> = [
+  { value: 'rich_text', label: 'Texto simples', icon: FileText },
+  { value: 'image', label: 'Imagem', icon: ImageIcon },
+  { value: 'callout', label: 'Destaque / aviso', icon: Sparkles },
+  { value: 'quick_links', label: 'Links rápidos', icon: LinkIcon },
+  { value: 'table', label: 'Tabela simples', icon: Table },
+  { value: 'contact_cards', label: 'Contatos', icon: Users },
+  { value: 'chatbot_entry', label: 'Entrada IA Consultare', icon: Bot },
+];
+
+const calloutSeverities = [
+  { value: 'info', label: 'Informativo' },
+  { value: 'success', label: 'Orientação' },
+  { value: 'warning', label: 'Atenção' },
+  { value: 'danger', label: 'Crítico' },
 ];
 
 const catalogTypes = [
@@ -108,6 +159,23 @@ const slugify = (value: string) =>
 
 const typeLabel = (value: string) => catalogTypes.find((item) => item.value === value)?.label || value;
 
+const asString = (value: unknown) => String(value ?? '');
+const asArray = (value: unknown) => (Array.isArray(value) ? value : []);
+const blockData = (block: IntranetBlock) => block.data || {};
+const blocksToJson = (blocks: IntranetBlock[]) => JSON.stringify({ blocks }, null, 2);
+
+const emptyBlockData = (type: string): Record<string, unknown> => {
+  if (type === 'quick_links') return { title: 'Links rápidos', items: [{ label: '', url: '', description: '' }] };
+  if (type === 'table') return { title: '', columns: ['Coluna 1', 'Coluna 2'], rows: [['', '']] };
+  if (type === 'image') return { title: '', imageUrl: '', imageAlt: '', caption: '' };
+  if (type === 'contact_cards') return { title: 'Contatos', contacts: [{ name: '', role: '', phone: '', email: '', notes: '' }] };
+  if (type === 'chatbot_entry') return { title: 'IA Consultare', description: 'Assistente institucional da intranet.' };
+  if (type === 'callout') return { title: '', body: '', severity: 'info' };
+  return { title: '', body: '' };
+};
+
+const blockTypeLabel = (type: string) => blockTypes.find((item) => item.value === type)?.label || type;
+
 const blankCatalogItem = (): CatalogItem => ({
   id: '',
   procedimentoId: null,
@@ -136,8 +204,9 @@ const blankCatalogItem = (): CatalogItem => ({
 });
 
 export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
-  const [activeTab, setActiveTab] = useState<TabKey>('items');
+  const [activeTab, setActiveTab] = useState<TabKey>('specialties');
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
+  const [specialtyPages, setSpecialtyPages] = useState<SpecialtyPage[]>([]);
   const [professionals, setProfessionals] = useState<Professional[]>([]);
   const [items, setItems] = useState<CatalogItem[]>([]);
   const [professionalProcedures, setProfessionalProcedures] = useState<ProfessionalProcedure[]>([]);
@@ -154,12 +223,23 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
   const [professionalNote, setProfessionalNote] = useState('');
   const [selectedNoteSpecialtySlug, setSelectedNoteSpecialtySlug] = useState('');
   const [specialtyNote, setSpecialtyNote] = useState('');
+  const [selectedSpecialtySlug, setSelectedSpecialtySlug] = useState('');
+  const [specialtyBlocks, setSpecialtyBlocks] = useState<IntranetBlock[]>([]);
+  const [specialtyContentJson, setSpecialtyContentJson] = useState(blocksToJson([]));
+  const [specialtyJsonOpen, setSpecialtyJsonOpen] = useState(false);
+  const [uploadingBlockIndex, setUploadingBlockIndex] = useState<number | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const selectedSpecialtySlugRef = useRef('');
 
   const selectedItem = useMemo(
     () => draftItem || items.find((item) => item.id === selectedItemId) || items[0] || null,
     [draftItem, items, selectedItemId]
+  );
+
+  const selectedSpecialty = useMemo(
+    () => specialties.find((item) => item.slug === selectedSpecialtySlug) || specialties[0] || null,
+    [specialties, selectedSpecialtySlug]
   );
 
   const selectedNoteProfessional = useMemo(
@@ -176,25 +256,29 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
     try {
       setLoading(true);
       setError(null);
-      const [specialtiesRes, professionalsRes, itemsRes, profProceduresRes] = await Promise.all([
+      const [specialtiesRes, specialtyPagesRes, professionalsRes, itemsRes, profProceduresRes] = await Promise.all([
         fetch('/api/admin/intranet/catalog/specialties?limit=500', { cache: 'no-store' }),
+        fetch('/api/admin/intranet/catalog/specialty-pages', { cache: 'no-store' }),
         fetch('/api/admin/intranet/catalog/professionals?limit=500', { cache: 'no-store' }),
         fetch('/api/admin/intranet/catalog/procedures?limit=200', { cache: 'no-store' }),
         fetch('/api/admin/intranet/catalog/professional-procedures', { cache: 'no-store' }),
       ]);
-      for (const res of [specialtiesRes, professionalsRes, itemsRes, profProceduresRes]) {
+      for (const res of [specialtiesRes, specialtyPagesRes, professionalsRes, itemsRes, profProceduresRes]) {
         if (!res.ok) throw new Error(await normalizeError(res));
       }
-      const [specialtiesJson, professionalsJson, itemsJson, profProceduresJson] = await Promise.all([
+      const [specialtiesJson, specialtyPagesJson, professionalsJson, itemsJson, profProceduresJson] = await Promise.all([
         specialtiesRes.json(),
+        specialtyPagesRes.json(),
         professionalsRes.json(),
         itemsRes.json(),
         profProceduresRes.json(),
       ]);
       const nextSpecialties = Array.isArray(specialtiesJson?.data) ? specialtiesJson.data : [];
+      const nextSpecialtyPages = Array.isArray(specialtyPagesJson?.data) ? specialtyPagesJson.data : [];
       const nextProfessionals = Array.isArray(professionalsJson?.data) ? professionalsJson.data : [];
       const nextItems = Array.isArray(itemsJson?.data) ? itemsJson.data : [];
       setSpecialties(nextSpecialties);
+      setSpecialtyPages(nextSpecialtyPages);
       setProfessionals(nextProfessionals);
       setItems(nextItems);
       setProfessionalProcedures(Array.isArray(profProceduresJson?.data) ? profProceduresJson.data : []);
@@ -204,6 +288,13 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
       setSelectedLinkItemId((current) => current || nextItems[0]?.id || '');
       setSelectedNoteProfessionalId((current) => current || nextProfessionals[0]?.professionalId || '');
       setSelectedNoteSpecialtySlug((current) => current || nextSpecialties[0]?.slug || '');
+      const nextSpecialtySlug = selectedSpecialtySlugRef.current || nextSpecialties[0]?.slug || '';
+      selectedSpecialtySlugRef.current = nextSpecialtySlug;
+      setSelectedSpecialtySlug(nextSpecialtySlug);
+      const nextSpecialtyPage = nextSpecialtyPages.find((page: SpecialtyPage) => page.specialtySlug === nextSpecialtySlug);
+      const nextBlocks = Array.isArray(nextSpecialtyPage?.content?.blocks) ? nextSpecialtyPage.content.blocks : [];
+      setSpecialtyBlocks(nextBlocks);
+      setSpecialtyContentJson(blocksToJson(nextBlocks));
       setProfessionalNote((current) => current || nextProfessionals[0]?.contactNotes || '');
       setSpecialtyNote((current) => current || nextSpecialties[0]?.serviceGuidance || nextSpecialties[0]?.shortDescription || '');
     } catch (err: unknown) {
@@ -220,6 +311,7 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
     return () => window.clearTimeout(timeoutId);
   }, [loadAll]);
 
+  const filteredSpecialties = useMemo(() => filterBySearch(specialties, search, (item) => `${item.displayName} ${item.shortDescription || ''}`), [search, specialties]);
   const filteredItems = useMemo(() => filterBySearch(items, search, (item) => `${item.displayName} ${item.category || ''} ${item.summary || ''}`), [items, search]);
   const filteredLinks = useMemo(() => filterBySearch(professionalProcedures, search, (link) => {
     const professional = professionals.find((item) => item.professionalId === link.professionalId);
@@ -330,6 +422,102 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
     setItems((current) => current.map((item) => item.id === updated.id ? updated : item));
   };
 
+  const setBlocks = (blocks: IntranetBlock[]) => {
+    setSpecialtyBlocks(blocks);
+    setSpecialtyContentJson(blocksToJson(blocks));
+  };
+
+  const handleSpecialtyChange = (slug: string) => {
+    selectedSpecialtySlugRef.current = slug;
+    setSelectedSpecialtySlug(slug);
+    const page = specialtyPages.find((item) => item.specialtySlug === slug);
+    const blocks = Array.isArray(page?.content?.blocks) ? page.content.blocks : [];
+    setBlocks(blocks);
+  };
+
+  const addSpecialtyBlock = (type: string) => {
+    setBlocks([...specialtyBlocks, { type, data: emptyBlockData(type) }]);
+  };
+
+  const updateSpecialtyBlock = (index: number, key: string, value: unknown) => {
+    setBlocks(specialtyBlocks.map((block, currentIndex) =>
+      currentIndex === index ? { ...block, data: { ...blockData(block), [key]: value } } : block
+    ));
+  };
+
+  const removeSpecialtyBlock = (index: number) => {
+    setBlocks(specialtyBlocks.filter((_, currentIndex) => currentIndex !== index));
+  };
+
+  const moveSpecialtyBlock = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= specialtyBlocks.length) return;
+    const next = [...specialtyBlocks];
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    setBlocks(next);
+  };
+
+  const applySpecialtyJson = () => {
+    try {
+      const parsed = JSON.parse(specialtyContentJson || '{}');
+      const blocks = Array.isArray(parsed?.blocks) ? parsed.blocks : [];
+      setBlocks(blocks);
+      setNotice('JSON aplicado ao editor de especialidade.');
+    } catch {
+      setError('JSON inválido para a página da especialidade.');
+    }
+  };
+
+  const uploadSpecialtyBlockImage = async (index: number, file: File | null) => {
+    if (!file) return;
+    setUploadingBlockIndex(index);
+    setError(null);
+    try {
+      const body = new FormData();
+      body.set('file', file);
+      body.set('entityType', 'specialty-page-image');
+      body.set('entityId', selectedSpecialty?.slug || 'specialty');
+      const res = await fetch('/api/admin/intranet/assets', { method: 'POST', body });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || 'Erro ao enviar imagem.');
+      const asset = json?.data as AssetUploadResult;
+      if (!asset?.id) throw new Error('Imagem enviada sem identificador.');
+      setBlocks(specialtyBlocks.map((block, currentIndex) =>
+        currentIndex === index
+          ? { ...block, data: { ...blockData(block), imageUrl: `/api/intranet/assets/${encodeURIComponent(asset.id)}/download`, imageAlt: asset.originalName || 'Imagem da especialidade' } }
+          : block
+      ));
+      setNotice('Imagem enviada e vinculada ao bloco.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao enviar imagem.');
+    } finally {
+      setUploadingBlockIndex(null);
+    }
+  };
+
+  const saveSpecialtyPage = async () => {
+    if (!canEdit || saving || !selectedSpecialty) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/intranet/catalog/specialty-pages/${encodeURIComponent(selectedSpecialty.slug)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          specialtyName: selectedSpecialty.displayName,
+          content: { blocks: specialtyBlocks },
+        }),
+      });
+      if (!res.ok) throw new Error(await normalizeError(res));
+      setNotice('Página da especialidade salva.');
+      await loadAll();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar página da especialidade.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleNoteProfessionalChange = (professionalId: string) => {
     setSelectedNoteProfessionalId(professionalId);
     const professional = professionals.find((item) => item.professionalId === professionalId);
@@ -385,6 +573,24 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
       ) : (
         <div className="grid min-h-[620px] lg:grid-cols-[380px_minmax(0,1fr)]">
           <section className="border-b border-slate-200 p-5 lg:border-b-0 lg:border-r">
+            {activeTab === 'specialties' ? (
+              <CatalogList title="Especialidades" count={filteredSpecialties.length}>
+                {filteredSpecialties.map((specialty) => {
+                  const page = specialtyPages.find((item) => item.specialtySlug === specialty.slug);
+                  const blockCount = page?.content?.blocks?.length || 0;
+                  return (
+                    <ListButton
+                      key={specialty.slug}
+                      active={selectedSpecialty?.slug === specialty.slug}
+                      onClick={() => handleSpecialtyChange(specialty.slug)}
+                      title={specialty.displayName}
+                      meta={`${blockCount} bloco(s) • ${page?.updatedAt ? 'Editada' : 'Sem edição'}`}
+                    />
+                  );
+                })}
+              </CatalogList>
+            ) : null}
+
             {activeTab === 'items' ? (
               <CatalogList
                 title="Procedimentos e exames"
@@ -435,6 +641,26 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
           </section>
 
           <section className="p-5">
+            {activeTab === 'specialties' && selectedSpecialty ? (
+              <SpecialtyPageForm
+                specialty={selectedSpecialty}
+                blocks={specialtyBlocks}
+                contentJson={specialtyContentJson}
+                jsonOpen={specialtyJsonOpen}
+                uploadingBlockIndex={uploadingBlockIndex}
+                saving={saving}
+                canEdit={canEdit}
+                onAddBlock={addSpecialtyBlock}
+                onUpdateBlock={updateSpecialtyBlock}
+                onRemoveBlock={removeSpecialtyBlock}
+                onMoveBlock={moveSpecialtyBlock}
+                onUploadImage={uploadSpecialtyBlockImage}
+                onContentJsonChange={setSpecialtyContentJson}
+                onJsonOpenChange={setSpecialtyJsonOpen}
+                onApplyJson={applySpecialtyJson}
+                onSave={saveSpecialtyPage}
+              />
+            ) : null}
             {activeTab === 'items' && selectedItem ? <CatalogItemForm value={selectedItem} onChange={updateItem} onSave={saveItem} saving={saving} canEdit={canEdit} /> : null}
             {activeTab === 'links' ? (
               <LinkForm
@@ -537,6 +763,301 @@ function ListButton({ active, onClick, title, meta }: { active: boolean; onClick
       <p className="font-semibold text-slate-900">{title}</p>
       <p className="mt-1 text-xs text-slate-500">{meta}</p>
     </button>
+  );
+}
+
+function SpecialtyPageForm({
+  specialty,
+  blocks,
+  contentJson,
+  jsonOpen,
+  uploadingBlockIndex,
+  saving,
+  canEdit,
+  onAddBlock,
+  onUpdateBlock,
+  onRemoveBlock,
+  onMoveBlock,
+  onUploadImage,
+  onContentJsonChange,
+  onJsonOpenChange,
+  onApplyJson,
+  onSave,
+}: {
+  specialty: Specialty;
+  blocks: IntranetBlock[];
+  contentJson: string;
+  jsonOpen: boolean;
+  uploadingBlockIndex: number | null;
+  saving: boolean;
+  canEdit: boolean;
+  onAddBlock: (type: string) => void;
+  onUpdateBlock: (index: number, key: string, value: unknown) => void;
+  onRemoveBlock: (index: number) => void;
+  onMoveBlock: (index: number, direction: -1 | 1) => void;
+  onUploadImage: (index: number, file: File | null) => void;
+  onContentJsonChange: (value: string) => void;
+  onJsonOpenChange: (open: boolean) => void;
+  onApplyJson: () => void;
+  onSave: () => void;
+}) {
+  return (
+    <FormShell title={`Página da especialidade: ${specialty.displayName}`} onSave={onSave} saving={saving} canEdit={canEdit} saveLabel="Salvar página">
+      <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-[#17407E]">
+        Use blocos para montar o conteúdo editorial da especialidade. A lista de médicos continua automática pelo cadastro do painel.
+      </div>
+
+      <div className="mt-5">
+        <div className="mb-3 flex flex-wrap gap-2">
+          {blockTypes.map((block) => {
+            const Icon = block.icon;
+            return (
+              <button
+                key={block.value}
+                type="button"
+                onClick={() => onAddBlock(block.value)}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-[#17407E]"
+              >
+                <Icon size={14} />
+                {block.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="space-y-4">
+          {blocks.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-500">
+              Nenhum bloco adicionado. Comece por texto simples, destaque ou tabela de valores.
+            </div>
+          ) : null}
+          {blocks.map((block, index) => (
+            <SpecialtyBlockEditor
+              key={`${block.type}-${index}`}
+              block={block}
+              index={index}
+              canMoveUp={index > 0}
+              canMoveDown={index < blocks.length - 1}
+              uploading={uploadingBlockIndex === index}
+              onUpdate={onUpdateBlock}
+              onRemove={onRemoveBlock}
+              onMove={onMoveBlock}
+              onUploadImage={onUploadImage}
+            />
+          ))}
+        </div>
+
+        <div className="mt-5 rounded-lg border border-slate-200">
+          <button
+            type="button"
+            onClick={() => onJsonOpenChange(!jsonOpen)}
+            className="flex w-full items-center justify-between px-4 py-3 text-left text-sm font-semibold text-slate-800"
+          >
+            JSON avançado
+            {jsonOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+          {jsonOpen ? (
+            <div className="border-t border-slate-200 p-4">
+              <textarea className={`${inputClassName} min-h-[240px] font-mono text-xs`} value={contentJson} onChange={(event) => onContentJsonChange(event.target.value)} />
+              <button type="button" onClick={onApplyJson} className="mt-3 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-[#17407E]">
+                Aplicar JSON no editor
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </FormShell>
+  );
+}
+
+function SpecialtyBlockEditor({ block, index, canMoveUp, canMoveDown, uploading, onUpdate, onRemove, onMove, onUploadImage }: {
+  block: IntranetBlock;
+  index: number;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  uploading: boolean;
+  onUpdate: (index: number, key: string, value: unknown) => void;
+  onRemove: (index: number) => void;
+  onMove: (index: number, direction: -1 | 1) => void;
+  onUploadImage: (index: number, file: File | null) => void;
+}) {
+  const data = blockData(block);
+  return (
+    <article className="rounded-lg border border-slate-200 bg-white shadow-sm">
+      <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-[#229A8A]">Bloco {index + 1}</p>
+          <h4 className="font-semibold text-slate-900">{blockTypeLabel(block.type)}</h4>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={!canMoveUp} onClick={() => onMove(index, -1)} className="rounded-md border border-slate-200 p-2 text-slate-600 disabled:opacity-40" aria-label="Mover para cima">
+            <ChevronUp size={15} />
+          </button>
+          <button type="button" disabled={!canMoveDown} onClick={() => onMove(index, 1)} className="rounded-md border border-slate-200 p-2 text-slate-600 disabled:opacity-40" aria-label="Mover para baixo">
+            <ChevronDown size={15} />
+          </button>
+          <button type="button" onClick={() => onRemove(index)} className="inline-flex items-center gap-2 rounded-md border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50">
+            <Trash2 size={14} />
+            Remover
+          </button>
+        </div>
+      </div>
+      <div className="grid gap-3 p-4">
+        {(block.type === 'rich_text' || block.type === 'chatbot_entry') ? (
+          <SimpleBlockFields data={data} index={index} onUpdate={onUpdate} imageEnabled={block.type === 'rich_text'} onUploadImage={onUploadImage} uploading={uploading} />
+        ) : null}
+        {block.type === 'callout' ? <CalloutBlockFields data={data} index={index} onUpdate={onUpdate} /> : null}
+        {block.type === 'image' ? <ImageBlockFields data={data} index={index} onUpdate={onUpdate} onUploadImage={onUploadImage} uploading={uploading} /> : null}
+        {block.type === 'quick_links' ? <QuickLinksBlockFields data={data} index={index} onUpdate={onUpdate} /> : null}
+        {block.type === 'table' ? <TableBlockFields data={data} index={index} onUpdate={onUpdate} /> : null}
+        {block.type === 'contact_cards' ? <ContactBlockFields data={data} index={index} onUpdate={onUpdate} /> : null}
+      </div>
+    </article>
+  );
+}
+
+function SimpleBlockFields({ data, index, imageEnabled, uploading, onUpdate, onUploadImage }: {
+  data: Record<string, unknown>;
+  index: number;
+  imageEnabled: boolean;
+  uploading: boolean;
+  onUpdate: (index: number, key: string, value: unknown) => void;
+  onUploadImage: (index: number, file: File | null) => void;
+}) {
+  return (
+    <>
+      <TextField label="Título" help="Título opcional exibido acima do bloco." value={asString(data.title)} onChange={(next) => onUpdate(index, 'title', next)} />
+      <TextArea
+        label={data.description !== undefined ? 'Descrição' : 'Texto'}
+        help="Conteúdo principal do bloco. Quebras de linha são preservadas."
+        value={asString(data.body || data.description)}
+        onChange={(next) => onUpdate(index, data.description !== undefined ? 'description' : 'body', next)}
+      />
+      {imageEnabled ? (
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <FieldLabel label="Imagem no texto" help="Use para colocar uma imagem acima do texto ou ao lado dele em telas maiores." />
+          {asString(data.imageUrl) ? <img src={asString(data.imageUrl)} alt={asString(data.imageAlt) || 'Imagem do bloco'} className="mb-3 max-h-44 rounded-lg border border-slate-200 object-cover" /> : null}
+          <div className="grid gap-2 md:grid-cols-[1fr_180px]">
+            <input type="file" accept="image/*" disabled={uploading} onChange={(event) => onUploadImage(index, event.target.files?.[0] || null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#17407E] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white disabled:opacity-60" />
+            <select className={inputClassName} value={asString(data.imagePosition) || 'above'} onChange={(event) => onUpdate(index, 'imagePosition', event.target.value)}>
+              <option value="above">Acima do texto</option>
+              <option value="side">Ao lado do texto</option>
+            </select>
+          </div>
+          <input className={`${inputClassName} mt-2`} placeholder="Texto alternativo da imagem" value={asString(data.imageAlt)} onChange={(event) => onUpdate(index, 'imageAlt', event.target.value)} />
+          {uploading ? <div className="mt-2 inline-flex items-center gap-2 text-xs text-slate-500"><Loader2 size={13} className="animate-spin" /> Enviando imagem...</div> : null}
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function CalloutBlockFields({ data, index, onUpdate }: { data: Record<string, unknown>; index: number; onUpdate: (index: number, key: string, value: unknown) => void }) {
+  return (
+    <>
+      <label>
+        <FieldLabel label="Criticidade" help="Define cor e destaque do aviso publicado." />
+        <select className={inputClassName} value={asString(data.severity) || 'info'} onChange={(event) => onUpdate(index, 'severity', event.target.value)}>
+          {calloutSeverities.map((severity) => <option key={severity.value} value={severity.value}>{severity.label}</option>)}
+        </select>
+      </label>
+      <TextField label="Título" help="Mensagem curta que resume o aviso." value={asString(data.title)} onChange={(next) => onUpdate(index, 'title', next)} />
+      <TextArea label="Texto" help="Explique o alerta, orientação ou regra da especialidade." value={asString(data.body)} onChange={(next) => onUpdate(index, 'body', next)} />
+    </>
+  );
+}
+
+function ImageBlockFields({ data, index, uploading, onUpdate, onUploadImage }: {
+  data: Record<string, unknown>;
+  index: number;
+  uploading: boolean;
+  onUpdate: (index: number, key: string, value: unknown) => void;
+  onUploadImage: (index: number, file: File | null) => void;
+}) {
+  return (
+    <>
+      <TextField label="Título" help="Título opcional exibido acima da imagem." value={asString(data.title)} onChange={(next) => onUpdate(index, 'title', next)} />
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <FieldLabel label="Arquivo de imagem" help="Envie uma imagem para ser exibida como bloco próprio." />
+        {asString(data.imageUrl) ? <img src={asString(data.imageUrl)} alt={asString(data.imageAlt) || 'Imagem do bloco'} className="mb-3 max-h-72 rounded-lg border border-slate-200 object-cover" /> : null}
+        <input type="file" accept="image/*" disabled={uploading} onChange={(event) => onUploadImage(index, event.target.files?.[0] || null)} className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-[#17407E] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white disabled:opacity-60" />
+        {uploading ? <div className="mt-2 inline-flex items-center gap-2 text-xs text-slate-500"><Loader2 size={13} className="animate-spin" /> Enviando imagem...</div> : null}
+      </div>
+      <TextField label="Texto alternativo" help="Descrição curta para acessibilidade." value={asString(data.imageAlt)} onChange={(next) => onUpdate(index, 'imageAlt', next)} />
+      <TextField label="Legenda" help="Texto opcional exibido abaixo da imagem." value={asString(data.caption)} onChange={(next) => onUpdate(index, 'caption', next)} />
+    </>
+  );
+}
+
+function QuickLinksBlockFields({ data, index, onUpdate }: { data: Record<string, unknown>; index: number; onUpdate: (index: number, key: string, value: unknown) => void }) {
+  const items = asArray(data.items).map((item) => item && typeof item === 'object' && !Array.isArray(item) ? item as Record<string, unknown> : {});
+  const updateItem = (itemIndex: number, key: string, value: string) => {
+    onUpdate(index, 'items', items.map((item, currentIndex) => currentIndex === itemIndex ? { ...item, [key]: value } : item));
+  };
+  return (
+    <>
+      <TextField label="Título" help="Título da lista de links." value={asString(data.title)} onChange={(next) => onUpdate(index, 'title', next)} />
+      <div className="space-y-3">
+        {items.map((item, itemIndex) => (
+          <div key={itemIndex} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-2 flex justify-end">
+              <button type="button" onClick={() => onUpdate(index, 'items', items.filter((_, currentIndex) => currentIndex !== itemIndex))} className="text-xs font-semibold text-rose-700">Remover link</button>
+            </div>
+            <div className="grid gap-2 md:grid-cols-3">
+              <input className={inputClassName} placeholder="Rótulo" value={asString(item.label)} onChange={(event) => updateItem(itemIndex, 'label', event.target.value)} />
+              <input className={inputClassName} placeholder="URL" value={asString(item.url)} onChange={(event) => updateItem(itemIndex, 'url', event.target.value)} />
+              <input className={inputClassName} placeholder="Descrição" value={asString(item.description)} onChange={(event) => updateItem(itemIndex, 'description', event.target.value)} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <button type="button" onClick={() => onUpdate(index, 'items', [...items, { label: '', url: '', description: '' }])} className="inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
+        <Plus size={14} />
+        Adicionar link
+      </button>
+    </>
+  );
+}
+
+function TableBlockFields({ data, index, onUpdate }: { data: Record<string, unknown>; index: number; onUpdate: (index: number, key: string, value: unknown) => void }) {
+  return (
+    <>
+      <TextField label="Título" help="Título opcional da tabela." value={asString(data.title)} onChange={(next) => onUpdate(index, 'title', next)} />
+      <TextArea label="Colunas" help="Informe uma coluna por linha." value={asArray(data.columns).map(asString).join('\n')} onChange={(next) => onUpdate(index, 'columns', next.split('\n').map((item) => item.trim()).filter(Boolean))} />
+      <TextArea label="Linhas" help="Uma linha por registro; separe células com ponto e vírgula." value={asArray(data.rows).map((row) => Array.isArray(row) ? row.map(asString).join('; ') : asString(row)).join('\n')} onChange={(next) => onUpdate(index, 'rows', next.split('\n').filter(Boolean).map((row) => row.split(';').map((cell) => cell.trim())))} />
+    </>
+  );
+}
+
+function ContactBlockFields({ data, index, onUpdate }: { data: Record<string, unknown>; index: number; onUpdate: (index: number, key: string, value: unknown) => void }) {
+  const contacts = asArray(data.contacts).map((item) => item && typeof item === 'object' && !Array.isArray(item) ? item as Record<string, unknown> : {});
+  const updateContact = (contactIndex: number, key: string, value: string) => {
+    onUpdate(index, 'contacts', contacts.map((item, currentIndex) => currentIndex === contactIndex ? { ...item, [key]: value } : item));
+  };
+  return (
+    <>
+      <TextField label="Título" help="Título da seção de contatos." value={asString(data.title)} onChange={(next) => onUpdate(index, 'title', next)} />
+      <div className="space-y-3">
+        {contacts.map((contact, contactIndex) => (
+          <div key={contactIndex} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-2 flex justify-end">
+              <button type="button" onClick={() => onUpdate(index, 'contacts', contacts.filter((_, currentIndex) => currentIndex !== contactIndex))} className="text-xs font-semibold text-rose-700">Remover contato</button>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <input className={inputClassName} placeholder="Nome" value={asString(contact.name)} onChange={(event) => updateContact(contactIndex, 'name', event.target.value)} />
+              <input className={inputClassName} placeholder="Função" value={asString(contact.role)} onChange={(event) => updateContact(contactIndex, 'role', event.target.value)} />
+              <input className={inputClassName} placeholder="Telefone" value={asString(contact.phone)} onChange={(event) => updateContact(contactIndex, 'phone', event.target.value)} />
+              <input className={inputClassName} placeholder="E-mail" value={asString(contact.email)} onChange={(event) => updateContact(contactIndex, 'email', event.target.value)} />
+              <input className={`${inputClassName} md:col-span-2`} placeholder="Observações" value={asString(contact.notes)} onChange={(event) => updateContact(contactIndex, 'notes', event.target.value)} />
+            </div>
+          </div>
+        ))}
+      </div>
+      <button type="button" onClick={() => onUpdate(index, 'contacts', [...contacts, { name: '', role: '', phone: '', email: '', notes: '' }])} className="inline-flex w-fit items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
+        <Plus size={14} />
+        Adicionar contato
+      </button>
+    </>
   );
 }
 
@@ -724,6 +1245,7 @@ function CatalogHelpModal({ open, onClose }: { open: boolean; onClose: () => voi
         <div className="grid gap-3 p-5 md:grid-cols-2">
           {[
             ['Médicos', 'Nome, foto, especialidades, unidades e status vêm do painel. Altere esses dados no painel.'],
+            ['Especialidades', 'Edite aqui o conteúdo em blocos da página pública da especialidade; a lista de médicos continua automática.'],
             ['Observações', 'A intranet salva apenas notas internas pontuais para orientar o atendimento.'],
             ['Procedimentos e exames', 'São cadastrados diretamente na intranet, com preparo, preço publicado e orientações.'],
             ['Vínculos', 'Relacione profissionais ativos aos itens quando isso ajudar. Um exame pode existir sem vínculo.'],

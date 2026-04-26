@@ -63,6 +63,7 @@ const modules = {
     endpoints: [
       'GET/POST /api/admin/intranet/catalog/qms',
       'GET /api/admin/intranet/catalog/professionals',
+      'GET/PUT /api/admin/intranet/catalog/specialty-pages',
       'GET/POST /api/admin/intranet/catalog/procedures',
       'GET/POST /api/admin/intranet/catalog/professional-procedures',
       'GET/POST /api/admin/intranet/catalog/professional-notes',

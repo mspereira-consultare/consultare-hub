@@ -2,6 +2,16 @@ import { randomUUID } from 'crypto';
 import type { DbInterface } from '../db';
 
 type Row = Record<string, unknown>;
+type IntranetCatalogBlock = {
+  type: string;
+  data?: Record<string, unknown>;
+  [key: string]: unknown;
+};
+
+type IntranetSpecialtyPageContent = {
+  blocks?: IntranetCatalogBlock[];
+  [key: string]: unknown;
+};
 
 export type IntranetCatalogFilters = {
   search?: string;
@@ -39,6 +49,13 @@ export type IntranetSpecialtyProfile = {
   updatedAt: string | null;
 };
 
+export type IntranetSpecialtyPage = {
+  specialtySlug: string;
+  specialtyName: string;
+  content: IntranetSpecialtyPageContent;
+  updatedAt: string | null;
+};
+
 export type IntranetQmsDocument = {
   id: string;
   code: string;
@@ -71,6 +88,12 @@ export type IntranetProfessionalProfile = {
   cardHighlight: string | null;
   specialties: string[];
   serviceUnits: string[];
+  attendanceModes: string[];
+  serviceLocations: string[];
+  patientAgeText: string | null;
+  walkInPolicyText: string | null;
+  idealRoomText: string | null;
+  intranetNotesText: string | null;
   contactNotes: string | null;
   specialtyIds?: string[];
   displayOrder: number;
@@ -186,6 +209,8 @@ const stringifyArray = (value: unknown) => {
   const items = value.map(clean).filter(Boolean);
   return items.length ? JSON.stringify(items) : null;
 };
+
+const stringifyJson = (value: unknown, fallback: unknown = {}) => JSON.stringify(value ?? fallback);
 
 const normalizeSlug = (value: unknown) =>
   clean(value)
@@ -436,6 +461,16 @@ export const ensureIntranetCatalogTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS intranet_specialty_pages (
+      specialty_slug VARCHAR(180) PRIMARY KEY,
+      specialty_name VARCHAR(180) NOT NULL,
+      content_json LONGTEXT,
+      updated_by VARCHAR(64),
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_professional_specialties (
       id VARCHAR(64) PRIMARY KEY,
       professional_id VARCHAR(64) NOT NULL,
@@ -504,6 +539,13 @@ const mapSpecialty = (row: Row): IntranetSpecialtyProfile => ({
   updatedAt: clean(row.updated_at) || null,
 });
 
+const mapSpecialtyPage = (row: Row): IntranetSpecialtyPage => ({
+  specialtySlug: clean(row.specialty_slug),
+  specialtyName: clean(row.specialty_name),
+  content: parseJson<IntranetSpecialtyPageContent>(row.content_json, { blocks: [] }),
+  updatedAt: clean(row.updated_at) || null,
+});
+
 const mapProfessional = (row: Row): IntranetProfessionalProfile => {
   const professionalId = clean(row.id || row.professional_id);
   const name = clean(row.name || row.display_name);
@@ -522,6 +564,12 @@ const mapProfessional = (row: Row): IntranetProfessionalProfile => {
     cardHighlight: clean(row.primary_specialty || row.specialty) || null,
     specialties,
     serviceUnits,
+    attendanceModes: parseStringArray(row.attendance_modes_json),
+    serviceLocations: parseStringArray(row.service_locations_text_json),
+    patientAgeText: clean(row.patient_age_text) || null,
+    walkInPolicyText: clean(row.walk_in_policy_text) || null,
+    idealRoomText: clean(row.ideal_room_text) || null,
+    intranetNotesText: clean(row.intranet_notes_text) || null,
     contactNotes: clean(row.intranet_notes) || null,
     displayOrder: Number(row.display_order || 0),
     isFeatured: false,
@@ -740,6 +788,47 @@ export const getPublishedIntranetSpecialtyBySlug = async (db: DbInterface, slugR
   const slug = normalizeSlug(slugRaw);
   const specialties = await listPublishedIntranetSpecialties(db, { limit: 500 });
   return specialties.find((item) => item.slug === slug) || null;
+};
+
+export const listIntranetSpecialtyPages = async (db: DbInterface) => {
+  await ensureIntranetCatalogTables(db);
+  const rows = await safeQuery(db, `SELECT * FROM intranet_specialty_pages ORDER BY specialty_name ASC`);
+  return (rows as Row[]).map(mapSpecialtyPage);
+};
+
+export const getIntranetSpecialtyPage = async (db: DbInterface, slugRaw: string) => {
+  await ensureIntranetCatalogTables(db);
+  const slug = normalizeSlug(slugRaw);
+  if (!slug) return null;
+  const rows = await safeQuery(
+    db,
+    `SELECT * FROM intranet_specialty_pages WHERE specialty_slug = ? LIMIT 1`,
+    [slug]
+  );
+  return rows[0] ? mapSpecialtyPage(rows[0] as Row) : null;
+};
+
+export const saveIntranetSpecialtyPage = async (db: DbInterface, input: Row, actorUserId: string) => {
+  await ensureIntranetCatalogTables(db);
+  const specialtyName = clean(input.specialtyName || input.specialty_name);
+  const specialtySlug = normalizeSlug(input.specialtySlug || input.specialty_slug || specialtyName);
+  if (!specialtySlug || !specialtyName) throw new Error('Especialidade é obrigatória.');
+  const content = (input.content && typeof input.content === 'object') ? input.content : { blocks: [] };
+  const now = nowIso();
+  const values = [specialtyName, stringifyJson(content, { blocks: [] }), actorUserId, now, specialtySlug];
+  const existing = await db.query(`SELECT specialty_slug FROM intranet_specialty_pages WHERE specialty_slug = ? LIMIT 1`, [specialtySlug]);
+  if (existing.length) {
+    await db.execute(
+      `UPDATE intranet_specialty_pages SET specialty_name = ?, content_json = ?, updated_by = ?, updated_at = ? WHERE specialty_slug = ?`,
+      values
+    );
+  } else {
+    await db.execute(
+      `INSERT INTO intranet_specialty_pages (specialty_name, content_json, updated_by, updated_at, specialty_slug) VALUES (?, ?, ?, ?, ?)`,
+      values
+    );
+  }
+  return getIntranetSpecialtyPage(db, specialtySlug);
 };
 
 export const saveIntranetSpecialtyProfile = async (db: DbInterface, input: Row, actorUserId: string) => {
@@ -1025,7 +1114,7 @@ export const listIntranetProcedures = async (db: DbInterface, filters: IntranetP
     FROM intranet_catalog_items
     WHERE ${where.join(' AND ')}
     ORDER BY is_featured DESC, display_order ASC, display_name ASC
-    LIMIT ${limitValue(filters.limit, 12)}
+    LIMIT ${limitValue(filters.limit, 12, 500)}
     `,
     params
   );

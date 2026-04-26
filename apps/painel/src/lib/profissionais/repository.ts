@@ -111,6 +111,11 @@ const normalizeServiceUnits = (value: any): string[] => {
   return normalized;
 };
 
+const normalizeFreeTextList = (value: unknown): string[] => {
+  const source = Array.isArray(value) ? value : clean(value).split('\n');
+  return Array.from(new Set(source.map((item) => clean(item)).filter(Boolean)));
+};
+
 const normalizeAgeRange = (value: any): string | null => {
   const raw = clean(value);
   if (!raw) return null;
@@ -252,6 +257,8 @@ const normalizeInput = (payload: any): ProfessionalInput => {
   const email = clean(payload?.email) || null;
   const ageRange = normalizeAgeRange(payload?.ageRange);
   const serviceUnits = normalizeServiceUnits(payload?.serviceUnits);
+  const attendanceModes = normalizeFreeTextList(payload?.attendanceModes);
+  const serviceLocationsText = normalizeFreeTextList(payload?.serviceLocationsText);
   const normalizedSpecialties = normalizeSpecialties(
     payload?.specialties,
     payload?.primarySpecialty,
@@ -344,6 +351,12 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     email,
     ageRange,
     serviceUnits,
+    attendanceModes,
+    serviceLocationsText,
+    patientAgeText: clean(payload?.patientAgeText) || null,
+    walkInPolicyText: clean(payload?.walkInPolicyText) || null,
+    idealRoomText: clean(payload?.idealRoomText) || null,
+    intranetNotesText: clean(payload?.intranetNotesText) || null,
     hasFeegowPermissions,
     personalDocType,
     personalDocNumber,
@@ -398,6 +411,32 @@ const mapProfessional = (row: any): Professional => ({
       return [];
     }
   })(),
+  attendanceModes: (() => {
+    const raw = clean(row.attendance_modes_json);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((x) => String(x || '').trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  })(),
+  serviceLocationsText: (() => {
+    const raw = clean(row.service_locations_text_json);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((x) => String(x || '').trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
+  })(),
+  patientAgeText: clean(row.patient_age_text) || null,
+  walkInPolicyText: clean(row.walk_in_policy_text) || null,
+  idealRoomText: clean(row.ideal_room_text) || null,
+  intranetNotesText: clean(row.intranet_notes_text) || null,
   hasFeegowPermissions: bool(row.has_feegow_permissions),
   personalDocType: clean(row.personal_doc_type),
   personalDocNumber: clean(row.personal_doc_number),
@@ -728,6 +767,12 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
       email VARCHAR(180),
       age_range VARCHAR(60),
       service_units_json LONGTEXT,
+      attendance_modes_json LONGTEXT,
+      service_locations_text_json LONGTEXT,
+      patient_age_text TEXT,
+      walk_in_policy_text TEXT,
+      ideal_room_text TEXT,
+      intranet_notes_text TEXT,
       has_feegow_permissions INTEGER NOT NULL DEFAULT 0,
       personal_doc_type VARCHAR(10) NOT NULL,
       personal_doc_number VARCHAR(40) NOT NULL,
@@ -767,6 +812,30 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   await safeAddColumn(
     db,
     `ALTER TABLE professionals ADD COLUMN service_units_json LONGTEXT NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN attendance_modes_json LONGTEXT NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN service_locations_text_json LONGTEXT NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN patient_age_text TEXT NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN walk_in_policy_text TEXT NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN ideal_room_text TEXT NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN intranet_notes_text TEXT NULL`
   );
   await safeAddColumn(
     db,
@@ -1093,11 +1162,12 @@ export const createProfessional = async (
     INSERT INTO professionals (
       id, name, contract_party_type, contract_type, cpf, cnpj, legal_name,
       specialty, primary_specialty, specialties_json, phone, email, age_range, service_units_json,
-      has_feegow_permissions, personal_doc_type, personal_doc_number, address_text, is_active,
+      attendance_modes_json, service_locations_text_json, patient_age_text, walk_in_policy_text,
+      ideal_room_text, intranet_notes_text, has_feegow_permissions, personal_doc_type, personal_doc_number, address_text, is_active,
       has_physical_folder, physical_folder_note, contract_template_id, contract_start_date, contract_end_date,
       payment_minimum_text,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -1114,6 +1184,12 @@ export const createProfessional = async (
       input.email || null,
       input.ageRange || null,
       JSON.stringify(input.serviceUnits || []),
+      JSON.stringify(input.attendanceModes || []),
+      JSON.stringify(input.serviceLocationsText || []),
+      input.patientAgeText || null,
+      input.walkInPolicyText || null,
+      input.idealRoomText || null,
+      input.intranetNotesText || null,
       input.hasFeegowPermissions ? 1 : 0,
       input.personalDocType,
       input.personalDocNumber,
@@ -1177,6 +1253,12 @@ export const updateProfessional = async (
       email = ?,
       age_range = ?,
       service_units_json = ?,
+      attendance_modes_json = ?,
+      service_locations_text_json = ?,
+      patient_age_text = ?,
+      walk_in_policy_text = ?,
+      ideal_room_text = ?,
+      intranet_notes_text = ?,
       has_feegow_permissions = ?,
       personal_doc_type = ?,
       personal_doc_number = ?,
@@ -1205,6 +1287,12 @@ export const updateProfessional = async (
       input.email || null,
       input.ageRange || null,
       JSON.stringify(input.serviceUnits || []),
+      JSON.stringify(input.attendanceModes || []),
+      JSON.stringify(input.serviceLocationsText || []),
+      input.patientAgeText || null,
+      input.walkInPolicyText || null,
+      input.idealRoomText || null,
+      input.intranetNotesText || null,
       input.hasFeegowPermissions ? 1 : 0,
       input.personalDocType,
       input.personalDocNumber,

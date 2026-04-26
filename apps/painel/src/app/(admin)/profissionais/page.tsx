@@ -49,6 +49,7 @@ type FormProcedureRate = {
 type FormState = {
   name: string; contractPartyType: ContractPartyType; contractType: string; cpf: string; cnpj: string; legalName: string;
   specialties: FormSpecialty[]; phone: string; email: string; ageMin: number; ageMax: number; serviceUnits: string[];
+  attendanceModesText: string; serviceLocationsText: string; patientAgeText: string; walkInPolicyText: string; idealRoomText: string; intranetNotesText: string;
   hasFeegowPermissions: boolean;
   paymentMinimumText: string;
   personalDocType: string; personalDocNumber: string; addressText: string; isActive: boolean;
@@ -104,6 +105,7 @@ const parseAgeRange = (value: string | null | undefined) => {
 const emptyForm = (): FormState => ({
   name: '', contractPartyType: 'PF', contractType: CONTRACT_TYPES.find((c) => c.isActive)?.code || '', cpf: '', cnpj: '', legalName: '',
   specialties: [{ name: '', isPrimary: true }], phone: '', email: '', ageMin: 0, ageMax: 120, serviceUnits: [], hasFeegowPermissions: false,
+  attendanceModesText: 'Presencial', serviceLocationsText: '', patientAgeText: '', walkInPolicyText: '', idealRoomText: '', intranetNotesText: '',
   paymentMinimumText: '',
   personalDocType: 'CPF', personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
   physicalFolderNote: '', contractTemplateId: '', contractStartDate: '', contractEndDate: '',
@@ -127,6 +129,12 @@ const toForm = (item: ProfessionalListItem): FormState => {
   name: item.name || '', contractPartyType: 'PF', contractType: item.contractType || '', cpf: formatCpf(item.cpf || ''),
   cnpj: formatCnpj(item.cnpj || ''), legalName: item.legalName || '', specialties,
   phone: formatPhone(item.phone || ''), email: item.email || '', ageMin: age.min, ageMax: age.max, serviceUnits: item.serviceUnits || [],
+  attendanceModesText: (item.attendanceModes || []).join('\n'),
+  serviceLocationsText: (item.serviceLocationsText || []).join('\n'),
+  patientAgeText: item.patientAgeText || '',
+  walkInPolicyText: item.walkInPolicyText || '',
+  idealRoomText: item.idealRoomText || '',
+  intranetNotesText: item.intranetNotesText || '',
   hasFeegowPermissions: Boolean(item.hasFeegowPermissions),
   paymentMinimumText: item.paymentMinimumText || '',
   personalDocType: item.personalDocType === 'CNH' ? 'CNH' : 'CPF',
@@ -979,6 +987,12 @@ export default function ProfessionalsPage() {
         email: form.email || null,
         ageRange: `${form.ageMin}-${form.ageMax}`,
         serviceUnits: form.serviceUnits || [],
+        attendanceModes: form.attendanceModesText.split('\n').map((item) => item.trim()).filter(Boolean),
+        serviceLocationsText: form.serviceLocationsText.split('\n').map((item) => item.trim()).filter(Boolean),
+        patientAgeText: form.patientAgeText || null,
+        walkInPolicyText: form.walkInPolicyText || null,
+        idealRoomText: form.idealRoomText || null,
+        intranetNotesText: form.intranetNotesText || null,
         hasFeegowPermissions: form.hasFeegowPermissions,
         paymentMinimumText: form.paymentMinimumText || null,
         physicalFolderNote: form.physicalFolderNote || null,
@@ -1566,6 +1580,75 @@ export default function ProfessionalsPage() {
                           </label>
                         </div>
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="xl:col-span-12 border rounded-xl p-4 bg-blue-50/50 space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-700">Informações para intranet</h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Estes campos alimentam os cards dos médicos nas páginas públicas de especialidades da intranet.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                    <div className="md:col-span-4">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Atendimento</label>
+                      <textarea
+                        value={form.attendanceModesText}
+                        onChange={(e) => setForm((p) => ({ ...p, attendanceModesText: e.target.value }))}
+                        placeholder="Presencial&#10;Telemedicina"
+                        rows={3}
+                        className="w-full px-3 py-2 border rounded-lg resize-y min-h-[88px] bg-white"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-500">Uma opção por linha.</p>
+                    </div>
+                    <div className="md:col-span-8">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Unidades que atende na intranet</label>
+                      <textarea
+                        value={form.serviceLocationsText}
+                        onChange={(e) => setForm((p) => ({ ...p, serviceLocationsText: e.target.value }))}
+                        placeholder="Campinas Shopp (Terças)&#10;Ouro Verde (Quintas)"
+                        rows={3}
+                        className="w-full px-3 py-2 border rounded-lg resize-y min-h-[88px] bg-white"
+                      />
+                      <p className="mt-1 text-[11px] text-slate-500">Use este campo quando precisar incluir dias ou regras por unidade.</p>
+                    </div>
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Atende a partir de</label>
+                      <input
+                        value={form.patientAgeText}
+                        onChange={(e) => setForm((p) => ({ ...p, patientAgeText: e.target.value }))}
+                        placeholder="Ex.: 6 anos"
+                        className="w-full px-3 py-2 border rounded-lg bg-white"
+                      />
+                    </div>
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Encaixes</label>
+                      <input
+                        value={form.walkInPolicyText}
+                        onChange={(e) => setForm((p) => ({ ...p, walkInPolicyText: e.target.value }))}
+                        placeholder="Ex.: Aceita encaixes"
+                        className="w-full px-3 py-2 border rounded-lg bg-white"
+                      />
+                    </div>
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Consultório ideal</label>
+                      <input
+                        value={form.idealRoomText}
+                        onChange={(e) => setForm((p) => ({ ...p, idealRoomText: e.target.value }))}
+                        placeholder="Ex.: 01 ou 02"
+                        className="w-full px-3 py-2 border rounded-lg bg-white"
+                      />
+                    </div>
+                    <div className="md:col-span-3">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Obs. intranet</label>
+                      <input
+                        value={form.intranetNotesText}
+                        onChange={(e) => setForm((p) => ({ ...p, intranetNotesText: e.target.value }))}
+                        placeholder="Ex.: Indica pacotes"
+                        className="w-full px-3 py-2 border rounded-lg bg-white"
+                      />
                     </div>
                   </div>
                 </div>

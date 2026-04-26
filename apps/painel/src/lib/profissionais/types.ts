@@ -81,6 +81,12 @@ export type Professional = {
   email: string | null;
   ageRange: string | null;
   serviceUnits: string[];
+  attendanceModes: string[];
+  serviceLocationsText: string[];
+  patientAgeText: string | null;
+  walkInPolicyText: string | null;
+  idealRoomText: string | null;
+  intranetNotesText: string | null;
   hasFeegowPermissions: boolean;
   personalDocType: string;
   personalDocNumber: string;
@@ -123,6 +129,12 @@ export type ProfessionalInput = {
   email?: string | null;
   ageRange?: string | null;
   serviceUnits?: string[];
+  attendanceModes?: string[];
+  serviceLocationsText?: string[];
+  patientAgeText?: string | null;
+  walkInPolicyText?: string | null;
+  idealRoomText?: string | null;
+  intranetNotesText?: string | null;
   hasFeegowPermissions?: boolean;
   personalDocType: string;
   personalDocNumber: string;
