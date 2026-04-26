@@ -177,7 +177,7 @@ export default async function SiteLayout({
   return (
     <div className="min-h-screen bg-[#f4f7fb] text-slate-900">
       <div className="flex min-h-screen">
-        <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white lg:flex lg:flex-col">
+        <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:h-screen lg:flex-col">
           <div className="border-b border-slate-200 p-5">
             <p className="text-xs font-semibold uppercase tracking-wide text-[#229A8A]">Consultare</p>
             <Link href="/" className="mt-1 block text-2xl font-semibold text-[#053F74]">
@@ -185,7 +185,7 @@ export default async function SiteLayout({
             </Link>
           </div>
 
-          <nav className="flex-1 overflow-y-auto p-3">
+          <nav className="min-h-0 flex-1 overflow-y-auto p-3">
             <Link
               href="/"
               className="mb-2 flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-[#17407E]"
@@ -252,7 +252,7 @@ export default async function SiteLayout({
           </div>
         </aside>
 
-        <div className="flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col lg:ml-72">
           <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur lg:px-6">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="lg:hidden">
