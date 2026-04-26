@@ -215,6 +215,15 @@ export const ensureIntranetTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS intranet_navigation_node_audiences (
+      id VARCHAR(64) PRIMARY KEY,
+      navigation_node_id VARCHAR(64) NOT NULL,
+      audience_group_id VARCHAR(64) NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_editorial_scopes (
       id VARCHAR(64) PRIMARY KEY,
       name VARCHAR(180) NOT NULL,
@@ -587,7 +596,10 @@ const mapNavigationNode = (row: Row) => ({
 export const listNavigationNodes = async (db: DbInterface) => {
   await ensureIntranetTables(db);
   const rows = await db.query(`SELECT * FROM intranet_navigation_nodes ORDER BY sort_order ASC, label ASC`);
-  return rows.map((row) => mapNavigationNode(row as Row));
+  return Promise.all(rows.map(async (row) => ({
+    ...mapNavigationNode(row as Row),
+    audienceGroupIds: await listJoinIds(db, 'intranet_navigation_node_audiences', 'navigation_node_id', clean((row as Row).id), 'audience_group_id'),
+  })));
 };
 
 export const createNavigationNode = async (db: DbInterface, input: Row, actorUserId: string) => {
@@ -625,7 +637,8 @@ export const createNavigationNode = async (db: DbInterface, input: Row, actorUse
       createdAt,
     ]
   );
-  return mapNavigationNode((await queryById(db, 'intranet_navigation_nodes', id))!);
+  await replaceJoinRows(db, 'intranet_navigation_node_audiences', 'navigation_node_id', id, 'audience_group_id', parseStringList(input.audienceGroupIds));
+  return (await listNavigationNodes(db)).find((node) => node.id === id) || mapNavigationNode((await queryById(db, 'intranet_navigation_nodes', id))!);
 };
 
 export const updateNavigationNode = async (db: DbInterface, id: string, input: Row, actorUserId: string) => {
@@ -661,12 +674,16 @@ export const updateNavigationNode = async (db: DbInterface, id: string, input: R
       id,
     ]
   );
-  return mapNavigationNode((await queryById(db, 'intranet_navigation_nodes', id))!);
+  if (input.audienceGroupIds !== undefined) {
+    await replaceJoinRows(db, 'intranet_navigation_node_audiences', 'navigation_node_id', id, 'audience_group_id', parseStringList(input.audienceGroupIds));
+  }
+  return (await listNavigationNodes(db)).find((node) => node.id === id) || mapNavigationNode((await queryById(db, 'intranet_navigation_nodes', id))!);
 };
 
 export const deleteNavigationNode = async (db: DbInterface, id: string) => {
   await ensureIntranetTables(db);
   await db.execute(`UPDATE intranet_navigation_nodes SET parent_node_id = NULL WHERE parent_node_id = ?`, [id]);
+  await db.execute(`DELETE FROM intranet_navigation_node_audiences WHERE navigation_node_id = ?`, [id]);
   await db.execute(`DELETE FROM intranet_navigation_nodes WHERE id = ?`, [id]);
   return { id };
 };
@@ -704,6 +721,25 @@ export const listAudienceGroups = async (db: DbInterface) => {
   await ensureIntranetTables(db);
   const rows = await db.query(`SELECT * FROM intranet_audience_groups ORDER BY is_active DESC, name ASC`);
   return Promise.all(rows.map((row) => mapAudienceGroup(db, row as Row)));
+};
+
+export const listAudienceUserOptions = async (db: DbInterface) => {
+  const rows = await db.query(
+    `
+    SELECT id, name, email, role, department, status
+    FROM users
+    WHERE UPPER(COALESCE(status, 'ATIVO')) = 'ATIVO'
+    ORDER BY name ASC
+    `
+  );
+  return rows.map((row) => ({
+    id: clean((row as Row).id),
+    name: clean((row as Row).name),
+    email: clean((row as Row).email),
+    role: clean((row as Row).role) || 'OPERADOR',
+    department: clean((row as Row).department) || '',
+    status: clean((row as Row).status) || 'ATIVO',
+  }));
 };
 
 export const createAudienceGroup = async (db: DbInterface, input: Row, actorUserId: string) => {
@@ -772,6 +808,10 @@ export const deleteAudienceGroup = async (db: DbInterface, id: string) => {
   await ensureIntranetTables(db);
   await db.execute(`DELETE FROM intranet_audience_group_rules WHERE audience_group_id = ?`, [id]);
   await db.execute(`DELETE FROM intranet_user_audience_assignments WHERE audience_group_id = ?`, [id]);
+  await db.execute(`DELETE FROM intranet_navigation_node_audiences WHERE audience_group_id = ?`, [id]);
+  await db.execute(`DELETE FROM intranet_page_audiences WHERE audience_group_id = ?`, [id]);
+  await db.execute(`DELETE FROM intranet_news_post_audiences WHERE audience_group_id = ?`, [id]);
+  await db.execute(`DELETE FROM intranet_faq_item_audiences WHERE audience_group_id = ?`, [id]);
   await db.execute(`DELETE FROM intranet_audience_groups WHERE id = ?`, [id]);
   return { id };
 };

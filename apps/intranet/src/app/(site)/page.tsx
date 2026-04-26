@@ -72,7 +72,7 @@ export default async function IntranetHomePage() {
   const db = getDbConnection();
   const [navItems, newsPosts] = await Promise.all([
     listPublishedNavigationNodes(db, user),
-    listRecentNewsPosts(db, 4),
+    listRecentNewsPosts(db, 4, user),
   ]);
 
   return (

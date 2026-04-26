@@ -6,10 +6,9 @@ import {
   Trash2, Edit, X, CheckCircle, Loader2, Lock, Shield, ShieldCheck,
   ChevronDown, ChevronRight, RotateCcw, Eye, Pencil, RefreshCw
 } from 'lucide-react';
-import { PAGE_DEFS, type PageKey, type PagePermission, type PermissionAction, type PermissionMatrix, getDefaultMatrixByRole, sanitizeMatrix } from '@/lib/permissions';
+import { PAGE_DEFS, type PageKey, type PagePermission, type PermissionAction, type PermissionMatrix, type UserRole, getDefaultMatrixByRole, sanitizeMatrix } from '@/lib/permissions';
 
 // Tipos atualizados para Turso (ID string)
-type UserRole = 'ADMIN' | 'GESTOR' | 'OPERADOR';
 type UserStatus = 'ATIVO' | 'INATIVO';
 
 interface User {
@@ -643,6 +642,7 @@ export default function UsersPage() {
                       onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})}
                     >
                       <option value="OPERADOR">Operador</option>
+                      <option value="INTRANET">Intranet</option>
                       <option value="GESTOR">Gestor</option>
                       <option value="ADMIN">Administrador</option>
                     </select>

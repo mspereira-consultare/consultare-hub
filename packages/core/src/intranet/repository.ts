@@ -169,15 +169,17 @@ const userMatchesAudience = async (
   return false;
 };
 
-export const canUserAccessPage = async (
+const userMatchesAnyAudience = async (
   db: DbInterface,
-  pageId: string,
+  tableName: string,
+  entityColumn: string,
+  entityId: string,
   user: IntranetSessionUser
 ) => {
   const rows = await safeQuery(
     db,
-    `SELECT audience_group_id FROM intranet_page_audiences WHERE page_id = ?`,
-    [pageId]
+    `SELECT audience_group_id FROM ${tableName} WHERE ${entityColumn} = ?`,
+    [entityId]
   );
   if (rows.length === 0) return true;
 
@@ -186,6 +188,14 @@ export const canUserAccessPage = async (
   }
 
   return false;
+};
+
+export const canUserAccessPage = async (
+  db: DbInterface,
+  pageId: string,
+  user: IntranetSessionUser
+) => {
+  return userMatchesAnyAudience(db, 'intranet_page_audiences', 'page_id', pageId, user);
 };
 
 const canUserAccessFaqItem = async (
@@ -193,19 +203,20 @@ const canUserAccessFaqItem = async (
   faqItemId: string,
   user: IntranetSessionUser
 ) => {
-  const rows = await safeQuery(
-    db,
-    `SELECT audience_group_id FROM intranet_faq_item_audiences WHERE faq_item_id = ?`,
-    [faqItemId]
-  );
-  if (rows.length === 0) return true;
-
-  for (const row of rows as Row[]) {
-    if (await userMatchesAudience(db, clean(row.audience_group_id), user)) return true;
-  }
-
-  return false;
+  return userMatchesAnyAudience(db, 'intranet_faq_item_audiences', 'faq_item_id', faqItemId, user);
 };
+
+const canUserAccessNewsPost = async (
+  db: DbInterface,
+  postId: string,
+  user: IntranetSessionUser
+) => userMatchesAnyAudience(db, 'intranet_news_post_audiences', 'post_id', postId, user);
+
+const canUserAccessNavigationNode = async (
+  db: DbInterface,
+  nodeId: string,
+  user: IntranetSessionUser
+) => userMatchesAnyAudience(db, 'intranet_navigation_node_audiences', 'navigation_node_id', nodeId, user);
 
 export const getPublishedPageByPath = async (
   db: DbInterface,
@@ -250,6 +261,7 @@ export const listPublishedNavigationNodes = async (
   for (const row of rows as Row[]) {
     const nodeType = clean(row.node_type);
     const pageId = clean(row.page_id) || null;
+    if (!(await canUserAccessNavigationNode(db, clean(row.id), user))) continue;
     if (nodeType === 'page') {
       if (!pageId || clean(row.page_status).toLowerCase() !== 'published') continue;
       if (!(await canUserAccessPage(db, pageId, user))) continue;
@@ -271,8 +283,9 @@ export const listPublishedNavigationNodes = async (
   return out;
 };
 
-export const listRecentNewsPosts = async (db: DbInterface, limitRaw = 5) => {
+export const listRecentNewsPosts = async (db: DbInterface, limitRaw = 5, user?: IntranetSessionUser) => {
   const limit = Math.max(1, Math.min(20, Number(limitRaw || 5)));
+  const queryLimit = user ? Math.max(limit * 5, 20) : limit;
   const rows = await safeQuery(
     db,
     `
@@ -282,23 +295,28 @@ export const listRecentNewsPosts = async (db: DbInterface, limitRaw = 5) => {
       AND (publish_start_at IS NULL OR publish_start_at = '' OR publish_start_at <= ?)
       AND (publish_end_at IS NULL OR publish_end_at = '' OR publish_end_at >= ?)
     ORDER BY is_featured DESC, published_at DESC, created_at DESC
-    LIMIT ${limit}
+    LIMIT ${queryLimit}
     `,
     [new Date().toISOString(), new Date().toISOString()]
   );
 
-  return (rows as Row[]).map((row) => ({
-    id: clean(row.id),
-    postType: clean(row.post_type),
-    title: clean(row.title),
-    slug: clean(row.slug),
-    summary: clean(row.summary) || null,
-    coverAssetId: clean(row.cover_asset_id) || null,
-    category: clean(row.category) || 'geral',
-    highlightLevel: clean(row.highlight_level) || 'info',
-    isFeatured: fromDbBool(row.is_featured),
-    publishedAt: clean(row.published_at) || null,
-  }));
+  const out: IntranetNewsPost[] = [];
+  for (const row of rows as Row[]) {
+    if (user && !(await canUserAccessNewsPost(db, clean(row.id), user))) continue;
+    out.push({
+      id: clean(row.id),
+      postType: clean(row.post_type),
+      title: clean(row.title),
+      slug: clean(row.slug),
+      summary: clean(row.summary) || null,
+      coverAssetId: clean(row.cover_asset_id) || null,
+      category: clean(row.category) || 'geral',
+      highlightLevel: clean(row.highlight_level) || 'info',
+      isFeatured: fromDbBool(row.is_featured),
+      publishedAt: clean(row.published_at) || null,
+    });
+  }
+  return out.slice(0, limit);
 };
 
 export const listFaqItemsByCategoryIds = async (db: DbInterface, categoryIds: string[]) => {
@@ -436,6 +454,7 @@ export const searchIntranet = async (
   );
 
   for (const row of news as Row[]) {
+    if (!(await canUserAccessNewsPost(db, clean(row.id), user))) continue;
     results.push({
       id: clean(row.id),
       entityType: 'news',

@@ -69,6 +69,10 @@ export const authOptions: NextAuthOptions = {
             console.log("LOGIN FALHOU: Usuário não encontrado:", credentials.email);
             return null;
           }
+          if (String(user.status || '').toUpperCase() !== 'ATIVO') {
+            console.log("LOGIN FALHOU: Usuário inativo:", credentials.email);
+            return null;
+          }
 
           // Verifica senha (bcrypt)
           // Tenta acessar user.password ou user.password_hash dependendo de como foi salvo

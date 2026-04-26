@@ -38,6 +38,7 @@ type NavigationNode = {
   sortOrder: number;
   isVisible: boolean;
   audienceMode: string;
+  audienceGroupIds: string[];
   updatedAt: string;
 };
 
@@ -55,6 +56,12 @@ type ParentOption = {
   fixed?: boolean;
 };
 
+type AudienceOption = {
+  id: string;
+  name: string;
+  isActive: boolean;
+};
+
 type NavFormState = {
   id: string | null;
   parentNodeId: string;
@@ -65,6 +72,7 @@ type NavFormState = {
   iconName: string;
   sortOrder: string;
   isVisible: boolean;
+  audienceGroupIds: string[];
 };
 
 type NavigationAdminProps = {
@@ -111,6 +119,7 @@ const emptyForm = (nodeType: NavFormState['nodeType'] = 'page'): NavFormState =>
   iconName: nodeType === 'external_link' ? 'external-link' : '',
   sortOrder: '0',
   isVisible: true,
+  audienceGroupIds: [],
 });
 
 const inputClassName =
@@ -151,6 +160,7 @@ const buildTree = (nodes: NavigationNode[]) => {
 export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
   const [nodes, setNodes] = useState<NavigationNode[]>([]);
   const [pages, setPages] = useState<PageOption[]>([]);
+  const [audiences, setAudiences] = useState<AudienceOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -171,6 +181,7 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
       const json = await res.json();
       setNodes(Array.isArray(json.data) ? json.data : []);
       setPages(Array.isArray(json.pages) ? json.pages : []);
+      setAudiences(Array.isArray(json.audiences) ? json.audiences : []);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar navegação.');
     } finally {
@@ -230,6 +241,7 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
       iconName: node.iconName || '',
       sortOrder: String(node.sortOrder || 0),
       isVisible: node.isVisible,
+      audienceGroupIds: node.audienceGroupIds || [],
     });
     setNotice(null);
     setError(null);
@@ -265,6 +277,7 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
         sortOrder: Number(form.sortOrder || 0),
         isVisible: form.isVisible,
         audienceMode: 'inherit',
+        audienceGroupIds: form.audienceGroupIds,
       };
       const endpoint = form.id ? `/api/admin/intranet/navigation/${form.id}` : '/api/admin/intranet/navigation';
       const res = await fetch(endpoint, {
@@ -417,10 +430,11 @@ export function NavigationAdmin({ canEdit }: NavigationAdminProps) {
       {modalOpen ? (
         <NavigationModal
           form={form}
-          pages={pages}
-          parentOptions={parentOptions}
-          canEdit={canEdit}
-          saving={saving}
+                pages={pages}
+                parentOptions={parentOptions}
+                audiences={audiences}
+                canEdit={canEdit}
+                saving={saving}
           onClose={() => setModalOpen(false)}
           onUpdate={updateForm}
           onPageChange={handlePageChange}
@@ -550,6 +564,7 @@ function NavigationModal({
   form,
   pages,
   parentOptions,
+  audiences,
   canEdit,
   saving,
   onClose,
@@ -560,6 +575,7 @@ function NavigationModal({
   form: NavFormState;
   pages: PageOption[];
   parentOptions: ParentOption[];
+  audiences: AudienceOption[];
   canEdit: boolean;
   saving: boolean;
   onClose: () => void;
@@ -651,6 +667,36 @@ function NavigationModal({
               <span className="mt-1 block text-sm leading-6 text-slate-500">Se desativado, o item fica salvo na gestão, mas não aparece para os usuários.</span>
             </span>
           </label>
+
+          <section className="rounded-lg border border-slate-200 p-4">
+            <span className={labelClassName}>Audiências</span>
+            <p className="mb-3 text-sm leading-6 text-slate-500">
+              Sem seleção, o item aparece para todos os usuários autenticados. Para páginas internas, o acesso da própria página também continua sendo validado.
+            </p>
+            <div className="grid max-h-48 gap-2 overflow-y-auto pr-1 md:grid-cols-2">
+              {audiences.filter((audience) => audience.isActive).map((audience) => (
+                <label key={audience.id} className="flex items-center gap-2 rounded-lg border border-slate-200 p-3 text-sm text-slate-700 transition hover:bg-slate-50">
+                  <input
+                    type="checkbox"
+                    checked={form.audienceGroupIds.includes(audience.id)}
+                    onChange={() => {
+                      onUpdate(
+                        'audienceGroupIds',
+                        form.audienceGroupIds.includes(audience.id)
+                          ? form.audienceGroupIds.filter((id) => id !== audience.id)
+                          : [...form.audienceGroupIds, audience.id],
+                      );
+                    }}
+                    className="h-4 w-4 rounded border-slate-300 text-[#17407E]"
+                  />
+                  {audience.name}
+                </label>
+              ))}
+              {audiences.filter((audience) => audience.isActive).length === 0 ? (
+                <p className="text-sm text-slate-500">Nenhuma audiência ativa cadastrada.</p>
+              ) : null}
+            </div>
+          </section>
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-slate-200 px-5 py-4">

@@ -62,6 +62,10 @@ export const authOptions: NextAuthOptions = {
             console.log('LOGIN INTRANET FALHOU: Usuario nao encontrado:', credentials.email);
             return null;
           }
+          if (String(user.status || '').toUpperCase() !== 'ATIVO') {
+            console.log('LOGIN INTRANET FALHOU: Usuario inativo:', credentials.email);
+            return null;
+          }
 
           const storedHash = String(user.password || user.password_hash || '');
           if (!storedHash) {

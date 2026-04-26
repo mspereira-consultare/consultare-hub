@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireIntranetPermission } from '@/lib/intranet/auth';
-import { createNavigationNode, IntranetValidationError, listNavigationNodes, listPages } from '@/lib/intranet/repository';
+import { createNavigationNode, IntranetValidationError, listAudienceGroups, listNavigationNodes, listPages } from '@/lib/intranet/repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,11 +18,12 @@ export async function GET() {
   try {
     const auth = await requireIntranetPermission('intranet_navegacao', 'view');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-    const [data, pages] = await Promise.all([
+    const [data, pages, audiences] = await Promise.all([
       listNavigationNodes(auth.db),
       listPages(auth.db, { status: 'published' }),
+      listAudienceGroups(auth.db),
     ]);
-    return NextResponse.json({ status: 'success', data, pages });
+    return NextResponse.json({ status: 'success', data, pages, audiences });
   } catch (error: unknown) {
     console.error('Erro ao listar navegacao da intranet:', error);
     return errorResponse(error, 'Erro interno ao listar navegacao.');

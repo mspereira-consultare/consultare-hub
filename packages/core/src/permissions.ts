@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'GESTOR' | 'OPERADOR';
+export type UserRole = 'ADMIN' | 'GESTOR' | 'OPERADOR' | 'INTRANET';
 export type PermissionAction = 'view' | 'edit' | 'refresh';
 
 export type PageKey =
@@ -128,6 +128,10 @@ export const INTRANET_BACKOFFICE_PAGE_KEYS: PageKey[] = [
 export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   const role = String(roleRaw || 'OPERADOR').toUpperCase() as UserRole;
   const matrix = createEmptyMatrix();
+
+  if (role === 'INTRANET') {
+    return matrix;
+  }
 
   if (role === 'ADMIN') {
     setMany(matrix, PAGE_KEYS, { view: true, edit: true, refresh: true });
