@@ -99,6 +99,7 @@ function ProfessionalCard({ professional, procedures }: { professional: Intranet
   const initials = professional.displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('');
   const units = professional.serviceLocations.length ? professional.serviceLocations : professional.serviceUnits;
   const notes = professional.intranetNotesText || professional.contactNotes;
+  const patientAge = professional.patientAgeText || formatAgeRange(professional.ageRange);
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="aspect-[4/3] overflow-hidden rounded-lg bg-blue-50">
@@ -114,13 +115,24 @@ function ProfessionalCard({ professional, procedures }: { professional: Intranet
         <InfoList title="Unidades que atende" items={units} />
         <InfoList title="Atende como" items={professional.specialties} />
         <InfoList title="Procedimentos que realiza" items={procedures.map((item) => item.displayName)} />
-        <InfoValue title="Atende a partir de" value={professional.patientAgeText} />
+        <InfoValue title="Atende a partir de" value={patientAge} />
         <InfoValue title="Encaixes" value={professional.walkInPolicyText} />
         <InfoValue title="Consultório ideal" value={professional.idealRoomText} />
         <InfoValue title="Obs" value={notes} />
       </div>
     </article>
   );
+}
+
+function formatAgeRange(value: string | null) {
+  const match = String(value || '').trim().match(/^(\d{1,3})-(\d{1,3})$/);
+  if (!match) return null;
+  const min = Number(match[1]);
+  const max = Number(match[2]);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  if (min <= 0 && max >= 120) return 'Todas as idades';
+  if (min <= 0) return `Até ${max} anos`;
+  return `${min} anos`;
 }
 
 function InfoList({ title, items }: { title: string; items: string[] }) {

@@ -57,7 +57,7 @@ const modules = {
   },
   catalogo: {
     title: 'Catálogo',
-    description: 'Procedimentos, exames, vínculos e observações internas para atendimento.',
+    description: 'Procedimentos, exames, vínculos e páginas públicas de especialidades para atendimento.',
     icon: Stethoscope,
     pageKey: 'intranet_catalogo',
     endpoints: [
@@ -66,8 +66,6 @@ const modules = {
       'GET/PUT /api/admin/intranet/catalog/specialty-pages',
       'GET/POST /api/admin/intranet/catalog/procedures',
       'GET/POST /api/admin/intranet/catalog/professional-procedures',
-      'GET/POST /api/admin/intranet/catalog/professional-notes',
-      'GET/POST /api/admin/intranet/catalog/specialty-notes',
     ],
   },
   audiencias: {

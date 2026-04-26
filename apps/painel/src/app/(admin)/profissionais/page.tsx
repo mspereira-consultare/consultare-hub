@@ -1584,12 +1584,17 @@ export default function ProfessionalsPage() {
                   </div>
                 </div>
 
-                <div className="xl:col-span-12 border rounded-xl p-4 bg-blue-50/50 space-y-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-700">Informações para intranet</h3>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Estes campos alimentam os cards dos médicos nas páginas públicas de especialidades da intranet.
-                    </p>
+                <div className="xl:col-span-12 rounded-xl border border-blue-200 bg-blue-50/70 p-4 space-y-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-slate-800">Informações para intranet</h3>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Campos opcionais exibidos nos cards dos médicos na intranet. Quando ficarem vazios, a intranet usa os dados estruturados do cadastro.
+                      </p>
+                    </div>
+                    <span className="inline-flex rounded-full border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                      Vai para a intranet
+                    </span>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                     <div className="md:col-span-4">
@@ -1601,7 +1606,7 @@ export default function ProfessionalsPage() {
                         rows={3}
                         className="w-full px-3 py-2 border rounded-lg resize-y min-h-[88px] bg-white"
                       />
-                      <p className="mt-1 text-[11px] text-slate-500">Uma opção por linha.</p>
+                      <p className="mt-1 text-[11px] text-slate-500">Uma opção por linha. Ex.: Presencial.</p>
                     </div>
                     <div className="md:col-span-8">
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Unidades que atende na intranet</label>
@@ -1612,16 +1617,17 @@ export default function ProfessionalsPage() {
                         rows={3}
                         className="w-full px-3 py-2 border rounded-lg resize-y min-h-[88px] bg-white"
                       />
-                      <p className="mt-1 text-[11px] text-slate-500">Use este campo quando precisar incluir dias ou regras por unidade.</p>
+                      <p className="mt-1 text-[11px] text-slate-500">Opcional. Se vazio, a intranet usa as unidades marcadas em Unidades de atendimento.</p>
                     </div>
                     <div className="md:col-span-3">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Atende a partir de</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Texto de idade na intranet</label>
                       <input
                         value={form.patientAgeText}
                         onChange={(e) => setForm((p) => ({ ...p, patientAgeText: e.target.value }))}
-                        placeholder="Ex.: 6 anos"
+                        placeholder="Ex.: A partir de 6 anos"
                         className="w-full px-3 py-2 border rounded-lg bg-white"
                       />
+                      <p className="mt-1 text-[11px] text-slate-500">Opcional. Se vazio, a intranet gera o texto pela faixa etária.</p>
                     </div>
                     <div className="md:col-span-3">
                       <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Encaixes</label>
@@ -1642,13 +1648,14 @@ export default function ProfessionalsPage() {
                       />
                     </div>
                     <div className="md:col-span-3">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Obs. intranet</label>
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Observação para intranet</label>
                       <input
                         value={form.intranetNotesText}
                         onChange={(e) => setForm((p) => ({ ...p, intranetNotesText: e.target.value }))}
-                        placeholder="Ex.: Indica pacotes"
+                        placeholder="Ex.: Indica pacotes e checkups"
                         className="w-full px-3 py-2 border rounded-lg bg-white"
                       />
+                      <p className="mt-1 text-[11px] text-slate-500">Aparece no card público do médico na intranet.</p>
                     </div>
                   </div>
                 </div>

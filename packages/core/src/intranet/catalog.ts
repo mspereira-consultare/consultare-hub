@@ -90,6 +90,7 @@ export type IntranetProfessionalProfile = {
   serviceUnits: string[];
   attendanceModes: string[];
   serviceLocations: string[];
+  ageRange: string | null;
   patientAgeText: string | null;
   walkInPolicyText: string | null;
   idealRoomText: string | null;
@@ -566,6 +567,7 @@ const mapProfessional = (row: Row): IntranetProfessionalProfile => {
     serviceUnits,
     attendanceModes: parseStringArray(row.attendance_modes_json),
     serviceLocations: parseStringArray(row.service_locations_text_json),
+    ageRange: clean(row.age_range) || null,
     patientAgeText: clean(row.patient_age_text) || null,
     walkInPolicyText: clean(row.walk_in_policy_text) || null,
     idealRoomText: clean(row.ideal_room_text) || null,

@@ -55,7 +55,6 @@ type Professional = {
   displayName: string;
   specialties: string[];
   serviceUnits: string[];
-  contactNotes: string | null;
 };
 
 type CatalogItem = {
@@ -103,13 +102,12 @@ type AssetUploadResult = {
   originalName: string;
 };
 
-type TabKey = 'specialties' | 'items' | 'links' | 'notes';
+type TabKey = 'specialties' | 'items' | 'links';
 
 const tabs: Array<{ key: TabKey; label: string }> = [
   { key: 'specialties', label: 'Especialidades' },
   { key: 'items', label: 'Procedimentos e exames' },
   { key: 'links', label: 'Vínculos' },
-  { key: 'notes', label: 'Observações' },
 ];
 
 const blockTypes: Array<{ value: string; label: string; icon: typeof FileText }> = [
@@ -219,10 +217,6 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
   const [selectedLinkProfessionalId, setSelectedLinkProfessionalId] = useState('');
   const [selectedLinkItemId, setSelectedLinkItemId] = useState('');
   const [linkNotes, setLinkNotes] = useState('');
-  const [selectedNoteProfessionalId, setSelectedNoteProfessionalId] = useState('');
-  const [professionalNote, setProfessionalNote] = useState('');
-  const [selectedNoteSpecialtySlug, setSelectedNoteSpecialtySlug] = useState('');
-  const [specialtyNote, setSpecialtyNote] = useState('');
   const [selectedSpecialtySlug, setSelectedSpecialtySlug] = useState('');
   const [specialtyBlocks, setSpecialtyBlocks] = useState<IntranetBlock[]>([]);
   const [specialtyContentJson, setSpecialtyContentJson] = useState(blocksToJson([]));
@@ -240,16 +234,6 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
   const selectedSpecialty = useMemo(
     () => specialties.find((item) => item.slug === selectedSpecialtySlug) || specialties[0] || null,
     [specialties, selectedSpecialtySlug]
-  );
-
-  const selectedNoteProfessional = useMemo(
-    () => professionals.find((item) => item.professionalId === selectedNoteProfessionalId) || professionals[0] || null,
-    [professionals, selectedNoteProfessionalId]
-  );
-
-  const selectedNoteSpecialty = useMemo(
-    () => specialties.find((item) => item.slug === selectedNoteSpecialtySlug) || specialties[0] || null,
-    [specialties, selectedNoteSpecialtySlug]
   );
 
   const loadAll = useCallback(async () => {
@@ -286,8 +270,6 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
       setDraftItem(null);
       setSelectedLinkProfessionalId((current) => current || nextProfessionals[0]?.professionalId || '');
       setSelectedLinkItemId((current) => current || nextItems[0]?.id || '');
-      setSelectedNoteProfessionalId((current) => current || nextProfessionals[0]?.professionalId || '');
-      setSelectedNoteSpecialtySlug((current) => current || nextSpecialties[0]?.slug || '');
       const nextSpecialtySlug = selectedSpecialtySlugRef.current || nextSpecialties[0]?.slug || '';
       selectedSpecialtySlugRef.current = nextSpecialtySlug;
       setSelectedSpecialtySlug(nextSpecialtySlug);
@@ -295,8 +277,6 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
       const nextBlocks = Array.isArray(nextSpecialtyPage?.content?.blocks) ? nextSpecialtyPage.content.blocks : [];
       setSpecialtyBlocks(nextBlocks);
       setSpecialtyContentJson(blocksToJson(nextBlocks));
-      setProfessionalNote((current) => current || nextProfessionals[0]?.contactNotes || '');
-      setSpecialtyNote((current) => current || nextSpecialties[0]?.serviceGuidance || nextSpecialties[0]?.shortDescription || '');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar catálogo.');
     } finally {
@@ -363,50 +343,6 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
       await loadAll();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar vínculo.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveProfessionalNote = async () => {
-    if (!canEdit || saving || !selectedNoteProfessional) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/admin/intranet/catalog/professional-notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ professionalId: selectedNoteProfessional.professionalId, notes: professionalNote }),
-      });
-      if (!res.ok) throw new Error(await normalizeError(res));
-      setNotice('Observação do profissional salva.');
-      await loadAll();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao salvar observação do profissional.');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const saveSpecialtyNote = async () => {
-    if (!canEdit || saving || !selectedNoteSpecialty) return;
-    setSaving(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/admin/intranet/catalog/specialty-notes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          specialtySlug: selectedNoteSpecialty.slug,
-          specialtyName: selectedNoteSpecialty.displayName,
-          notes: specialtyNote,
-        }),
-      });
-      if (!res.ok) throw new Error(await normalizeError(res));
-      setNotice('Observação da especialidade salva.');
-      await loadAll();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao salvar observação da especialidade.');
     } finally {
       setSaving(false);
     }
@@ -518,18 +454,6 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
     }
   };
 
-  const handleNoteProfessionalChange = (professionalId: string) => {
-    setSelectedNoteProfessionalId(professionalId);
-    const professional = professionals.find((item) => item.professionalId === professionalId);
-    setProfessionalNote(professional?.contactNotes || '');
-  };
-
-  const handleNoteSpecialtyChange = (slug: string) => {
-    setSelectedNoteSpecialtySlug(slug);
-    const specialty = specialties.find((item) => item.slug === slug);
-    setSpecialtyNote(specialty?.serviceGuidance || specialty?.shortDescription || '');
-  };
-
   return (
     <AdminModuleShell
       icon={Stethoscope}
@@ -631,13 +555,6 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
               </CatalogList>
             ) : null}
 
-            {activeTab === 'notes' ? (
-              <CatalogList title="Dados vindos do painel" count={professionals.length + specialties.length}>
-                <div className="rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm leading-6 text-[#17407E]">
-                  Médicos, especialidades, unidades e fotos são alterados no painel. Use esta aba apenas para observações internas da intranet.
-                </div>
-              </CatalogList>
-            ) : null}
           </section>
 
           <section className="p-5">
@@ -673,24 +590,6 @@ export function CatalogAdmin({ canEdit }: CatalogAdminProps) {
                 onItemChange={setSelectedLinkItemId}
                 onNotesChange={setLinkNotes}
                 onSave={saveProcedureLink}
-                saving={saving}
-                canEdit={canEdit}
-              />
-            ) : null}
-            {activeTab === 'notes' ? (
-              <NotesForm
-                professionals={professionals}
-                specialties={specialties}
-                professionalId={selectedNoteProfessionalId}
-                professionalNote={professionalNote}
-                specialtySlug={selectedNoteSpecialtySlug}
-                specialtyNote={specialtyNote}
-                onProfessionalChange={handleNoteProfessionalChange}
-                onProfessionalNoteChange={setProfessionalNote}
-                onSpecialtyChange={handleNoteSpecialtyChange}
-                onSpecialtyNoteChange={setSpecialtyNote}
-                onSaveProfessional={saveProfessionalNote}
-                onSaveSpecialty={saveSpecialtyNote}
                 saving={saving}
                 canEdit={canEdit}
               />
@@ -1138,47 +1037,6 @@ function LinkForm({ professionals, items, professionalId, itemId, notes, onProfe
   );
 }
 
-function NotesForm({ professionals, specialties, professionalId, professionalNote, specialtySlug, specialtyNote, onProfessionalChange, onProfessionalNoteChange, onSpecialtyChange, onSpecialtyNoteChange, onSaveProfessional, onSaveSpecialty, saving, canEdit }: {
-  professionals: Professional[];
-  specialties: Specialty[];
-  professionalId: string;
-  professionalNote: string;
-  specialtySlug: string;
-  specialtyNote: string;
-  onProfessionalChange: (value: string) => void;
-  onProfessionalNoteChange: (value: string) => void;
-  onSpecialtyChange: (value: string) => void;
-  onSpecialtyNoteChange: (value: string) => void;
-  onSaveProfessional: () => void;
-  onSaveSpecialty: () => void;
-  saving: boolean;
-  canEdit: boolean;
-}) {
-  return (
-    <div className="grid gap-5 xl:grid-cols-2">
-      <FormShell title="Observação do profissional" onSave={onSaveProfessional} saving={saving} canEdit={canEdit}>
-        <label>
-          <FieldLabel label="Profissional" help="Profissionais ativos vêm do painel. A intranet salva apenas esta observação interna." />
-          <select className={inputClassName} value={professionalId} onChange={(event) => onProfessionalChange(event.target.value)}>
-            {professionals.map((professional) => <option key={professional.professionalId} value={professional.professionalId}>{professional.displayName}</option>)}
-          </select>
-        </label>
-        <TextArea label="Observação interna" help="Informação pontual para orientar atendimento. Não substitui o cadastro oficial do painel." value={professionalNote} onChange={onProfessionalNoteChange} className="mt-4" />
-      </FormShell>
-
-      <FormShell title="Observação da especialidade" onSave={onSaveSpecialty} saving={saving} canEdit={canEdit}>
-        <label>
-          <FieldLabel label="Especialidade" help="Especialidades são geradas a partir do cadastro dos profissionais ativos no painel." />
-          <select className={inputClassName} value={specialtySlug} onChange={(event) => onSpecialtyChange(event.target.value)}>
-            {specialties.map((specialty) => <option key={specialty.slug} value={specialty.slug}>{specialty.displayName}</option>)}
-          </select>
-        </label>
-        <TextArea label="Observação interna" help="Orientação pontual exibida na página da especialidade dentro da intranet." value={specialtyNote} onChange={onSpecialtyNoteChange} className="mt-4" />
-      </FormShell>
-    </div>
-  );
-}
-
 function FormShell({ title, onSave, saving, canEdit, saveLabel = 'Salvar', children }: { title: string; onSave: () => void; saving: boolean; canEdit: boolean; saveLabel?: string; children: ReactNode }) {
   return (
     <div>
@@ -1236,7 +1094,7 @@ function CatalogHelpModal({ open, onClose }: { open: boolean; onClose: () => voi
               Como funciona
             </div>
             <h2 className="text-xl font-semibold text-slate-900">Catálogo de serviços</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-600">Use este módulo para padronizar procedimentos, exames e observações internas de atendimento.</p>
+            <p className="mt-1 text-sm leading-6 text-slate-600">Use este módulo para padronizar procedimentos, exames, vínculos e páginas públicas de especialidade.</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50" aria-label="Fechar ajuda">
             <X size={18} />
@@ -1244,9 +1102,8 @@ function CatalogHelpModal({ open, onClose }: { open: boolean; onClose: () => voi
         </header>
         <div className="grid gap-3 p-5 md:grid-cols-2">
           {[
-            ['Médicos', 'Nome, foto, especialidades, unidades e status vêm do painel. Altere esses dados no painel.'],
-            ['Especialidades', 'Edite aqui o conteúdo em blocos da página pública da especialidade; a lista de médicos continua automática.'],
-            ['Observações', 'A intranet salva apenas notas internas pontuais para orientar o atendimento.'],
+            ['Médicos', 'Nome, foto, especialidades, unidades, idade e observações exibidas na intranet vêm do painel.'],
+            ['Especialidades', 'Edite aqui o conteúdo em blocos da página pública da especialidade; isso substitui observações soltas.'],
             ['Procedimentos e exames', 'São cadastrados diretamente na intranet, com preparo, preço publicado e orientações.'],
             ['Vínculos', 'Relacione profissionais ativos aos itens quando isso ajudar. Um exame pode existir sem vínculo.'],
           ].map(([title, text]) => (
