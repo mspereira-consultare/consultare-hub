@@ -886,6 +886,12 @@ export const listIntranetProfessionals = async (db: DbInterface, filters: Intran
   await ensureIntranetCatalogTables(db);
   const where = ['COALESCE(p.is_active, 1) = 1'];
   const params: unknown[] = [];
+  const specialties = (filters.specialties || []).map((item) => clean(item).toLowerCase()).filter(Boolean);
+  const specialtySlug = normalizeSlug(filters.specialtyId);
+  const hasSpecialtyFilter = specialties.length > 0 || Boolean(specialtySlug);
+  const hasExplicitLimit = filters.limit !== undefined && filters.limit !== null && clean(filters.limit) !== '';
+  const finalLimit = hasSpecialtyFilter && !hasExplicitLimit ? null : limitValue(filters.limit, 12, 5000);
+  const limitClause = hasSpecialtyFilter ? '' : `LIMIT ${finalLimit}`;
   const search = clean(filters.search).toLowerCase();
   if (search) {
     where.push("(LOWER(p.name) LIKE ? OR LOWER(p.specialty) LIKE ? OR LOWER(COALESCE(p.primary_specialty, '')) LIKE ? OR LOWER(COALESCE(n.notes, '')) LIKE ?)");
@@ -907,17 +913,16 @@ export const listIntranetProfessionals = async (db: DbInterface, filters: Intran
     )
     WHERE ${where.join(' AND ')}
     ORDER BY p.name ASC
-    LIMIT ${limitValue(filters.limit, 80, 500)}
+    ${limitClause}
     `,
     params
   );
-  const specialties = (filters.specialties || []).map((item) => clean(item).toLowerCase()).filter(Boolean);
-  const specialtySlug = normalizeSlug(filters.specialtyId);
-  return (rows as Row[]).map(mapProfessional).filter((item) => {
+  const filtered = (rows as Row[]).map(mapProfessional).filter((item) => {
     const matchesNamedSpecialties = !specialties.length || item.specialties.some((specialty) => specialties.includes(specialty.toLowerCase()));
     const matchesSlug = !specialtySlug || specialtyMatchesSlug(item.specialties, specialtySlug);
     return matchesNamedSpecialties && matchesSlug;
-  }).slice(0, limitValue(filters.limit, 12, 500));
+  });
+  return finalLimit ? filtered.slice(0, finalLimit) : filtered;
 };
 
 export const listIntranetProfessionalProfiles = async (db: DbInterface, filters: IntranetProfessionalFilters = {}) => {

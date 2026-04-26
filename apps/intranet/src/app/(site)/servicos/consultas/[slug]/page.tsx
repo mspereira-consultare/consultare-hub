@@ -23,7 +23,7 @@ export default async function SpecialtyPage({ params }: { params: Promise<{ slug
   if (!specialty) notFound();
   const [specialtyPage, professionals, procedureLinks, catalogItems] = await Promise.all([
     getIntranetSpecialtyPage(db, specialty.id),
-    listIntranetProfessionalsBySpecialty(db, specialty.id, { limit: 80 }),
+    listIntranetProfessionalsBySpecialty(db, specialty.id),
     listIntranetProfessionalProcedures(db),
     listIntranetProcedures(db, { limit: 500 }),
   ]);
