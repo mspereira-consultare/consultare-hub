@@ -3,7 +3,7 @@ import {
   listIntranetProfessionalSpecialties,
   replaceIntranetProfessionalSpecialties,
 } from '@consultare/core/intranet/catalog';
-import { requireIntranetPermission } from '@/lib/intranet/auth';
+import { buildCatalogEditorialRefs, requireEditorialScope, requireIntranetPermission } from '@/lib/intranet/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -32,6 +32,11 @@ export async function POST(request: Request) {
     const auth = await requireIntranetPermission('intranet_catalogo', 'edit');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const body = await request.json();
+    const refs = buildCatalogEditorialRefs({ professionalId: body?.professionalId || body?.professional_id });
+    const specialtyIds = Array.isArray(body?.specialtyIds || body?.specialty_ids) ? body?.specialtyIds || body?.specialty_ids : [];
+    for (const specialtyId of specialtyIds) refs.push(...buildCatalogEditorialRefs({ specialtySlug: specialtyId }));
+    const scope = await requireEditorialScope(auth, 'catalog', refs);
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const data = await replaceIntranetProfessionalSpecialties(auth.db, body);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {

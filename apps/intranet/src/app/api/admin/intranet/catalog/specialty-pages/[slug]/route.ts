@@ -3,7 +3,7 @@ import {
   getIntranetSpecialtyPage,
   saveIntranetSpecialtyPage,
 } from '@consultare/core/intranet/catalog';
-import { requireIntranetPermission } from '@/lib/intranet/auth';
+import { buildCatalogEditorialRefs, requireEditorialScope, requireIntranetPermission } from '@/lib/intranet/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,6 +37,8 @@ export async function PUT(request: Request, context: ParamsContext) {
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const { slug } = await context.params;
     const body = await request.json();
+    const scope = await requireEditorialScope(auth, 'catalog', buildCatalogEditorialRefs({ specialtySlug: slug }));
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const data = await saveIntranetSpecialtyPage(auth.db, { ...body, specialtySlug: slug }, auth.userId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {

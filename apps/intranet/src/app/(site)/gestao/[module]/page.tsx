@@ -20,6 +20,7 @@ import { FaqAdmin } from '../faq-admin';
 import { NavigationAdmin } from '../navigation-admin';
 import { NewsAdmin } from '../news-admin';
 import { PagesAdmin } from '../pages-admin';
+import { ScopesAdmin } from '../scopes-admin';
 
 const modules = {
   navegacao: {
@@ -134,6 +135,10 @@ export default async function IntranetAdminModulePage({ params }: { params: Prom
 
   if (module === 'audiencias') {
     return <AudiencesAdmin canEdit={editAuth.ok} />;
+  }
+
+  if (module === 'escopos') {
+    return <ScopesAdmin canEdit={editAuth.ok} />;
   }
 
   return (

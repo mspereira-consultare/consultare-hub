@@ -3,7 +3,7 @@ import {
   listIntranetProcedureProfiles,
   saveIntranetProcedureProfile,
 } from '@consultare/core/intranet/catalog';
-import { requireIntranetPermission } from '@/lib/intranet/auth';
+import { buildCatalogEditorialRefs, requireEditorialScope, requireIntranetPermission } from '@/lib/intranet/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,6 +39,12 @@ export async function POST(request: Request) {
     const auth = await requireIntranetPermission('intranet_catalogo', 'edit');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const body = await request.json();
+    const scope = await requireEditorialScope(
+      auth,
+      'catalog',
+      buildCatalogEditorialRefs({ itemId: body?.id, catalogType: body?.catalogType || body?.catalog_type || 'procedure' })
+    );
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const data = await saveIntranetProcedureProfile(auth.db, body, auth.userId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {

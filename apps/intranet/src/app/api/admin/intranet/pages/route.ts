@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireIntranetPermission } from '@/lib/intranet/auth';
+import { buildPageEditorialRefs, requireEditorialScope, requireIntranetPermission } from '@/lib/intranet/auth';
 import { createPage, IntranetValidationError, listPages } from '@/lib/intranet/repository';
 
 export const dynamic = 'force-dynamic';
@@ -37,6 +37,8 @@ export async function POST(request: Request) {
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const body = await request.json();
+    const scope = await requireEditorialScope(auth, 'section', await buildPageEditorialRefs(auth.db, null, body?.parentPageId));
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const data = await createPage(auth.db, body, auth.userId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {

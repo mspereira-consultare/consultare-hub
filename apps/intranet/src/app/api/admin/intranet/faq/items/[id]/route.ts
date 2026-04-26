@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireIntranetPermission } from '@/lib/intranet/auth';
+import { buildFaqEditorialRefs, requireEditorialScope, requireIntranetPermission } from '@/lib/intranet/auth';
 import { deleteFaqItem, getFaqItemById, IntranetValidationError, updateFaqItem } from '@/lib/intranet/repository';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +38,9 @@ export async function PUT(request: Request, context: ParamsContext) {
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const { id } = await context.params;
     const body = await request.json();
+    const current = await getFaqItemById(auth.db, String(id || ''));
+    const scope = await requireEditorialScope(auth, 'faq', buildFaqEditorialRefs(current?.categoryId, body?.categoryId));
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const data = await updateFaqItem(auth.db, String(id || ''), body, auth.userId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
@@ -51,6 +54,9 @@ export async function DELETE(_: Request, context: ParamsContext) {
     const auth = await requireIntranetPermission('intranet_faq', 'edit');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const { id } = await context.params;
+    const current = await getFaqItemById(auth.db, String(id || ''));
+    const scope = await requireEditorialScope(auth, 'faq', buildFaqEditorialRefs(current?.categoryId));
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const data = await deleteFaqItem(auth.db, String(id || ''));
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {

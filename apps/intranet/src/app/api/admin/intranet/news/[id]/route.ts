@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireIntranetPermission } from '@/lib/intranet/auth';
+import { buildNewsEditorialRefs, requireEditorialScope, requireIntranetPermission } from '@/lib/intranet/auth';
 import { archiveNewsPost, getNewsPostById, IntranetValidationError, updateNewsPost } from '@/lib/intranet/repository';
 
 export const dynamic = 'force-dynamic';
@@ -38,6 +38,16 @@ export async function PUT(request: Request, context: ParamsContext) {
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const { id } = await context.params;
     const body = await request.json();
+    const current = await getNewsPostById(auth.db, String(id || ''));
+    const scope = await requireEditorialScope(
+      auth,
+      'news',
+      buildNewsEditorialRefs(
+        { category: current?.category, postType: current?.postType },
+        { category: body?.category, postType: body?.postType }
+      )
+    );
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const data = await updateNewsPost(auth.db, String(id || ''), body, auth.userId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
@@ -51,6 +61,9 @@ export async function DELETE(_: Request, context: ParamsContext) {
     const auth = await requireIntranetPermission('intranet_noticias', 'edit');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const { id } = await context.params;
+    const current = await getNewsPostById(auth.db, String(id || ''));
+    const scope = await requireEditorialScope(auth, 'news', buildNewsEditorialRefs({ category: current?.category, postType: current?.postType }));
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const data = await archiveNewsPost(auth.db, String(id || ''), auth.userId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {

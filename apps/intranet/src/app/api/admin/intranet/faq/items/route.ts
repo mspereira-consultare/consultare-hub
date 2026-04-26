@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireIntranetPermission } from '@/lib/intranet/auth';
+import { buildFaqEditorialRefs, requireEditorialScope, requireIntranetPermission } from '@/lib/intranet/auth';
 import { createFaqItem, IntranetValidationError, listFaqItems } from '@/lib/intranet/repository';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +35,8 @@ export async function POST(request: Request) {
     const auth = await requireIntranetPermission('intranet_faq', 'edit');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const body = await request.json();
+    const scope = await requireEditorialScope(auth, 'faq', buildFaqEditorialRefs(body?.categoryId));
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const data = await createFaqItem(auth.db, body, auth.userId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {

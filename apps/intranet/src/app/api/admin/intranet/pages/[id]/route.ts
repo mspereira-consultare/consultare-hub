@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireIntranetPermission } from '@/lib/intranet/auth';
+import { buildPageEditorialRefs, requireEditorialScope, requireIntranetPermission } from '@/lib/intranet/auth';
 import { archivePage, getPageById, IntranetValidationError, updatePage } from '@/lib/intranet/repository';
 
 export const dynamic = 'force-dynamic';
@@ -40,6 +40,10 @@ export async function PUT(request: Request, context: ParamsContext) {
 
     const { id } = await context.params;
     const body = await request.json();
+    const current = await getPageById(auth.db, String(id || ''));
+    const refs = await buildPageEditorialRefs(auth.db, String(id || ''), body?.parentPageId ?? current?.parentPageId);
+    const scope = await requireEditorialScope(auth, 'section', refs);
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const data = await updatePage(auth.db, String(id || ''), body, auth.userId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
@@ -54,6 +58,8 @@ export async function DELETE(_: Request, context: ParamsContext) {
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
 
     const { id } = await context.params;
+    const scope = await requireEditorialScope(auth, 'section', await buildPageEditorialRefs(auth.db, String(id || '')));
+    if (!scope.ok) return NextResponse.json({ error: scope.error }, { status: scope.status });
     const data = await archivePage(auth.db, String(id || ''), auth.userId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
