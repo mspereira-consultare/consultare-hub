@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireChatSession } from '@/lib/intranet/chat-auth';
-import { ChatValidationError, getChatCapabilities, listChatConversations } from '@/lib/intranet/chat';
+import { ChatValidationError, listChatUsers } from '@/lib/intranet/chat';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,13 +18,10 @@ export async function GET() {
   try {
     const auth = await requireChatSession();
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-    const [conversations, capabilities] = await Promise.all([
-      listChatConversations(auth.db, auth.user),
-      getChatCapabilities(auth.db, auth.user),
-    ]);
-    return NextResponse.json({ status: 'success', data: { conversations, capabilities, currentUserId: auth.user.id } });
+    const data = await listChatUsers(auth.db, auth.user.id);
+    return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
-    console.error('Erro ao listar conversas do chat:', error);
-    return errorResponse(error, 'Erro interno ao listar conversas.');
+    console.error('Erro ao listar usuários do chat:', error);
+    return errorResponse(error, 'Erro interno ao listar usuários.');
   }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireChatSession } from '@/lib/intranet/chat-auth';
-import { ChatValidationError, getChatCapabilities, listChatConversations } from '@/lib/intranet/chat';
+import { ChatValidationError, createDmConversation } from '@/lib/intranet/chat';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -14,17 +14,15 @@ const errorResponse = (error: unknown, fallback: string) => {
   return NextResponse.json({ error: message }, { status });
 };
 
-export async function GET() {
+export async function POST(request: Request) {
   try {
     const auth = await requireChatSession();
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
-    const [conversations, capabilities] = await Promise.all([
-      listChatConversations(auth.db, auth.user),
-      getChatCapabilities(auth.db, auth.user),
-    ]);
-    return NextResponse.json({ status: 'success', data: { conversations, capabilities, currentUserId: auth.user.id } });
+    const body = await request.json();
+    const data = await createDmConversation(auth.db, auth.user.id, body?.userId || body?.user_id);
+    return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
-    console.error('Erro ao listar conversas do chat:', error);
-    return errorResponse(error, 'Erro interno ao listar conversas.');
+    console.error('Erro ao criar DM do chat:', error);
+    return errorResponse(error, 'Erro interno ao criar conversa.');
   }
 }

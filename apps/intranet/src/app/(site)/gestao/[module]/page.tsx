@@ -16,6 +16,7 @@ import { requireIntranetPermission } from '@/lib/intranet/auth';
 import { AdminModuleShell } from '../admin-module-shell';
 import { AudiencesAdmin } from '../audiences-admin';
 import { CatalogAdmin } from '../catalog-admin';
+import { ChatAdmin } from '../chat-admin';
 import { FaqAdmin } from '../faq-admin';
 import { NavigationAdmin } from '../navigation-admin';
 import { NewsAdmin } from '../news-admin';
@@ -89,7 +90,7 @@ const modules = {
     description: 'Administração de canais, moderação e comunicação interna.',
     icon: MessageCircle,
     pageKey: 'intranet_chat',
-    endpoints: ['Fase posterior: chat interno'],
+    endpoints: ['GET/POST /api/admin/intranet/chat/conversations', 'PATCH/DELETE /api/admin/intranet/chat/conversations/[id]'],
   },
   chatbot: {
     title: 'Chatbot e Conhecimento',
@@ -139,6 +140,10 @@ export default async function IntranetAdminModulePage({ params }: { params: Prom
 
   if (module === 'escopos') {
     return <ScopesAdmin canEdit={editAuth.ok} />;
+  }
+
+  if (module === 'chat') {
+    return <ChatAdmin canEdit={editAuth.ok} />;
   }
 
   return (

@@ -24,6 +24,7 @@ import { listPublishedNavigationNodes } from '@consultare/core/intranet/reposito
 import { hasPermission } from '@consultare/core/permissions';
 import { loadUserPermissionMatrix } from '@consultare/core/permissions-server';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { getChatUnreadCount } from '@/lib/intranet/chat';
 import SignOutButton from './sign-out-button';
 
 export const dynamic = 'force-dynamic';
@@ -164,9 +165,10 @@ export default async function SiteLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getUser();
   const db = getDbConnection();
-  const [navItems, permissions] = await Promise.all([
+  const [navItems, permissions, chatUnreadCount] = await Promise.all([
     listPublishedNavigationNodes(db, user),
     loadUserPermissionMatrix(db, user.id, user.role),
+    getChatUnreadCount(db, user),
   ]);
   const canManageIntranet = hasPermission(permissions, 'intranet_dashboard', 'view', user.role);
   const splitNav = splitNavByFixedSections(navItems);
@@ -281,10 +283,15 @@ export default async function SiteLayout({
                 </Link>
                 <Link
                   href="/chat"
-                  className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-[#17407E] transition hover:bg-blue-50"
+                  className="relative flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-[#17407E] transition hover:bg-blue-50"
                   aria-label="Chat interno"
                 >
                   <MessageCircle size={18} />
+                  {chatUnreadCount ? (
+                    <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-rose-600 px-1 text-center text-[10px] font-semibold leading-4 text-white">
+                      {chatUnreadCount > 9 ? '9+' : chatUnreadCount}
+                    </span>
+                  ) : null}
                 </Link>
               </div>
             </div>
