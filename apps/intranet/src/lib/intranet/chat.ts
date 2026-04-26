@@ -25,6 +25,13 @@ export type ChatUserContext = {
 const CONVERSATION_TYPES = new Set(['dm', 'department_channel', 'custom_group', 'announcement_channel']);
 const MEMBER_ROLES = new Set(['owner', 'moderator', 'member']);
 const MAX_MESSAGE_LENGTH = 4000;
+const CHAT_TABLES = [
+  'intranet_chat_conversations',
+  'intranet_chat_conversation_members',
+  'intranet_chat_messages',
+  'intranet_chat_message_attachments',
+  'intranet_chat_moderation_log',
+];
 
 const clean = (value: unknown) => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
@@ -70,6 +77,29 @@ const safeAddColumn = async (db: DbInterface, sql: string) => {
     const message = String((error as { message?: string })?.message || '');
     if (code === 'ER_DUP_FIELDNAME' || /Duplicate column name|duplicate column/i.test(message)) return;
     throw error;
+  }
+};
+
+const safeExecute = async (db: DbInterface, sql: string) => {
+  try {
+    await db.execute(sql);
+  } catch (error: unknown) {
+    const code = String((error as { code?: string })?.code || '');
+    const message = String((error as { message?: string })?.message || '');
+    if (
+      code === 'ER_NO_SUCH_TABLE' ||
+      /doesn't exist|no such table|Table .* doesn't exist/i.test(message) ||
+      /syntax error|near "CONVERT"|near "CHARACTER"/i.test(message)
+    ) {
+      return;
+    }
+    throw error;
+  }
+};
+
+const normalizeChatTableCollations = async (db: DbInterface) => {
+  for (const table of CHAT_TABLES) {
+    await safeExecute(db, `ALTER TABLE ${table} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
   }
 };
 
@@ -144,6 +174,7 @@ export const ensureChatTables = async (db: DbInterface) => {
   `);
 
   await safeAddColumn(db, `ALTER TABLE intranet_chat_messages ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0`);
+  await normalizeChatTableCollations(db);
   await syncDepartmentChannels(db);
   chatTablesEnsured = true;
 };
