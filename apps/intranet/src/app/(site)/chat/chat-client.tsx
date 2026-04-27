@@ -8,6 +8,7 @@ import {
   Image as ImageIcon,
   Loader2,
   MessageCircle,
+  MoreVertical,
   Paperclip,
   Plus,
   Search,
@@ -75,6 +76,12 @@ type Capabilities = {
   canManageChat: boolean;
 };
 
+type MessageActionMenu = {
+  messageId: string;
+  x: number;
+  y: number;
+} | null;
+
 const inputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100';
 
@@ -120,7 +127,9 @@ export function ChatClient() {
   const [error, setError] = useState<string | null>(null);
   const [dmOpen, setDmOpen] = useState(false);
   const [groupOpen, setGroupOpen] = useState(false);
+  const [messageActionMenu, setMessageActionMenu] = useState<MessageActionMenu>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const messageMenuRef = useRef<HTMLDivElement | null>(null);
 
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId) || null,
@@ -210,6 +219,25 @@ export function ChatClient() {
     return () => window.clearInterval(interval);
   }, [loadConversations]);
 
+  useEffect(() => {
+    if (!messageActionMenu) return undefined;
+
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      if (messageMenuRef.current?.contains(event.target as Node)) return;
+      setMessageActionMenu(null);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMessageActionMenu(null);
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [messageActionMenu]);
+
   const filteredConversations = useMemo(() => {
     const term = normalizeText(search);
     if (!term) return conversations;
@@ -280,6 +308,36 @@ export function ChatClient() {
     await loadMessages(selectedId);
   };
 
+  const canUseMessageActions = (message: ChatMessage) => message.senderUserId === currentUserId && !message.isDeleted;
+
+  const openMessageActionMenu = (message: ChatMessage, x: number, y: number) => {
+    if (!canUseMessageActions(message)) return;
+    const menuWidth = 180;
+    const menuHeight = 96;
+    const padding = 12;
+    setMessageActionMenu({
+      messageId: message.id,
+      x: Math.min(Math.max(padding, x), window.innerWidth - menuWidth - padding),
+      y: Math.min(Math.max(padding, y), window.innerHeight - menuHeight - padding),
+    });
+  };
+
+  const openMessageActionMenuFromButton = (message: ChatMessage, event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    openMessageActionMenu(message, rect.right - 180, rect.bottom + 6);
+  };
+
+  const openMessageActionMenuFromContext = (message: ChatMessage, event: React.MouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    if (!canUseMessageActions(message)) return;
+    openMessageActionMenu(message, event.clientX, event.clientY);
+  };
+
+  const selectedActionMessage = messageActionMenu
+    ? messages.find((message) => message.id === messageActionMenu.messageId) || null
+    : null;
+
   const canSendInSelected =
     selectedConversation &&
     (!selectedConversation.isAnnouncementOnly || ['owner', 'moderator'].includes(selectedConversation.currentMemberRole));
@@ -318,7 +376,10 @@ export function ChatClient() {
               <button
                 key={conversation.id}
                 type="button"
-                onClick={() => setSelectedId(conversation.id)}
+                onClick={() => {
+                  setMessageActionMenu(null);
+                  setSelectedId(conversation.id);
+                }}
                 className={`mb-1 w-full rounded-lg px-3 py-3 text-left transition ${selectedId === conversation.id ? 'bg-blue-50 text-[#17407E]' : 'hover:bg-slate-50'}`}
               >
                 <div className="flex items-start justify-between gap-2">
@@ -351,13 +412,25 @@ export function ChatClient() {
                 ) : null}
                 {messages.map((message) => {
                   const mine = message.senderUserId === currentUserId;
+                  const canOpenActions = canUseMessageActions(message);
                   return (
-                    <article key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[78%] rounded-lg border px-4 py-3 shadow-sm ${mine ? 'border-blue-100 bg-blue-50' : 'border-slate-200 bg-white'}`}>
-                        <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <article key={message.id} className={`group flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        onContextMenu={(event) => openMessageActionMenuFromContext(message, event)}
+                        className={`relative max-w-[78%] rounded-lg border px-4 py-3 shadow-sm ${mine ? 'border-blue-100 bg-blue-50' : 'border-slate-200 bg-white'}`}
+                      >
+                        {canOpenActions ? (
+                          <button
+                            type="button"
+                            onClick={(event) => openMessageActionMenuFromButton(message, event)}
+                            className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 opacity-100 transition hover:bg-white/80 hover:text-[#17407E] focus:bg-white/80 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-100 md:opacity-0 md:group-hover:opacity-100"
+                            aria-label="Abrir ações da mensagem"
+                          >
+                            <MoreVertical size={15} />
+                          </button>
+                        ) : null}
+                        <div className={`mb-1 flex flex-wrap items-center gap-2 text-xs text-slate-500 ${canOpenActions ? 'pr-7' : ''}`}>
                           <span className="font-semibold text-slate-700">{message.senderName}</span>
-                          <span>{formatTime(message.createdAt)}</span>
-                          {message.isEdited ? <span>Editada</span> : null}
                         </div>
                         {message.isDeleted ? (
                           <p className="text-sm italic text-slate-500">Mensagem apagada</p>
@@ -374,20 +447,21 @@ export function ChatClient() {
                                 ))}
                               </div>
                             ) : null}
-                            <div className="mt-2 flex items-center justify-between gap-3">
+                            <div className="mt-2 flex items-center justify-end gap-2 text-[11px] text-slate-400">
+                              <span>{formatTime(message.createdAt)}</span>
+                              {message.isEdited ? <span>Editada</span> : null}
                               <span title={message.readBy.map((item) => item.name).join(', ')} className="inline-flex items-center gap-1 text-[11px] text-slate-400">
                                 <CheckCheck size={13} />
                                 {message.readBy.length}
                               </span>
-                              {mine ? (
-                                <span className="flex gap-1">
-                                  <button type="button" onClick={() => editMessage(message)} className="rounded p-1 text-slate-400 hover:bg-white hover:text-[#17407E]" aria-label="Editar mensagem"><Edit3 size={14} /></button>
-                                  <button type="button" onClick={() => deleteMessage(message)} className="rounded p-1 text-slate-400 hover:bg-white hover:text-rose-600" aria-label="Apagar mensagem"><Trash2 size={14} /></button>
-                                </span>
-                              ) : null}
                             </div>
                           </>
                         )}
+                        {message.isDeleted ? (
+                          <div className="mt-2 flex items-center justify-end gap-2 text-[11px] text-slate-400">
+                            <span>{formatTime(message.createdAt)}</span>
+                          </div>
+                        ) : null}
                       </div>
                     </article>
                   );
@@ -441,8 +515,41 @@ export function ChatClient() {
         </aside>
       </div>
 
-      {dmOpen ? <DmModal users={users} onClose={() => setDmOpen(false)} onCreated={async (id) => { setDmOpen(false); await loadConversations(); if (id) setSelectedId(id); }} /> : null}
+      {dmOpen ? <DmModal users={users} onClose={() => setDmOpen(false)} onCreated={async (id) => { setDmOpen(false); setMessageActionMenu(null); await loadConversations(); if (id) setSelectedId(id); }} /> : null}
       {groupOpen && capabilities.canCreateGroups ? <GroupModal users={users} onClose={() => setGroupOpen(false)} onCreated={async () => { setGroupOpen(false); await loadConversations(); }} /> : null}
+      {messageActionMenu && selectedActionMessage ? (
+        <div
+          ref={messageMenuRef}
+          className="fixed z-50 w-[180px] overflow-hidden rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+          style={{ left: messageActionMenu.x, top: messageActionMenu.y }}
+          role="menu"
+        >
+          <button
+            type="button"
+            onClick={async () => {
+              setMessageActionMenu(null);
+              await editMessage(selectedActionMessage);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-slate-700 hover:bg-slate-50"
+            role="menuitem"
+          >
+            <Edit3 size={15} className="text-[#17407E]" />
+            Editar mensagem
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              setMessageActionMenu(null);
+              await deleteMessage(selectedActionMessage);
+            }}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-medium text-rose-600 hover:bg-rose-50"
+            role="menuitem"
+          >
+            <Trash2 size={15} />
+            Apagar mensagem
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }
