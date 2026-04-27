@@ -38,6 +38,7 @@ const nowIso = () => new Date().toISOString();
 const bool = (value: unknown) => value === true || value === 1 || value === '1';
 const toDbBool = (value: unknown) => (bool(value) ? 1 : 0);
 const nullable = (value: unknown) => clean(value) || null;
+const chatCollate = (column: string) => `${column} COLLATE utf8mb4_unicode_ci`;
 
 const normalizeSlug = (value: unknown) =>
   clean(value)
@@ -200,7 +201,7 @@ const syncDepartmentChannels = async (db: DbInterface) => {
 
   for (const [department, departmentUsers] of byDepartment) {
     const slug = `setor-${normalizeSlug(department)}`;
-    const existing = await db.query(`SELECT id FROM intranet_chat_conversations WHERE slug = ? LIMIT 1`, [slug]);
+    const existing = await db.query(`SELECT id FROM intranet_chat_conversations WHERE ${chatCollate('slug')} = ? LIMIT 1`, [slug]);
     const createdAt = nowIso();
     const conversationId = clean((existing[0] as Row | undefined)?.id) || randomUUID();
     if (!existing.length) {
@@ -214,7 +215,10 @@ const syncDepartmentChannels = async (db: DbInterface) => {
       );
     }
 
-    const currentMembers = await db.query(`SELECT user_id FROM intranet_chat_conversation_members WHERE conversation_id = ?`, [conversationId]);
+    const currentMembers = await db.query(
+      `SELECT user_id FROM intranet_chat_conversation_members WHERE ${chatCollate('conversation_id')} = ?`,
+      [conversationId]
+    );
     const currentIds = new Set((currentMembers as Row[]).map((row) => clean(row.user_id)).filter(Boolean));
     const activeIds = new Set(departmentUsers.map((user) => clean(user.id)).filter(Boolean));
 
@@ -226,7 +230,10 @@ const syncDepartmentChannels = async (db: DbInterface) => {
 
     for (const userId of currentIds) {
       if (activeIds.has(userId)) continue;
-      await db.execute(`DELETE FROM intranet_chat_conversation_members WHERE conversation_id = ? AND user_id = ?`, [conversationId, userId]);
+      await db.execute(
+        `DELETE FROM intranet_chat_conversation_members WHERE ${chatCollate('conversation_id')} = ? AND ${chatCollate('user_id')} = ?`,
+        [conversationId, userId]
+      );
     }
   }
 };
@@ -248,7 +255,7 @@ export const listChatUsers = async (db: DbInterface, currentUserId?: string) => 
 
 const getUserById = async (db: DbInterface, userId: string) => {
   const rows = await db.query(
-    `SELECT id, name, email, role, department, status FROM users WHERE id = ? AND UPPER(COALESCE(status, 'ATIVO')) = 'ATIVO' LIMIT 1`,
+    `SELECT id, name, email, role, department, status FROM users WHERE ${chatCollate('id')} = ? AND UPPER(COALESCE(status, 'ATIVO')) = 'ATIVO' LIMIT 1`,
     [userId]
   );
   return rows[0] ? mapUser(rows[0] as Row) : null;
@@ -256,13 +263,13 @@ const getUserById = async (db: DbInterface, userId: string) => {
 
 const addConversationMember = async (db: DbInterface, conversationId: string, userId: string, roleRaw: unknown = 'member') => {
   const existing = await db.query(
-    `SELECT id FROM intranet_chat_conversation_members WHERE conversation_id = ? AND user_id = ? LIMIT 1`,
+    `SELECT id FROM intranet_chat_conversation_members WHERE ${chatCollate('conversation_id')} = ? AND ${chatCollate('user_id')} = ? LIMIT 1`,
     [conversationId, userId]
   );
   const memberRole = pickMemberRole(roleRaw);
   if (existing.length) {
     await db.execute(
-      `UPDATE intranet_chat_conversation_members SET member_role = ? WHERE conversation_id = ? AND user_id = ?`,
+      `UPDATE intranet_chat_conversation_members SET member_role = ? WHERE ${chatCollate('conversation_id')} = ? AND ${chatCollate('user_id')} = ?`,
       [memberRole, conversationId, userId]
     );
     return;
@@ -282,8 +289,8 @@ const getMembership = async (db: DbInterface, conversationId: string, userId: st
     `
     SELECT m.*, c.conversation_type, c.name, c.is_active, c.is_announcement_only
     FROM intranet_chat_conversation_members m
-    INNER JOIN intranet_chat_conversations c ON c.id = m.conversation_id
-    WHERE m.conversation_id = ? AND m.user_id = ? AND COALESCE(c.is_active, 1) = 1
+    INNER JOIN intranet_chat_conversations c ON ${chatCollate('c.id')} = ${chatCollate('m.conversation_id')}
+    WHERE ${chatCollate('m.conversation_id')} = ? AND ${chatCollate('m.user_id')} = ? AND COALESCE(c.is_active, 1) = 1
     LIMIT 1
     `,
     [conversationId, userId]
@@ -302,8 +309,8 @@ const loadMembers = async (db: DbInterface, conversationId: string) => {
     `
     SELECT m.user_id, m.member_role, m.last_read_message_id, m.last_read_at, u.name, u.email, u.role, u.department
     FROM intranet_chat_conversation_members m
-    INNER JOIN users u ON u.id = m.user_id
-    WHERE m.conversation_id = ?
+    INNER JOIN users u ON ${chatCollate('u.id')} = ${chatCollate('m.user_id')}
+    WHERE ${chatCollate('m.conversation_id')} = ?
     ORDER BY CASE m.member_role WHEN 'owner' THEN 0 WHEN 'moderator' THEN 1 ELSE 2 END, u.name ASC
     `,
     [conversationId]
@@ -325,8 +332,8 @@ const loadLastMessage = async (db: DbInterface, conversationId: string) => {
     `
     SELECT m.*, u.name AS sender_name
     FROM intranet_chat_messages m
-    LEFT JOIN users u ON u.id = m.sender_user_id
-    WHERE m.conversation_id = ?
+    LEFT JOIN users u ON ${chatCollate('u.id')} = ${chatCollate('m.sender_user_id')}
+    WHERE ${chatCollate('m.conversation_id')} = ?
     ORDER BY m.created_at DESC
     LIMIT 1
     `,
@@ -341,7 +348,7 @@ const unreadCountFor = async (db: DbInterface, conversationId: string, userId: s
     `
     SELECT COUNT(*) AS total
     FROM intranet_chat_messages
-    WHERE conversation_id = ? AND sender_user_id <> ? AND COALESCE(is_deleted, 0) = 0
+    WHERE ${chatCollate('conversation_id')} = ? AND ${chatCollate('sender_user_id')} <> ? AND COALESCE(is_deleted, 0) = 0
       AND (? = '' OR created_at > ?)
     `,
     [conversationId, userId, readAt, readAt]
@@ -380,8 +387,8 @@ export const listChatConversations = async (db: DbInterface, user: ChatUserConte
     `
     SELECT c.*
     FROM intranet_chat_conversations c
-    INNER JOIN intranet_chat_conversation_members m ON m.conversation_id = c.id
-    WHERE m.user_id = ? AND COALESCE(c.is_active, 1) = 1
+    INNER JOIN intranet_chat_conversation_members m ON ${chatCollate('m.conversation_id')} = ${chatCollate('c.id')}
+    WHERE ${chatCollate('m.user_id')} = ? AND COALESCE(c.is_active, 1) = 1
     ORDER BY c.updated_at DESC, c.name ASC
     `,
     [user.id]
@@ -413,8 +420,8 @@ export const createDmConversation = async (db: DbInterface, currentUserId: strin
     `
     SELECT c.id
     FROM intranet_chat_conversations c
-    INNER JOIN intranet_chat_conversation_members a ON a.conversation_id = c.id AND a.user_id = ?
-    INNER JOIN intranet_chat_conversation_members b ON b.conversation_id = c.id AND b.user_id = ?
+    INNER JOIN intranet_chat_conversation_members a ON ${chatCollate('a.conversation_id')} = ${chatCollate('c.id')} AND ${chatCollate('a.user_id')} = ?
+    INNER JOIN intranet_chat_conversation_members b ON ${chatCollate('b.conversation_id')} = ${chatCollate('c.id')} AND ${chatCollate('b.user_id')} = ?
     WHERE c.conversation_type = 'dm'
     LIMIT 1
     `,
@@ -481,8 +488,8 @@ const loadAttachments = async (db: DbInterface, messageIds: string[]) => {
     `
     SELECT ma.message_id, a.id AS asset_id, a.original_name, a.mime_type, a.size_bytes
     FROM intranet_chat_message_attachments ma
-    INNER JOIN intranet_assets a ON a.id = ma.asset_id
-    WHERE ma.message_id IN (${placeholders})
+    INNER JOIN intranet_assets a ON ${chatCollate('a.id')} = ${chatCollate('ma.asset_id')}
+    WHERE ${chatCollate('ma.message_id')} IN (${placeholders})
     ORDER BY ma.created_at ASC
     `,
     messageIds
@@ -530,7 +537,7 @@ export const listChatMessages = async (
   await assertMember(db, conversationId, user.id);
   const limit = limitValue(options.limit, 40, 100);
   const params: unknown[] = [conversationId];
-  const where = ['m.conversation_id = ?'];
+  const where = [`${chatCollate('m.conversation_id')} = ?`];
   const after = clean(options.after);
   const before = clean(options.before);
   let order = 'm.created_at DESC';
@@ -547,7 +554,7 @@ export const listChatMessages = async (
     `
     SELECT m.*, u.name AS sender_name
     FROM intranet_chat_messages m
-    LEFT JOIN users u ON u.id = m.sender_user_id
+    LEFT JOIN users u ON ${chatCollate('u.id')} = ${chatCollate('m.sender_user_id')}
     WHERE ${where.join(' AND ')}
     ORDER BY ${order}
     LIMIT ${limit}
@@ -593,7 +600,7 @@ export const sendChatMessage = async (db: DbInterface, user: ChatUserContext, co
       [randomUUID(), id, assetId, user.id, now]
     );
   }
-  await db.execute(`UPDATE intranet_chat_conversations SET updated_at = ? WHERE id = ?`, [now, conversationId]);
+  await db.execute(`UPDATE intranet_chat_conversations SET updated_at = ? WHERE ${chatCollate('id')} = ?`, [now, conversationId]);
   await markConversationRead(db, user, conversationId, id);
   return (await listChatMessages(db, user, conversationId, { after: '', limit: 1 })).find((message) => message.id === id) || null;
 };
@@ -603,11 +610,14 @@ export const markConversationRead = async (db: DbInterface, user: ChatUserContex
   await assertMember(db, conversationId, user.id);
   let messageId = clean(messageIdRaw);
   if (!messageId) {
-    const rows = await db.query(`SELECT id FROM intranet_chat_messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1`, [conversationId]);
+    const rows = await db.query(
+      `SELECT id FROM intranet_chat_messages WHERE ${chatCollate('conversation_id')} = ? ORDER BY created_at DESC LIMIT 1`,
+      [conversationId]
+    );
     messageId = clean((rows[0] as Row | undefined)?.id);
   }
   await db.execute(
-    `UPDATE intranet_chat_conversation_members SET last_read_message_id = ?, last_read_at = ? WHERE conversation_id = ? AND user_id = ?`,
+    `UPDATE intranet_chat_conversation_members SET last_read_message_id = ?, last_read_at = ? WHERE ${chatCollate('conversation_id')} = ? AND ${chatCollate('user_id')} = ?`,
     [messageId || null, nowIso(), conversationId, user.id]
   );
   return { conversationId, messageId: messageId || null };
@@ -618,8 +628,8 @@ const getMessageWithMembership = async (db: DbInterface, messageId: string, user
     `
     SELECT m.*, cm.member_role
     FROM intranet_chat_messages m
-    INNER JOIN intranet_chat_conversation_members cm ON cm.conversation_id = m.conversation_id AND cm.user_id = ?
-    WHERE m.id = ?
+    INNER JOIN intranet_chat_conversation_members cm ON ${chatCollate('cm.conversation_id')} = ${chatCollate('m.conversation_id')} AND ${chatCollate('cm.user_id')} = ?
+    WHERE ${chatCollate('m.id')} = ?
     LIMIT 1
     `,
     [userId, messageId]
@@ -637,7 +647,7 @@ export const updateChatMessage = async (db: DbInterface, user: ChatUserContext, 
   const body = clean(input.body);
   if (!body) throw new ChatValidationError('Mensagem não pode ficar vazia.');
   if (body.length > MAX_MESSAGE_LENGTH) throw new ChatValidationError('Mensagem acima do limite de caracteres.');
-  await db.execute(`UPDATE intranet_chat_messages SET body = ?, is_edited = 1, edited_at = ? WHERE id = ?`, [body, nowIso(), messageId]);
+  await db.execute(`UPDATE intranet_chat_messages SET body = ?, is_edited = 1, edited_at = ? WHERE ${chatCollate('id')} = ?`, [body, nowIso(), messageId]);
   return { id: messageId };
 };
 
@@ -650,7 +660,7 @@ export const deleteChatMessage = async (db: DbInterface, user: ChatUserContext, 
   const isModerator = ['owner', 'moderator'].includes(clean(message.member_role));
   if (!isOwner && !isModerator) throw new ChatValidationError('Sem permissão para apagar esta mensagem.', 403);
   const now = nowIso();
-  await db.execute(`UPDATE intranet_chat_messages SET body = '', is_deleted = 1, deleted_at = ? WHERE id = ?`, [now, messageId]);
+  await db.execute(`UPDATE intranet_chat_messages SET body = '', is_deleted = 1, deleted_at = ? WHERE ${chatCollate('id')} = ?`, [now, messageId]);
   await db.execute(
     `INSERT INTO intranet_chat_moderation_log (id, conversation_id, message_id, action, actor_user_id, payload_json, created_at) VALUES (?, ?, ?, 'delete_message', ?, ?, ?)`,
     [randomUUID(), clean(message.conversation_id), messageId, user.id, JSON.stringify({ ownMessage: isOwner }), now]
@@ -666,7 +676,7 @@ export const listAdminChatConversations = async (db: DbInterface) => {
 
 export const updateAdminChatConversation = async (db: DbInterface, conversationId: string, input: Row, actorUserId: string) => {
   await ensureChatTables(db);
-  const current = await db.query(`SELECT * FROM intranet_chat_conversations WHERE id = ? LIMIT 1`, [conversationId]);
+  const current = await db.query(`SELECT * FROM intranet_chat_conversations WHERE ${chatCollate('id')} = ? LIMIT 1`, [conversationId]);
   if (!current.length) throw new ChatValidationError('Conversa não encontrada.', 404);
   const row = current[0] as Row;
   const now = nowIso();
@@ -674,7 +684,7 @@ export const updateAdminChatConversation = async (db: DbInterface, conversationI
     `
     UPDATE intranet_chat_conversations
     SET name = ?, description = ?, is_active = ?, is_announcement_only = ?, updated_at = ?
-    WHERE id = ?
+    WHERE ${chatCollate('id')} = ?
     `,
     [
       input.name === undefined ? nullable(row.name) : nullable(input.name),
@@ -698,7 +708,7 @@ export const replaceAdminConversationMembers = async (db: DbInterface, conversat
   const ownerIds = parseStringList(input.ownerIds || input.owner_ids);
   const moderatorIds = parseStringList(input.moderatorIds || input.moderator_ids);
   const finalIds = Array.from(new Set([...memberIds, ...ownerIds, ...moderatorIds]));
-  await db.execute(`DELETE FROM intranet_chat_conversation_members WHERE conversation_id = ?`, [conversationId]);
+  await db.execute(`DELETE FROM intranet_chat_conversation_members WHERE ${chatCollate('conversation_id')} = ?`, [conversationId]);
   for (const userId of finalIds) {
     if (!(await getUserById(db, userId))) continue;
     const role = ownerIds.includes(userId) ? 'owner' : moderatorIds.includes(userId) ? 'moderator' : 'member';
