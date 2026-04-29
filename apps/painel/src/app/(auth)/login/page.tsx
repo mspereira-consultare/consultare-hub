@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
-import { signIn, useSession } from 'next-auth/react'; 
+import { signIn, useSession } from 'next-auth/react';
 import { PAGE_DEFS, hasPermission } from '@/lib/permissions';
 
 export default function LoginPage() {
@@ -51,7 +51,7 @@ export default function LoginPage() {
 
       // Sucesso: vai para dashboard e o proxy redireciona se o usuario nao tiver view nessa rota
       router.push('/dashboard');
-      router.refresh(); 
+      router.refresh();
 
     } catch (err) {
       setError("Erro ao conectar com o servidor.");
@@ -70,20 +70,20 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-100 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-sm space-y-6 bg-white p-8 shadow-md rounded-lg">
-        
+
         <div className="text-center">
           {/* Logo ajustado para h-24 (aprox. 96px) */}
-          <img 
-            src="https://www.consultare.com.br/wp-content/uploads/2021/07/consultare-logo-vertical.png" 
-            alt="Consultare Logo" 
-            className="mx-auto h-32 w-auto mb-4" 
+          <img
+            src="https://www.consultare.com.br/wp-content/uploads/2021/07/consultare-logo-vertical.png"
+            alt="Consultare Logo"
+            className="mx-auto h-32 w-auto mb-4"
           />
           <h2 className="text-2xl font-bold text-gray-900">Acesso ao Painel</h2>
           <p className="mt-1 text-sm text-gray-500">Insira suas credenciais para continuar</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-6">
-            
+
           {error && (
             <div className="rounded-md bg-red-50 p-3 text-sm text-red-600 text-center border border-red-200">
               {error}
@@ -97,7 +97,7 @@ export default function LoginPage() {
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="Ex: msopereira"
+              placeholder="Digite seu usuário"
               required
             />
           </div>
@@ -127,11 +127,10 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full rounded-md px-4 py-2 text-white transition font-medium ${
-              loading 
-                ? 'bg-blue-400 cursor-not-allowed' 
+            className={`w-full rounded-md px-4 py-2 text-white transition font-medium ${loading
+                ? 'bg-blue-400 cursor-not-allowed'
                 : 'bg-blue-900 hover:bg-blue-800'
-            }`}
+              }`}
           >
             {loading ? "Entrando..." : "Entrar"}
           </button>
