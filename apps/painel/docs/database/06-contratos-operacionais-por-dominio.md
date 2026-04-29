@@ -184,15 +184,13 @@ Cada dominio abaixo define:
 - `clinia_ads_jobs`
 - `clinia_ads_job_items`
 - `fact_clinia_ads_daily`
-- `clinia_crm_*`
-- `fact_clinia_crm_*`
 
 ### Contrato
 
 - `raw_*` e somente staging/auditoria;
 - `fact_*` e a camada preferencial para API gerencial;
 - `marketing_campaign_mapping` pode receber parametrizacao manual do dominio;
-- `clinia_crm_*` e `clinia_ads_*` sao de ownership dos respectivos workers.
+- `clinia_ads_*` sao de ownership do respectivo worker.
 
 ### Chaves de negocio
 

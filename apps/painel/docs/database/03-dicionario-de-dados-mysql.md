@@ -13,15 +13,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 ### `goals_config`
 
 - Finalidade: Configuracao de metas salvas no painel.
-- Origem da informacao: Configuracao e operacao interna do painel.
-- Escrita/manutencao tecnica: Escrita principal garantida por rota API em `frontend/src/app/api/admin/goals/route.ts`.
+- Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/colaboradores/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `58`
+- Linhas estimadas pelo MySQL: `57`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
-- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/04-dicionario-de-dados.md`
+- Vinculos principais: employee_id -> employees.id (vinculo logico)
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/10-plano-tecnico-colaboradores.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -41,6 +41,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 | collaborator | text | Sim | - | - | Campo do dominio `goals_config` referente a collaborator. |
 | clinic_unit | text | Sim | - | - | Campo do dominio `goals_config` referente a clinic unit. |
 | team | text | Sim | - | - | Campo do dominio `goals_config` referente a team. |
+| employee_id | text | Sim | - | - | Identificador do colaborador relacionado ao registro. |
 
 ---
 
@@ -56,7 +57,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: idx_service_unit (service, unit_id) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/database_manager.py`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md, frontend/docs/09-plano-tecnico-marketing-funil.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -77,12 +78,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/database_manager.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `18`
+- Linhas estimadas pelo MySQL: `19`
 - Chave primaria: `service_name`
 - Indices: PRIMARY (service_name) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/database_manager.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/12-plano-tecnico-marketing-controle.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -98,13 +99,14 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Backup auxiliar do heartbeat.
 - Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
-- Escrita/manutencao tecnica: Escrita/garantia de schema em script `frontend/scripts/validate-turso-mysql.cjs`.
+- Escrita/manutencao tecnica: Escrita/garantia de schema em script `apps/painel/scripts/validate-turso-mysql.cjs`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
 - Linhas estimadas pelo MySQL: `14`
 - Chave primaria: nao declarada no schema vivo
 - Indices: nenhum indice identificado em `information_schema.statistics`
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencias documentais: `apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/04-guia-de-integracao-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -120,15 +122,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Cadastro mestre de equipes/setores.
 - Origem da informacao: Configuracao e operacao interna do painel.
-- Escrita/manutencao tecnica: Escrita principal garantida por rota API em `frontend/src/app/api/admin/teams/route.ts`.
+- Escrita/manutencao tecnica: Escrita principal garantida por rota API em `apps/painel/src/app/api/admin/teams/route.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
 - Linhas estimadas pelo MySQL: `4`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/app/api/admin/teams/route.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/app/api/admin/user-teams/route.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -143,15 +145,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Matriz persistida de permissao por usuario e pagina.
 - Origem da informacao: Configuracao manual de permissoes no painel.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/permissions_server.ts`.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/permissions_server.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `240`
+- Linhas estimadas pelo MySQL: `317`
 - Chave primaria: `user_id, page_key`
 - Indices: PRIMARY (user_id, page_key) [UNQ]
 - Vinculos principais: user_id -> users.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/permissions_server.ts`
-- Evidencias documentais: `frontend/docs/02-matriz-de-permissoes.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencia de criacao/garantia de schema: `packages/core/src/permissions_server.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/02-matriz-de-permissoes.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -168,15 +170,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Relacionamento entre usuarios/agendadores e equipes.
 - Origem da informacao: Configuracao e operacao interna do painel.
-- Escrita/manutencao tecnica: Escrita principal garantida por rota API em `frontend/src/app/api/admin/user-teams/route.ts`.
+- Escrita/manutencao tecnica: Escrita principal garantida por rota API em `apps/painel/src/app/api/admin/user-teams/route.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
 - Linhas estimadas pelo MySQL: `8`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: team_id -> teams_master.id (vinculo logico); user_name -> users.name (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/app/api/admin/user-teams/route.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/app/api/admin/user-teams/route.ts`
+- Evidencias documentais: `apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -191,15 +193,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Cadastro de usuarios do painel.
 - Origem da informacao: Configuracao e operacao interna do painel.
-- Escrita/manutencao tecnica: Evidencia principal localizada em `frontend/seed-turso.mjs`.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/painel/seed-turso.mjs`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `13`
+- Linhas estimadas pelo MySQL: `65`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
-- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/seed-turso.mjs`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/02-matriz-de-permissoes.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md`
+- Vinculos principais: employee_id -> employees.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `apps/painel/seed-turso.mjs`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/02-matriz-de-permissoes.md, apps/painel/docs/05-runbook-operacional.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -213,6 +215,8 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 | department | varchar(191) | Sim | - | Geral | Campo do dominio `users` referente a department. |
 | status | varchar(191) | Sim | - | ATIVO | Status operacional/negocial atual do registro. |
 | last_access | text | Sim | - | - | Campo do dominio `users` referente a last access. |
+| username | varchar(120) | Sim | - | - | Usuario/login tecnico ou de negocio relacionado ao registro. |
+| employee_id | varchar(64) | Sim | - | - | Identificador do colaborador relacionado ao registro. |
 
 ---
 
@@ -230,7 +234,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (data_ref, unidade_id, especialidade_id) [UNQ]; idx_agenda_occ_daily_spec_date (especialidade_id, data_ref); idx_agenda_occ_daily_unit_date (unidade_id, data_ref)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_agenda_ocupacao.py`
-- Evidencias documentais: `frontend/docs/08-agenda-ocupacao.md`
+- Evidencias documentais: `apps/painel/docs/08-agenda-ocupacao.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -260,7 +264,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_agenda_occ_jobs_created (created_at); idx_agenda_occ_jobs_status (status)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_agenda_ocupacao.py`
-- Evidencias documentais: `frontend/docs/08-agenda-ocupacao.md`
+- Evidencias documentais: `apps/painel/docs/08-agenda-ocupacao.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -285,12 +289,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_ads.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `106`
+- Linhas estimadas pelo MySQL: `142`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_clinia_ads_job_item_job (job_id)
 - Vinculos principais: job_id -> clinia_ads_jobs.id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_clinia_ads.py`
-- Evidencias documentais: `frontend/docs/09-plano-tecnico-marketing-funil.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -314,12 +318,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_ads.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `54`
+- Linhas estimadas pelo MySQL: `72`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_clinia_ads_jobs_created (created_at); idx_clinia_ads_jobs_status (status)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_clinia_ads.py`
-- Evidencias documentais: `frontend/docs/09-plano-tecnico-marketing-funil.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -342,12 +346,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `73`
+- Linhas estimadas pelo MySQL: `87`
 - Chave primaria: `date`
 - Indices: PRIMARY (date) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_clinia.py`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -366,12 +370,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `73`
+- Linhas estimadas pelo MySQL: `87`
 - Chave primaria: `date`
 - Indices: PRIMARY (date) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_clinia.py`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -390,12 +394,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `8`
+- Linhas estimadas pelo MySQL: `10`
 - Chave primaria: `group_id`
 - Indices: PRIMARY (group_id) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_clinia.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -411,15 +415,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Checklist diario/manual do CRC.
 - Origem da informacao: Lancamento manual no painel para checklist operacional.
-- Escrita/manutencao tecnica: Escrita principal garantida por rota API em `frontend/src/app/api/admin/checklist/crc/route.ts`.
+- Escrita/manutencao tecnica: Escrita principal garantida por rota API em `apps/painel/src/app/api/admin/checklist/crc/route.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `2`
 - Chave primaria: `date_ref`
 - Indices: PRIMARY (date_ref) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/app/api/admin/checklist/crc/route.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/app/api/admin/checklist/crc/route.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -437,12 +441,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/database_manager.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `647`
+- Linhas estimadas pelo MySQL: `588`
 - Chave primaria: `hash_id`
 - Indices: PRIMARY (hash_id) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/database_manager.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -466,11 +470,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/database_manager.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `272681`
+- Linhas estimadas pelo MySQL: `294079`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/database_manager.py`
+- Evidencias documentais: `apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/06-contratos-operacionais-por-dominio.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -508,11 +513,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/database_manager.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `316241`
+- Linhas estimadas pelo MySQL: `475990`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/database_manager.py`
+- Evidencias documentais: `apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/06-contratos-operacionais-por-dominio.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -533,15 +539,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Checklist diario/manual de recepcao.
 - Origem da informacao: Lancamento manual no painel para checklist operacional.
-- Escrita/manutencao tecnica: Escrita principal garantida por rota API em `frontend/src/app/api/admin/checklist/recepcao/route.ts`.
+- Escrita/manutencao tecnica: Escrita principal garantida por rota API em `apps/painel/src/app/api/admin/checklist/recepcao/route.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `1`
 - Chave primaria: `date_ref, unit_key`
 - Indices: PRIMARY (date_ref, unit_key) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/app/api/admin/checklist/recepcao/route.ts`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/app/api/admin/checklist/recepcao/route.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -566,15 +572,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Lancamentos manuais complementares da recepcao.
 - Origem da informacao: Lancamento manual no painel para checklist operacional.
-- Escrita/manutencao tecnica: Escrita principal garantida por rota API em `frontend/src/app/api/admin/checklist/recepcao/route.ts`.
+- Escrita/manutencao tecnica: Escrita principal garantida por rota API em `apps/painel/src/app/api/admin/checklist/recepcao/route.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `1`
 - Chave primaria: `scope_key`
 - Indices: PRIMARY (scope_key) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/app/api/admin/checklist/recepcao/route.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/app/api/admin/checklist/recepcao/route.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -601,12 +607,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/database_manager.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `9595`
+- Linhas estimadas pelo MySQL: `10605`
 - Chave primaria: `hash_id`
 - Indices: PRIMARY (hash_id) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/database_manager.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -636,6 +642,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Chave primaria: nao declarada no schema vivo
 - Indices: nenhum indice identificado em `information_schema.statistics`
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencias documentais: `apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/04-guia-de-integracao-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/README.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -689,6 +696,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (data_ref, forma_pagamento, tipo_conta, tipo_conta_destino) [UNQ]; idx_custo_resumo_diario_data (data_ref)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_custo.py`
+- Evidencias documentais: `apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/04-guia-de-integracao-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/06-contratos-operacionais-por-dominio.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -714,6 +722,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (month_ref, forma_pagamento, tipo_conta, tipo_conta_destino) [UNQ]; idx_custo_resumo_mensal_month (month_ref)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_custo.py`
+- Evidencias documentais: `apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/04-guia-de-integracao-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/06-contratos-operacionais-por-dominio.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -734,11 +743,11 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_faturamento_scraping.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `526927`
+- Linhas estimadas pelo MySQL: `527699`
 - Chave primaria: nao declarada no schema vivo
 - Indices: uq_faturamento_analitico_line_key_hash (line_key_hash) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -778,7 +787,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (year, month) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_faturamento_scraping_2025.py`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -795,12 +804,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_faturamento_scraping.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `201782`
+- Linhas estimadas pelo MySQL: `213376`
 - Chave primaria: `data_ref, unidade, grupo, procedimento_key`
 - Indices: PRIMARY (data_ref, unidade, grupo, procedimento_key) [UNQ]; idx_fat_resumo_diario_data (data_ref); idx_fat_resumo_diario_data_grupo (data_ref, grupo); idx_fat_resumo_diario_data_unidade (data_ref, unidade); idx_fat_resumo_diario_grupo (grupo); idx_fat_resumo_diario_proc (procedimento); idx_fat_resumo_diario_unidade (unidade)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `workers/worker_faturamento_scraping.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencia de criacao/garantia de schema: `workers/worker_faturamento_scraping_2025.py`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -822,12 +831,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_faturamento_scraping.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `30347`
+- Linhas estimadas pelo MySQL: `35211`
 - Chave primaria: `month_ref, unidade, grupo, procedimento_key`
 - Indices: PRIMARY (month_ref, unidade, grupo, procedimento_key) [UNQ]; idx_fat_resumo_mensal_grupo (grupo); idx_fat_resumo_mensal_month (month_ref); idx_fat_resumo_mensal_month_grupo (month_ref, grupo); idx_fat_resumo_mensal_month_unidade (month_ref, unidade); idx_fat_resumo_mensal_proc (procedimento); idx_fat_resumo_mensal_unidade (unidade)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `workers/worker_faturamento_scraping.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencia de criacao/garantia de schema: `workers/worker_faturamento_scraping_2025.py`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -849,12 +858,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_feegow_appointments.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `389253`
+- Linhas estimadas pelo MySQL: `413351`
 - Chave primaria: `appointment_id`
 - Indices: PRIMARY (appointment_id) [UNQ]
 - Vinculos principais: patient_id -> feegow_patients.patient_id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_feegow_appointments.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -888,6 +897,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (year, month) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_feegow_appointments_backfill.py`
+- Evidencias documentais: `apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -907,12 +917,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_contracts.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `18562`
+- Linhas estimadas pelo MySQL: `17904`
 - Chave primaria: `registration_number`
 - Indices: PRIMARY (registration_number) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_contracts.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -937,12 +947,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_proposals.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `3673`
+- Linhas estimadas pelo MySQL: `4155`
 - Chave primaria: `patient_id`
 - Indices: PRIMARY (patient_id) [UNQ]
 - Vinculos principais: patient_id -> feegow_patients.patient_id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_proposals.py`
-- Evidencias documentais: `frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -967,7 +977,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (patient_id) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_feegow_patients.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/01-visao-funcional-e-indicadores.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1000,7 +1010,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (sync_key) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_feegow_patients.py`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1017,12 +1027,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_feegow_procedures.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `3370`
+- Linhas estimadas pelo MySQL: `3353`
 - Chave primaria: `procedimento_id`
 - Indices: PRIMARY (procedimento_id) [UNQ]; idx_feegow_procedures_catalog_nome (nome)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_feegow_procedures.py`
-- Evidencias documentais: `frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1045,12 +1055,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_proposals.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_unicode_ci`
-- Linhas estimadas pelo MySQL: `13859`
+- Linhas estimadas pelo MySQL: `15625`
 - Chave primaria: `proposal_id`
 - Indices: PRIMARY (proposal_id) [UNQ]; idx_prop_date (date); idx_prop_patient (patient_id); idx_prop_status (status); idx_prop_unit (unit_name)
 - Vinculos principais: patient_id -> feegow_patients.patient_id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_proposals.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1074,12 +1084,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_consolidacao_profissionais.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `2758`
+- Linhas estimadas pelo MySQL: `3864`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_repasse_conferir_detail_status (detail_status); idx_repasse_conferir_exec_date (execution_date); idx_repasse_conferir_period_prof (period_ref, professional_id); idx_repasse_conferir_status (detail_status); source_row_hash (source_row_hash) [UNQ]
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_consolidacao_profissionais.py`
-- Evidencias documentais: `frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencias documentais: `apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/04-guia-de-integracao-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1119,12 +1129,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_repasse_consolidado.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `2346`
+- Linhas estimadas pelo MySQL: `2475`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_repasse_consolidado_data_exec (data_exec); idx_repasse_consolidado_period_prof (period_ref, professional_id); source_row_hash (source_row_hash) [UNQ]
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_repasse_consolidado.py`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md, frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1150,15 +1160,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Controle manual de follow-up comercial das propostas.
 - Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/proposals/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/proposals/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `0`
 - Chave primaria: `proposal_id`
 - Indices: PRIMARY (proposal_id) [UNQ]
 - Vinculos principais: proposal_id -> feegow_proposals.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/proposals/repository.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/proposals/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1183,12 +1193,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_consolidacao_profissionais.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `106`
+- Linhas estimadas pelo MySQL: `238`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_repasse_consol_items_job (job_id); idx_repasse_consol_items_prof (professional_id); idx_repasse_consol_items_status (status); idx_repasse_consolidacao_items_job (job_id); idx_repasse_consolidacao_items_prof (professional_id); idx_repasse_consolidacao_items_status (status)
 - Vinculos principais: professional_id -> professionals.id (vinculo logico); job_id -> repasse_consolidacao_jobs.id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_consolidacao_profissionais.py`
-- Evidencias documentais: `frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencias documentais: `apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/04-guia-de-integracao-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1213,12 +1223,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_consolidacao_profissionais.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `8`
+- Linhas estimadas pelo MySQL: `9`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_repasse_consol_jobs_created (created_at); idx_repasse_consol_jobs_period (period_ref); idx_repasse_consol_jobs_status (status); idx_repasse_consolidacao_jobs_created (created_at); idx_repasse_consolidacao_jobs_period (period_ref); idx_repasse_consolidacao_jobs_status (status)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_consolidacao_profissionais.py`
-- Evidencias documentais: `frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencias documentais: `apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/04-guia-de-integracao-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1240,15 +1250,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Marcacoes/flags manuais por linha de repasse.
 - Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/repasses/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/repasses/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `0`
+- Linhas estimadas pelo MySQL: `5`
 - Chave primaria: `period_ref, professional_id, source_row_hash, user_id`
 - Indices: PRIMARY (period_ref, professional_id, source_row_hash, user_id) [UNQ]; idx_repasse_consolidacao_line_marks_period_prof (period_ref, professional_id); idx_repasse_consolidacao_line_marks_user (user_id, updated_at)
 - Vinculos principais: professional_id -> professionals.id (vinculo logico); user_id -> users.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/repasses/repository.ts`
-- Evidencias documentais: `frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/repasses/repository.ts`
+- Evidencias documentais: `apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1266,15 +1276,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Legenda/catalogo das marcacoes de repasse.
 - Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/repasses/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/repasses/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `3`
 - Chave primaria: `user_id, color_key`
 - Indices: PRIMARY (user_id, color_key) [UNQ]; idx_repasse_consolidacao_legends_updated (updated_at)
 - Vinculos principais: user_id -> users.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/repasses/repository.ts`
-- Evidencias documentais: `frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/repasses/repository.ts`
+- Evidencias documentais: `apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1289,15 +1299,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Observacoes manuais na consolidacao de repasse.
 - Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/repasses/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/repasses/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `1`
 - Chave primaria: `period_ref, professional_id`
 - Indices: PRIMARY (period_ref, professional_id) [UNQ]; idx_repasse_consolidacao_notes_prof (professional_id)
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/repasses/repository.ts`
-- Evidencias documentais: `frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/repasses/repository.ts`
+- Evidencias documentais: `apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1314,15 +1324,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Fechamentos/confirmacoes manuais de repasse.
 - Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/repasses/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/repasses/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `1`
+- Linhas estimadas pelo MySQL: `2`
 - Chave primaria: `period_ref, professional_id`
 - Indices: PRIMARY (period_ref, professional_id) [UNQ]; idx_repasse_fechamento_manual_prof (professional_id)
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/repasses/repository.ts`
-- Evidencias documentais: `frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/repasses/repository.ts`
+- Evidencias documentais: `apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1339,15 +1349,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Artefatos/PDFs gerados para repasse.
 - Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/repasses/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/repasses/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `2`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_repasse_pdf_artifacts_job (pdf_job_id); idx_repasse_pdf_artifacts_prof (professional_id)
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/repasses/repository.ts`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md, frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/repasses/repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1370,15 +1380,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Controle de jobs de geracao de PDF de repasse.
 - Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/repasses/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/repasses/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `9`
+- Linhas estimadas pelo MySQL: `11`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_repasse_pdf_jobs_created (created_at); idx_repasse_pdf_jobs_period (period_ref); idx_repasse_pdf_jobs_status (status)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/repasses/repository.ts`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md, frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/repasses/repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1400,15 +1410,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Observacoes por profissional no modulo de repasses.
 - Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/repasses/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/repasses/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `1`
 - Chave primaria: `period_ref, professional_id`
 - Indices: PRIMARY (period_ref, professional_id) [UNQ]; idx_repasse_prof_notes_prof (professional_id)
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/repasses/repository.ts`
-- Evidencias documentais: `frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/repasses/repository.ts`
+- Evidencias documentais: `apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1428,12 +1438,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_repasse_consolidado.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `345`
+- Linhas estimadas pelo MySQL: `477`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_repasse_sync_items_job (job_id); idx_repasse_sync_items_prof (professional_id); idx_repasse_sync_items_status (status)
 - Vinculos principais: professional_id -> professionals.id (vinculo logico); job_id -> repasse_sync_jobs.id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_repasse_consolidado.py`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md, frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1458,12 +1468,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_repasse_consolidado.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `19`
+- Linhas estimadas pelo MySQL: `20`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_repasse_sync_jobs_created (created_at); idx_repasse_sync_jobs_period (period_ref); idx_repasse_sync_jobs_status (status)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_repasse_consolidado.py`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md, frontend/docs/07-plano-tecnico-repasses.md`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/07-plano-tecnico-repasses.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1483,251 +1493,6 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 ## Marketing, CRM, funil e analytics
 
-### `clinia_crm_boards`
-
-- Finalidade: Cadastro dos boards/pipelines do CRM Clinia.
-- Origem da informacao: CRM Clinia.
-- Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_crm.py`.
-- Tabela/engine: `InnoDB`
-- Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `10`
-- Chave primaria: `id`
-- Indices: PRIMARY (id) [UNQ]; idx_clinia_crm_boards_key (board_key)
-- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `workers/worker_clinia_crm.py`
-
-| Coluna | Tipo | Nulo | Chave | Default | Descricao |
-| --- | --- | --- | --- | --- | --- |
-| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
-| brand_id | varchar(64) | Sim | - | - | Identificador de brand usado para relacionar ou localizar o registro na origem/aplicacao. |
-| title | varchar(255) | Nao | - | - | Campo do dominio `clinia_crm_boards` referente a title. |
-| board_key | varchar(160) | Nao | IDX | - | Campo do dominio `clinia_crm_boards` referente a board key. |
-| is_deleted | int | Nao | - | 0 | Indicador logico relacionado a deleted. |
-| columns_count | int | Nao | - | 0 | Quantidade/contagem referente a columns count. |
-| payload_json | text | Sim | - | - | Payload bruto ou quase bruto em JSON para auditoria/reprocessamento. |
-| updated_at | varchar(32) | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
-
----
-
-### `clinia_crm_columns`
-
-- Finalidade: Cadastro das colunas/estagios do CRM Clinia.
-- Origem da informacao: CRM Clinia.
-- Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_crm.py`.
-- Tabela/engine: `InnoDB`
-- Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `77`
-- Chave primaria: `id`
-- Indices: PRIMARY (id) [UNQ]; idx_clinia_crm_columns_board (board_id); idx_clinia_crm_columns_key (column_key)
-- Vinculos principais: board_id -> clinia_crm_boards.board_id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `workers/worker_clinia_crm.py`
-
-| Coluna | Tipo | Nulo | Chave | Default | Descricao |
-| --- | --- | --- | --- | --- | --- |
-| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
-| board_id | varchar(64) | Nao | IDX | - | Identificador do board/pipeline no CRM Clinia. |
-| title | varchar(255) | Nao | - | - | Campo do dominio `clinia_crm_columns` referente a title. |
-| column_key | varchar(160) | Nao | IDX | - | Campo do dominio `clinia_crm_columns` referente a column key. |
-| position | int | Nao | - | 0 | Campo do dominio `clinia_crm_columns` referente a position. |
-| is_deleted | int | Nao | - | 0 | Indicador logico relacionado a deleted. |
-| trigger_confirmation | int | Nao | - | 0 | Campo do dominio `clinia_crm_columns` referente a trigger confirmation. |
-| required_fields_json | text | Sim | - | - | Conteudo estruturado em JSON relacionado a required fields. |
-| meta_total | int | Sim | - | 0 | Quantidade/contagem referente a meta total. |
-| meta_total_amount | decimal(14,2) | Sim | - | 0.00 | Quantidade/contagem referente a meta total amount. |
-| meta_has_more | int | Sim | - | 0 | Campo do dominio `clinia_crm_columns` referente a meta has more. |
-| meta_page | int | Sim | - | 0 | Campo do dominio `clinia_crm_columns` referente a meta page. |
-| meta_page_size | int | Sim | - | 0 | Campo do dominio `clinia_crm_columns` referente a meta page size. |
-| updated_at | varchar(32) | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
-
----
-
-### `clinia_crm_funnel_mapping`
-
-- Finalidade: Mapeamento do funil do CRM Clinia.
-- Origem da informacao: CRM Clinia.
-- Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_crm.py`.
-- Tabela/engine: `InnoDB`
-- Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `0`
-- Chave primaria: `id`
-- Indices: PRIMARY (id) [UNQ]; idx_clinia_crm_map_active (is_active); idx_clinia_crm_map_board (board_id)
-- Vinculos principais: board_id -> clinia_crm_boards.board_id (vinculo logico); column_id -> clinia_crm_columns.column_id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `workers/worker_clinia_crm.py`
-
-| Coluna | Tipo | Nulo | Chave | Default | Descricao |
-| --- | --- | --- | --- | --- | --- |
-| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
-| board_id | varchar(64) | Nao | IDX | - | Identificador do board/pipeline no CRM Clinia. |
-| column_id | varchar(64) | Sim | - | - | Identificador da coluna/estagio no CRM Clinia. |
-| stage_key | varchar(120) | Sim | - | - | Status/etapa de stage key. |
-| stage_label | varchar(255) | Sim | - | - | Status/etapa de stage label. |
-| is_funil_relevant | int | Nao | - | 0 | Indicador logico relacionado a funil relevant. |
-| brand_slug | varchar(64) | Sim | - | - | Campo do dominio `clinia_crm_funnel_mapping` referente a brand slug. |
-| unit_key | varchar(80) | Sim | - | - | Campo do dominio `clinia_crm_funnel_mapping` referente a unit key. |
-| specialty_key | varchar(80) | Sim | - | - | Campo do dominio `clinia_crm_funnel_mapping` referente a specialty key. |
-| is_active | int | Nao | IDX | 1 | Indicador logico de atividade do registro. |
-| updated_at | varchar(32) | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
-
----
-
-### `clinia_crm_item_snapshots`
-
-- Finalidade: Historico de snapshots dos cards/leads do CRM Clinia.
-- Origem da informacao: CRM Clinia.
-- Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_crm.py`.
-- Tabela/engine: `InnoDB`
-- Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `755581`
-- Chave primaria: `id`
-- Indices: PRIMARY (id) [UNQ]; idx_clinia_crm_item_snapshots_board_day (board_id, snapshot_date); ux_clinia_crm_item_snapshot_day (snapshot_date, crm_item_id) [UNQ]
-- Vinculos principais: board_id -> clinia_crm_boards.board_id (vinculo logico); column_id -> clinia_crm_columns.column_id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `workers/worker_clinia_crm.py`
-
-| Coluna | Tipo | Nulo | Chave | Default | Descricao |
-| --- | --- | --- | --- | --- | --- |
-| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
-| snapshot_date | varchar(10) | Nao | IDX | - | Data de snapshot. |
-| crm_item_id | varchar(64) | Nao | - | - | Identificador de CRM item usado para relacionar ou localizar o registro na origem/aplicacao. |
-| board_id | varchar(64) | Nao | IDX | - | Identificador do board/pipeline no CRM Clinia. |
-| board_title | varchar(255) | Sim | - | - | Campo do dominio `clinia_crm_item_snapshots` referente a board title. |
-| column_id | varchar(64) | Nao | - | - | Identificador da coluna/estagio no CRM Clinia. |
-| column_title | varchar(255) | Sim | - | - | Campo do dominio `clinia_crm_item_snapshots` referente a column title. |
-| client_id | varchar(64) | Sim | - | - | Identificador de client usado para relacionar ou localizar o registro na origem/aplicacao. |
-| client_name | varchar(255) | Sim | - | - | Nome de client utilizado para exibicao, filtro ou agrupamento. |
-| client_phone | varchar(80) | Sim | - | - | Campo do dominio `clinia_crm_item_snapshots` referente a client phone. |
-| client_email | varchar(255) | Sim | - | - | Campo do dominio `clinia_crm_item_snapshots` referente a client email. |
-| client_source_raw | varchar(120) | Sim | - | - | Campo do dominio `clinia_crm_item_snapshots` referente a client source raw. |
-| crm_source_key | varchar(120) | Sim | - | - | Campo do dominio `clinia_crm_item_snapshots` referente a CRM source key. |
-| service | varchar(255) | Sim | - | - | Nome da integracao/servico relacionado ao registro. |
-| service_key | varchar(160) | Sim | - | - | Campo do dominio `clinia_crm_item_snapshots` referente a service key. |
-| price | decimal(14,2) | Nao | - | 0.00 | Valor monetario ou numerico referente a price. |
-| description | text | Sim | - | - | Descricao textual do registro. |
-| state | varchar(40) | Sim | - | - | Campo do dominio `clinia_crm_item_snapshots` referente a state. |
-| created_at | varchar(32) | Sim | - | - | Data/hora de criacao do registro no painel. |
-| column_entered_at | varchar(32) | Sim | - | - | Data/hora referente a column entered. |
-| assigned_user_id | varchar(64) | Sim | - | - | Identificador de assigned user usado para relacionar ou localizar o registro na origem/aplicacao. |
-| assigned_user_name | varchar(255) | Sim | - | - | Nome de assigned user utilizado para exibicao, filtro ou agrupamento. |
-| contact_jid | varchar(160) | Sim | - | - | Campo do dominio `clinia_crm_item_snapshots` referente a contact jid. |
-| contact_name | varchar(255) | Sim | - | - | Nome de contact utilizado para exibicao, filtro ou agrupamento. |
-| verified_name | varchar(255) | Sim | - | - | Nome de verified utilizado para exibicao, filtro ou agrupamento. |
-| personal_name | varchar(255) | Sim | - | - | Nome de personal utilizado para exibicao, filtro ou agrupamento. |
-| tags_json | text | Sim | - | - | Conteudo estruturado em JSON relacionado a tags. |
-| state_changes_json | text | Sim | - | - | Conteudo estruturado em JSON relacionado a state changes. |
-| payload_json | text | Sim | - | - | Payload bruto ou quase bruto em JSON para auditoria/reprocessamento. |
-| payload_hash | varchar(64) | Sim | - | - | Campo do dominio `clinia_crm_item_snapshots` referente a payload hash. |
-| collected_at | varchar(32) | Nao | - | - | Data/hora referente a collected. |
-| updated_at | varchar(32) | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
-
----
-
-### `clinia_crm_items_current`
-
-- Finalidade: Estado corrente dos cards/leads do CRM Clinia.
-- Origem da informacao: CRM Clinia.
-- Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_crm.py`.
-- Tabela/engine: `InnoDB`
-- Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `25050`
-- Chave primaria: `crm_item_id`
-- Indices: PRIMARY (crm_item_id) [UNQ]; idx_clinia_crm_items_current_board (board_id); idx_clinia_crm_items_current_column (column_id); idx_clinia_crm_items_current_created (created_at); idx_clinia_crm_items_current_service (service_key); idx_clinia_crm_items_current_source (crm_source_key)
-- Vinculos principais: board_id -> clinia_crm_boards.board_id (vinculo logico); column_id -> clinia_crm_columns.column_id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `workers/worker_clinia_crm.py`
-
-| Coluna | Tipo | Nulo | Chave | Default | Descricao |
-| --- | --- | --- | --- | --- | --- |
-| crm_item_id | varchar(64) | Nao | PK | - | Identificador de CRM item usado para relacionar ou localizar o registro na origem/aplicacao. |
-| board_id | varchar(64) | Nao | IDX | - | Identificador do board/pipeline no CRM Clinia. |
-| board_title | varchar(255) | Sim | - | - | Campo do dominio `clinia_crm_items_current` referente a board title. |
-| column_id | varchar(64) | Nao | IDX | - | Identificador da coluna/estagio no CRM Clinia. |
-| column_title | varchar(255) | Sim | - | - | Campo do dominio `clinia_crm_items_current` referente a column title. |
-| client_id | varchar(64) | Sim | - | - | Identificador de client usado para relacionar ou localizar o registro na origem/aplicacao. |
-| client_name | varchar(255) | Sim | - | - | Nome de client utilizado para exibicao, filtro ou agrupamento. |
-| client_phone | varchar(80) | Sim | - | - | Campo do dominio `clinia_crm_items_current` referente a client phone. |
-| client_email | varchar(255) | Sim | - | - | Campo do dominio `clinia_crm_items_current` referente a client email. |
-| client_source_raw | varchar(120) | Sim | - | - | Campo do dominio `clinia_crm_items_current` referente a client source raw. |
-| crm_source_key | varchar(120) | Sim | IDX | - | Campo do dominio `clinia_crm_items_current` referente a CRM source key. |
-| service | varchar(255) | Sim | - | - | Nome da integracao/servico relacionado ao registro. |
-| service_key | varchar(160) | Sim | IDX | - | Campo do dominio `clinia_crm_items_current` referente a service key. |
-| price | decimal(14,2) | Nao | - | 0.00 | Valor monetario ou numerico referente a price. |
-| description | text | Sim | - | - | Descricao textual do registro. |
-| state | varchar(40) | Sim | - | - | Campo do dominio `clinia_crm_items_current` referente a state. |
-| created_at | varchar(32) | Sim | IDX | - | Data/hora de criacao do registro no painel. |
-| column_entered_at | varchar(32) | Sim | - | - | Data/hora referente a column entered. |
-| assigned_user_id | varchar(64) | Sim | - | - | Identificador de assigned user usado para relacionar ou localizar o registro na origem/aplicacao. |
-| assigned_user_name | varchar(255) | Sim | - | - | Nome de assigned user utilizado para exibicao, filtro ou agrupamento. |
-| contact_jid | varchar(160) | Sim | - | - | Campo do dominio `clinia_crm_items_current` referente a contact jid. |
-| contact_name | varchar(255) | Sim | - | - | Nome de contact utilizado para exibicao, filtro ou agrupamento. |
-| verified_name | varchar(255) | Sim | - | - | Nome de verified utilizado para exibicao, filtro ou agrupamento. |
-| personal_name | varchar(255) | Sim | - | - | Nome de personal utilizado para exibicao, filtro ou agrupamento. |
-| tags_json | text | Sim | - | - | Conteudo estruturado em JSON relacionado a tags. |
-| state_changes_json | text | Sim | - | - | Conteudo estruturado em JSON relacionado a state changes. |
-| payload_json | text | Sim | - | - | Payload bruto ou quase bruto em JSON para auditoria/reprocessamento. |
-| payload_hash | varchar(64) | Sim | - | - | Campo do dominio `clinia_crm_items_current` referente a payload hash. |
-| is_current_visible | int | Nao | - | 1 | Indicador logico relacionado a current visible. |
-| is_open_current | int | Nao | - | 0 | Indicador logico relacionado a open current. |
-| first_seen_at | varchar(32) | Nao | - | - | Data/hora referente a first seen. |
-| last_seen_at | varchar(32) | Nao | - | - | Data/hora referente a last seen. |
-| last_job_id | varchar(64) | Sim | - | - | Identificador de last job usado para relacionar ou localizar o registro na origem/aplicacao. |
-| updated_at | varchar(32) | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
-
----
-
-### `clinia_crm_job_items`
-
-- Finalidade: Itens detalhados dos jobs do CRM Clinia.
-- Origem da informacao: CRM Clinia.
-- Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_crm.py`.
-- Tabela/engine: `InnoDB`
-- Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `709`
-- Chave primaria: `id`
-- Indices: PRIMARY (id) [UNQ]; idx_clinia_crm_job_items_job (job_id); idx_clinia_crm_job_items_status (status)
-- Vinculos principais: board_id -> clinia_crm_boards.board_id (vinculo logico); job_id -> clinia_crm_jobs.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `workers/worker_clinia_crm.py`
-
-| Coluna | Tipo | Nulo | Chave | Default | Descricao |
-| --- | --- | --- | --- | --- | --- |
-| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
-| job_id | varchar(64) | Nao | IDX | - | Identificador do job/processamento ao qual a linha pertence. |
-| board_id | varchar(64) | Nao | - | - | Identificador do board/pipeline no CRM Clinia. |
-| board_title | varchar(255) | Sim | - | - | Campo do dominio `clinia_crm_job_items` referente a board title. |
-| status | varchar(30) | Nao | IDX | - | Status operacional/negocial atual do registro. |
-| records_read | int | Nao | - | 0 | Campo do dominio `clinia_crm_job_items` referente a records read. |
-| records_written | int | Nao | - | 0 | Campo do dominio `clinia_crm_job_items` referente a records written. |
-| error_message | text | Sim | - | - | Mensagem de erro registrada durante processamento. |
-| duration_ms | int | Sim | - | - | Campo do dominio `clinia_crm_job_items` referente a duration ms. |
-| created_at | varchar(32) | Nao | - | - | Data/hora de criacao do registro no painel. |
-| updated_at | varchar(32) | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
-
----
-
-### `clinia_crm_jobs`
-
-- Finalidade: Controle dos jobs do CRM Clinia.
-- Origem da informacao: CRM Clinia.
-- Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_crm.py`.
-- Tabela/engine: `InnoDB`
-- Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `76`
-- Chave primaria: `id`
-- Indices: PRIMARY (id) [UNQ]; idx_clinia_crm_jobs_created (created_at); idx_clinia_crm_jobs_status (status)
-- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `workers/worker_clinia_crm.py`
-
-| Coluna | Tipo | Nulo | Chave | Default | Descricao |
-| --- | --- | --- | --- | --- | --- |
-| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
-| status | varchar(20) | Nao | IDX | - | Status operacional/negocial atual do registro. |
-| scope_json | text | Sim | - | - | Conteudo estruturado em JSON relacionado a scope. |
-| requested_by | varchar(64) | Nao | - | - | Campo do dominio `clinia_crm_jobs` referente a requested by. |
-| error_message | text | Sim | - | - | Mensagem de erro registrada durante processamento. |
-| created_at | varchar(32) | Nao | IDX | - | Data/hora de criacao do registro no painel. |
-| started_at | varchar(32) | Sim | - | - | Data/hora referente a started. |
-| finished_at | varchar(32) | Sim | - | - | Data/hora referente a finished. |
-| updated_at | varchar(32) | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
-
----
-
 ### `fact_clinia_ads_daily`
 
 - Finalidade: Fato diario de anuncios/leads Clinia Ads.
@@ -1735,12 +1500,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_ads.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `3058`
+- Linhas estimadas pelo MySQL: `3061`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_clinia_ads_fact_date_brand (date_ref, brand_slug); idx_clinia_ads_fact_origin (origin); idx_clinia_ads_fact_source (source_id)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_clinia_ads.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/09-plano-tecnico-marketing-funil.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/12-plano-tecnico-marketing-controle.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1762,62 +1527,6 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 ---
 
-### `fact_clinia_crm_lead_created_daily`
-
-- Finalidade: Fato diario de leads criados no CRM Clinia.
-- Origem da informacao: CRM Clinia.
-- Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_crm.py`.
-- Tabela/engine: `InnoDB`
-- Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `2862`
-- Chave primaria: `id`
-- Indices: PRIMARY (id) [UNQ]; idx_fact_clinia_crm_lead_created_board_day (board_id, created_date); ux_fact_clinia_crm_lead_created_daily (created_date, board_id, crm_source_key, service_key) [UNQ]
-- Vinculos principais: board_id -> clinia_crm_boards.board_id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `workers/worker_clinia_crm.py`
-
-| Coluna | Tipo | Nulo | Chave | Default | Descricao |
-| --- | --- | --- | --- | --- | --- |
-| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
-| created_date | varchar(10) | Nao | IDX | - | Data de created. |
-| board_id | varchar(64) | Nao | IDX | - | Identificador do board/pipeline no CRM Clinia. |
-| board_title | varchar(255) | Sim | - | - | Campo do dominio `fact_clinia_crm_lead_created_daily` referente a board title. |
-| crm_source_key | varchar(120) | Nao | - | - | Campo do dominio `fact_clinia_crm_lead_created_daily` referente a CRM source key. |
-| service_key | varchar(160) | Nao | - | - | Campo do dominio `fact_clinia_crm_lead_created_daily` referente a service key. |
-| items_created_count | int | Nao | - | 0 | Quantidade/contagem referente a items created count. |
-| items_created_value | decimal(14,2) | Nao | - | 0.00 | Valor monetario ou numerico referente a items created value. |
-| updated_at | varchar(32) | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
-
----
-
-### `fact_clinia_crm_pipeline_daily`
-
-- Finalidade: Fato diario do pipeline CRM Clinia.
-- Origem da informacao: CRM Clinia.
-- Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_crm.py`.
-- Tabela/engine: `InnoDB`
-- Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `32810`
-- Chave primaria: `id`
-- Indices: PRIMARY (id) [UNQ]; idx_fact_clinia_crm_pipeline_board_day (board_id, snapshot_date); ux_fact_clinia_crm_pipeline_daily (snapshot_date, board_id, column_id, crm_source_key, service_key) [UNQ]
-- Vinculos principais: board_id -> clinia_crm_boards.board_id (vinculo logico); column_id -> clinia_crm_columns.column_id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `workers/worker_clinia_crm.py`
-
-| Coluna | Tipo | Nulo | Chave | Default | Descricao |
-| --- | --- | --- | --- | --- | --- |
-| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
-| snapshot_date | varchar(10) | Nao | IDX | - | Data de snapshot. |
-| board_id | varchar(64) | Nao | IDX | - | Identificador do board/pipeline no CRM Clinia. |
-| board_title | varchar(255) | Sim | - | - | Campo do dominio `fact_clinia_crm_pipeline_daily` referente a board title. |
-| column_id | varchar(64) | Nao | - | - | Identificador da coluna/estagio no CRM Clinia. |
-| column_title | varchar(255) | Sim | - | - | Campo do dominio `fact_clinia_crm_pipeline_daily` referente a column title. |
-| crm_source_key | varchar(120) | Nao | - | - | Campo do dominio `fact_clinia_crm_pipeline_daily` referente a CRM source key. |
-| service_key | varchar(160) | Nao | - | - | Campo do dominio `fact_clinia_crm_pipeline_daily` referente a service key. |
-| open_items_count | int | Nao | - | 0 | Quantidade/contagem referente a open items count. |
-| open_items_value | decimal(14,2) | Nao | - | 0.00 | Valor monetario ou numerico referente a open items value. |
-| updated_at | varchar(32) | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
-
----
-
 ### `fact_marketing_funnel_daily`
 
 - Finalidade: Fato principal diario do funil de marketing.
@@ -1830,7 +1539,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_fact_mkt_date_brand (date_ref, brand_slug); ux_fact_mkt_funnel_key (date_ref, brand_slug, unit_key, specialty_key, channel_key, campaign_key) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/09-plano-tecnico-marketing-funil.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/12-plano-tecnico-marketing-controle.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1886,7 +1595,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_fact_mkt_channel_date_brand (date_ref, brand_slug); ux_fact_mkt_channel_key (date_ref, brand_slug, campaign_key, channel_group) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
-- Evidencias documentais: `frontend/docs/09-plano-tecnico-marketing-funil.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1917,7 +1626,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_fact_mkt_device_date_brand (date_ref, brand_slug); ux_fact_mkt_device_key (date_ref, brand_slug, campaign_key, device) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
-- Evidencias documentais: `frontend/docs/09-plano-tecnico-marketing-funil.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1949,7 +1658,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_fact_mkt_landing_date_brand (date_ref, brand_slug)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
-- Evidencias documentais: `frontend/docs/09-plano-tecnico-marketing-funil.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -1984,6 +1693,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_mkt_map_brand_active (brand_slug, is_active); idx_mkt_map_priority (priority)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
+- Evidencias documentais: `apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/06-contratos-operacionais-por-dominio.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2012,6 +1722,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_mkt_funnel_item_job (job_id); idx_mkt_funnel_item_status (status)
 - Vinculos principais: job_id -> marketing_funnel_jobs.id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
+- Evidencias documentais: `apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2042,7 +1753,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_mkt_funnel_jobs_created (created_at); idx_mkt_funnel_jobs_status (status)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
-- Evidencias documentais: `frontend/docs/03-arquitetura-tecnica.md, frontend/docs/12-plano-tecnico-marketing-controle.md`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/12-plano-tecnico-marketing-controle.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2073,6 +1784,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_mkt_google_accounts_active (is_active); idx_mkt_google_accounts_brand (brand_slug)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
+- Evidencias documentais: `apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/06-contratos-operacionais-por-dominio.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2093,12 +1805,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_clinia_ads.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `4737`
+- Linhas estimadas pelo MySQL: `5466`
 - Chave primaria: `event_hash`
 - Indices: PRIMARY (event_hash) [UNQ]; idx_clinia_ads_raw_date_brand (date_ref, brand_slug); idx_clinia_ads_raw_origin (origin); idx_clinia_ads_raw_source (source_id); idx_clinia_ads_raw_stage (stage)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_clinia_ads.py`
-- Evidencias documentais: `frontend/docs/09-plano-tecnico-marketing-funil.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2138,7 +1850,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_raw_ga4_date_brand (date_ref, brand_slug); ux_raw_ga4_row_hash (row_hash) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
-- Evidencias documentais: `frontend/docs/09-plano-tecnico-marketing-funil.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/06-contratos-operacionais-por-dominio.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2180,6 +1892,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_raw_ga4_channel_date_brand (date_ref, brand_slug); ux_raw_ga4_channel_row_hash (row_hash) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
+- Evidencias documentais: `apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/06-contratos-operacionais-por-dominio.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2214,6 +1927,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_raw_ga4_landing_date_brand (date_ref, brand_slug); ux_raw_ga4_landing_row_hash (row_hash) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
+- Evidencias documentais: `apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/06-contratos-operacionais-por-dominio.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2252,7 +1966,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_raw_ads_date_brand (date_ref, brand_slug); ux_raw_ads_row_hash (row_hash) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
-- Evidencias documentais: `frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/09-plano-tecnico-marketing-funil.md`
+- Evidencias documentais: `apps/painel/docs/09-plano-tecnico-marketing-funil.md, apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2305,6 +2019,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Indices: PRIMARY (id) [UNQ]; idx_raw_ads_device_date_brand (date_ref, brand_slug); ux_raw_ads_device_row_hash (row_hash) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_marketing_funnel_google.py`
+- Evidencias documentais: `apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/06-contratos-operacionais-por-dominio.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2335,15 +2050,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Auditoria de alteracoes em modelos de contrato.
 - Origem da informacao: Cadastro/manual de modelos de contrato no painel.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/contract_templates/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/contract_templates/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `28`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: template_id -> contract_templates.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/contract_templates/repository.ts`
-- Evidencias documentais: `frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/contract_templates/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2360,15 +2075,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Repositorio de modelos de contrato.
 - Origem da informacao: Cadastro/manual de modelos de contrato no painel.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/contract_templates/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/contract_templates/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `5`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/contract_templates/repository.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/02-matriz-de-permissoes.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/contract_templates/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/02-matriz-de-permissoes.md, apps/painel/docs/01-visao-funcional-e-indicadores.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2398,15 +2113,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Auditoria das alteracoes no cadastro de colaboradores.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/colaboradores/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/colaboradores/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `112`
+- Linhas estimadas pelo MySQL: `241`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: employee_id -> employees.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/colaboradores/repository.ts`
-- Evidencias documentais: `frontend/docs/10-plano-tecnico-colaboradores.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/colaboradores/repository.ts`
+- Evidencias documentais: `apps/painel/docs/10-plano-tecnico-colaboradores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2423,15 +2138,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Documentos ativos dos colaboradores.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/colaboradores/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/colaboradores/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `12`
+- Linhas estimadas pelo MySQL: `55`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_employee_documents_employee (employee_id)
 - Vinculos principais: employee_id -> employees.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/colaboradores/repository.ts`
-- Evidencias documentais: `frontend/docs/10-plano-tecnico-colaboradores.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/colaboradores/repository.ts`
+- Evidencias documentais: `apps/painel/docs/10-plano-tecnico-colaboradores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/05-matriz-de-escrita-e-consumo.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2457,15 +2172,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Historico de documentos inativos de colaboradores.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/colaboradores/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/colaboradores/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `0`
+- Linhas estimadas pelo MySQL: `4`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_employee_documents_inactive_employee (employee_id); source_document_id (source_document_id) [UNQ]
 - Vinculos principais: employee_id -> employees.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/colaboradores/repository.ts`
-- Evidencias documentais: `frontend/docs/03-arquitetura-tecnica.md, frontend/docs/10-plano-tecnico-colaboradores.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/colaboradores/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/10-plano-tecnico-colaboradores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2490,18 +2205,80 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 ---
 
+### `employee_lifecycle_cases`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/colaboradores/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; idx_employee_lifecycle_cases_employee (employee_id); idx_employee_lifecycle_cases_stage (stage)
+- Vinculos principais: employee_id -> employees.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/colaboradores/repository.ts`
+- Evidencias documentais: `apps/painel/docs/10-plano-tecnico-colaboradores.md`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| employee_id | varchar(64) | Nao | IDX | - | Identificador do colaborador relacionado ao registro. |
+| case_type | varchar(20) | Nao | - | - | Campo do dominio `employee_lifecycle_cases` referente a case type. |
+| stage | varchar(40) | Nao | IDX | - | Status/etapa de stage. |
+| owner_name | varchar(180) | Sim | - | - | Nome de owner utilizado para exibicao, filtro ou agrupamento. |
+| target_date | date | Sim | - | - | Data de target. |
+| closed_at | text | Sim | - | - | Data/hora referente a closed. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `employee_lifecycle_tasks`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/colaboradores/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; idx_employee_lifecycle_tasks_case (case_id)
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/colaboradores/repository.ts`
+- Evidencias documentais: `apps/painel/docs/10-plano-tecnico-colaboradores.md`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| case_id | varchar(64) | Nao | IDX | - | Identificador de case usado para relacionar ou localizar o registro na origem/aplicacao. |
+| task_key | varchar(80) | Nao | - | - | Campo do dominio `employee_lifecycle_tasks` referente a task key. |
+| title | varchar(180) | Nao | - | - | Campo do dominio `employee_lifecycle_tasks` referente a title. |
+| status | varchar(20) | Nao | - | - | Status operacional/negocial atual do registro. |
+| owner_name | varchar(180) | Sim | - | - | Nome de owner utilizado para exibicao, filtro ou agrupamento. |
+| due_date | date | Sim | - | - | Data de due. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| source_type | varchar(40) | Nao | - | - | Campo do dominio `employee_lifecycle_tasks` referente a source type. |
+| source_ref | varchar(120) | Sim | - | - | Campo do dominio `employee_lifecycle_tasks` referente a source referencia. |
+| sort_order | int | Nao | - | 0 | Ordem relativa de exibicao/processamento. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
 ### `employee_locker_assignments`
 
 - Finalidade: Controle de armarios/chaves.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/colaboradores/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/colaboradores/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `0`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_employee_locker_assignments_active (unit_name, locker_code, is_active); idx_employee_locker_assignments_employee (employee_id)
 - Vinculos principais: employee_id -> employees.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/colaboradores/repository.ts`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/colaboradores/repository.ts`
+- Evidencias documentais: `apps/painel/docs/10-plano-tecnico-colaboradores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2520,19 +2297,149 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 ---
 
+### `employee_portal_invites`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/employee_portal/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `5`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; idx_employee_portal_invites_employee (employee_id); idx_employee_portal_invites_status (status); token_hash (token_hash) [UNQ]
+- Vinculos principais: employee_id -> employees.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `packages/core/src/employee_portal/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| employee_id | varchar(64) | Nao | IDX | - | Identificador do colaborador relacionado ao registro. |
+| token_hash | varchar(128) | Nao | UNQ | - | Campo do dominio `employee_portal_invites` referente a token hash. |
+| status | varchar(30) | Nao | IDX | - | Status operacional/negocial atual do registro. |
+| expires_at | text | Nao | - | - | Data/hora referente a expires. |
+| created_by | varchar(64) | Nao | - | - | Campo do dominio `employee_portal_invites` referente a created by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| revoked_by | varchar(64) | Sim | - | - | Campo do dominio `employee_portal_invites` referente a revoked by. |
+| revoked_at | text | Sim | - | - | Data/hora referente a revoked. |
+| last_used_at | text | Sim | - | - | Data/hora referente a last used. |
+| attempt_count | int | Nao | - | 0 | Quantidade/contagem referente a attempt count. |
+| locked_until | text | Sim | - | - | Campo do dominio `employee_portal_invites` referente a locked until. |
+| token_encrypted | text | Sim | - | - | Campo do dominio `employee_portal_invites` referente a token encrypted. |
+
+---
+
+### `employee_portal_sessions`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/employee_portal/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `3`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; idx_employee_portal_sessions_employee (employee_id); session_hash (session_hash) [UNQ]
+- Vinculos principais: employee_id -> employees.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `packages/core/src/employee_portal/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| employee_id | varchar(64) | Nao | IDX | - | Identificador do colaborador relacionado ao registro. |
+| invite_id | varchar(64) | Nao | - | - | Identificador de invite usado para relacionar ou localizar o registro na origem/aplicacao. |
+| session_hash | varchar(128) | Nao | UNQ | - | Campo do dominio `employee_portal_sessions` referente a session hash. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| expires_at | text | Nao | - | - | Data/hora referente a expires. |
+| revoked_at | text | Sim | - | - | Data/hora referente a revoked. |
+| ip_address | varchar(80) | Sim | - | - | Campo do dominio `employee_portal_sessions` referente a ip address. |
+| user_agent | text | Sim | - | - | Campo do dominio `employee_portal_sessions` referente a user agent. |
+
+---
+
+### `employee_portal_submission_documents`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/employee_portal/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `1`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; idx_employee_portal_submission_documents_employee (employee_id); idx_employee_portal_submission_documents_submission (submission_id)
+- Vinculos principais: employee_id -> employees.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `packages/core/src/employee_portal/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| submission_id | varchar(64) | Nao | IDX | - | Identificador de submission usado para relacionar ou localizar o registro na origem/aplicacao. |
+| employee_id | varchar(64) | Nao | IDX | - | Identificador do colaborador relacionado ao registro. |
+| doc_type | varchar(60) | Nao | - | - | Campo do dominio `employee_portal_submission_documents` referente a doc type. |
+| storage_provider | varchar(30) | Nao | - | - | Campo do dominio `employee_portal_submission_documents` referente a storage provider. |
+| storage_bucket | varchar(120) | Sim | - | - | Campo do dominio `employee_portal_submission_documents` referente a storage bucket. |
+| storage_key | varchar(255) | Nao | - | - | Campo do dominio `employee_portal_submission_documents` referente a storage key. |
+| original_name | varchar(255) | Nao | - | - | Nome de original utilizado para exibicao, filtro ou agrupamento. |
+| mime_type | varchar(120) | Nao | - | - | Tipo MIME do arquivo armazenado. |
+| size_bytes | bigint | Nao | - | - | Campo do dominio `employee_portal_submission_documents` referente a size bytes. |
+| checksum | varchar(128) | Sim | - | - | Hash/checksum para validacao de integridade. |
+| issue_date | date | Sim | - | - | Data de issue. |
+| expires_at | date | Sim | - | - | Data/hora referente a expires. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| status | varchar(30) | Nao | - | - | Status operacional/negocial atual do registro. |
+| rejection_reason | text | Sim | - | - | Campo do dominio `employee_portal_submission_documents` referente a rejection reason. |
+| reviewed_by | varchar(64) | Sim | - | - | Campo do dominio `employee_portal_submission_documents` referente a reviewed by. |
+| reviewed_at | text | Sim | - | - | Data/hora referente a reviewed. |
+| promoted_document_id | varchar(64) | Sim | - | - | Identificador de promoted document usado para relacionar ou localizar o registro na origem/aplicacao. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `employee_portal_submissions`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/employee_portal/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `1`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; idx_employee_portal_submissions_employee (employee_id)
+- Vinculos principais: employee_id -> employees.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `packages/core/src/employee_portal/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| employee_id | varchar(64) | Nao | IDX | - | Identificador do colaborador relacionado ao registro. |
+| invite_id | varchar(64) | Sim | - | - | Identificador de invite usado para relacionar ou localizar o registro na origem/aplicacao. |
+| status | varchar(30) | Nao | - | - | Status operacional/negocial atual do registro. |
+| personal_status | varchar(30) | Nao | - | DRAFT | Status/etapa de personal status. |
+| personal_data_json | longtext | Sim | - | - | Conteudo estruturado em JSON relacionado a personal data. |
+| personal_rejection_reason | text | Sim | - | - | Campo do dominio `employee_portal_submissions` referente a personal rejection reason. |
+| consent_lgpd | int | Nao | - | 0 | Campo do dominio `employee_portal_submissions` referente a consent lgpd. |
+| consent_lgpd_at | text | Sim | - | - | Data/hora referente a consent lgpd. |
+| submitted_at | text | Sim | - | - | Data/hora referente a submitted. |
+| reviewed_by | varchar(64) | Sim | - | - | Campo do dominio `employee_portal_submissions` referente a reviewed by. |
+| reviewed_at | text | Sim | - | - | Data/hora referente a reviewed. |
+| review_notes | text | Sim | - | - | Campo do dominio `employee_portal_submissions` referente a review notes. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
 ### `employee_recess_periods`
 
 - Finalidade: Cadastro de ferias/recessos/licencas.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/colaboradores/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/colaboradores/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `1`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_employee_recess_periods_employee (employee_id)
 - Vinculos principais: employee_id -> employees.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/colaboradores/repository.ts`
-- Evidencias documentais: `frontend/docs/10-plano-tecnico-colaboradores.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/colaboradores/repository.ts`
+- Evidencias documentais: `apps/painel/docs/10-plano-tecnico-colaboradores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2556,15 +2463,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Controle de uniformes/EPIs por colaborador.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/colaboradores/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/colaboradores/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `1`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_employee_uniform_items_employee (employee_id)
 - Vinculos principais: employee_id -> employees.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/colaboradores/repository.ts`
-- Evidencias documentais: `frontend/docs/10-plano-tecnico-colaboradores.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/colaboradores/repository.ts`
+- Evidencias documentais: `apps/painel/docs/10-plano-tecnico-colaboradores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2586,15 +2493,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Cadastro principal de colaboradores.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/colaboradores/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/colaboradores/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `56`
+- Linhas estimadas pelo MySQL: `68`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_employees_full_name (full_name); idx_employees_status (status)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/colaboradores/repository.ts`
-- Evidencias documentais: `frontend/docs/10-plano-tecnico-colaboradores.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/colaboradores/repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/15-plano-tecnico-recrutamento.md, apps/painel/docs/10-plano-tecnico-colaboradores.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2658,15 +2565,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Arquivos importados para processamento da folha.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/payroll/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/payroll/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `3`
+- Linhas estimadas pelo MySQL: `10`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_payroll_import_files_period (period_id, created_at)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/payroll/repository.ts`
-- Evidencias documentais: `frontend/docs/14-plano-tecnico-folha-pagamento.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/payroll/repository.ts`
+- Evidencias documentais: `apps/painel/docs/14-plano-tecnico-folha-pagamento.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2691,15 +2598,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Linhas calculadas/importadas de folha.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/payroll/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/payroll/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `46`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_payroll_lines_period (period_id, employee_name); period_id (period_id, comparison_key) [UNQ]
 - Vinculos principais: employee_id -> employees.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/payroll/repository.ts`
-- Evidencias documentais: `frontend/docs/14-plano-tecnico-folha-pagamento.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/payroll/repository.ts`
+- Evidencias documentais: `apps/painel/docs/14-plano-tecnico-folha-pagamento.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2744,15 +2651,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Ocorrencias/apontamentos da folha.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/payroll/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/payroll/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `0`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_payroll_occurrences_period (period_id, employee_id, date_start)
 - Vinculos principais: employee_id -> employees.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/payroll/repository.ts`
-- Evidencias documentais: `frontend/docs/14-plano-tecnico-folha-pagamento.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/payroll/repository.ts`
+- Evidencias documentais: `apps/painel/docs/14-plano-tecnico-folha-pagamento.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2781,15 +2688,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Competencias/peridos de fechamento da folha.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/payroll/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/payroll/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `1`
+- Linhas estimadas pelo MySQL: `2`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_payroll_periods_month_ref (month_ref); month_ref (month_ref) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/payroll/repository.ts`
-- Evidencias documentais: `frontend/docs/14-plano-tecnico-folha-pagamento.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/payroll/repository.ts`
+- Evidencias documentais: `apps/painel/docs/14-plano-tecnico-folha-pagamento.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2813,15 +2720,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Apontamento diario de ponto consolidado.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/payroll/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/payroll/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `0`
+- Linhas estimadas pelo MySQL: `1890`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_payroll_point_daily_employee (period_id, employee_id); idx_payroll_point_daily_period (period_id, point_date)
 - Vinculos principais: employee_id -> employees.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/payroll/repository.ts`
-- Evidencias documentais: `frontend/docs/14-plano-tecnico-folha-pagamento.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/payroll/repository.ts`
+- Evidencias documentais: `apps/painel/docs/14-plano-tecnico-folha-pagamento.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2849,19 +2756,46 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 ---
 
+### `payroll_point_import_jobs`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
+- Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_payroll_point_import.py`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `7`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; idx_payroll_point_import_jobs_import_file (import_file_id); idx_payroll_point_import_jobs_period (period_id, created_at); idx_payroll_point_import_jobs_status (status, created_at)
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `workers/worker_payroll_point_import.py`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| period_id | varchar(64) | Nao | IDX | - | Identificador de period usado para relacionar ou localizar o registro na origem/aplicacao. |
+| import_file_id | varchar(64) | Nao | IDX | - | Identificador de import file usado para relacionar ou localizar o registro na origem/aplicacao. |
+| status | varchar(20) | Nao | IDX | - | Status operacional/negocial atual do registro. |
+| requested_by | varchar(64) | Sim | - | - | Campo do dominio `payroll_point_import_jobs` referente a requested by. |
+| error_message | longtext | Sim | - | - | Mensagem de erro registrada durante processamento. |
+| created_at | varchar(32) | Nao | - | - | Data/hora de criacao do registro no painel. |
+| started_at | varchar(32) | Sim | - | - | Data/hora referente a started. |
+| finished_at | varchar(32) | Sim | - | - | Data/hora referente a finished. |
+
+---
+
 ### `payroll_reference_rows`
 
 - Finalidade: Linhas de referencia para conciliacao.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/payroll/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/payroll/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `0`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_payroll_reference_rows_period (period_id, comparison_key)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/payroll/repository.ts`
-- Evidencias documentais: `frontend/docs/14-plano-tecnico-folha-pagamento.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/payroll/repository.ts`
+- Evidencias documentais: `apps/painel/docs/14-plano-tecnico-folha-pagamento.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2890,15 +2824,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Regras parametrizadas da folha.
 - Origem da informacao: Cadastro/manual do painel de RH/DP e importacoes de folha.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/payroll/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/payroll/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `1`
+- Linhas estimadas pelo MySQL: `2`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; month_ref (month_ref) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/payroll/repository.ts`
-- Evidencias documentais: `frontend/docs/14-plano-tecnico-folha-pagamento.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/payroll/repository.ts`
+- Evidencias documentais: `apps/painel/docs/14-plano-tecnico-folha-pagamento.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md, apps/painel/docs/database/07-mapa-api-rotas-tabelas.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2919,12 +2853,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_feegow_professionals_sync.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `190`
+- Linhas estimadas pelo MySQL: `207`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_feegow_professionals_sync.py`
-- Evidencias documentais: `frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2941,15 +2875,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Historico e metadados de contratos de profissionais.
 - Origem da informacao: Cadastro/manual do painel de profissionais e sincronizacoes auxiliares.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/profissionais/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/profissionais/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `8`
+- Linhas estimadas pelo MySQL: `12`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/profissionais/repository.ts`
-- Evidencias documentais: `frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/profissionais/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -2976,12 +2910,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_feegow_professionals_sync.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `72`
+- Linhas estimadas pelo MySQL: `90`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; professional_id (professional_id, doc_type) [UNQ]
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_feegow_professionals_sync.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3002,15 +2936,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Documentos ativos dos profissionais.
 - Origem da informacao: Cadastro/manual do painel de profissionais e sincronizacoes auxiliares.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/profissionais/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/profissionais/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `53`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/profissionais/repository.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/profissionais/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/01-visao-funcional-e-indicadores.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3035,15 +2969,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Historico de documentos inativos de profissionais.
 - Origem da informacao: Cadastro/manual do painel de profissionais e sincronizacoes auxiliares.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/profissionais/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/profissionais/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `0`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_prof_documents_inactive_prof (professional_id); source_document_id (source_document_id) [UNQ]
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/profissionais/repository.ts`
-- Evidencias documentais: `frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/profissionais/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3071,15 +3005,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Valores/repasses por profissional x procedimento.
 - Origem da informacao: Cadastro/manual do painel de profissionais e sincronizacoes auxiliares.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/profissionais/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/profissionais/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `5`
+- Linhas estimadas pelo MySQL: `9`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_prof_proc_rates_prof (professional_id); professional_id (professional_id, procedimento_id) [UNQ]
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/profissionais/repository.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/profissionais/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/01-visao-funcional-e-indicadores.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3101,12 +3035,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_feegow_professionals_sync.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `101`
+- Linhas estimadas pelo MySQL: `109`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; council_type (council_type, council_number, council_uf) [UNQ]
 - Vinculos principais: professional_id -> professionals.id (vinculo logico)
 - Evidencia de criacao/garantia de schema: `workers/worker_feegow_professionals_sync.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3129,12 +3063,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 - Escrita/manutencao tecnica: Escrita principal realizada por worker/rotina em `workers/worker_feegow_professionals_sync.py`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `132`
+- Linhas estimadas pelo MySQL: `141`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; cnpj (cnpj) [UNQ]; cpf (cpf) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
 - Evidencia de criacao/garantia de schema: `workers/worker_feegow_professionals_sync.py`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/07-plano-tecnico-repasses.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3165,6 +3099,12 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 | specialties_json | longtext | Sim | - | - | Conteudo estruturado em JSON relacionado a specialties. |
 | contract_template_id | varchar(64) | Sim | - | - | Identificador de contract template usado para relacionar ou localizar o registro na origem/aplicacao. |
 | payment_minimum_text | text | Sim | - | - | Campo do dominio `professionals` referente a payment minimum text. |
+| attendance_modes_json | longtext | Sim | - | - | Conteudo estruturado em JSON relacionado a attendance modes. |
+| service_locations_text_json | longtext | Sim | - | - | Conteudo estruturado em JSON relacionado a service locations text. |
+| patient_age_text | text | Sim | - | - | Campo do dominio `professionals` referente a patient age text. |
+| walk_in_policy_text | text | Sim | - | - | Campo do dominio `professionals` referente a walk in policy text. |
+| ideal_room_text | text | Sim | - | - | Campo do dominio `professionals` referente a ideal room text. |
+| intranet_notes_text | text | Sim | - | - | Campo do dominio `professionals` referente a intranet notes text. |
 
 ---
 
@@ -3174,15 +3114,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Cadastro mestre de equipamentos clinicos.
 - Origem da informacao: Cadastro/manual do painel de equipamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/equipamentos/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/equipamentos/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `5`
+- Linhas estimadas pelo MySQL: `57`
 - Chave primaria: `id`
-- Indices: PRIMARY (id) [UNQ]; idx_clinic_equipment_next_calibration (next_calibration_date); idx_clinic_equipment_status (operational_status); idx_clinic_equipment_unit (unit_name)
+- Indices: PRIMARY (id) [UNQ]; idx_clinic_equipment_next_calibration (next_calibration_date); idx_clinic_equipment_status (operational_status); idx_clinic_equipment_type (equipment_type); idx_clinic_equipment_unit (unit_name)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/equipamentos/repository.ts`
-- Evidencias documentais: `frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/11-plano-tecnico-equipamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/equipamentos/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/11-plano-tecnico-equipamentos.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3206,6 +3146,7 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 | notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
 | created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
 | updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+| equipment_type | varchar(30) | Nao | IDX | OPERACIONAL | Campo do dominio `clinic_equipment` referente a equipment type. |
 
 ---
 
@@ -3213,15 +3154,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Historico de eventos/manutencoes/calibracoes dos equipamentos.
 - Origem da informacao: Cadastro/manual do painel de equipamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/equipamentos/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/equipamentos/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `1`
+- Linhas estimadas pelo MySQL: `2`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_clinic_equipment_events_equipment (equipment_id)
 - Vinculos principais: equipment_id -> clinic_equipment.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/equipamentos/repository.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/11-plano-tecnico-equipamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/equipamentos/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/11-plano-tecnico-equipamentos.md, apps/painel/docs/01-visao-funcional-e-indicadores.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3242,15 +3183,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Arquivos vinculados aos equipamentos.
 - Origem da informacao: Cadastro/manual do painel de equipamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/equipamentos/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/equipamentos/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `0`
+- Linhas estimadas pelo MySQL: `20`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_clinic_equipment_files_equipment (equipment_id)
 - Vinculos principais: equipment_id -> clinic_equipment.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/equipamentos/repository.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/11-plano-tecnico-equipamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/equipamentos/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/11-plano-tecnico-equipamentos.md, apps/painel/docs/01-visao-funcional-e-indicadores.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3273,15 +3214,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Relacionamento entre documentos e licencas regulatorias.
 - Origem da informacao: Cadastro/manual do painel de vigilancia sanitaria.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/vigilancia_sanitaria/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/vigilancia_sanitaria/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `243`
+- Linhas estimadas pelo MySQL: `292`
 - Chave primaria: `document_id, license_id`
 - Indices: PRIMARY (document_id, license_id) [UNQ]; idx_hs_document_links_document (document_id); idx_hs_document_links_license (license_id)
 - Vinculos principais: document_id -> health_surveillance_documents.id (vinculo logico); license_id -> health_surveillance_licenses.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/vigilancia_sanitaria/repository.ts`
-- Evidencias documentais: `frontend/docs/13-plano-tecnico-vigilancia-sanitaria.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/vigilancia_sanitaria/repository.ts`
+- Evidencias documentais: `apps/painel/docs/13-plano-tecnico-vigilancia-sanitaria.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3295,15 +3236,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Documentos regulatorios de vigilancia sanitaria.
 - Origem da informacao: Cadastro/manual do painel de vigilancia sanitaria.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/vigilancia_sanitaria/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/vigilancia_sanitaria/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `79`
+- Linhas estimadas pelo MySQL: `94`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_hs_documents_license (license_id); idx_hs_documents_unit (unit_name); idx_hs_documents_valid (valid_until)
 - Vinculos principais: license_id -> health_surveillance_licenses.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/vigilancia_sanitaria/repository.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/13-plano-tecnico-vigilancia-sanitaria.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/vigilancia_sanitaria/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/13-plano-tecnico-vigilancia-sanitaria.md, apps/painel/docs/01-visao-funcional-e-indicadores.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3327,15 +3268,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Arquivos anexos de vigilancia sanitaria.
 - Origem da informacao: Cadastro/manual do painel de vigilancia sanitaria.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/vigilancia_sanitaria/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/vigilancia_sanitaria/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `104`
+- Linhas estimadas pelo MySQL: `119`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_hs_files_entity (entity_type, entity_id)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/vigilancia_sanitaria/repository.ts`
-- Evidencias documentais: `frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/13-plano-tecnico-vigilancia-sanitaria.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/vigilancia_sanitaria/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/13-plano-tecnico-vigilancia-sanitaria.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3357,15 +3298,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Cadastro de licencas e alvaras regulatorios.
 - Origem da informacao: Cadastro/manual do painel de vigilancia sanitaria.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/vigilancia_sanitaria/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/vigilancia_sanitaria/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `29`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; idx_hs_licenses_unit (unit_name); idx_hs_licenses_valid (valid_until)
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/vigilancia_sanitaria/repository.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/03-arquitetura-tecnica.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/13-plano-tecnico-vigilancia-sanitaria.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/vigilancia_sanitaria/repository.ts`
+- Evidencias documentais: `apps/painel/docs/03-arquitetura-tecnica.md, apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/13-plano-tecnico-vigilancia-sanitaria.md, apps/painel/docs/01-visao-funcional-e-indicadores.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3391,15 +3332,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Plano de acoes vinculado a auditorias QMS.
 - Origem da informacao: Cadastro/manual do modulo de qualidade e treinamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/qms/audits_repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/qms/audits_repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `0`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: audit_id -> qms_audits.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/qms/audits_repository.ts`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md, frontend/docs/06-plano-tecnico-qualidade-treinamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/qms/audits_repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3421,15 +3362,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Auditoria tecnica das alteracoes no modulo QMS.
 - Origem da informacao: Cadastro/manual do modulo de qualidade e treinamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/qms/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/qms/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `11`
+- Linhas estimadas pelo MySQL: `54`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/qms/repository.ts`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/06-plano-tecnico-qualidade-treinamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/qms/repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3448,15 +3389,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Cadastro e acompanhamento de auditorias de qualidade.
 - Origem da informacao: Cadastro/manual do modulo de qualidade e treinamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/qms/audits_repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/qms/audits_repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `1`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; code (code) [UNQ]
 - Vinculos principais: document_id -> qms_documents.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/qms/audits_repository.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/05-runbook-operacional.md, frontend/docs/06-plano-tecnico-qualidade-treinamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/qms/audits_repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/05-runbook-operacional.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/01-visao-funcional-e-indicadores.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3485,15 +3426,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Arquivos/anexos das versoes de documentos QMS.
 - Origem da informacao: Cadastro/manual do modulo de qualidade e treinamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/qms/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/qms/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `1`
+- Linhas estimadas pelo MySQL: `18`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/qms/repository.ts`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/06-plano-tecnico-qualidade-treinamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/qms/repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md, apps/painel/docs/database/01-visao-geral-do-schema-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3515,15 +3456,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Vinculo entre documentos QMS e treinamentos.
 - Origem da informacao: Cadastro/manual do modulo de qualidade e treinamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/qms/trainings_repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/qms/trainings_repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `1`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: document_id -> qms_documents.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/qms/trainings_repository.ts`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/06-plano-tecnico-qualidade-treinamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/qms/trainings_repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3538,15 +3479,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Versionamento formal dos documentos do QMS.
 - Origem da informacao: Cadastro/manual do modulo de qualidade e treinamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/qms/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/qms/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `2`
+- Linhas estimadas pelo MySQL: `19`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: document_id -> qms_documents.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/qms/repository.ts`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/06-plano-tecnico-qualidade-treinamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/qms/repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3573,15 +3514,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Cadastro mestre de documentos do sistema de qualidade.
 - Origem da informacao: Cadastro/manual do modulo de qualidade e treinamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/qms/repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/qms/repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
-- Linhas estimadas pelo MySQL: `1`
+- Linhas estimadas pelo MySQL: `19`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; code (code) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/qms/repository.ts`
-- Evidencias documentais: `frontend/docs/01-visao-funcional-e-indicadores.md, frontend/docs/04-dicionario-de-dados.md, frontend/docs/06-plano-tecnico-qualidade-treinamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/qms/repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/01-visao-funcional-e-indicadores.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3600,19 +3541,47 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 ---
 
+### `qms_training_assignments`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Cadastro/manual do modulo de qualidade e treinamentos.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/qms/trainings_repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; training_id (training_id, employee_id) [UNQ]
+- Vinculos principais: employee_id -> employees.id (vinculo logico); training_id -> qms_trainings.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/qms/trainings_repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/10-plano-tecnico-colaboradores.md`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| training_id | varchar(64) | Nao | IDX | - | Identificador do treinamento relacionado ao registro. |
+| employee_id | varchar(64) | Nao | - | - | Identificador do colaborador relacionado ao registro. |
+| status | varchar(30) | Nao | - | pendente | Status operacional/negocial atual do registro. |
+| due_date | text | Sim | - | - | Data de due. |
+| completed_at | text | Sim | - | - | Data/hora de conclusao do processamento. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
 ### `qms_training_files`
 
 - Finalidade: Arquivos/anexos de treinamentos.
 - Origem da informacao: Cadastro/manual do modulo de qualidade e treinamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/qms/trainings_repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/qms/trainings_repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `0`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]
 - Vinculos principais: training_id -> qms_trainings.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/qms/trainings_repository.ts`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/06-plano-tecnico-qualidade-treinamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/qms/trainings_repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3635,15 +3604,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Planos/programacoes de treinamento.
 - Origem da informacao: Cadastro/manual do modulo de qualidade e treinamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/qms/trainings_repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/qms/trainings_repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `1`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; code (code) [UNQ]
 - Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/qms/trainings_repository.ts`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/06-plano-tecnico-qualidade-treinamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/qms/trainings_repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3675,15 +3644,15 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 
 - Finalidade: Execucao/registro de treinamentos.
 - Origem da informacao: Cadastro/manual do modulo de qualidade e treinamentos.
-- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `frontend/src/lib/qms/trainings_repository.ts`.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/qms/trainings_repository.ts`.
 - Tabela/engine: `InnoDB`
 - Colacao: `utf8mb4_0900_ai_ci`
 - Linhas estimadas pelo MySQL: `0`
 - Chave primaria: `id`
 - Indices: PRIMARY (id) [UNQ]; code (code) [UNQ]
 - Vinculos principais: plan_id -> qms_training_plans.id (vinculo logico)
-- Evidencia de criacao/garantia de schema: `frontend/src/lib/qms/trainings_repository.ts`
-- Evidencias documentais: `frontend/docs/04-dicionario-de-dados.md, frontend/docs/06-plano-tecnico-qualidade-treinamentos.md`
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/qms/trainings_repository.ts`
+- Evidencias documentais: `apps/painel/docs/04-dicionario-de-dados.md, apps/painel/docs/06-plano-tecnico-qualidade-treinamentos.md, apps/painel/docs/database/02-relacionamentos-logicos-mysql.md, apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 
 | Coluna | Tipo | Nulo | Chave | Default | Descricao |
 | --- | --- | --- | --- | --- | --- |
@@ -3708,6 +3677,1001 @@ Documento consolidado de tabelas e colunas do MySQL vivo do painel Consultare.
 | created_by | varchar(64) | Nao | - | - | Campo do dominio `qms_trainings` referente a created by. |
 | created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
 | updated_by | varchar(64) | Nao | - | - | Campo do dominio `qms_trainings` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+## Outros / legado
+
+### `intranet_assets`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `3`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| entity_type | varchar(80) | Sim | - | - | Campo do dominio `intranet_assets` referente a entity type. |
+| entity_id | varchar(64) | Sim | - | - | Identificador de entity usado para relacionar ou localizar o registro na origem/aplicacao. |
+| storage_provider | varchar(30) | Nao | - | - | Campo do dominio `intranet_assets` referente a storage provider. |
+| storage_bucket | varchar(160) | Sim | - | - | Campo do dominio `intranet_assets` referente a storage bucket. |
+| storage_key | varchar(500) | Nao | - | - | Campo do dominio `intranet_assets` referente a storage key. |
+| original_name | varchar(255) | Nao | - | - | Nome de original utilizado para exibicao, filtro ou agrupamento. |
+| mime_type | varchar(160) | Nao | - | - | Tipo MIME do arquivo armazenado. |
+| size_bytes | bigint | Nao | - | - | Campo do dominio `intranet_assets` referente a size bytes. |
+| uploaded_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_assets` referente a uploaded by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_audience_group_rules`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| audience_group_id | varchar(64) | Nao | - | - | Identificador de audience group usado para relacionar ou localizar o registro na origem/aplicacao. |
+| rule_type | varchar(40) | Nao | - | - | Campo do dominio `intranet_audience_group_rules` referente a rule type. |
+| rule_value | varchar(180) | Nao | - | - | Valor monetario ou numerico referente a rule value. |
+| is_active | int | Nao | - | 1 | Indicador logico de atividade do registro. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_audience_groups`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| name | varchar(180) | Nao | - | - | Nome principal do registro. |
+| description | text | Sim | - | - | Descricao textual do registro. |
+| is_active | int | Nao | - | 1 | Indicador logico de atividade do registro. |
+| created_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_audience_groups` referente a created by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_audience_groups` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_catalog_items`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/intranet/catalog.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `packages/core/src/intranet/catalog.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| slug | varchar(180) | Nao | - | - | Campo do dominio `intranet_catalog_items` referente a slug. |
+| display_name | varchar(220) | Nao | - | - | Nome de display utilizado para exibicao, filtro ou agrupamento. |
+| catalog_type | varchar(40) | Nao | - | procedure | Campo do dominio `intranet_catalog_items` referente a catalog type. |
+| category | varchar(140) | Sim | - | - | Campo do dominio `intranet_catalog_items` referente a category. |
+| subcategory | varchar(140) | Sim | - | - | Campo do dominio `intranet_catalog_items` referente a subcategory. |
+| summary | text | Sim | - | - | Campo do dominio `intranet_catalog_items` referente a summary. |
+| description | longtext | Sim | - | - | Descricao textual do registro. |
+| requires_preparation | int | Nao | - | 0 | Campo do dominio `intranet_catalog_items` referente a requires preparation. |
+| who_performs | text | Sim | - | - | Campo do dominio `intranet_catalog_items` referente a who performs. |
+| how_it_works | longtext | Sim | - | - | Campo do dominio `intranet_catalog_items` referente a how it works. |
+| patient_instructions | longtext | Sim | - | - | Campo do dominio `intranet_catalog_items` referente a patient instructions. |
+| preparation_instructions | longtext | Sim | - | - | Campo do dominio `intranet_catalog_items` referente a preparation instructions. |
+| contraindications | longtext | Sim | - | - | Campo do dominio `intranet_catalog_items` referente a contraindications. |
+| estimated_duration_text | varchar(120) | Sim | - | - | Campo do dominio `intranet_catalog_items` referente a estimated duration text. |
+| recovery_notes | longtext | Sim | - | - | Campo do dominio `intranet_catalog_items` referente a recovery notes. |
+| show_price | int | Nao | - | 1 | Valor monetario ou numerico referente a show price. |
+| published_price | decimal(12,2) | Sim | - | - | Valor monetario ou numerico referente a published price. |
+| is_featured | int | Nao | - | 0 | Indicador logico relacionado a featured. |
+| is_published | int | Nao | - | 0 | Indicador logico relacionado a published. |
+| display_order | int | Nao | - | 0 | Campo do dominio `intranet_catalog_items` referente a display order. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_catalog_items` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_chat_conversation_members`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/chat.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_unicode_ci`
+- Linhas estimadas pelo MySQL: `17`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: user_id -> users.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/chat.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| conversation_id | varchar(64) | Nao | - | - | Identificador de conversation usado para relacionar ou localizar o registro na origem/aplicacao. |
+| user_id | varchar(64) | Nao | - | - | Identificador do usuario relacionado ao registro. |
+| member_role | varchar(40) | Nao | - | member | Campo do dominio `intranet_chat_conversation_members` referente a member role. |
+| last_read_message_id | varchar(64) | Sim | - | - | Identificador de last read message usado para relacionar ou localizar o registro na origem/aplicacao. |
+| last_read_at | text | Sim | - | - | Data/hora referente a last read. |
+| is_muted | int | Nao | - | 0 | Indicador logico relacionado a muted. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_chat_conversations`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/chat.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_unicode_ci`
+- Linhas estimadas pelo MySQL: `7`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/chat.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| conversation_type | varchar(40) | Nao | - | - | Campo do dominio `intranet_chat_conversations` referente a conversation type. |
+| name | varchar(180) | Sim | - | - | Nome principal do registro. |
+| slug | varchar(180) | Sim | - | - | Campo do dominio `intranet_chat_conversations` referente a slug. |
+| description | text | Sim | - | - | Descricao textual do registro. |
+| is_active | int | Nao | - | 1 | Indicador logico de atividade do registro. |
+| is_announcement_only | int | Nao | - | 0 | Indicador logico relacionado a announcement only. |
+| created_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_chat_conversations` referente a created by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_chat_message_attachments`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/chat.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_unicode_ci`
+- Linhas estimadas pelo MySQL: `1`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/chat.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| message_id | varchar(64) | Nao | - | - | Identificador de message usado para relacionar ou localizar o registro na origem/aplicacao. |
+| asset_id | varchar(64) | Nao | - | - | Identificador de asset usado para relacionar ou localizar o registro na origem/aplicacao. |
+| uploaded_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_chat_message_attachments` referente a uploaded by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_chat_messages`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/chat.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_unicode_ci`
+- Linhas estimadas pelo MySQL: `5`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/chat.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| conversation_id | varchar(64) | Nao | - | - | Identificador de conversation usado para relacionar ou localizar o registro na origem/aplicacao. |
+| sender_user_id | varchar(64) | Nao | - | - | Identificador de sender user usado para relacionar ou localizar o registro na origem/aplicacao. |
+| body | longtext | Sim | - | - | Campo do dominio `intranet_chat_messages` referente a body. |
+| message_type | varchar(40) | Nao | - | text | Campo do dominio `intranet_chat_messages` referente a message type. |
+| is_edited | int | Nao | - | 0 | Indicador logico relacionado a edited. |
+| edited_at | text | Sim | - | - | Data/hora referente a edited. |
+| is_deleted | int | Nao | - | 0 | Indicador logico relacionado a deleted. |
+| deleted_at | text | Sim | - | - | Data/hora de exclusao logica. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_chat_moderation_log`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/chat.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_unicode_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/chat.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| conversation_id | varchar(64) | Sim | - | - | Identificador de conversation usado para relacionar ou localizar o registro na origem/aplicacao. |
+| message_id | varchar(64) | Sim | - | - | Identificador de message usado para relacionar ou localizar o registro na origem/aplicacao. |
+| action | varchar(80) | Nao | - | - | Campo do dominio `intranet_chat_moderation_log` referente a action. |
+| actor_user_id | varchar(64) | Nao | - | - | Identificador de actor user usado para relacionar ou localizar o registro na origem/aplicacao. |
+| payload_json | longtext | Sim | - | - | Payload bruto ou quase bruto em JSON para auditoria/reprocessamento. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_editorial_scope_assignments`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: user_id -> users.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| user_id | varchar(64) | Nao | - | - | Identificador do usuario relacionado ao registro. |
+| editorial_scope_id | varchar(64) | Nao | - | - | Identificador de editorial scope usado para relacionar ou localizar o registro na origem/aplicacao. |
+| assigned_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_editorial_scope_assignments` referente a assigned by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_editorial_scopes`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| name | varchar(180) | Nao | - | - | Nome principal do registro. |
+| description | text | Sim | - | - | Descricao textual do registro. |
+| scope_type | varchar(40) | Nao | - | - | Campo do dominio `intranet_editorial_scopes` referente a scope type. |
+| scope_ref | varchar(180) | Sim | - | - | Campo do dominio `intranet_editorial_scopes` referente a scope referencia. |
+| is_active | int | Nao | - | 1 | Indicador logico de atividade do registro. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_faq_categories`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `1`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| name | varchar(180) | Nao | - | - | Nome principal do registro. |
+| slug | varchar(180) | Nao | - | - | Campo do dominio `intranet_faq_categories` referente a slug. |
+| description | text | Sim | - | - | Descricao textual do registro. |
+| sort_order | int | Nao | - | 0 | Ordem relativa de exibicao/processamento. |
+| is_active | int | Nao | - | 1 | Indicador logico de atividade do registro. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_faq_item_audiences`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| faq_item_id | varchar(64) | Nao | - | - | Identificador de faq item usado para relacionar ou localizar o registro na origem/aplicacao. |
+| audience_group_id | varchar(64) | Nao | - | - | Identificador de audience group usado para relacionar ou localizar o registro na origem/aplicacao. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_faq_items`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `1`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| category_id | varchar(64) | Sim | - | - | Identificador de category usado para relacionar ou localizar o registro na origem/aplicacao. |
+| question | text | Nao | - | - | Campo do dominio `intranet_faq_items` referente a question. |
+| answer_json | longtext | Nao | - | - | Conteudo estruturado em JSON relacionado a answer. |
+| sort_order | int | Nao | - | 0 | Ordem relativa de exibicao/processamento. |
+| is_active | int | Nao | - | 1 | Indicador logico de atividade do registro. |
+| created_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_faq_items` referente a created by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_faq_items` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+| source_type | varchar(40) | Sim | - | manual | Campo do dominio `intranet_faq_items` referente a source type. |
+| source_question_id | varchar(64) | Sim | - | - | Identificador de source question usado para relacionar ou localizar o registro na origem/aplicacao. |
+| knowledge_status | varchar(40) | Sim | - | pending_index | Status/etapa de knowledge status. |
+| approved_at | text | Sim | - | - | Data/hora referente a approved. |
+
+---
+
+### `intranet_navigation_node_audiences`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| navigation_node_id | varchar(64) | Nao | - | - | Identificador de navigation node usado para relacionar ou localizar o registro na origem/aplicacao. |
+| audience_group_id | varchar(64) | Nao | - | - | Identificador de audience group usado para relacionar ou localizar o registro na origem/aplicacao. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_navigation_nodes`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `2`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| parent_node_id | varchar(64) | Sim | - | - | Identificador de parent node usado para relacionar ou localizar o registro na origem/aplicacao. |
+| node_type | varchar(40) | Nao | - | - | Campo do dominio `intranet_navigation_nodes` referente a node type. |
+| page_id | varchar(64) | Sim | - | - | Identificador de page usado para relacionar ou localizar o registro na origem/aplicacao. |
+| label | varchar(180) | Nao | - | - | Campo do dominio `intranet_navigation_nodes` referente a label. |
+| url | varchar(500) | Sim | - | - | Campo do dominio `intranet_navigation_nodes` referente a URL. |
+| icon_name | varchar(80) | Sim | - | - | Nome de icon utilizado para exibicao, filtro ou agrupamento. |
+| sort_order | int | Nao | - | 0 | Ordem relativa de exibicao/processamento. |
+| is_visible | int | Nao | - | 1 | Indicador logico relacionado a visible. |
+| audience_mode | varchar(20) | Nao | - | inherit | Campo do dominio `intranet_navigation_nodes` referente a audience mode. |
+| created_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_navigation_nodes` referente a created by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_navigation_nodes` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_news_post_audiences`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| post_id | varchar(64) | Nao | - | - | Identificador de post usado para relacionar ou localizar o registro na origem/aplicacao. |
+| audience_group_id | varchar(64) | Nao | - | - | Identificador de audience group usado para relacionar ou localizar o registro na origem/aplicacao. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_news_posts`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `1`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| post_type | varchar(30) | Nao | - | - | Campo do dominio `intranet_news_posts` referente a post type. |
+| title | varchar(220) | Nao | - | - | Campo do dominio `intranet_news_posts` referente a title. |
+| slug | varchar(180) | Nao | - | - | Campo do dominio `intranet_news_posts` referente a slug. |
+| summary | text | Sim | - | - | Campo do dominio `intranet_news_posts` referente a summary. |
+| body_json | longtext | Nao | - | - | Conteudo estruturado em JSON relacionado a body. |
+| cover_asset_id | varchar(64) | Sim | - | - | Identificador de cover asset usado para relacionar ou localizar o registro na origem/aplicacao. |
+| is_featured | int | Nao | - | 0 | Indicador logico relacionado a featured. |
+| status | varchar(30) | Nao | - | - | Status operacional/negocial atual do registro. |
+| publish_start_at | text | Sim | - | - | Data/hora referente a publish start. |
+| publish_end_at | text | Sim | - | - | Data/hora referente a publish end. |
+| created_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_news_posts` referente a created by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_news_posts` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+| published_at | text | Sim | - | - | Data/hora referente a published. |
+| category | varchar(40) | Sim | - | geral | Campo do dominio `intranet_news_posts` referente a category. |
+| highlight_level | varchar(40) | Sim | - | info | Campo do dominio `intranet_news_posts` referente a highlight level. |
+
+---
+
+### `intranet_page_audiences`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| page_id | varchar(64) | Nao | - | - | Identificador de page usado para relacionar ou localizar o registro na origem/aplicacao. |
+| audience_group_id | varchar(64) | Nao | - | - | Identificador de audience group usado para relacionar ou localizar o registro na origem/aplicacao. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_page_revisions`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `9`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| page_id | varchar(64) | Nao | - | - | Identificador de page usado para relacionar ou localizar o registro na origem/aplicacao. |
+| revision_number | int | Nao | - | - | Campo do dominio `intranet_page_revisions` referente a revision number. |
+| content_json | longtext | Nao | - | - | Conteudo estruturado em JSON relacionado a content. |
+| change_summary | text | Sim | - | - | Campo do dominio `intranet_page_revisions` referente a change summary. |
+| is_published | int | Nao | - | 0 | Indicador logico relacionado a published. |
+| created_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_page_revisions` referente a created by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `intranet_pages`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `1`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| title | varchar(180) | Nao | - | - | Campo do dominio `intranet_pages` referente a title. |
+| slug | varchar(180) | Nao | - | - | Campo do dominio `intranet_pages` referente a slug. |
+| full_path | varchar(500) | Nao | - | - | Campo do dominio `intranet_pages` referente a full path. |
+| page_type | varchar(40) | Nao | - | - | Campo do dominio `intranet_pages` referente a page type. |
+| status | varchar(30) | Nao | - | - | Status operacional/negocial atual do registro. |
+| parent_page_id | varchar(64) | Sim | - | - | Identificador de parent page usado para relacionar ou localizar o registro na origem/aplicacao. |
+| current_revision_id | varchar(64) | Sim | - | - | Identificador de current revision usado para relacionar ou localizar o registro na origem/aplicacao. |
+| meta_title | varchar(180) | Sim | - | - | Campo do dominio `intranet_pages` referente a meta title. |
+| meta_description | text | Sim | - | - | Campo do dominio `intranet_pages` referente a meta description. |
+| icon_name | varchar(80) | Sim | - | - | Nome de icon utilizado para exibicao, filtro ou agrupamento. |
+| sort_order | int | Nao | - | 0 | Ordem relativa de exibicao/processamento. |
+| created_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_pages` referente a created by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_pages` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+| published_at | text | Sim | - | - | Data/hora referente a published. |
+| published_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_pages` referente a published by. |
+| archived_at | text | Sim | - | - | Data/hora referente a archived. |
+
+---
+
+### `intranet_procedure_profiles`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/intranet/catalog.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `procedimento_id`
+- Indices: PRIMARY (procedimento_id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `packages/core/src/intranet/catalog.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| procedimento_id | bigint | Nao | PK | - | Identificador de procedimento usado para relacionar ou localizar o registro na origem/aplicacao. |
+| slug | varchar(180) | Nao | - | - | Campo do dominio `intranet_procedure_profiles` referente a slug. |
+| display_name | varchar(220) | Nao | - | - | Nome de display utilizado para exibicao, filtro ou agrupamento. |
+| catalog_type | varchar(40) | Nao | - | procedure | Campo do dominio `intranet_procedure_profiles` referente a catalog type. |
+| category | varchar(140) | Sim | - | - | Campo do dominio `intranet_procedure_profiles` referente a category. |
+| subcategory | varchar(140) | Sim | - | - | Campo do dominio `intranet_procedure_profiles` referente a subcategory. |
+| summary | text | Sim | - | - | Campo do dominio `intranet_procedure_profiles` referente a summary. |
+| description | longtext | Sim | - | - | Descricao textual do registro. |
+| requires_preparation | int | Nao | - | 0 | Campo do dominio `intranet_procedure_profiles` referente a requires preparation. |
+| who_performs | text | Sim | - | - | Campo do dominio `intranet_procedure_profiles` referente a who performs. |
+| how_it_works | longtext | Sim | - | - | Campo do dominio `intranet_procedure_profiles` referente a how it works. |
+| patient_instructions | longtext | Sim | - | - | Campo do dominio `intranet_procedure_profiles` referente a patient instructions. |
+| preparation_instructions | longtext | Sim | - | - | Campo do dominio `intranet_procedure_profiles` referente a preparation instructions. |
+| contraindications | longtext | Sim | - | - | Campo do dominio `intranet_procedure_profiles` referente a contraindications. |
+| estimated_duration_text | varchar(120) | Sim | - | - | Campo do dominio `intranet_procedure_profiles` referente a estimated duration text. |
+| recovery_notes | longtext | Sim | - | - | Campo do dominio `intranet_procedure_profiles` referente a recovery notes. |
+| show_price | int | Nao | - | 1 | Valor monetario ou numerico referente a show price. |
+| published_price | decimal(12,2) | Sim | - | - | Valor monetario ou numerico referente a published price. |
+| is_featured | int | Nao | - | 0 | Indicador logico relacionado a featured. |
+| is_published | int | Nao | - | 0 | Indicador logico relacionado a published. |
+| display_order | int | Nao | - | 0 | Campo do dominio `intranet_procedure_profiles` referente a display order. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_procedure_profiles` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_professional_catalog_items`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/intranet/catalog.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: professional_id -> professionals.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `packages/core/src/intranet/catalog.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| professional_id | varchar(64) | Nao | - | - | Identificador do profissional relacionado ao registro. |
+| catalog_item_id | varchar(64) | Nao | - | - | Identificador de catalog item usado para relacionar ou localizar o registro na origem/aplicacao. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| display_order | int | Nao | - | 0 | Campo do dominio `intranet_professional_catalog_items` referente a display order. |
+| is_published | int | Nao | - | 1 | Indicador logico relacionado a published. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_professional_notes`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/intranet/catalog.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `professional_id`
+- Indices: PRIMARY (professional_id) [UNQ]
+- Vinculos principais: professional_id -> professionals.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `packages/core/src/intranet/catalog.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| professional_id | varchar(64) | Nao | PK | - | Identificador do profissional relacionado ao registro. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_professional_notes` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_professional_procedures`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/intranet/catalog.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: professional_id -> professionals.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `packages/core/src/intranet/catalog.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| professional_id | varchar(64) | Nao | - | - | Identificador do profissional relacionado ao registro. |
+| procedimento_id | bigint | Nao | - | - | Identificador de procedimento usado para relacionar ou localizar o registro na origem/aplicacao. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| display_order | int | Nao | - | 0 | Campo do dominio `intranet_professional_procedures` referente a display order. |
+| is_published | int | Nao | - | 1 | Indicador logico relacionado a published. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_professional_profiles`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/intranet/catalog.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `professional_id`
+- Indices: PRIMARY (professional_id) [UNQ]
+- Vinculos principais: professional_id -> professionals.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `packages/core/src/intranet/catalog.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| professional_id | varchar(64) | Nao | PK | - | Identificador do profissional relacionado ao registro. |
+| slug | varchar(180) | Nao | - | - | Campo do dominio `intranet_professional_profiles` referente a slug. |
+| display_name | varchar(180) | Nao | - | - | Nome de display utilizado para exibicao, filtro ou agrupamento. |
+| short_bio | text | Sim | - | - | Campo do dominio `intranet_professional_profiles` referente a short bio. |
+| long_bio | longtext | Sim | - | - | Campo do dominio `intranet_professional_profiles` referente a long bio. |
+| photo_asset_id | varchar(64) | Sim | - | - | Identificador de photo asset usado para relacionar ou localizar o registro na origem/aplicacao. |
+| card_highlight | varchar(220) | Sim | - | - | Campo do dominio `intranet_professional_profiles` referente a card highlight. |
+| service_units_override_json | longtext | Sim | - | - | Conteudo estruturado em JSON relacionado a service units override. |
+| specialties_override_json | longtext | Sim | - | - | Conteudo estruturado em JSON relacionado a specialties override. |
+| contact_notes | text | Sim | - | - | Campo do dominio `intranet_professional_profiles` referente a contact notes. |
+| display_order | int | Nao | - | 0 | Campo do dominio `intranet_professional_profiles` referente a display order. |
+| is_featured | int | Nao | - | 0 | Indicador logico relacionado a featured. |
+| is_published | int | Nao | - | 0 | Indicador logico relacionado a published. |
+| published_at | text | Sim | - | - | Data/hora referente a published. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_professional_profiles` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_professional_specialties`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/intranet/catalog.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: professional_id -> professionals.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `packages/core/src/intranet/catalog.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| professional_id | varchar(64) | Nao | - | - | Identificador do profissional relacionado ao registro. |
+| specialty_id | varchar(64) | Nao | - | - | Identificador de specialty usado para relacionar ou localizar o registro na origem/aplicacao. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| display_order | int | Nao | - | 0 | Campo do dominio `intranet_professional_specialties` referente a display order. |
+| is_published | int | Nao | - | 1 | Indicador logico relacionado a published. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_qms_document_settings`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/intranet/catalog.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `document_id`
+- Indices: PRIMARY (document_id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `packages/core/src/intranet/catalog.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| document_id | varchar(64) | Nao | PK | - | Identificador do documento relacionado ao registro. |
+| is_visible | int | Nao | - | 0 | Indicador logico relacionado a visible. |
+| is_featured | int | Nao | - | 0 | Indicador logico relacionado a featured. |
+| default_page_id | varchar(64) | Sim | - | - | Identificador de default page usado para relacionar ou localizar o registro na origem/aplicacao. |
+| display_order | int | Nao | - | 0 | Campo do dominio `intranet_qms_document_settings` referente a display order. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_qms_document_settings` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_specialty_notes`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/intranet/catalog.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `specialty_slug`
+- Indices: PRIMARY (specialty_slug) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `packages/core/src/intranet/catalog.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| specialty_slug | varchar(180) | Nao | PK | - | Campo do dominio `intranet_specialty_notes` referente a specialty slug. |
+| specialty_name | varchar(180) | Nao | - | - | Nome de specialty utilizado para exibicao, filtro ou agrupamento. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_specialty_notes` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_specialty_pages`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/intranet/catalog.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `1`
+- Chave primaria: `specialty_slug`
+- Indices: PRIMARY (specialty_slug) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `packages/core/src/intranet/catalog.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| specialty_slug | varchar(180) | Nao | PK | - | Campo do dominio `intranet_specialty_pages` referente a specialty slug. |
+| specialty_name | varchar(180) | Nao | - | - | Nome de specialty utilizado para exibicao, filtro ou agrupamento. |
+| content_json | longtext | Sim | - | - | Conteudo estruturado em JSON relacionado a content. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_specialty_pages` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_specialty_profiles`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `packages/core/src/intranet/catalog.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `packages/core/src/intranet/catalog.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| slug | varchar(180) | Nao | - | - | Campo do dominio `intranet_specialty_profiles` referente a slug. |
+| display_name | varchar(180) | Nao | - | - | Nome de display utilizado para exibicao, filtro ou agrupamento. |
+| short_description | text | Sim | - | - | Campo do dominio `intranet_specialty_profiles` referente a short description. |
+| description | longtext | Sim | - | - | Descricao textual do registro. |
+| service_guidance | longtext | Sim | - | - | Campo do dominio `intranet_specialty_profiles` referente a service guidance. |
+| display_order | int | Nao | - | 0 | Campo do dominio `intranet_specialty_profiles` referente a display order. |
+| is_featured | int | Nao | - | 0 | Indicador logico relacionado a featured. |
+| is_published | int | Nao | - | 0 | Indicador logico relacionado a published. |
+| published_at | text | Sim | - | - | Data/hora referente a published. |
+| updated_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_specialty_profiles` referente a updated by. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `intranet_user_audience_assignments`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Evidencia principal localizada em `apps/intranet/src/lib/intranet/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]
+- Vinculos principais: user_id -> users.id (vinculo logico)
+- Evidencia de criacao/garantia de schema: `apps/intranet/src/lib/intranet/repository.ts`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| user_id | varchar(64) | Nao | - | - | Identificador do usuario relacionado ao registro. |
+| audience_group_id | varchar(64) | Nao | - | - | Identificador de audience group usado para relacionar ou localizar o registro na origem/aplicacao. |
+| assigned_by | varchar(64) | Sim | - | - | Campo do dominio `intranet_user_audience_assignments` referente a assigned by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `recruitment_candidate_files`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/recrutamento/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; idx_recruitment_files_candidate (candidate_id)
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/recrutamento/repository.ts`
+- Evidencias documentais: `apps/painel/docs/15-plano-tecnico-recrutamento.md`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| candidate_id | varchar(64) | Nao | IDX | - | Identificador de candidate usado para relacionar ou localizar o registro na origem/aplicacao. |
+| storage_provider | varchar(30) | Nao | - | - | Campo do dominio `recruitment_candidate_files` referente a storage provider. |
+| storage_bucket | varchar(255) | Sim | - | - | Campo do dominio `recruitment_candidate_files` referente a storage bucket. |
+| storage_key | text | Nao | - | - | Campo do dominio `recruitment_candidate_files` referente a storage key. |
+| original_name | varchar(255) | Nao | - | - | Nome de original utilizado para exibicao, filtro ou agrupamento. |
+| mime_type | varchar(120) | Nao | - | - | Tipo MIME do arquivo armazenado. |
+| size_bytes | int | Nao | - | - | Campo do dominio `recruitment_candidate_files` referente a size bytes. |
+| uploaded_by | varchar(64) | Nao | - | - | Campo do dominio `recruitment_candidate_files` referente a uploaded by. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `recruitment_candidate_history`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/recrutamento/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; idx_recruitment_history_candidate (candidate_id)
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/recrutamento/repository.ts`
+- Evidencias documentais: `apps/painel/docs/15-plano-tecnico-recrutamento.md`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| candidate_id | varchar(64) | Nao | IDX | - | Identificador de candidate usado para relacionar ou localizar o registro na origem/aplicacao. |
+| action | varchar(60) | Nao | - | - | Campo do dominio `recruitment_candidate_history` referente a action. |
+| from_stage | varchar(30) | Sim | - | - | Status/etapa de from stage. |
+| to_stage | varchar(30) | Sim | - | - | Status/etapa de to stage. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| actor_user_id | varchar(64) | Nao | - | - | Identificador de actor user usado para relacionar ou localizar o registro na origem/aplicacao. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+
+---
+
+### `recruitment_candidates`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/recrutamento/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; idx_recruitment_candidates_job (job_id); idx_recruitment_candidates_stage (stage)
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/recrutamento/repository.ts`
+- Evidencias documentais: `apps/painel/docs/15-plano-tecnico-recrutamento.md`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| job_id | varchar(64) | Nao | IDX | - | Identificador do job/processamento ao qual a linha pertence. |
+| full_name | varchar(220) | Nao | - | - | Nome de full utilizado para exibicao, filtro ou agrupamento. |
+| cpf | varchar(20) | Sim | - | - | Campo do dominio `recruitment_candidates` referente a cpf. |
+| email | varchar(220) | Sim | - | - | Endereco de e-mail associado ao registro. |
+| phone | varchar(40) | Sim | - | - | Campo do dominio `recruitment_candidates` referente a phone. |
+| stage | varchar(30) | Nao | IDX | - | Status/etapa de stage. |
+| source | varchar(120) | Sim | - | - | Origem declarada do dado ou do evento. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| converted_employee_id | varchar(64) | Sim | - | - | Identificador de converted employee usado para relacionar ou localizar o registro na origem/aplicacao. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
+| updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
+
+---
+
+### `recruitment_jobs`
+
+- Finalidade: Tabela operacional/tecnica identificada no schema MySQL.
+- Origem da informacao: Origem mista no painel/aplicacao; validar modulo escritor principal.
+- Escrita/manutencao tecnica: Escrita principal realizada por repository/servico server-side em `apps/painel/src/lib/recrutamento/repository.ts`.
+- Tabela/engine: `InnoDB`
+- Colacao: `utf8mb4_0900_ai_ci`
+- Linhas estimadas pelo MySQL: `0`
+- Chave primaria: `id`
+- Indices: PRIMARY (id) [UNQ]; idx_recruitment_jobs_status (status)
+- Vinculos principais: nenhum vinculo explicito identificado; validar consumo do modulo.
+- Evidencia de criacao/garantia de schema: `apps/painel/src/lib/recrutamento/repository.ts`
+- Evidencias documentais: `apps/painel/docs/15-plano-tecnico-recrutamento.md`
+
+| Coluna | Tipo | Nulo | Chave | Default | Descricao |
+| --- | --- | --- | --- | --- | --- |
+| id | varchar(64) | Nao | PK | - | Identificador primario do registro. |
+| title | varchar(180) | Nao | - | - | Campo do dominio `recruitment_jobs` referente a title. |
+| department | varchar(180) | Sim | - | - | Campo do dominio `recruitment_jobs` referente a department. |
+| unit_name | varchar(180) | Sim | - | - | Nome da unidade exibido/normalizado para consumo no painel. |
+| employment_regime | varchar(20) | Nao | - | - | Campo do dominio `recruitment_jobs` referente a employment regime. |
+| status | varchar(20) | Nao | IDX | - | Status operacional/negocial atual do registro. |
+| owner_name | varchar(180) | Sim | - | - | Nome de owner utilizado para exibicao, filtro ou agrupamento. |
+| opened_at | date | Sim | - | - | Data/hora referente a opened. |
+| closed_at | date | Sim | - | - | Data/hora referente a closed. |
+| notes | text | Sim | - | - | Observacoes livres registradas pelo processo ou pelo usuario. |
+| created_at | text | Nao | - | - | Data/hora de criacao do registro no painel. |
 | updated_at | text | Nao | - | - | Data/hora da ultima atualizacao local do registro. |
 
 ---

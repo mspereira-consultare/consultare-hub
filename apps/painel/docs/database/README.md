@@ -6,8 +6,8 @@ Esta pasta consolida a documentacao do banco MySQL efetivamente em uso pelo pain
 
 - Schema extraido diretamente do banco MySQL em `railway`.
 - Versao do servidor reportada em `information_schema`: `9.4.0`.
-- Extracao/geracao desta base: `2026-04-15 00:15:25 UTC`.
-- Total de tabelas encontradas: `116`.
+- Extracao/geracao desta base: `2026-04-29 02:06:40 UTC`.
+- Total de tabelas encontradas: `151`.
 - Total de relacionamentos fisicos (FK) encontrados: `0`.
 
 ## Arquivos desta base
@@ -22,26 +22,18 @@ Esta pasta consolida a documentacao do banco MySQL efetivamente em uso pelo pain
    Dicionario completo de tabelas e colunas do MySQL vivo.
 5. `database/mysql-schema-live.json`
    Extracao estruturada do `information_schema` usada como base para estes documentos.
-6. `database/04-guia-de-integracao-mysql.md`
-   Guia pratico para leitura, escrita, APIs e webhooks sobre o banco.
-7. `database/05-matriz-de-escrita-e-consumo.md`
-   Matriz de ownership, leitura permitida e escrita permitida por familia de tabelas.
-8. `database/06-contratos-operacionais-por-dominio.md`
-   Contratos operacionais por dominio para integracoes, APIs e webhooks.
-9. `database/07-mapa-api-rotas-tabelas.md`
-   Mapa consolidado das rotas atuais do projeto para tabelas lidas e escritas no MySQL.
 
 ## Fontes reaproveitadas/migradas
 
-- `frontend/docs/03-arquitetura-tecnica.md`
-- `frontend/docs/04-dicionario-de-dados.md`
-- `frontend/docs/07-plano-tecnico-repasses.md`
-- `frontend/docs/08-agenda-ocupacao.md`
-- `frontend/docs/09-plano-tecnico-marketing-funil.md`
-- `frontend/docs/10-plano-tecnico-colaboradores.md`
-- `frontend/docs/11-plano-tecnico-equipamentos.md`
-- `frontend/docs/13-plano-tecnico-vigilancia-sanitaria.md`
-- `frontend/docs/14-plano-tecnico-folha-pagamento.md`
+- `apps/painel/docs/03-arquitetura-tecnica.md`
+- `apps/painel/docs/04-dicionario-de-dados.md`
+- `apps/painel/docs/07-plano-tecnico-repasses.md`
+- `apps/painel/docs/08-agenda-ocupacao.md`
+- `apps/painel/docs/09-plano-tecnico-marketing-funil.md`
+- `apps/painel/docs/10-plano-tecnico-colaboradores.md`
+- `apps/painel/docs/11-plano-tecnico-equipamentos.md`
+- `apps/painel/docs/13-plano-tecnico-vigilancia-sanitaria.md`
+- `apps/painel/docs/14-plano-tecnico-folha-pagamento.md`
 
 ## Achados principais
 
@@ -57,8 +49,8 @@ Esta pasta consolida a documentacao do banco MySQL efetivamente em uso pelo pain
 | admin | Administracao, seguranca e governanca | 8 |
 | ops | Operacao online, filas e checklists | 14 |
 | biz | Comercial, agenda, faturamento, custos e repasses | 29 |
-| mkt | Marketing, CRM, funil e analytics | 24 |
-| people | Pessoas, profissionais, RH e contratos | 24 |
-| quality | Qualidade, documentos regulatorios e equipamentos | 17 |
-| other | Outros / legado | 0 |
+| mkt | Marketing, CRM, funil e analytics | 15 |
+| people | Pessoas, profissionais, RH e contratos | 31 |
+| quality | Qualidade, documentos regulatorios e equipamentos | 18 |
+| other | Outros / legado | 36 |
 

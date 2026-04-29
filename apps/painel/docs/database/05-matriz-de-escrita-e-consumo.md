@@ -27,8 +27,7 @@ Esta matriz define quem e o owner tecnico de cada familia de tabela e como ela d
 | `marketing_google_accounts`, `marketing_campaign_mapping` | Worker/repositorio de marketing | Sim | Parcial | Configuracao + mapeamento | `marketing_campaign_mapping` e tabela de parametrizacao do dominio |
 | `marketing_funnel_jobs`, `marketing_funnel_job_items` | Worker marketing | Sim | Nao | Job tecnico | Uso de observabilidade e troubleshooting |
 | `raw_*` | Workers de integracao | Restrita | Nao | Staging/raw | Nao expor diretamente em API publica |
-| `fact_marketing_*`, `fact_clinia_*` | Workers analiticos | Sim | Nao | Fato analitico | Base preferencial para APIs gerenciais |
-| `clinia_crm_*` | Worker CRM Clinia | Sim | Nao | Espelho + fatos + jobs | Nao gravar direto fora do worker |
+| `fact_marketing_*`, `fact_clinia_ads_*` | Workers analiticos | Sim | Nao | Fato analitico | Base preferencial para APIs gerenciais |
 | `feegow_repasse_*`, `repasse_sync_*` | Workers/repositories de repasse | Sim | Nao | Base de repasse e jobs | Dominio sensivel; evitar escrita direta |
 | `repasse_professional_notes`, `repasse_consolidacao_notes`, `repasse_fechamento_manual`, `repasse_consolidacao_line_marks`, `repasse_consolidacao_mark_legends` | Modulo de repasses | Sim | Somente via API do modulo | Operacional/manual | Escrita permitida so nas tabelas manuais do fluxo |
 | `repasse_pdf_jobs`, `repasse_pdf_artifacts` | Modulo de repasses | Sim | Nao | Geracao de artefatos | APIs do dominio devem acionar o fluxo, nao gravar direto |
