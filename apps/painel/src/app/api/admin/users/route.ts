@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 import bcrypt from 'bcryptjs';
-import { ensureUserAccountTables } from '@consultare/core/user-accounts';
+import { ensureUserAccountColumns } from '@consultare/core/user-accounts';
 
 const clean = (value: unknown) => String(value ?? '').trim();
 
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
     const cacheKey = buildCacheKey('admin', request.url);
     const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
       const db = getDbConnection();
-      await ensureUserAccountTables(db);
+      await ensureUserAccountColumns(db);
     
       const result = await db.query(`
           SELECT id, name, email, username, role, department, status, last_access 
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { id, name, email, username, password, role, department, status } = body;
     const db = getDbConnection();
-    await ensureUserAccountTables(db);
+    await ensureUserAccountColumns(db);
     const cleanedName = clean(name);
     const cleanedEmail = clean(email);
     const cleanedUsername = clean(username);
@@ -103,7 +103,7 @@ export async function DELETE(request: Request) {
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
     const db = getDbConnection();
-    await ensureUserAccountTables(db);
+    await ensureUserAccountColumns(db);
     
     await db.execute(
         "DELETE FROM users WHERE id = ?",

@@ -13,7 +13,8 @@ const lower = (value: unknown) => clean(value).toLowerCase();
 const USERNAME_IGNORED_PARTICLES = new Set(['da', 'das', 'de', 'do', 'dos', 'e']);
 const SIMPLE_PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
 
-let tablesEnsured = false;
+let userColumnsEnsured = false;
+let credentialTablesEnsured = false;
 
 export type LinkedUserRecord = {
   id: string;
@@ -185,11 +186,19 @@ export const generateMemorablePassword = (length = 6) => {
   return next;
 };
 
-export const ensureUserAccountTables = async (db: DbInterface) => {
-  if (tablesEnsured) return;
-
+export const ensureUserAccountColumns = async (db: DbInterface) => {
+  if (userColumnsEnsured) return;
   await safeAddColumn(db, `ALTER TABLE users ADD COLUMN username VARCHAR(120) NULL`);
   await safeAddColumn(db, `ALTER TABLE users ADD COLUMN employee_id VARCHAR(64) NULL`);
+  await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_users_username ON users (username)`);
+  await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_users_employee_id ON users (employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_users_role ON users (role)`);
+  userColumnsEnsured = true;
+};
+
+export const ensureUserAccountTables = async (db: DbInterface) => {
+  await ensureUserAccountColumns(db);
+  if (credentialTablesEnsured) return;
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS employee_portal_access_credentials (
@@ -205,18 +214,13 @@ export const ensureUserAccountTables = async (db: DbInterface) => {
       superseded_at TEXT NULL
     )
   `);
-
-  await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_users_username ON users (username)`);
-  await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_users_employee_id ON users (employee_id)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_users_role ON users (role)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_access_credentials_employee ON employee_portal_access_credentials (employee_id, generated_at)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_access_credentials_user ON employee_portal_access_credentials (user_id, generated_at)`);
-
-  tablesEnsured = true;
+  credentialTablesEnsured = true;
 };
 
 export const listUsersWithoutLinkedEmployee = async (db: DbInterface) => {
-  await ensureUserAccountTables(db);
+  await ensureUserAccountColumns(db);
   const rows = await db.query(
     `
     SELECT id, name, email, username, role, department, status, employee_id, password
@@ -229,7 +233,7 @@ export const listUsersWithoutLinkedEmployee = async (db: DbInterface) => {
 };
 
 export const getLinkedUserByEmployeeId = async (db: DbInterface, employeeId: string) => {
-  await ensureUserAccountTables(db);
+  await ensureUserAccountColumns(db);
   const rows = await db.query(
     `
     SELECT id, name, email, username, role, department, status, employee_id, password
@@ -247,7 +251,7 @@ export const resolveUniqueUsername = async (
   fullName: string,
   ignoredUserId?: string | null
 ) => {
-  await ensureUserAccountTables(db);
+  await ensureUserAccountColumns(db);
   const parts = buildUsernameBaseParts(fullName);
   const maxPenultimateLength = Math.max(2, parts.penultimate.length || 2);
 
@@ -414,7 +418,7 @@ export const ensureEmployeeUserAccount = async (
   employee: Employee,
   options: EnsureEmployeeUserOptions = {}
 ) => {
-  await ensureUserAccountTables(db);
+  await ensureUserAccountColumns(db);
   const desiredStatus = employee.status === 'ATIVO' ? 'ATIVO' : 'INATIVO';
   const existing = await findExistingUserForEmployee(db, employee);
   const username = await resolveUniqueUsername(db, employee.fullName, existing?.id || null);
@@ -429,9 +433,10 @@ export const ensureEmployeeUserAccount = async (
     const userId = randomUUID();
     const role = 'INTRANET';
     const placeholderEmail = isRealEmail(employee.email) ? lower(employee.email) : getPlaceholderEmail(username);
-    const createdCredential = options.createInitialCredential === false
-      ? null
-      : { temporaryPassword: generateMemorablePassword(6) };
+    const shouldCreateInitialCredential = options.createInitialCredential !== false;
+    const createdCredential = shouldCreateInitialCredential
+      ? { temporaryPassword: generateMemorablePassword(6) }
+      : null;
     const passwordHash = await hash(createdCredential?.temporaryPassword || generateMemorablePassword(10), 10);
 
     await db.execute(
@@ -456,6 +461,7 @@ export const ensureEmployeeUserAccount = async (
     );
 
     if (createdCredential) {
+      await ensureUserAccountTables(db);
       await db.execute(
         `
         INSERT INTO employee_portal_access_credentials (
@@ -536,7 +542,7 @@ export const migrateExistingEmployeeUsers = async (
   db: DbInterface,
   employees: Employee[]
 ) => {
-  await ensureUserAccountTables(db);
+  await ensureUserAccountColumns(db);
   const migrated: Array<{ employeeId: string; userId: string; username: string }> = [];
   const skipped: Array<{ employeeId: string; fullName: string; reason: string }> = [];
 
