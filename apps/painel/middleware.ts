@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { SHARED_NEXTAUTH_SESSION_COOKIE_NAME } from '@consultare/core/auth';
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -20,7 +21,8 @@ export async function middleware(req: NextRequest) {
   // --- 2. VERIFICAÇÃO DE TOKEN ---
   const token = await getToken({ 
     req, 
-    secret: process.env.NEXTAUTH_SECRET 
+    secret: process.env.NEXTAUTH_SECRET,
+    cookieName: SHARED_NEXTAUTH_SESSION_COOKIE_NAME,
   });
 
   // Se não estiver logado e tentar acessar uma rota protegida
