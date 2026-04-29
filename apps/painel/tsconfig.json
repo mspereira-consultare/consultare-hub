@@ -24,6 +24,7 @@
       "@consultare/core/db": ["../../packages/core/src/db.ts"],
       "@consultare/core/permissions": ["../../packages/core/src/permissions.ts"],
       "@consultare/core/permissions-server": ["../../packages/core/src/permissions_server.ts"],
+      "@consultare/core/user-accounts": ["../../packages/core/src/user_accounts.ts"],
       "@consultare/core/storage": ["../../packages/core/src/storage/index.ts"],
       "@consultare/core/storage/provider": ["../../packages/core/src/storage/provider.ts"],
       "@consultare/core/storage/providers/s3": ["../../packages/core/src/storage/providers/s3.ts"],

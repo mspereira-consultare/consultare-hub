@@ -8,7 +8,7 @@ import { Lock, Loader2, LogIn } from 'lucide-react';
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -21,7 +21,7 @@ export default function LoginForm() {
     setLoading(true);
 
     const result = await signIn('credentials', {
-      email,
+      identifier,
       password,
       redirect: false,
       callbackUrl,
@@ -35,7 +35,7 @@ export default function LoginForm() {
         return;
       }
 
-      setError('E-mail ou senha inválidos.');
+      setError('Usuário ou senha inválidos.');
       return;
     }
 
@@ -57,13 +57,13 @@ export default function LoginForm() {
 
       <form className="space-y-4" onSubmit={handleSubmit}>
         <label className="block">
-          <span className="mb-1 block text-xs font-semibold uppercase text-slate-500">E-mail</span>
+          <span className="mb-1 block text-xs font-semibold uppercase text-slate-500">Usuário</span>
           <input
             className="w-full rounded-md border border-slate-200 px-3 py-2.5 text-sm outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            type="email"
-            autoComplete="email"
+            value={identifier}
+            onChange={(event) => setIdentifier(event.target.value)}
+            type="text"
+            autoComplete="username"
             required
           />
         </label>

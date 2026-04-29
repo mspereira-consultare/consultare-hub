@@ -9,7 +9,7 @@ import { PAGE_DEFS, hasPermission } from '@/lib/permissions';
 export default function LoginPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -39,12 +39,12 @@ export default function LoginPage() {
       // Chama o NextAuth para autenticar (validando no Turso)
       const result = await signIn('credentials', {
         redirect: false,
-        email,
+        identifier,
         password,
       });
 
       if (result?.error) {
-        setError("E-mail ou senha incorretos.");
+        setError("Usuário ou senha incorretos.");
         setLoading(false);
         return;
       }
@@ -91,13 +91,13 @@ export default function LoginPage() {
           )}
 
           <div>
-            <label className="mb-1 block text-sm font-medium text-gray-700">E-mail</label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Usuário</label>
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               className="w-full rounded-md border border-gray-300 p-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="email@consultare.com.br"
+              placeholder="Ex: msopereira"
               required
             />
           </div>

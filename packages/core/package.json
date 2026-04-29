@@ -11,6 +11,7 @@
     "./intranet/repository": "./src/intranet/repository.ts",
     "./permissions": "./src/permissions.ts",
     "./permissions-server": "./src/permissions_server.ts",
+    "./user-accounts": "./src/user_accounts.ts",
     "./storage": "./src/storage/index.ts",
     "./storage/provider": "./src/storage/provider.ts",
     "./storage/providers/s3": "./src/storage/providers/s3.ts",
@@ -28,6 +29,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.992.0",
     "@libsql/client": "^0.17.0",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.3",
     "mysql2": "^3.16.3",
     "server-only": "^0.0.1"

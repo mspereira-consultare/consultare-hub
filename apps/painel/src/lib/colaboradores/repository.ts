@@ -1,6 +1,7 @@
 
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
+import { ensureEmployeeUserAccount } from '@consultare/core/user-accounts';
 import { calculateKpi } from '@/lib/kpi_engine';
 import { ensureQmsTrainingTables } from '@/lib/qms/trainings_repository';
 import {
@@ -1483,6 +1484,10 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
   if (!created) {
     throw new EmployeeValidationError('Falha ao carregar colaborador criado.', 500);
   }
+  await ensureEmployeeUserAccount(db, created, {
+    actorUserId,
+    createInitialCredential: created.status === 'ATIVO',
+  });
   return created;
 };
 
@@ -1616,6 +1621,10 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
   if (!updated) {
     throw new EmployeeValidationError('Falha ao carregar colaborador atualizado.', 500);
   }
+  await ensureEmployeeUserAccount(db, updated, {
+    actorUserId,
+    createInitialCredential: updated.status === 'ATIVO',
+  });
   return updated;
 };
 
@@ -1845,6 +1854,10 @@ export const deactivateEmployee = async (db: DbInterface, employeeId: string, ac
   if (!updated) {
     throw new EmployeeValidationError('Falha ao carregar colaborador inativado.', 500);
   }
+  await ensureEmployeeUserAccount(db, updated, {
+    actorUserId,
+    createInitialCredential: false,
+  });
   return updated;
 };
 

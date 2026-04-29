@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 import bcrypt from 'bcryptjs';
+import { ensureUserAccountTables } from '@consultare/core/user-accounts';
+
+const clean = (value: unknown) => String(value ?? '').trim();
 
 export const dynamic = 'force-dynamic';
 const CACHE_TTL_MS = 30 * 60 * 1000;
@@ -12,15 +15,14 @@ export async function GET(request: Request) {
     const cacheKey = buildCacheKey('admin', request.url);
     const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
       const db = getDbConnection();
+      await ensureUserAccountTables(db);
     
-      // query(sql) -> retorna array de linhas
       const result = await db.query(`
-          SELECT id, name, email, role, department, status, last_access 
+          SELECT id, name, email, username, role, department, status, last_access 
           FROM users 
           ORDER BY name ASC
       `);
 
-      // Seu db.ts já normaliza o retorno para array (res.rows no Turso ou .all() no Local)
       return result;
     });
 
@@ -35,24 +37,28 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { id, name, email, password, role, department, status } = body;
+    const { id, name, email, username, password, role, department, status } = body;
     const db = getDbConnection();
+    await ensureUserAccountTables(db);
+    const cleanedName = clean(name);
+    const cleanedEmail = clean(email);
+    const cleanedUsername = clean(username);
+
+    if (!cleanedName || !cleanedUsername) {
+      return NextResponse.json({ error: 'Nome e usuário são obrigatórios.' }, { status: 400 });
+    }
 
     if (id) {
-      // --- EDIÇÃO (UPDATE) ---
-      
       if (password && password.trim() !== "") {
         const hash = await bcrypt.hash(password, 10);
-        // CORREÇÃO: Passando (sql, params) separados
         await db.execute(
-            `UPDATE users SET name = ?, email = ?, password = ?, role = ?, department = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
-            [name, email, hash, role, department, status, id]
+            `UPDATE users SET name = ?, email = ?, username = ?, password = ?, role = ?, department = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
+            [cleanedName, cleanedEmail, cleanedUsername, hash, role, department, status, id]
         );
       } else {
-        // CORREÇÃO: Passando (sql, params) separados
         await db.execute(
-            `UPDATE users SET name = ?, email = ?, role = ?, department = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
-            [name, email, role, department, status, id]
+            `UPDATE users SET name = ?, email = ?, username = ?, role = ?, department = ?, status = ?, updated_at = datetime('now') WHERE id = ?`,
+            [cleanedName, cleanedEmail, cleanedUsername, role, department, status, id]
         );
       }
       
@@ -60,17 +66,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, action: 'updated' });
 
     } else {
-      // --- CRIAÇÃO (INSERT) ---
       if (!password) return NextResponse.json({ error: 'Senha obrigatória' }, { status: 400 });
       
       const hash = await bcrypt.hash(password, 10);
-      const newId = crypto.randomUUID(); // UUID para Turso
+      const newId = crypto.randomUUID();
 
-      // CORREÇÃO: Passando (sql, params) separados
       await db.execute(
-        `INSERT INTO users (id, name, email, password, role, department, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        [newId, name, email, hash, role, department, status]
+        `INSERT INTO users (id, name, email, username, password, role, department, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        [newId, cleanedName, cleanedEmail, cleanedUsername, hash, role, department, status]
       );
       
       invalidateCache('admin:');
@@ -79,9 +83,12 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error("Erro POST Users:", error);
-    // Tratamento para email duplicado
-    if (error.message?.includes('UNIQUE constraint failed') || error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
-      return NextResponse.json({ error: 'Este e-mail já está cadastrado.' }, { status: 409 });
+    if (
+      error.message?.includes('UNIQUE constraint failed') ||
+      error.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+      error.code === 'ER_DUP_ENTRY'
+    ) {
+      return NextResponse.json({ error: 'Este usuário já está cadastrado.' }, { status: 409 });
     }
     return NextResponse.json({ error: error.message }, { status: (error as any)?.status || 500 });
   }
@@ -96,8 +103,8 @@ export async function DELETE(request: Request) {
     if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 });
 
     const db = getDbConnection();
+    await ensureUserAccountTables(db);
     
-    // CORREÇÃO: Passando (sql, params) separados
     await db.execute(
         "DELETE FROM users WHERE id = ?",
         [id]

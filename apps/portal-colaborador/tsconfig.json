@@ -19,7 +19,9 @@
       }
     ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@consultare/core/employee-portal/*": ["../../packages/core/src/employee_portal/*"],
+      "@consultare/core/user-accounts": ["../../packages/core/src/user_accounts.ts"]
     }
   },
   "include": [

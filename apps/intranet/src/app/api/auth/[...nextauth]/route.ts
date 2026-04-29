@@ -22,6 +22,7 @@ type ConsultareAuthFields = {
   role?: string;
   department?: string;
   permissions?: unknown;
+  username?: string;
 };
 
 type ConsultareToken = JWT & ConsultareAuthFields;
@@ -43,39 +44,48 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: 'Credentials',
       credentials: {
-        email: { label: 'Email', type: 'email' },
+        identifier: { label: 'Usuario', type: 'text' },
         password: { label: 'Senha', type: 'password' },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
+        const rawCredentials = credentials as Record<string, string> | undefined;
+        const identifier = String(rawCredentials?.identifier || rawCredentials?.email || '').trim();
+        if (!identifier || !credentials?.password) {
           throw new Error('Dados de login incompletos');
         }
 
         try {
           const db = getDbConnection();
           const rows = await db.query(
-            'SELECT * FROM users WHERE email = ? LIMIT 1',
-            [credentials.email]
+            `
+            SELECT *
+            FROM users
+            WHERE LOWER(COALESCE(username, '')) = LOWER(?)
+               OR LOWER(COALESCE(email, '')) = LOWER(?)
+            ORDER BY CASE WHEN LOWER(COALESCE(username, '')) = LOWER(?) THEN 0 ELSE 1 END, created_at ASC
+            LIMIT 1
+            `,
+            [identifier, identifier, identifier]
           );
           const user = rows[0] as Record<string, unknown> | undefined;
           if (!user) {
-            console.log('LOGIN INTRANET FALHOU: Usuario nao encontrado:', credentials.email);
+            console.log('LOGIN INTRANET FALHOU: Usuario nao encontrado:', identifier);
             return null;
           }
           if (String(user.status || '').toUpperCase() !== 'ATIVO') {
-            console.log('LOGIN INTRANET FALHOU: Usuario inativo:', credentials.email);
+            console.log('LOGIN INTRANET FALHOU: Usuario inativo:', identifier);
             return null;
           }
 
           const storedHash = String(user.password || user.password_hash || '');
           if (!storedHash) {
-            console.log('LOGIN INTRANET FALHOU: Usuario sem senha definida:', credentials.email);
+            console.log('LOGIN INTRANET FALHOU: Usuario sem senha definida:', identifier);
             return null;
           }
 
           const valid = await compare(credentials.password, storedHash);
           if (!valid) {
-            console.log('LOGIN INTRANET FALHOU: Senha incorreta para:', credentials.email);
+            console.log('LOGIN INTRANET FALHOU: Senha incorreta para:', identifier);
             return null;
           }
 
@@ -97,6 +107,7 @@ export const authOptions: NextAuthOptions = {
             id: String(user.id),
             name: String(user.name || user.email || ''),
             email: String(user.email || ''),
+            username: String(user.username || ''),
             role,
             department: String(user.department || ''),
             permissions,
@@ -118,6 +129,7 @@ export const authOptions: NextAuthOptions = {
         nextToken.role = nextUser.role;
         nextToken.department = nextUser.department;
         nextToken.permissions = nextUser.permissions;
+        nextToken.username = nextUser.username;
       }
 
       if (nextToken?.id) {
@@ -139,6 +151,7 @@ export const authOptions: NextAuthOptions = {
         sessionUser.role = nextToken.role;
         sessionUser.department = nextToken.department;
         sessionUser.permissions = nextToken.permissions;
+        sessionUser.username = nextToken.username;
       }
       return session;
     },

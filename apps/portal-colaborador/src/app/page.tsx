@@ -316,6 +316,24 @@ export default function PortalColaboradorPage() {
     }
   };
 
+  const acknowledgeIntranetAccess = async () => {
+    if (!overview?.intranetAccess?.credentialId) return;
+    setError('');
+    setNotice('');
+    try {
+      const payload = await fetchJson<{ status: string; data: EmployeePortalOverview }>('/api/intranet-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ credentialId: overview.intranetAccess.credentialId }),
+      });
+      setOverview(payload.data);
+      setPersonal(personalFromOverview(payload.data));
+      setNotice('Credenciais confirmadas. A senha não ficará mais visível neste portal.');
+    } catch (ackError: unknown) {
+      setError(getErrorMessage(ackError, 'Falha ao confirmar a leitura das credenciais.'));
+    }
+  };
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
@@ -483,6 +501,54 @@ export default function PortalColaboradorPage() {
           <p className="mt-1 text-sm text-slate-500">{overview.rejectedCount} com correção solicitada</p>
         </div>
       </section>
+
+      {overview.intranetAccess ? (
+        <section className="mt-5 rounded-2xl border border-[#17407E]/15 bg-gradient-to-r from-[#17407E]/5 via-white to-[#2AAE8B]/5 p-4 shadow-sm sm:p-5">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#17407E]">Acesso à intranet</p>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">Seus dados de acesso já estão prontos</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                Use este usuário para entrar na intranet da Consultare. A senha inicial aparece apenas uma vez.
+              </p>
+            </div>
+            {overview.intranetAccess.status === 'PENDING_VIEW' ? (
+              <button
+                type="button"
+                onClick={acknowledgeIntranetAccess}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#17407E]/20 bg-white px-3 py-2 text-sm font-semibold text-[#17407E]"
+              >
+                <CheckCircle2 size={15} />
+                Anotei meus dados
+              </button>
+            ) : null}
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs font-semibold uppercase text-slate-500">Link</div>
+              <a href={overview.intranetAccess.intranetUrl} target="_blank" rel="noreferrer" className="mt-2 block text-sm font-semibold text-[#17407E] underline-offset-2 hover:underline">
+                Abrir intranet
+              </a>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs font-semibold uppercase text-slate-500">Usuário</div>
+              <div className="mt-2 text-lg font-bold text-slate-900">{overview.intranetAccess.username}</div>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="text-xs font-semibold uppercase text-slate-500">Senha inicial</div>
+              <div className="mt-2 text-lg font-bold text-slate-900">
+                {overview.intranetAccess.temporaryPassword || 'Já visualizada'}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                {overview.intranetAccess.temporaryPassword
+                  ? 'Guarde esta senha antes de confirmar.'
+                  : 'Se precisar de uma nova senha, solicite ao RH.'}
+              </p>
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">

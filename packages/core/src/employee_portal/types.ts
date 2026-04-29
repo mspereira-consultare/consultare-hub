@@ -147,6 +147,15 @@ export type EmployeePortalOverview = {
   pendingCount: number;
   rejectedCount: number;
   approvedCount: number;
+  intranetAccess: {
+    credentialId: string;
+    status: 'PENDING_VIEW' | 'VIEWED';
+    username: string;
+    temporaryPassword: string | null;
+    intranetUrl: string;
+    generatedAt: string;
+    shownAt: string | null;
+  } | null;
 };
 
 export type CreatePortalDocumentInput = {

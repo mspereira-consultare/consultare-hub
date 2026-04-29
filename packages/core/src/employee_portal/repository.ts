@@ -25,6 +25,12 @@ import {
   EMPLOYEE_PORTAL_PERSONAL_FIELDS,
   EMPLOYEE_PORTAL_SESSION_TTL_HOURS,
 } from './constants';
+import {
+  ensureEmployeeUserAccount,
+  getLatestPortalCredential,
+  getLinkedUserByEmployeeId,
+  markPortalCredentialAsViewed,
+} from '../user_accounts';
 import type {
   CreatePortalDocumentInput,
   EmployeePortalChecklistItem,
@@ -626,14 +632,33 @@ export const getEmployeePortalOverview = async (
   const employee = await getEmployeeById(db, employeeId);
   if (!employee) throw new EmployeePortalError('Colaborador não encontrado.', 404);
 
-  const [invites, submission, officialDocuments] = await Promise.all([
+  const [invites, submission, officialDocuments, linkedUser, latestCredential] = await Promise.all([
     listInvites(db, employeeId),
     getLatestSubmission(db, employeeId),
     listEmployeeDocuments(db, employeeId),
+    getLinkedUserByEmployeeId(db, employeeId),
+    getLatestPortalCredential(db, employeeId),
   ]);
   const activeInvite = await getActiveInvite(db, employeeId, baseUrl);
   const documents = submission ? await listSubmissionDocuments(db, submission.id) : [];
   const checklist = buildChecklist(employee, submission, documents, officialDocuments);
+  const intranetBaseUrl = clean(process.env.INTRANET_BASE_URL) || clean(process.env.NEXT_PUBLIC_INTRANET_URL) || '/';
+  const intranetAccess =
+    submission?.status === 'APPROVED' &&
+    employee.status === 'ATIVO' &&
+    linkedUser &&
+    latestCredential &&
+    ['PENDING_VIEW', 'VIEWED'].includes(latestCredential.status)
+      ? {
+          credentialId: latestCredential.id,
+          status: latestCredential.status as 'PENDING_VIEW' | 'VIEWED',
+          username: linkedUser.username || latestCredential.usernameSnapshot,
+          temporaryPassword: latestCredential.status === 'PENDING_VIEW' ? latestCredential.temporaryPassword : null,
+          intranetUrl: intranetBaseUrl,
+          generatedAt: latestCredential.generatedAt,
+          shownAt: latestCredential.shownAt,
+        }
+      : null;
 
   return {
     employee: {
@@ -674,6 +699,7 @@ export const getEmployeePortalOverview = async (
     pendingCount: checklist.filter((item) => item.status === 'PENDING' || item.status === 'DRAFT').length,
     rejectedCount: checklist.filter((item) => item.status === 'REJECTED').length,
     approvedCount: checklist.filter((item) => ['APPROVED', 'OFFICIAL'].includes(item.status)).length,
+    intranetAccess,
   };
 };
 
@@ -1121,7 +1147,33 @@ const maybeFinishSubmission = async (
     );
   }
 
+  if (nextStatus === 'APPROVED') {
+    const employee = await getEmployeeById(db, submission.employeeId);
+    if (employee?.status === 'ATIVO') {
+      await ensureEmployeeUserAccount(db, employee, {
+        actorUserId,
+        createInitialCredential: true,
+      });
+    }
+  }
+
   return getSubmissionById(db, submissionId);
+};
+
+export const acknowledgePortalIntranetAccess = async (
+  db: DbInterface,
+  employeeId: string,
+  credentialId: string
+) => {
+  await ensureEmployeePortalTables(db);
+  const latestCredential = await getLatestPortalCredential(db, employeeId);
+  if (!latestCredential || latestCredential.id !== credentialId) {
+    throw new EmployeePortalError('Credencial de acesso não encontrada.', 404);
+  }
+  if (latestCredential.status === 'PENDING_VIEW') {
+    await markPortalCredentialAsViewed(db, credentialId, employeeId);
+  }
+  return getEmployeePortalOverview(db, employeeId);
 };
 
 export const approvePortalPersonalData = async (

@@ -21,6 +21,7 @@ type ConsultareAuthFields = {
   role?: string;
   department?: string;
   permissions?: unknown;
+  username?: string;
 };
 
 type ConsultareToken = JWT & ConsultareAuthFields;
@@ -45,37 +46,41 @@ export const authOptions: NextAuthOptions = {
     CredentialsProvider({
       name: "Credentials",
       credentials: {
-        email: { label: "Email", type: "email" },
+        identifier: { label: "Usuario", type: "text" },
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
+        const rawCredentials = credentials as Record<string, string> | undefined;
+        const identifier = String(rawCredentials?.identifier || rawCredentials?.email || '').trim();
+        if (!identifier || !credentials?.password) {
           throw new Error("Dados de login incompletos");
         }
 
         try {
           const db = getDbConnection();
-          
-          // CORREÇÃO: Usar .query() em vez de .prepare().get()
-          // O método query sempre retorna um array (Promise<any[]>)
           const rows = await db.query(
-            "SELECT * FROM users WHERE email = ?", 
-            [credentials.email]
+            `
+            SELECT *
+            FROM users
+            WHERE LOWER(COALESCE(username, '')) = LOWER(?)
+               OR LOWER(COALESCE(email, '')) = LOWER(?)
+            ORDER BY CASE WHEN LOWER(COALESCE(username, '')) = LOWER(?) THEN 0 ELSE 1 END, created_at ASC
+            LIMIT 1
+            `,
+            [identifier, identifier, identifier]
           );
 
-          const user = rows[0]; // Pega o primeiro resultado
+          const user = rows[0];
 
           if (!user) {
-            console.log("LOGIN FALHOU: Usuário não encontrado:", credentials.email);
+            console.log("LOGIN FALHOU: Usuário não encontrado:", identifier);
             return null;
           }
           if (String(user.status || '').toUpperCase() !== 'ATIVO') {
-            console.log("LOGIN FALHOU: Usuário inativo:", credentials.email);
+            console.log("LOGIN FALHOU: Usuário inativo:", identifier);
             return null;
           }
 
-          // Verifica senha (bcrypt)
-          // Tenta acessar user.password ou user.password_hash dependendo de como foi salvo
           const storedHash = user.password || user.password_hash;
           
           if (!storedHash) {
@@ -86,7 +91,7 @@ export const authOptions: NextAuthOptions = {
           const isPasswordValid = await compare(credentials.password, storedHash);
 
           if (!isPasswordValid) {
-            console.log("LOGIN FALHOU: Senha incorreta para:", credentials.email);
+            console.log("LOGIN FALHOU: Senha incorreta para:", identifier);
             return null;
           }
 
@@ -110,6 +115,7 @@ export const authOptions: NextAuthOptions = {
             id: String(user.id), // Garante string para o NextAuth
             name: user.name,
             email: user.email,
+            username: user.username,
             role: user.role,
             department: user.department,
             permissions,
@@ -132,6 +138,7 @@ export const authOptions: NextAuthOptions = {
         nextToken.role = nextUser?.role;
         nextToken.department = nextUser?.department;
         nextToken.permissions = nextUser?.permissions;
+        nextToken.username = nextUser?.username;
       }
 
       if (nextToken?.id) {
@@ -156,6 +163,7 @@ export const authOptions: NextAuthOptions = {
         sessionUser.role = nextToken.role;
         sessionUser.department = nextToken.department;
         sessionUser.permissions = nextToken.permissions;
+        sessionUser.username = nextToken.username;
       }
       return session;
     }

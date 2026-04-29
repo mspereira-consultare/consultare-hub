@@ -15,6 +15,7 @@ interface User {
   id: string; // Mudou de number para string (UUID)
   name: string;
   email: string;
+  username: string;
   role: UserRole;
   department: string;
   status: UserStatus;
@@ -168,6 +169,7 @@ export default function UsersPage() {
     id?: string; // string para edição
     name: string;
     email: string;
+    username: string;
     password?: string;
     role: UserRole;
     department: string;
@@ -175,6 +177,7 @@ export default function UsersPage() {
   }>({
     name: '',
     email: '',
+    username: '',
     password: '',
     role: 'OPERADOR',
     department: 'Atendimento',
@@ -219,7 +222,8 @@ export default function UsersPage() {
     setFormData({
       id: user.id,
       name: user.name,
-      email: user.email,
+      email: user.email || '',
+      username: user.username || '',
       password: '', // Senha vazia na edição (só preenche se quiser trocar)
       role: user.role,
       department: user.department,
@@ -330,7 +334,7 @@ export default function UsersPage() {
   };
 
   const handleSaveUser = async () => {
-    if (!formData.name || !formData.email) return alert("Preencha nome e email.");
+    if (!formData.name || !formData.username) return alert("Preencha nome e usuário.");
     
     // Validação de senha apenas na criação
     if (!formData.id && !formData.password) return alert("Senha é obrigatória para novos usuários.");
@@ -362,6 +366,7 @@ export default function UsersPage() {
     setFormData({
       name: '',
       email: '',
+      username: '',
       password: '',
       role: 'OPERADOR',
       department: 'Atendimento',
@@ -372,7 +377,8 @@ export default function UsersPage() {
   // --- FILTROS ---
   const filteredUsers = users.filter(user => 
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.username || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.department.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -460,7 +466,7 @@ export default function UsersPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
           <input 
             type="text" 
-            placeholder="Buscar por nome, email ou departamento..." 
+            placeholder="Buscar por nome, usuário, e-mail ou departamento..." 
             className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#17407E]/20 focus:border-[#17407E] outline-none transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -514,7 +520,8 @@ export default function UsersPage() {
                         </div>
                         <div>
                             <div className="font-medium text-slate-900">{user.name}</div>
-                            <div className="text-sm text-slate-500">{user.email}</div>
+                            <div className="text-sm text-slate-500">@{user.username || 'sem-usuario'}</div>
+                            <div className="text-xs text-slate-400">{user.email || 'Sem e-mail de contato'}</div>
                         </div>
                       </div>
                     </td>
@@ -604,15 +611,26 @@ export default function UsersPage() {
                 />
               </div>
 
-              {/* Email */}
+              {/* Username */}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">E-mail Corporativo</label>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Usuário de acesso</label>
+                <input 
+                  type="text" 
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#17407E]/20 focus:border-[#17407E] outline-none transition-all"
+                  value={formData.username}
+                  onChange={(e) => setFormData({...formData, username: e.target.value})}
+                  placeholder="Ex: jsasilva"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">E-mail de contato</label>
                 <input 
                   type="email" 
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#17407E]/20 focus:border-[#17407E] outline-none transition-all"
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
-                  placeholder="joao@consultare.com.br"
+                  placeholder="Opcional"
                 />
               </div>
 
