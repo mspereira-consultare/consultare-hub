@@ -1,9 +1,10 @@
 import { createClient } from '@libsql/client';
-import { createPool, type Pool } from 'mysql2/promise';
+import { createPool, type Pool, type PoolConnection } from 'mysql2/promise';
 
 export interface DbInterface {
   query: (sql: string, params?: any[]) => Promise<any[]>;
   execute: (sql: string, params?: any[]) => Promise<any>;
+  withTransaction?: <T>(work: (db: DbInterface) => Promise<T>) => Promise<T>;
 }
 
 let tursoClient: ReturnType<typeof createClient> | null = null;
@@ -158,6 +159,23 @@ function adaptSqlForMysql(sql: string, params: any[] = []): { sql: string; param
   return { sql: nextSql, params };
 }
 
+function createMysqlConnectionDb(connection: PoolConnection): DbInterface {
+  const transactionDb: DbInterface = {
+    query: async (sql: string, params: any[] = []) => {
+      const adapted = adaptSqlForMysql(sql, params);
+      const [rows] = await connection.query(adapted.sql, adapted.params);
+      return (rows ?? []) as any[];
+    },
+    execute: async (sql: string, params: any[] = []) => {
+      const adapted = adaptSqlForMysql(sql, params);
+      const [result] = await connection.execute(adapted.sql, adapted.params);
+      return result;
+    },
+    withTransaction: async <T>(work: (db: DbInterface) => Promise<T>) => work(transactionDb),
+  };
+  return transactionDb;
+}
+
 function getMysqlDbConnection(): DbInterface {
   const mysqlUrl = resolveMysqlUrl();
   if (!mysqlUrl) {
@@ -183,6 +201,21 @@ function getMysqlDbConnection(): DbInterface {
       const adapted = adaptSqlForMysql(sql, params);
       const [result] = await mysqlPool!.execute(adapted.sql, adapted.params);
       return result;
+    },
+    withTransaction: async <T>(work: (db: DbInterface) => Promise<T>) => {
+      const connection = await mysqlPool!.getConnection();
+      const transactionDb = createMysqlConnectionDb(connection);
+      try {
+        await connection.beginTransaction();
+        const result = await work(transactionDb);
+        await connection.commit();
+        return result;
+      } catch (error) {
+        await connection.rollback();
+        throw error;
+      } finally {
+        connection.release();
+      }
     },
   };
 }
@@ -226,6 +259,7 @@ function getTursoDbConnection(): DbInterface {
         throw err;
       }
     },
+    withTransaction: async <T>(work: (db: DbInterface) => Promise<T>) => work(getTursoDbConnection()),
   };
 }
 
@@ -234,3 +268,10 @@ export function getDbConnection(): DbInterface {
   if (provider === 'mysql') return getMysqlDbConnection();
   return getTursoDbConnection();
 }
+
+export const runInTransaction = async <T>(db: DbInterface, work: (txDb: DbInterface) => Promise<T>) => {
+  if (typeof db.withTransaction === 'function') {
+    return db.withTransaction(work);
+  }
+  return work(db);
+};

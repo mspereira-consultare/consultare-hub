@@ -5,7 +5,7 @@ import { hash } from 'bcryptjs';
 import type { DbInterface } from './db';
 import type { Employee } from './colaboradores/types';
 
-const NOW = () => new Date().toISOString();
+const NOW = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const clean = (value: unknown) => String(value ?? '').trim();
 const upper = (value: unknown) => clean(value).toUpperCase();
 const lower = (value: unknown) => clean(value).toLowerCase();

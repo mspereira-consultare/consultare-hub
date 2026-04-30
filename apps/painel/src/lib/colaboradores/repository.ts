@@ -1,7 +1,7 @@
 
 import { randomUUID } from 'crypto';
-import type { DbInterface } from '@/lib/db';
-import { ensureEmployeeUserAccount } from '@consultare/core/user-accounts';
+import { runInTransaction, type DbInterface } from '@/lib/db';
+import { ensureEmployeeUserAccount, ensureUserAccountColumns } from '@consultare/core/user-accounts';
 import { calculateKpi } from '@/lib/kpi_engine';
 import { ensureQmsTrainingTables } from '@/lib/qms/trainings_repository';
 import {
@@ -1399,233 +1399,239 @@ export const getEmployeeQualityGoals = async (
 };
 export const createEmployee = async (db: DbInterface, payload: any, actorUserId: string) => {
   await ensureEmployeesTables(db);
+  await ensureUserAccountColumns(db);
   const input = normalizeInput(payload);
   const id = randomUUID();
   const now = NOW();
 
-  await db.execute(
-    `
-    INSERT INTO employees (
-      id, full_name, employment_regime, status, rg, cpf, email, phone, birth_date,
-      street, street_number, address_complement, district, city, state_uf, zip_code,
-      education_institution, education_level, course_name, current_semester,
-      work_schedule, salary_amount, contract_duration_text, admission_date, contract_end_date,
-      termination_date, termination_reason, termination_notes, units_json, job_title, department,
-      supervisor_name, cost_center, insalubrity_percent, transport_voucher_per_day,
-      transport_voucher_mode, transport_voucher_monthly_fixed, meal_voucher_per_day,
-      totalpass_discount_fixed, other_fixed_discount_amount, other_fixed_discount_description,
-      payroll_notes, life_insurance_status, marital_status, has_children, children_count,
-      bank_name, bank_agency, bank_account, pix_key, notes, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    [
-      id,
-      input.fullName,
-      input.employmentRegime,
-      input.status,
-      input.rg,
-      input.cpf,
-      input.email,
-      input.phone,
-      input.birthDate,
-      input.street,
-      input.streetNumber,
-      input.addressComplement,
-      input.district,
-      input.city,
-      input.stateUf,
-      input.zipCode,
-      input.educationInstitution,
-      input.educationLevel,
-      input.courseName,
-      input.currentSemester,
-      input.workSchedule,
-      input.salaryAmount,
-      input.contractDurationText,
-      input.admissionDate,
-      input.contractEndDate,
-      input.terminationDate,
-      input.terminationReason,
-      input.terminationNotes,
-      JSON.stringify(input.units || []),
-      input.jobTitle,
-      input.department,
-      input.supervisorName,
-      input.costCenter,
-      input.insalubrityPercent,
-      input.transportVoucherPerDay,
-      input.transportVoucherMode,
-      input.transportVoucherMonthlyFixed,
-      input.mealVoucherPerDay,
-      input.totalpassDiscountFixed,
-      input.otherFixedDiscountAmount,
-      input.otherFixedDiscountDescription,
-      input.payrollNotes,
-      input.lifeInsuranceStatus,
-      input.maritalStatus,
-      input.hasChildren ? 1 : 0,
-      input.childrenCount || 0,
-      input.bankName,
-      input.bankAgency,
-      input.bankAccount,
-      input.pixKey,
-      input.notes,
-      now,
-      now,
-    ]
-  );
+  return runInTransaction(db, async (txDb) => {
+    await txDb.execute(
+      `
+      INSERT INTO employees (
+        id, full_name, employment_regime, status, rg, cpf, email, phone, birth_date,
+        street, street_number, address_complement, district, city, state_uf, zip_code,
+        education_institution, education_level, course_name, current_semester,
+        work_schedule, salary_amount, contract_duration_text, admission_date, contract_end_date,
+        termination_date, termination_reason, termination_notes, units_json, job_title, department,
+        supervisor_name, cost_center, insalubrity_percent, transport_voucher_per_day,
+        transport_voucher_mode, transport_voucher_monthly_fixed, meal_voucher_per_day,
+        totalpass_discount_fixed, other_fixed_discount_amount, other_fixed_discount_description,
+        payroll_notes, life_insurance_status, marital_status, has_children, children_count,
+        bank_name, bank_agency, bank_account, pix_key, notes, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        id,
+        input.fullName,
+        input.employmentRegime,
+        input.status,
+        input.rg,
+        input.cpf,
+        input.email,
+        input.phone,
+        input.birthDate,
+        input.street,
+        input.streetNumber,
+        input.addressComplement,
+        input.district,
+        input.city,
+        input.stateUf,
+        input.zipCode,
+        input.educationInstitution,
+        input.educationLevel,
+        input.courseName,
+        input.currentSemester,
+        input.workSchedule,
+        input.salaryAmount,
+        input.contractDurationText,
+        input.admissionDate,
+        input.contractEndDate,
+        input.terminationDate,
+        input.terminationReason,
+        input.terminationNotes,
+        JSON.stringify(input.units || []),
+        input.jobTitle,
+        input.department,
+        input.supervisorName,
+        input.costCenter,
+        input.insalubrityPercent,
+        input.transportVoucherPerDay,
+        input.transportVoucherMode,
+        input.transportVoucherMonthlyFixed,
+        input.mealVoucherPerDay,
+        input.totalpassDiscountFixed,
+        input.otherFixedDiscountAmount,
+        input.otherFixedDiscountDescription,
+        input.payrollNotes,
+        input.lifeInsuranceStatus,
+        input.maritalStatus,
+        input.hasChildren ? 1 : 0,
+        input.childrenCount || 0,
+        input.bankName,
+        input.bankAgency,
+        input.bankAccount,
+        input.pixKey,
+        input.notes,
+        now,
+        now,
+      ]
+    );
 
-  await insertAudit(db, 'EMPLOYEE_CREATED', actorUserId, id, {
-    employmentRegime: input.employmentRegime,
-    status: input.status,
-  });
+    await insertAudit(txDb, 'EMPLOYEE_CREATED', actorUserId, id, {
+      employmentRegime: input.employmentRegime,
+      status: input.status,
+    });
 
-  const created = await getEmployeeById(db, id);
-  if (!created) {
-    throw new EmployeeValidationError('Falha ao carregar colaborador criado.', 500);
-  }
-  await ensureEmployeeUserAccount(db, created, {
-    actorUserId,
-    createInitialCredential: created.status === 'ATIVO',
+    const created = await getEmployeeById(txDb, id);
+    if (!created) {
+      throw new EmployeeValidationError('Falha ao carregar colaborador criado.', 500);
+    }
+    await ensureEmployeeUserAccount(txDb, created, {
+      actorUserId,
+      createInitialCredential: created.status === 'ATIVO',
+    });
+    return created;
   });
-  return created;
 };
 
 export const updateEmployee = async (db: DbInterface, employeeId: string, payload: any, actorUserId: string) => {
   await ensureEmployeesTables(db);
+  await ensureUserAccountColumns(db);
   const existing = await getEmployeeById(db, employeeId);
   if (!existing) throw new EmployeeValidationError('Colaborador não encontrado.', 404);
 
   const input = normalizeInput(payload);
   const now = NOW();
 
-  await db.execute(
-    `
-    UPDATE employees
-    SET
-      full_name = ?,
-      employment_regime = ?,
-      status = ?,
-      rg = ?,
-      cpf = ?,
-      email = ?,
-      phone = ?,
-      birth_date = ?,
-      street = ?,
-      street_number = ?,
-      address_complement = ?,
-      district = ?,
-      city = ?,
-      state_uf = ?,
-      zip_code = ?,
-      education_institution = ?,
-      education_level = ?,
-      course_name = ?,
-      current_semester = ?,
-      work_schedule = ?,
-      salary_amount = ?,
-      contract_duration_text = ?,
-      admission_date = ?,
-      contract_end_date = ?,
-      termination_date = ?,
-      termination_reason = ?,
-      termination_notes = ?,
-      units_json = ?,
-      job_title = ?,
-      department = ?,
-      supervisor_name = ?,
-      cost_center = ?,
-      insalubrity_percent = ?,
-      transport_voucher_per_day = ?,
-      transport_voucher_mode = ?,
-      transport_voucher_monthly_fixed = ?,
-      meal_voucher_per_day = ?,
-      totalpass_discount_fixed = ?,
-      other_fixed_discount_amount = ?,
-      other_fixed_discount_description = ?,
-      payroll_notes = ?,
-      life_insurance_status = ?,
-      marital_status = ?,
-      has_children = ?,
-      children_count = ?,
-      bank_name = ?,
-      bank_agency = ?,
-      bank_account = ?,
-      pix_key = ?,
-      notes = ?,
-      updated_at = ?
-    WHERE id = ?
-    `,
-    [
-      input.fullName,
-      input.employmentRegime,
-      input.status,
-      input.rg,
-      input.cpf,
-      input.email,
-      input.phone,
-      input.birthDate,
-      input.street,
-      input.streetNumber,
-      input.addressComplement,
-      input.district,
-      input.city,
-      input.stateUf,
-      input.zipCode,
-      input.educationInstitution,
-      input.educationLevel,
-      input.courseName,
-      input.currentSemester,
-      input.workSchedule,
-      input.salaryAmount,
-      input.contractDurationText,
-      input.admissionDate,
-      input.contractEndDate,
-      input.terminationDate,
-      input.terminationReason,
-      input.terminationNotes,
-      JSON.stringify(input.units || []),
-      input.jobTitle,
-      input.department,
-      input.supervisorName,
-      input.costCenter,
-      input.insalubrityPercent,
-      input.transportVoucherPerDay,
-      input.transportVoucherMode,
-      input.transportVoucherMonthlyFixed,
-      input.mealVoucherPerDay,
-      input.totalpassDiscountFixed,
-      input.otherFixedDiscountAmount,
-      input.otherFixedDiscountDescription,
-      input.payrollNotes,
-      input.lifeInsuranceStatus,
-      input.maritalStatus,
-      input.hasChildren ? 1 : 0,
-      input.childrenCount || 0,
-      input.bankName,
-      input.bankAgency,
-      input.bankAccount,
-      input.pixKey,
-      input.notes,
-      now,
-      employeeId,
-    ]
-  );
+  return runInTransaction(db, async (txDb) => {
+    await txDb.execute(
+      `
+      UPDATE employees
+      SET
+        full_name = ?,
+        employment_regime = ?,
+        status = ?,
+        rg = ?,
+        cpf = ?,
+        email = ?,
+        phone = ?,
+        birth_date = ?,
+        street = ?,
+        street_number = ?,
+        address_complement = ?,
+        district = ?,
+        city = ?,
+        state_uf = ?,
+        zip_code = ?,
+        education_institution = ?,
+        education_level = ?,
+        course_name = ?,
+        current_semester = ?,
+        work_schedule = ?,
+        salary_amount = ?,
+        contract_duration_text = ?,
+        admission_date = ?,
+        contract_end_date = ?,
+        termination_date = ?,
+        termination_reason = ?,
+        termination_notes = ?,
+        units_json = ?,
+        job_title = ?,
+        department = ?,
+        supervisor_name = ?,
+        cost_center = ?,
+        insalubrity_percent = ?,
+        transport_voucher_per_day = ?,
+        transport_voucher_mode = ?,
+        transport_voucher_monthly_fixed = ?,
+        meal_voucher_per_day = ?,
+        totalpass_discount_fixed = ?,
+        other_fixed_discount_amount = ?,
+        other_fixed_discount_description = ?,
+        payroll_notes = ?,
+        life_insurance_status = ?,
+        marital_status = ?,
+        has_children = ?,
+        children_count = ?,
+        bank_name = ?,
+        bank_agency = ?,
+        bank_account = ?,
+        pix_key = ?,
+        notes = ?,
+        updated_at = ?
+      WHERE id = ?
+      `,
+      [
+        input.fullName,
+        input.employmentRegime,
+        input.status,
+        input.rg,
+        input.cpf,
+        input.email,
+        input.phone,
+        input.birthDate,
+        input.street,
+        input.streetNumber,
+        input.addressComplement,
+        input.district,
+        input.city,
+        input.stateUf,
+        input.zipCode,
+        input.educationInstitution,
+        input.educationLevel,
+        input.courseName,
+        input.currentSemester,
+        input.workSchedule,
+        input.salaryAmount,
+        input.contractDurationText,
+        input.admissionDate,
+        input.contractEndDate,
+        input.terminationDate,
+        input.terminationReason,
+        input.terminationNotes,
+        JSON.stringify(input.units || []),
+        input.jobTitle,
+        input.department,
+        input.supervisorName,
+        input.costCenter,
+        input.insalubrityPercent,
+        input.transportVoucherPerDay,
+        input.transportVoucherMode,
+        input.transportVoucherMonthlyFixed,
+        input.mealVoucherPerDay,
+        input.totalpassDiscountFixed,
+        input.otherFixedDiscountAmount,
+        input.otherFixedDiscountDescription,
+        input.payrollNotes,
+        input.lifeInsuranceStatus,
+        input.maritalStatus,
+        input.hasChildren ? 1 : 0,
+        input.childrenCount || 0,
+        input.bankName,
+        input.bankAgency,
+        input.bankAccount,
+        input.pixKey,
+        input.notes,
+        now,
+        employeeId,
+      ]
+    );
 
-  await insertAudit(db, 'EMPLOYEE_UPDATED', actorUserId, employeeId, {
-    employmentRegime: input.employmentRegime,
-    status: input.status,
-  });
+    await insertAudit(txDb, 'EMPLOYEE_UPDATED', actorUserId, employeeId, {
+      employmentRegime: input.employmentRegime,
+      status: input.status,
+    });
 
-  const updated = await getEmployeeById(db, employeeId);
-  if (!updated) {
-    throw new EmployeeValidationError('Falha ao carregar colaborador atualizado.', 500);
-  }
-  await ensureEmployeeUserAccount(db, updated, {
-    actorUserId,
-    createInitialCredential: updated.status === 'ATIVO',
+    const updated = await getEmployeeById(txDb, employeeId);
+    if (!updated) {
+      throw new EmployeeValidationError('Falha ao carregar colaborador atualizado.', 500);
+    }
+    await ensureEmployeeUserAccount(txDb, updated, {
+      actorUserId,
+      createInitialCredential: updated.status === 'ATIVO',
+    });
+    return updated;
   });
-  return updated;
 };
 
 export const listEmployeeDocuments = async (db: DbInterface, employeeId: string): Promise<EmployeeDocument[]> => {
@@ -1821,6 +1827,7 @@ export const deactivateEmployeeDocument = async (
 
 export const deactivateEmployee = async (db: DbInterface, employeeId: string, actorUserId: string) => {
   await ensureEmployeesTables(db);
+  await ensureUserAccountColumns(db);
   const existing = await getEmployeeById(db, employeeId);
   if (!existing) throw new EmployeeValidationError('Colaborador não encontrado.', 404);
 
@@ -1829,36 +1836,38 @@ export const deactivateEmployee = async (db: DbInterface, employeeId: string, ac
   const terminationReason = existing.terminationReason || 'Inativado pelo painel';
   const terminationNotes = existing.terminationNotes || 'Registro inativado pela listagem de colaboradores.';
 
-  await db.execute(
-    `
-    UPDATE employees
-    SET
-      status = 'DESLIGADO',
-      termination_date = ?,
-      termination_reason = ?,
-      termination_notes = ?,
-      updated_at = ?
-    WHERE id = ?
-    `,
-    [terminationDate, terminationReason, terminationNotes, now, employeeId]
-  );
+  return runInTransaction(db, async (txDb) => {
+    await txDb.execute(
+      `
+      UPDATE employees
+      SET
+        status = 'DESLIGADO',
+        termination_date = ?,
+        termination_reason = ?,
+        termination_notes = ?,
+        updated_at = ?
+      WHERE id = ?
+      `,
+      [terminationDate, terminationReason, terminationNotes, now, employeeId]
+    );
 
-  await insertAudit(db, 'EMPLOYEE_DEACTIVATED', actorUserId, employeeId, {
-    previousStatus: existing.status,
-    nextStatus: 'DESLIGADO',
-    terminationDate,
-    terminationReason,
-  });
+    await insertAudit(txDb, 'EMPLOYEE_DEACTIVATED', actorUserId, employeeId, {
+      previousStatus: existing.status,
+      nextStatus: 'DESLIGADO',
+      terminationDate,
+      terminationReason,
+    });
 
-  const updated = await getEmployeeById(db, employeeId);
-  if (!updated) {
-    throw new EmployeeValidationError('Falha ao carregar colaborador inativado.', 500);
-  }
-  await ensureEmployeeUserAccount(db, updated, {
-    actorUserId,
-    createInitialCredential: false,
+    const updated = await getEmployeeById(txDb, employeeId);
+    if (!updated) {
+      throw new EmployeeValidationError('Falha ao carregar colaborador inativado.', 500);
+    }
+    await ensureEmployeeUserAccount(txDb, updated, {
+      actorUserId,
+      createInitialCredential: false,
+    });
+    return updated;
   });
-  return updated;
 };
 
 export const registerEmployeeDocumentDownloadAudit = async (
