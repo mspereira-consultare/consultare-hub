@@ -383,6 +383,11 @@ type EmployeePayrollSource = {
   terminationDate: string | null;
 };
 
+type EmployeeLookupMaps = {
+  byCpf: Map<string, EmployeePayrollSource>;
+  byName: Map<string, EmployeePayrollSource>;
+};
+
 const mapEmployeePayrollSource = (row: any): EmployeePayrollSource => ({
   id: clean(row.id),
   fullName: clean(row.full_name),
@@ -406,6 +411,32 @@ const mapEmployeePayrollSource = (row: any): EmployeePayrollSource => ({
   admissionDate: parseDate(row.admission_date),
   terminationDate: parseDate(row.termination_date),
 });
+
+const buildEmployeeLookupMaps = (employees: EmployeePayrollSource[]): EmployeeLookupMaps => {
+  const byCpf = new Map<string, EmployeePayrollSource>();
+  const byName = new Map<string, EmployeePayrollSource>();
+
+  for (const employee of employees) {
+    if (employee.cpf && !byCpf.has(employee.cpf)) byCpf.set(employee.cpf, employee);
+    const normalizedName = normalizeSearch(employee.fullName);
+    if (normalizedName && !byName.has(normalizedName)) byName.set(normalizedName, employee);
+  }
+
+  return { byCpf, byName };
+};
+
+const findMatchingEmployeeForPointRow = (
+  employeeName: string,
+  employeeCpf: string | null,
+  lookup: EmployeeLookupMaps,
+) => {
+  if (employeeCpf) {
+    const employeeByCpf = lookup.byCpf.get(employeeCpf);
+    if (employeeByCpf) return employeeByCpf;
+  }
+
+  return lookup.byName.get(normalizeSearch(employeeName)) || null;
+};
 
 const buildSummaryFromLines = (lines: PayrollLine[], imports: PayrollImportFile[]): PayrollPeriodSummary => ({
   totalLines: lines.length,
@@ -1098,14 +1129,15 @@ const evaluatePayrollPeriodReadiness = (
 export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string): Promise<PayrollPeriodDetail> => {
   await ensurePayrollTables(db);
   const period = await getPeriodOrThrow(db, periodId);
-  const [imports, lines, employees, pointRows, occurrenceRows, recessRows] = await Promise.all([
+  const [imports, lines, employees, occurrenceRows, recessRows] = await Promise.all([
     listImportsByPeriod(db, periodId),
     listLinesRaw(db, periodId),
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
-    listPointRowsRaw(db, periodId),
     listOccurrencesRaw(db, periodId),
     db.query(`SELECT * FROM employee_recess_periods ORDER BY vacation_start_date ASC`),
   ]);
+  await reconcilePointRowsEmployeeLinks(db, period.id, employees);
+  const pointRows = await listPointRowsRaw(db, periodId);
   return {
     period,
     imports,
@@ -1126,6 +1158,45 @@ const loadEmployeeRosterForPeriod = async (db: DbInterface, periodStart: string,
     [periodEnd, periodStart],
   );
   return rows.map(mapEmployeePayrollSource);
+};
+
+const reconcilePointRowsEmployeeLinks = async (
+  db: DbInterface,
+  periodId: string,
+  employees: EmployeePayrollSource[],
+) => {
+  if (!employees.length) return 0;
+
+  const unmatchedRows = await db.query(
+    `
+    SELECT id, employee_name, employee_cpf
+    FROM payroll_point_daily
+    WHERE period_id = ?
+      AND (employee_id IS NULL OR TRIM(employee_id) = '')
+    `,
+    [periodId],
+  );
+  if (!unmatchedRows.length) return 0;
+
+  const lookup = buildEmployeeLookupMaps(employees);
+  let updatedCount = 0;
+
+  for (const row of unmatchedRows) {
+    const matchedEmployee = findMatchingEmployeeForPointRow(
+      clean(row.employee_name),
+      normalizeCpf(row.employee_cpf),
+      lookup,
+    );
+    if (!matchedEmployee) continue;
+
+    await db.execute(
+      `UPDATE payroll_point_daily SET employee_id = ?, updated_at = ? WHERE id = ?`,
+      [matchedEmployee.id, NOW(), clean(row.id)],
+    );
+    updatedCount += 1;
+  }
+
+  return updatedCount;
 };
 
 const createImportRecord = async (
@@ -1473,15 +1544,15 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
     throw new PayrollValidationError('Ainda há importações de ponto pendentes ou em processamento nesta competência. Aguarde a conclusão antes de gerar a folha.', 409);
   }
 
-  const [employees, pointRows, occurrenceRows, existingLines, recessRows] = await Promise.all([
+  const [employees, occurrenceRows, existingLines, recessRows] = await Promise.all([
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
-    listPointRowsRaw(db, period.id),
     listOccurrencesRaw(db, period.id),
     listLinesRaw(db, period.id),
     db.query(`SELECT * FROM employee_recess_periods ORDER BY vacation_start_date ASC`),
   ]);
-
   const imports = await listImportsByPeriod(db, period.id);
+  await reconcilePointRowsEmployeeLinks(db, period.id, employees);
+  const pointRows = await listPointRowsRaw(db, period.id);
   const readiness = evaluatePayrollPeriodReadiness(period, imports, employees, pointRows, occurrenceRows, recessRows);
   if (readiness.status === 'BLOCKED') {
     throw new PayrollValidationError(buildReadinessBlockingMessage(readiness), 409);
