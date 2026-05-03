@@ -4,6 +4,7 @@ export const RECRUITMENT_STAGES: Array<{ value: RecruitmentCandidateStage; label
   { value: 'RECEBIDO', label: 'Recebido' },
   { value: 'TRIAGEM', label: 'Triagem' },
   { value: 'ENTREVISTA', label: 'Entrevista' },
+  { value: 'GERENCIA', label: 'Com a gerência' },
   { value: 'BANCO', label: 'Banco' },
   { value: 'APROVADO', label: 'Aprovado' },
   { value: 'RECUSADO', label: 'Recusado' },

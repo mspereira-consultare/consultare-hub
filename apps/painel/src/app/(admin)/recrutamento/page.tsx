@@ -4,27 +4,35 @@ import { type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useSta
 import { useSession } from 'next-auth/react';
 import {
   AlertCircle,
-  ArrowRight,
   Briefcase,
   CheckCircle2,
   CircleHelp,
-  Download,
-  FileText,
-  FileUp,
   Loader2,
   Plus,
   RefreshCw,
   ShieldAlert,
   UserRoundPlus,
-  Users,
   X,
 } from 'lucide-react';
+import { RecruitmentCandidateDetailsModal } from './components/RecruitmentCandidateDetailsModal';
+import { RecruitmentFunnelBoard } from './components/RecruitmentFunnelBoard';
+import {
+  Field,
+  fieldClassName,
+  jobStatusLabel,
+  jobStatusToneMap,
+  sourceSystemLabel,
+  StatusBadge,
+  syncStatusLabel,
+  syncStatusToneMap,
+  textareaClassName,
+} from './components/recruitment-ui';
+import type { CandidateDraftState } from './components/types';
 import { EMPLOYEE_UNIT_LABELS, EMPLOYEE_UNITS, EMPLOYMENT_REGIMES, type EmploymentRegime } from '@/lib/colaboradores/constants';
 import { hasPermission } from '@/lib/permissions';
-import { RECRUITMENT_JOB_STATUSES, RECRUITMENT_STAGES } from '@/lib/recrutamento/constants';
+import { RECRUITMENT_JOB_STATUSES } from '@/lib/recrutamento/constants';
 import type {
   RecruitmentCandidate,
-  RecruitmentCandidateStage,
   RecruitmentDashboard,
   RecruitmentJobStatus,
 } from '@/lib/recrutamento/types';
@@ -44,6 +52,9 @@ type JobFormState = {
   unitName: string;
   employmentRegime: EmploymentRegime;
   ownerName: string;
+  descriptionText: string;
+  requirementsText: string;
+  benefitsText: string;
   notes: string;
 };
 
@@ -56,12 +67,6 @@ type CandidateFormState = {
   source: string;
 };
 
-type CandidateDraftState = CandidateFormState & {
-  stage: RecruitmentCandidateStage;
-  notes: string;
-  historyNotes: string;
-};
-
 const emptyDashboard: RecruitmentDashboard = {
   jobs: [],
   candidates: [],
@@ -70,6 +75,7 @@ const emptyDashboard: RecruitmentDashboard = {
     totalCandidates: 0,
     activeCandidates: 0,
     approvedCandidates: 0,
+    managerPendingCandidates: 0,
     convertedCandidates: 0,
   },
 };
@@ -80,6 +86,9 @@ const initialJobForm: JobFormState = {
   unitName: '',
   employmentRegime: 'CLT',
   ownerName: '',
+  descriptionText: '',
+  requirementsText: '',
+  benefitsText: '',
   notes: '',
 };
 
@@ -92,28 +101,6 @@ const initialCandidateForm: CandidateFormState = {
   source: '',
 };
 
-const fieldClassName =
-  'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500';
-
-const textareaClassName =
-  'min-h-[88px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-500';
-
-const stageToneMap: Record<RecruitmentCandidateStage, string> = {
-  RECEBIDO: 'border-slate-200 bg-slate-50 text-slate-700',
-  TRIAGEM: 'border-blue-200 bg-blue-50 text-blue-700',
-  ENTREVISTA: 'border-amber-200 bg-amber-50 text-amber-700',
-  BANCO: 'border-cyan-200 bg-cyan-50 text-cyan-700',
-  APROVADO: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  RECUSADO: 'border-rose-200 bg-rose-50 text-rose-700',
-  CONTRATADO: 'border-indigo-200 bg-indigo-50 text-indigo-700',
-};
-
-const jobStatusToneMap: Record<RecruitmentJobStatus, string> = {
-  OPEN: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  PAUSED: 'border-amber-200 bg-amber-50 text-amber-700',
-  CLOSED: 'border-slate-200 bg-slate-50 text-slate-600',
-};
-
 const todaySaoPaulo = () =>
   new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo',
@@ -121,28 +108,6 @@ const todaySaoPaulo = () =>
     month: '2-digit',
     day: '2-digit',
   }).format(new Date());
-
-const stageLabel = (stage: RecruitmentCandidateStage) => RECRUITMENT_STAGES.find((item) => item.value === stage)?.label || stage;
-const jobStatusLabel = (status: RecruitmentJobStatus) => RECRUITMENT_JOB_STATUSES.find((item) => item.value === status)?.label || status;
-
-const formatDateTimeBr = (value: string | null) => {
-  if (!value) return 'Não informado';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-};
-
-const formatCpf = (value: string | null) => {
-  const digits = String(value || '').replace(/\D/g, '');
-  if (digits.length !== 11) return value || 'CPF não informado';
-  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
-};
-
-const formatFileSize = (value: number) => {
-  if (!Number.isFinite(value) || value <= 0) return '0 KB';
-  if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
-};
 
 const draftFromCandidate = (candidate: RecruitmentCandidate): CandidateDraftState => ({
   jobId: candidate.jobId,
@@ -154,6 +119,8 @@ const draftFromCandidate = (candidate: RecruitmentCandidate): CandidateDraftStat
   stage: candidate.stage,
   notes: candidate.notes || '',
   historyNotes: '',
+  managerReviewStatus: candidate.managerReviewStatus,
+  managerReviewNotes: candidate.managerReviewNotes || '',
 });
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
@@ -164,19 +131,6 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 const errorMessage = (error: unknown) => String(error instanceof Error ? error.message : error);
-
-function Field({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</span>
-      {children}
-    </label>
-  );
-}
-
-function StatusBadge({ children, tone }: { children: ReactNode; tone: string }) {
-  return <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${tone}`}>{children}</span>;
-}
 
 export default function RecrutamentoPage() {
   const { data: session } = useSession();
@@ -490,11 +444,12 @@ export default function RecrutamentoPage() {
         </div>
       ) : null}
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <SummaryCard label="Vagas abertas" value={dashboard.summary.openJobs} helper="Status aberto" />
         <SummaryCard label="Candidatos" value={dashboard.summary.totalCandidates} helper="No funil atual" />
         <SummaryCard label="Em andamento" value={dashboard.summary.activeCandidates} helper="Sem recusados/contratados" />
         <SummaryCard label="Aprovados" value={dashboard.summary.approvedCandidates} helper="Prontos para converter" />
+        <SummaryCard label="Com a gerência" value={dashboard.summary.managerPendingCandidates} helper="Aguardando segunda etapa" />
         <SummaryCard label="Convertidos" value={dashboard.summary.convertedCandidates} helper="Já viraram pré-admissão" />
       </section>
 
@@ -515,6 +470,7 @@ export default function RecrutamentoPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="truncate text-sm font-semibold text-slate-800">{job.title}</p>
                       <StatusBadge tone={jobStatusToneMap[job.status]}>{jobStatusLabel(job.status)}</StatusBadge>
+                      <StatusBadge tone={syncStatusToneMap[job.syncStatus]}>{syncStatusLabel(job.syncStatus)}</StatusBadge>
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
                       {job.department || 'Setor não informado'} · {job.unitName ? EMPLOYEE_UNIT_LABELS[job.unitName as keyof typeof EMPLOYEE_UNIT_LABELS] || job.unitName : 'Unidade não informada'} · {job.employmentRegime}
@@ -522,6 +478,14 @@ export default function RecrutamentoPage() {
                     <p className="mt-1 text-xs text-slate-500">
                       {job.totalCandidates} candidato(s), {job.activeCandidates} em andamento · Responsável: {job.ownerName || 'não informado'}
                     </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Origem: {sourceSystemLabel(job.sourceSystem)} · Última sincronização: {job.lastSyncedAt ? new Date(job.lastSyncedAt).toLocaleString('pt-BR') : 'não realizada'}
+                    </p>
+                    {job.descriptionText || job.requirementsText ? (
+                      <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
+                        {job.descriptionText || job.requirementsText}
+                      </p>
+                    ) : null}
                   </div>
                   {canEdit ? (
                     <select
@@ -573,9 +537,36 @@ export default function RecrutamentoPage() {
                 <Field label="Responsável">
                   <input value={jobForm.ownerName} onChange={(event) => setJobForm((current) => ({ ...current, ownerName: event.target.value }))} className={fieldClassName} placeholder="Pessoa responsável" />
                 </Field>
+                <Field label="Descrição da vaga">
+                  <textarea
+                    value={jobForm.descriptionText}
+                    onChange={(event) => setJobForm((current) => ({ ...current, descriptionText: event.target.value }))}
+                    className={textareaClassName}
+                    placeholder="Resumo da posição, rotina e expectativas."
+                  />
+                </Field>
+                <Field label="Requisitos principais">
+                  <textarea
+                    value={jobForm.requirementsText}
+                    onChange={(event) => setJobForm((current) => ({ ...current, requirementsText: event.target.value }))}
+                    className={textareaClassName}
+                    placeholder="Ex.: experiência com atendimento, domínio do sistema, disponibilidade de horário."
+                  />
+                </Field>
+                <Field label="Benefícios e diferenciais">
+                  <textarea
+                    value={jobForm.benefitsText}
+                    onChange={(event) => setJobForm((current) => ({ ...current, benefitsText: event.target.value }))}
+                    className={textareaClassName}
+                    placeholder="Ex.: vale-transporte, plano de carreira, treinamentos."
+                  />
+                </Field>
                 <Field label="Observações">
                   <textarea value={jobForm.notes} onChange={(event) => setJobForm((current) => ({ ...current, notes: event.target.value }))} className={textareaClassName} placeholder="Contexto rápido da vaga" />
                 </Field>
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-xs leading-5 text-slate-500">
+                  A integração com a Indeed será ligada nas próximas fases. Nesta etapa, já estamos registrando a descrição, requisitos e o estado de sincronização para evitar retrabalho.
+                </div>
                 <button type="submit" disabled={saving === 'job'} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
                   {saving === 'job' ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
                   Criar vaga
@@ -638,228 +629,26 @@ export default function RecrutamentoPage() {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-800">Funil de candidatos</h2>
-            <p className="mt-1 text-xs text-slate-500">Arraste mentalmente por enquanto: a mudança de etapa acontece no modal de detalhes para preservar histórico.</p>
-          </div>
-          {loading ? <Loader2 className="h-5 w-5 animate-spin text-slate-400" /> : null}
-        </div>
-        <div className="grid gap-4 overflow-x-auto p-5 xl:grid-cols-7">
-          {RECRUITMENT_STAGES.map((stage) => {
-            const items = dashboard.candidates.filter((candidate) => candidate.stage === stage.value);
-            return (
-              <div key={stage.value} className="min-w-[240px] rounded-xl border border-slate-200 bg-slate-50/70">
-                <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-3">
-                  <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{stage.label}</h3>
-                    <p className="mt-1 text-xs text-slate-400">{items.length} candidato(s)</p>
-                  </div>
-                  <StatusBadge tone={stageToneMap[stage.value]}>{items.length}</StatusBadge>
-                </div>
-                <div className="space-y-3 p-3">
-                  {items.length ? (
-                    items.map((candidate) => (
-                      <button
-                        key={candidate.id}
-                        type="button"
-                        onClick={() => openCandidate(candidate)}
-                        className="block w-full rounded-xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-[#17407E]/40 hover:shadow-md"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-slate-800">{candidate.fullName}</p>
-                            <p className="mt-1 truncate text-xs text-slate-500">{candidate.jobTitle}</p>
-                          </div>
-                          <ArrowRight className="h-4 w-4 text-slate-300" />
-                        </div>
-                        <div className="mt-3 space-y-1 text-xs text-slate-500">
-                          <p>{formatCpf(candidate.cpf)}</p>
-                          <p className="truncate">{candidate.email || candidate.phone || 'Contato não informado'}</p>
-                          <p>{candidate.files.length} anexo(s) · {candidate.history.length} movimentação(ões)</p>
-                        </div>
-                        {candidate.convertedEmployeeId ? (
-                          <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700">
-                            Pré-admissão criada
-                          </div>
-                        ) : null}
-                      </button>
-                    ))
-                  ) : (
-                    <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-6 text-center text-xs text-slate-400">Sem candidatos nesta etapa.</div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </section>
+      <RecruitmentFunnelBoard candidates={dashboard.candidates} loading={loading} onOpenCandidate={openCandidate} />
 
       {selectedCandidate && candidateDraft ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4" onMouseDown={closeCandidate}>
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
-              <div>
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <StatusBadge tone={stageToneMap[selectedCandidate.stage]}>{stageLabel(selectedCandidate.stage)}</StatusBadge>
-                  {selectedCandidate.convertedEmployeeId ? <StatusBadge tone="border-indigo-200 bg-indigo-50 text-indigo-700">Cadastro oficial criado</StatusBadge> : null}
-                </div>
-                <h2 className="text-lg font-bold text-slate-800">{selectedCandidate.fullName}</h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  {formatCpf(selectedCandidate.cpf)} · {selectedCandidate.email || 'E-mail não informado'} · {selectedCandidate.phone || 'Telefone não informado'}
-                </p>
-              </div>
-              <button type="button" onClick={closeCandidate} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="max-h-[calc(92vh-88px)] overflow-y-auto p-5">
-              <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-                <div className="space-y-5">
-                  <section className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h3 className="text-sm font-semibold text-slate-800">Dados do candidato</h3>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      <Field label="Vaga">
-                        <select value={candidateDraft.jobId} onChange={(event) => setCandidateDraft((current) => current ? ({ ...current, jobId: event.target.value }) : current)} className={fieldClassName} disabled={!canEdit}>
-                          {dashboard.jobs.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}
-                        </select>
-                      </Field>
-                      <Field label="Etapa">
-                        <select value={candidateDraft.stage} onChange={(event) => setCandidateDraft((current) => current ? ({ ...current, stage: event.target.value as RecruitmentCandidateStage }) : current)} className={fieldClassName} disabled={!canEdit}>
-                          {RECRUITMENT_STAGES.map((stage) => <option key={stage.value} value={stage.value}>{stage.label}</option>)}
-                        </select>
-                      </Field>
-                      <Field label="Nome completo">
-                        <input value={candidateDraft.fullName} onChange={(event) => setCandidateDraft((current) => current ? ({ ...current, fullName: event.target.value }) : current)} className={fieldClassName} disabled={!canEdit} />
-                      </Field>
-                      <Field label="CPF">
-                        <input value={candidateDraft.cpf} onChange={(event) => setCandidateDraft((current) => current ? ({ ...current, cpf: event.target.value }) : current)} className={fieldClassName} disabled={!canEdit || Boolean(selectedCandidate.convertedEmployeeId)} />
-                      </Field>
-                      <Field label="E-mail">
-                        <input value={candidateDraft.email} onChange={(event) => setCandidateDraft((current) => current ? ({ ...current, email: event.target.value }) : current)} className={fieldClassName} disabled={!canEdit || Boolean(selectedCandidate.convertedEmployeeId)} />
-                      </Field>
-                      <Field label="Telefone">
-                        <input value={candidateDraft.phone} onChange={(event) => setCandidateDraft((current) => current ? ({ ...current, phone: event.target.value }) : current)} className={fieldClassName} disabled={!canEdit} />
-                      </Field>
-                      <Field label="Origem">
-                        <input value={candidateDraft.source} onChange={(event) => setCandidateDraft((current) => current ? ({ ...current, source: event.target.value }) : current)} className={fieldClassName} disabled={!canEdit} />
-                      </Field>
-                      <Field label="Motivo da movimentação">
-                        <input value={candidateDraft.historyNotes} onChange={(event) => setCandidateDraft((current) => current ? ({ ...current, historyNotes: event.target.value }) : current)} className={fieldClassName} disabled={!canEdit} placeholder="Opcional, entra no histórico" />
-                      </Field>
-                      <div className="md:col-span-2">
-                        <Field label="Observações">
-                          <textarea value={candidateDraft.notes} onChange={(event) => setCandidateDraft((current) => current ? ({ ...current, notes: event.target.value }) : current)} className={textareaClassName} disabled={!canEdit} />
-                        </Field>
-                      </div>
-                    </div>
-                    {canEdit ? (
-                      <div className="mt-4 flex justify-end">
-                        <button type="button" onClick={saveCandidate} disabled={saving === 'candidate-detail'} className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
-                          {saving === 'candidate-detail' ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                          Salvar alterações
-                        </button>
-                      </div>
-                    ) : null}
-                  </section>
-
-                  <section className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h3 className="text-sm font-semibold text-slate-800">Anexos do candidato</h3>
-                    <p className="mt-1 text-xs text-slate-500">Currículo e arquivos de apoio ficam no processo seletivo. Documentos admissionais continuam no cadastro oficial.</p>
-                    {canEdit ? (
-                      <div className="mt-4 flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center">
-                        <input type="file" onChange={(event) => setUploadFile(event.target.files?.[0] || null)} className="min-w-0 flex-1 text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700" />
-                        <button type="button" onClick={uploadCandidateFile} disabled={!uploadFile || saving === 'candidate-file'} className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60">
-                          {saving === 'candidate-file' ? <Loader2 size={16} className="animate-spin" /> : <FileUp size={16} />}
-                          Anexar
-                        </button>
-                      </div>
-                    ) : null}
-                    <div className="mt-4 divide-y divide-slate-100 rounded-xl border border-slate-200">
-                      {selectedCandidate.files.length ? (
-                        selectedCandidate.files.map((file) => (
-                          <div key={file.id} className="flex flex-col gap-2 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-medium text-slate-800">{file.originalName}</p>
-                              <p className="text-xs text-slate-500">{formatFileSize(file.sizeBytes)} · {formatDateTimeBr(file.createdAt)}</p>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <button type="button" onClick={() => window.open(`/api/admin/recrutamento/files/${encodeURIComponent(file.id)}/download?inline=1`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">
-                                <FileText size={12} /> Ver
-                              </button>
-                              <button type="button" onClick={() => window.open(`/api/admin/recrutamento/files/${encodeURIComponent(file.id)}/download`, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">
-                                <Download size={12} /> Baixar
-                              </button>
-                            </div>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="px-3 py-6 text-center text-sm text-slate-500">Nenhum anexo cadastrado para este candidato.</div>
-                      )}
-                    </div>
-                  </section>
-                </div>
-
-                <div className="space-y-5">
-                  <section className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                    <h3 className="text-sm font-semibold text-slate-800">Conversão para colaborador</h3>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Ao aprovar, converta para pré-admissão. O cadastro oficial passa a ser a fonte da verdade para documentos, benefícios e folha.
-                    </p>
-                    <div className="mt-4 space-y-3">
-                      <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-600">
-                        Vaga: <span className="font-semibold text-slate-800">{jobsById.get(selectedCandidate.jobId)?.title || selectedCandidate.jobTitle}</span>
-                      </div>
-                      {selectedCandidate.convertedEmployeeId ? (
-                        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-700">
-                          Este candidato já foi convertido em pré-admissão no cadastro oficial.
-                        </div>
-                      ) : selectedCandidate.stage === 'APROVADO' ? (
-                        <>
-                          <Field label="Data prevista de admissão">
-                            <input type="date" value={convertAdmissionDate} onChange={(event) => setConvertAdmissionDate(event.target.value)} className={fieldClassName} disabled={!canEdit} />
-                          </Field>
-                          {canEdit ? (
-                            <button type="button" onClick={convertCandidate} disabled={saving === 'candidate-convert'} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
-                              {saving === 'candidate-convert' ? <Loader2 size={16} className="animate-spin" /> : <Users size={16} />}
-                              Converter em pré-admissão
-                            </button>
-                          ) : null}
-                        </>
-                      ) : (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                          Mova o candidato para “Aprovado” antes de converter para colaborador.
-                        </div>
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h3 className="text-sm font-semibold text-slate-800">Histórico de movimentações</h3>
-                    <div className="mt-4 space-y-3">
-                      {selectedCandidate.history.length ? (
-                        selectedCandidate.history.map((item) => (
-                          <div key={item.id} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">{item.action.replace(/_/g, ' ')}</span>
-                              {item.toStage ? <StatusBadge tone={stageToneMap[item.toStage]}>{stageLabel(item.toStage)}</StatusBadge> : null}
-                            </div>
-                            {item.notes ? <p className="mt-1 text-xs text-slate-600">{item.notes}</p> : null}
-                            <p className="mt-1 text-[11px] text-slate-400">{formatDateTimeBr(item.createdAt)}</p>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-sm text-slate-500">Sem histórico registrado.</div>
-                      )}
-                    </div>
-                  </section>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <RecruitmentCandidateDetailsModal
+          candidate={selectedCandidate}
+          candidateDraft={candidateDraft}
+          jobs={dashboard.jobs}
+          jobsById={jobsById}
+          canEdit={canEdit}
+          saving={saving}
+          convertAdmissionDate={convertAdmissionDate}
+          uploadFile={uploadFile}
+          onClose={closeCandidate}
+          onSaveCandidate={saveCandidate}
+          onUploadCandidateFile={uploadCandidateFile}
+          onConvertCandidate={convertCandidate}
+          setCandidateDraft={setCandidateDraft}
+          setConvertAdmissionDate={setConvertAdmissionDate}
+          setUploadFile={setUploadFile}
+        />
       ) : null}
 
       <RecruitmentHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
@@ -910,7 +699,7 @@ function RecruitmentHelpModal({ open, onClose }: { open: boolean; onClose: () =>
               Vincule a pessoa a uma vaga, preencha os contatos principais e, se já tiver o arquivo, anexe o currículo no próprio cadastro. CPF e e-mail ajudam a evitar duplicidade, mas o CPF pode ser completado antes da conversão.
             </HelpStep>
             <HelpStep title="3. Use o funil para acompanhar etapas">
-              Abra o card do candidato para mudar entre recebido, triagem, entrevista, banco, aprovado, recusado ou contratado. Cada mudança fica registrada no histórico.
+              Abra o card do candidato para mudar entre recebido, triagem, entrevista, com a gerência, banco, aprovado, recusado ou contratado. Cada mudança fica registrada no histórico.
             </HelpStep>
             <HelpStep title="4. Anexe currículo e arquivos de apoio">
               Os anexos desta tela são do processo seletivo e ficam disponíveis para consulta do RH. Essa base também prepara a evolução futura de análise de currículo com IA contra a descrição da vaga. Documentos admissionais oficiais continuam sendo controlados no cadastro de colaboradores após a conversão.

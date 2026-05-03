@@ -1,7 +1,19 @@
 import type { EmploymentRegime } from '@/lib/colaboradores/constants';
 
 export type RecruitmentJobStatus = 'OPEN' | 'PAUSED' | 'CLOSED';
-export type RecruitmentCandidateStage = 'RECEBIDO' | 'TRIAGEM' | 'ENTREVISTA' | 'BANCO' | 'APROVADO' | 'RECUSADO' | 'CONTRATADO';
+export type RecruitmentCandidateStage =
+  | 'RECEBIDO'
+  | 'TRIAGEM'
+  | 'ENTREVISTA'
+  | 'GERENCIA'
+  | 'BANCO'
+  | 'APROVADO'
+  | 'RECUSADO'
+  | 'CONTRATADO';
+export type RecruitmentSourceSystem = 'INTERNO' | 'INDEED';
+export type RecruitmentSyncStatus = 'NAO_CONFIGURADO' | 'PENDENTE' | 'SINCRONIZADO' | 'ERRO';
+export type RecruitmentAiStatus = 'NAO_ANALISADO' | 'PENDENTE' | 'ANALISANDO' | 'CONCLUIDO' | 'ERRO' | 'NAO_SUPORTADO';
+export type RecruitmentManagerReviewStatus = 'NAO_ENVIADO' | 'PENDENTE' | 'APROVADO' | 'DEVOLVIDO';
 
 export type RecruitmentJob = {
   id: string;
@@ -13,6 +25,15 @@ export type RecruitmentJob = {
   ownerName: string | null;
   openedAt: string | null;
   closedAt: string | null;
+  descriptionHtml: string | null;
+  descriptionText: string | null;
+  requirementsText: string | null;
+  benefitsText: string | null;
+  sourceSystem: RecruitmentSourceSystem;
+  sourceExternalId: string | null;
+  syncStatus: RecruitmentSyncStatus;
+  lastSyncedAt: string | null;
+  externalPayloadJson: string | null;
   notes: string | null;
   totalCandidates: number;
   activeCandidates: number;
@@ -54,6 +75,18 @@ export type RecruitmentCandidate = {
   phone: string | null;
   stage: RecruitmentCandidateStage;
   source: string | null;
+  sourceSystem: RecruitmentSourceSystem;
+  sourceExternalId: string | null;
+  applicationExternalId: string | null;
+  aiStatus: RecruitmentAiStatus;
+  aiScore: number | null;
+  aiLastAnalyzedAt: string | null;
+  managerReviewStatus: RecruitmentManagerReviewStatus;
+  managerReviewRequestedAt: string | null;
+  managerReviewRequestedBy: string | null;
+  managerReviewDecidedAt: string | null;
+  managerReviewDecidedBy: string | null;
+  managerReviewNotes: string | null;
   notes: string | null;
   convertedEmployeeId: string | null;
   files: RecruitmentCandidateFile[];
@@ -70,6 +103,7 @@ export type RecruitmentDashboard = {
     totalCandidates: number;
     activeCandidates: number;
     approvedCandidates: number;
+    managerPendingCandidates: number;
     convertedCandidates: number;
   };
 };
@@ -83,6 +117,15 @@ export type RecruitmentJobInput = {
   ownerName?: string | null;
   openedAt?: string | null;
   closedAt?: string | null;
+  descriptionHtml?: string | null;
+  descriptionText?: string | null;
+  requirementsText?: string | null;
+  benefitsText?: string | null;
+  sourceSystem?: RecruitmentSourceSystem | null;
+  sourceExternalId?: string | null;
+  syncStatus?: RecruitmentSyncStatus | null;
+  lastSyncedAt?: string | null;
+  externalPayloadJson?: string | null;
   notes?: string | null;
 };
 
@@ -94,5 +137,17 @@ export type RecruitmentCandidateInput = {
   phone?: string | null;
   stage?: RecruitmentCandidateStage | null;
   source?: string | null;
+  sourceSystem?: RecruitmentSourceSystem | null;
+  sourceExternalId?: string | null;
+  applicationExternalId?: string | null;
+  aiStatus?: RecruitmentAiStatus | null;
+  aiScore?: number | null;
+  aiLastAnalyzedAt?: string | null;
+  managerReviewStatus?: RecruitmentManagerReviewStatus | null;
+  managerReviewRequestedAt?: string | null;
+  managerReviewRequestedBy?: string | null;
+  managerReviewDecidedAt?: string | null;
+  managerReviewDecidedBy?: string | null;
+  managerReviewNotes?: string | null;
   notes?: string | null;
 };
