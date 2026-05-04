@@ -1,5 +1,5 @@
-import { randomUUID } from 'crypto';
-import type { DbInterface } from '@/lib/db';
+import { createHash, randomUUID } from 'crypto';
+import { runInTransaction, type DbInterface } from '@/lib/db';
 import { EMPLOYEE_UNITS, type EmploymentRegime } from '@/lib/colaboradores/constants';
 import { createEmployee } from '@/lib/colaboradores/repository';
 import type {
@@ -8,6 +8,13 @@ import type {
   RecruitmentCandidateFile,
   RecruitmentCandidateHistory,
   RecruitmentCandidateInput,
+  RecruitmentIndeedBackfillInput,
+  RecruitmentIndeedIntegration,
+  RecruitmentIndeedIntegrationInput,
+  RecruitmentIndeedIntegrationMode,
+  RecruitmentIndeedIntegrationStatus,
+  RecruitmentIndeedJobMapping,
+  RecruitmentIndeedSummary,
   RecruitmentManagerReviewStatus,
   RecruitmentCandidateStage,
   RecruitmentDashboard,
@@ -72,6 +79,8 @@ const sourceSystems = new Set<RecruitmentSourceSystem>(['INTERNO', 'INDEED']);
 const syncStatuses = new Set<RecruitmentSyncStatus>(['NAO_CONFIGURADO', 'PENDENTE', 'SINCRONIZADO', 'ERRO']);
 const aiStatuses = new Set<RecruitmentAiStatus>(['NAO_ANALISADO', 'PENDENTE', 'ANALISANDO', 'CONCLUIDO', 'ERRO', 'NAO_SUPORTADO']);
 const managerReviewStatuses = new Set<RecruitmentManagerReviewStatus>(['NAO_ENVIADO', 'PENDENTE', 'APROVADO', 'DEVOLVIDO']);
+const indeedIntegrationModes = new Set<RecruitmentIndeedIntegrationMode>(['EMPREGADOR_DIRETO_XML', 'ATS_PARCEIRO_JOB_SYNC']);
+const indeedIntegrationStatuses = new Set<RecruitmentIndeedIntegrationStatus>(['INATIVA', 'CONFIGURACAO_PENDENTE', 'ATIVA', 'ERRO']);
 const regimes = new Set<EmploymentRegime>(['CLT', 'PJ', 'ESTAGIO']);
 const allowedUnits = new Set<string>(EMPLOYEE_UNITS as unknown as string[]);
 
@@ -111,6 +120,18 @@ const normalizeManagerReviewStatus = (value: unknown): RecruitmentManagerReviewS
   return normalized;
 };
 
+const normalizeIndeedIntegrationMode = (value: unknown): RecruitmentIndeedIntegrationMode => {
+  const normalized = upper(value || 'EMPREGADOR_DIRETO_XML') as RecruitmentIndeedIntegrationMode;
+  if (!indeedIntegrationModes.has(normalized)) throw new RecruitmentValidationError('Modo de integração da Indeed inválido.');
+  return normalized;
+};
+
+const normalizeIndeedIntegrationStatus = (value: unknown): RecruitmentIndeedIntegrationStatus => {
+  const normalized = upper(value || 'CONFIGURACAO_PENDENTE') as RecruitmentIndeedIntegrationStatus;
+  if (!indeedIntegrationStatuses.has(normalized)) throw new RecruitmentValidationError('Status da integração da Indeed inválido.');
+  return normalized;
+};
+
 const normalizeRegime = (value: unknown): EmploymentRegime => {
   const normalized = upper(value || 'CLT') as EmploymentRegime;
   if (!regimes.has(normalized)) throw new RecruitmentValidationError('Regime da vaga inválido.');
@@ -135,6 +156,17 @@ const cleanJsonPayload = (value: unknown) => {
   return raw || null;
 };
 
+const cleanUrl = (value: unknown) => {
+  const raw = clean(value);
+  if (!raw) return null;
+  try {
+    const parsed = new URL(raw);
+    return parsed.toString();
+  } catch {
+    throw new RecruitmentValidationError('URL da integração Indeed inválida.');
+  }
+};
+
 const normalizeNullableScore = (value: unknown) => {
   if (value === null || value === undefined || String(value).trim() === '') return null;
   const parsed = Number(value);
@@ -143,6 +175,8 @@ const normalizeNullableScore = (value: unknown) => {
   if (score < 0 || score > 100) throw new RecruitmentValidationError('A nota da análise de IA deve ficar entre 0 e 100.');
   return score;
 };
+
+const hashPayload = (value: string) => createHash('sha256').update(value).digest('hex');
 
 let tablesEnsured = false;
 
@@ -264,7 +298,17 @@ export const ensureRecruitmentTables = async (db: DbInterface) => {
       status VARCHAR(30) NOT NULL,
       company_name VARCHAR(180) NULL,
       client_id VARCHAR(180) NULL,
+      client_secret TEXT NULL,
+      source_name VARCHAR(180) NULL,
+      publisher_name VARCHAR(180) NULL,
+      publisher_url TEXT NULL,
+      post_url TEXT NULL,
+      public_base_url TEXT NULL,
+      feed_token VARCHAR(180) NULL,
+      graphql_endpoint TEXT NULL,
+      token_endpoint TEXT NULL,
       last_healthcheck_at TEXT NULL,
+      last_error TEXT NULL,
       notes TEXT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -278,8 +322,11 @@ export const ensureRecruitmentTables = async (db: DbInterface) => {
       source_system VARCHAR(20) NOT NULL,
       external_job_id VARCHAR(180) NULL,
       external_job_key VARCHAR(180) NULL,
+      publication_mode VARCHAR(40) NOT NULL DEFAULT 'EMPREGADOR_DIRETO_XML',
       sync_status VARCHAR(30) NOT NULL,
       last_synced_at TEXT NULL,
+      last_payload_hash VARCHAR(80) NULL,
+      last_error TEXT NULL,
       external_payload_json LONGTEXT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -292,9 +339,11 @@ export const ensureRecruitmentTables = async (db: DbInterface) => {
       candidate_id VARCHAR(64) NULL,
       job_id VARCHAR(64) NULL,
       application_external_id VARCHAR(180) NULL,
+      dedupe_key VARCHAR(255) NULL,
       signature TEXT NULL,
       payload_json LONGTEXT NULL,
       ingest_status VARCHAR(30) NOT NULL,
+      last_error TEXT NULL,
       received_at TEXT NULL,
       processed_at TEXT NULL,
       created_at TEXT NOT NULL,
@@ -379,6 +428,21 @@ export const ensureRecruitmentTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE recruitment_candidates ADD COLUMN manager_review_decided_at TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE recruitment_candidates ADD COLUMN manager_review_decided_by VARCHAR(64) NULL`);
   await safeAddColumn(db, `ALTER TABLE recruitment_candidates ADD COLUMN manager_review_notes TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_integrations ADD COLUMN client_secret TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_integrations ADD COLUMN source_name VARCHAR(180) NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_integrations ADD COLUMN publisher_name VARCHAR(180) NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_integrations ADD COLUMN publisher_url TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_integrations ADD COLUMN post_url TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_integrations ADD COLUMN public_base_url TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_integrations ADD COLUMN feed_token VARCHAR(180) NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_integrations ADD COLUMN graphql_endpoint TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_integrations ADD COLUMN token_endpoint TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_integrations ADD COLUMN last_error TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_job_mappings ADD COLUMN publication_mode VARCHAR(40) NOT NULL DEFAULT 'EMPREGADOR_DIRETO_XML'`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_job_mappings ADD COLUMN last_payload_hash VARCHAR(80) NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_job_mappings ADD COLUMN last_error TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_applications ADD COLUMN dedupe_key VARCHAR(255) NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_indeed_applications ADD COLUMN last_error TEXT NULL`);
 
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_jobs_status ON recruitment_jobs (status)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_candidates_job ON recruitment_candidates (job_id)`);
@@ -388,8 +452,12 @@ export const ensureRecruitmentTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_jobs_sync_status ON recruitment_jobs (sync_status)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_candidates_ai_status ON recruitment_candidates (ai_status)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_candidates_manager_status ON recruitment_candidates (manager_review_status)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_recruitment_indeed_integrations_status ON recruitment_indeed_integrations (status)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_indeed_job_mappings_job ON recruitment_indeed_job_mappings (job_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_recruitment_indeed_job_mappings_sync_status ON recruitment_indeed_job_mappings (sync_status)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_indeed_applications_job ON recruitment_indeed_applications (job_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_recruitment_indeed_applications_external_id ON recruitment_indeed_applications (application_external_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_recruitment_indeed_applications_dedupe_key ON recruitment_indeed_applications (dedupe_key)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_resume_extractions_candidate ON recruitment_resume_extractions (candidate_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analysis_jobs_candidate ON recruitment_ai_analysis_jobs (candidate_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analyses_candidate ON recruitment_ai_analyses (candidate_id)`);
@@ -488,6 +556,61 @@ const mapCandidate = (
   };
 };
 
+const buildIndeedPublicFeedUrl = (baseUrl: string | null, feedToken: string | null) => {
+  if (!feedToken) return null;
+  const path = `/api/recrutamento/indeed/feed.xml?token=${encodeURIComponent(feedToken)}`;
+  if (!baseUrl) return path;
+  try {
+    return new URL(path, baseUrl).toString();
+  } catch {
+    return path;
+  }
+};
+
+const mapIndeedIntegration = (row: DbRow): RecruitmentIndeedIntegration => {
+  const publicBaseUrl = clean(row.public_base_url) || null;
+  const feedToken = clean(row.feed_token) || null;
+  return {
+    id: clean(row.id),
+    provider: 'INDEED',
+    integrationMode: normalizeIndeedIntegrationMode(row.integration_mode),
+    status: normalizeIndeedIntegrationStatus(row.status),
+    companyName: clean(row.company_name) || null,
+    clientId: clean(row.client_id) || null,
+    clientSecretConfigured: Boolean(clean(row.client_secret)),
+    sourceName: clean(row.source_name) || null,
+    publisherName: clean(row.publisher_name) || null,
+    publisherUrl: clean(row.publisher_url) || null,
+    postUrl: clean(row.post_url) || null,
+    publicBaseUrl,
+    publicFeedUrl: buildIndeedPublicFeedUrl(publicBaseUrl, feedToken),
+    feedTokenConfigured: Boolean(feedToken),
+    graphqlEndpoint: clean(row.graphql_endpoint) || null,
+    tokenEndpoint: clean(row.token_endpoint) || null,
+    lastHealthcheckAt: clean(row.last_healthcheck_at) || null,
+    lastError: clean(row.last_error) || null,
+    notes: clean(row.notes) || null,
+    createdAt: clean(row.created_at),
+    updatedAt: clean(row.updated_at),
+  };
+};
+
+const mapIndeedJobMapping = (row: DbRow): RecruitmentIndeedJobMapping => ({
+  id: clean(row.id),
+  jobId: clean(row.job_id),
+  jobTitle: clean(row.job_title),
+  sourceSystem: normalizeSourceSystem(row.source_system),
+  externalJobId: clean(row.external_job_id) || null,
+  externalJobKey: clean(row.external_job_key) || null,
+  publicationMode: normalizeIndeedIntegrationMode(row.publication_mode),
+  syncStatus: normalizeSyncStatus(row.sync_status),
+  lastSyncedAt: clean(row.last_synced_at) || null,
+  lastPayloadHash: clean(row.last_payload_hash) || null,
+  lastError: clean(row.last_error) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
 const insertHistory = async (
   db: DbInterface,
   candidateId: string,
@@ -550,6 +673,110 @@ const ensureNoDuplicatePerson = async (db: DbInterface, cpf: string | null, emai
   if (rows[0]) throw new RecruitmentValidationError('Já existe candidato cadastrado com este CPF ou e-mail.');
 };
 
+const getIndeedIntegrationRow = async (db: DbInterface) => {
+  const rows = await db.query(
+    `SELECT * FROM recruitment_indeed_integrations WHERE provider = 'INDEED' ORDER BY updated_at DESC LIMIT 1`
+  );
+  return rows[0] || null;
+};
+
+const resolveAutomaticJobSyncStatus = async (db: DbInterface, payload: Payload, existing?: DbRow | null): Promise<RecruitmentSyncStatus> => {
+  if (hasField(payload, 'syncStatus', 'sync_status')) {
+    return normalizeSyncStatus(payload?.syncStatus ?? payload?.sync_status);
+  }
+  const integrationRow = await getIndeedIntegrationRow(db);
+  if (!integrationRow) return existing ? normalizeSyncStatus(existing.sync_status || 'NAO_CONFIGURADO') : 'NAO_CONFIGURADO';
+  const integrationStatus = normalizeIndeedIntegrationStatus(integrationRow.status);
+  if (integrationStatus !== 'ATIVA') return existing ? normalizeSyncStatus(existing.sync_status || 'NAO_CONFIGURADO') : 'NAO_CONFIGURADO';
+  return 'PENDENTE';
+};
+
+const upsertIndeedJobMappingRow = async (
+  db: DbInterface,
+  payload: {
+    jobId: string;
+    sourceSystem?: RecruitmentSourceSystem;
+    externalJobId?: string | null;
+    externalJobKey?: string | null;
+    publicationMode?: RecruitmentIndeedIntegrationMode;
+    syncStatus: RecruitmentSyncStatus;
+    lastSyncedAt?: string | null;
+    lastPayloadHash?: string | null;
+    lastError?: string | null;
+    externalPayloadJson?: string | null;
+  },
+) => {
+  const rows = await db.query(`SELECT * FROM recruitment_indeed_job_mappings WHERE job_id = ? LIMIT 1`, [payload.jobId]);
+  const existing = rows[0];
+  const now = NOW();
+  if (existing) {
+    await db.execute(
+      `
+      UPDATE recruitment_indeed_job_mappings
+      SET source_system = ?, external_job_id = ?, external_job_key = ?, publication_mode = ?, sync_status = ?, last_synced_at = ?, last_payload_hash = ?, last_error = ?, external_payload_json = ?, updated_at = ?
+      WHERE id = ?
+      `,
+      [
+        payload.sourceSystem || normalizeSourceSystem(existing.source_system),
+        payload.externalJobId ?? (clean(existing.external_job_id) || null),
+        payload.externalJobKey ?? (clean(existing.external_job_key) || null),
+        payload.publicationMode || normalizeIndeedIntegrationMode(existing.publication_mode),
+        payload.syncStatus,
+        payload.lastSyncedAt || null,
+        payload.lastPayloadHash || null,
+        payload.lastError || null,
+        payload.externalPayloadJson || null,
+        now,
+        clean(existing.id),
+      ],
+    );
+    return clean(existing.id);
+  }
+
+  const mappingId = randomUUID();
+  await db.execute(
+    `
+    INSERT INTO recruitment_indeed_job_mappings (
+      id, job_id, source_system, external_job_id, external_job_key, publication_mode, sync_status, last_synced_at, last_payload_hash, last_error, external_payload_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      mappingId,
+      payload.jobId,
+      payload.sourceSystem || 'INDEED',
+      payload.externalJobId || null,
+      payload.externalJobKey || null,
+      payload.publicationMode || 'EMPREGADOR_DIRETO_XML',
+      payload.syncStatus,
+      payload.lastSyncedAt || null,
+      payload.lastPayloadHash || null,
+      payload.lastError || null,
+      payload.externalPayloadJson || null,
+      now,
+      now,
+    ],
+  );
+  return mappingId;
+};
+
+const isoMillisToDateTime = (value: unknown) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  const date = new Date(parsed);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+};
+
+const buildIndeedDuplicateKey = (jobId: string, email: string | null) => {
+  if (!email) return null;
+  return `${jobId}::${email.toLowerCase()}`;
+};
+
+const nowMinusDays = (days: number) => {
+  const date = new Date();
+  date.setDate(date.getDate() - days);
+  return date.toISOString();
+};
+
 export const listRecruitmentDashboard = async (db: DbInterface): Promise<RecruitmentDashboard> => {
   await ensureRecruitmentTables(db);
   const [jobRows, candidateRows, fileRows, historyRows] = await Promise.all([
@@ -600,11 +827,652 @@ export const listRecruitmentDashboard = async (db: DbInterface): Promise<Recruit
   };
 };
 
+type IndeedIntegrationSecrets = {
+  id: string;
+  provider: 'INDEED';
+  integrationMode: RecruitmentIndeedIntegrationMode;
+  status: RecruitmentIndeedIntegrationStatus;
+  companyName: string | null;
+  clientId: string | null;
+  clientSecret: string | null;
+  sourceName: string | null;
+  publisherName: string | null;
+  publisherUrl: string | null;
+  postUrl: string | null;
+  publicBaseUrl: string | null;
+  publicFeedUrl: string | null;
+  feedToken: string | null;
+  graphqlEndpoint: string | null;
+  tokenEndpoint: string | null;
+  lastHealthcheckAt: string | null;
+  lastError: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export const getRecruitmentIndeedIntegration = async (db: DbInterface): Promise<RecruitmentIndeedIntegration | null> => {
+  await ensureRecruitmentTables(db);
+  const row = await getIndeedIntegrationRow(db);
+  return row ? mapIndeedIntegration(row) : null;
+};
+
+export const getRecruitmentIndeedIntegrationForProvider = async (db: DbInterface): Promise<IndeedIntegrationSecrets | null> => {
+  await ensureRecruitmentTables(db);
+  const row = await getIndeedIntegrationRow(db);
+  if (!row) return null;
+  const mapped = mapIndeedIntegration(row);
+  const feedToken = clean(row.feed_token) || null;
+  return {
+    ...mapped,
+    clientSecret: clean(row.client_secret) || null,
+    feedToken,
+    publicFeedUrl: buildIndeedPublicFeedUrl(mapped.publicBaseUrl, feedToken),
+  };
+};
+
+export const saveRecruitmentIndeedIntegration = async (
+  db: DbInterface,
+  payload: RecruitmentIndeedIntegrationInput,
+): Promise<RecruitmentIndeedIntegration> => {
+  await ensureRecruitmentTables(db);
+  const existing = await getIndeedIntegrationRow(db);
+  const now = NOW();
+  const integrationMode = normalizeIndeedIntegrationMode(payload.integrationMode || existing?.integration_mode);
+  const status = normalizeIndeedIntegrationStatus(payload.status || existing?.status || 'CONFIGURACAO_PENDENTE');
+  const clientSecret = clean((payload as { clientSecret?: unknown }).clientSecret) || clean(existing?.client_secret) || null;
+  const sourceName = clean(payload.sourceName) || clean(existing?.source_name) || null;
+  const postUrl = cleanUrl(payload.postUrl ?? existing?.post_url);
+  const publicBaseUrl = cleanUrl(payload.publicBaseUrl ?? existing?.public_base_url);
+  const graphqlEndpoint =
+    cleanUrl(payload.graphqlEndpoint ?? existing?.graphql_endpoint) ||
+    (integrationMode === 'ATS_PARCEIRO_JOB_SYNC' ? 'https://apis.indeed.com/graphql' : null);
+  const tokenEndpoint =
+    cleanUrl(payload.tokenEndpoint ?? existing?.token_endpoint) ||
+    (integrationMode === 'ATS_PARCEIRO_JOB_SYNC' ? 'https://apis.indeed.com/oauth/v2/tokens' : null);
+  const feedToken = clean(existing?.feed_token) || randomUUID();
+  const nextId = clean(existing?.id) || randomUUID();
+
+  if (integrationMode === 'ATS_PARCEIRO_JOB_SYNC' && !sourceName) {
+    throw new RecruitmentValidationError('Informe o sourceName da integração ATS/parceiro.');
+  }
+
+  if (existing) {
+    await db.execute(
+      `
+      UPDATE recruitment_indeed_integrations
+      SET provider = 'INDEED', integration_mode = ?, status = ?, company_name = ?, client_id = ?, client_secret = ?,
+          source_name = ?, publisher_name = ?, publisher_url = ?, post_url = ?, public_base_url = ?, feed_token = ?,
+          graphql_endpoint = ?, token_endpoint = ?, notes = ?, updated_at = ?
+      WHERE id = ?
+      `,
+      [
+        integrationMode,
+        status,
+        clean(payload.companyName) || clean(existing.company_name) || null,
+        clean(payload.clientId) || clean(existing.client_id) || null,
+        clientSecret,
+        sourceName,
+        clean(payload.publisherName) || clean(existing.publisher_name) || null,
+        cleanUrl(payload.publisherUrl ?? existing.publisher_url),
+        postUrl,
+        publicBaseUrl,
+        feedToken,
+        graphqlEndpoint,
+        tokenEndpoint,
+        clean(payload.notes) || clean(existing.notes) || null,
+        now,
+        nextId,
+      ],
+    );
+  } else {
+    await db.execute(
+      `
+      INSERT INTO recruitment_indeed_integrations (
+        id, provider, integration_mode, status, company_name, client_id, client_secret, source_name, publisher_name, publisher_url,
+        post_url, public_base_url, feed_token, graphql_endpoint, token_endpoint, last_healthcheck_at, last_error, notes, created_at, updated_at
+      ) VALUES (?, 'INDEED', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        nextId,
+        integrationMode,
+        status,
+        clean(payload.companyName) || null,
+        clean(payload.clientId) || null,
+        clientSecret,
+        sourceName,
+        clean(payload.publisherName) || null,
+        cleanUrl(payload.publisherUrl),
+        postUrl,
+        publicBaseUrl,
+        feedToken,
+        graphqlEndpoint,
+        tokenEndpoint,
+        null,
+        null,
+        clean(payload.notes) || null,
+        now,
+        now,
+      ],
+    );
+  }
+
+  const integration = await getRecruitmentIndeedIntegration(db);
+  if (!integration) throw new RecruitmentValidationError('Não foi possível salvar a integração Indeed.', 500);
+  return integration;
+};
+
+export const updateRecruitmentIndeedIntegrationHealth = async (
+  db: DbInterface,
+  payload: { status: RecruitmentIndeedIntegrationStatus; lastError?: string | null },
+) => {
+  await ensureRecruitmentTables(db);
+  const existing = await getIndeedIntegrationRow(db);
+  if (!existing) throw new RecruitmentValidationError('Integração Indeed não encontrada.', 404);
+  await db.execute(
+    `
+    UPDATE recruitment_indeed_integrations
+    SET status = ?, last_healthcheck_at = ?, last_error = ?, updated_at = ?
+    WHERE id = ?
+    `,
+    [payload.status, NOW(), clean(payload.lastError) || null, NOW(), clean(existing.id)],
+  );
+};
+
+export const listRecruitmentIndeedJobMappings = async (db: DbInterface): Promise<RecruitmentIndeedJobMapping[]> => {
+  await ensureRecruitmentTables(db);
+  const rows = await db.query(
+    `
+    SELECT m.*, j.title AS job_title
+    FROM recruitment_indeed_job_mappings m
+    INNER JOIN recruitment_jobs j ON j.id = m.job_id
+    ORDER BY m.updated_at DESC
+    `,
+  );
+  return rows.map((row) => mapIndeedJobMapping(row));
+};
+
+export const getRecruitmentIndeedSummary = async (db: DbInterface): Promise<RecruitmentIndeedSummary> => {
+  await ensureRecruitmentTables(db);
+  const [integration, mappings, jobs] = await Promise.all([
+    getRecruitmentIndeedIntegration(db),
+    listRecruitmentIndeedJobMappings(db),
+    db.query(`SELECT id, sync_status FROM recruitment_jobs ORDER BY updated_at DESC`),
+  ]);
+  const jobsEligible = jobs.length;
+  const pendingJobs = jobs.filter((row) => normalizeSyncStatus(row.sync_status || 'NAO_CONFIGURADO') === 'PENDENTE').length;
+  const synchronizedJobs = jobs.filter((row) => normalizeSyncStatus(row.sync_status || 'NAO_CONFIGURADO') === 'SINCRONIZADO').length;
+  return {
+    integration,
+    mappings,
+    jobsEligible,
+    pendingJobs,
+    synchronizedJobs,
+    publicFeedUrl: integration?.publicFeedUrl || null,
+  };
+};
+
+export const updateRecruitmentJobIndeedSyncResult = async (
+  db: DbInterface,
+  payload: {
+    jobId: string;
+    externalJobId?: string | null;
+    externalJobKey?: string | null;
+    publicationMode: RecruitmentIndeedIntegrationMode;
+    syncStatus: RecruitmentSyncStatus;
+    lastPayloadJson?: string | null;
+    lastError?: string | null;
+  },
+) => {
+  await ensureRecruitmentTables(db);
+  const now = NOW();
+  const payloadHash = payload.lastPayloadJson ? hashPayload(payload.lastPayloadJson) : null;
+  await db.execute(
+    `
+    UPDATE recruitment_jobs
+    SET source_system = 'INDEED', source_external_id = ?, sync_status = ?, last_synced_at = ?, external_payload_json = ?, updated_at = ?
+    WHERE id = ?
+    `,
+    [
+      payload.externalJobId || null,
+      payload.syncStatus,
+      payload.syncStatus === 'SINCRONIZADO' ? now : null,
+      payload.lastPayloadJson || null,
+      now,
+      payload.jobId,
+    ],
+  );
+  await upsertIndeedJobMappingRow(db, {
+    jobId: payload.jobId,
+    sourceSystem: 'INDEED',
+    externalJobId: payload.externalJobId || null,
+    externalJobKey: payload.externalJobKey || null,
+    publicationMode: payload.publicationMode,
+    syncStatus: payload.syncStatus,
+    lastSyncedAt: payload.syncStatus === 'SINCRONIZADO' ? now : null,
+    lastPayloadHash: payloadHash,
+    lastError: payload.lastError || null,
+    externalPayloadJson: payload.lastPayloadJson || null,
+  });
+};
+
+export const createRecruitmentIndeedBackfill = async (db: DbInterface, payload: RecruitmentIndeedBackfillInput) => {
+  await ensureRecruitmentTables(db);
+  const action = upper(payload.action) as RecruitmentIndeedBackfillInput['action'];
+  if (action !== 'ASSOCIAR_VAGA') {
+    throw new RecruitmentValidationError('Ação de backfill inválida para este método.');
+  }
+  const jobId = clean(payload.jobId);
+  if (!jobId) throw new RecruitmentValidationError('Selecione a vaga local para associar.');
+  await ensureJobExists(db, jobId);
+  await updateRecruitmentJobIndeedSyncResult(db, {
+    jobId,
+    externalJobId: clean(payload.externalJobId) || jobId,
+    externalJobKey: clean(payload.externalJobKey) || null,
+    publicationMode: 'EMPREGADOR_DIRETO_XML',
+    syncStatus: 'SINCRONIZADO',
+    lastPayloadJson: cleanJsonPayload(JSON.stringify({ action, notes: clean(payload.notes) || null })) || null,
+  });
+  return getRecruitmentIndeedSummary(db);
+};
+
+export const listRecruitmentJobsForIndeedFeed = async (db: DbInterface) => {
+  await ensureRecruitmentTables(db);
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM recruitment_jobs
+    WHERE status IN ('OPEN', 'PAUSED')
+    ORDER BY opened_at DESC, created_at DESC
+    `,
+  );
+  return rows.map((row) => mapJob(row));
+};
+
+export const getRecruitmentIndeedFeedSnapshot = async (db: DbInterface, token: string) => {
+  await ensureRecruitmentTables(db);
+  const integration = await getRecruitmentIndeedIntegrationForProvider(db);
+  if (!integration || !integration.feedToken || integration.feedToken !== token) {
+    return null;
+  }
+  const jobs = await listRecruitmentJobsForIndeedFeed(db);
+  return { integration, jobs };
+};
+
+type RecruitmentIndeedApplicationPayload = {
+  id?: unknown;
+  job?: {
+    jobId?: unknown;
+    jobKey?: unknown;
+    jobTitle?: unknown;
+    jobUrl?: unknown;
+    jobMeta?: unknown;
+  } | null;
+  applicant?: {
+    fullName?: unknown;
+    firstName?: unknown;
+    lastName?: unknown;
+    email?: unknown;
+    phoneNumber?: unknown;
+    coverletter?: unknown;
+    resume?: {
+      file?: {
+        id?: unknown;
+        fileName?: unknown;
+        contentType?: unknown;
+        data?: unknown;
+      } | null;
+    } | null;
+  } | null;
+  analytics?: {
+    referer?: unknown;
+    userAgent?: unknown;
+    device?: unknown;
+  } | null;
+  appliedOnMillis?: unknown;
+};
+
+type RecruitmentIndeedApplicationIngestResult = {
+  applicationRecordId: string;
+  candidateId: string;
+  duplicate: boolean;
+  resumeFile:
+    | {
+        originalName: string;
+        mimeType: string;
+        dataBase64: string;
+      }
+    | null;
+};
+
+const buildIndeedCandidateNotes = (payload: RecruitmentIndeedApplicationPayload) => {
+  const blocks: string[] = [];
+  const coverLetter = clean(payload.applicant?.coverletter);
+  const referer = clean(payload.analytics?.referer);
+  const device = clean(payload.analytics?.device);
+  const appliedAt = isoMillisToDateTime(payload.appliedOnMillis);
+
+  if (coverLetter) {
+    blocks.push(`Cover letter Indeed:\n${coverLetter}`);
+  }
+  if (referer || device || appliedAt) {
+    blocks.push(
+      [
+        'Origem Indeed Apply:',
+        referer ? `referer=${referer}` : null,
+        device ? `device=${device}` : null,
+        appliedAt ? `aplicado_em=${appliedAt}` : null,
+      ]
+        .filter(Boolean)
+        .join(' '),
+    );
+  }
+  return blocks.join('\n\n') || null;
+};
+
+const resolveIndeedCandidateName = (payload: RecruitmentIndeedApplicationPayload) => {
+  const fullName = clean(payload.applicant?.fullName);
+  if (fullName) return fullName;
+  const firstName = clean(payload.applicant?.firstName);
+  const lastName = clean(payload.applicant?.lastName);
+  return `${firstName} ${lastName}`.trim();
+};
+
+const findRecruitmentJobByIndeedReference = async (db: DbInterface, jobIdRaw: string, jobKeyRaw: string) => {
+  const jobId = clean(jobIdRaw);
+  const jobKey = clean(jobKeyRaw);
+  const rows = await db.query(
+    `
+    SELECT j.*
+    FROM recruitment_jobs j
+    LEFT JOIN recruitment_indeed_job_mappings m ON m.job_id = j.id
+    WHERE j.id = ?
+       OR COALESCE(j.source_external_id, '') = ?
+       OR COALESCE(m.external_job_id, '') = ?
+       OR COALESCE(m.external_job_key, '') = ?
+    ORDER BY j.updated_at DESC
+    LIMIT 1
+    `,
+    [jobId, jobId, jobId, jobKey],
+  );
+  return rows[0] ? mapJob(rows[0]) : null;
+};
+
+const createIndeedApplicationRecord = async (
+  db: DbInterface,
+  payload: {
+    candidateId?: string | null;
+    jobId?: string | null;
+    applicationExternalId: string;
+    dedupeKey?: string | null;
+    signature: string | null;
+    payloadJson: string;
+    ingestStatus: string;
+    lastError?: string | null;
+    receivedAt?: string | null;
+    processedAt?: string | null;
+  },
+) => {
+  const id = randomUUID();
+  const now = NOW();
+  await db.execute(
+    `
+    INSERT INTO recruitment_indeed_applications (
+      id, candidate_id, job_id, application_external_id, dedupe_key, signature, payload_json, ingest_status, last_error, received_at, processed_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      id,
+      payload.candidateId || null,
+      payload.jobId || null,
+      payload.applicationExternalId,
+      payload.dedupeKey || null,
+      payload.signature,
+      payload.payloadJson,
+      payload.ingestStatus,
+      payload.lastError || null,
+      payload.receivedAt || now,
+      payload.processedAt || null,
+      now,
+      now,
+    ],
+  );
+  return id;
+};
+
+export const ingestRecruitmentIndeedApplication = async (
+  db: DbInterface,
+  payloadRaw: string,
+  payload: RecruitmentIndeedApplicationPayload,
+  signature: string | null,
+): Promise<RecruitmentIndeedApplicationIngestResult> => {
+  await ensureRecruitmentTables(db);
+
+  const applicationExternalId = clean(payload.id);
+  const jobReferenceId = clean(payload.job?.jobId);
+  const jobReferenceKey = clean(payload.job?.jobKey);
+  const fullName = resolveIndeedCandidateName(payload);
+  const email = normalizeEmail(payload.applicant?.email);
+  const phone = normalizePhone(payload.applicant?.phoneNumber);
+
+  if (!applicationExternalId) {
+    throw new RecruitmentValidationError('Payload da Indeed sem identificador da candidatura.', 400);
+  }
+  if (!jobReferenceId && !jobReferenceKey) {
+    throw new RecruitmentValidationError('Payload da Indeed sem referência da vaga.', 400);
+  }
+  if (!fullName) {
+    throw new RecruitmentValidationError('Payload da Indeed sem nome do candidato.', 400);
+  }
+
+  return runInTransaction(db, async (txDb) => {
+    const job = await findRecruitmentJobByIndeedReference(txDb, jobReferenceId, jobReferenceKey);
+    const dedupeKey = buildIndeedDuplicateKey(job?.id || jobReferenceId || jobReferenceKey, email);
+    if (!job) {
+      await createIndeedApplicationRecord(txDb, {
+        applicationExternalId,
+        dedupeKey,
+        signature,
+        payloadJson: payloadRaw,
+        ingestStatus: 'JOB_INVALIDO',
+        lastError: 'Vaga não encontrada para a referência informada pela Indeed.',
+      });
+      throw new RecruitmentValidationError('Job is invalid, does not exist.', 404);
+    }
+
+    if (job.status === 'CLOSED') {
+      await createIndeedApplicationRecord(txDb, {
+        jobId: job.id,
+        applicationExternalId,
+        dedupeKey,
+        signature,
+        payloadJson: payloadRaw,
+        ingestStatus: 'JOB_EXPIRADO',
+        lastError: 'Vaga encerrada no painel.',
+      });
+      throw new RecruitmentValidationError('The job is expired or no longer available.', 410);
+    }
+
+    const duplicateRows = await txDb.query(
+      `
+      SELECT id
+      FROM recruitment_indeed_applications
+      WHERE application_external_id = ?
+         OR (dedupe_key = ? AND created_at >= ?)
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [applicationExternalId, dedupeKey, nowMinusDays(120)],
+    );
+    if (duplicateRows[0]) {
+      await createIndeedApplicationRecord(txDb, {
+        jobId: job.id,
+        applicationExternalId,
+        dedupeKey,
+        signature,
+        payloadJson: payloadRaw,
+        ingestStatus: 'DUPLICADO',
+        lastError: 'Candidatura Indeed duplicada para a mesma vaga/e-mail.',
+      });
+      throw new RecruitmentValidationError('Duplicate Application already in the system.', 409);
+    }
+
+    const resumeFile = payload.applicant?.resume?.file;
+    const resumePayload =
+      clean(resumeFile?.data) && clean(resumeFile?.fileName)
+        ? {
+            originalName: clean(resumeFile?.fileName) || 'curriculo-indeed.bin',
+            mimeType: clean(resumeFile?.contentType) || 'application/octet-stream',
+            dataBase64: clean(resumeFile?.data),
+          }
+        : null;
+
+    const existingCandidateSql = email
+      ? `
+        SELECT *
+        FROM recruitment_candidates
+        WHERE (application_external_id = ?)
+           OR (job_id = ? AND LOWER(COALESCE(email, '')) = ?)
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `
+      : `
+        SELECT *
+        FROM recruitment_candidates
+        WHERE application_external_id = ?
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `;
+    const existingCandidateParams = email ? [applicationExternalId, job.id, email.toLowerCase()] : [applicationExternalId];
+    const existingCandidateRows = await txDb.query(existingCandidateSql, existingCandidateParams);
+
+    const existingCandidate = existingCandidateRows[0];
+    const now = NOW();
+    const notes = buildIndeedCandidateNotes(payload);
+    let candidateId = clean(existingCandidate?.id);
+
+    if (existingCandidate) {
+      await txDb.execute(
+        `
+        UPDATE recruitment_candidates
+        SET full_name = ?, email = ?, phone = ?, source = ?, source_system = 'INDEED', source_external_id = ?, application_external_id = ?, notes = ?, updated_at = ?
+        WHERE id = ?
+        `,
+        [
+          fullName,
+          email,
+          phone,
+          'Indeed Apply',
+          clean(resumeFile?.id) || clean(payload.job?.jobMeta) || null,
+          applicationExternalId,
+          notes || clean(existingCandidate.notes) || null,
+          now,
+          candidateId,
+        ],
+      );
+      await insertHistory(
+        txDb,
+        candidateId,
+        'INDEED_APPLICATION_RECEIVED',
+        'indeed-system',
+        upper(existingCandidate.stage || 'RECEBIDO') as RecruitmentCandidateStage,
+        upper(existingCandidate.stage || 'RECEBIDO') as RecruitmentCandidateStage,
+        'Candidatura recebida pela integração oficial da Indeed.',
+      );
+    } else {
+      candidateId = randomUUID();
+      await txDb.execute(
+        `
+        INSERT INTO recruitment_candidates (
+          id, job_id, full_name, cpf, email, phone, stage, source, source_system, source_external_id, application_external_id,
+          ai_status, ai_score, ai_last_analyzed_at,
+          manager_review_status, manager_review_requested_at, manager_review_requested_by, manager_review_decided_at, manager_review_decided_by, manager_review_notes,
+          notes, converted_employee_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          candidateId,
+          job.id,
+          fullName,
+          null,
+          email,
+          phone,
+          'RECEBIDO',
+          'Indeed Apply',
+          'INDEED',
+          clean(resumeFile?.id) || clean(payload.job?.jobMeta) || null,
+          applicationExternalId,
+          'NAO_ANALISADO',
+          null,
+          null,
+          'NAO_ENVIADO',
+          null,
+          null,
+          null,
+          null,
+          null,
+          notes,
+          null,
+          now,
+          now,
+        ],
+      );
+      await insertHistory(txDb, candidateId, 'CANDIDATE_CREATED', 'indeed-system', null, 'RECEBIDO', 'Candidato criado via Indeed Apply.');
+    }
+
+    const applicationRecordId = await createIndeedApplicationRecord(txDb, {
+      candidateId,
+      jobId: job.id,
+      applicationExternalId,
+      dedupeKey,
+      signature,
+      payloadJson: payloadRaw,
+      ingestStatus: 'RECEBIDO',
+      receivedAt: now,
+    });
+
+    return {
+      applicationRecordId,
+      candidateId,
+      duplicate: false,
+      resumeFile: resumePayload,
+    };
+  });
+};
+
+export const finalizeRecruitmentIndeedApplication = async (
+  db: DbInterface,
+  payload: {
+    applicationRecordId: string;
+    candidateId: string;
+    success: boolean;
+    lastError?: string | null;
+  },
+) => {
+  await ensureRecruitmentTables(db);
+  await db.execute(
+    `
+    UPDATE recruitment_indeed_applications
+    SET candidate_id = ?, ingest_status = ?, last_error = ?, processed_at = ?, updated_at = ?
+    WHERE id = ?
+    `,
+    [
+      payload.candidateId,
+      payload.success ? 'PROCESSADO' : 'ERRO',
+      clean(payload.lastError) || null,
+      NOW(),
+      NOW(),
+      payload.applicationRecordId,
+    ],
+  );
+};
+
 export const createRecruitmentJob = async (db: DbInterface, payload: Payload) => {
   await ensureRecruitmentTables(db);
   const title = clean(payload?.title);
   if (!title) throw new RecruitmentValidationError('Informe o título da vaga.');
   const now = NOW();
+  const automaticSyncStatus = await resolveAutomaticJobSyncStatus(db, payload);
   await db.execute(
     `
     INSERT INTO recruitment_jobs (
@@ -630,7 +1498,7 @@ export const createRecruitmentJob = async (db: DbInterface, payload: Payload) =>
       clean(payload?.benefitsText || payload?.benefits_text) || null,
       normalizeSourceSystem(payload?.sourceSystem || payload?.source_system),
       clean(payload?.sourceExternalId || payload?.source_external_id) || null,
-      normalizeSyncStatus(payload?.syncStatus || payload?.sync_status),
+      automaticSyncStatus,
       clean(payload?.lastSyncedAt || payload?.last_synced_at) || null,
       cleanJsonPayload(payload?.externalPayloadJson || payload?.external_payload_json),
       clean(payload?.notes) || null,
@@ -649,6 +1517,7 @@ export const updateRecruitmentJob = async (db: DbInterface, jobId: string, paylo
   const now = NOW();
   const title = hasField(payload, 'title') ? clean(payload?.title) : clean(existing.title);
   if (!title) throw new RecruitmentValidationError('Informe o título da vaga.');
+  const automaticSyncStatus = await resolveAutomaticJobSyncStatus(db, payload, existing);
   await db.execute(
     `
     UPDATE recruitment_jobs
@@ -673,7 +1542,7 @@ export const updateRecruitmentJob = async (db: DbInterface, jobId: string, paylo
       hasField(payload, 'benefitsText', 'benefits_text') ? clean(payload?.benefitsText ?? payload?.benefits_text) || null : clean(existing.benefits_text) || null,
       hasField(payload, 'sourceSystem', 'source_system') ? normalizeSourceSystem(payload?.sourceSystem ?? payload?.source_system) : normalizeSourceSystem(existing.source_system),
       hasField(payload, 'sourceExternalId', 'source_external_id') ? clean(payload?.sourceExternalId ?? payload?.source_external_id) || null : clean(existing.source_external_id) || null,
-      hasField(payload, 'syncStatus', 'sync_status') ? normalizeSyncStatus(payload?.syncStatus ?? payload?.sync_status) : normalizeSyncStatus(existing.sync_status),
+      automaticSyncStatus,
       hasField(payload, 'lastSyncedAt', 'last_synced_at') ? clean(payload?.lastSyncedAt ?? payload?.last_synced_at) || null : clean(existing.last_synced_at) || null,
       hasField(payload, 'externalPayloadJson', 'external_payload_json') ? cleanJsonPayload(payload?.externalPayloadJson ?? payload?.external_payload_json) : cleanJsonPayload(existing.external_payload_json),
       hasField(payload, 'notes') ? clean(payload?.notes) || null : clean(existing.notes) || null,

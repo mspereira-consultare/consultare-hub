@@ -14,6 +14,8 @@ export type RecruitmentSourceSystem = 'INTERNO' | 'INDEED';
 export type RecruitmentSyncStatus = 'NAO_CONFIGURADO' | 'PENDENTE' | 'SINCRONIZADO' | 'ERRO';
 export type RecruitmentAiStatus = 'NAO_ANALISADO' | 'PENDENTE' | 'ANALISANDO' | 'CONCLUIDO' | 'ERRO' | 'NAO_SUPORTADO';
 export type RecruitmentManagerReviewStatus = 'NAO_ENVIADO' | 'PENDENTE' | 'APROVADO' | 'DEVOLVIDO';
+export type RecruitmentIndeedIntegrationMode = 'EMPREGADOR_DIRETO_XML' | 'ATS_PARCEIRO_JOB_SYNC';
+export type RecruitmentIndeedIntegrationStatus = 'INATIVA' | 'CONFIGURACAO_PENDENTE' | 'ATIVA' | 'ERRO';
 
 export type RecruitmentJob = {
   id: string;
@@ -149,5 +151,78 @@ export type RecruitmentCandidateInput = {
   managerReviewDecidedAt?: string | null;
   managerReviewDecidedBy?: string | null;
   managerReviewNotes?: string | null;
+  notes?: string | null;
+};
+
+export type RecruitmentIndeedIntegration = {
+  id: string;
+  provider: 'INDEED';
+  integrationMode: RecruitmentIndeedIntegrationMode;
+  status: RecruitmentIndeedIntegrationStatus;
+  companyName: string | null;
+  clientId: string | null;
+  clientSecretConfigured: boolean;
+  sourceName: string | null;
+  publisherName: string | null;
+  publisherUrl: string | null;
+  postUrl: string | null;
+  publicBaseUrl: string | null;
+  publicFeedUrl: string | null;
+  feedTokenConfigured: boolean;
+  graphqlEndpoint: string | null;
+  tokenEndpoint: string | null;
+  lastHealthcheckAt: string | null;
+  lastError: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RecruitmentIndeedJobMapping = {
+  id: string;
+  jobId: string;
+  jobTitle: string;
+  sourceSystem: RecruitmentSourceSystem;
+  externalJobId: string | null;
+  externalJobKey: string | null;
+  publicationMode: RecruitmentIndeedIntegrationMode;
+  syncStatus: RecruitmentSyncStatus;
+  lastSyncedAt: string | null;
+  lastPayloadHash: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RecruitmentIndeedSummary = {
+  integration: RecruitmentIndeedIntegration | null;
+  mappings: RecruitmentIndeedJobMapping[];
+  jobsEligible: number;
+  pendingJobs: number;
+  synchronizedJobs: number;
+  publicFeedUrl: string | null;
+};
+
+export type RecruitmentIndeedIntegrationInput = {
+  integrationMode?: RecruitmentIndeedIntegrationMode | null;
+  status?: RecruitmentIndeedIntegrationStatus | null;
+  companyName?: string | null;
+  clientId?: string | null;
+  clientSecret?: string | null;
+  sourceName?: string | null;
+  publisherName?: string | null;
+  publisherUrl?: string | null;
+  postUrl?: string | null;
+  publicBaseUrl?: string | null;
+  graphqlEndpoint?: string | null;
+  tokenEndpoint?: string | null;
+  notes?: string | null;
+};
+
+export type RecruitmentIndeedBackfillInput = {
+  action: 'ASSOCIAR_VAGA' | 'PUBLICAR_VAGA' | 'PUBLICAR_VAGAS_PENDENTES';
+  jobId?: string | null;
+  externalJobId?: string | null;
+  externalJobKey?: string | null;
   notes?: string | null;
 };
