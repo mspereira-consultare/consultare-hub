@@ -2,8 +2,9 @@
 
 import { type Dispatch, type SetStateAction } from 'react';
 import { CheckCircle2, Download, FileText, FileUp, Loader2, Users, X } from 'lucide-react';
-import type { RecruitmentCandidate, RecruitmentCandidateStage, RecruitmentJob } from '@/lib/recrutamento/types';
+import type { RecruitmentCandidate, RecruitmentCandidateAnalysisDetails, RecruitmentCandidateStage, RecruitmentJob } from '@/lib/recrutamento/types';
 import type { CandidateDraftState } from './types';
+import { RecruitmentAiAnalysisSection } from './RecruitmentAiAnalysisSection';
 import {
   aiStatusLabel,
   aiStatusToneMap,
@@ -14,7 +15,6 @@ import {
   formatFileSize,
   managerReviewLabel,
   managerReviewToneMap,
-  sourceSystemLabel,
   stageLabel,
   stageToneMap,
   StatusBadge,
@@ -31,9 +31,13 @@ type Props = {
   saving: string;
   convertAdmissionDate: string;
   uploadFile: File | null;
+  analysisDetails: RecruitmentCandidateAnalysisDetails | null;
+  analysisLoading: boolean;
+  analysisError: string;
   onClose: () => void;
   onSaveCandidate: () => void;
   onUploadCandidateFile: () => void;
+  onReprocessCandidateAnalysis: () => void;
   onConvertCandidate: () => void;
   setCandidateDraft: Dispatch<SetStateAction<CandidateDraftState | null>>;
   setConvertAdmissionDate: Dispatch<SetStateAction<string>>;
@@ -49,9 +53,13 @@ export function RecruitmentCandidateDetailsModal({
   saving,
   convertAdmissionDate,
   uploadFile,
+  analysisDetails,
+  analysisLoading,
+  analysisError,
   onClose,
   onSaveCandidate,
   onUploadCandidateFile,
+  onReprocessCandidateAnalysis,
   onConvertCandidate,
   setCandidateDraft,
   setConvertAdmissionDate,
@@ -248,33 +256,20 @@ export function RecruitmentCandidateDetailsModal({
             </div>
 
             <div className="space-y-5">
-              <section className="rounded-xl border border-slate-200 bg-white p-4">
-                <h3 className="text-sm font-semibold text-slate-800">Triagem inicial com IA</h3>
-                <p className="mt-1 text-xs text-slate-500">
-                  Esta base já está preparada para receber a análise automática do currículo contra a descrição da vaga, com nota de aderência, parecer breve e relatório detalhado.
-                </p>
-                <div className="mt-4 space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <StatusBadge tone={aiStatusToneMap[candidate.aiStatus]}>{aiStatusLabel(candidate.aiStatus)}</StatusBadge>
-                    {candidate.aiScore !== null ? (
-                      <StatusBadge tone="border-blue-200 bg-blue-50 text-blue-700">{candidate.aiScore}/100</StatusBadge>
-                    ) : null}
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                    <p>Última análise: <span className="font-semibold text-slate-800">{formatDateTimeBr(candidate.aiLastAnalyzedAt)}</span></p>
-                    <p className="mt-1">Origem sistêmica: <span className="font-semibold text-slate-800">{sourceSystemLabel(candidate.sourceSystem)}</span></p>
-                    <p className="mt-1">ID externo da candidatura: <span className="font-semibold text-slate-800">{candidate.applicationExternalId || 'Ainda não vinculado'}</span></p>
-                  </div>
-                  <div className="rounded-lg border border-dashed border-slate-200 bg-white p-3 text-sm text-slate-500">
-                    A execução automática da IA entra nas próximas fases. Nesta etapa, deixamos o cadastro e a interface prontos para receber score, parecer e relatório sem quebrar o fluxo atual.
-                  </div>
-                </div>
-              </section>
+              <RecruitmentAiAnalysisSection
+                candidate={candidate}
+                analysisDetails={analysisDetails}
+                loading={analysisLoading}
+                error={analysisError}
+                canEdit={canEdit}
+                saving={saving}
+                onReprocess={onReprocessCandidateAnalysis}
+              />
 
               <section className="rounded-xl border border-slate-200 bg-white p-4">
                 <h3 className="text-sm font-semibold text-slate-800">Etapa com a gerência</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Quando o RH quiser avançar para a segunda fase, mova o candidato para “Com a gerência”. A integração com o painel executivo e a aprovação formal entram nas próximas fases.
+                  Quando o RH quiser avançar para a segunda fase, mova o candidato para “Com a gerência”. A aprovação formal e a conexão com o painel executivo entram na próxima etapa do plano.
                 </p>
                 <div className="mt-4 space-y-3">
                   <div className="flex flex-wrap gap-2">

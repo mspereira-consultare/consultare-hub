@@ -34,6 +34,7 @@ import { hasPermission } from '@/lib/permissions';
 import { RECRUITMENT_JOB_STATUSES } from '@/lib/recrutamento/constants';
 import type {
   RecruitmentCandidate,
+  RecruitmentCandidateAnalysisDetails,
   RecruitmentDashboard,
   RecruitmentIndeedBackfillInput,
   RecruitmentIndeedIntegrationInput,
@@ -152,6 +153,9 @@ export default function RecrutamentoPage() {
   const [candidateResumeInputKey, setCandidateResumeInputKey] = useState(0);
   const [selectedCandidateId, setSelectedCandidateId] = useState('');
   const [candidateDraft, setCandidateDraft] = useState<CandidateDraftState | null>(null);
+  const [candidateAnalysis, setCandidateAnalysis] = useState<RecruitmentCandidateAnalysisDetails | null>(null);
+  const [candidateAnalysisLoading, setCandidateAnalysisLoading] = useState(false);
+  const [candidateAnalysisError, setCandidateAnalysisError] = useState('');
   const [convertAdmissionDate, setConvertAdmissionDate] = useState(todaySaoPaulo());
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -196,9 +200,35 @@ export default function RecrutamentoPage() {
       .catch((fetchError) => setError(errorMessage(fetchError)));
   }, [loadData]);
 
+  const loadCandidateAnalysis = useCallback(async (candidateId: string) => {
+    const normalizedCandidateId = String(candidateId || '').trim();
+    if (!normalizedCandidateId) {
+      setCandidateAnalysis(null);
+      setCandidateAnalysisError('');
+      setCandidateAnalysisLoading(false);
+      return;
+    }
+    setCandidateAnalysisLoading(true);
+    setCandidateAnalysisError('');
+    try {
+      const payload = await fetchJson<{ status: string; data: RecruitmentCandidateAnalysisDetails }>(
+        `/api/admin/recrutamento/candidates/${encodeURIComponent(normalizedCandidateId)}/analysis`,
+      );
+      setCandidateAnalysis(payload.data);
+    } catch (fetchError: unknown) {
+      setCandidateAnalysis(null);
+      setCandidateAnalysisError(errorMessage(fetchError));
+    } finally {
+      setCandidateAnalysisLoading(false);
+    }
+  }, []);
+
   const closeCandidate = useCallback(() => {
     setSelectedCandidateId('');
     setCandidateDraft(null);
+    setCandidateAnalysis(null);
+    setCandidateAnalysisError('');
+    setCandidateAnalysisLoading(false);
     setUploadFile(null);
   }, []);
 
@@ -217,6 +247,16 @@ export default function RecrutamentoPage() {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [closeCandidate, selectedCandidateId]);
+
+  useEffect(() => {
+    if (!selectedCandidateId) {
+      setCandidateAnalysis(null);
+      setCandidateAnalysisError('');
+      setCandidateAnalysisLoading(false);
+      return;
+    }
+    void loadCandidateAnalysis(selectedCandidateId);
+  }, [loadCandidateAnalysis, selectedCandidateId]);
 
   const applyDashboard = (next: RecruitmentDashboard) => {
     setDashboard(next || emptyDashboard);
@@ -351,8 +391,33 @@ export default function RecrutamentoPage() {
         { method: 'POST', body: formData },
       );
       applyDashboard(payload.data);
+      await loadCandidateAnalysis(selectedCandidate.id);
       setUploadFile(null);
-      setNotice('Arquivo anexado ao candidato.');
+      setNotice('Arquivo anexado ao candidato. A triagem com IA foi atualizada na fila.');
+    } catch (fetchError: unknown) {
+      setError(errorMessage(fetchError));
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const reprocessCandidateAnalysis = async () => {
+    if (!canEdit || !selectedCandidate) return;
+    setSaving('candidate-ai');
+    setError('');
+    setNotice('');
+    try {
+      const payload = await fetchJson<{ status: string; data: RecruitmentCandidateAnalysisDetails }>(
+        `/api/admin/recrutamento/candidates/${encodeURIComponent(selectedCandidate.id)}/analysis`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force: true }),
+        },
+      );
+      setCandidateAnalysis(payload.data);
+      setNotice('Triagem com IA reenfileirada para este candidato.');
+      await loadData();
     } catch (fetchError: unknown) {
       setError(errorMessage(fetchError));
     } finally {
@@ -691,7 +756,7 @@ export default function RecrutamentoPage() {
                       className="w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-2 file:text-sm file:font-semibold file:text-slate-700"
                     />
                     <p className="mt-2 text-xs leading-5 text-slate-500">
-                      Anexe o CV já no cadastro. Ele ficará no processo seletivo e poderá ser usado futuramente para análise de aderência com IA.
+                      Anexe o CV já no cadastro. Ele ficará no processo seletivo e entrará automaticamente na fila da triagem inicial com IA quando o formato for suportado.
                     </p>
                   </div>
                 </Field>
@@ -717,9 +782,13 @@ export default function RecrutamentoPage() {
           saving={saving}
           convertAdmissionDate={convertAdmissionDate}
           uploadFile={uploadFile}
+          analysisDetails={candidateAnalysis}
+          analysisLoading={candidateAnalysisLoading}
+          analysisError={candidateAnalysisError}
           onClose={closeCandidate}
           onSaveCandidate={saveCandidate}
           onUploadCandidateFile={uploadCandidateFile}
+          onReprocessCandidateAnalysis={reprocessCandidateAnalysis}
           onConvertCandidate={convertCandidate}
           setCandidateDraft={setCandidateDraft}
           setConvertAdmissionDate={setConvertAdmissionDate}

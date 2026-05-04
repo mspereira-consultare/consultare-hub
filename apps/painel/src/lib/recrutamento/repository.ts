@@ -3,8 +3,12 @@ import { runInTransaction, type DbInterface } from '@/lib/db';
 import { EMPLOYEE_UNITS, type EmploymentRegime } from '@/lib/colaboradores/constants';
 import { createEmployee } from '@/lib/colaboradores/repository';
 import type {
+  RecruitmentAiAnalysis,
+  RecruitmentAiAnalysisJob,
+  RecruitmentAiAnalysisJobStatus,
   RecruitmentAiStatus,
   RecruitmentCandidate,
+  RecruitmentCandidateAnalysisDetails,
   RecruitmentCandidateFile,
   RecruitmentCandidateHistory,
   RecruitmentCandidateInput,
@@ -20,6 +24,8 @@ import type {
   RecruitmentDashboard,
   RecruitmentJob,
   RecruitmentJobStatus,
+  RecruitmentResumeExtraction,
+  RecruitmentResumeExtractionStatus,
   RecruitmentSourceSystem,
   RecruitmentSyncStatus,
 } from '@/lib/recrutamento/types';
@@ -78,6 +84,8 @@ const stages = new Set<RecruitmentCandidateStage>(['RECEBIDO', 'TRIAGEM', 'ENTRE
 const sourceSystems = new Set<RecruitmentSourceSystem>(['INTERNO', 'INDEED']);
 const syncStatuses = new Set<RecruitmentSyncStatus>(['NAO_CONFIGURADO', 'PENDENTE', 'SINCRONIZADO', 'ERRO']);
 const aiStatuses = new Set<RecruitmentAiStatus>(['NAO_ANALISADO', 'PENDENTE', 'ANALISANDO', 'CONCLUIDO', 'ERRO', 'NAO_SUPORTADO']);
+const aiAnalysisJobStatuses = new Set<RecruitmentAiAnalysisJobStatus>(['PENDING', 'RUNNING', 'COMPLETED', 'FAILED', 'UNSUPPORTED']);
+const resumeExtractionStatuses = new Set<RecruitmentResumeExtractionStatus>(['PENDING', 'EXTRAIDO', 'ERRO', 'NAO_SUPORTADO']);
 const managerReviewStatuses = new Set<RecruitmentManagerReviewStatus>(['NAO_ENVIADO', 'PENDENTE', 'APROVADO', 'DEVOLVIDO']);
 const indeedIntegrationModes = new Set<RecruitmentIndeedIntegrationMode>(['EMPREGADOR_DIRETO_XML', 'ATS_PARCEIRO_JOB_SYNC']);
 const indeedIntegrationStatuses = new Set<RecruitmentIndeedIntegrationStatus>(['INATIVA', 'CONFIGURACAO_PENDENTE', 'ATIVA', 'ERRO']);
@@ -111,6 +119,18 @@ const normalizeSyncStatus = (value: unknown): RecruitmentSyncStatus => {
 const normalizeAiStatus = (value: unknown): RecruitmentAiStatus => {
   const normalized = upper(value || 'NAO_ANALISADO') as RecruitmentAiStatus;
   if (!aiStatuses.has(normalized)) throw new RecruitmentValidationError('Status da análise de IA inválido.');
+  return normalized;
+};
+
+const normalizeAiAnalysisJobStatus = (value: unknown): RecruitmentAiAnalysisJobStatus => {
+  const normalized = upper(value || 'PENDING') as RecruitmentAiAnalysisJobStatus;
+  if (!aiAnalysisJobStatuses.has(normalized)) throw new RecruitmentValidationError('Status do job de IA inválido.');
+  return normalized;
+};
+
+const normalizeResumeExtractionStatus = (value: unknown): RecruitmentResumeExtractionStatus => {
+  const normalized = upper(value || 'PENDING') as RecruitmentResumeExtractionStatus;
+  if (!resumeExtractionStatuses.has(normalized)) throw new RecruitmentValidationError('Status da extração do currículo inválido.');
   return normalized;
 };
 
@@ -174,6 +194,17 @@ const normalizeNullableScore = (value: unknown) => {
   const score = Math.round(parsed);
   if (score < 0 || score > 100) throw new RecruitmentValidationError('A nota da análise de IA deve ficar entre 0 e 100.');
   return score;
+};
+
+const parseJsonArray = (value: unknown) => {
+  const raw = clean(value);
+  if (!raw) return [] as unknown[];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 };
 
 const hashPayload = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -371,6 +402,7 @@ export const ensureRecruitmentTables = async (db: DbInterface) => {
       id VARCHAR(64) PRIMARY KEY,
       candidate_id VARCHAR(64) NOT NULL,
       job_id VARCHAR(64) NOT NULL,
+      source_file_id VARCHAR(64) NULL,
       status VARCHAR(30) NOT NULL,
       prompt_version VARCHAR(40) NULL,
       model VARCHAR(80) NULL,
@@ -389,6 +421,7 @@ export const ensureRecruitmentTables = async (db: DbInterface) => {
       candidate_id VARCHAR(64) NOT NULL,
       job_id VARCHAR(64) NOT NULL,
       analysis_job_id VARCHAR(64) NULL,
+      source_file_id VARCHAR(64) NULL,
       model VARCHAR(80) NULL,
       schema_version VARCHAR(40) NULL,
       score INTEGER NULL,
@@ -443,6 +476,8 @@ export const ensureRecruitmentTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE recruitment_indeed_job_mappings ADD COLUMN last_error TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE recruitment_indeed_applications ADD COLUMN dedupe_key VARCHAR(255) NULL`);
   await safeAddColumn(db, `ALTER TABLE recruitment_indeed_applications ADD COLUMN last_error TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_ai_analysis_jobs ADD COLUMN source_file_id VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE recruitment_ai_analyses ADD COLUMN source_file_id VARCHAR(64) NULL`);
 
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_jobs_status ON recruitment_jobs (status)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_candidates_job ON recruitment_candidates (job_id)`);
@@ -460,7 +495,10 @@ export const ensureRecruitmentTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_indeed_applications_dedupe_key ON recruitment_indeed_applications (dedupe_key)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_resume_extractions_candidate ON recruitment_resume_extractions (candidate_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analysis_jobs_candidate ON recruitment_ai_analysis_jobs (candidate_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analysis_jobs_status ON recruitment_ai_analysis_jobs (status, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analysis_jobs_file ON recruitment_ai_analysis_jobs (source_file_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analyses_candidate ON recruitment_ai_analyses (candidate_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analyses_job ON recruitment_ai_analyses (analysis_job_id)`);
 
   tablesEnsured = true;
 };
@@ -517,6 +555,70 @@ const mapHistory = (row: DbRow): RecruitmentCandidateHistory => ({
   notes: clean(row.notes) || null,
   actorUserId: clean(row.actor_user_id),
   createdAt: clean(row.created_at),
+});
+
+const mapResumeExtraction = (row: DbRow): RecruitmentResumeExtraction => ({
+  id: clean(row.id),
+  candidateId: clean(row.candidate_id),
+  fileId: clean(row.file_id) || null,
+  extractionStatus: normalizeResumeExtractionStatus(row.extraction_status),
+  fileFormat: clean(row.file_format) || null,
+  extractedText: clean(row.extracted_text) || null,
+  qualityScore: row.quality_score === null || row.quality_score === undefined || String(row.quality_score).trim() === '' ? null : Number(row.quality_score),
+  fallbackUsed: clean(row.fallback_used) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const mapAiAnalysisJob = (row: DbRow): RecruitmentAiAnalysisJob => ({
+  id: clean(row.id),
+  candidateId: clean(row.candidate_id),
+  jobId: clean(row.job_id),
+  sourceFileId: clean(row.source_file_id) || null,
+  status: normalizeAiAnalysisJobStatus(row.status),
+  promptVersion: clean(row.prompt_version) || null,
+  model: clean(row.model) || null,
+  attempts: Number(row.attempts || 0),
+  requestedBy: clean(row.requested_by) || null,
+  lastError: clean(row.last_error) || null,
+  completedAt: clean(row.completed_at) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const mapAiAnalysis = (row: DbRow): RecruitmentAiAnalysis => ({
+  id: clean(row.id),
+  candidateId: clean(row.candidate_id),
+  jobId: clean(row.job_id),
+  analysisJobId: clean(row.analysis_job_id) || null,
+  sourceFileId: clean(row.source_file_id) || null,
+  model: clean(row.model) || null,
+  schemaVersion: clean(row.schema_version) || null,
+  score: row.score === null || row.score === undefined || String(row.score).trim() === '' ? null : Number(row.score),
+  shortVerdict: clean(row.short_verdict) || null,
+  detailedReport: clean(row.detailed_report) || null,
+  strengths: parseJsonArray(row.strengths_json).map((item) => clean(item)).filter(Boolean),
+  weaknesses: parseJsonArray(row.weaknesses_json).map((item) => clean(item)).filter(Boolean),
+  matchedRequirements: parseJsonArray(row.matched_requirements_json).map((item) => clean(item)).filter(Boolean),
+  missingRequirements: parseJsonArray(row.missing_requirements_json).map((item) => clean(item)).filter(Boolean),
+  risksOrGaps: parseJsonArray(row.risks_or_gaps_json).map((item) => clean(item)).filter(Boolean),
+  evidence: parseJsonArray(row.evidence_json)
+    .map((item) => {
+      if (!item || typeof item !== 'object') return null;
+      const payload = item as Record<string, unknown>;
+      const title = clean(payload.title);
+      const details = clean(payload.details);
+      if (!title && !details) return null;
+      return {
+        title: title || 'Evidência',
+        details: details || title,
+      };
+    })
+    .filter(Boolean) as RecruitmentAiAnalysis['evidence'],
+  recommendedNextStep: clean(row.recommended_next_step) || null,
+  rawResponseJson: cleanJsonPayload(row.raw_response_json),
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
 });
 
 const mapCandidate = (
@@ -689,6 +791,30 @@ const resolveAutomaticJobSyncStatus = async (db: DbInterface, payload: Payload, 
   const integrationStatus = normalizeIndeedIntegrationStatus(integrationRow.status);
   if (integrationStatus !== 'ATIVA') return existing ? normalizeSyncStatus(existing.sync_status || 'NAO_CONFIGURADO') : 'NAO_CONFIGURADO';
   return 'PENDENTE';
+};
+
+const getFileExtension = (value: string | null) => {
+  const raw = clean(value);
+  if (!raw.includes('.')) return '';
+  return raw.split('.').pop()?.toLowerCase() || '';
+};
+
+const resolveAiFileSupport = (file: { originalName?: string | null; mimeType?: string | null }) => {
+  const extension = getFileExtension(file.originalName || null);
+  const mimeType = clean(file.mimeType).toLowerCase();
+  if (extension === 'pdf' || mimeType === 'application/pdf') {
+    return { supported: true, fileFormat: 'PDF' };
+  }
+  if (
+    extension === 'docx' ||
+    mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  ) {
+    return { supported: true, fileFormat: 'DOCX' };
+  }
+  if (extension === 'doc' || mimeType === 'application/msword') {
+    return { supported: false, fileFormat: 'DOC' };
+  }
+  return { supported: false, fileFormat: extension ? extension.toUpperCase() : 'DESCONHECIDO' };
 };
 
 const upsertIndeedJobMappingRow = async (
@@ -1700,6 +1826,179 @@ export const updateRecruitmentCandidate = async (db: DbInterface, candidateId: s
   return listRecruitmentDashboard(db);
 };
 
+const queueRecruitmentAiAnalysisForFile = async (
+  db: DbInterface,
+  payload: {
+    candidateId: string;
+    jobId: string;
+    sourceFileId: string;
+    originalName: string;
+    mimeType: string;
+    actorUserId: string;
+    currentStage: RecruitmentCandidateStage;
+    force?: boolean;
+  },
+) => {
+  await ensureRecruitmentTables(db);
+  const support = resolveAiFileSupport({ originalName: payload.originalName, mimeType: payload.mimeType });
+  const now = NOW();
+
+  if (!support.supported) {
+    await db.execute(
+      `
+      INSERT INTO recruitment_resume_extractions (
+        id, candidate_id, file_id, extraction_status, file_format, extracted_text, quality_score, fallback_used, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        randomUUID(),
+        payload.candidateId,
+        payload.sourceFileId,
+        'NAO_SUPORTADO',
+        support.fileFormat,
+        null,
+        null,
+        null,
+        now,
+        now,
+      ],
+    );
+    await db.execute(
+      `UPDATE recruitment_candidates SET ai_status = ?, updated_at = ? WHERE id = ?`,
+      ['NAO_SUPORTADO', now, payload.candidateId],
+    );
+    await insertHistory(
+      db,
+      payload.candidateId,
+      'AI_ANALYSIS_UNSUPPORTED',
+      payload.actorUserId,
+      payload.currentStage,
+      payload.currentStage,
+      `Formato ${support.fileFormat} ainda não suportado para triagem automática.`,
+    );
+    return null;
+  }
+
+  const pendingRows = await db.query(
+    `
+    SELECT id FROM recruitment_ai_analysis_jobs
+    WHERE candidate_id = ?
+      AND source_file_id = ?
+      AND status IN ('PENDING', 'RUNNING')
+    ORDER BY created_at DESC
+    LIMIT 1
+    `,
+    [payload.candidateId, payload.sourceFileId],
+  );
+  if (pendingRows[0]) {
+    if (payload.force) {
+      throw new RecruitmentValidationError('Já existe uma triagem de IA em andamento para este currículo.');
+    }
+    return clean(pendingRows[0].id);
+  }
+
+  const jobId = randomUUID();
+  await db.execute(
+    `
+    INSERT INTO recruitment_ai_analysis_jobs (
+      id, candidate_id, job_id, source_file_id, status, prompt_version, model, attempts, requested_by, last_error, completed_at, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      jobId,
+      payload.candidateId,
+      payload.jobId,
+      payload.sourceFileId,
+      'PENDING',
+      'recruitment-triage-v1',
+      null,
+      0,
+      payload.actorUserId,
+      null,
+      null,
+      now,
+      now,
+    ],
+  );
+  await db.execute(
+    `UPDATE recruitment_candidates SET ai_status = ?, updated_at = ? WHERE id = ?`,
+    ['PENDENTE', now, payload.candidateId],
+  );
+  await insertHistory(
+    db,
+    payload.candidateId,
+    'AI_ANALYSIS_QUEUED',
+    payload.actorUserId,
+    payload.currentStage,
+    payload.currentStage,
+    `Triagem IA enfileirada para o arquivo ${payload.originalName}.`,
+  );
+  return jobId;
+};
+
+export const getRecruitmentCandidateAnalysisDetails = async (
+  db: DbInterface,
+  candidateId: string,
+): Promise<RecruitmentCandidateAnalysisDetails> => {
+  await ensureRecruitmentTables(db);
+  const candidateRows = await db.query(`SELECT id FROM recruitment_candidates WHERE id = ? LIMIT 1`, [candidateId]);
+  if (!candidateRows[0]) throw new RecruitmentValidationError('Candidato não encontrado.', 404);
+
+  const [jobRows, analysisRows, extractionRows] = await Promise.all([
+    db.query(`SELECT * FROM recruitment_ai_analysis_jobs WHERE candidate_id = ? ORDER BY created_at DESC LIMIT 1`, [candidateId]),
+    db.query(`SELECT * FROM recruitment_ai_analyses WHERE candidate_id = ? ORDER BY created_at DESC LIMIT 1`, [candidateId]),
+    db.query(`SELECT * FROM recruitment_resume_extractions WHERE candidate_id = ? ORDER BY created_at DESC LIMIT 1`, [candidateId]),
+  ]);
+
+  const latestJob = jobRows[0] ? mapAiAnalysisJob(jobRows[0]) : null;
+  const latestAnalysis = analysisRows[0] ? mapAiAnalysis(analysisRows[0]) : null;
+  const latestExtraction = extractionRows[0] ? mapResumeExtraction(extractionRows[0]) : null;
+  const relatedFileId = latestJob?.sourceFileId || latestAnalysis?.sourceFileId || latestExtraction?.fileId || null;
+  const latestFile = relatedFileId ? await getRecruitmentCandidateFileById(db, relatedFileId) : null;
+
+  return {
+    candidateId,
+    latestJob,
+    latestAnalysis,
+    latestExtraction,
+    latestFile,
+  };
+};
+
+export const enqueueRecruitmentCandidateAiAnalysis = async (
+  db: DbInterface,
+  candidateId: string,
+  actorUserId: string,
+  payload: { sourceFileId?: string | null; force?: boolean } = {},
+) => {
+  await ensureRecruitmentTables(db);
+  const candidateRows = await db.query(`SELECT id, job_id, stage FROM recruitment_candidates WHERE id = ? LIMIT 1`, [candidateId]);
+  const candidateRow = candidateRows[0];
+  if (!candidateRow) throw new RecruitmentValidationError('Candidato não encontrado.', 404);
+
+  const sourceFileId = clean(payload.sourceFileId) || null;
+  const fileRows = sourceFileId
+    ? await db.query(`SELECT * FROM recruitment_candidate_files WHERE id = ? AND candidate_id = ? LIMIT 1`, [sourceFileId, candidateId])
+    : await db.query(`SELECT * FROM recruitment_candidate_files WHERE candidate_id = ? ORDER BY created_at DESC LIMIT 1`, [candidateId]);
+  const fileRow = fileRows[0];
+  if (!fileRow) {
+    throw new RecruitmentValidationError('Anexe um currículo em PDF ou DOCX antes de solicitar a triagem com IA.');
+  }
+
+  await queueRecruitmentAiAnalysisForFile(db, {
+    candidateId,
+    jobId: clean(candidateRow.job_id),
+    sourceFileId: clean(fileRow.id),
+    originalName: clean(fileRow.original_name),
+    mimeType: clean(fileRow.mime_type),
+    actorUserId,
+    currentStage: upper(candidateRow.stage || 'RECEBIDO') as RecruitmentCandidateStage,
+    force: Boolean(payload.force),
+  });
+
+  return getRecruitmentCandidateAnalysisDetails(db, candidateId);
+};
+
 export const createRecruitmentCandidateFileRecord = async (
   db: DbInterface,
   candidateId: string,
@@ -1715,7 +2014,7 @@ export const createRecruitmentCandidateFileRecord = async (
   actorUserId: string,
 ) => {
   await ensureRecruitmentTables(db);
-  const rows = await db.query(`SELECT stage FROM recruitment_candidates WHERE id = ? LIMIT 1`, [candidateId]);
+  const rows = await db.query(`SELECT stage, job_id FROM recruitment_candidates WHERE id = ? LIMIT 1`, [candidateId]);
   const existing = rows[0];
   if (!existing) throw new RecruitmentValidationError('Candidato não encontrado.', 404);
   const fileId = randomUUID();
@@ -1739,6 +2038,15 @@ export const createRecruitmentCandidateFileRecord = async (
     ],
   );
   await insertHistory(db, candidateId, 'FILE_UPLOADED', actorUserId, upper(existing.stage) as RecruitmentCandidateStage, upper(existing.stage) as RecruitmentCandidateStage, payload.originalName);
+  await queueRecruitmentAiAnalysisForFile(db, {
+    candidateId,
+    jobId: clean(existing.job_id),
+    sourceFileId: fileId,
+    originalName: payload.originalName,
+    mimeType: payload.mimeType,
+    actorUserId,
+    currentStage: upper(existing.stage) as RecruitmentCandidateStage,
+  });
   return listRecruitmentDashboard(db);
 };
 

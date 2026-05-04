@@ -16,6 +16,8 @@ export type RecruitmentAiStatus = 'NAO_ANALISADO' | 'PENDENTE' | 'ANALISANDO' | 
 export type RecruitmentManagerReviewStatus = 'NAO_ENVIADO' | 'PENDENTE' | 'APROVADO' | 'DEVOLVIDO';
 export type RecruitmentIndeedIntegrationMode = 'EMPREGADOR_DIRETO_XML' | 'ATS_PARCEIRO_JOB_SYNC';
 export type RecruitmentIndeedIntegrationStatus = 'INATIVA' | 'CONFIGURACAO_PENDENTE' | 'ATIVA' | 'ERRO';
+export type RecruitmentAiAnalysisJobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'UNSUPPORTED';
+export type RecruitmentResumeExtractionStatus = 'PENDING' | 'EXTRAIDO' | 'ERRO' | 'NAO_SUPORTADO';
 
 export type RecruitmentJob = {
   id: string;
@@ -225,4 +227,69 @@ export type RecruitmentIndeedBackfillInput = {
   externalJobId?: string | null;
   externalJobKey?: string | null;
   notes?: string | null;
+};
+
+export type RecruitmentResumeExtraction = {
+  id: string;
+  candidateId: string;
+  fileId: string | null;
+  extractionStatus: RecruitmentResumeExtractionStatus;
+  fileFormat: string | null;
+  extractedText: string | null;
+  qualityScore: number | null;
+  fallbackUsed: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RecruitmentAiAnalysisJob = {
+  id: string;
+  candidateId: string;
+  jobId: string;
+  sourceFileId: string | null;
+  status: RecruitmentAiAnalysisJobStatus;
+  promptVersion: string | null;
+  model: string | null;
+  attempts: number;
+  requestedBy: string | null;
+  lastError: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RecruitmentAiEvidenceItem = {
+  title: string;
+  details: string;
+};
+
+export type RecruitmentAiAnalysis = {
+  id: string;
+  candidateId: string;
+  jobId: string;
+  analysisJobId: string | null;
+  sourceFileId: string | null;
+  model: string | null;
+  schemaVersion: string | null;
+  score: number | null;
+  shortVerdict: string | null;
+  detailedReport: string | null;
+  strengths: string[];
+  weaknesses: string[];
+  matchedRequirements: string[];
+  missingRequirements: string[];
+  risksOrGaps: string[];
+  evidence: RecruitmentAiEvidenceItem[];
+  recommendedNextStep: string | null;
+  rawResponseJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RecruitmentCandidateAnalysisDetails = {
+  candidateId: string;
+  latestJob: RecruitmentAiAnalysisJob | null;
+  latestAnalysis: RecruitmentAiAnalysis | null;
+  latestExtraction: RecruitmentResumeExtraction | null;
+  latestFile: RecruitmentCandidateFile | null;
 };

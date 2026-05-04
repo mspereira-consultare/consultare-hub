@@ -18,3 +18,4 @@ playwright
 # --- Storage / PDF ---
 boto3
 pypdf
+openai

@@ -72,6 +72,7 @@ try:
     from worker_payroll_point_import import process_pending_payroll_point_jobs_once
     from worker_marketing_funnel_google import process_pending_marketing_funnel_jobs_once
     from worker_clinia_ads import process_pending_clinia_ads_jobs_once
+    from worker_recruitment_ai import run_recruitment_ai_loop
     from worker_auth import FeegowTokenRenewer
     from worker_auth_clinia import CliniaCookieRenewer
     
@@ -1039,6 +1040,7 @@ def start_orchestrator():
         threading.Thread(target=run_monitor_recepcao_safe, name="MonRec", daemon=True),
         threading.Thread(target=run_monitor_medico_safe, name="MonMed", daemon=True),
         threading.Thread(target=run_clinia_safe, name="Clinia", daemon=True),
+        threading.Thread(target=run_recruitment_ai_loop, name="RecruitAI", daemon=True),
         threading.Thread(target=_run_serial_queue_executor, name="SerialQueue", daemon=True),
         threading.Thread(target=_run_repasse_job_dispatcher, name="RepasseDispatch", daemon=True),
         threading.Thread(target=run_watchdog, name="Watchdog", daemon=True),

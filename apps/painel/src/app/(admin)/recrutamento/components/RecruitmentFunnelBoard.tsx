@@ -4,6 +4,7 @@ import { ArrowRight, Loader2 } from 'lucide-react';
 import { RECRUITMENT_STAGES } from '@/lib/recrutamento/constants';
 import type { RecruitmentCandidate } from '@/lib/recrutamento/types';
 import {
+  aiStatusLabel,
   aiStatusToneMap,
   formatCpf,
   managerReviewLabel,
@@ -59,7 +60,9 @@ export function RecruitmentFunnelBoard({ candidates, loading, onOpenCandidate }:
                         <ArrowRight className="h-4 w-4 text-slate-300" />
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <StatusBadge tone={aiStatusToneMap[candidate.aiStatus]}>{candidate.aiScore !== null ? `${candidate.aiScore}/100` : 'IA pendente'}</StatusBadge>
+                        <StatusBadge tone={aiStatusToneMap[candidate.aiStatus]}>
+                          {candidate.aiScore !== null ? `${candidate.aiScore}/100` : aiStatusLabel(candidate.aiStatus)}
+                        </StatusBadge>
                         <StatusBadge tone={managerReviewToneMap[candidate.managerReviewStatus]}>
                           {candidate.stage === 'GERENCIA' ? 'Com a gerência' : managerReviewLabel(candidate.managerReviewStatus)}
                         </StatusBadge>
