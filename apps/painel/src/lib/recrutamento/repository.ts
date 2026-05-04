@@ -495,7 +495,7 @@ export const ensureRecruitmentTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_indeed_applications_dedupe_key ON recruitment_indeed_applications (dedupe_key)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_resume_extractions_candidate ON recruitment_resume_extractions (candidate_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analysis_jobs_candidate ON recruitment_ai_analysis_jobs (candidate_id)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analysis_jobs_status ON recruitment_ai_analysis_jobs (status, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analysis_jobs_status ON recruitment_ai_analysis_jobs (status)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analysis_jobs_file ON recruitment_ai_analysis_jobs (source_file_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analyses_candidate ON recruitment_ai_analyses (candidate_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recruitment_ai_analyses_job ON recruitment_ai_analyses (analysis_job_id)`);

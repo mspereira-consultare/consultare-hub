@@ -16,7 +16,6 @@ import {
 } from 'lucide-react';
 import { RecruitmentCandidateDetailsModal } from './components/RecruitmentCandidateDetailsModal';
 import { RecruitmentFunnelBoard } from './components/RecruitmentFunnelBoard';
-import { RecruitmentIndeedPanel } from './components/RecruitmentIndeedPanel';
 import {
   Field,
   fieldClassName,
@@ -36,9 +35,6 @@ import type {
   RecruitmentCandidate,
   RecruitmentCandidateAnalysisDetails,
   RecruitmentDashboard,
-  RecruitmentIndeedBackfillInput,
-  RecruitmentIndeedIntegrationInput,
-  RecruitmentIndeedSummary,
   RecruitmentJobStatus,
 } from '@/lib/recrutamento/types';
 
@@ -146,7 +142,6 @@ export default function RecrutamentoPage() {
   const canRefresh = hasPermission(permissions, 'recrutamento', 'refresh', role);
 
   const [dashboard, setDashboard] = useState<RecruitmentDashboard>(emptyDashboard);
-  const [indeedSummary, setIndeedSummary] = useState<RecruitmentIndeedSummary | null>(null);
   const [jobForm, setJobForm] = useState<JobFormState>(initialJobForm);
   const [candidateForm, setCandidateForm] = useState<CandidateFormState>(initialCandidateForm);
   const [candidateResumeFile, setCandidateResumeFile] = useState<File | null>(null);
@@ -177,12 +172,8 @@ export default function RecrutamentoPage() {
     setLoading(true);
     setError('');
     try {
-      const [dashboardPayload, indeedPayload] = await Promise.all([
-        fetchJson<{ status: string; data: RecruitmentDashboard }>('/api/admin/recrutamento'),
-        fetchJson<{ status: string; data: RecruitmentIndeedSummary }>('/api/admin/recrutamento/integrations/indeed'),
-      ]);
+      const dashboardPayload = await fetchJson<{ status: string; data: RecruitmentDashboard }>('/api/admin/recrutamento');
       setDashboard(dashboardPayload.data || emptyDashboard);
-      setIndeedSummary(indeedPayload.data || null);
       const firstJobId = dashboardPayload.data?.jobs?.[0]?.id || '';
       if (firstJobId) {
         setCandidateForm((current) => ({ ...current, jobId: current.jobId || firstJobId }));
@@ -263,10 +254,6 @@ export default function RecrutamentoPage() {
     if (selectedCandidateId && !next.candidates.some((candidate) => candidate.id === selectedCandidateId)) {
       closeCandidate();
     }
-  };
-
-  const applyIndeedSummary = (next: RecruitmentIndeedSummary | null) => {
-    setIndeedSummary(next);
   };
 
   const handleCreateJob = async (event: FormEvent) => {
@@ -450,60 +437,6 @@ export default function RecrutamentoPage() {
     }
   };
 
-  const saveIndeedIntegration = async (payload: RecruitmentIndeedIntegrationInput) => {
-    if (!canEdit) return;
-    setSaving('indeed-integration');
-    setError('');
-    setNotice('');
-    try {
-      const response = await fetchJson<{ status: string; data: RecruitmentIndeedSummary }>('/api/admin/recrutamento/integrations/indeed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      applyIndeedSummary(response.data);
-      setNotice('Integração com a Indeed salva.');
-      await loadData();
-    } catch (fetchError: unknown) {
-      setError(errorMessage(fetchError));
-    } finally {
-      setSaving('');
-    }
-  };
-
-  const runIndeedBackfill = async (payload: RecruitmentIndeedBackfillInput) => {
-    if (!canEdit) return;
-    const actionSavingKey =
-      payload.action === 'ASSOCIAR_VAGA'
-        ? 'indeed-backfill'
-        : payload.action === 'PUBLICAR_VAGA'
-          ? 'indeed-publish-job'
-          : 'indeed-publish-pending';
-    setSaving(actionSavingKey);
-    setError('');
-    setNotice('');
-    try {
-      const response = await fetchJson<{ status: string; data: RecruitmentIndeedSummary }>('/api/admin/recrutamento/indeed/backfill', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      applyIndeedSummary(response.data);
-      setNotice(
-        payload.action === 'ASSOCIAR_VAGA'
-          ? 'Backfill assistido registrado.'
-          : payload.action === 'PUBLICAR_VAGA'
-            ? 'Vaga publicada na operação da Indeed.'
-            : 'Vagas pendentes publicadas na operação da Indeed.',
-      );
-      await loadData();
-    } catch (fetchError: unknown) {
-      setError(errorMessage(fetchError));
-    } finally {
-      setSaving('');
-    }
-  };
-
   if (!canView) {
     return (
       <div className="mx-auto max-w-5xl p-8">
@@ -584,15 +517,6 @@ export default function RecrutamentoPage() {
         <SummaryCard label="Com a gerência" value={dashboard.summary.managerPendingCandidates} helper="Aguardando segunda etapa" />
         <SummaryCard label="Convertidos" value={dashboard.summary.convertedCandidates} helper="Já viraram pré-admissão" />
       </section>
-
-      <RecruitmentIndeedPanel
-        summary={indeedSummary}
-        jobs={dashboard.jobs}
-        canEdit={canEdit}
-        saving={saving}
-        onSaveIntegration={saveIndeedIntegration}
-        onRunBackfill={runIndeedBackfill}
-      />
 
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(360px,0.65fr)]">
         <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -706,7 +630,7 @@ export default function RecrutamentoPage() {
                   <textarea value={jobForm.notes} onChange={(event) => setJobForm((current) => ({ ...current, notes: event.target.value }))} className={textareaClassName} placeholder="Contexto rápido da vaga" />
                 </Field>
                 <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 p-3 text-xs leading-5 text-slate-500">
-                  As vagas já podem nascer prontas para publicação na Indeed. Descrição, requisitos e benefícios alimentam o backfill assistido e a feed XML desta fase.
+                  As vagas já podem nascer prontas para publicação na Indeed. Descrição, requisitos e benefícios alimentam a sincronização, que agora fica centralizada em Configurações.
                 </div>
                 <button type="submit" disabled={saving === 'job'} className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60">
                   {saving === 'job' ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
