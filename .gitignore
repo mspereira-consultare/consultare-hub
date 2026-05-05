@@ -43,6 +43,11 @@ workers/_debug*
 # vercel
 .vercel
 
+# venv
+.venv/
+venv/
+env/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

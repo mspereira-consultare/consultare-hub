@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertCircle, Download, Eye, Loader2, MessageSquareText, Wallet } from 'lucide-react';
+import { AlertCircle, AlertTriangle, Download, Eye, Loader2, MessageSquareText, Wallet } from 'lucide-react';
 import { StatusBadge } from './StatusBadge';
 import { RepassesDivergenceBadge } from './RepassesDivergenceBadge';
 
@@ -30,6 +30,10 @@ type ProfessionalSummary = {
   produtividadeValue: number;
   percentualProdutividadeValue: number;
   totalFinalValue: number;
+  duplicateAttendanceCaseCount: number;
+  duplicateAttendanceQty: number;
+  duplicateAttendanceValue: number;
+  hasPossibleDuplicateAttendances: boolean;
   hasRepasseFinalOverride: boolean;
   lastProcessedAt: string | null;
   errorMessage: string | null;
@@ -286,7 +290,11 @@ export function ProfessionalSummaryTable({
                 <tr
                   key={item.professionalId}
                   className={`border-t text-slate-700 hover:bg-slate-50 ${
-                    item.hasDivergencia ? 'bg-rose-50/40' : ''
+                    item.hasDivergencia
+                      ? 'bg-rose-50/40'
+                      : item.hasPossibleDuplicateAttendances
+                        ? 'bg-amber-50/30'
+                        : ''
                   }`}
                   onDoubleClick={() => onOpenDetails(item)}
                   title="Duplo clique para abrir detalhes"
@@ -317,6 +325,17 @@ export function ProfessionalSummaryTable({
                       >
                         <AlertCircle size={12} />
                         <span className="max-w-[180px] truncate">{item.errorMessage}</span>
+                      </div>
+                    ) : null}
+                    {item.hasPossibleDuplicateAttendances ? (
+                      <div
+                        className="mt-1 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
+                        title={`Possível duplicidade operacional: ${item.duplicateAttendanceCaseCount} caso(s), ${item.duplicateAttendanceQty} lançamento(s), total ${currency(item.duplicateAttendanceValue)}.`}
+                      >
+                        <AlertTriangle size={12} />
+                        <span>
+                          Possível duplicidade{item.duplicateAttendanceCaseCount > 1 ? ` (${item.duplicateAttendanceCaseCount})` : ''}
+                        </span>
                       </div>
                     ) : null}
                   </td>
@@ -406,7 +425,7 @@ export function ProfessionalSummaryTable({
                     )}
                   </td>
                   <td className="px-1.5 py-1 text-center">
-                    {item.note || item.paymentMinimumText ? (
+                    {item.note || item.paymentMinimumText || item.hasPossibleDuplicateAttendances ? (
                       <div className="inline-flex items-center justify-center gap-1">
                         {item.note ? (
                           <span
@@ -422,6 +441,14 @@ export function ProfessionalSummaryTable({
                             title={item.paymentMinimumText}
                           >
                             <Wallet size={14} />
+                          </span>
+                        ) : null}
+                        {item.hasPossibleDuplicateAttendances ? (
+                          <span
+                            className="inline-flex items-center justify-center rounded-md border border-amber-300 bg-amber-50 p-1 text-amber-700"
+                            title={`Possível duplicidade operacional: ${item.duplicateAttendanceQty} lançamento(s) em ${item.duplicateAttendanceCaseCount} caso(s).`}
+                          >
+                            <AlertTriangle size={14} />
                           </span>
                         ) : null}
                       </div>

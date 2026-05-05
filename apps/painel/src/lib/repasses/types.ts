@@ -180,6 +180,10 @@ export type RepasseConsolidacaoProfessionalSummary = {
   produtividadeValue: number;
   percentualProdutividadeValue: number;
   totalFinalValue: number;
+  duplicateAttendanceCaseCount: number;
+  duplicateAttendanceQty: number;
+  duplicateAttendanceValue: number;
+  hasPossibleDuplicateAttendances: boolean;
   hasRepasseFinalOverride: boolean;
   lastProcessedAt: string | null;
   errorMessage: string | null;
@@ -286,6 +290,8 @@ export type RepasseAConferirMainRow = {
   hasMatch: boolean;
   matchRule: RepasseAConferirMatchRule;
   matchConfidence: RepasseAConferirMatchConfidence;
+  duplicateAttendanceCount: number;
+  hasPossibleDuplicateAttendance: boolean;
   expandedItems: RepasseAConferirExpandedItem[];
 };
 

@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Loader2, MessageSquareText, Save, X } from 'lucide-react';
+import { AlertTriangle, ChevronDown, ChevronRight, Loader2, MessageSquareText, Save, X } from 'lucide-react';
 import type {
   RepasseAConferirMainRow,
   RepasseConsolidacaoLineMarkColor,
@@ -59,6 +59,10 @@ type ProfessionalSummary = {
   produtividadeValue: number;
   percentualProdutividadeValue: number;
   totalFinalValue: number;
+  duplicateAttendanceCaseCount: number;
+  duplicateAttendanceQty: number;
+  duplicateAttendanceValue: number;
+  hasPossibleDuplicateAttendances: boolean;
   hasRepasseFinalOverride: boolean;
   lastProcessedAt: string | null;
   errorMessage: string | null;
@@ -340,9 +344,15 @@ export function ProfessionalDetailsModal({
                     mainRows.map((row) => {
                       const isExpanded = Boolean(expandedByRow[row.rowKey]);
                       const mark = marksByRowHash[row.rowKey] || null;
+                      const rowHighlightClass = mark
+                        ? markRowClass(mark)
+                        : row.hasPossibleDuplicateAttendance
+                          ? 'bg-amber-50/40'
+                          : '';
+
                       return (
                         <Fragment key={row.rowKey}>
-                          <tr className={`border-t text-slate-700 ${markRowClass(mark)}`}>
+                          <tr className={`border-t text-slate-700 ${rowHighlightClass}`}>
                             <td className="px-2 py-1.5 text-center">
                               <button
                                 type="button"
@@ -353,7 +363,20 @@ export function ProfessionalDetailsModal({
                               </button>
                             </td>
                             <td className="px-2 py-1.5">{toBrDate(row.executionDate)}</td>
-                            <td className="px-2 py-1.5">{row.patientName || '-'}</td>
+                            <td className="px-2 py-1.5">
+                              <div>{row.patientName || '-'}</div>
+                              {row.hasPossibleDuplicateAttendance ? (
+                                <div
+                                  className="mt-1 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
+                                  title={`Possível duplicidade operacional: ${row.duplicateAttendanceCount} lançamentos com o mesmo paciente, data e procedimento.`}
+                                >
+                                  <AlertTriangle size={12} />
+                                  <span>
+                                    Possível duplicidade{row.duplicateAttendanceCount > 1 ? ` (${row.duplicateAttendanceCount})` : ''}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </td>
                             <td className="px-2 py-1.5">{row.unitName || '-'}</td>
                             <td className="px-2 py-1.5">{row.procedureName || '-'}</td>
                             <td className="px-2 py-1.5">{row.specialtyName || '-'}</td>

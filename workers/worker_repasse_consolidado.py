@@ -177,7 +177,22 @@ def _parse_date(value: str) -> str:
     return f"{yyyy}-{mm}-{dd}"
 
 
-def _parse_table_rows(headers: List[str], rows_matrix: List[List[str]]) -> List[Dict]:
+def _extract_invoice_id_from_html(raw_html: str) -> str:
+    html = str(raw_html or "")
+    if not html:
+        return ""
+    for pattern in (
+        r"[?&]I=(\d+)",
+        r'value=["\'](\d+)\|',
+        r"#(\d{3,})",
+    ):
+        match = re.search(pattern, html, flags=re.IGNORECASE)
+        if match:
+            return str(match.group(1) or "").strip()
+    return ""
+
+
+def _parse_table_rows(headers: List[str], row_payloads: List[Dict]) -> List[Dict]:
     normalized_headers = [_normalize_text(h) for h in headers]
 
     def _idx_for(candidates: List[str]) -> int:
@@ -198,14 +213,26 @@ def _parse_table_rows(headers: List[str], rows_matrix: List[List[str]]) -> List[
         raise RuntimeError(f"Colunas esperadas nao encontradas na tabela: {headers}")
 
     out: List[Dict] = []
-    for cells in rows_matrix:
+    for payload in row_payloads:
+        cells = list(payload.get("cells") or [])
+        row_html = str(payload.get("row_html") or "")
+        cells_html = list(payload.get("cells_html") or [])
+
         def _cell(i: int) -> str:
             if i < 0 or i >= len(cells):
                 return ""
             return re.sub(r"\s+", " ", str(cells[i] or "")).strip()
 
+        invoice_id = _extract_invoice_id_from_html(row_html)
+        if not invoice_id:
+            for cell_html in cells_html:
+                invoice_id = _extract_invoice_id_from_html(cell_html)
+                if invoice_id:
+                    break
+
         out.append(
             {
+                "invoice_id": invoice_id,
                 "data_exec_raw": _cell(idx_data),
                 "data_exec": _parse_date(_cell(idx_data)),
                 "paciente": _cell(idx_paciente),
@@ -280,11 +307,17 @@ def _extract_table_rows(page) -> List[Dict]:
             if (!dt) return { headers, rows: null };
             const rows = dt.rows({ search: 'applied' }).data().toArray().map((row) => {
               const arr = Array.isArray(row) ? row : Object.values(row || {});
-              return arr.map((cell) => {
+              const htmls = arr.map((cell) => String(cell ?? ''));
+              const texts = htmls.map((cell) => {
                 const div = document.createElement('div');
-                div.innerHTML = String(cell ?? '');
+                div.innerHTML = cell;
                 return String(div.textContent || '').replace(/\\s+/g, ' ').trim();
               });
+              return {
+                cells: texts,
+                cells_html: htmls,
+                row_html: htmls.join(' ')
+              };
             });
             return { headers, rows };
           } catch (e) {
@@ -296,11 +329,11 @@ def _extract_table_rows(page) -> List[Dict]:
 
     if dt_data and isinstance(dt_data, dict):
         headers = dt_data.get("headers") or []
-        rows_matrix = dt_data.get("rows")
-        if headers and rows_matrix is not None:
-            if not rows_matrix:
+        row_payloads = dt_data.get("rows")
+        if headers and row_payloads is not None:
+            if not row_payloads:
                 return []
-            return _parse_table_rows(headers, rows_matrix)
+            return _parse_table_rows(headers, row_payloads)
 
     content = page.content()
     soup = BeautifulSoup(content, "html.parser")
@@ -321,18 +354,24 @@ def _extract_table_rows(page) -> List[Dict]:
         raise RuntimeError("Tabela de repasses nao encontrada apos busca.")
 
     headers = [re.sub(r"\s+", " ", th.get_text(" ", strip=True)) for th in table.select("thead th")]
-    rows_matrix: List[List[str]] = []
+    row_payloads: List[Dict] = []
     for tr in table.select("tbody tr"):
         if tr.select_one("td.dataTables_empty"):
             continue
         tds = tr.find_all("td")
         if not tds:
             continue
-        rows_matrix.append([re.sub(r"\s+", " ", td.get_text(" ", strip=True)).strip() for td in tds])
+        row_payloads.append(
+            {
+                "cells": [re.sub(r"\s+", " ", td.get_text(" ", strip=True)).strip() for td in tds],
+                "cells_html": [str(td) for td in tds],
+                "row_html": str(tr),
+            }
+        )
 
-    if not rows_matrix:
+    if not row_payloads:
         return []
-    return _parse_table_rows(headers, rows_matrix)
+    return _parse_table_rows(headers, row_payloads)
 
 
 def _ensure_repasse_tables(db: "DatabaseManager"):
@@ -399,6 +438,7 @@ def _ensure_repasse_tables(db: "DatabaseManager"):
               period_ref VARCHAR(7) NOT NULL,
               professional_id VARCHAR(64) NOT NULL,
               professional_name VARCHAR(180) NOT NULL,
+              invoice_id VARCHAR(64),
               data_exec VARCHAR(32) NOT NULL,
               paciente VARCHAR(180) NOT NULL,
               descricao VARCHAR(255) NOT NULL,
@@ -413,6 +453,7 @@ def _ensure_repasse_tables(db: "DatabaseManager"):
             )
             """
         )
+        _ensure_column(conn, "feegow_repasse_consolidado", "invoice_id", "VARCHAR(64)")
         _ensure_index(conn, "feegow_repasse_consolidado", "idx_repasse_consolidado_period_prof", "period_ref, professional_id")
         _ensure_index(conn, "feegow_repasse_consolidado", "idx_repasse_consolidado_data_exec", "data_exec")
 
@@ -701,10 +742,12 @@ def _upsert_professional_rows(
         )
 
         for row in rows:
+            invoice_id = str(row.get("invoice_id") or "").strip()
             hash_base = "|".join(
                 [
                     period_ref,
                     professional_id,
+                    invoice_id,
                     str(row.get("data_exec") or ""),
                     str(row.get("paciente") or ""),
                     str(row.get("descricao") or ""),
@@ -718,14 +761,15 @@ def _upsert_professional_rows(
             conn.execute(
                 """
                 INSERT INTO feegow_repasse_consolidado (
-                  id, period_ref, professional_id, professional_name, data_exec, paciente,
+                  id, period_ref, professional_id, professional_name, invoice_id, data_exec, paciente,
                   descricao, funcao, convenio, repasse_value, source_row_hash, is_active,
                   last_job_id, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(source_row_hash) DO UPDATE SET
                   period_ref = excluded.period_ref,
                   professional_id = excluded.professional_id,
                   professional_name = excluded.professional_name,
+                  invoice_id = excluded.invoice_id,
                   data_exec = excluded.data_exec,
                   paciente = excluded.paciente,
                   descricao = excluded.descricao,
@@ -741,6 +785,7 @@ def _upsert_professional_rows(
                     period_ref,
                     professional_id,
                     professional_name,
+                    invoice_id or None,
                     row.get("data_exec") or "",
                     row.get("paciente") or "",
                     row.get("descricao") or "",

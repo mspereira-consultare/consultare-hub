@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
-import { AlertCircle, FileText, Loader2, RefreshCw, Users } from "lucide-react";
+import { AlertCircle, CircleHelp, FileText, Loader2, RefreshCw, Users } from "lucide-react";
 import { hasPermission } from "@/lib/permissions";
 import { isRepassesModuleEnabledClient } from "@/lib/repasses/feature";
 import type {
@@ -12,6 +12,7 @@ import type {
 } from "@/lib/repasses/types";
 import { JobHistoryTable } from "./components/JobHistoryTable";
 import { ProfessionalDetailsModal } from "./components/ProfessionalDetailsModal";
+import { RepassesHelpModal } from "./components/RepassesHelpModal";
 import { ProfessionalSummaryTable } from "./components/ProfessionalSummaryTable";
 import { RepassesFiltersPanel } from "./components/RepassesFiltersPanel";
 import { JobQueueHeartbeat } from "@/components/JobQueueHeartbeat";
@@ -58,6 +59,10 @@ type ProfessionalSummary = {
   produtividadeValue: number;
   percentualProdutividadeValue: number;
   totalFinalValue: number;
+  duplicateAttendanceCaseCount: number;
+  duplicateAttendanceQty: number;
+  duplicateAttendanceValue: number;
+  hasPossibleDuplicateAttendances: boolean;
   hasRepasseFinalOverride: boolean;
   lastProcessedAt: string | null;
   errorMessage: string | null;
@@ -159,6 +164,7 @@ export default function RepassesPage() {
   const [selectingAll, setSelectingAll] = useState(false);
   const [showRefreshHistoryModal, setShowRefreshHistoryModal] = useState(false);
   const [showPdfHistoryModal, setShowPdfHistoryModal] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const [syncJobs, setSyncJobs] = useState<JobRow[]>([]);
   const [consolidacaoJobs, setConsolidacaoJobs] = useState<JobRow[]>([]);
@@ -678,6 +684,8 @@ export default function RepassesPage() {
             hasMatch: row.detailStatus !== "SEM_CORRESPONDENCIA",
             matchRule: "PATIENT_DATE",
             matchConfidence: "LOW",
+            duplicateAttendanceCount: 1,
+            hasPossibleDuplicateAttendance: false,
             expandedItems: [
               {
                 specialtyName: row.specialtyName || "",
@@ -1030,6 +1038,15 @@ export default function RepassesPage() {
 
           <button
             type="button"
+            onClick={() => setHelpOpen(true)}
+            className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
+          >
+            <CircleHelp size={14} />
+            Como funciona
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowRefreshHistoryModal(true)}
             className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
           >
@@ -1192,6 +1209,8 @@ export default function RepassesPage() {
           void saveLegend(true);
         }}
       />
+
+      <RepassesHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       {showRefreshHistoryModal && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4">
