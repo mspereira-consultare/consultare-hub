@@ -1022,76 +1022,119 @@ def _apply_repasse_filters(page):
     _debug("filtros multiselect aplicados: " + ", ".join(parts))
 
 
-def _fill_filters(page, date_from_br: str, date_to_br: str):
-    _debug(f"iniciando preenchimento de filtros | De={date_from_br} Ate={date_to_br}")
-    _debug_read_filter_state(page, "before_fill")
-    _apply_repasse_filters(page)
+def _dismiss_page_overlays(page):
+    try:
+        refuse = page.locator("#pushActionRefuse")
+        if refuse.count() > 0 and refuse.first.is_visible():
+            refuse.first.click(timeout=2000)
+            page.wait_for_timeout(150)
+    except Exception:
+        pass
 
-    de_selector = "#De:visible" if page.locator("#De:visible").count() > 0 else "#De"
-    ate_selector = "#Ate:visible" if page.locator("#Ate:visible").count() > 0 else "#Ate"
+    try:
+        page.evaluate(
+            """
+            () => {
+              try {
+                const refuse = document.querySelector('#pushActionRefuse');
+                if (refuse) refuse.click();
+              } catch (e) {}
 
-    de_input = page.locator(de_selector).first
-    ate_input = page.locator(ate_selector).first
+              document.querySelectorAll('#beamerPushModal, .pushModal').forEach((el) => {
+                el.classList.remove('active');
+                el.setAttribute('aria-hidden', 'true');
+                el.style.display = 'none';
+                el.style.visibility = 'hidden';
+                el.style.pointerEvents = 'none';
+              });
 
-    de_input.click()
-    page.keyboard.press("Control+a")
-    page.keyboard.type(date_from_br, delay=30)
-    de_input.dispatch_event("change")
-    page.wait_for_timeout(100)
+              if (window.$ && typeof window.$ === 'function') {
+                try {
+                  window.$('.date-picker').datepicker('hide');
+                } catch (e) {}
+              }
 
-    ate_input.click()
-    page.keyboard.press("Control+a")
-    page.keyboard.type(date_to_br, delay=30)
-    ate_input.dispatch_event("change")
-    page.wait_for_timeout(100)
+              document.querySelectorAll('.datepicker.dropdown-menu').forEach((el) => {
+                el.style.display = 'none';
+                el.style.visibility = 'hidden';
+                el.style.pointerEvents = 'none';
+              });
 
-    ok = page.evaluate(
+              if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                document.activeElement.blur();
+              }
+            }
+            """
+        )
+    except Exception:
+        pass
+
+    try:
+        page.keyboard.press("Escape")
+    except Exception:
+        pass
+
+    page.wait_for_timeout(150)
+
+
+def _set_date_range(page, date_from_br: str, date_to_br: str):
+    result = page.evaluate(
         """
         ({de, ate}) => {
-          const findVisible = (sel) => {
-            const all = Array.from(document.querySelectorAll(sel));
-            for (const el of all) {
-              const style = window.getComputedStyle(el);
-              const visible = style && style.display !== 'none' && style.visibility !== 'hidden';
-              if (visible) return el;
+          const setDate = (selector, value) => {
+            const el = document.querySelector(selector);
+            if (!el) return { ok: false, value: '' };
+
+            el.value = value;
+            el.setAttribute('value', value);
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.dispatchEvent(new Event('blur', { bubbles: true }));
+
+            if (window.$ && typeof window.$ === 'function') {
+              try { window.$(el).datepicker('update', value); } catch (e) {}
+              try { window.$(el).datepicker('hide'); } catch (e) {}
             }
-            return all[0] || null;
+
+            return { ok: true, value: String(el.value || '') };
           };
-          const deEl = findVisible('#De');
-          const ateEl = findVisible('#Ate');
-          if (deEl) {
-            deEl.value = de;
-            deEl.dispatchEvent(new Event('input', { bubbles: true }));
-            deEl.dispatchEvent(new Event('change', { bubbles: true }));
-            deEl.dispatchEvent(new Event('blur', { bubbles: true }));
+
+          const deState = setDate('#De', de);
+          const ateState = setDate('#Ate', ate);
+
+          document.querySelectorAll('.datepicker.dropdown-menu').forEach((el) => {
+            el.style.display = 'none';
+            el.style.visibility = 'hidden';
+            el.style.pointerEvents = 'none';
+          });
+
+          if (document.activeElement && typeof document.activeElement.blur === 'function') {
+            document.activeElement.blur();
           }
-          if (ateEl) {
-            ateEl.value = ate;
-            ateEl.dispatchEvent(new Event('input', { bubbles: true }));
-            ateEl.dispatchEvent(new Event('change', { bubbles: true }));
-            ateEl.dispatchEvent(new Event('blur', { bubbles: true }));
-          }
-          return {
-            okDe: !!deEl,
-            okAte: !!ateEl,
-            deValue: deEl ? String(deEl.value || '') : '',
-            ateValue: ateEl ? String(ateEl.value || '') : '',
-          };
+
+          return { deState, ateState };
         }
         """,
         {"de": date_from_br, "ate": date_to_br},
     )
 
-    page.locator("body").click(force=True)
-    page.wait_for_timeout(300)
-
-    if not ok or not ok.get("okDe") or not ok.get("okAte"):
+    de_state = (result or {}).get("deState") or {}
+    ate_state = (result or {}).get("ateState") or {}
+    if not de_state.get("ok") or not ate_state.get("ok"):
         raise RuntimeError("Nao foi possivel preencher os campos de data do relatorio.")
 
-    if str(ok.get("deValue") or "").strip() != date_from_br or str(ok.get("ateValue") or "").strip() != date_to_br:
+    if str(de_state.get("value") or "").strip() != date_from_br or str(ate_state.get("value") or "").strip() != date_to_br:
         raise RuntimeError(
-            f"Datas nao aplicadas corretamente. De='{ok.get('deValue')}' Ate='{ok.get('ateValue')}'"
+            f"Datas nao aplicadas corretamente. De='{de_state.get('value')}' Ate='{ate_state.get('value')}'"
         )
+
+
+def _fill_filters(page, date_from_br: str, date_to_br: str):
+    _debug(f"iniciando preenchimento de filtros | De={date_from_br} Ate={date_to_br}")
+    _debug_read_filter_state(page, "before_fill")
+    _apply_repasse_filters(page)
+    _set_date_range(page, date_from_br, date_to_br)
+    _dismiss_page_overlays(page)
 
     print(f"Datas aplicadas: De={date_from_br} Ate={date_to_br}")
     _debug_read_filter_state(page, "after_fill")
@@ -1099,6 +1142,8 @@ def _fill_filters(page, date_from_br: str, date_to_br: str):
 
 
 def _click_search(page):
+    _dismiss_page_overlays(page)
+
     clicked_locator = None
     for selector in [
         "button.btn.btn-ms.btn-primary:has-text('Buscar')",
@@ -1281,9 +1326,31 @@ def _process_job(job: Dict):
 
     with sync_playwright() as p:
         headless = str(os.getenv("PLAYWRIGHT_HEADLESS", "1")).strip().lower() in ("1", "true", "yes")
-        browser = p.chromium.launch(headless=headless)
+        browser = p.chromium.launch(
+            headless=headless,
+            args=["--disable-notifications"],
+        )
         context = browser.new_context()
         page = context.new_page()
+        page.add_init_script(
+            """
+            (() => {
+              try {
+                if (window.Notification) {
+                  try {
+                    Object.defineProperty(window.Notification, 'permission', {
+                      configurable: true,
+                      get: () => 'denied'
+                    });
+                  } catch (e) {}
+                  try {
+                    window.Notification.requestPermission = () => Promise.resolve('denied');
+                  } catch (e) {}
+                }
+              } catch (e) {}
+            })();
+            """
+        )
 
         try:
             _login_feegow(page)
