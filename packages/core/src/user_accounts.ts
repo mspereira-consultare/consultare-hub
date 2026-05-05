@@ -9,6 +9,7 @@ const NOW = () => new Date().toISOString().slice(0, 19).replace('T', ' ');
 const clean = (value: unknown) => String(value ?? '').trim();
 const upper = (value: unknown) => clean(value).toUpperCase();
 const lower = (value: unknown) => clean(value).toLowerCase();
+const textTypes = new Set(['tinytext', 'text', 'mediumtext', 'longtext']);
 
 const USERNAME_IGNORED_PARTICLES = new Set(['da', 'das', 'de', 'do', 'dos', 'e']);
 const SIMPLE_PASSWORD_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
@@ -66,6 +67,46 @@ const safeAddColumn = async (db: DbInterface, sql: string) => {
     const code = String(error?.code || '');
     if (code === 'ER_DUP_FIELDNAME' || /Duplicate column name/i.test(msg)) return;
     throw error;
+  }
+};
+
+const isMysqlProvider = () => {
+  const provider = clean(process.env.DB_PROVIDER).toLowerCase();
+  if (provider === 'mysql') return true;
+  if (provider === 'turso') return false;
+  return Boolean(process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL);
+};
+
+const ensureMysqlColumnDefinition = async (
+  db: DbInterface,
+  tableName: string,
+  columnName: string,
+  definitionSql: string,
+) => {
+  if (!isMysqlProvider()) return;
+
+  const rows = await db.query(
+    `
+      SELECT DATA_TYPE as data_type, COLUMN_TYPE as column_type
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = ?
+        AND column_name = ?
+      LIMIT 1
+    `,
+    [tableName, columnName],
+  );
+
+  const row = rows?.[0] as any;
+  if (!row) return;
+
+  const dataType = clean(row.data_type).toLowerCase();
+  const currentType = clean(row.column_type).toLowerCase();
+  const targetType = clean(definitionSql).toLowerCase();
+
+  if (currentType === targetType) return;
+  if (textTypes.has(dataType) || !currentType.startsWith(targetType.split(' ')[0])) {
+    await db.execute(`ALTER TABLE ${tableName} MODIFY COLUMN ${columnName} ${definitionSql}`);
   }
 };
 
@@ -209,11 +250,14 @@ export const ensureUserAccountTables = async (db: DbInterface) => {
       password_encrypted TEXT NOT NULL,
       status VARCHAR(30) NOT NULL,
       generated_by VARCHAR(64) NULL,
-      generated_at TEXT NOT NULL,
-      shown_at TEXT NULL,
-      superseded_at TEXT NULL
+      generated_at VARCHAR(32) NOT NULL,
+      shown_at VARCHAR(32) NULL,
+      superseded_at VARCHAR(32) NULL
     )
   `);
+  await ensureMysqlColumnDefinition(db, 'employee_portal_access_credentials', 'generated_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'employee_portal_access_credentials', 'shown_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'employee_portal_access_credentials', 'superseded_at', 'VARCHAR(32) NULL');
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_access_credentials_employee ON employee_portal_access_credentials (employee_id, generated_at)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_access_credentials_user ON employee_portal_access_credentials (user_id, generated_at)`);
   credentialTablesEnsured = true;
