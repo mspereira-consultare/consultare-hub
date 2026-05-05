@@ -184,6 +184,9 @@ export type RepasseConsolidacaoProfessionalSummary = {
   duplicateAttendanceQty: number;
   duplicateAttendanceValue: number;
   hasPossibleDuplicateAttendances: boolean;
+  zeroRepasseQty: number;
+  zeroRepasseValue: number;
+  hasZeroRepasseAlert: boolean;
   hasRepasseFinalOverride: boolean;
   lastProcessedAt: string | null;
   errorMessage: string | null;
@@ -292,6 +295,7 @@ export type RepasseAConferirMainRow = {
   matchConfidence: RepasseAConferirMatchConfidence;
   duplicateAttendanceCount: number;
   hasPossibleDuplicateAttendance: boolean;
+  hasZeroRepasseAlert: boolean;
   expandedItems: RepasseAConferirExpandedItem[];
 };
 

@@ -63,6 +63,9 @@ type ProfessionalSummary = {
   duplicateAttendanceQty: number;
   duplicateAttendanceValue: number;
   hasPossibleDuplicateAttendances: boolean;
+  zeroRepasseQty: number;
+  zeroRepasseValue: number;
+  hasZeroRepasseAlert: boolean;
   hasRepasseFinalOverride: boolean;
   lastProcessedAt: string | null;
   errorMessage: string | null;
@@ -686,6 +689,8 @@ export default function RepassesPage() {
             matchConfidence: "LOW",
             duplicateAttendanceCount: 1,
             hasPossibleDuplicateAttendance: false,
+            hasZeroRepasseAlert:
+              Math.abs((row.origin === "consolidado" ? Number(row.attendanceValue || 0) : Number(row.detailRepasseValue || 0)) - 0.01) < 0.0001,
             expandedItems: [
               {
                 specialtyName: row.specialtyName || "",

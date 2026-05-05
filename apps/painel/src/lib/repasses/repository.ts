@@ -761,6 +761,13 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       totalValue: number;
     }
   >();
+  const zeroRepasseByProfessional = new Map<
+    string,
+    {
+      rowsCount: number;
+      totalValue: number;
+    }
+  >();
   const consolidadoTotalsByProfessional = new Map<
     string,
     {
@@ -871,6 +878,31 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
         caseCount: Number((row as any).duplicate_case_count) || 0,
         rowsCount: Number((row as any).duplicate_rows_count) || 0,
         totalValue: Number((row as any).duplicate_total_value) || 0,
+      });
+    }
+
+    const zeroRepasseRows = await db.query(
+      `
+      SELECT
+        professional_id,
+        COUNT(*) as zero_repasse_rows_count,
+        COALESCE(SUM(detail_repasse_value), 0) as zero_repasse_total_value
+      FROM feegow_repasse_a_conferir
+      WHERE period_ref = ?
+        AND is_active = 1
+        AND professional_id IN (${placeholders})
+        AND ABS(COALESCE(detail_repasse_value, 0) - 0.01) < 0.0001
+        ${lineFilterClauses.length ? `AND ${lineFilterClauses.join(' AND ')}` : ''}
+      GROUP BY professional_id
+      `,
+      [periodRef, ...professionalIds, ...lineFilterParams]
+    );
+    for (const row of zeroRepasseRows) {
+      const id = clean((row as any).professional_id);
+      if (!id) continue;
+      zeroRepasseByProfessional.set(id, {
+        rowsCount: Number((row as any).zero_repasse_rows_count) || 0,
+        totalValue: Number((row as any).zero_repasse_total_value) || 0,
       });
     }
 
@@ -1052,6 +1084,10 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       rowsCount: 0,
       totalValue: 0,
     };
+    const zeroRepasse = zeroRepasseByProfessional.get(professionalId) || {
+      rowsCount: 0,
+      totalValue: 0,
+    };
 
     return {
       professionalId,
@@ -1082,6 +1118,9 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
       duplicateAttendanceQty: duplicateAttendance.rowsCount,
       duplicateAttendanceValue: duplicateAttendance.totalValue,
       hasPossibleDuplicateAttendances: duplicateAttendance.caseCount > 0,
+      zeroRepasseQty: zeroRepasse.rowsCount,
+      zeroRepasseValue: zeroRepasse.totalValue,
+      hasZeroRepasseAlert: zeroRepasse.rowsCount > 0,
       hasRepasseFinalOverride: repasseFinalOverride !== null,
       lastProcessedAt: latest?.updatedAt || null,
       errorMessage: status === 'ERROR' ? latest?.errorMessage || null : null,
@@ -2871,6 +2910,9 @@ export const listRepasseAConferirLinesByProfessional = async (
       ...entry,
       convenio: entry.convenio || baseConvenio,
     }));
+    const hasZeroRepasseAlert =
+      Math.abs((Number((row as any).repasse_value) || 0) - 0.01) < 0.0001 ||
+      expandedItems.some((entry) => Math.abs((Number(entry.detailRepasseValue) || 0) - 0.01) < 0.0001);
 
     mainRows.push({
       rowKey,
@@ -2889,6 +2931,7 @@ export const listRepasseAConferirLinesByProfessional = async (
       matchConfidence,
       duplicateAttendanceCount,
       hasPossibleDuplicateAttendance: duplicateAttendanceCount > 1,
+      hasZeroRepasseAlert,
       expandedItems,
     });
   }

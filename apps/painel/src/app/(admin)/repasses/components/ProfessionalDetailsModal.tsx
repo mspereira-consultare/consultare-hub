@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useMemo, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronRight, Loader2, MessageSquareText, Save, X } from 'lucide-react';
+import { AlertCircle, AlertTriangle, ChevronDown, ChevronRight, Loader2, MessageSquareText, Save, X } from 'lucide-react';
 import type {
   RepasseAConferirMainRow,
   RepasseConsolidacaoLineMarkColor,
@@ -63,6 +63,9 @@ type ProfessionalSummary = {
   duplicateAttendanceQty: number;
   duplicateAttendanceValue: number;
   hasPossibleDuplicateAttendances: boolean;
+  zeroRepasseQty: number;
+  zeroRepasseValue: number;
+  hasZeroRepasseAlert: boolean;
   hasRepasseFinalOverride: boolean;
   lastProcessedAt: string | null;
   errorMessage: string | null;
@@ -348,7 +351,9 @@ export function ProfessionalDetailsModal({
                         ? markRowClass(mark)
                         : row.hasPossibleDuplicateAttendance
                           ? 'bg-amber-50/40'
-                          : '';
+                          : row.hasZeroRepasseAlert
+                            ? 'bg-sky-50/40'
+                            : '';
 
                       return (
                         <Fragment key={row.rowKey}>
@@ -374,6 +379,15 @@ export function ProfessionalDetailsModal({
                                   <span>
                                     Possível duplicidade{row.duplicateAttendanceCount > 1 ? ` (${row.duplicateAttendanceCount})` : ''}
                                   </span>
+                                </div>
+                              ) : null}
+                              {row.hasZeroRepasseAlert ? (
+                                <div
+                                  className="mt-1 inline-flex items-center gap-1 rounded border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700"
+                                  title="Alerta operacional: há item com valor de repasse igual a R$ 0,01."
+                                >
+                                  <AlertCircle size={12} />
+                                  <span>Repasse R$ 0,01</span>
                                 </div>
                               ) : null}
                             </td>

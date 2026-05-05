@@ -34,6 +34,9 @@ type ProfessionalSummary = {
   duplicateAttendanceQty: number;
   duplicateAttendanceValue: number;
   hasPossibleDuplicateAttendances: boolean;
+  zeroRepasseQty: number;
+  zeroRepasseValue: number;
+  hasZeroRepasseAlert: boolean;
   hasRepasseFinalOverride: boolean;
   lastProcessedAt: string | null;
   errorMessage: string | null;
@@ -294,7 +297,9 @@ export function ProfessionalSummaryTable({
                       ? 'bg-rose-50/40'
                       : item.hasPossibleDuplicateAttendances
                         ? 'bg-amber-50/30'
-                        : ''
+                        : item.hasZeroRepasseAlert
+                          ? 'bg-sky-50/35'
+                          : ''
                   }`}
                   onDoubleClick={() => onOpenDetails(item)}
                   title="Duplo clique para abrir detalhes"
@@ -336,6 +341,15 @@ export function ProfessionalSummaryTable({
                         <span>
                           Possível duplicidade{item.duplicateAttendanceCaseCount > 1 ? ` (${item.duplicateAttendanceCaseCount})` : ''}
                         </span>
+                      </div>
+                    ) : null}
+                    {item.hasZeroRepasseAlert ? (
+                      <div
+                        className="mt-1 inline-flex items-center gap-1 rounded border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700"
+                        title={`Alerta operacional: ${item.zeroRepasseQty} lançamento(s) com valor de repasse igual a R$ 0,01. Total ${currency(item.zeroRepasseValue)}.`}
+                      >
+                        <AlertCircle size={12} />
+                        <span>Repasse R$ 0,01</span>
                       </div>
                     ) : null}
                   </td>
@@ -425,7 +439,7 @@ export function ProfessionalSummaryTable({
                     )}
                   </td>
                   <td className="px-1.5 py-1 text-center">
-                    {item.note || item.paymentMinimumText || item.hasPossibleDuplicateAttendances ? (
+                    {item.note || item.paymentMinimumText || item.hasPossibleDuplicateAttendances || item.hasZeroRepasseAlert ? (
                       <div className="inline-flex items-center justify-center gap-1">
                         {item.note ? (
                           <span
@@ -449,6 +463,14 @@ export function ProfessionalSummaryTable({
                             title={`Possível duplicidade operacional: ${item.duplicateAttendanceQty} lançamento(s) em ${item.duplicateAttendanceCaseCount} caso(s), com mesmo paciente, data, procedimento e valor de repasse.`}
                           >
                             <AlertTriangle size={14} />
+                          </span>
+                        ) : null}
+                        {item.hasZeroRepasseAlert ? (
+                          <span
+                            className="inline-flex items-center justify-center rounded-md border border-sky-300 bg-sky-50 p-1 text-sky-700"
+                            title={`Alerta operacional: ${item.zeroRepasseQty} lançamento(s) com repasse de R$ 0,01.`}
+                          >
+                            <AlertCircle size={14} />
                           </span>
                         ) : null}
                       </div>
