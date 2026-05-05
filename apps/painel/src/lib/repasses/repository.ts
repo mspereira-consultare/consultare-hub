@@ -340,6 +340,14 @@ const buildConsolidadoMatchKey = (
   procedureName: unknown
 ): string => `${normalizeBrDate(executionDate)}|${normalizeTextKey(patientName)}|${normalizeTextKey(procedureName)}`;
 
+const buildDuplicateAttendanceKey = (
+  executionDate: unknown,
+  patientName: unknown,
+  procedureName: unknown,
+  repasseValue: unknown
+): string =>
+  `${normalizeBrDate(executionDate)}|${normalizeTextKey(patientName)}|${normalizeTextKey(procedureName)}|${Number(repasseValue) || 0}`;
+
 const buildPatientDateMatchKey = (executionDate: unknown, patientName: unknown): string =>
   `${normalizeBrDate(executionDate)}|${normalizeTextKey(patientName)}`;
 
@@ -841,6 +849,7 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
           execution_date,
           patient_name,
           procedure_name,
+          detail_repasse_value,
           COUNT(*) as rows_count,
           COALESCE(SUM(detail_repasse_value), 0) as total_value
         FROM feegow_repasse_a_conferir
@@ -848,7 +857,7 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
           AND is_active = 1
           AND professional_id IN (${placeholders})
           ${lineFilterClauses.length ? `AND ${lineFilterClauses.join(' AND ')}` : ''}
-        GROUP BY professional_id, execution_date, patient_name, procedure_name
+        GROUP BY professional_id, execution_date, patient_name, procedure_name, detail_repasse_value
         HAVING COUNT(*) > 1
       ) duplicated
       GROUP BY professional_id
@@ -2809,10 +2818,18 @@ export const listRepasseAConferirLinesByProfessional = async (
   };
 
   const mainRows: RepasseAConferirMainRow[] = [];
-  const consolidadoCountByFullKey = new Map<string, number>();
+  const duplicateAttendanceCountByKey = new Map<string, number>();
   for (const row of consolidadoRows) {
-    const fullKey = buildConsolidadoMatchKey((row as any).data_exec, (row as any).paciente, (row as any).descricao);
-    consolidadoCountByFullKey.set(fullKey, (consolidadoCountByFullKey.get(fullKey) || 0) + 1);
+    const duplicateKey = buildDuplicateAttendanceKey(
+      (row as any).data_exec,
+      (row as any).paciente,
+      (row as any).descricao,
+      (row as any).repasse_value
+    );
+    duplicateAttendanceCountByKey.set(
+      duplicateKey,
+      (duplicateAttendanceCountByKey.get(duplicateKey) || 0) + 1
+    );
   }
 
   for (const row of consolidadoRows) {
@@ -2839,7 +2856,15 @@ export const listRepasseAConferirLinesByProfessional = async (
       stableHash64(
         `${periodRef}|${professionalId}|${invoiceId}|${clean((row as any).data_exec)}|${clean((row as any).paciente)}|${clean((row as any).descricao)}|${Number((row as any).repasse_value) || 0}`
       );
-    const duplicateAttendanceCount = consolidadoCountByFullKey.get(fullKey) || 0;
+    const duplicateAttendanceCount =
+      duplicateAttendanceCountByKey.get(
+        buildDuplicateAttendanceKey(
+          (row as any).data_exec,
+          (row as any).paciente,
+          (row as any).descricao,
+          (row as any).repasse_value
+        )
+      ) || 0;
 
     const baseConvenio = clean((row as any).convenio);
     const expandedItems = (mergedGroup?.expandedItems || []).map((entry) => ({

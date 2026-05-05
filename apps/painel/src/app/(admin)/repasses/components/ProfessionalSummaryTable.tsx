@@ -330,7 +330,7 @@ export function ProfessionalSummaryTable({
                     {item.hasPossibleDuplicateAttendances ? (
                       <div
                         className="mt-1 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
-                        title={`Possível duplicidade operacional: ${item.duplicateAttendanceCaseCount} caso(s), ${item.duplicateAttendanceQty} lançamento(s), total ${currency(item.duplicateAttendanceValue)}.`}
+                        title={`Possível duplicidade operacional: ${item.duplicateAttendanceCaseCount} caso(s), ${item.duplicateAttendanceQty} lançamento(s) com mesmo paciente, data, procedimento e valor de repasse. Total ${currency(item.duplicateAttendanceValue)}.`}
                       >
                         <AlertTriangle size={12} />
                         <span>
@@ -446,7 +446,7 @@ export function ProfessionalSummaryTable({
                         {item.hasPossibleDuplicateAttendances ? (
                           <span
                             className="inline-flex items-center justify-center rounded-md border border-amber-300 bg-amber-50 p-1 text-amber-700"
-                            title={`Possível duplicidade operacional: ${item.duplicateAttendanceQty} lançamento(s) em ${item.duplicateAttendanceCaseCount} caso(s).`}
+                            title={`Possível duplicidade operacional: ${item.duplicateAttendanceQty} lançamento(s) em ${item.duplicateAttendanceCaseCount} caso(s), com mesmo paciente, data, procedimento e valor de repasse.`}
                           >
                             <AlertTriangle size={14} />
                           </span>

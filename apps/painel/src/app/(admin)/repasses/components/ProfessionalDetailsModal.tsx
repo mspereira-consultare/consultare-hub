@@ -368,7 +368,7 @@ export function ProfessionalDetailsModal({
                               {row.hasPossibleDuplicateAttendance ? (
                                 <div
                                   className="mt-1 inline-flex items-center gap-1 rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700"
-                                  title={`Possível duplicidade operacional: ${row.duplicateAttendanceCount} lançamentos com o mesmo paciente, data e procedimento.`}
+                                  title={`Possível duplicidade operacional: ${row.duplicateAttendanceCount} lançamentos com o mesmo paciente, data, procedimento e valor de repasse.`}
                                 >
                                   <AlertTriangle size={12} />
                                   <span>
