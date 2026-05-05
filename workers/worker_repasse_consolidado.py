@@ -40,6 +40,9 @@ STATUS_PARTIAL = "PARTIAL"
 ITEM_SUCCESS = "SUCCESS"
 ITEM_NO_DATA = "NO_DATA"
 ITEM_ERROR = "ERROR"
+DEFAULT_RETRY_ATTEMPTS = max(1, int(os.getenv("REPASSE_RETRY_ATTEMPTS", "3") or "3"))
+SEARCH_RESULT_TIMEOUT_MS = max(30000, int(os.getenv("REPASSE_SEARCH_TIMEOUT_MS", "60000") or "60000"))
+SEARCH_PROCESSING_TIMEOUT_MS = max(5000, int(os.getenv("REPASSE_PROCESSING_TIMEOUT_MS", "20000") or "20000"))
 
 
 def _now_iso() -> str:
@@ -1131,7 +1134,7 @@ def _click_search(page):
               return false;
             }
             """,
-            timeout=40000,
+            timeout=SEARCH_RESULT_TIMEOUT_MS,
         )
 
         page.wait_for_function(
@@ -1143,12 +1146,59 @@ def _click_search(page):
               return style.display === 'none' || style.visibility === 'hidden';
             }
             """,
-            timeout=15000,
+            timeout=SEARCH_PROCESSING_TIMEOUT_MS,
         )
     except Exception:
         _debug_dump_page(page, "search_timeout")
         raise
     page.wait_for_timeout(700)
+
+
+def _looks_like_login_screen(page) -> bool:
+    if "login" in (page.url or "").lower():
+        return True
+    try:
+        if page.locator("input[name='User']").count() > 0:
+            return True
+        if page.locator("input[name='password']").count() > 0:
+            return True
+        if page.locator("input[type='password']").count() > 0 and page.locator("input[type='email']").count() > 0:
+            return True
+    except Exception:
+        return True
+    return False
+
+
+def _has_required_screen_elements(page) -> bool:
+    required = ("#De", "#Ate")
+    for selector in required:
+        try:
+            if page.locator(selector).count() == 0:
+                return False
+        except Exception:
+            return False
+    try:
+        has_professional_filter = page.locator("select#AccountID").count() > 0 or page.locator("#select2-AccountID-container").count() > 0
+    except Exception:
+        return False
+    return has_professional_filter
+
+
+def _recover_session_and_filters(page, date_from_br: str, date_to_br: str) -> Dict[str, str]:
+    _debug("tentando recuperar sessão do repasse...")
+    _login_feegow(page)
+    _open_repasse_screen(page)
+    _fill_filters(page, date_from_br, date_to_br)
+    return _build_professional_option_map(page)
+
+
+def _ensure_ready_for_professional(page):
+    if _looks_like_login_screen(page):
+        raise RuntimeError("sessao invalida: tela de login detectada")
+    if "RepassesConferidos" not in (page.url or ""):
+        raise RuntimeError("sessao invalida: tela de repasses não está aberta")
+    if not _has_required_screen_elements(page):
+        raise RuntimeError("tela invalida: filtros obrigatórios não encontrados")
 
 
 def _login_feegow(page):
@@ -1249,105 +1299,108 @@ def _process_job(job: Dict):
                 started = time.time()
                 display_name = professional_name.strip()
                 normalized_name = _normalize_professional_label(display_name)
-                option_value = option_map.get(normalized_name)
+                final_error = ""
+                succeeded = False
 
-                if not option_value:
-                    err = "Profissional nao encontrado no filtro do Feegow."
-                    _save_job_item(
-                        db,
-                        job_id,
-                        professional_id,
-                        display_name,
-                        ITEM_ERROR,
-                        0,
-                        Decimal("0"),
-                        err,
-                        int((time.time() - started) * 1000),
-                    )
-                    any_error = True
-                    print(f"[{idx}/{len(professionals)}] ERRO {display_name}: {err}")
-                    continue
+                for attempt in range(1, DEFAULT_RETRY_ATTEMPTS + 1):
+                    try:
+                        _ensure_ready_for_professional(page)
+                        option_value = option_map.get(normalized_name)
+                        if not option_value:
+                            option_map = _build_professional_option_map(page)
+                            option_value = option_map.get(normalized_name)
 
-                try:
-                    _select_professional(page, option_value)
-                    _click_search(page)
-                    rows = _extract_table_rows(page)
-                    total_value = sum((row.get("repasse_value") or Decimal("0")) for row in rows)
+                        if not option_value:
+                            raise RuntimeError("Profissional nao encontrado no filtro do Feegow.")
 
-                    if rows:
-                        _upsert_professional_rows(
-                            db=db,
-                            job_id=job_id,
-                            period_ref=period_ref,
-                            professional_id=professional_id,
-                            professional_name=display_name,
-                            rows=rows,
+                        _select_professional(page, option_value)
+                        _click_search(page)
+                        rows = _extract_table_rows(page)
+                        total_value = sum((row.get("repasse_value") or Decimal("0")) for row in rows)
+
+                        if rows:
+                            _upsert_professional_rows(
+                                db=db,
+                                job_id=job_id,
+                                period_ref=period_ref,
+                                professional_id=professional_id,
+                                professional_name=display_name,
+                                rows=rows,
+                            )
+                            _save_job_item(
+                                db,
+                                job_id,
+                                professional_id,
+                                display_name,
+                                ITEM_SUCCESS,
+                                len(rows),
+                                total_value,
+                                "",
+                                int((time.time() - started) * 1000),
+                            )
+                            any_success = True
+                            print(f"[{idx}/{len(professionals)}] OK {display_name}: linhas={len(rows)} total={float(total_value):.2f}")
+                        else:
+                            _upsert_professional_rows(
+                                db=db,
+                                job_id=job_id,
+                                period_ref=period_ref,
+                                professional_id=professional_id,
+                                professional_name=display_name,
+                                rows=[],
+                            )
+                            _save_job_item(
+                                db,
+                                job_id,
+                                professional_id,
+                                display_name,
+                                ITEM_NO_DATA,
+                                0,
+                                Decimal("0"),
+                                "",
+                                int((time.time() - started) * 1000),
+                            )
+                            any_success = True
+                            print(f"[{idx}/{len(professionals)}] NO_DATA {display_name}")
+
+                        succeeded = True
+                        break
+                    except PlaywrightTimeoutError as e:
+                        final_error = f"Timeout no scraping: {e}"
+                    except Exception as e:
+                        final_error = str(e)
+
+                    if attempt < DEFAULT_RETRY_ATTEMPTS:
+                        print(
+                            f"[{idx}/{len(professionals)}] aviso {display_name}: tentativa {attempt}/{DEFAULT_RETRY_ATTEMPTS} falhou ({final_error}). Recuperando sessão..."
                         )
-                        _save_job_item(
-                            db,
-                            job_id,
-                            professional_id,
-                            display_name,
-                            ITEM_SUCCESS,
-                            len(rows),
-                            total_value,
-                            "",
-                            int((time.time() - started) * 1000),
-                        )
-                        any_success = True
-                        print(f"[{idx}/{len(professionals)}] OK {display_name}: linhas={len(rows)} total={float(total_value):.2f}")
+                        try:
+                            option_map = _recover_session_and_filters(page, date_from_br, date_to_br)
+                        except Exception as recover_error:
+                            final_error = f"{final_error} | recovery_failed={recover_error}"
+                            print(
+                                f"[{idx}/{len(professionals)}] aviso {display_name}: falha ao recuperar sessão ({recover_error})."
+                            )
                     else:
-                        _upsert_professional_rows(
-                            db=db,
-                            job_id=job_id,
-                            period_ref=period_ref,
-                            professional_id=professional_id,
-                            professional_name=display_name,
-                            rows=[],
-                        )
                         _save_job_item(
                             db,
                             job_id,
                             professional_id,
                             display_name,
-                            ITEM_NO_DATA,
+                            ITEM_ERROR,
                             0,
                             Decimal("0"),
-                            "",
+                            final_error,
                             int((time.time() - started) * 1000),
                         )
-                        any_success = True
-                        print(f"[{idx}/{len(professionals)}] NO_DATA {display_name}")
-                except PlaywrightTimeoutError as e:
-                    err = f"Timeout no scraping: {e}"
-                    _save_job_item(
-                        db,
-                        job_id,
-                        professional_id,
-                        display_name,
-                        ITEM_ERROR,
-                        0,
-                        Decimal("0"),
-                        err,
-                        int((time.time() - started) * 1000),
-                    )
-                    any_error = True
-                    print(f"[{idx}/{len(professionals)}] ERRO {display_name}: timeout")
-                except Exception as e:
-                    err = str(e)
-                    _save_job_item(
-                        db,
-                        job_id,
-                        professional_id,
-                        display_name,
-                        ITEM_ERROR,
-                        0,
-                        Decimal("0"),
-                        err,
-                        int((time.time() - started) * 1000),
-                    )
-                    any_error = True
-                    print(f"[{idx}/{len(professionals)}] ERRO {display_name}: {err}")
+                        any_error = True
+                        if "timeout" in final_error.lower():
+                            print(f"[{idx}/{len(professionals)}] ERRO {display_name}: timeout")
+                        else:
+                            print(f"[{idx}/{len(professionals)}] ERRO {display_name}: {final_error}")
+
+                if not succeeded:
+                    continue
 
         finally:
             try:
