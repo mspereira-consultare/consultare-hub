@@ -1212,6 +1212,8 @@ def _parse_parent_row(tr) -> Optional[Dict]:
 
 def _status_from_text(status_text: str) -> str:
     norm = _normalize_text(status_text)
+    if "NAO CONSOLID" in norm:
+        return "NAO_CONSOLIDADO"
     if "NAO RECEB" in norm:
         return "NAO_RECEBIDO"
     if "CONSOLID" in norm:

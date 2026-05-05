@@ -792,8 +792,8 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
         COALESCE(SUM(detail_repasse_value), 0) as total_value,
         COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) = 'CONSOLIDADO' THEN 1 ELSE 0 END), 0) as consolidado_qty,
         COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) = 'CONSOLIDADO' THEN detail_repasse_value ELSE 0 END), 0) as consolidado_value,
-        COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) IN ('OUTRO', 'SEM_DETALHE') THEN 1 ELSE 0 END), 0) as nao_consolidado_qty,
-        COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) IN ('OUTRO', 'SEM_DETALHE') THEN detail_repasse_value ELSE 0 END), 0) as nao_consolidado_value,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) IN ('NAO_CONSOLIDADO', 'OUTRO', 'SEM_DETALHE') THEN 1 ELSE 0 END), 0) as nao_consolidado_qty,
+        COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) IN ('NAO_CONSOLIDADO', 'OUTRO', 'SEM_DETALHE') THEN detail_repasse_value ELSE 0 END), 0) as nao_consolidado_value,
         COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) = 'NAO_RECEBIDO' THEN 1 ELSE 0 END), 0) as nao_recebido_qty,
         COALESCE(SUM(CASE WHEN UPPER(COALESCE(detail_status, '')) = 'NAO_RECEBIDO' THEN detail_repasse_value ELSE 0 END), 0) as nao_recebido_value
       FROM feegow_repasse_a_conferir
