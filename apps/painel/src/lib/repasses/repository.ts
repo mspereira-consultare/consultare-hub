@@ -1076,7 +1076,7 @@ const loadRepasseConsolidacaoProfessionalSummaries = async (
         : Number(manual.produtividadeValue) || 0;
     const repasseFinalValue = repasseFinalOverride === null ? consolidadoTotals.totalValue : repasseFinalOverride;
     const percentualProdutividadeValue = produtividadeValue * 0.05;
-    const totalFinalValue = repasseFinalValue + produtividadeValue + percentualProdutividadeValue;
+    const totalFinalValue = repasseFinalValue + percentualProdutividadeValue;
     const duplicateAttendance = duplicateAttendanceByProfessional.get(professionalId) || {
       caseCount: 0,
       rowsCount: 0,
@@ -3203,7 +3203,7 @@ export const getRepasseConsolidacaoFinancialBreakdown = async (
       ? 0
       : Number(manual.produtividadeValue) || 0;
   const percentualProdutividadeValue = produtividadeValue * 0.05;
-  const totalFinalValue = repasseFinalValue + produtividadeValue + percentualProdutividadeValue;
+  const totalFinalValue = repasseFinalValue + percentualProdutividadeValue;
 
   return {
     producaoQty,
@@ -3294,7 +3294,7 @@ export const upsertRepasseConsolidacaoFinancialInput = async (
   const effectiveProdutividade =
     produtividadeValue === null || produtividadeValue === undefined ? 0 : produtividadeValue;
   const percentualProdutividadeValue = effectiveProdutividade * 0.05;
-  const totalFinalValue = effectiveRepasseFinal + effectiveProdutividade + percentualProdutividadeValue;
+  const totalFinalValue = effectiveRepasseFinal + percentualProdutividadeValue;
 
   return {
     periodRef,

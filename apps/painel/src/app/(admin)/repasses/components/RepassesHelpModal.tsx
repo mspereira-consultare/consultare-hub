@@ -73,7 +73,7 @@ const columnGuides = [
   {
     title: 'Cálculo final',
     description:
-      'Exibe repasse final, produtividade, 5% da produtividade e total final. É a área de fechamento financeiro do profissional.',
+      'Exibe repasse final, produtividade, 5% da produtividade e total final. Nesta tela, o total final segue a regra: repasse final + 5% da produtividade.',
   },
   {
     title: 'Controle',

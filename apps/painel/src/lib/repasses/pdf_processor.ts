@@ -210,7 +210,7 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
       borderWidth: 1,
     });
     page.drawText(
-      `Repasse final: ${toCurrency(payload.financial.repasseFinalValue)} | Produtividade: ${toCurrency(payload.financial.produtividadeValue)} | 5%: ${toCurrency(payload.financial.percentualProdutividadeValue)}`,
+      `Repasse final: ${toCurrency(payload.financial.repasseFinalValue)} | Produtividade: ${toCurrency(payload.financial.produtividadeValue)} | 5%: ${toCurrency(payload.financial.percentualProdutividadeValue)} | Total = Repasse final + 5%`,
       {
         x: tableLeft + 5,
         y: summaryTop - 10,
