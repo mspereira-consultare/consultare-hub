@@ -2167,7 +2167,7 @@ export const listRepasseConsolidatedLinesByProfessional = async (
     WHERE period_ref = ?
       AND professional_id = ?
       AND is_active = 1
-    ORDER BY ${getDateExpr('data_exec')} ASC, paciente ASC, invoice_id ASC
+    ORDER BY data_exec ASC, paciente ASC, invoice_id ASC
     `,
     [periodRef, professionalId]
   );
