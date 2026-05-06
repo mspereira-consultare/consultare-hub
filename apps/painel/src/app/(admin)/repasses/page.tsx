@@ -2,16 +2,18 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
-import { AlertCircle, CircleHelp, FileText, Loader2, RefreshCw, Users } from "lucide-react";
+import { AlertCircle, CircleHelp, Download, FileText, Loader2, RefreshCw, Users } from "lucide-react";
 import { hasPermission } from "@/lib/permissions";
 import { isRepassesModuleEnabledClient } from "@/lib/repasses/feature";
 import type {
   RepasseAConferirMainRow,
   RepasseConsolidacaoLineMarkColor,
   RepasseConsolidacaoMarkLegend,
+  RepassePdfFilenameMode,
 } from "@/lib/repasses/types";
 import { JobHistoryTable } from "./components/JobHistoryTable";
 import { ProfessionalDetailsModal } from "./components/ProfessionalDetailsModal";
+import { RepassePdfDownloadModal } from "./components/RepassePdfDownloadModal";
 import { RepassesHelpModal } from "./components/RepassesHelpModal";
 import { ProfessionalSummaryTable } from "./components/ProfessionalSummaryTable";
 import { RepassesFiltersPanel } from "./components/RepassesFiltersPanel";
@@ -168,6 +170,8 @@ export default function RepassesPage() {
   const [showRefreshHistoryModal, setShowRefreshHistoryModal] = useState(false);
   const [showPdfHistoryModal, setShowPdfHistoryModal] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [downloadModalOpen, setDownloadModalOpen] = useState(false);
+  const [downloadFilenameMode, setDownloadFilenameMode] = useState<RepassePdfFilenameMode>("current");
 
   const [syncJobs, setSyncJobs] = useState<JobRow[]>([]);
   const [consolidacaoJobs, setConsolidacaoJobs] = useState<JobRow[]>([]);
@@ -219,6 +223,7 @@ export default function RepassesPage() {
   const [loadingProfessionals, setLoadingProfessionals] = useState(false);
   const [creatingRefresh, setCreatingRefresh] = useState(false);
   const [creatingPdf, setCreatingPdf] = useState(false);
+  const [downloadingSelectedPdfs, setDownloadingSelectedPdfs] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -520,6 +525,69 @@ export default function RepassesPage() {
       setError(e?.message || "Erro ao gerar relatório.");
     } finally {
       setCreatingPdf(false);
+    }
+  };
+
+  const downloadSelectedPdfs = async () => {
+    if (!selectedCount) return;
+    setDownloadingSelectedPdfs(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/repasses/artifacts/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          periodRef,
+          professionalIds: selectedIdsArray,
+          filenameMode: downloadFilenameMode,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || "Falha ao baixar os PDFs selecionados.");
+      }
+
+      const blob = await res.blob();
+      const contentDisposition = String(res.headers.get("content-disposition") || "");
+      const encodedFilename =
+        contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)?.[1] ||
+        contentDisposition.match(/filename=\"?([^\";]+)\"?/i)?.[1] ||
+        "";
+      const filename = encodedFilename
+        ? decodeURIComponent(encodedFilename)
+        : selectedCount === 1
+          ? "repasse.pdf"
+          : `repasses-${periodRef}-selecionados.zip`;
+
+      const blobUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = blobUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(blobUrl);
+
+      setDownloadModalOpen(false);
+
+      const missingHeader = res.headers.get("x-repasses-missing-professionals");
+      if (missingHeader) {
+        const parsed = JSON.parse(decodeURIComponent(missingHeader));
+        const missing = Array.isArray(parsed) ? parsed.map((item) => String(item || "").trim()).filter(Boolean) : [];
+        if (missing.length > 0) {
+          setNotice(
+            `Download concluído. Alguns profissionais ficaram de fora por ainda não terem PDF gerado: ${missing.join(", ")}.`
+          );
+          return;
+        }
+      }
+
+      setNotice("Download dos PDFs concluído.");
+    } catch (e: any) {
+      setError(e?.message || "Erro ao baixar os PDFs selecionados.");
+    } finally {
+      setDownloadingSelectedPdfs(false);
     }
   };
 
@@ -1034,6 +1102,16 @@ export default function RepassesPage() {
 
           <button
             type="button"
+            onClick={() => setDownloadModalOpen(true)}
+            disabled={downloadingSelectedPdfs || selectedCount === 0}
+            className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700 disabled:opacity-50"
+          >
+            {downloadingSelectedPdfs ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            Baixar PDFs
+          </button>
+
+          <button
+            type="button"
             onClick={refreshAll}
             className="inline-flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-xs font-semibold text-slate-700"
           >
@@ -1212,6 +1290,21 @@ export default function RepassesPage() {
         }}
         onSaveLegend={() => {
           void saveLegend(true);
+        }}
+      />
+
+      <RepassePdfDownloadModal
+        open={downloadModalOpen}
+        selectedCount={selectedCount}
+        filenameMode={downloadFilenameMode}
+        loading={downloadingSelectedPdfs}
+        onClose={() => {
+          if (downloadingSelectedPdfs) return;
+          setDownloadModalOpen(false);
+        }}
+        onFilenameModeChange={setDownloadFilenameMode}
+        onConfirm={() => {
+          void downloadSelectedPdfs();
         }}
       />
 

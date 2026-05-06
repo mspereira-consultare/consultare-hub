@@ -362,3 +362,5 @@ export type RepassePdfArtifactListFilters = {
   professionalId?: string;
   limit?: number;
 };
+
+export type RepassePdfFilenameMode = 'current' | 'full_name';

@@ -2259,6 +2259,39 @@ export const listRepassePdfArtifactsByPeriodProfessional = async (
   return rows.map(mapPdfArtifact);
 };
 
+export const listLatestRepassePdfArtifactsByPeriodProfessionals = async (
+  db: DbInterface,
+  input: { periodRef?: string; professionalIds: string[] }
+): Promise<RepassePdfArtifact[]> => {
+  await ensureRepasseTables(db);
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const professionalIds = normalizeProfessionalIds(input.professionalIds);
+  if (!professionalIds.length) return [];
+
+  const placeholders = professionalIds.map(() => '?').join(', ');
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM repasse_pdf_artifacts
+    WHERE period_ref = ?
+      AND professional_id IN (${placeholders})
+    ORDER BY professional_id ASC, created_at DESC, id DESC
+    `,
+    [periodRef, ...professionalIds]
+  );
+
+  const latestByProfessional = new Map<string, RepassePdfArtifact>();
+  for (const row of rows) {
+    const mapped = mapPdfArtifact(row);
+    if (!mapped.professionalId || latestByProfessional.has(mapped.professionalId)) continue;
+    latestByProfessional.set(mapped.professionalId, mapped);
+  }
+
+  return professionalIds
+    .map((professionalId) => latestByProfessional.get(professionalId) || null)
+    .filter((artifact): artifact is RepassePdfArtifact => Boolean(artifact));
+};
+
 export const deleteRepassePdfArtifactsByIds = async (
   db: DbInterface,
   artifactIds: string[]
