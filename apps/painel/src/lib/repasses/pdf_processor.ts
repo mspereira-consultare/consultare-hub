@@ -114,7 +114,9 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
   const marginTop = 24;
   const marginBottom = 24;
   const tableHeaderHeight = 18;
-  const generatedAt = new Date().toLocaleString('pt-BR');
+  const generatedAt = new Date().toLocaleString('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+  });
   const sourceText = 'Fonte: https://franchising.feegow.com/v8.1/?P=RepassesConferidos&Pers=';
 
   const columns = [
@@ -199,7 +201,7 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
     );
 
     const summaryTop = cardTop - cardHeight - 6;
-    const summaryHeight = 24;
+    const summaryHeight = 16;
     page.drawRectangle({
       x: tableLeft,
       y: summaryTop - summaryHeight,
@@ -209,19 +211,9 @@ const renderRepassePdf = async (payload: RenderPayload): Promise<Buffer> => {
       borderColor: rgb(0.83, 0.90, 0.76),
       borderWidth: 1,
     });
-    page.drawText(
-      `Repasse final: ${toCurrency(payload.financial.repasseFinalValue)} | Produtividade: ${toCurrency(payload.financial.produtividadeValue)} | 5%: ${toCurrency(payload.financial.percentualProdutividadeValue)} | Total = Repasse final + 5%`,
-      {
-        x: tableLeft + 5,
-        y: summaryTop - 10,
-        size: 7.2,
-        font: fontRegular,
-        color: rgb(0.16, 0.25, 0.11),
-      }
-    );
-    page.drawText(`Total final: ${toCurrency(payload.financial.totalFinalValue)}`, {
+    page.drawText(`Repasse final: ${toCurrency(payload.financial.repasseFinalValue)}`, {
       x: tableLeft + 5,
-      y: summaryTop - 20,
+      y: summaryTop - 11,
       size: 8,
       font: fontBold,
       color: rgb(0.12, 0.37, 0.11),
