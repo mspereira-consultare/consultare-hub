@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
+import { parseLocalizedMoneyInput } from '@/lib/repasses/money';
 import type {
   RepasseAConferirExpandedItem,
   RepasseAConferirDetailsResult,
@@ -306,15 +307,12 @@ const normalizeIsoDate = (value: unknown): string | null => {
 };
 
 const normalizeNullableMoneyValue = (value: unknown): number | null => {
-  if (value === null || value === undefined) return null;
-  const raw = String(value).trim();
-  if (!raw) return null;
-
-  const n = Number(raw.replace(/\./g, '').replace(',', '.'));
-  if (!Number.isFinite(n)) {
+  const parsed = parseLocalizedMoneyInput(value);
+  if (parsed === null) {
+    if (value === null || value === undefined || !String(value).trim()) return null;
     throw new RepasseValidationError('Valor monetario invalido.');
   }
-  return Math.round(n * 100) / 100;
+  return parsed;
 };
 
 const normalizeTextKey = (value: unknown): string =>

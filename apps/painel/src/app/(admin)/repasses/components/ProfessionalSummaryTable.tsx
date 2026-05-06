@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, AlertTriangle, Download, Eye, Loader2, MessageSquareText, Wallet } from 'lucide-react';
+import { parseLocalizedMoneyInput } from '@/lib/repasses/money';
 import { StatusBadge } from './StatusBadge';
 import { RepassesDivergenceBadge } from './RepassesDivergenceBadge';
 
@@ -95,12 +96,13 @@ const formatMoneyInput = (value: number | null | undefined) => {
 };
 
 const parseMoneyInput = (raw: string): number | null => {
-  const value = String(raw || '').trim();
-  if (!value) return null;
-  const normalized = value.replace(/\./g, '').replace(',', '.');
-  const parsed = Number(normalized);
-  if (!Number.isFinite(parsed)) throw new Error('Valor inválido');
-  return Math.round(parsed * 100) / 100;
+  const parsed = parseLocalizedMoneyInput(raw);
+  if (parsed === null) {
+    const value = String(raw || '').trim();
+    if (!value) return null;
+    throw new Error('Valor inválido');
+  }
+  return parsed;
 };
 
 type EditableMoneyCellProps = {
