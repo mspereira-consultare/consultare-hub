@@ -42,8 +42,10 @@ import type {
 const EXECUTIVE_AREAS: ExecutiveAreaKey[] = ['financeiro', 'comercial', 'operacao', 'pessoas', 'qualidade'];
 const SUMMARY_TABLE = 'faturamento_resumo_diario';
 const ANALITICO_TABLE = 'faturamento_analitico';
+const IS_MYSQL =
+  String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL || !!process.env.MYSQL_PUBLIC_URL;
 const SQL_DATE_ANALITICO =
-  (String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL || !!process.env.MYSQL_PUBLIC_URL)
+  IS_MYSQL
     ? `(CASE WHEN INSTR(data_do_pagamento, '/') > 0 THEN CONCAT(SUBSTR(data_do_pagamento, 7, 4), '-', SUBSTR(data_do_pagamento, 4, 2), '-', SUBSTR(data_do_pagamento, 1, 2)) ELSE data_do_pagamento END)`
     : `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
 const WON_STATUSES = ['executada', 'aprovada pelo cliente', 'ganho', 'realizado', 'concluido', 'pago'];
@@ -176,6 +178,11 @@ const serializeScopeInput = (scope: ExecutiveScope) => ({
 
 const serializeScopeHash = (scope: Omit<ExecutiveScope, 'updatedAt' | 'updatedBy'>) =>
   createHash('sha256').update(JSON.stringify(scope)).digest('hex');
+
+const userEmployeeJoinClause = () =>
+  IS_MYSQL
+    ? "e.id COLLATE utf8mb4_unicode_ci = u.employee_id COLLATE utf8mb4_unicode_ci"
+    : 'e.id = u.employee_id';
 
 const tableExists = async (db: DbInterface, tableName: string) => {
   try {
@@ -1300,7 +1307,7 @@ const getUserIdentityForExecutiveProfile = async (db: DbInterface, userId: strin
       e.job_title,
       e.units_json
     FROM users u
-    LEFT JOIN employees e ON e.id = u.employee_id
+    LEFT JOIN employees e ON ${userEmployeeJoinClause()}
     WHERE u.id = ?
     LIMIT 1
     `,
@@ -1397,7 +1404,7 @@ export const listExecutiveProfilePreview = async (db: DbInterface): Promise<Exec
       e.job_title,
       e.units_json
     FROM users u
-    LEFT JOIN employees e ON e.id = u.employee_id
+    LEFT JOIN employees e ON ${userEmployeeJoinClause()}
     WHERE UPPER(TRIM(COALESCE(u.role, ''))) <> 'INTRANET'
     ORDER BY u.status DESC, u.name ASC
     `
