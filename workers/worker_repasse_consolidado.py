@@ -806,7 +806,7 @@ def _upsert_professional_rows(
         conn.close()
 
 
-def _build_professional_option_map(page) -> Dict[str, str]:
+def _build_professional_option_map(page) -> Dict[str, List[Dict[str, str]]]:
     options = page.eval_on_selector_all(
         "select#AccountID option",
         """els => els.map(e => ({
@@ -815,7 +815,7 @@ def _build_professional_option_map(page) -> Dict[str, str]:
         }))""",
     )
 
-    mapping: Dict[str, str] = {}
+    mapping: Dict[str, List[Dict[str, str]]] = {}
     for item in options:
         value = str(item.get("value") or "").strip()
         text = str(item.get("text") or "").strip()
@@ -824,8 +824,47 @@ def _build_professional_option_map(page) -> Dict[str, str]:
         name = re.split(r"\s*(?:Â»|»)\s*", text, maxsplit=1)[0].strip()
         if not name:
             continue
-        mapping[_normalize_professional_label(name)] = value
+        normalized = _normalize_professional_label(name)
+        mapping.setdefault(normalized, []).append(
+            {
+                "value": value,
+                "text": text,
+            }
+        )
     return mapping
+
+
+def _resolve_professional_option_value(
+    option_map: Dict[str, List[Dict[str, str]]],
+    professional_id: str,
+    professional_name: str,
+) -> str:
+    normalized_name = _normalize_professional_label(professional_name)
+    candidates = option_map.get(normalized_name) or []
+    if not candidates:
+        return ""
+
+    professional_suffix = str(professional_id or "").split(":")[-1].strip()
+    if professional_suffix:
+        exact_suffix = [
+            candidate
+            for candidate in candidates
+            if str(candidate.get("value") or "").strip().endswith(f"_{professional_suffix}")
+        ]
+        if exact_suffix:
+            preferred = [
+                candidate
+                for candidate in exact_suffix
+                if "EXTERNO" not in _normalize_text(candidate.get("text") or "")
+            ]
+            return str((preferred or exact_suffix)[0].get("value") or "").strip()
+
+    internal_candidates = [
+        candidate
+        for candidate in candidates
+        if "EXTERNO" not in _normalize_text(candidate.get("text") or "")
+    ]
+    return str((internal_candidates or candidates)[0].get("value") or "").strip()
 
 
 def _select_professional(page, option_value: str):
@@ -1417,10 +1456,14 @@ def _process_job(job: Dict):
                 for attempt in range(1, DEFAULT_RETRY_ATTEMPTS + 1):
                     try:
                         _ensure_ready_for_professional(page)
-                        option_value = option_map.get(normalized_name)
+                        option_value = _resolve_professional_option_value(
+                            option_map, professional_id, display_name
+                        )
                         if not option_value:
                             option_map = _build_professional_option_map(page)
-                            option_value = option_map.get(normalized_name)
+                            option_value = _resolve_professional_option_value(
+                                option_map, professional_id, display_name
+                            )
 
                         if not option_value:
                             raise RuntimeError("Profissional nao encontrado no filtro do Feegow.")
