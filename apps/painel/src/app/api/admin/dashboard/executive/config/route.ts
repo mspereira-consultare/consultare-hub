@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { invalidateCache } from '@/lib/api_cache';
 import { getDbConnection } from '@/lib/db';
-import { getExecutiveConfigurationSnapshot } from '@/lib/dashboard_executive/repository';
+import {
+  getExecutiveConfigurationSnapshot,
+  saveExecutiveConfigurationSnapshot,
+} from '@/lib/dashboard_executive/repository';
 import { hasPermission } from '@/lib/permissions';
+import type { ExecutiveConfigurationSnapshot } from '@/lib/dashboard_executive/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -36,6 +41,27 @@ export async function GET() {
     return NextResponse.json({ status: 'success', data: config });
   } catch (error: any) {
     console.error('Erro GET executive config:', error);
+    return NextResponse.json({ error: error?.message || 'Erro interno' }, { status: 500 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const auth = await ensureAuthorized();
+    if (!auth.ok) return auth.response;
+
+    const body = await request.json();
+    const config = body?.config as ExecutiveConfigurationSnapshot | undefined;
+    if (!config || typeof config !== 'object') {
+      return NextResponse.json({ error: 'Configuração inválida.' }, { status: 400 });
+    }
+
+    const db = getDbConnection();
+    const saved = await saveExecutiveConfigurationSnapshot(db, config, String(auth.session.user.id));
+    invalidateCache('admin:');
+    return NextResponse.json({ status: 'success', data: saved });
+  } catch (error: any) {
+    console.error('Erro PATCH executive config:', error);
     return NextResponse.json({ error: error?.message || 'Erro interno' }, { status: 500 });
   }
 }

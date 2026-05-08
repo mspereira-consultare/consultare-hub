@@ -215,3 +215,18 @@ export type ExecutiveConfigurationSnapshot = {
   rules: ExecutiveProfileRule[];
   overrides: ExecutiveUserOverride[];
 };
+
+export type ExecutiveProfilePreviewRow = {
+  userId: string;
+  userName: string;
+  role: string;
+  status: string;
+  department: string | null;
+  jobTitle: string | null;
+  units: string[];
+  hasDashboardAccess: boolean;
+  profileKey: ExecutiveProfileKey | null;
+  profileLabel: string | null;
+  resolutionSource: ExecutiveScopeResolutionSource;
+  matchedRuleId: string | null;
+};

@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'crypto';
 import { runInTransaction, type DbInterface } from '@/lib/db';
+import { hasPermission } from '@/lib/permissions';
+import { loadUserPermissionMatrix } from '@/lib/permissions_server';
 import { getEmployeeDashboard } from '@/lib/colaboradores/repository';
 import { getQmsOverviewMetrics } from '@/lib/qms/metrics_repository';
 import { listRecruitmentDashboard } from '@/lib/recrutamento/repository';
@@ -25,6 +27,7 @@ import type {
   ExecutiveProfileRule,
   ExecutiveProfileWidgetConfig,
   ExecutivePriority,
+  ExecutiveProfilePreviewRow,
   ExecutiveResolvedProfile,
   ExecutiveScope,
   ExecutiveScopeResolutionSource,
@@ -1170,6 +1173,108 @@ export const getExecutiveConfigurationSnapshot = async (db: DbInterface): Promis
   return { profiles, widgets, profileWidgets, rules, overrides };
 };
 
+export const saveExecutiveConfigurationSnapshot = async (
+  db: DbInterface,
+  input: ExecutiveConfigurationSnapshot,
+  updatedBy: string
+) => {
+  await ensureExecutiveTables(db);
+  const profilesByKey = new Set(EXECUTIVE_PROFILE_DEFINITIONS.map((profile) => profile.key));
+  const widgetsByKey = new Set(EXECUTIVE_WIDGET_DEFINITIONS.map((widget) => widget.key));
+  const timestamp = new Date().toISOString();
+
+  const normalizedProfileWidgets = input.profileWidgets
+    .filter((item) => profilesByKey.has(item.profileKey) && widgetsByKey.has(item.widgetKey))
+    .map((item) => ({
+      profileKey: item.profileKey,
+      widgetKey: item.widgetKey,
+      isVisible: Boolean(item.isVisible),
+      sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : 1000,
+    }));
+
+  const normalizedRules = input.rules
+    .filter((item) => profilesByKey.has(item.profileKey))
+    .map((item) => ({
+      id: clean(item.id) || randomUUID(),
+      profileKey: item.profileKey,
+      department: clean(item.department) || null,
+      jobTitle: clean(item.jobTitle) || null,
+      units: unique(item.units || []),
+      isActive: item.isActive !== false,
+    }));
+
+  const normalizedOverrides = input.overrides
+    .filter((item) => clean(item.userId))
+    .map((item) => ({
+      userId: clean(item.userId),
+      profileKey: item.profileKey && profilesByKey.has(item.profileKey) ? item.profileKey : null,
+      visibleWidgetKeys: unique(item.visibleWidgetKeys || []).filter(isWidgetKey),
+      departments: unique(item.departments || []),
+      teams: unique(item.teams || []),
+      units: unique(item.units || []),
+      isActive: item.isActive !== false && Boolean(item.profileKey),
+    }))
+    .filter((item) => item.isActive && item.profileKey);
+
+  await runInTransaction(db, async (txDb) => {
+    await txDb.execute('DELETE FROM dashboard_executive_profile_widgets');
+    for (const item of normalizedProfileWidgets) {
+      await txDb.execute(
+        `
+        INSERT INTO dashboard_executive_profile_widgets
+          (profile_key, widget_key, is_visible, sort_order)
+        VALUES (?, ?, ?, ?)
+        `,
+        [item.profileKey, item.widgetKey, item.isVisible ? 1 : 0, item.sortOrder]
+      );
+    }
+
+    await txDb.execute('DELETE FROM dashboard_executive_profile_rules');
+    for (const item of normalizedRules) {
+      await txDb.execute(
+        `
+        INSERT INTO dashboard_executive_profile_rules
+          (id, profile_key, department, job_title, units_json, is_active, updated_at, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          item.id,
+          item.profileKey,
+          item.department,
+          item.jobTitle,
+          JSON.stringify(item.units),
+          item.isActive ? 1 : 0,
+          timestamp,
+          updatedBy,
+        ]
+      );
+    }
+
+    await txDb.execute('DELETE FROM dashboard_executive_user_overrides');
+    for (const item of normalizedOverrides) {
+      await txDb.execute(
+        `
+        INSERT INTO dashboard_executive_user_overrides
+          (user_id, profile_key, widget_keys_json, departments_json, teams_json, units_json, is_active, updated_at, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+        `,
+        [
+          item.userId,
+          item.profileKey,
+          JSON.stringify(item.visibleWidgetKeys),
+          JSON.stringify(item.departments),
+          JSON.stringify(item.teams),
+          JSON.stringify(item.units),
+          timestamp,
+          updatedBy,
+        ]
+      );
+    }
+  });
+
+  return getExecutiveConfigurationSnapshot(db);
+};
+
 const getProfileVisibleWidgetKeys = async (db: DbInterface, profileKey: ExecutiveProfileKey) => {
   const rows = await db.query(
     `
@@ -1276,6 +1381,54 @@ export const resolveExecutiveProfile = async (db: DbInterface, userId: string): 
   }
 
   return buildResolvedProfile(null, [], 'unconfigured', null);
+};
+
+export const listExecutiveProfilePreview = async (db: DbInterface): Promise<ExecutiveProfilePreviewRow[]> => {
+  await ensureExecutiveTables(db);
+  const rows = await db.query(
+    `
+    SELECT
+      u.id AS user_id,
+      u.name AS user_name,
+      u.role,
+      u.status,
+      u.department AS user_department,
+      e.department AS employee_department,
+      e.job_title,
+      e.units_json
+    FROM users u
+    LEFT JOIN employees e ON e.id = u.employee_id
+    WHERE UPPER(TRIM(COALESCE(u.role, ''))) <> 'INTRANET'
+    ORDER BY u.status DESC, u.name ASC
+    `
+  );
+
+  const profileMap = new Map(EXECUTIVE_PROFILE_DEFINITIONS.map((profile) => [profile.key, profile.label]));
+  const previewRows = await Promise.all(
+    rows.map(async (row: any) => {
+      const userId = clean(row.user_id);
+      const role = clean(row.role) || 'OPERADOR';
+      const permissions = await loadUserPermissionMatrix(db, userId, role);
+      const resolved = await resolveExecutiveProfile(db, userId);
+
+      return {
+        userId,
+        userName: clean(row.user_name),
+        role,
+        status: clean(row.status) || 'INATIVO',
+        department: clean(row.employee_department) || clean(row.user_department) || null,
+        jobTitle: clean(row.job_title) || null,
+        units: parseJsonArray(row.units_json),
+        hasDashboardAccess: hasPermission(permissions, 'dashboard', 'view', role),
+        profileKey: resolved.profileKey,
+        profileLabel: resolved.profileKey ? profileMap.get(resolved.profileKey) || null : null,
+        resolutionSource: resolved.resolutionSource,
+        matchedRuleId: resolved.matchedRuleId,
+      } satisfies ExecutiveProfilePreviewRow;
+    })
+  );
+
+  return previewRows;
 };
 
 export const getExecutiveScope = async (db: DbInterface, userId: string): Promise<ExecutiveScope> => {
