@@ -248,6 +248,7 @@ export default function UsersPage() {
 
   // --- AÇÕES ---
   const handleEditUser = (user: User) => {
+    setSearchTerm('');
     setFormData({
       id: user.id,
       name: user.name,
@@ -278,7 +279,8 @@ export default function UsersPage() {
   };
 
   const handleOpenPermissions = async (user: User) => {
-    setPermissionsUser(user);
+      setPermissionsUser(user);
+    setSearchTerm('');
     setPermissionsLoading(true);
     setIsPermissionsModalOpen(true);
     setPermissionSearchTerm('');
@@ -506,6 +508,13 @@ export default function UsersPage() {
             className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#17407E]/20 focus:border-[#17407E] outline-none transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            name="user-list-search"
+            data-form-type="other"
+            data-lpignore="true"
           />
         </div>
         <div className="flex gap-2">
@@ -657,6 +666,8 @@ export default function UsersPage() {
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
                   placeholder="Ex: João Silva"
+                  autoComplete="off"
+                  name="managed-user-full-name"
                 />
               </div>
 
@@ -669,6 +680,11 @@ export default function UsersPage() {
                   value={formData.username}
                   onChange={(e) => setFormData({...formData, username: e.target.value})}
                   placeholder="Ex: jsasilva"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  name="managed-user-username"
                 />
               </div>
 
@@ -680,6 +696,10 @@ export default function UsersPage() {
                   value={formData.email}
                   onChange={(e) => setFormData({...formData, email: e.target.value})}
                   placeholder="Opcional"
+                  autoComplete="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  name="managed-user-contact-email"
                 />
               </div>
 
@@ -750,6 +770,8 @@ export default function UsersPage() {
                     value={formData.password}
                     onChange={(e) => setFormData({...formData, password: e.target.value})}
                     placeholder={formData.id ? "••••••••" : "Crie uma senha forte"}
+                    autoComplete="new-password"
+                    name="managed-user-password"
                     />
                 </div>
               </div>

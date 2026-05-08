@@ -485,14 +485,22 @@ export function Sidebar() {
   }, [searchTerm, authorizedItems]);
 
   const toggleGroup = (group: string) => {
-    if (group === activeGroup) return;
-    setExpandedGroups((prev) => ({ ...prev, [group]: !prev[group] }));
+    setExpandedGroups((prev) => {
+      if (group === activeGroup) {
+        return { ...prev, [group]: true };
+      }
+      return { ...prev, [group]: !prev[group] };
+    });
   };
 
   const toggleSubgroup = (group: string, subgroup: string) => {
     const subgroupKey = getSubgroupKey(group, subgroup);
-    if (subgroupKey === activeSubgroupKey) return;
-    setExpandedGroups((prev) => ({ ...prev, [subgroupKey]: !prev[subgroupKey] }));
+    setExpandedGroups((prev) => {
+      if (subgroupKey === activeSubgroupKey) {
+        return { ...prev, [subgroupKey]: true };
+      }
+      return { ...prev, [subgroupKey]: !prev[subgroupKey] };
+    });
   };
 
   const expandAllGroups = () => {

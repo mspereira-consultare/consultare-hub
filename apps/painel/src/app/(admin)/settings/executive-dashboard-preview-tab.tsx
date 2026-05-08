@@ -13,9 +13,10 @@ type Props = {
   previewRows: ExecutiveProfilePreviewRow[];
   searchTerm: string;
   onSearchTermChange: (value: string) => void;
+  hasActiveRules: boolean;
 };
 
-export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearchTermChange }: Props) {
+export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearchTermChange, hasActiveRules }: Props) {
   const filteredRows = previewRows.filter((row) => {
     const haystack = normalizeText(
       `${row.userName} ${row.department || ''} ${row.jobTitle || ''} ${row.profileLabel || ''} ${row.role}`
@@ -48,7 +49,9 @@ export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearch
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <div className="font-semibold">{noProfileCount} usuário(s) com acesso e sem perfil</div>
             <p className="mt-1 text-xs leading-5">
-              Normalmente isso acontece quando ainda não existe regra compatível ou override manual.
+              {hasActiveRules
+                ? 'Normalmente isso acontece quando ainda não existe regra compatível ou override manual.'
+                : 'No momento não existe nenhuma regra automática ativa, então só usuários com override manual recebem perfil.'}
             </p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">

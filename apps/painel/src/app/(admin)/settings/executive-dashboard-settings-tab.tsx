@@ -353,6 +353,7 @@ export default function ExecutiveDashboardSettingsTab() {
           previewRows={eligiblePreviewRows}
           searchTerm={previewSearchTerm}
           onSearchTermChange={setPreviewSearchTerm}
+          hasActiveRules={config.rules.some((rule) => rule.isActive)}
         />
       ) : null}
 
