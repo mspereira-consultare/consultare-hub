@@ -1,12 +1,12 @@
 'use client';
 
-import { Layers3 } from 'lucide-react';
+import { Layers3, Search } from 'lucide-react';
 import type {
   ExecutiveConfigurationSnapshot,
   ExecutiveProfileKey,
   ExecutiveProfileWidgetConfig,
 } from '@/lib/dashboard_executive/types';
-import { cn, compareProfileWidgets } from './executive-dashboard-settings-utils';
+import { cn, compareProfileWidgets, normalizeText } from './executive-dashboard-settings-utils';
 
 type Props = {
   config: ExecutiveConfigurationSnapshot;
@@ -17,6 +17,8 @@ type Props = {
     widgetKey: ExecutiveProfileWidgetConfig['widgetKey'],
     patch: Partial<ExecutiveProfileWidgetConfig>
   ) => void;
+  searchTerm: string;
+  onSearchTermChange: (value: string) => void;
   onSave: () => void;
   saving: boolean;
 };
@@ -34,6 +36,8 @@ export function ExecutiveDashboardProfileVisibilityTab({
   selectedProfileKey,
   onSelectProfile,
   onChangeProfileWidget,
+  searchTerm,
+  onSearchTermChange,
   onSave,
   saving,
 }: Props) {
@@ -41,6 +45,11 @@ export function ExecutiveDashboardProfileVisibilityTab({
   const widgetsByKey = new Map(config.widgets.map((widget) => [widget.key, widget]));
   const rows = config.profileWidgets
     .filter((item) => item.profileKey === selectedProfile.key)
+    .filter((item) => {
+      const widget = widgetsByKey.get(item.widgetKey);
+      const haystack = normalizeText(`${widget?.label || ''} ${widget?.description || ''} ${widget?.sourceKey || ''}`);
+      return !searchTerm || haystack.includes(normalizeText(searchTerm));
+    })
     .sort(compareProfileWidgets);
 
   return (
@@ -77,7 +86,19 @@ export function ExecutiveDashboardProfileVisibilityTab({
           ))}
         </div>
 
-        <div className="overflow-x-auto px-5 py-4">
+        <div className="border-b border-slate-100 px-5 py-4">
+          <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <Search className="h-4 w-4 text-slate-400" />
+            <input
+              value={searchTerm}
+              onChange={(event) => onSearchTermChange(event.target.value)}
+              placeholder="Buscar widget por nome, descrição ou origem"
+              className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+            />
+          </label>
+        </div>
+
+        <div className="max-h-[560px] overflow-auto px-5 py-4">
           <table className="min-w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 text-left text-slate-500">

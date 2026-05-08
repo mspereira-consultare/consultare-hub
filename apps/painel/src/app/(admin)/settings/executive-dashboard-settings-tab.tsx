@@ -1,15 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Loader2, ShieldCheck } from 'lucide-react';
+import { CircleHelp, Loader2, ShieldCheck } from 'lucide-react';
 import type {
   ExecutiveConfigurationSnapshot,
   ExecutiveProfileKey,
   ExecutiveProfilePreviewRow,
   ExecutiveProfileRule,
+  ExecutiveScopeOptions,
   ExecutiveProfileWidgetConfig,
   ExecutiveUserOverride,
 } from '@/lib/dashboard_executive/types';
+import { ExecutiveDashboardHelpModal } from './executive-dashboard-help-modal';
 import { ExecutiveDashboardOverridesTab } from './executive-dashboard-overrides-tab';
 import { ExecutiveDashboardPreviewTab } from './executive-dashboard-preview-tab';
 import { ExecutiveDashboardProfileVisibilityTab } from './executive-dashboard-profile-visibility-tab';
@@ -24,6 +26,11 @@ type ConfigResponse = {
 type PreviewResponse = {
   status: 'success';
   data: ExecutiveProfilePreviewRow[];
+};
+
+type OptionsResponse = {
+  status: 'success';
+  data: ExecutiveScopeOptions;
 };
 
 type SectionKey = 'profiles' | 'rules' | 'overrides' | 'preview';
@@ -41,20 +48,27 @@ export default function ExecutiveDashboardSettingsTab() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<SectionKey>('profiles');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [previewSearchTerm, setPreviewSearchTerm] = useState('');
+  const [profileSearchTerm, setProfileSearchTerm] = useState('');
+  const [rulesSearchTerm, setRulesSearchTerm] = useState('');
+  const [overridesSearchTerm, setOverridesSearchTerm] = useState('');
   const [config, setConfig] = useState<ExecutiveConfigurationSnapshot | null>(null);
   const [previewRows, setPreviewRows] = useState<ExecutiveProfilePreviewRow[]>([]);
+  const [options, setOptions] = useState<ExecutiveScopeOptions>({ departments: [], jobTitles: [], units: [], teams: [] });
   const [selectedProfileKey, setSelectedProfileKey] = useState<ExecutiveProfileKey>('diretoria_gerencia_adm');
 
   const loadData = useCallback(async () => {
     setError(null);
-    const [configResponse, previewResponse] = await Promise.all([
+    const [configResponse, previewResponse, optionsResponse] = await Promise.all([
       fetch('/api/admin/dashboard/executive/config', { cache: 'no-store' }),
       fetch('/api/admin/dashboard/executive/config/preview', { cache: 'no-store' }),
+      fetch('/api/admin/dashboard/executive/config/options', { cache: 'no-store' }),
     ]);
 
     const configPayload = (await configResponse.json()) as ConfigResponse | { error?: string };
     const previewPayload = (await previewResponse.json()) as PreviewResponse | { error?: string };
+    const optionsPayload = (await optionsResponse.json()) as OptionsResponse | { error?: string };
 
     if (!configResponse.ok || !('data' in configPayload)) {
       throw new Error((configPayload as { error?: string }).error || 'Falha ao carregar a configuração executiva.');
@@ -63,9 +77,13 @@ export default function ExecutiveDashboardSettingsTab() {
     if (!previewResponse.ok || !('data' in previewPayload)) {
       throw new Error((previewPayload as { error?: string }).error || 'Falha ao carregar o preview executivo.');
     }
+    if (!optionsResponse.ok || !('data' in optionsPayload)) {
+      throw new Error((optionsPayload as { error?: string }).error || 'Falha ao carregar as opções executivas.');
+    }
 
     setConfig(cloneExecutiveConfig(configPayload.data));
     setPreviewRows(previewPayload.data);
+    setOptions(optionsPayload.data);
     if (configPayload.data.profiles.length) {
       setSelectedProfileKey(configPayload.data.profiles[0].key);
     }
@@ -229,10 +247,20 @@ export default function ExecutiveDashboardSettingsTab() {
             </div>
             <h2 className="text-xl font-bold text-slate-900">Perfis, regras e visibilidade</h2>
             <p className="max-w-3xl text-sm text-slate-500">
-              Configure o que cada cargo e setor do painel pode enxergar, sem mexer em código. Usuários da função
+              Configure o que cada cargo e setor do painel pode enxergar. Usuários com função
               Intranet continuam fora desta governança e não entram no preview.
             </p>
           </div>
+
+          <div className="flex flex-col gap-3 lg:items-end">
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700"
+            >
+              <CircleHelp className="h-4 w-4" />
+              Ajuda desta aba
+            </button>
 
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -247,6 +275,7 @@ export default function ExecutiveDashboardSettingsTab() {
               <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Overrides</div>
               <div className="mt-2 text-2xl font-bold text-slate-900">{config.overrides.length}</div>
             </div>
+          </div>
           </div>
         </div>
       </div>
@@ -267,11 +296,10 @@ export default function ExecutiveDashboardSettingsTab() {
             key={section}
             type="button"
             onClick={() => setActiveSection(section)}
-            className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
-              activeSection === section
+            className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${activeSection === section
                 ? 'border-blue-200 bg-blue-50 text-blue-700'
                 : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
-            }`}
+              }`}
           >
             {SECTION_LABELS[section]}
           </button>
@@ -284,6 +312,8 @@ export default function ExecutiveDashboardSettingsTab() {
           selectedProfileKey={selectedProfileKey}
           onSelectProfile={setSelectedProfileKey}
           onChangeProfileWidget={handleChangeProfileWidget}
+          searchTerm={profileSearchTerm}
+          onSearchTermChange={setProfileSearchTerm}
           onSave={() => void persistConfig('profiles')}
           saving={saving === 'profiles'}
         />
@@ -292,9 +322,12 @@ export default function ExecutiveDashboardSettingsTab() {
       {activeSection === 'rules' ? (
         <ExecutiveDashboardRulesTab
           config={config}
+          options={options}
           onChangeRule={handleChangeRule}
           onAddRule={handleAddRule}
           onRemoveRule={handleRemoveRule}
+          searchTerm={rulesSearchTerm}
+          onSearchTermChange={setRulesSearchTerm}
           onSave={() => void persistConfig('rules')}
           saving={saving === 'rules'}
         />
@@ -304,9 +337,12 @@ export default function ExecutiveDashboardSettingsTab() {
         <ExecutiveDashboardOverridesTab
           config={config}
           previewRows={eligiblePreviewRows}
+          options={options}
           onAddOverride={handleAddOverride}
           onChangeOverride={handleChangeOverride}
           onRemoveOverride={handleRemoveOverride}
+          searchTerm={overridesSearchTerm}
+          onSearchTermChange={setOverridesSearchTerm}
           onSave={() => void persistConfig('overrides')}
           saving={saving === 'overrides'}
         />
@@ -315,10 +351,12 @@ export default function ExecutiveDashboardSettingsTab() {
       {activeSection === 'preview' ? (
         <ExecutiveDashboardPreviewTab
           previewRows={eligiblePreviewRows}
-          searchTerm={searchTerm}
-          onSearchTermChange={setSearchTerm}
+          searchTerm={previewSearchTerm}
+          onSearchTermChange={setPreviewSearchTerm}
         />
       ) : null}
+
+      <ExecutiveDashboardHelpModal open={helpOpen} section={activeSection} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }

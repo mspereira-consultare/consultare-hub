@@ -1,20 +1,25 @@
 'use client';
 
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Search, Trash2 } from 'lucide-react';
 import type {
   ExecutiveConfigurationSnapshot,
   ExecutiveProfileKey,
   ExecutiveProfilePreviewRow,
+  ExecutiveScopeOptions,
   ExecutiveUserOverride,
 } from '@/lib/dashboard_executive/types';
-import { formatCsv, parseCsv } from './executive-dashboard-settings-utils';
+import { normalizeText } from './executive-dashboard-settings-utils';
+import { ExecutiveDashboardMultiSelect } from './executive-dashboard-multi-select';
 
 type Props = {
   config: ExecutiveConfigurationSnapshot;
   previewRows: ExecutiveProfilePreviewRow[];
+  options: ExecutiveScopeOptions;
   onAddOverride: () => void;
   onChangeOverride: (userId: string, patch: Partial<ExecutiveUserOverride>) => void;
   onRemoveOverride: (userId: string) => void;
+  searchTerm: string;
+  onSearchTermChange: (value: string) => void;
   onSave: () => void;
   saving: boolean;
 };
@@ -22,13 +27,24 @@ type Props = {
 export function ExecutiveDashboardOverridesTab({
   config,
   previewRows,
+  options,
   onAddOverride,
   onChangeOverride,
   onRemoveOverride,
+  searchTerm,
+  onSearchTermChange,
   onSave,
   saving,
 }: Props) {
   const userMap = new Map(previewRows.map((row) => [row.userId, row]));
+  const visibleOverrides = config.overrides.filter((override) => {
+    const user = userMap.get(override.userId);
+    const profile = config.profiles.find((item) => item.key === override.profileKey);
+    const haystack = normalizeText(
+      `${user?.userName || ''} ${profile?.label || ''} ${override.departments.join(' ')} ${override.teams.join(' ')} ${override.units.join(' ')}`
+    );
+    return !searchTerm || haystack.includes(normalizeText(searchTerm));
+  });
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -49,9 +65,21 @@ export function ExecutiveDashboardOverridesTab({
         </button>
       </div>
 
-      <div className="space-y-4 px-5 py-4">
-        {config.overrides.length ? (
-          config.overrides.map((override) => {
+      <div className="border-b border-slate-100 px-5 py-4">
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <Search className="h-4 w-4 text-slate-400" />
+          <input
+            value={searchTerm}
+            onChange={(event) => onSearchTermChange(event.target.value)}
+            placeholder="Buscar override por usuário, perfil, equipe, setor ou unidade"
+            className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+          />
+        </label>
+      </div>
+
+      <div className="max-h-[560px] space-y-4 overflow-y-auto px-5 py-4">
+        {visibleOverrides.length ? (
+          visibleOverrides.map((override) => {
             const user = userMap.get(override.userId);
 
             return (
@@ -93,39 +121,38 @@ export function ExecutiveDashboardOverridesTab({
                     </select>
                   </div>
 
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Departamentos</label>
-                    <input
-                      value={formatCsv(override.departments)}
-                      onChange={(event) => onChangeOverride(override.userId, { departments: parseCsv(event.target.value) })}
-                      placeholder="Separar por vírgula"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    />
-                  </div>
+                  <ExecutiveDashboardMultiSelect
+                    label="Departamentos"
+                    options={options.departments}
+                    value={override.departments}
+                    onChange={(value) => onChangeOverride(override.userId, { departments: value })}
+                    helper="Use apenas opções oficiais do cadastro de colaboradores."
+                  />
 
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Equipes</label>
-                    <input
-                      value={formatCsv(override.teams)}
-                      onChange={(event) => onChangeOverride(override.userId, { teams: parseCsv(event.target.value) })}
-                      placeholder="Separar por vírgula"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    />
-                  </div>
+                  <ExecutiveDashboardMultiSelect
+                    label="Equipes"
+                    options={options.teams}
+                    value={override.teams}
+                    onChange={(value) => onChangeOverride(override.userId, { teams: value })}
+                    helper="As equipes seguem o cadastro mestre usado nas áreas de metas e produtividade."
+                  />
 
                   <div>
                     <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Unidades</label>
                     <div className="flex gap-3">
-                      <input
-                        value={formatCsv(override.units)}
-                        onChange={(event) => onChangeOverride(override.userId, { units: parseCsv(event.target.value) })}
-                        placeholder="Separar por vírgula"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                      />
+                      <div className="flex-1">
+                        <ExecutiveDashboardMultiSelect
+                          label="Unidades"
+                          options={options.units}
+                          value={override.units}
+                          onChange={(value) => onChangeOverride(override.userId, { units: value })}
+                          helper="Se ficar vazio, o usuário não terá restrição por unidade."
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => onRemoveOverride(override.userId)}
-                        className="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-white px-3 py-2 text-rose-600 transition hover:bg-rose-50"
+                        className="mt-6 inline-flex h-11 items-center justify-center rounded-lg border border-rose-200 bg-white px-3 py-2 text-rose-600 transition hover:bg-rose-50"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>

@@ -30,6 +30,7 @@ import type {
   ExecutiveProfilePreviewRow,
   ExecutiveResolvedProfile,
   ExecutiveScope,
+  ExecutiveScopeOptions,
   ExecutiveScopeResolutionSource,
   ExecutiveSnapshot,
   ExecutiveSnapshotStatus,
@@ -73,6 +74,16 @@ const parseJsonArray = (value: unknown) => {
   try {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.map((item) => clean(item)).filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+};
+const parseUnitsArray = (value: unknown) => {
+  const raw = clean(value);
+  if (!raw) return [] as string[];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? unique(parsed.map((item) => clean(item))) : [];
   } catch {
     return [];
   }
@@ -1397,6 +1408,7 @@ export const listExecutiveProfilePreview = async (db: DbInterface): Promise<Exec
     SELECT
       u.id AS user_id,
       u.name AS user_name,
+      u.employee_id,
       u.role,
       u.status,
       u.department AS user_department,
@@ -1427,6 +1439,7 @@ export const listExecutiveProfilePreview = async (db: DbInterface): Promise<Exec
         jobTitle: clean(row.job_title) || null,
         units: parseJsonArray(row.units_json),
         hasDashboardAccess: hasPermission(permissions, 'dashboard', 'view', role),
+        hasEmployeeLink: Boolean(clean(row.employee_id)),
         profileKey: resolved.profileKey,
         profileLabel: resolved.profileKey ? profileMap.get(resolved.profileKey) || null : null,
         resolutionSource: resolved.resolutionSource,
@@ -1436,6 +1449,43 @@ export const listExecutiveProfilePreview = async (db: DbInterface): Promise<Exec
   );
 
   return previewRows;
+};
+
+export const getExecutiveScopeOptions = async (db: DbInterface): Promise<ExecutiveScopeOptions> => {
+  await ensureExecutiveTables(db);
+
+  const [departmentRows, jobTitleRows, unitRows, teamRows] = await Promise.all([
+    db.query(`
+      SELECT DISTINCT TRIM(department) AS value
+      FROM employees
+      WHERE department IS NOT NULL AND TRIM(department) <> ''
+      ORDER BY value ASC
+    `),
+    db.query(`
+      SELECT DISTINCT TRIM(job_title) AS value
+      FROM employees
+      WHERE job_title IS NOT NULL AND TRIM(job_title) <> ''
+      ORDER BY value ASC
+    `),
+    db.query(`
+      SELECT units_json
+      FROM employees
+      WHERE units_json IS NOT NULL AND TRIM(units_json) <> ''
+    `),
+    db.query(`
+      SELECT DISTINCT TRIM(name) AS value
+      FROM teams_master
+      WHERE name IS NOT NULL AND TRIM(name) <> ''
+      ORDER BY value ASC
+    `).catch(() => []),
+  ]);
+
+  const departments = unique(departmentRows.map((row: any) => clean(row.value))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const jobTitles = unique(jobTitleRows.map((row: any) => clean(row.value))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const units = unique(unitRows.flatMap((row: any) => parseUnitsArray(row.units_json))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const teams = unique(teamRows.map((row: any) => clean(row.value))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+
+  return { departments, jobTitles, units, teams };
 };
 
 export const getExecutiveScope = async (db: DbInterface, userId: string): Promise<ExecutiveScope> => {

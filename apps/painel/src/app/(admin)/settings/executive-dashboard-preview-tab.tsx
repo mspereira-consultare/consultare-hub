@@ -22,6 +22,8 @@ export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearch
     );
     return !searchTerm || haystack.includes(normalizeText(searchTerm));
   });
+  const noProfileCount = previewRows.filter((row) => row.hasDashboardAccess && !row.profileKey).length;
+  const noEmployeeLinkCount = previewRows.filter((row) => row.hasDashboardAccess && !row.hasEmployeeLink).length;
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -42,9 +44,23 @@ export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearch
             className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
           />
         </label>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <div className="font-semibold">{noProfileCount} usuário(s) com acesso e sem perfil</div>
+            <p className="mt-1 text-xs leading-5">
+              Normalmente isso acontece quando ainda não existe regra compatível ou override manual.
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            <div className="font-semibold">{noEmployeeLinkCount} usuário(s) sem vínculo com colaborador</div>
+            <p className="mt-1 text-xs leading-5">
+              Sem esse vínculo, cargo e unidades podem não existir para o enquadramento automático.
+            </p>
+          </div>
+        </div>
       </div>
 
-      <div className="overflow-x-auto px-5 py-4">
+      <div className="max-h-[560px] overflow-auto px-5 py-4">
         <table className="min-w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-left text-slate-500">
@@ -53,6 +69,7 @@ export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearch
               <th className="pb-3 pr-4 font-medium">Departamento / cargo</th>
               <th className="pb-3 pr-4 font-medium">Perfil</th>
               <th className="pb-3 pr-4 font-medium">Origem</th>
+              <th className="pb-3 pr-4 font-medium">Vínculo</th>
               <th className="pb-3 font-medium">Acesso ao dashboard</th>
             </tr>
           </thead>
@@ -80,6 +97,18 @@ export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearch
                     )}
                   >
                     {resolutionSourceLabel[row.resolutionSource]}
+                  </span>
+                </td>
+                <td className="py-3 pr-4">
+                  <span
+                    className={cn(
+                      'inline-flex rounded-full border px-2.5 py-1 text-xs font-medium',
+                      row.hasEmployeeLink
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                        : 'border-amber-200 bg-amber-50 text-amber-700'
+                    )}
+                  >
+                    {row.hasEmployeeLink ? 'Vinculado' : 'Sem vínculo'}
                   </span>
                 </td>
                 <td className="py-3">

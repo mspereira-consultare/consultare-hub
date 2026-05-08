@@ -225,8 +225,16 @@ export type ExecutiveProfilePreviewRow = {
   jobTitle: string | null;
   units: string[];
   hasDashboardAccess: boolean;
+  hasEmployeeLink: boolean;
   profileKey: ExecutiveProfileKey | null;
   profileLabel: string | null;
   resolutionSource: ExecutiveScopeResolutionSource;
   matchedRuleId: string | null;
+};
+
+export type ExecutiveScopeOptions = {
+  departments: string[];
+  jobTitles: string[];
+  units: string[];
+  teams: string[];
 };

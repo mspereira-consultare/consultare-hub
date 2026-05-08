@@ -1,27 +1,41 @@
 'use client';
 
-import { Plus, Trash2 } from 'lucide-react';
-import type { ExecutiveConfigurationSnapshot, ExecutiveProfileRule } from '@/lib/dashboard_executive/types';
-import { formatCsv, parseCsv } from './executive-dashboard-settings-utils';
+import { Plus, Search, Trash2 } from 'lucide-react';
+import type { ExecutiveConfigurationSnapshot, ExecutiveProfileRule, ExecutiveScopeOptions } from '@/lib/dashboard_executive/types';
+import { normalizeText } from './executive-dashboard-settings-utils';
+import { ExecutiveDashboardMultiSelect } from './executive-dashboard-multi-select';
 
 type Props = {
   config: ExecutiveConfigurationSnapshot;
+  options: ExecutiveScopeOptions;
   onChangeRule: (ruleId: string, patch: Partial<ExecutiveProfileRule>) => void;
   onAddRule: () => void;
   onRemoveRule: (ruleId: string) => void;
+  searchTerm: string;
+  onSearchTermChange: (value: string) => void;
   onSave: () => void;
   saving: boolean;
 };
 
 export function ExecutiveDashboardRulesTab({
   config,
+  options,
   onChangeRule,
   onAddRule,
   onRemoveRule,
+  searchTerm,
+  onSearchTermChange,
   onSave,
   saving,
 }: Props) {
   const defaultProfileKey = config.profiles[0]?.key;
+  const visibleRules = config.rules.filter((rule) => {
+    const profile = config.profiles.find((item) => item.key === rule.profileKey);
+    const haystack = normalizeText(
+      `${profile?.label || ''} ${rule.department || ''} ${rule.jobTitle || ''} ${rule.units.join(' ')}`
+    );
+    return !searchTerm || haystack.includes(normalizeText(searchTerm));
+  });
 
   return (
     <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -42,9 +56,21 @@ export function ExecutiveDashboardRulesTab({
         </button>
       </div>
 
-      <div className="space-y-4 px-5 py-4">
-        {config.rules.length ? (
-          config.rules.map((rule) => (
+      <div className="border-b border-slate-100 px-5 py-4">
+        <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <Search className="h-4 w-4 text-slate-400" />
+          <input
+            value={searchTerm}
+            onChange={(event) => onSearchTermChange(event.target.value)}
+            placeholder="Buscar regra por perfil, departamento, cargo ou unidade"
+            className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+          />
+        </label>
+      </div>
+
+      <div className="max-h-[560px] space-y-4 overflow-y-auto px-5 py-4">
+        {visibleRules.length ? (
+          visibleRules.map((rule) => (
             <div key={rule.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="grid gap-4 xl:grid-cols-5">
                 <div>
@@ -82,15 +108,13 @@ export function ExecutiveDashboardRulesTab({
                   />
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Unidades</label>
-                  <input
-                    value={formatCsv(rule.units)}
-                    onChange={(event) => onChangeRule(rule.id, { units: parseCsv(event.target.value) })}
-                    placeholder="Separar por vírgula"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
+                <ExecutiveDashboardMultiSelect
+                  label="Unidades"
+                  options={options.units}
+                  value={rule.units}
+                  onChange={(value) => onChangeRule(rule.id, { units: value })}
+                  helper="Selecione as unidades que devem acionar esta regra. Se ficar vazio, a regra vale para qualquer unidade."
+                />
 
                 <div className="flex items-end gap-3">
                   <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
