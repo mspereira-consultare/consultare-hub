@@ -10,6 +10,27 @@ const isMysql =
 const userEmployeeJoinClause = isMysql
   ? "e.id COLLATE utf8mb4_unicode_ci = u.employee_id COLLATE utf8mb4_unicode_ci"
   : 'e.id = u.employee_id';
+const departmentUnionSql = isMysql
+  ? `
+        SELECT DISTINCT TRIM(value) AS value
+        FROM (
+          SELECT department COLLATE utf8mb4_unicode_ci AS value FROM users
+          UNION ALL
+          SELECT department COLLATE utf8mb4_unicode_ci AS value FROM employees
+        ) departments
+        WHERE value IS NOT NULL AND TRIM(value) <> ''
+        ORDER BY value ASC
+      `
+  : `
+        SELECT DISTINCT TRIM(value) AS value
+        FROM (
+          SELECT department AS value FROM users
+          UNION ALL
+          SELECT department AS value FROM employees
+        ) departments
+        WHERE value IS NOT NULL AND TRIM(value) <> ''
+        ORDER BY value ASC
+      `;
 
 export async function GET() {
   try {
@@ -32,16 +53,7 @@ export async function GET() {
         `
       ),
       db.query(
-        `
-        SELECT DISTINCT TRIM(value) AS value
-        FROM (
-          SELECT department AS value FROM users
-          UNION ALL
-          SELECT department AS value FROM employees
-        ) departments
-        WHERE value IS NOT NULL AND TRIM(value) <> ''
-        ORDER BY value ASC
-        `
+        departmentUnionSql
       ),
     ]);
 

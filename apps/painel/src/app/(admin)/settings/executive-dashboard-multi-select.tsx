@@ -10,6 +10,8 @@ type Props = {
   onChange: (value: string[]) => void;
   helper?: string;
   placeholder?: string;
+  dropdownClassName?: string;
+  optionTextClassName?: string;
 };
 
 const normalizeText = (value: unknown) =>
@@ -26,6 +28,8 @@ export function ExecutiveDashboardMultiSelect({
   onChange,
   helper,
   placeholder,
+  dropdownClassName,
+  optionTextClassName,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -80,12 +84,16 @@ export function ExecutiveDashboardMultiSelect({
           onClick={() => setOpen((current) => !current)}
           className="flex min-h-[44px] w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-700 transition hover:border-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
         >
-          <span className={value.length ? 'text-slate-800' : 'text-slate-400'}>{summary}</span>
+          <span className={`truncate ${value.length ? 'text-slate-800' : 'text-slate-400'}`}>{summary}</span>
           <ChevronDown className={`h-4 w-4 text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
         </button>
 
         {open ? (
-          <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+          <div
+            className={`absolute left-0 top-[calc(100%+8px)] z-30 min-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl ${
+              dropdownClassName || 'right-0'
+            }`}
+          >
             <div className="border-b border-slate-100 p-3">
               <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
                 <Search className="h-4 w-4 text-slate-400" />
@@ -127,7 +135,7 @@ export function ExecutiveDashboardMultiSelect({
                         checked ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
                       }`}
                     >
-                      <span>{option}</span>
+                      <span className={optionTextClassName || ''}>{option}</span>
                       <span
                         className={`flex h-5 w-5 items-center justify-center rounded-md border ${
                           checked ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 bg-white text-transparent'

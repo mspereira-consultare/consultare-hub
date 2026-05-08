@@ -145,6 +145,8 @@ export function ExecutiveDashboardOverridesTab({
                         value={override.units}
                         onChange={(value) => onChangeOverride(override.userId, { units: value })}
                         helper="Se ficar vazio, o usuário não terá restrição por unidade."
+                        dropdownClassName="w-[360px] max-w-[420px]"
+                        optionTextClassName="whitespace-nowrap"
                       />
                     </div>
                     <button
