@@ -71,6 +71,7 @@ export default function DashboardPage() {
   const areas = snapshot?.metrics.areas || [];
   const priorities = snapshot?.metrics.topPriorities || [];
   const heartbeats = snapshot?.metrics.liveOperations.heartbeats || [];
+  const needsConfiguration = Boolean(snapshot && !snapshot.metrics.profile.profileKey);
 
   const overviewCards = useMemo(() => {
     const liveOperations = snapshot?.metrics.liveOperations;
@@ -130,6 +131,16 @@ export default function DashboardPage() {
         {!snapshot ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
             Nenhum snapshot executivo foi encontrado para este usuário.
+          </div>
+        ) : needsConfiguration ? (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-6 py-10 shadow-sm">
+            <div className="mx-auto max-w-3xl text-center">
+              <h2 className="text-lg font-semibold text-amber-900">Visão executiva em configuração</h2>
+              <p className="mt-2 text-sm leading-6 text-amber-800">
+                Este acesso ainda não está vinculado a um perfil de visualização. Assim que a configuração for concluída,
+                o dashboard passará a mostrar apenas os indicadores permitidos para este cargo e setor.
+              </p>
+            </div>
           </div>
         ) : (
           <>

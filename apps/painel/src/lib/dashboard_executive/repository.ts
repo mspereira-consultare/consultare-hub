@@ -1,24 +1,39 @@
 import { createHash, randomUUID } from 'crypto';
 import { runInTransaction, type DbInterface } from '@/lib/db';
-import { calculateKpi } from '@/lib/kpi_engine';
 import { getEmployeeDashboard } from '@/lib/colaboradores/repository';
 import { getQmsOverviewMetrics } from '@/lib/qms/metrics_repository';
 import { listRecruitmentDashboard } from '@/lib/recrutamento/repository';
 import { getSurveillanceSummary } from '@/lib/vigilancia_sanitaria/repository';
+import {
+  EXECUTIVE_PROFILE_DEFINITIONS,
+  EXECUTIVE_PROFILE_WIDGET_DEFAULTS,
+  EXECUTIVE_WIDGET_DEFINITIONS,
+  getWidgetArea,
+} from '@/lib/dashboard_executive/catalog';
 import type { SurveillanceSummaryFilters } from '@/lib/vigilancia_sanitaria/types';
 import type {
   ExecutiveAreaBlock,
   ExecutiveAreaKey,
+  ExecutiveConfigurationSnapshot,
   ExecutiveIndicator,
   ExecutiveIndicatorStatus,
   ExecutiveLiveHeartbeat,
   ExecutiveLiveOperations,
   ExecutiveMetricsPayload,
+  ExecutiveProfileDefinition,
+  ExecutiveProfileKey,
+  ExecutiveProfileRule,
+  ExecutiveProfileWidgetConfig,
   ExecutivePriority,
+  ExecutiveResolvedProfile,
   ExecutiveScope,
+  ExecutiveScopeResolutionSource,
   ExecutiveSnapshot,
   ExecutiveSnapshotStatus,
   ExecutiveTrend,
+  ExecutiveUserOverride,
+  ExecutiveWidgetDefinition,
+  ExecutiveWidgetKey,
 } from '@/lib/dashboard_executive/types';
 
 const EXECUTIVE_AREAS: ExecutiveAreaKey[] = ['financeiro', 'comercial', 'operacao', 'pessoas', 'qualidade'];
@@ -59,6 +74,15 @@ const parseJsonArray = (value: unknown) => {
 };
 
 const unique = (values: string[]) => Array.from(new Set(values.map((item) => clean(item)).filter(Boolean)));
+const normalizeSearch = (value: unknown) =>
+  clean(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+const isWidgetKey = (value: string): value is ExecutiveWidgetKey =>
+  EXECUTIVE_WIDGET_DEFINITIONS.some((widget) => widget.key === value);
+const isProfileKey = (value: string): value is ExecutiveProfileKey =>
+  EXECUTIVE_PROFILE_DEFINITIONS.some((profile) => profile.key === value);
 
 const getSaoPauloParts = (date = new Date()) => {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -126,6 +150,27 @@ const worstStatus = (statuses: ExecutiveIndicatorStatus[]): ExecutiveIndicatorSt
   return [...statuses].sort((a, b) => statusRank[b] - statusRank[a])[0];
 };
 
+const getVisibleAreasFromWidgets = (widgetKeys: ExecutiveWidgetKey[]) =>
+  Array.from(
+    new Set(
+      widgetKeys
+        .map((widgetKey) => getWidgetArea(widgetKey))
+        .filter((areaKey): areaKey is ExecutiveAreaKey => EXECUTIVE_AREAS.includes(areaKey))
+    )
+  );
+
+const serializeScopeInput = (scope: ExecutiveScope) => ({
+  userId: scope.userId,
+  areas: scope.areas,
+  departments: scope.departments,
+  teams: scope.teams,
+  units: scope.units,
+  profileKey: scope.profileKey,
+  visibleWidgetKeys: scope.visibleWidgetKeys,
+  resolutionSource: scope.resolutionSource,
+  matchedRuleId: scope.matchedRuleId,
+});
+
 const serializeScopeHash = (scope: Omit<ExecutiveScope, 'updatedAt' | 'updatedBy'>) =>
   createHash('sha256').update(JSON.stringify(scope)).digest('hex');
 
@@ -155,20 +200,106 @@ const normalizeScope = (
   const areas = unique((raw?.areas || []).map((item) => clean(item).toLowerCase())).filter((item) =>
     allowedAreas.has(item as ExecutiveAreaKey)
   ) as ExecutiveAreaKey[];
+  const visibleWidgetKeys = unique((raw?.visibleWidgetKeys || []).map((item) => clean(item))).filter(isWidgetKey);
+  const profileKey = isProfileKey(clean(raw?.profileKey)) ? (clean(raw?.profileKey) as ExecutiveProfileKey) : null;
+  const resolutionSource = (clean(raw?.resolutionSource) || 'legacy_scope') as ExecutiveScopeResolutionSource;
+  const derivedAreas = profileKey && visibleWidgetKeys.length ? getVisibleAreasFromWidgets(visibleWidgetKeys) : [];
+  const effectiveAreas = derivedAreas.length ? derivedAreas : areas;
 
   return {
     userId,
-    areas: areas.length ? areas : [...EXECUTIVE_AREAS],
+    areas: effectiveAreas.length ? effectiveAreas : [...EXECUTIVE_AREAS],
     departments: unique(raw?.departments || []),
     teams: unique(raw?.teams || []),
     units: unique(raw?.units || []),
+    profileKey,
+    visibleWidgetKeys,
+    resolutionSource,
+    matchedRuleId: clean(raw?.matchedRuleId) || null,
     updatedAt: raw?.updatedAt || null,
     updatedBy: raw?.updatedBy || null,
   };
 };
 
+const toBool = (value: unknown) => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  const raw = clean(value).toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes';
+};
+
+const parseProfileRow = (row: any): ExecutiveProfileDefinition => ({
+  key: clean(row.profile_key) as ExecutiveProfileKey,
+  label: clean(row.label),
+  description: clean(row.description) || null,
+  isActive: toBool(row.is_active),
+  sortOrder: toNumber(row.sort_order),
+});
+
+const parseWidgetRow = (row: any): ExecutiveWidgetDefinition => ({
+  key: clean(row.widget_key) as ExecutiveWidgetKey,
+  label: clean(row.label),
+  areaKey: clean(row.area_key) as ExecutiveAreaKey,
+  status: (clean(row.status) || 'planned') as ExecutiveWidgetDefinition['status'],
+  sourceKey: clean(row.source_key) || null,
+  description: clean(row.description) || null,
+  sortOrder: toNumber(row.sort_order),
+});
+
+const parseProfileWidgetRow = (row: any): ExecutiveProfileWidgetConfig => ({
+  profileKey: clean(row.profile_key) as ExecutiveProfileKey,
+  widgetKey: clean(row.widget_key) as ExecutiveWidgetKey,
+  isVisible: toBool(row.is_visible),
+  sortOrder: toNumber(row.sort_order),
+});
+
+const parseRuleRow = (row: any): ExecutiveProfileRule => ({
+  id: clean(row.id),
+  profileKey: clean(row.profile_key) as ExecutiveProfileKey,
+  department: clean(row.department) || null,
+  jobTitle: clean(row.job_title) || null,
+  units: parseJsonArray(row.units_json),
+  isActive: toBool(row.is_active),
+  updatedAt: clean(row.updated_at) || null,
+  updatedBy: clean(row.updated_by) || null,
+});
+
+const parseOverrideRow = (row: any): ExecutiveUserOverride => ({
+  userId: clean(row.user_id),
+  profileKey: isProfileKey(clean(row.profile_key)) ? (clean(row.profile_key) as ExecutiveProfileKey) : null,
+  visibleWidgetKeys: parseJsonArray(row.widget_keys_json).filter(isWidgetKey),
+  departments: parseJsonArray(row.departments_json),
+  teams: parseJsonArray(row.teams_json),
+  units: parseJsonArray(row.units_json),
+  isActive: toBool(row.is_active),
+  updatedAt: clean(row.updated_at) || null,
+  updatedBy: clean(row.updated_by) || null,
+});
+
+const buildResolvedProfile = (
+  profileKey: ExecutiveProfileKey | null,
+  visibleWidgetKeys: ExecutiveWidgetKey[],
+  resolutionSource: ExecutiveScopeResolutionSource,
+  matchedRuleId: string | null
+): ExecutiveResolvedProfile => ({
+  profileKey,
+  visibleWidgetKeys,
+  resolutionSource,
+  matchedRuleId,
+});
+
 const parseSnapshotRow = (row: any): ExecutiveSnapshot => {
   const metrics = JSON.parse(clean(row.metrics_json) || '{}') as ExecutiveMetricsPayload;
+  if (!metrics.profile) {
+    metrics.profile = buildResolvedProfile(
+      isProfileKey(clean((metrics.scope as any)?.profileKey)) ? (clean((metrics.scope as any)?.profileKey) as ExecutiveProfileKey) : null,
+      Array.isArray((metrics.scope as any)?.visibleWidgetKeys)
+        ? ((metrics.scope as any).visibleWidgetKeys as string[]).filter(isWidgetKey)
+        : [],
+      ((metrics.scope as any)?.resolutionSource as ExecutiveScopeResolutionSource) || 'legacy_scope',
+      clean((metrics.scope as any)?.matchedRuleId) || null
+    );
+  }
   return {
     id: clean(row.id),
     userId: clean(row.user_id),
@@ -796,15 +927,18 @@ const getQualityArea = async (db: DbInterface): Promise<ExecutiveAreaBlock> => {
 };
 
 const buildExecutiveSummary = (areas: ExecutiveAreaBlock[]) => {
+  if (!areas.length) {
+    return 'Sua visão executiva ainda não foi configurada para este cargo ou usuário.';
+  }
   const dangerAreas = areas.filter((area) => area.status === 'DANGER');
   const warningAreas = areas.filter((area) => area.status === 'WARNING');
   if (dangerAreas.length) {
-    return `A operação exige atenção imediata em ${dangerAreas.map((area) => area.label).join(', ')}. Esta fase inicial já consolida os principais sinais quantitativos; a leitura com IA entra na fase 2.`;
+    return `A operação exige atenção imediata em ${dangerAreas.map((area) => area.label).join(', ')}.`;
   }
   if (warningAreas.length) {
-    return `O painel executivo indica atenção moderada em ${warningAreas.map((area) => area.label).join(', ')}. A base quantitativa já está consolidada para a próxima etapa de priorização por IA.`;
+    return `O painel executivo indica atenção moderada em ${warningAreas.map((area) => area.label).join(', ')}.`;
   }
-  return 'Os principais blocos executivos estão estáveis neste snapshot. A próxima fase adicionará interpretação e priorização automática com IA.';
+  return 'Os principais blocos executivos estão estáveis neste momento.';
 };
 
 const buildTopPriorities = (areas: ExecutiveAreaBlock[]): ExecutivePriority[] => {
@@ -853,30 +987,342 @@ export const ensureExecutiveTables = async (db: DbInterface) => {
     )
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS dashboard_executive_profiles (
+      profile_key VARCHAR(80) PRIMARY KEY,
+      label VARCHAR(160) NOT NULL,
+      description TEXT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS dashboard_executive_widgets (
+      widget_key VARCHAR(80) PRIMARY KEY,
+      label VARCHAR(180) NOT NULL,
+      area_key VARCHAR(40) NOT NULL,
+      status VARCHAR(20) NOT NULL,
+      source_key VARCHAR(120) NULL,
+      description TEXT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS dashboard_executive_profile_widgets (
+      profile_key VARCHAR(80) NOT NULL,
+      widget_key VARCHAR(80) NOT NULL,
+      is_visible INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (profile_key, widget_key)
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS dashboard_executive_profile_rules (
+      id VARCHAR(64) PRIMARY KEY,
+      profile_key VARCHAR(80) NOT NULL,
+      department VARCHAR(180) NULL,
+      job_title VARCHAR(180) NULL,
+      units_json LONGTEXT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NULL,
+      updated_by VARCHAR(64) NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS dashboard_executive_user_overrides (
+      user_id VARCHAR(64) PRIMARY KEY,
+      profile_key VARCHAR(80) NULL,
+      widget_keys_json LONGTEXT NULL,
+      departments_json LONGTEXT NULL,
+      teams_json LONGTEXT NULL,
+      units_json LONGTEXT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NULL,
+      updated_by VARCHAR(64) NULL
+    )
+  `);
+
   try {
     await db.execute('CREATE INDEX idx_dashboard_executive_snapshots_user_scope ON dashboard_executive_snapshots (user_id, scope_hash)');
   } catch {}
   try {
     await db.execute('CREATE INDEX idx_dashboard_executive_snapshots_created_at ON dashboard_executive_snapshots (created_at)');
   } catch {}
+  try {
+    await db.execute('CREATE INDEX idx_dashboard_executive_profile_rules_profile ON dashboard_executive_profile_rules (profile_key, is_active)');
+  } catch {}
+
+  for (const profile of EXECUTIVE_PROFILE_DEFINITIONS) {
+    await db.execute(
+      `
+      INSERT OR IGNORE INTO dashboard_executive_profiles
+        (profile_key, label, description, is_active, sort_order)
+      VALUES (?, ?, ?, ?, ?)
+      `,
+      [profile.key, profile.label, profile.description, profile.isActive ? 1 : 0, profile.sortOrder]
+    );
+  }
+
+  for (const widget of EXECUTIVE_WIDGET_DEFINITIONS) {
+    await db.execute(
+      `
+      INSERT OR IGNORE INTO dashboard_executive_widgets
+        (widget_key, label, area_key, status, source_key, description, is_active, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, 1, ?)
+      `,
+      [widget.key, widget.label, widget.areaKey, widget.status, widget.sourceKey, widget.description, widget.sortOrder]
+    );
+  }
+
+  for (const profileWidget of EXECUTIVE_PROFILE_WIDGET_DEFAULTS) {
+    await db.execute(
+      `
+      INSERT OR IGNORE INTO dashboard_executive_profile_widgets
+        (profile_key, widget_key, is_visible, sort_order)
+      VALUES (?, ?, ?, ?)
+      `,
+      [
+        profileWidget.profileKey,
+        profileWidget.widgetKey,
+        profileWidget.isVisible ? 1 : 0,
+        profileWidget.sortOrder,
+      ]
+    );
+  }
 
   tablesEnsured = true;
 };
 
-export const getExecutiveScope = async (db: DbInterface, userId: string): Promise<ExecutiveScope> => {
+export const listExecutiveProfiles = async (db: DbInterface) => {
   await ensureExecutiveTables(db);
-  const rows = await db.query('SELECT * FROM dashboard_executive_scopes WHERE user_id = ? LIMIT 1', [userId]);
+  const rows = await db.query(
+    `
+    SELECT profile_key, label, description, is_active, sort_order
+    FROM dashboard_executive_profiles
+    ORDER BY sort_order ASC, label ASC
+    `
+  );
+  return rows.map(parseProfileRow);
+};
+
+export const listExecutiveWidgets = async (db: DbInterface) => {
+  await ensureExecutiveTables(db);
+  const rows = await db.query(
+    `
+    SELECT widget_key, label, area_key, status, source_key, description, sort_order
+    FROM dashboard_executive_widgets
+    WHERE is_active = 1
+    ORDER BY sort_order ASC, label ASC
+    `
+  );
+  return rows.map(parseWidgetRow);
+};
+
+export const listExecutiveProfileWidgets = async (db: DbInterface) => {
+  await ensureExecutiveTables(db);
+  const rows = await db.query(
+    `
+    SELECT profile_key, widget_key, is_visible, sort_order
+    FROM dashboard_executive_profile_widgets
+    ORDER BY profile_key ASC, sort_order ASC
+    `
+  );
+  return rows.map(parseProfileWidgetRow);
+};
+
+export const listExecutiveProfileRules = async (db: DbInterface) => {
+  await ensureExecutiveTables(db);
+  const rows = await db.query(
+    `
+    SELECT id, profile_key, department, job_title, units_json, is_active, updated_at, updated_by
+    FROM dashboard_executive_profile_rules
+    ORDER BY updated_at DESC, id DESC
+    `
+  );
+  return rows.map(parseRuleRow);
+};
+
+export const listExecutiveUserOverrides = async (db: DbInterface) => {
+  await ensureExecutiveTables(db);
+  const rows = await db.query(
+    `
+    SELECT user_id, profile_key, widget_keys_json, departments_json, teams_json, units_json, is_active, updated_at, updated_by
+    FROM dashboard_executive_user_overrides
+    ORDER BY updated_at DESC, user_id ASC
+    `
+  );
+  return rows.map(parseOverrideRow);
+};
+
+export const getExecutiveConfigurationSnapshot = async (db: DbInterface): Promise<ExecutiveConfigurationSnapshot> => {
+  const [profiles, widgets, profileWidgets, rules, overrides] = await Promise.all([
+    listExecutiveProfiles(db),
+    listExecutiveWidgets(db),
+    listExecutiveProfileWidgets(db),
+    listExecutiveProfileRules(db),
+    listExecutiveUserOverrides(db),
+  ]);
+  return { profiles, widgets, profileWidgets, rules, overrides };
+};
+
+const getProfileVisibleWidgetKeys = async (db: DbInterface, profileKey: ExecutiveProfileKey) => {
+  const rows = await db.query(
+    `
+    SELECT widget_key
+    FROM dashboard_executive_profile_widgets
+    WHERE profile_key = ?
+      AND is_visible = 1
+    ORDER BY sort_order ASC
+    `,
+    [profileKey]
+  );
+  return rows.map((row: any) => clean(row.widget_key)).filter(isWidgetKey);
+};
+
+const getUserIdentityForExecutiveProfile = async (db: DbInterface, userId: string) => {
+  const rows = await db.query(
+    `
+    SELECT
+      u.id AS user_id,
+      u.employee_id,
+      u.department AS user_department,
+      e.department AS employee_department,
+      e.job_title,
+      e.units_json
+    FROM users u
+    LEFT JOIN employees e ON e.id = u.employee_id
+    WHERE u.id = ?
+    LIMIT 1
+    `,
+    [userId]
+  );
   const row = rows[0];
   if (!row) {
-    return normalizeScope(userId);
+    return {
+      userId,
+      employeeId: null,
+      department: null,
+      jobTitle: null,
+      units: [] as string[],
+    };
   }
-  return normalizeScope(userId, {
-    areas: parseJsonArray(row.areas_json) as ExecutiveAreaKey[],
-    departments: parseJsonArray(row.departments_json),
-    teams: parseJsonArray(row.teams_json),
+  return {
+    userId,
+    employeeId: clean(row.employee_id) || null,
+    department: clean(row.employee_department) || clean(row.user_department) || null,
+    jobTitle: clean(row.job_title) || null,
     units: parseJsonArray(row.units_json),
-    updatedAt: clean(row.updated_at) || null,
-    updatedBy: clean(row.updated_by) || null,
+  };
+};
+
+export const resolveExecutiveProfile = async (db: DbInterface, userId: string): Promise<ExecutiveResolvedProfile> => {
+  await ensureExecutiveTables(db);
+
+  const overrideRows = await db.query(
+    `
+    SELECT user_id, profile_key, widget_keys_json, departments_json, teams_json, units_json, is_active, updated_at, updated_by
+    FROM dashboard_executive_user_overrides
+    WHERE user_id = ?
+    LIMIT 1
+    `,
+    [userId]
+  );
+  const override = overrideRows[0] ? parseOverrideRow(overrideRows[0]) : null;
+  if (override?.isActive && override.profileKey) {
+    const fallbackWidgetKeys = await getProfileVisibleWidgetKeys(db, override.profileKey);
+    return buildResolvedProfile(
+      override.profileKey,
+      override.visibleWidgetKeys.length ? override.visibleWidgetKeys : fallbackWidgetKeys,
+      'user_override',
+      null
+    );
+  }
+
+  const identity = await getUserIdentityForExecutiveProfile(db, userId);
+  const rules = await listExecutiveProfileRules(db);
+  const normalizedDepartment = normalizeSearch(identity.department);
+  const normalizedJobTitle = normalizeSearch(identity.jobTitle);
+  const normalizedUnits = identity.units.map(normalizeSearch);
+
+  const matchedRule = rules
+    .filter((rule) => {
+      if (!rule.isActive) return false;
+      if (rule.department && normalizeSearch(rule.department) !== normalizedDepartment) return false;
+      if (rule.jobTitle && normalizeSearch(rule.jobTitle) !== normalizedJobTitle) return false;
+      if (rule.units.length) {
+        const ruleUnits = rule.units.map(normalizeSearch);
+        return normalizedUnits.some((unit) => ruleUnits.includes(unit));
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const aScore = (a.department ? 2 : 0) + (a.jobTitle ? 2 : 0) + (a.units.length ? 1 : 0);
+      const bScore = (b.department ? 2 : 0) + (b.jobTitle ? 2 : 0) + (b.units.length ? 1 : 0);
+      return bScore - aScore;
+    })[0];
+
+  if (matchedRule) {
+    return buildResolvedProfile(
+      matchedRule.profileKey,
+      await getProfileVisibleWidgetKeys(db, matchedRule.profileKey),
+      'profile_rule',
+      matchedRule.id
+    );
+  }
+
+  return buildResolvedProfile(null, [], 'unconfigured', null);
+};
+
+export const getExecutiveScope = async (db: DbInterface, userId: string): Promise<ExecutiveScope> => {
+  await ensureExecutiveTables(db);
+  const [rows, overrideRows, resolvedProfile] = await Promise.all([
+    db.query('SELECT * FROM dashboard_executive_scopes WHERE user_id = ? LIMIT 1', [userId]),
+    db.query(
+      `
+      SELECT user_id, profile_key, widget_keys_json, departments_json, teams_json, units_json, is_active, updated_at, updated_by
+      FROM dashboard_executive_user_overrides
+      WHERE user_id = ?
+      LIMIT 1
+      `,
+      [userId]
+    ),
+    resolveExecutiveProfile(db, userId),
+  ]);
+  const row = rows[0];
+  const override = overrideRows[0] ? parseOverrideRow(overrideRows[0]) : null;
+  const departments = override?.isActive && override.departments.length
+    ? override.departments
+    : row
+      ? parseJsonArray(row.departments_json)
+      : [];
+  const teams = override?.isActive && override.teams.length
+    ? override.teams
+    : row
+      ? parseJsonArray(row.teams_json)
+      : [];
+  const units = override?.isActive && override.units.length
+    ? override.units
+    : row
+      ? parseJsonArray(row.units_json)
+      : [];
+  const areas = row ? (parseJsonArray(row.areas_json) as ExecutiveAreaKey[]) : [];
+
+  return normalizeScope(userId, {
+    areas,
+    departments,
+    teams,
+    units,
+    profileKey: resolvedProfile.profileKey,
+    visibleWidgetKeys: resolvedProfile.visibleWidgetKeys,
+    resolutionSource: resolvedProfile.resolutionSource,
+    matchedRuleId: resolvedProfile.matchedRuleId,
+    updatedAt: clean(row?.updated_at) || override?.updatedAt || null,
+    updatedBy: clean(row?.updated_by) || override?.updatedBy || null,
   });
 };
 
@@ -888,33 +1334,102 @@ export const saveExecutiveScope = async (
 ) => {
   await ensureExecutiveTables(db);
   const scope = normalizeScope(userId, { ...input, updatedBy, updatedAt: new Date().toISOString() });
-  await db.execute(
-    `
-    INSERT INTO dashboard_executive_scopes
-      (user_id, areas_json, departments_json, teams_json, units_json, updated_at, updated_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(user_id) DO UPDATE SET
-      areas_json = excluded.areas_json,
-      departments_json = excluded.departments_json,
-      teams_json = excluded.teams_json,
-      units_json = excluded.units_json,
-      updated_at = excluded.updated_at,
-      updated_by = excluded.updated_by
-    `,
-    [
-      userId,
-      JSON.stringify(scope.areas),
-      JSON.stringify(scope.departments),
-      JSON.stringify(scope.teams),
-      JSON.stringify(scope.units),
-      scope.updatedAt,
-      scope.updatedBy,
-    ]
-  );
-  return scope;
+  await runInTransaction(db, async (txDb) => {
+    await txDb.execute(
+      `
+      INSERT INTO dashboard_executive_scopes
+        (user_id, areas_json, departments_json, teams_json, units_json, updated_at, updated_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(user_id) DO UPDATE SET
+        areas_json = excluded.areas_json,
+        departments_json = excluded.departments_json,
+        teams_json = excluded.teams_json,
+        units_json = excluded.units_json,
+        updated_at = excluded.updated_at,
+        updated_by = excluded.updated_by
+      `,
+      [
+        userId,
+        JSON.stringify(scope.areas),
+        JSON.stringify(scope.departments),
+        JSON.stringify(scope.teams),
+        JSON.stringify(scope.units),
+        scope.updatedAt,
+        scope.updatedBy,
+      ]
+    );
+
+    if (scope.profileKey) {
+      await txDb.execute(
+        `
+        INSERT INTO dashboard_executive_user_overrides
+          (user_id, profile_key, widget_keys_json, departments_json, teams_json, units_json, is_active, updated_at, updated_by)
+        VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+          profile_key = excluded.profile_key,
+          widget_keys_json = excluded.widget_keys_json,
+          departments_json = excluded.departments_json,
+          teams_json = excluded.teams_json,
+          units_json = excluded.units_json,
+          is_active = excluded.is_active,
+          updated_at = excluded.updated_at,
+          updated_by = excluded.updated_by
+        `,
+        [
+          userId,
+          scope.profileKey,
+          JSON.stringify(scope.visibleWidgetKeys),
+          JSON.stringify(scope.departments),
+          JSON.stringify(scope.teams),
+          JSON.stringify(scope.units),
+          scope.updatedAt,
+          scope.updatedBy,
+        ]
+      );
+    } else {
+      await txDb.execute(
+        `
+        DELETE FROM dashboard_executive_user_overrides
+        WHERE user_id = ?
+        `,
+        [userId]
+      );
+    }
+  });
+
+  return getExecutiveScope(db, userId);
 };
 
 const buildExecutiveMetrics = async (db: DbInterface, scope: ExecutiveScope): Promise<ExecutiveMetricsPayload> => {
+  const profile = buildResolvedProfile(
+    scope.profileKey,
+    scope.visibleWidgetKeys,
+    scope.resolutionSource,
+    scope.matchedRuleId
+  );
+
+  if (!scope.profileKey || scope.resolutionSource === 'unconfigured') {
+    return {
+      generatedAt: new Date().toISOString(),
+      scope: serializeScopeInput(scope),
+      profile,
+      overallStatus: 'NO_DATA',
+      executiveSummary: buildExecutiveSummary([]),
+      aiStatus: 'PENDING_PHASE_2',
+      areas: [],
+      topPriorities: [],
+      liveOperations: {
+        medicQueue: 0,
+        receptionQueue: 0,
+        whatsappQueue: 0,
+        criticalWaitCount: 0,
+        attendedToday: 0,
+        averageReceptionWaitMinutes: 0,
+        heartbeats: [],
+      },
+    };
+  }
+
   const [financeiro, comercial, operacaoBundle, pessoas, qualidade] = await Promise.all([
     getFinanceArea(db, scope),
     getCommercialArea(db, scope),
@@ -923,19 +1438,16 @@ const buildExecutiveMetrics = async (db: DbInterface, scope: ExecutiveScope): Pr
     getQualityArea(db),
   ]);
 
+  const visibleAreas = getVisibleAreasFromWidgets(scope.visibleWidgetKeys);
+  const allowedAreas = visibleAreas.length ? visibleAreas : scope.areas;
   const areas = [financeiro, comercial, operacaoBundle.area, pessoas, qualidade].filter((area) =>
-    scope.areas.includes(area.areaKey)
+    allowedAreas.includes(area.areaKey)
   );
 
   return {
     generatedAt: new Date().toISOString(),
-    scope: {
-      userId: scope.userId,
-      areas: scope.areas,
-      departments: scope.departments,
-      teams: scope.teams,
-      units: scope.units,
-    },
+    scope: serializeScopeInput({ ...scope, areas: allowedAreas }),
+    profile,
     overallStatus: worstStatus(areas.map((area) => area.status)),
     executiveSummary: buildExecutiveSummary(areas),
     aiStatus: 'PENDING_PHASE_2',
@@ -971,13 +1483,7 @@ export const createExecutiveSnapshot = async (
   await ensureExecutiveTables(db);
   const effectiveScope = scope || (await getExecutiveScope(db, userId));
   const normalizedScope = normalizeScope(userId, effectiveScope);
-  const scopeHash = serializeScopeHash({
-    userId: normalizedScope.userId,
-    areas: normalizedScope.areas,
-    departments: normalizedScope.departments,
-    teams: normalizedScope.teams,
-    units: normalizedScope.units,
-  });
+  const scopeHash = serializeScopeHash(serializeScopeInput(normalizedScope));
 
   return runInTransaction(db, async (txDb) => {
     const snapshotId = randomUUID();
@@ -1033,13 +1539,7 @@ export const createExecutiveSnapshot = async (
 
 export const getOrCreateExecutiveSnapshot = async (db: DbInterface, userId: string) => {
   const scope = await getExecutiveScope(db, userId);
-  const scopeHash = serializeScopeHash({
-    userId: scope.userId,
-    areas: scope.areas,
-    departments: scope.departments,
-    teams: scope.teams,
-    units: scope.units,
-  });
+  const scopeHash = serializeScopeHash(serializeScopeInput(scope));
   const latest = await getLatestExecutiveSnapshot(db, userId, scopeHash);
   if (latest) return latest;
   return createExecutiveSnapshot(db, userId, userId, scope);

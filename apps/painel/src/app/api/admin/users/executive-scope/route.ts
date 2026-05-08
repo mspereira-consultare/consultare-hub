@@ -5,6 +5,7 @@ import { invalidateCache } from '@/lib/api_cache';
 import { getDbConnection } from '@/lib/db';
 import { hasPermission } from '@/lib/permissions';
 import { getExecutiveScope, saveExecutiveScope } from '@/lib/dashboard_executive/repository';
+import type { ExecutiveProfileKey } from '@/lib/dashboard_executive/types';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -63,6 +64,8 @@ export async function PATCH(request: Request) {
         departments: Array.isArray(body?.scope?.departments) ? body.scope.departments : [],
         teams: Array.isArray(body?.scope?.teams) ? body.scope.teams : [],
         units: Array.isArray(body?.scope?.units) ? body.scope.units : [],
+        profileKey: (clean(body?.scope?.profileKey) || null) as ExecutiveProfileKey | null,
+        visibleWidgetKeys: Array.isArray(body?.scope?.visibleWidgetKeys) ? body.scope.visibleWidgetKeys : [],
       },
       String(auth.session.user.id)
     );
