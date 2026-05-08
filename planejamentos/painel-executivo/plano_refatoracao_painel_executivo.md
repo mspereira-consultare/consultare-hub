@@ -2,7 +2,7 @@
 
 ## 1. Objetivo deste documento
 
-Este documento consolida o plano de refatoracao da pagina de **Visao Geral** do painel para transforma-la em um novo **Painel Executivo** da Consultare.
+Este documento consolida o plano de refatoracao da pagina principal do painel para transforma-la no novo **Painel Executivo** da Consultare.
 
 A proposta e sair de uma tela predominantemente operacional e evoluir para uma visao consolidada de negocio, capaz de:
 
@@ -11,7 +11,8 @@ A proposta e sair de uma tela predominantemente operacional e evoluir para uma v
 - comparar desempenho do dia, da semana e do mes;
 - apoiar diretor, gestora e lideres de area na priorizacao;
 - gerar leitura executiva com IA;
-- permitir exportacao em PDF da mesma visao.
+- permitir exportacao em PDF da mesma visao;
+- respeitar, sem codigo, a matriz de visibilidade por cargo, setor e perfil definida pela operacao.
 
 Este plano deve servir como referencia para produto, design, backend, frontend, dados, permissoes, IA e exportacao.
 
@@ -19,33 +20,35 @@ Este plano deve servir como referencia para produto, design, backend, frontend, 
 
 ## 2. Contexto atual
 
-Hoje o dashboard principal do painel em `apps/painel/src/app/(admin)/dashboard/page.tsx` funciona como um agregado operacional em tempo real.
+O repositorio ja possui uma primeira fundacao executiva implementada para `/dashboard`.
 
-Ele ja consolida partes importantes como:
+Ja existe no projeto:
 
-- fila medica;
-- fila de recepcao;
-- demanda de WhatsApp;
-- faturamento do dia e do mes;
-- metas de faturamento;
-- status de sincronizacao e refresh manual.
+- agregador server-side inicial do painel executivo;
+- persistencia de `dashboard_executive_scopes`;
+- persistencia de `dashboard_executive_snapshots`;
+- endpoint de leitura do snapshot executivo;
+- endpoint de refresh manual do snapshot executivo;
+- endpoint inicial de escopo executivo por usuario;
+- tela base do novo dashboard executivo;
+- integracao inicial com modulos de financeiro, comercial, operacao, pessoas e qualidade.
 
-Ao mesmo tempo, o repositorio ja possui outras pecas relevantes para uma evolucao executiva:
+Ao mesmo tempo, o projeto ja possui outras pecas relevantes para a evolucao completa:
 
 - painel de metas com visao executiva em `apps/painel/src/app/(admin)/metas/dashboard`;
-- exportacao em PDF e XLSX do painel de metas;
-- endpoints-resumo em modulos como propostas, colaboradores, recrutamento, QMS, vigilancia sanitaria, produtividade e marketing;
+- exportacao em PDF e XLSX no ecossistema atual;
+- endpoints-resumo em modulos como propostas, colaboradores, recrutamento, QMS, vigilancia sanitaria, agenda, produtividade e marketing;
 - modelo de permissoes por pagina e refresh;
-- dados de usuarios com `role`, `department` e matriz de permissao;
+- vinculo `users.employee_id -> employees.id`;
+- dados de colaboradores com `department`, `jobTitle` e `units`;
 - estrutura de `system_status` para heartbeat e status de processos.
 
-O pedido do dono da Consultare muda a natureza da tela principal:
+O novo insumo de negocio recebido da gerente muda um ponto importante do plano:
 
-- ela deve continuar mostrando os indicadores-chave;
-- mas precisa virar uma visao de gestao consolidada;
-- com leitura priorizada por criticidade;
-- com recomendacoes de acao;
-- e com diagnostico operacional gerado por IA.
+- o dashboard nao deve ser segmentado apenas por grandes areas;
+- ele deve respeitar uma matriz de visibilidade por perfil operacional;
+- cada cargo/setor precisa enxergar um conjunto especifico de informacoes;
+- a gerente precisa conseguir editar essa matriz no painel, sem depender de deploy ou alteracao em codigo.
 
 ---
 
@@ -53,7 +56,7 @@ O pedido do dono da Consultare muda a natureza da tela principal:
 
 O novo dashboard deve ser o **Painel Executivo** da Consultare.
 
-Ele deve funcionar como um "gerente de negocios" digital para a lideranca, organizando a informacao de forma objetiva e priorizada.
+Ele deve funcionar como um "gerente de negocios" digital para a lideranca, organizando a informacao de forma objetiva, priorizada e contextual por perfil.
 
 Na pratica, a tela deve responder perguntas como:
 
@@ -61,19 +64,21 @@ Na pratica, a tela deve responder perguntas como:
 - quais metas estao com pior projecao;
 - quais areas exigem acao imediata;
 - onde a operacao esta melhorando ou piorando;
-- quais planos de acao fazem mais sentido no curto prazo.
+- quais planos de acao fazem mais sentido no curto prazo;
+- quais informacoes cada perfil deve ver para decidir melhor, sem poluicao e sem acesso indevido.
 
 O foco principal e atender:
 
-- diretor;
-- gestora;
-- lideres de area.
-
-Os lideres nao devem ver tudo. Eles devem ver apenas:
-
-- as areas pelas quais respondem;
-- as unidades que lhes competem;
-- os times ou recortes de sua responsabilidade.
+- diretoria;
+- gerencia ADM;
+- gerencia operacional;
+- lideres de unidade;
+- lider operacional;
+- agendas;
+- financeiro;
+- marketing;
+- RH;
+- CRC.
 
 ---
 
@@ -82,18 +87,17 @@ Os lideres nao devem ver tudo. Eles devem ver apenas:
 As decisoes abaixo ficam definidas como base da primeira versao:
 
 - a pagina principal sera a nova visao executiva em `/dashboard`;
-- a V1 cobrira 5 areas-chave:
-  - Financeiro
-  - Comercial
-  - Operacao e Atendimento
-  - Pessoas
-  - Qualidade
 - a camada de IA usara a **API da OpenAI**;
 - a geracao da IA sera baseada em **snapshot persistido + refresh manual**;
 - o PDF deve exportar exatamente o mesmo snapshot exibido ao usuario;
 - a IA nao vai consultar banco nem APIs diretamente;
 - a IA recebera apenas um payload consolidado e normalizado pelo backend;
-- o escopo dos lideres sera controlado por **mapa explicito por usuario**, e nao apenas por permissao de pagina.
+- `dashboard.view` continua sendo o gate de entrada para o painel executivo;
+- a segmentacao fina do dashboard nao sera controlada apenas por `role`;
+- a visibilidade do dashboard sera controlada por **persona executiva + catalogo de widgets + escopo de dados**;
+- a persona do dashboard sera **explicita e editavel** no painel;
+- a regra padrao podera ser sugerida por `department + jobTitle`, mas nao sera inferida como fonte unica de verdade;
+- itens do PDF que ainda nao possuem fonte real no sistema ficarao cadastrados como `planned`, mas ocultos da experiencia final ate serem implementados.
 
 ---
 
@@ -123,15 +127,16 @@ Ela sera responsavel por:
 - propor planos de acao;
 - redigir o diagnostico executivo.
 
-## 5.3 Escopo e confidencialidade primeiro
+## 5.3 Escopo, perfil e confidencialidade primeiro
 
 Como a tela sera executiva, ela precisa respeitar com rigor:
 
-- area;
+- permissao de acesso;
+- persona executiva;
 - unidade;
+- setor;
 - time;
-- permissao;
-- nivel de acesso.
+- nivel de confidencialidade.
 
 Nenhum usuario deve receber diagnostico, resumo ou PDF com dados fora do seu escopo.
 
@@ -144,11 +149,23 @@ Para evitar inconsistencias entre tela, PDF e IA:
 - o resumo da IA deve ser persistido junto do snapshot;
 - o refresh manual gera um novo snapshot.
 
+## 5.5 Governanca sem codigo
+
+A gerente deve conseguir manter a matriz do painel executivo sem depender de alteracoes tecnicas.
+
+Isso inclui:
+
+- editar quais perfis existem;
+- editar quais widgets cada perfil pode ver;
+- definir regras padrao por cargo/setor;
+- criar excecoes por usuario;
+- controlar a ordem de exibicao dos widgets.
+
 ---
 
 ## 6. Estrutura funcional do novo painel
 
-O novo `/dashboard` deve ser reorganizado em 3 camadas principais.
+O novo `/dashboard` deve ser organizado em 4 camadas.
 
 ## 6.1 Camada 1 - Resumo executivo com IA
 
@@ -164,9 +181,25 @@ Esse bloco deve trazer:
 - planos de acao recomendados;
 - observacoes sobre lacunas de dados, quando existirem.
 
-## 6.2 Camada 2 - Blocos executivos por area
+## 6.2 Camada 2 - Catalogo de widgets executivos
 
-Abaixo do resumo, a tela deve exibir os 5 blocos principais:
+Abaixo do resumo, a experiencia final nao sera montada apenas por 5 blocos fixos.
+
+Ela sera composta por um **catalogo de widgets executivos**.
+
+Cada widget deve ter:
+
+- chave estavel;
+- label;
+- area executiva associada;
+- status `available` ou `planned`;
+- fonte de dados declarada;
+- ordem padrao;
+- regras de visibilidade por perfil.
+
+## 6.3 Camada 3 - Blocos executivos por area
+
+Os 5 blocos continuam existindo como espinha dorsal analitica e base da IA:
 
 - Financeiro;
 - Comercial;
@@ -184,11 +217,13 @@ Cada bloco deve mostrar:
 - tendencia;
 - ultimo dado disponivel.
 
-## 6.3 Camada 3 - Operacao ao vivo
+Esses blocos podem alimentar mais de um widget visual.
+
+## 6.4 Camada 4 - Operacao ao vivo
 
 O dashboard atual possui leitura operacional importante e ela nao deve se perder.
 
-Por isso, a V1 deve manter uma secao secundaria, ou aba especifica, com a operacao ao vivo:
+Por isso, a V1 deve manter uma secao secundaria, ou bloco especifico, com a operacao ao vivo:
 
 - fila medica;
 - fila recepcao;
@@ -200,7 +235,7 @@ Essa camada continua importante, mas deixa de ser o centro da experiencia.
 
 ---
 
-## 7. Fontes e dominios da V1
+## 7. Fontes, dominios e widgets da V1
 
 O novo painel deve se apoiar principalmente em dados ja existentes no projeto.
 
@@ -210,51 +245,62 @@ Fontes principais:
 
 - `api/admin/financial/history`
 - `api/admin/goals/dashboard`
-- estruturas atuais de faturamento diario, mensal e por unidade
 
-Leituras esperadas:
+Leituras ja mapeadas:
 
 - faturamento hoje;
 - faturamento semana;
 - faturamento mes;
 - meta atual;
 - projecao;
-- status por unidade quando relevante;
 - risco de nao atingimento.
+
+Itens do PDF com indicio de base futura:
+
+- contas em aberto;
+- notas fiscais;
+- contas da semana;
+- previsto e realizado;
+- estornos pendentes.
 
 ## 7.2 Comercial
 
 Fontes principais:
 
 - `api/admin/propostas`
-- metas aplicaveis no painel de metas
+- painel de metas
 
-Leituras esperadas:
+Leituras ja mapeadas:
 
 - volume e valor de propostas;
-- ganho, rejeicao e aprovacao;
+- ganho;
 - propostas em aberto;
-- gargalos comerciais;
-- comparativo dia / semana / mes;
-- metas em risco.
+- comparativo dia / semana / mes.
 
 ## 7.3 Operacao e Atendimento
 
 Fontes principais:
 
-- dashboard atual
+- dashboard atual;
 - `api/admin/produtividade`
+- `api/admin/agenda-ocupacao`
 - filas operacionais atuais
-- possiveis metas ligadas a agendamento, atendimento e ocupacao
 
-Leituras esperadas:
+Leituras ja mapeadas ou proximas:
 
 - filas atuais;
 - ocupacao;
 - confirmacao;
-- produtividade;
 - sinais de espera critica;
-- gargalos do momento.
+- gargalos do momento;
+- mapa diario e semanal de agendas;
+- agendamento diario e mensal x meta.
+
+Itens futuros provaveis:
+
+- fila telefonia;
+- recoletas;
+- tarefas operacionais.
 
 ## 7.4 Pessoas
 
@@ -263,13 +309,14 @@ Fontes principais:
 - `api/admin/colaboradores/dashboard`
 - `api/admin/recrutamento`
 
-Leituras esperadas:
+Leituras ja mapeadas ou proximas:
 
-- indicadores de quadro;
-- movimentacoes e gaps;
+- aniversariantes;
+- quadro ativo;
 - pendencias relevantes;
-- contratacao e pipeline de recrutamento;
-- riscos de capacidade operacional.
+- recrutamento;
+- tempo de empresa;
+- banco de horas, quando houver fonte consolidada.
 
 ## 7.5 Qualidade
 
@@ -277,68 +324,141 @@ Fontes principais:
 
 - `api/admin/qms/indicadores`
 - `api/admin/vigilancia-sanitaria/summary`
+- modulo de equipamentos e documentos
 
-Leituras esperadas:
+Leituras ja mapeadas ou proximas:
 
-- pendencias de qualidade;
-- status documental;
-- treinamento;
-- auditoria;
+- documentos em alerta;
 - riscos regulatorios;
-- itens que exigem priorizacao.
+- treinamentos;
+- auditorias;
+- documentos ou equipamentos vencidos ou vencendo;
+- inspecoes, quando a base estiver consolidada.
+
+## 7.6 Marketing
+
+Fontes principais:
+
+- `marketing/funil`
+- `marketing/controle`
+
+Leituras ja mapeadas ou proximas:
+
+- Google;
+- investimento ADS;
+- faturamento x meta x campanha x conversao;
+- cliques em WhatsApp e sinais de conversao.
+
+## 7.7 Itens do PDF por status
+
+Cada item da matriz do PDF deve entrar em um destes estados:
+
+- `available`: ja existe fonte suficiente para entrar na V1 ou logo apos a governanca;
+- `planned`: faz parte da matriz, mas ainda nao sera exibido;
+- `blocked`: exige definicao adicional de dado, regra ou integracao.
 
 ---
 
-## 8. Escopo executivo por usuario
+## 8. Modelo de permissao, perfil e escopo
 
 O modelo atual de permissao por pagina nao e suficiente para essa tela.
 
-Sera necessario criar uma camada complementar de **escopo executivo**.
+Sera necessario manter uma camada complementar de **segmentacao executiva**.
 
-## 8.1 Objetivo
+## 8.1 O que o projeto atual ja resolve
 
-Definir com precisao o que cada usuario pode enxergar dentro do painel executivo.
+Hoje o sistema ja resolve:
 
-## 8.2 Estrutura proposta
+- autenticacao;
+- permissao por pagina e acao;
+- acesso geral ao dashboard por `dashboard.view`;
+- vinculo do usuario ao colaborador por `employee_id`;
+- dados organizacionais basicos do colaborador (`department`, `jobTitle`, `units`).
 
-Persistir uma configuracao por usuario contendo:
+## 8.2 O que ainda falta resolver
 
-- `user_id`
-- `areas`
-- `departments`
-- `teams`
-- `units`
+Hoje o sistema ainda nao resolve, sozinho:
 
-## 8.3 Comportamento esperado
+- qual persona do dashboard cada usuario representa;
+- quais widgets cada persona deve ver;
+- quais regras padrao valem por cargo/setor;
+- como a gerente altera isso sem codigo;
+- como o snapshot, a IA e o PDF passam a respeitar essa matriz.
 
-- diretor e gestora podem ter escopo amplo;
-- lider de area ve apenas o recorte que lhe compete;
-- areas nao autorizadas nao aparecem na tela;
-- dados fora do escopo nao entram no payload consolidado;
-- a IA nao recebe dados fora do escopo;
-- o PDF nao exporta dados fora do escopo.
+## 8.3 Estrutura proposta
 
-## 8.4 Regra de aplicacao
+Persistir tres camadas:
 
-O escopo deve ser aplicado em duas camadas:
+### a) Persona executiva
 
-1. na composicao da tela e dos blocos exibidos;
-2. no filtro dos dados que alimentam agregado, IA e export.
+Representa os perfis operacionais da matriz recebida, por exemplo:
+
+- `diretoria_gerencia_adm`
+- `gerencia_operacional`
+- `lider_unidades`
+- `lider_operacional`
+- `agendas`
+- `financeiro`
+- `marketing`
+- `rh`
+- `crc`
+
+### b) Catalogo de widgets
+
+Representa cada informacao possivel do painel, com:
+
+- `widget_key`
+- `label`
+- `area_key`
+- `status`
+- `source_key`
+- `sort_order`
+
+### c) Regras e overrides
+
+Representa:
+
+- regra padrao por `department + jobTitle`;
+- override explicito por usuario;
+- escopo de dados por perfil ou por usuario.
+
+## 8.4 Precedencia de resolucao
+
+A resolucao final do dashboard deve seguir esta ordem:
+
+1. usuario precisa ter `dashboard.view`;
+2. se existir override explicito do usuario, ele prevalece;
+3. se nao existir override, usar regra padrao por `department + jobTitle`;
+4. se nao houver regra valida, o painel abre em estado seguro de configuracao pendente;
+5. os widgets visiveis definem a composicao da tela;
+6. o escopo define quais dados entram em cada widget.
+
+## 8.5 Estado seguro
+
+Se um usuario tiver acesso ao dashboard, mas nao tiver perfil resolvido, a tela nao deve abrir escopo amplo por fallback.
+
+Ela deve:
+
+- abrir sem dados executivos;
+- informar que a configuracao do perfil executivo esta pendente;
+- orientar o administrador a concluir a configuracao.
 
 ---
 
 ## 9. Arquitetura de dados executivos
 
-Para evitar acoplamento entre frontend e multiplos endpoints dispersos, a V1 deve criar um agregador server-side proprio.
+Para evitar acoplamento entre frontend e multiplos endpoints dispersos, o painel executivo deve manter um agregador server-side proprio.
 
 ## 9.1 Novo agregador executivo
 
-Criar uma camada de agregacao que:
+Criar ou evoluir a camada de agregacao para que ela:
 
 - leia os dados dos modulos existentes;
 - normalize a resposta;
 - consolide indicadores por area;
-- aplique escopo do usuario;
+- resolva a persona executiva;
+- resolva os widgets visiveis;
+- aplique o escopo do usuario;
 - prepare o payload da IA;
 - prepare o payload do PDF.
 
@@ -364,11 +484,11 @@ Cada indicador executivo deve seguir um formato consistente, por exemplo:
 
 ## 9.3 Snapshot persistido
 
-Criar persistencia do snapshot executivo com campos equivalentes a:
+Manter persistencia do snapshot executivo com campos equivalentes a:
 
 - identificador;
 - usuario ou origem da geracao;
-- hash do escopo;
+- hash do perfil e do escopo;
 - `metrics_json`;
 - `ai_summary_json`;
 - status;
@@ -376,6 +496,18 @@ Criar persistencia do snapshot executivo com campos equivalentes a:
 - erro, quando houver.
 
 O snapshot passa a ser a fonte oficial da tela executiva.
+
+## 9.4 O que ja esta implementado
+
+Ja existe uma fundacao inicial para:
+
+- geracao de snapshot;
+- leitura do ultimo snapshot valido;
+- refresh manual;
+- escopo executivo inicial por usuario;
+- tela base do painel executivo.
+
+Essa base deve ser evoluida, e nao descartada.
 
 ---
 
@@ -398,13 +530,6 @@ Ela deve:
 ## 10.2 API recomendada
 
 Usar a **Responses API** da OpenAI com **Structured Outputs**.
-
-Motivos:
-
-- facilita contrato estruturado;
-- reduz ambiguidade da resposta;
-- melhora consistencia para tela e PDF;
-- permite tratar falhas de schema com seguranca.
 
 ## 10.3 Modelo recomendado
 
@@ -439,7 +564,7 @@ O prompt da IA deve instruir claramente que ela:
 - deve priorizar criticidade real;
 - deve considerar dia, semana e mes;
 - deve observar meta e projecao;
-- deve adaptar a narrativa ao escopo visivel do usuario;
+- deve adaptar a narrativa ao perfil e ao escopo visivel do usuario;
 - deve apontar lacunas quando o dado nao for suficiente.
 
 ## 10.6 Comportamento em falha
@@ -455,15 +580,13 @@ Se a OpenAI falhar:
 
 ## 11. Endpoints e contratos novos
 
-Para suportar a V1, o plano deve incluir novos endpoints do painel executivo.
-
 ## 11.1 Leitura do dashboard executivo
 
 `GET /api/admin/dashboard/executive`
 
 Responsabilidade:
 
-- retornar o snapshot executivo mais recente e valido para o escopo do usuario.
+- retornar o snapshot executivo mais recente e valido para o perfil e escopo do usuario.
 
 ## 11.2 Refresh do dashboard executivo
 
@@ -473,7 +596,7 @@ Responsabilidade:
 
 - gerar novo snapshot executivo;
 - consolidar dados;
-- executar IA;
+- executar IA quando a fase estiver habilitada;
 - registrar status em `system_status`.
 
 ## 11.3 Exportacao PDF
@@ -485,15 +608,17 @@ Responsabilidade:
 - exportar o PDF a partir do snapshot persistido;
 - manter consistencia entre tela e arquivo.
 
-## 11.4 Gestao de escopo executivo
+## 11.4 Gestao de perfil e escopo executivo
 
-`GET /PATCH /api/admin/users/executive-scope`
+Endpoints administrativos esperados:
 
-Responsabilidade:
+- leitura e edicao de perfis executivos;
+- leitura e edicao do catalogo de widgets;
+- leitura e edicao de regras por cargo/setor;
+- leitura e edicao de override por usuario;
+- preview de resolucao do dashboard por usuario.
 
-- ler;
-- atualizar;
-- validar escopo executivo por usuario.
+O endpoint inicial `GET / PATCH /api/admin/users/executive-scope` continua util, mas deve evoluir para fazer parte dessa governanca maior.
 
 ---
 
@@ -506,47 +631,81 @@ A nova tela continua ligada a `dashboard`.
 Ou seja:
 
 - quem nao tem `dashboard.view` nao acessa o painel executivo;
-- nao e necessario criar uma nova pagina de permissao para a V1, salvo se isso for desejado em refinamento posterior.
+- o gate de pagina continua centralizado no modelo atual de permissao.
 
-## 12.2 Refresh
+## 12.2 Segmentacao fina
 
-O refresh do painel executivo deve ser mapeado ao contexto de `dashboard`.
+O `role` atual (`ADMIN`, `GESTOR`, `OPERADOR`, `INTRANET`) continua valido para acesso geral, mas nao deve ser a fonte unica de segmentacao do painel executivo.
 
-Tambem deve seguir o padrao do projeto:
+A segmentacao fina deve passar por:
 
-- registrar `PENDING`, `RUNNING`, `COMPLETED` ou erro;
-- expor heartbeat e ultima execucao;
-- invalidar cache quando necessario.
+- persona executiva;
+- regras por cargo/setor;
+- override por usuario;
+- escopo de dados.
 
-## 12.3 Edicao de escopo
+## 12.3 Permissao administrativa nova
 
-A edicao do escopo executivo deve ficar disponivel na gestao de usuarios, junto do contexto administrativo de permissoes.
+Criar uma permissao administrativa propria para governanca do painel executivo.
+
+Essa permissao deve controlar quem pode:
+
+- editar perfis executivos;
+- editar widgets;
+- editar regras por cargo/setor;
+- editar overrides;
+- reorganizar a experiencia sem codigo.
+
+Ela nao deve ficar misturada apenas com `users.edit`.
+
+## 12.4 Edicao sem codigo
+
+A gerente deve ter acesso a uma interface propria do painel executivo para manter essa matriz.
+
+Essa interface deve permitir:
+
+- editar quais perfis existem;
+- definir quais widgets cada perfil enxerga;
+- definir ordem dos widgets;
+- ativar ou desativar widgets por perfil;
+- revisar usuarios com perfil resolvido;
+- aplicar override manual quando necessario.
 
 ---
 
 ## 13. Direcao de interface
 
-O PDF de referencia apresentado pelo dono da Consultare mostra uma direcao clara:
+Existem agora duas referencias de interface:
+
+### a) PDF executivo original
+
+Continua guiando:
 
 - visual mais executivo;
-- blocos por area;
 - leitura compacta;
-- pouca poluicao;
 - hierarquia forte;
 - foco em status, variacao, meta e prioridade.
 
-A nova tela deve se inspirar nisso sem copiar literalmente.
+### b) PDF por setor e cargo
 
-Elementos esperados:
+Passa a guiar:
+
+- matriz de perfis;
+- ordem de relevancia dos assuntos;
+- recorte esperado por area operacional;
+- definicao de quais widgets cada perfil deve ver.
+
+Elementos esperados da tela:
 
 - titulo e data de referencia;
-- indicacao clara do escopo em uso;
+- indicacao clara do perfil e do escopo em uso;
 - ultimo snapshot gerado;
 - botao de atualizar;
 - botao de exportar PDF;
 - bloco principal de diagnostico IA;
-- cards executivos por area;
-- sessao secundaria de operacao ao vivo.
+- widgets executivos visiveis para o perfil;
+- sessao secundaria de operacao ao vivo;
+- estado claro para itens indisponiveis, configuracao pendente ou IA indisponivel.
 
 ---
 
@@ -562,10 +721,10 @@ O PDF deve ser uma extensao fiel da tela executiva, e nao um relatorio diferente
 
 Ordem sugerida do PDF:
 
-1. cabecalho com data, usuario e escopo;
+1. cabecalho com data, usuario, perfil e escopo;
 2. resumo executivo com IA;
 3. prioridades principais;
-4. blocos por area;
+4. widgets ou blocos visiveis no perfil;
 5. riscos, oportunidades e observacoes finais.
 
 ## 14.3 Fonte dos dados
@@ -584,26 +743,38 @@ Isso evita:
 
 ## 15.1 Escopo e permissao
 
-- diretor ve os 5 blocos quando tiver escopo amplo;
-- lider ve apenas o recorte configurado;
 - usuario sem `dashboard.view` nao acessa;
-- areas fora do escopo nao aparecem nem no payload nem no PDF.
+- usuario com `dashboard.view`, mas sem perfil resolvido, entra em estado seguro sem dados amplos;
+- diretoria ve os widgets previstos para seu perfil;
+- CRC ve apenas os widgets previstos para CRC;
+- financeiro ve apenas os widgets previstos para financeiro;
+- areas e widgets fora do perfil nao aparecem na tela, nem no payload, nem no PDF.
 
-## 15.2 Snapshot e consistencia
+## 15.2 Governanca sem codigo
+
+- gerente consegue editar perfis e widgets sem deploy;
+- gerente consegue alterar a ordem de widgets por perfil;
+- gerente consegue ativar ou desativar visibilidade por perfil;
+- override por usuario prevalece sobre regra padrao;
+- alteracoes administrativas passam a refletir na resolucao do dashboard.
+
+## 15.3 Snapshot e consistencia
 
 - refresh manual cria novo snapshot;
 - a tela le o ultimo snapshot valido;
 - o PDF usa o snapshot informado;
-- refresh posterior nao altera export antigo.
+- refresh posterior nao altera export antigo;
+- o hash do snapshot muda quando perfil, widgets ou escopo mudarem.
 
-## 15.3 IA
+## 15.4 IA
 
 - resposta deve obedecer ao schema estruturado;
 - falha de schema nao publica resumo invalido;
 - dados ausentes entram como lacuna;
-- a IA nao cria recomendacao sobre fatos inexistentes.
+- a IA nao cria recomendacao sobre fatos inexistentes;
+- a IA respeita apenas widgets e escopo visiveis ao perfil.
 
-## 15.4 Experiencia
+## 15.5 Experiencia
 
 - a tela continua util mesmo quando a IA estiver indisponivel;
 - operacao ao vivo permanece acessivel;
@@ -612,29 +783,79 @@ Isso evita:
 
 ---
 
-## 16. Plano de entrega recomendado
+## 16. Plano de entrega atualizado
 
-## Fase 1 - Fundacao executiva
+## Fase 0 - Fundacao tecnica ja pronta
 
-- criar agregador executivo;
-- definir tipos e contratos;
-- criar modelo de escopo executivo;
-- criar persistencia de snapshot;
-- montar nova tela base.
+Status: **parcialmente concluida**
 
-## Fase 2 - IA e priorizacao
+Ja existe no projeto:
 
-- integrar OpenAI via Responses API;
+- agregador executivo inicial;
+- tipos e contratos iniciais;
+- snapshot persistido;
+- refresh manual;
+- tela base do dashboard executivo;
+- escopo executivo inicial por usuario.
+
+O objetivo agora e evoluir essa base, e nao recomecar do zero.
+
+## Fase 1 - Governanca de visibilidade e perfis
+
+Objetivo:
+
+- transformar o modelo atual de escopo em uma governanca completa por perfil.
+
+Entregas:
+
+- modelar personas executivas;
+- modelar catalogo de widgets;
+- modelar regras por `department + jobTitle`;
+- modelar overrides por usuario;
+- criar permissao administrativa do painel executivo;
+- criar tela administrativa para a gerente editar tudo sem codigo;
+- colocar o dashboard em estado seguro quando faltar configuracao.
+
+## Fase 2 - Consolidacao de widgets V1
+
+Objetivo:
+
+- ligar o dashboard aos widgets que ja possuem fonte real no projeto.
+
+Entregas:
+
+- mapear widgets `available`;
+- separar widgets `planned`;
+- reorganizar a tela por perfil, nao apenas por area;
+- melhorar a composicao final por persona do PDF.
+
+## Fase 3 - IA e priorizacao
+
+Objetivo:
+
+- integrar OpenAI sobre o snapshot ja governado por perfil.
+
+Entregas:
+
+- integrar Responses API;
 - validar structured output;
 - gerar resumo executivo;
-- ligar prioridades, riscos e planos de acao ao snapshot.
+- gerar prioridades, riscos e planos de acao;
+- persistir a leitura de IA no snapshot.
 
-## Fase 3 - PDF e refinamento
+## Fase 4 - PDF e refinamento final
+
+Objetivo:
+
+- fechar consistencia entre tela, IA, export e manutencao operacional.
+
+Entregas:
 
 - gerar exportacao PDF a partir do snapshot;
+- refletir perfil, widgets e escopo no PDF;
 - ajustar layout executivo;
-- melhorar leitura por perfil;
-- estabilizar estados de erro e loading.
+- estabilizar estados de erro e loading;
+- preparar backlog formal dos widgets futuros.
 
 ---
 
@@ -648,6 +869,8 @@ Ao final da refatoracao, a Consultare deve ter no dashboard principal:
 - diagnostico operacional por IA;
 - sugestoes de acao para metas e areas com pior projecao;
 - experiencia adequada para diretor, gestora e lideres;
+- segmentacao correta por cargo, setor e perfil;
+- governanca sem codigo pela gerente;
 - exportacao em PDF coerente com a tela.
 
-Em resumo, o painel deixa de ser apenas um monitor operacional e passa a ser um instrumento real de gestao executiva.
+Em resumo, o painel deixa de ser apenas um monitor operacional e passa a ser um instrumento real de gestao executiva, com controle operacional da propria equipe sobre quem ve o que.
