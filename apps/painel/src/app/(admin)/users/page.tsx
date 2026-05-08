@@ -20,7 +20,18 @@ interface User {
   department: string;
   status: UserStatus;
   last_access: string | null;
+  employee_id?: string | null;
+  employee_name?: string | null;
 }
+
+type EmployeeOption = {
+  id: string;
+  fullName: string;
+  department: string | null;
+  jobTitle: string | null;
+  status: string;
+  linkedUserId: string | null;
+};
 
 type PermissionGroupId =
   | 'principal'
@@ -159,6 +170,8 @@ export default function UsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
+  const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
   
   // Modal e Formulário
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -173,6 +186,7 @@ export default function UsersPage() {
     password?: string;
     role: UserRole;
     department: string;
+    employeeId: string;
     status: UserStatus;
   }>({
     name: '',
@@ -181,6 +195,7 @@ export default function UsersPage() {
     password: '',
     role: 'OPERADOR',
     department: 'Atendimento',
+    employeeId: '',
     status: 'ATIVO'
   });
 
@@ -209,13 +224,27 @@ export default function UsersPage() {
     }
   }, []);
 
+  const fetchOptions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/users/options', { cache: 'no-store' });
+      const data = await res.json();
+      if (res.ok && data?.status === 'success') {
+        setEmployeeOptions(Array.isArray(data.data?.employees) ? data.data.employees : []);
+        setDepartmentOptions(Array.isArray(data.data?.departments) ? data.data.departments : []);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar opções de usuários:', error);
+    }
+  }, []);
+
   // --- CARREGAR DADOS ---
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void fetchUsers();
+      void fetchOptions();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [fetchUsers]);
+  }, [fetchUsers, fetchOptions]);
 
   // --- AÇÕES ---
   const handleEditUser = (user: User) => {
@@ -227,6 +256,7 @@ export default function UsersPage() {
       password: '', // Senha vazia na edição (só preenche se quiser trocar)
       role: user.role,
       department: user.department,
+      employeeId: user.employee_id || '',
       status: user.status
     });
     setIsModalOpen(true);
@@ -370,6 +400,7 @@ export default function UsersPage() {
       password: '',
       role: 'OPERADOR',
       department: 'Atendimento',
+      employeeId: '',
       status: 'ATIVO'
     });
   };
@@ -379,8 +410,13 @@ export default function UsersPage() {
     user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.username || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.department.toLowerCase().includes(searchTerm.toLowerCase())
+    user.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.employee_name || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const availableEmployeeOptions = useMemo(() => {
+    return employeeOptions.filter((employee) => !employee.linkedUserId || employee.linkedUserId === formData.id);
+  }, [employeeOptions, formData.id]);
 
   const filteredPermissionPages = useMemo(() => {
     const search = normalizeText(permissionSearchTerm);
@@ -488,6 +524,7 @@ export default function UsersPage() {
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Usuário</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Departamento</th>
+                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Colaborador vinculado</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Função</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Último Acesso</th>
@@ -497,7 +534,7 @@ export default function UsersPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                         <div className="flex flex-col items-center gap-3">
                             <Loader2 className="animate-spin text-[#17407E]" size={32} />
                             <span>Carregando usuários...</span>
@@ -506,7 +543,7 @@ export default function UsersPage() {
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                         Nenhum usuário encontrado.
                     </td>
                 </tr>
@@ -529,6 +566,18 @@ export default function UsersPage() {
                         <span className="px-2.5 py-1 rounded-md bg-slate-100 border border-slate-200 font-medium text-xs">
                             {user.department || 'Geral'}
                         </span>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                        {user.employee_id ? (
+                          <div>
+                            <div className="font-medium text-slate-800">{user.employee_name || 'Colaborador vinculado'}</div>
+                            <div className="text-xs text-emerald-700">Vínculo ativo</div>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                            Sem vínculo
+                          </span>
+                        )}
                     </td>
                     <td className="px-6 py-4">
                         <div className="flex items-center gap-1.5 text-sm text-slate-700">
@@ -635,6 +684,25 @@ export default function UsersPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
+                 <div className="col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Colaborador vinculado</label>
+                    <select
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#17407E]/20 focus:border-[#17407E] outline-none bg-white"
+                      value={formData.employeeId}
+                      onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+                    >
+                      <option value="">Sem vínculo</option>
+                      {availableEmployeeOptions.map((employee) => (
+                        <option key={employee.id} value={employee.id}>
+                          {employee.fullName} {employee.department ? `· ${employee.department}` : ''} {employee.jobTitle ? `· ${employee.jobTitle}` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Vincule o usuário ao cadastro oficial do colaborador para habilitar enquadramento automático no dashboard executivo.
+                    </p>
+                 </div>
+
                  {/* Departamento */}
                  <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">Departamento</label>
@@ -643,11 +711,12 @@ export default function UsersPage() {
                       value={formData.department}
                       onChange={(e) => setFormData({...formData, department: e.target.value})}
                     >
-                      <option value="Atendimento">Atendimento</option>
-                      <option value="Comercial">Comercial</option>
-                      <option value="Financeiro">Financeiro</option>
-                      <option value="TI / Sistemas">TI / Sistemas</option>
-                      <option value="Diretoria">Diretoria</option>
+                      {departmentOptions.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                      {!departmentOptions.includes(formData.department) ? (
+                        <option value={formData.department}>{formData.department}</option>
+                      ) : null}
                     </select>
                  </div>
 

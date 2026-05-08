@@ -137,26 +137,23 @@ export function ExecutiveDashboardOverridesTab({
                     helper="As equipes seguem o cadastro mestre usado nas áreas de metas e produtividade."
                   />
 
-                  <div>
-                    <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Unidades</label>
-                    <div className="flex gap-3">
-                      <div className="flex-1">
-                        <ExecutiveDashboardMultiSelect
-                          label="Unidades"
-                          options={options.units}
-                          value={override.units}
-                          onChange={(value) => onChangeOverride(override.userId, { units: value })}
-                          helper="Se ficar vazio, o usuário não terá restrição por unidade."
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onRemoveOverride(override.userId)}
-                        className="mt-6 inline-flex h-11 items-center justify-center rounded-lg border border-rose-200 bg-white px-3 py-2 text-rose-600 transition hover:bg-rose-50"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                  <div className="flex gap-3">
+                    <div className="flex-1">
+                      <ExecutiveDashboardMultiSelect
+                        label="Unidades"
+                        options={options.units}
+                        value={override.units}
+                        onChange={(value) => onChangeOverride(override.userId, { units: value })}
+                        helper="Se ficar vazio, o usuário não terá restrição por unidade."
+                      />
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => onRemoveOverride(override.userId)}
+                      className="mt-7 inline-flex h-11 items-center justify-center rounded-xl border border-rose-200 bg-white px-3 py-2 text-rose-600 transition hover:bg-rose-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
                   </div>
                 </div>
               </div>
