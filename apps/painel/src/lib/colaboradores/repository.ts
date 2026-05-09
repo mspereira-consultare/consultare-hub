@@ -482,6 +482,51 @@ const safeCreateIndex = async (db: DbInterface, sql: string) => {
   }
 };
 
+const dedupeEmployeeCatalogTable = async (db: DbInterface, table: string) => {
+  const duplicateGroups = await db.query(
+    `
+    SELECT normalized_name
+    FROM ${table}
+    WHERE normalized_name IS NOT NULL AND TRIM(normalized_name) <> ''
+    GROUP BY normalized_name
+    HAVING COUNT(*) > 1
+    `
+  );
+
+  for (const group of duplicateGroups) {
+    const normalizedName = clean(group.normalized_name);
+    if (!normalizedName) continue;
+
+    const rows = await db.query(
+      `
+      SELECT id, name, is_active, updated_at, created_at
+      FROM ${table}
+      WHERE normalized_name = ?
+      ORDER BY is_active DESC, updated_at DESC, created_at DESC, id ASC
+      `,
+      [normalizedName]
+    );
+
+    const keeper = rows[0];
+    if (!keeper) continue;
+
+    const keepId = clean(keeper.id);
+    const bestName = clean(keeper.name);
+    const duplicateIds = rows
+      .slice(1)
+      .map((row: any) => clean(row.id))
+      .filter(Boolean);
+
+    if (bestName) {
+      await db.execute(`UPDATE ${table} SET name = ?, updated_at = ? WHERE id = ?`, [bestName, NOW(), keepId]);
+    }
+
+    for (const duplicateId of duplicateIds) {
+      await db.execute(`DELETE FROM ${table} WHERE id = ?`, [duplicateId]);
+    }
+  }
+};
+
 type EmployeeCatalogOptionType = 'department' | 'jobTitle';
 
 const employeeCatalogTableMap: Record<EmployeeCatalogOptionType, { table: string; label: string }> = {
@@ -960,6 +1005,8 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_employee_lifecycle_cases_employee ON employee_lifecycle_cases (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_lifecycle_cases_stage ON employee_lifecycle_cases (stage)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_lifecycle_tasks_case ON employee_lifecycle_tasks (case_id)`);
+  await dedupeEmployeeCatalogTable(db, 'employee_departments');
+  await dedupeEmployeeCatalogTable(db, 'employee_job_titles');
   await safeCreateIndex(db, `CREATE UNIQUE INDEX idx_employee_departments_normalized ON employee_departments (normalized_name)`);
   await safeCreateIndex(db, `CREATE UNIQUE INDEX idx_employee_job_titles_normalized ON employee_job_titles (normalized_name)`);
 
