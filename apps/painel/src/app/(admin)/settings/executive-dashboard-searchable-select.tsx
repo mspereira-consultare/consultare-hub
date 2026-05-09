@@ -6,13 +6,13 @@ import { Check, ChevronDown, Search, X } from 'lucide-react';
 type Props = {
   label: string;
   options: string[];
-  value: string[];
-  onChange: (value: string[]) => void;
+  value: string | null;
+  onChange: (value: string | null) => void;
   helper?: string;
   placeholder?: string;
+  emptyLabel?: string;
   dropdownClassName?: string;
   optionTextClassName?: string;
-  showSelectedChips?: boolean;
 };
 
 const normalizeText = (value: unknown) =>
@@ -22,16 +22,16 @@ const normalizeText = (value: unknown) =>
     .toLowerCase()
     .trim();
 
-export function ExecutiveDashboardMultiSelect({
+export function ExecutiveDashboardSearchableSelect({
   label,
   options,
   value,
   onChange,
   helper,
   placeholder,
+  emptyLabel = 'Sem restrição',
   dropdownClassName,
   optionTextClassName,
-  showSelectedChips = true,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,16 +39,20 @@ export function ExecutiveDashboardMultiSelect({
 
   useEffect(() => {
     if (!open) return;
+
     const handleClickOutside = (event: MouseEvent) => {
       if (!containerRef.current?.contains(event.target as Node)) {
         setOpen(false);
       }
     };
+
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setOpen(false);
     };
+
     document.addEventListener('mousedown', handleClickOutside);
     document.addEventListener('keydown', handleKeyDown);
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown);
@@ -61,20 +65,7 @@ export function ExecutiveDashboardMultiSelect({
     return options.filter((option) => normalizeText(option).includes(normalized));
   }, [options, searchTerm]);
 
-  const toggleValue = (option: string) => {
-    if (value.includes(option)) {
-      onChange(value.filter((item) => item !== option));
-      return;
-    }
-    onChange([...value, option]);
-  };
-
-  const summary =
-    value.length === 0
-      ? placeholder || 'Sem restrição'
-      : value.length <= 2
-        ? value.join(', ')
-        : `${value.length} selecionados`;
+  const displayValue = value || placeholder || emptyLabel;
 
   return (
     <div ref={containerRef} className="space-y-1.5">
@@ -86,7 +77,7 @@ export function ExecutiveDashboardMultiSelect({
           onClick={() => setOpen((current) => !current)}
           className="flex min-h-[44px] w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-700 transition hover:border-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
         >
-          <span className={`truncate ${value.length ? 'text-slate-800' : 'text-slate-400'}`}>{summary}</span>
+          <span className={`truncate ${value ? 'text-slate-800' : 'text-slate-400'}`}>{displayValue}</span>
           <ChevronDown className={`h-4 w-4 text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
         </button>
 
@@ -108,32 +99,39 @@ export function ExecutiveDashboardMultiSelect({
               </label>
             </div>
 
-            {showSelectedChips && value.length ? (
-              <div className="flex flex-wrap gap-2 border-b border-slate-100 p-3">
-                {value.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    onClick={() => toggleValue(item)}
-                    className="inline-flex max-w-full items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
-                  >
-                    <span className="truncate">{item}</span>
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                ))}
-              </div>
-            ) : null}
-
             <div className="max-h-64 overflow-y-auto p-2">
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(null);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+                  !value ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                <span>{emptyLabel}</span>
+                <span
+                  className={`flex h-5 w-5 items-center justify-center rounded-md border ${
+                    !value ? 'border-slate-500 bg-slate-500 text-white' : 'border-slate-300 bg-white text-transparent'
+                  }`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </span>
+              </button>
+
               {filteredOptions.length ? (
                 filteredOptions.map((option) => {
-                  const checked = value.includes(option);
+                  const checked = option === value;
                   return (
                     <button
                       key={option}
                       type="button"
-                      onClick={() => toggleValue(option)}
-                      className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+                      onClick={() => {
+                        onChange(option);
+                        setOpen(false);
+                      }}
+                      className={`mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
                         checked ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
                       }`}
                     >
@@ -157,7 +155,7 @@ export function ExecutiveDashboardMultiSelect({
       </div>
 
       <p className="text-xs text-slate-500">
-        {helper || 'Selecione uma ou mais opções. Se deixar vazio, o sistema não aplica restrição nesse campo.'}
+        {helper || 'Use opções oficiais do cadastro. Se deixar vazio, a regra não restringe esse campo.'}
       </p>
     </div>
   );

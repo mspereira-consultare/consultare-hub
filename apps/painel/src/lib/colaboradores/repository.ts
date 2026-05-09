@@ -92,6 +92,12 @@ const TODAY_SAO_PAULO = () => {
 };
 const clean = (value: any) => String(value ?? '').trim();
 const upper = (value: any) => clean(value).toUpperCase();
+const normalizeCatalogValue = (value: any) =>
+  clean(value)
+    .replace(/\s+/g, ' ')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 const bool = (value: any) =>
   value === true ||
   value === 1 ||
@@ -476,6 +482,58 @@ const safeCreateIndex = async (db: DbInterface, sql: string) => {
   }
 };
 
+type EmployeeCatalogOptionType = 'department' | 'jobTitle';
+
+const employeeCatalogTableMap: Record<EmployeeCatalogOptionType, { table: string; label: string }> = {
+  department: { table: 'employee_departments', label: 'departamento' },
+  jobTitle: { table: 'employee_job_titles', label: 'cargo' },
+};
+
+const syncEmployeeCatalogOption = async (db: DbInterface, type: EmployeeCatalogOptionType, rawValue: string | null | undefined) => {
+  const value = clean(rawValue).replace(/\s+/g, ' ');
+  if (!value) return null;
+  const normalized = normalizeCatalogValue(value);
+  const { table } = employeeCatalogTableMap[type];
+  const existing = await db.query(
+    `SELECT id, name FROM ${table} WHERE normalized_name = ? LIMIT 1`,
+    [normalized]
+  );
+
+  if (existing[0]) {
+    await db.execute(
+      `UPDATE ${table} SET name = ?, is_active = 1, updated_at = ? WHERE id = ?`,
+      [value, NOW(), clean(existing[0].id)]
+    );
+    return value;
+  }
+
+  await db.execute(
+    `
+    INSERT INTO ${table} (id, name, normalized_name, is_active, created_at, updated_at)
+    VALUES (?, ?, ?, 1, ?, ?)
+    `,
+    [randomUUID(), value, normalized, NOW(), NOW()]
+  );
+
+  return value;
+};
+
+const seedEmployeeCatalogFromEmployees = async (db: DbInterface) => {
+  const rows = await db.query(
+    `
+    SELECT DISTINCT TRIM(department) AS department, TRIM(job_title) AS job_title
+    FROM employees
+    WHERE (department IS NOT NULL AND TRIM(department) <> '')
+       OR (job_title IS NOT NULL AND TRIM(job_title) <> '')
+    `
+  );
+
+  for (const row of rows) {
+    await syncEmployeeCatalogOption(db, 'department', clean(row.department) || null);
+    await syncEmployeeCatalogOption(db, 'jobTitle', clean(row.job_title) || null);
+  }
+};
+
 const ensureEmployeeExists = async (db: DbInterface, employeeId: string) => {
   const rows = await db.query(`SELECT id FROM employees WHERE id = ? LIMIT 1`, [employeeId]);
   if (!rows[0]) {
@@ -838,6 +896,28 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
     )
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS employee_departments (
+      id VARCHAR(64) PRIMARY KEY,
+      name VARCHAR(180) NOT NULL,
+      normalized_name VARCHAR(180) NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS employee_job_titles (
+      id VARCHAR(64) PRIMARY KEY,
+      name VARCHAR(180) NOT NULL,
+      normalized_name VARCHAR(180) NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
   await safeAddColumn(db, `ALTER TABLE employee_documents ADD COLUMN issue_date DATE NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_documents ADD COLUMN notes TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN marital_status VARCHAR(20) NULL`);
@@ -880,6 +960,10 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_employee_lifecycle_cases_employee ON employee_lifecycle_cases (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_lifecycle_cases_stage ON employee_lifecycle_cases (stage)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_lifecycle_tasks_case ON employee_lifecycle_tasks (case_id)`);
+  await safeCreateIndex(db, `CREATE UNIQUE INDEX idx_employee_departments_normalized ON employee_departments (normalized_name)`);
+  await safeCreateIndex(db, `CREATE UNIQUE INDEX idx_employee_job_titles_normalized ON employee_job_titles (normalized_name)`);
+
+  await seedEmployeeCatalogFromEmployees(db);
 
   tablesEnsured = true;
 };
@@ -1405,6 +1489,8 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
   const now = NOW();
 
   return runInTransaction(db, async (txDb) => {
+    input.department = await syncEmployeeCatalogOption(txDb, 'department', input.department);
+    input.jobTitle = await syncEmployeeCatalogOption(txDb, 'jobTitle', input.jobTitle);
     await txDb.execute(
       `
       INSERT INTO employees (
@@ -1504,6 +1590,8 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
   const now = NOW();
 
   return runInTransaction(db, async (txDb) => {
+    input.department = await syncEmployeeCatalogOption(txDb, 'department', input.department);
+    input.jobTitle = await syncEmployeeCatalogOption(txDb, 'jobTitle', input.jobTitle);
     await txDb.execute(
       `
       UPDATE employees
@@ -2743,12 +2831,17 @@ const loadDistinctStrings = async (db: DbInterface, sql: string) => {
 
 export const getEmployeesOptions = async (db: DbInterface) => {
   await ensureEmployeesTables(db);
-  const [supervisors, departments, jobTitles, costCenters] = await Promise.all([
+  const [supervisors, departmentCatalogRows, departmentLegacyRows, jobTitleCatalogRows, jobTitleLegacyRows, costCenters] = await Promise.all([
     loadDistinctStrings(db, `SELECT DISTINCT TRIM(name) AS value FROM users WHERE name IS NOT NULL AND TRIM(name) <> '' ORDER BY value ASC`),
+    loadDistinctStrings(db, `SELECT DISTINCT TRIM(name) AS value FROM employee_departments WHERE is_active = 1 AND name IS NOT NULL AND TRIM(name) <> '' ORDER BY value ASC`),
     loadDistinctStrings(db, `SELECT DISTINCT TRIM(department) AS value FROM employees WHERE department IS NOT NULL AND TRIM(department) <> '' ORDER BY value ASC`),
+    loadDistinctStrings(db, `SELECT DISTINCT TRIM(name) AS value FROM employee_job_titles WHERE is_active = 1 AND name IS NOT NULL AND TRIM(name) <> '' ORDER BY value ASC`),
     loadDistinctStrings(db, `SELECT DISTINCT TRIM(job_title) AS value FROM employees WHERE job_title IS NOT NULL AND TRIM(job_title) <> '' ORDER BY value ASC`),
     loadDistinctStrings(db, `SELECT DISTINCT TRIM(cost_center) AS value FROM employees WHERE cost_center IS NOT NULL AND TRIM(cost_center) <> '' ORDER BY value ASC`),
   ]);
+
+  const departments = Array.from(new Set([...departmentCatalogRows, ...departmentLegacyRows])).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+  const jobTitles = Array.from(new Set([...jobTitleCatalogRows, ...jobTitleLegacyRows])).sort((a, b) => a.localeCompare(b, 'pt-BR'));
 
   return {
     units: EMPLOYEE_UNITS.map((value) => ({
@@ -2778,6 +2871,25 @@ export const getEmployeesOptions = async (db: DbInterface) => {
     defaultPageSize: DEFAULT_PAGE_SIZE,
     maxPageSize: MAX_PAGE_SIZE,
   };
+};
+
+export const createEmployeeCatalogOption = async (
+  db: DbInterface,
+  type: EmployeeCatalogOptionType,
+  rawValue: string,
+) => {
+  await ensureEmployeesTables(db);
+  const value = clean(rawValue).replace(/\s+/g, ' ');
+  if (!value) {
+    throw new EmployeeValidationError(`Informe um ${employeeCatalogTableMap[type].label}.`);
+  }
+
+  const savedValue = await syncEmployeeCatalogOption(db, type, value);
+  if (!savedValue) {
+    throw new EmployeeValidationError(`Não foi possível salvar o ${employeeCatalogTableMap[type].label}.`, 500);
+  }
+
+  return savedValue;
 };
 
 export { DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE };

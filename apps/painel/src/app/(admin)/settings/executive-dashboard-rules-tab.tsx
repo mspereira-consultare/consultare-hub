@@ -4,6 +4,7 @@ import { Plus, Search, Trash2 } from 'lucide-react';
 import type { ExecutiveConfigurationSnapshot, ExecutiveProfileRule, ExecutiveScopeOptions } from '@/lib/dashboard_executive/types';
 import { normalizeText } from './executive-dashboard-settings-utils';
 import { ExecutiveDashboardMultiSelect } from './executive-dashboard-multi-select';
+import { ExecutiveDashboardSearchableSelect } from './executive-dashboard-searchable-select';
 
 type Props = {
   config: ExecutiveConfigurationSnapshot;
@@ -66,6 +67,10 @@ export function ExecutiveDashboardRulesTab({
             className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
           />
         </label>
+        <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-xs leading-5 text-blue-800">
+          Para evitar regras duplicadas ou grafias diferentes, use apenas as opções oficiais de <strong>Departamento</strong>,
+          <strong> Cargo</strong> e <strong>Unidades</strong> vindas do cadastro de colaboradores.
+        </div>
       </div>
 
       <div className="max-h-[560px] space-y-4 overflow-y-auto px-5 py-4">
@@ -88,25 +93,27 @@ export function ExecutiveDashboardRulesTab({
                   </select>
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Departamento</label>
-                  <input
-                    value={rule.department || ''}
-                    onChange={(event) => onChangeRule(rule.id, { department: event.target.value || null })}
-                    placeholder="Ex.: Financeiro"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
+                <ExecutiveDashboardSearchableSelect
+                  label="Departamento"
+                  options={options.departments}
+                  value={rule.department}
+                  onChange={(value) => onChangeRule(rule.id, { department: value })}
+                  placeholder="Sem restrição"
+                  helper="Selecione um departamento oficial do cadastro de colaboradores."
+                  dropdownClassName="w-[320px] max-w-[420px]"
+                  optionTextClassName="whitespace-nowrap"
+                />
 
-                <div>
-                  <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Cargo</label>
-                  <input
-                    value={rule.jobTitle || ''}
-                    onChange={(event) => onChangeRule(rule.id, { jobTitle: event.target.value || null })}
-                    placeholder="Ex.: Líder de Unidade"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  />
-                </div>
+                <ExecutiveDashboardSearchableSelect
+                  label="Cargo"
+                  options={options.jobTitles}
+                  value={rule.jobTitle}
+                  onChange={(value) => onChangeRule(rule.id, { jobTitle: value })}
+                  placeholder="Sem restrição"
+                  helper="Selecione um cargo oficial do cadastro de colaboradores."
+                  dropdownClassName="w-[360px] max-w-[480px]"
+                  optionTextClassName="whitespace-nowrap"
+                />
 
                 <ExecutiveDashboardMultiSelect
                   label="Unidades"
@@ -114,6 +121,9 @@ export function ExecutiveDashboardRulesTab({
                   value={rule.units}
                   onChange={(value) => onChangeRule(rule.id, { units: value })}
                   helper="Selecione as unidades que devem acionar esta regra. Se ficar vazio, a regra vale para qualquer unidade."
+                  dropdownClassName="w-[560px] max-w-[90vw]"
+                  optionTextClassName="whitespace-nowrap"
+                  showSelectedChips={false}
                 />
 
                 <div className="flex items-end gap-3">

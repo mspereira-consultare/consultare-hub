@@ -58,6 +58,8 @@ import type {
   EmployeeUniformItem,
 } from '@/lib/colaboradores/types';
 import { ColaboradoresHelpModal } from './components/ColaboradoresHelpModal';
+import { EmployeeCatalogOptionModal } from './components/EmployeeCatalogOptionModal';
+import { EmployeeCatalogSelect } from './components/EmployeeCatalogSelect';
 import { EmployeeDashboardPanel } from './components/EmployeeDashboardPanel';
 import { EmployeeLifecyclePanel } from './components/EmployeeLifecyclePanel';
 import { EmployeePortalPanel } from './components/EmployeePortalPanel';
@@ -90,6 +92,8 @@ type EmployeesOptionsPayload = {
   defaultPageSize: number;
   maxPageSize: number;
 };
+
+type EmployeeCatalogOptionType = 'department' | 'jobTitle';
 
 type PaginationPayload = {
   page: number;
@@ -556,6 +560,11 @@ export default function ColaboradoresPage() {
   const [modalError, setModalError] = useState('');
   const [modalNotice, setModalNotice] = useState('');
   const [modalTab, setModalTab] = useState<ModalTab>('cadastro');
+  const [catalogModalType, setCatalogModalType] = useState<EmployeeCatalogOptionType | null>(null);
+  const [catalogModalOpen, setCatalogModalOpen] = useState(false);
+  const [catalogOptionValue, setCatalogOptionValue] = useState('');
+  const [catalogOptionSaving, setCatalogOptionSaving] = useState(false);
+  const [catalogOptionError, setCatalogOptionError] = useState('');
   const [currentEmployeeId, setCurrentEmployeeId] = useState<string | null>(null);
   const [form, setForm] = useState<EmployeeFormState>(emptyEmployeeForm());
   const [documents, setDocuments] = useState<EmployeeDocument[]>([]);
@@ -633,9 +642,11 @@ export default function ColaboradoresPage() {
     try {
       const payload = await fetchJson<{ status: string; data: EmployeesOptionsPayload }>('/api/admin/colaboradores/options');
       setOptions(payload.data || emptyOptions);
+      return payload.data || emptyOptions;
     } catch (optionsError: any) {
       console.error('Erro ao carregar opções de colaboradores:', optionsError);
       setError(optionsError?.message || 'Falha ao carregar opções do módulo.');
+      return emptyOptions;
     } finally {
       setOptionsLoading(false);
     }
@@ -728,6 +739,53 @@ export default function ColaboradoresPage() {
   const openCreate = () => {
     resetModalState();
     setIsModalOpen(true);
+  };
+
+  const openCatalogOptionModal = (type: EmployeeCatalogOptionType) => {
+    setCatalogModalType(type);
+    setCatalogOptionValue('');
+    setCatalogOptionError('');
+    setCatalogModalOpen(true);
+  };
+
+  const closeCatalogOptionModal = () => {
+    setCatalogModalOpen(false);
+    setCatalogModalType(null);
+    setCatalogOptionValue('');
+    setCatalogOptionError('');
+    setCatalogOptionSaving(false);
+  };
+
+  const submitCatalogOption = async () => {
+    if (!catalogModalType) return;
+    setCatalogOptionSaving(true);
+    setCatalogOptionError('');
+    try {
+      const payload = await fetchJson<{
+        status: string;
+        data: { type: EmployeeCatalogOptionType; value: string; options: EmployeesOptionsPayload };
+      }>('/api/admin/colaboradores/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: catalogModalType, value: catalogOptionValue }),
+      });
+
+      setOptions(payload.data.options || emptyOptions);
+      setForm((prev) => ({
+        ...prev,
+        [catalogModalType === 'department' ? 'department' : 'jobTitle']: payload.data.value,
+      }));
+      closeCatalogOptionModal();
+      setModalNotice(
+        catalogModalType === 'department'
+          ? 'Novo departamento cadastrado e selecionado no colaborador.'
+          : 'Novo cargo cadastrado e selecionado no colaborador.'
+      );
+    } catch (catalogError: any) {
+      setCatalogOptionError(catalogError?.message || 'Falha ao cadastrar nova opção.');
+    } finally {
+      setCatalogOptionSaving(false);
+    }
   };
 
   const deleteEmployee = async (employee: EmployeeListItem) => {
@@ -1662,12 +1720,30 @@ export default function ColaboradoresPage() {
                           </div>
                           <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
                             <div className="md:col-span-6">
-                              <label className={fieldLabelClassName}>Cargo / Função</label>
-                              <input list="employee-job-titles" disabled={currentEmployeeReadOnly} value={form.jobTitle} onChange={(event) => setForm((prev) => ({ ...prev, jobTitle: event.target.value }))} className={filterInputClassName} />
+                              <EmployeeCatalogSelect
+                                label="Cargo / Função"
+                                options={options.jobTitles}
+                                value={form.jobTitle}
+                                onChange={(value) => setForm((prev) => ({ ...prev, jobTitle: value }))}
+                                onCreateNew={() => openCatalogOptionModal('jobTitle')}
+                                createLabel="Cadastrar novo cargo"
+                                disabled={currentEmployeeReadOnly}
+                                dropdownClassName="w-[440px] max-w-[90vw]"
+                                optionTextClassName="whitespace-nowrap"
+                              />
                             </div>
                             <div className="md:col-span-6">
-                              <label className={fieldLabelClassName}>Setor</label>
-                              <input list="employee-departments" disabled={currentEmployeeReadOnly} value={form.department} onChange={(event) => setForm((prev) => ({ ...prev, department: event.target.value }))} className={filterInputClassName} />
+                              <EmployeeCatalogSelect
+                                label="Setor"
+                                options={options.departments}
+                                value={form.department}
+                                onChange={(value) => setForm((prev) => ({ ...prev, department: value }))}
+                                onCreateNew={() => openCatalogOptionModal('department')}
+                                createLabel="Cadastrar novo departamento"
+                                disabled={currentEmployeeReadOnly}
+                                dropdownClassName="w-[420px] max-w-[90vw]"
+                                optionTextClassName="whitespace-nowrap"
+                              />
                             </div>
                             <div className="md:col-span-6">
                               <label className={fieldLabelClassName}>Supervisor</label>
@@ -2409,15 +2485,19 @@ export default function ColaboradoresPage() {
       <datalist id="employee-supervisors">
         {options.supervisors.map((value) => <option key={value} value={value} />)}
       </datalist>
-      <datalist id="employee-departments">
-        {options.departments.map((value) => <option key={value} value={value} />)}
-      </datalist>
-      <datalist id="employee-job-titles">
-        {options.jobTitles.map((value) => <option key={value} value={value} />)}
-      </datalist>
       <datalist id="employee-cost-centers">
         {options.costCenters.map((value) => <option key={value} value={value} />)}
       </datalist>
+      <EmployeeCatalogOptionModal
+        open={catalogModalOpen}
+        type={catalogModalType}
+        value={catalogOptionValue}
+        saving={catalogOptionSaving}
+        error={catalogOptionError}
+        onChangeValue={setCatalogOptionValue}
+        onClose={closeCatalogOptionModal}
+        onSubmit={submitCatalogOption}
+      />
       <ColaboradoresHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
