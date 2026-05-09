@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, ChevronDown, Search, X } from 'lucide-react';
 
 type Props = {
@@ -36,12 +37,39 @@ export function ExecutiveDashboardSearchableSelect({
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; minWidth: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setDropdownStyle({
+        top: rect.bottom + 8,
+        left: rect.left,
+        minWidth: rect.width,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
 
     const handleClickOutside = (event: MouseEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!containerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
         setOpen(false);
       }
     };
@@ -73,6 +101,7 @@ export function ExecutiveDashboardSearchableSelect({
 
       <div className="relative">
         <button
+          ref={buttonRef}
           type="button"
           onClick={() => setOpen((current) => !current)}
           className="flex min-h-[44px] w-full items-center justify-between rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm text-slate-700 transition hover:border-slate-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
@@ -81,77 +110,87 @@ export function ExecutiveDashboardSearchableSelect({
           <ChevronDown className={`h-4 w-4 text-slate-400 transition ${open ? 'rotate-180' : ''}`} />
         </button>
 
-        {open ? (
-          <div
-            className={`absolute left-0 top-[calc(100%+8px)] z-30 min-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl ${
-              dropdownClassName || 'right-0'
-            }`}
-          >
-            <div className="border-b border-slate-100 p-3">
-              <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                <Search className="h-4 w-4 text-slate-400" />
-                <input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder={`Buscar ${label.toLowerCase()}`}
-                  className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
-                />
-              </label>
-            </div>
-
-            <div className="max-h-64 overflow-y-auto p-2">
-              <button
-                type="button"
-                onClick={() => {
-                  onChange(null);
-                  setOpen(false);
+        {open && dropdownStyle
+          ? createPortal(
+              <div
+                ref={dropdownRef}
+                style={{
+                  position: 'fixed',
+                  top: dropdownStyle.top,
+                  left: dropdownStyle.left,
+                  minWidth: dropdownStyle.minWidth,
                 }}
-                className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
-                  !value ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                className={`z-[80] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl ${
+                  dropdownClassName || ''
                 }`}
               >
-                <span>{emptyLabel}</span>
-                <span
-                  className={`flex h-5 w-5 items-center justify-center rounded-md border ${
-                    !value ? 'border-slate-500 bg-slate-500 text-white' : 'border-slate-300 bg-white text-transparent'
-                  }`}
-                >
-                  <X className="h-3.5 w-3.5" />
-                </span>
-              </button>
+                <div className="border-b border-slate-100 p-3">
+                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <Search className="h-4 w-4 text-slate-400" />
+                    <input
+                      value={searchTerm}
+                      onChange={(event) => setSearchTerm(event.target.value)}
+                      placeholder={`Buscar ${label.toLowerCase()}`}
+                      className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                    />
+                  </label>
+                </div>
 
-              {filteredOptions.length ? (
-                filteredOptions.map((option) => {
-                  const checked = option === value;
-                  return (
-                    <button
-                      key={option}
-                      type="button"
-                      onClick={() => {
-                        onChange(option);
-                        setOpen(false);
-                      }}
-                      className={`mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
-                        checked ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                <div className="max-h-64 overflow-y-auto p-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange(null);
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+                      !value ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>{emptyLabel}</span>
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-md border ${
+                        !value ? 'border-slate-500 bg-slate-500 text-white' : 'border-slate-300 bg-white text-transparent'
                       }`}
                     >
-                      <span className={optionTextClassName || ''}>{option}</span>
-                      <span
-                        className={`flex h-5 w-5 items-center justify-center rounded-md border ${
-                          checked ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 bg-white text-transparent'
-                        }`}
-                      >
-                        <Check className="h-3.5 w-3.5" />
-                      </span>
-                    </button>
-                  );
-                })
-              ) : (
-                <div className="px-3 py-6 text-center text-sm text-slate-500">Nenhuma opção encontrada.</div>
-              )}
-            </div>
-          </div>
-        ) : null}
+                      <X className="h-3.5 w-3.5" />
+                    </span>
+                  </button>
+
+                  {filteredOptions.length ? (
+                    filteredOptions.map((option) => {
+                      const checked = option === value;
+                      return (
+                        <button
+                          key={option}
+                          type="button"
+                          onClick={() => {
+                            onChange(option);
+                            setOpen(false);
+                          }}
+                          className={`mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+                            checked ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                          }`}
+                        >
+                          <span className={optionTextClassName || ''}>{option}</span>
+                          <span
+                            className={`flex h-5 w-5 items-center justify-center rounded-md border ${
+                              checked ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 bg-white text-transparent'
+                            }`}
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                          </span>
+                        </button>
+                      );
+                    })
+                  ) : (
+                    <div className="px-3 py-6 text-center text-sm text-slate-500">Nenhuma opção encontrada.</div>
+                  )}
+                </div>
+              </div>,
+              document.body
+            )
+          : null}
       </div>
 
       <p className="text-xs text-slate-500">
