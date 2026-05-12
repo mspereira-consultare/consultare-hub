@@ -6,6 +6,7 @@ import type {
   ExecutiveProfileKey,
   ExecutiveProfileWidgetConfig,
 } from '@/lib/dashboard_executive/types';
+import { ExecutiveDashboardHelpCallout } from './executive-dashboard-help-callout';
 import { cn, compareProfileWidgets, normalizeText } from './executive-dashboard-settings-utils';
 
 type Props = {
@@ -65,6 +66,13 @@ export function ExecutiveDashboardProfileVisibilityTab({
               </p>
             </div>
           </div>
+        </div>
+
+        <div className="border-b border-slate-100 px-5 py-4">
+          <ExecutiveDashboardHelpCallout title="Como pensar esta aba" variant="info">
+            O perfil define <strong>o que pode aparecer</strong> no dashboard, mas não define sozinho quem recebe essa visão.
+            O enquadramento do usuário continua vindo do cargo mestre, do grupo executivo e, só em exceções, de ajustes individuais.
+          </ExecutiveDashboardHelpCallout>
         </div>
 
         <div className="grid gap-3 border-b border-slate-100 px-5 py-4 md:grid-cols-2 xl:grid-cols-3">
@@ -144,6 +152,9 @@ export function ExecutiveDashboardProfileVisibilityTab({
                         }
                         className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
                       />
+                      <p className="mt-2 max-w-[140px] text-xs leading-5 text-slate-500">
+                        Marque apenas o que este perfil realmente deve enxergar no dashboard.
+                      </p>
                     </td>
                     <td className="py-3 align-top">
                       <input
@@ -157,6 +168,9 @@ export function ExecutiveDashboardProfileVisibilityTab({
                         }
                         className="w-24 rounded-lg border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                       />
+                      <p className="mt-2 max-w-[180px] text-xs leading-5 text-slate-500">
+                        Quanto menor o número, mais cedo o widget aparece na leitura executiva.
+                      </p>
                     </td>
                   </tr>
                 );

@@ -7,6 +7,7 @@ import type {
   ExecutiveScopeMode,
   ExecutiveScopeOptions,
 } from '@/lib/dashboard_executive/types';
+import { ExecutiveDashboardHelpCallout } from './executive-dashboard-help-callout';
 import { normalizeText, scopeModeLabel } from './executive-dashboard-settings-utils';
 import { ExecutiveDashboardMultiSelect } from './executive-dashboard-multi-select';
 
@@ -75,6 +76,12 @@ export function ExecutiveDashboardGroupsTab({
             className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
           />
         </label>
+        <div className="mt-4">
+          <ExecutiveDashboardHelpCallout title="O papel do grupo" variant="tip">
+            Use grupos para padronizar famílias executivas. Se dois cargos enxergam praticamente a mesma visão,
+            o ideal é colocá-los no <strong>mesmo grupo</strong> em vez de criar grupos ou exceções redundantes.
+          </ExecutiveDashboardHelpCallout>
+        </div>
       </div>
 
       <div className="max-h-[560px] space-y-4 overflow-y-auto px-5 py-4">
@@ -109,6 +116,9 @@ export function ExecutiveDashboardGroupsTab({
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Este é o perfil herdado automaticamente por todo cargo mestre que apontar para este grupo.
+                </p>
                 <label className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
                   <input
                     type="checkbox"
@@ -133,6 +143,9 @@ export function ExecutiveDashboardGroupsTab({
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Use herança do colaborador quando o recorte deve seguir setor ou unidades da própria pessoa. Use customizado apenas quando o grupo inteiro precisar do mesmo recorte fixo.
+                </p>
                 <textarea
                   value={group.description || ''}
                   onChange={(event) => onChangeGroup(group.id, { description: event.target.value })}

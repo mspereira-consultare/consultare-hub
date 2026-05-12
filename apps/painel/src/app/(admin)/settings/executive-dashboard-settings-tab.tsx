@@ -184,7 +184,7 @@ export default function ExecutiveDashboardSettingsTab() {
           <div className="flex flex-col gap-3 lg:items-end">
             <button type="button" onClick={() => setHelpOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700">
               <CircleHelp className="h-4 w-4" />
-              Ajuda desta aba
+              Guia completo do módulo
             </button>
             <div className="grid gap-3 sm:grid-cols-4">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"><div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Perfis</div><div className="mt-2 text-2xl font-bold text-slate-900">{config.profiles.length}</div></div>

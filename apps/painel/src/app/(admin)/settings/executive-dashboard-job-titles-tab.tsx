@@ -2,6 +2,7 @@
 
 import { Search } from 'lucide-react';
 import type { ExecutiveConfigurationSnapshot } from '@/lib/dashboard_executive/types';
+import { ExecutiveDashboardHelpCallout } from './executive-dashboard-help-callout';
 import { normalizeText } from './executive-dashboard-settings-utils';
 
 type Props = {
@@ -47,6 +48,12 @@ export function ExecutiveDashboardJobTitlesTab({
             className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
           />
         </label>
+        <div className="mt-4">
+          <ExecutiveDashboardHelpCallout title="Origem automática do enquadramento" variant="warning">
+            Se um cargo mestre ficar sem grupo, o usuário pode ter acesso ao dashboard e ainda assim aparecer sem perfil.
+            Sempre corrija primeiro o cargo aqui antes de partir para exceções individuais.
+          </ExecutiveDashboardHelpCallout>
+        </div>
       </div>
 
       <div className="max-h-[560px] overflow-auto px-5 py-4">
@@ -65,7 +72,7 @@ export function ExecutiveDashboardJobTitlesTab({
                 <td className="py-3 pr-4">
                   <div className="font-medium text-slate-900">{jobTitle.name}</div>
                   {!jobTitle.executiveGroupId ? (
-                    <p className="mt-1 text-xs text-amber-700">Sem grupo atribuído</p>
+                    <p className="mt-1 text-xs font-medium text-amber-700">Sem grupo atribuído</p>
                   ) : null}
                 </td>
                 <td className="py-3 pr-4">
@@ -83,6 +90,9 @@ export function ExecutiveDashboardJobTitlesTab({
                         </option>
                       ))}
                   </select>
+                  <p className="mt-1 max-w-[260px] text-xs leading-5 text-slate-500">
+                    Escolha a família executiva que melhor representa a visão desse cargo no dashboard.
+                  </p>
                 </td>
                 <td className="py-3 pr-4 text-slate-600">{jobTitle.linkedEmployeesCount}</td>
                 <td className="py-3 text-slate-600">{jobTitle.linkedUsersCount}</td>

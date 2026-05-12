@@ -9,6 +9,7 @@ import type {
   ExecutiveScopeOptions,
   ExecutiveUserException,
 } from '@/lib/dashboard_executive/types';
+import { ExecutiveDashboardHelpCallout } from './executive-dashboard-help-callout';
 import { normalizeText, scopeModeLabel } from './executive-dashboard-settings-utils';
 import { ExecutiveDashboardMultiSelect } from './executive-dashboard-multi-select';
 
@@ -82,6 +83,12 @@ export function ExecutiveDashboardOverridesTab({
             className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
           />
         </label>
+        <div className="mt-4">
+          <ExecutiveDashboardHelpCallout title="Use como exceção, não como regra" variant="warning">
+            Se várias pessoas precisarem da mesma mudança, o correto é revisar o grupo ou o perfil base.
+            Exceção individual serve para casos pontuais, não para corrigir um desenho estrutural do módulo.
+          </ExecutiveDashboardHelpCallout>
+        </div>
       </div>
 
       <div className="max-h-[560px] space-y-4 overflow-y-auto px-5 py-4">
@@ -125,6 +132,9 @@ export function ExecutiveDashboardOverridesTab({
                         </option>
                       ))}
                     </select>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Se deixar vazio, a pessoa continua herdando o perfil do grupo. Preencha apenas quando ela precisar fugir do padrão.
+                    </p>
                     <label className="mt-2 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
                       <input
                         type="checkbox"
@@ -147,7 +157,7 @@ export function ExecutiveDashboardOverridesTab({
                           .filter(Boolean) as any,
                       })
                     }
-                    helper="Widgets adicionados além do perfil base."
+                    helper="Adiciona widgets além do que já veio do perfil base."
                   />
 
                   <ExecutiveDashboardMultiSelect
@@ -161,7 +171,7 @@ export function ExecutiveDashboardOverridesTab({
                           .filter(Boolean) as any,
                       })
                     }
-                    helper="Widgets removidos do perfil base."
+                    helper="Esconde widgets que o perfil base normalmente exibiria."
                   />
 
                   <div className="flex gap-3">
@@ -179,6 +189,9 @@ export function ExecutiveDashboardOverridesTab({
                             </option>
                           ))}
                         </select>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          Herdar do grupo é o padrão. Só troque isso quando a pessoa realmente precisar de um recorte próprio.
+                        </p>
                       </div>
                       <ExecutiveDashboardMultiSelect
                         label="Departamentos"

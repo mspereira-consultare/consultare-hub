@@ -2,6 +2,7 @@
 
 import { Search } from 'lucide-react';
 import type { ExecutiveProfilePreviewRow } from '@/lib/dashboard_executive/types';
+import { ExecutiveDashboardHelpCallout } from './executive-dashboard-help-callout';
 import {
   cn,
   normalizeText,
@@ -44,6 +45,11 @@ export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearch
             className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
           />
         </label>
+        <div className="mt-4">
+          <ExecutiveDashboardHelpCallout title="O preview é a auditoria final" variant="tip">
+            Use esta aba para validar se a cadeia inteira ficou coerente. Se houver pendência aqui, normalmente não vale a pena tentar corrigir direto no dashboard da pessoa.
+          </ExecutiveDashboardHelpCallout>
+        </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <div className="font-semibold">{noProfileCount} usuário(s) com acesso e sem perfil</div>
