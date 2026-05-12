@@ -3,10 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { ExecutiveSnapshot } from '@/lib/dashboard_executive/types';
-import { ExecutiveAreasSection } from './components/ExecutiveAreasSection';
 import { ExecutiveHeaderSection } from './components/ExecutiveHeaderSection';
 import { ExecutiveLiveSection } from './components/ExecutiveLiveSection';
 import { ExecutivePrioritiesSection } from './components/ExecutivePrioritiesSection';
+import { ExecutiveWidgetsSection } from './components/ExecutiveWidgetsSection';
 
 type ExecutiveApiResponse = {
   status: 'success';
@@ -68,7 +68,6 @@ export default function DashboardPage() {
     }
   }, [fetchExecutiveDashboard]);
 
-  const areas = snapshot?.metrics.areas || [];
   const priorities = snapshot?.metrics.topPriorities || [];
   const heartbeats = snapshot?.metrics.liveOperations.heartbeats || [];
   const needsConfiguration = Boolean(snapshot && !snapshot.metrics.profile.profileKey);
@@ -145,7 +144,7 @@ export default function DashboardPage() {
         ) : (
           <>
             <ExecutivePrioritiesSection priorities={priorities} />
-            <ExecutiveAreasSection areas={areas} />
+            <ExecutiveWidgetsSection snapshot={snapshot} />
             <ExecutiveLiveSection heartbeats={heartbeats} />
           </>
         )}
