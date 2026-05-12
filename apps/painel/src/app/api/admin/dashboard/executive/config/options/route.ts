@@ -17,7 +17,9 @@ const ensureAuthorized = async () => {
   const role = String((session.user as any).role || 'OPERADOR');
   const permissions = (session.user as any).permissions;
   const allowed =
-    hasPermission(permissions, 'users', 'view', role) || hasPermission(permissions, 'settings', 'view', role);
+    hasPermission(permissions, 'dashboard_executive_governance', 'view', role) ||
+    hasPermission(permissions, 'users', 'view', role) ||
+    hasPermission(permissions, 'settings', 'view', role);
 
   if (!allowed) {
     return { ok: false as const, response: NextResponse.json({ error: 'Sem permissao' }, { status: 403 }) };

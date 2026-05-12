@@ -3,6 +3,7 @@ import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 import bcrypt from 'bcryptjs';
 import { ensureUserAccountColumns } from '@consultare/core/user-accounts';
+import { listExecutiveProfilePreview } from '@/lib/dashboard_executive/repository';
 
 const clean = (value: unknown) => String(value ?? '').trim();
 const isMysql =
@@ -40,7 +41,18 @@ export async function GET(request: Request) {
           ORDER BY u.name ASC
       `);
 
-      return result;
+      const preview = await listExecutiveProfilePreview(db);
+      const previewMap = new Map(preview.map((item) => [item.userId, item]));
+
+      return result.map((row: any) => {
+        const executive = previewMap.get(clean(row.id));
+        return {
+          ...row,
+          executive_group_label: executive?.executiveGroupLabel || null,
+          executive_profile_label: executive?.profileLabel || null,
+          executive_issue: executive?.configurationIssue || null,
+        };
+      });
     });
 
     return NextResponse.json(cached);

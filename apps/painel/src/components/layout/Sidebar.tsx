@@ -272,6 +272,14 @@ const menuItems: MenuItem[] = [
     pageKey: "users",
   },
   {
+    href: "/dashboard-executivo",
+    label: "Dashboard Executivo",
+    icon: ShieldCheck,
+    group: "SISTEMA",
+    roles: ["ADMIN", "GESTOR"],
+    pageKey: "dashboard_executive_governance",
+  },
+  {
     href: "/modelos-contrato",
     label: "Modelos de Contrato",
     icon: FileText,

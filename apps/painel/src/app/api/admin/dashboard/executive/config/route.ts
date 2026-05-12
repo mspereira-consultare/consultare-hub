@@ -13,7 +13,7 @@ import type { ExecutiveConfigurationSnapshot } from '@/lib/dashboard_executive/t
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const ensureAuthorized = async () => {
+const ensureAuthorized = async (action: 'view' | 'edit') => {
   const session = await getServerSession(authOptions);
   if (!session?.user) {
     return { ok: false as const, response: NextResponse.json({ error: 'Nao autenticado' }, { status: 401 }) };
@@ -22,7 +22,9 @@ const ensureAuthorized = async () => {
   const role = String((session.user as any).role || 'OPERADOR');
   const permissions = (session.user as any).permissions;
   const allowed =
-    hasPermission(permissions, 'users', 'view', role) || hasPermission(permissions, 'settings', 'view', role);
+    hasPermission(permissions, 'dashboard_executive_governance', action, role) ||
+    hasPermission(permissions, 'users', action, role) ||
+    hasPermission(permissions, 'settings', action, role);
 
   if (!allowed) {
     return { ok: false as const, response: NextResponse.json({ error: 'Sem permissao' }, { status: 403 }) };
@@ -33,7 +35,7 @@ const ensureAuthorized = async () => {
 
 export async function GET() {
   try {
-    const auth = await ensureAuthorized();
+    const auth = await ensureAuthorized('view');
     if (!auth.ok) return auth.response;
 
     const db = getDbConnection();
@@ -47,7 +49,7 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const auth = await ensureAuthorized();
+    const auth = await ensureAuthorized('edit');
     if (!auth.ok) return auth.response;
 
     const body = await request.json();

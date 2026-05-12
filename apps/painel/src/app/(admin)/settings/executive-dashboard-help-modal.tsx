@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { X } from 'lucide-react';
 
-type SectionKey = 'profiles' | 'rules' | 'overrides' | 'preview';
+type SectionKey = 'profiles' | 'groups' | 'job_titles' | 'exceptions' | 'preview';
 
 const sectionContent: Record<
   SectionKey,
@@ -37,57 +37,82 @@ const sectionContent: Record<
       },
     ],
     note:
-      'Pense nesta aba como a composição visual do dashboard. Ela não decide quem recebe o perfil; isso é feito em Regras ou Overrides.',
+      'Pense nesta aba como a composição visual do dashboard. Ela não decide quem recebe o perfil; isso é feito em Grupos, Cargos e Exceções.',
   },
-  rules: {
-    title: 'Como configurar regras automáticas',
+  groups: {
+    title: 'Como configurar grupos executivos',
     subtitle:
-      'As regras ligam o cadastro do usuário e do colaborador a um perfil executivo. Elas são a forma principal de enquadramento automático.',
+      'Os grupos padronizam vários cargos diferentes sob a mesma visão executiva e o mesmo comportamento de escopo.',
     cards: [
       {
-        title: 'Origem principal',
-        description: 'A regra compara departamento, cargo e unidades do colaborador vinculado ao usuário.',
+        title: '1. Pense no grupo como uma família',
+        description: 'Exemplos: Diretoria, Liderança Operacional, CRC, Financeiro. O grupo representa uma lógica estável de visualização.',
       },
       {
-        title: 'Departamento',
-        description: 'Deve corresponder ao campo de setor/departamento no cadastro oficial de colaboradores.',
+        title: '2. Defina o perfil padrão',
+        description: 'O perfil é a visão do dashboard. O grupo aponta para esse perfil automaticamente.',
       },
       {
-        title: 'Cargo',
-        description: 'Deve corresponder ao campo de cargo do colaborador. Quanto mais preciso, mais confiável o match.',
+        title: '3. Configure o escopo',
+        description: 'Você pode herdar departamento e unidades do próprio colaborador, ou usar um escopo customizado do grupo.',
       },
       {
-        title: 'Unidades',
-        description: 'Use quando o mesmo cargo e setor existem em mais de uma unidade e você precisa diferenciar a visão.',
+        title: '4. Evite grupos demais',
+        description: 'Se cargos diferentes enxergam a mesma visão, mantenha todos no mesmo grupo e use exceção individual apenas quando necessário.',
       },
     ],
     note:
-      'Se um usuário aparece como “Sem configuração”, normalmente falta vínculo com colaborador, ou os valores de cargo/setor ainda não batem com uma regra ativa.',
+      'O grupo é a camada de simplificação. Em vez de criar dezenas de regras textuais, você passa a gerir poucas famílias executivas.',
   },
-  overrides: {
-    title: 'Como usar overrides por usuário',
+  job_titles: {
+    title: 'Como vincular cargos aos grupos',
     subtitle:
-      'Overrides servem para exceções. Use quando um usuário precisa enxergar algo diferente do padrão do cargo ou do setor.',
+      'O cargo mestre do colaborador é a origem principal da visão executiva. Aqui você diz a qual grupo cada cargo pertence.',
     cards: [
       {
-        title: '1. Escolha o usuário',
-        description: 'A lista mostra somente usuários do painel com acesso ao dashboard. Usuários da Intranet não entram aqui.',
+        title: '1. Revise os cargos sem grupo',
+        description: 'Esses são os cargos que ainda não conseguem resolver automaticamente a visão do dashboard.',
       },
       {
-        title: '2. Defina o perfil',
-        description: 'O override pode substituir a regra automática e forçar um perfil específico para aquela pessoa.',
+        title: '2. Atribua em massa',
+        description: 'Quando vários cargos equivalentes existem, todos podem apontar para o mesmo grupo executivo.',
       },
       {
-        title: '3. Restrinja o recorte',
-        description: 'Departamentos, equipes e unidades limitam os dados que entram no dashboard daquele usuário.',
+        title: '3. Use os números de impacto',
+        description: 'As colunas de colaboradores e usuários mostram quantas pessoas serão afetadas por cada vínculo.',
       },
       {
-        title: '4. Prefira listas coerentes',
-        description: 'As opções vêm do banco, para evitar divergência de grafia e problemas de correspondência.',
+        title: '4. Resolva a origem, não a exceção',
+        description: 'Sempre que possível, ajuste o cargo mestre aqui em vez de compensar tudo com exceções individuais.',
       },
     ],
     note:
-      'Se a pessoa precisa ver tudo, deixe departamentos, equipes e unidades vazios. Se preencher, o dashboard passa a respeitar esse recorte.',
+      'Se o cargo está certo e o grupo está correto, o dashboard passa a funcionar automaticamente para todo mundo daquele mesmo padrão.',
+  },
+  exceptions: {
+    title: 'Como usar exceções individuais',
+    subtitle:
+      'As exceções individuais servem para casos fora do padrão. Elas devem complementar o grupo, não substituir a governança principal.',
+    cards: [
+      {
+        title: '1. Use só quando necessário',
+        description: 'Se várias pessoas precisam do mesmo ajuste, o ideal é rever o grupo ou o perfil, e não multiplicar exceções.',
+      },
+      {
+        title: '2. Perfil específico',
+        description: 'Você pode trocar o perfil daquele usuário sem alterar o grupo do cargo dele.',
+      },
+      {
+        title: '3. Widgets extras ou ocultos',
+        description: 'A exceção pode adicionar ou esconder itens sem a necessidade de criar um perfil novo.',
+      },
+      {
+        title: '4. Escopo próprio',
+        description: 'Também é possível alterar o recorte de unidades, departamentos e equipes apenas daquela pessoa.',
+      },
+    ],
+    note:
+      'A recomendação é: grupo como padrão, exceção como raridade. Isso mantém o painel escalável e fácil de manter.',
   },
   preview: {
     title: 'Como ler o preview',
@@ -100,11 +125,11 @@ const sectionContent: Record<
       },
       {
         title: 'Sem perfil',
-        description: 'O usuário tem acesso ao dashboard, mas não encontrou regra ativa nem override.',
+        description: 'O usuário tem acesso ao dashboard, mas ainda não encontrou um grupo válido ou um colaborador vinculado corretamente.',
       },
       {
         title: 'Origem',
-        description: 'Indica se o perfil veio de uma regra automática, de um override manual ou se ainda está sem configuração.',
+        description: 'Indica se o perfil veio do grupo executivo do cargo, de uma exceção individual ou se ainda está sem configuração.',
       },
       {
         title: 'Vínculo com colaborador',
@@ -112,7 +137,7 @@ const sectionContent: Record<
       },
     ],
     note:
-      'Use o preview como validação final: ele mostra quem está pronto, quem está sem acesso e quem ainda depende de ajuste no cadastro ou nas regras.',
+      'Use o preview como validação final: ele mostra quem está pronto, quem está sem acesso e quem ainda depende de ajuste no vínculo, no cargo ou no grupo.',
   },
 };
 

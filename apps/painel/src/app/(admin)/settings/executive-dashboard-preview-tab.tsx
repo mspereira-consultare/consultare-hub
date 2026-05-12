@@ -13,10 +13,9 @@ type Props = {
   previewRows: ExecutiveProfilePreviewRow[];
   searchTerm: string;
   onSearchTermChange: (value: string) => void;
-  hasActiveRules: boolean;
 };
 
-export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearchTermChange, hasActiveRules }: Props) {
+export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearchTermChange }: Props) {
   const filteredRows = previewRows.filter((row) => {
     const haystack = normalizeText(
       `${row.userName} ${row.department || ''} ${row.jobTitle || ''} ${row.profileLabel || ''} ${row.role}`
@@ -49,9 +48,7 @@ export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearch
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
             <div className="font-semibold">{noProfileCount} usuário(s) com acesso e sem perfil</div>
             <p className="mt-1 text-xs leading-5">
-              {hasActiveRules
-                ? 'Normalmente isso acontece quando ainda não existe regra compatível ou override manual.'
-                : 'No momento não existe nenhuma regra automática ativa, então só usuários com override manual recebem perfil.'}
+              Normalmente isso acontece quando o cargo do colaborador ainda não está vinculado a um grupo executivo ou quando o usuário não tem colaborador vinculado.
             </p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
@@ -70,9 +67,10 @@ export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearch
               <th className="pb-3 pr-4 font-medium">Usuário</th>
               <th className="pb-3 pr-4 font-medium">Função</th>
               <th className="pb-3 pr-4 font-medium">Departamento / cargo</th>
-              <th className="pb-3 pr-4 font-medium">Perfil</th>
+              <th className="pb-3 pr-4 font-medium">Grupo / perfil</th>
               <th className="pb-3 pr-4 font-medium">Origem</th>
               <th className="pb-3 pr-4 font-medium">Vínculo</th>
+              <th className="pb-3 pr-4 font-medium">Pendência</th>
               <th className="pb-3 font-medium">Acesso ao dashboard</th>
             </tr>
           </thead>
@@ -89,7 +87,8 @@ export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearch
                   <p className="mt-1 text-xs text-slate-500">{row.jobTitle || 'Sem cargo'}</p>
                 </td>
                 <td className="py-3 pr-4">
-                  <div className="font-medium text-slate-900">{row.profileLabel || 'Sem perfil'}</div>
+                  <div className="font-medium text-slate-900">{row.executiveGroupLabel || 'Sem grupo'}</div>
+                  <p className="mt-1 text-xs text-slate-500">{row.profileLabel || 'Sem perfil'}</p>
                   {row.units.length ? <p className="mt-1 text-xs text-slate-500">{row.units.join(', ')}</p> : null}
                 </td>
                 <td className="py-3 pr-4">
@@ -113,6 +112,9 @@ export function ExecutiveDashboardPreviewTab({ previewRows, searchTerm, onSearch
                   >
                     {row.hasEmployeeLink ? 'Vinculado' : 'Sem vínculo'}
                   </span>
+                </td>
+                <td className="py-3 pr-4 text-xs text-slate-500">
+                  {row.configurationIssue || 'Sem pendências'}
                 </td>
                 <td className="py-3">
                   <span

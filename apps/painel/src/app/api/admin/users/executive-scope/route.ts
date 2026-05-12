@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { invalidateCache } from '@/lib/api_cache';
 import { getDbConnection } from '@/lib/db';
 import { hasPermission } from '@/lib/permissions';
-import { getExecutiveScope, saveExecutiveScope } from '@/lib/dashboard_executive/repository';
-import type { ExecutiveProfileKey } from '@/lib/dashboard_executive/types';
+import { getExecutiveScope } from '@/lib/dashboard_executive/repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -17,7 +15,9 @@ const ensureAuthorized = async (action: 'view' | 'edit') => {
   }
   const role = String((session.user as any).role || 'OPERADOR');
   const permissions = (session.user as any).permissions;
-  const allowed = hasPermission(permissions, 'users', action, role);
+  const allowed =
+    hasPermission(permissions, 'dashboard_executive_governance', action, role) ||
+    hasPermission(permissions, 'users', action, role);
   if (!allowed) {
     return { ok: false as const, response: NextResponse.json({ error: 'Sem permissao' }, { status: 403 }) };
   }
@@ -49,28 +49,14 @@ export async function PATCH(request: Request) {
     const auth = await ensureAuthorized('edit');
     if (!auth.ok) return auth.response;
 
-    const body = await request.json();
-    const userId = clean(body?.userId);
-    if (!userId) {
-      return NextResponse.json({ error: 'userId obrigatorio' }, { status: 400 });
-    }
-
-    const db = getDbConnection();
-    const scope = await saveExecutiveScope(
-      db,
-      userId,
+    await request.text();
+    return NextResponse.json(
       {
-        areas: Array.isArray(body?.scope?.areas) ? body.scope.areas : [],
-        departments: Array.isArray(body?.scope?.departments) ? body.scope.departments : [],
-        teams: Array.isArray(body?.scope?.teams) ? body.scope.teams : [],
-        units: Array.isArray(body?.scope?.units) ? body.scope.units : [],
-        profileKey: (clean(body?.scope?.profileKey) || null) as ExecutiveProfileKey | null,
-        visibleWidgetKeys: Array.isArray(body?.scope?.visibleWidgetKeys) ? body.scope.visibleWidgetKeys : [],
+        error:
+          'Este endpoint legou leitura apenas. Ajuste perfis, grupos, cargos e exceções em /dashboard-executivo.',
       },
-      String(auth.session.user.id)
+      { status: 410 }
     );
-    invalidateCache('admin:');
-    return NextResponse.json({ status: 'success', data: scope });
   } catch (error: any) {
     console.error('Erro PATCH executive scope:', error);
     return NextResponse.json({ error: error?.message || 'Erro interno' }, { status: 500 });

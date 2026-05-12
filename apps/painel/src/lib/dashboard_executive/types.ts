@@ -17,7 +17,13 @@ export type ExecutiveProfileKey =
   | 'crc';
 
 export type ExecutiveWidgetStatus = 'available' | 'planned' | 'blocked';
-export type ExecutiveScopeResolutionSource = 'legacy_scope' | 'profile_rule' | 'user_override' | 'unconfigured';
+export type ExecutiveScopeMode =
+  | 'unrestricted'
+  | 'employee_department'
+  | 'employee_units'
+  | 'employee_department_and_units'
+  | 'custom';
+export type ExecutiveScopeResolutionSource = 'group_mapping' | 'user_exception' | 'unconfigured';
 
 export type ExecutiveWidgetKey =
   | 'tarefas'
@@ -82,21 +88,40 @@ export type ExecutiveProfileWidgetConfig = {
   sortOrder: number;
 };
 
-export type ExecutiveProfileRule = {
+export type ExecutiveGroupDefinition = {
   id: string;
-  profileKey: ExecutiveProfileKey;
-  department: string | null;
-  jobTitle: string | null;
+  key: string;
+  label: string;
+  description: string | null;
+  defaultProfileKey: ExecutiveProfileKey;
+  scopeMode: ExecutiveScopeMode;
+  departments: string[];
+  teams: string[];
   units: string[];
   isActive: boolean;
+  sortOrder: number;
   updatedAt: string | null;
   updatedBy: string | null;
 };
 
-export type ExecutiveUserOverride = {
+export type ExecutiveJobTitleMapping = {
+  catalogId: string;
+  name: string;
+  normalizedName: string;
+  executiveGroupId: string | null;
+  executiveGroupKey: string | null;
+  executiveGroupLabel: string | null;
+  linkedEmployeesCount: number;
+  linkedUsersCount: number;
+  isActive: boolean;
+};
+
+export type ExecutiveUserException = {
   userId: string;
-  profileKey: ExecutiveProfileKey | null;
-  visibleWidgetKeys: ExecutiveWidgetKey[];
+  profileKeyOverride: ExecutiveProfileKey | null;
+  addedWidgetKeys: ExecutiveWidgetKey[];
+  hiddenWidgetKeys: ExecutiveWidgetKey[];
+  scopeModeOverride: ExecutiveScopeMode | null;
   departments: string[];
   teams: string[];
   units: string[];
@@ -109,7 +134,10 @@ export type ExecutiveResolvedProfile = {
   profileKey: ExecutiveProfileKey | null;
   visibleWidgetKeys: ExecutiveWidgetKey[];
   resolutionSource: ExecutiveScopeResolutionSource;
-  matchedRuleId: string | null;
+  matchedGroupId: string | null;
+  matchedGroupKey: string | null;
+  matchedGroupLabel: string | null;
+  configurationIssue: string | null;
 };
 
 export type ExecutiveScope = {
@@ -121,7 +149,10 @@ export type ExecutiveScope = {
   profileKey: ExecutiveProfileKey | null;
   visibleWidgetKeys: ExecutiveWidgetKey[];
   resolutionSource: ExecutiveScopeResolutionSource;
-  matchedRuleId: string | null;
+  matchedGroupId: string | null;
+  matchedGroupKey: string | null;
+  matchedGroupLabel: string | null;
+  configurationIssue: string | null;
   updatedAt: string | null;
   updatedBy: string | null;
 };
@@ -212,8 +243,9 @@ export type ExecutiveConfigurationSnapshot = {
   profiles: ExecutiveProfileDefinition[];
   widgets: ExecutiveWidgetDefinition[];
   profileWidgets: ExecutiveProfileWidgetConfig[];
-  rules: ExecutiveProfileRule[];
-  overrides: ExecutiveUserOverride[];
+  groups: ExecutiveGroupDefinition[];
+  jobTitles: ExecutiveJobTitleMapping[];
+  userExceptions: ExecutiveUserException[];
 };
 
 export type ExecutiveProfilePreviewRow = {
@@ -223,13 +255,17 @@ export type ExecutiveProfilePreviewRow = {
   status: string;
   department: string | null;
   jobTitle: string | null;
+  jobTitleCatalogId: string | null;
   units: string[];
   hasDashboardAccess: boolean;
   hasEmployeeLink: boolean;
+  executiveGroupId: string | null;
+  executiveGroupKey: string | null;
+  executiveGroupLabel: string | null;
   profileKey: ExecutiveProfileKey | null;
   profileLabel: string | null;
   resolutionSource: ExecutiveScopeResolutionSource;
-  matchedRuleId: string | null;
+  configurationIssue: string | null;
 };
 
 export type ExecutiveScopeOptions = {

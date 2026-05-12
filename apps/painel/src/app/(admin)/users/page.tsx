@@ -22,6 +22,9 @@ interface User {
   last_access: string | null;
   employee_id?: string | null;
   employee_name?: string | null;
+  executive_group_label?: string | null;
+  executive_profile_label?: string | null;
+  executive_issue?: string | null;
 }
 
 type EmployeeOption = {
@@ -100,6 +103,7 @@ const PAGE_PERMISSION_GROUP: Record<PageKey, PermissionGroupId> = {
   intranet_chatbot: 'intranet',
   ajuda: 'sistema',
   users: 'sistema',
+  dashboard_executive_governance: 'sistema',
   contract_templates: 'sistema',
   settings: 'sistema',
 };
@@ -413,7 +417,9 @@ export default function UsersPage() {
     (user.username || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     user.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.employee_name || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (user.employee_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.executive_group_label || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.executive_profile_label || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const availableEmployeeOptions = useMemo(() => {
@@ -535,6 +541,7 @@ export default function UsersPage() {
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Departamento</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Colaborador vinculado</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Função</th>
+                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Dashboard executivo</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Último Acesso</th>
                 <th className="px-6 py-4 text-end text-xs font-semibold text-slate-500 uppercase tracking-wider">Ações</th>
@@ -543,7 +550,7 @@ export default function UsersPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
                         <div className="flex flex-col items-center gap-3">
                             <Loader2 className="animate-spin text-[#17407E]" size={32} />
                             <span>Carregando usuários...</span>
@@ -552,7 +559,7 @@ export default function UsersPage() {
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                    <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                    <td colSpan={8} className="px-6 py-12 text-center text-slate-500">
                         Nenhum usuário encontrado.
                     </td>
                 </tr>
@@ -593,6 +600,21 @@ export default function UsersPage() {
                             {user.role === 'ADMIN' && <Shield size={14} className="text-amber-500" />}
                             {user.role}
                         </div>
+                    </td>
+                    <td className="px-6 py-4 text-sm">
+                        {user.executive_profile_label ? (
+                          <div>
+                            <div className="font-medium text-slate-800">{user.executive_group_label || 'Grupo configurado'}</div>
+                            <div className="text-xs text-slate-500">{user.executive_profile_label}</div>
+                          </div>
+                        ) : (
+                          <div>
+                            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700">
+                              Sem configuração
+                            </span>
+                            {user.executive_issue ? <div className="mt-1 text-[11px] text-amber-700">{user.executive_issue}</div> : null}
+                          </div>
+                        )}
                     </td>
                     <td className="px-6 py-4">
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${

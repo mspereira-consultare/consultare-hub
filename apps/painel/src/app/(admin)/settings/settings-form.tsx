@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { updateFeegowSettings } from "@/app/actions/settings"; 
 import RecruitmentIndeedSettingsTab from './recruitment-indeed-settings-tab';
-import ExecutiveDashboardSettingsTab from './executive-dashboard-settings-tab';
 
 interface IntegrationConfig {
     service: string;
@@ -29,7 +28,7 @@ export default function SettingsForm({ initialFeegow, initialClinia }: SettingsF
   const [clinia, setClinia] = useState<IntegrationConfig>(initialClinia);
   
   const [showPassFeegow, setShowPassFeegow] = useState(false);
-  const [activeTab, setActiveTab] = useState<'feegow' | 'clinia' | 'indeed' | 'dashboard_executive'>('feegow');
+  const [activeTab, setActiveTab] = useState<'feegow' | 'clinia' | 'indeed'>('feegow');
 
   const handleSave = async () => {
     setSaving(true);
@@ -136,16 +135,6 @@ export default function SettingsForm({ initialFeegow, initialClinia }: SettingsF
             >
                 <Briefcase className="w-4 h-4" />
                 Indeed e Recrutamento
-            </button>
-            <button
-                onClick={() => setActiveTab('dashboard_executive')}
-                className={`flex items-center gap-2 px-6 py-4 text-sm font-medium transition-colors border-b-2 ${
-                    activeTab === 'dashboard_executive'
-                    ? 'border-blue-600 text-blue-600 bg-blue-50/50'
-                    : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
-                }`}
-            >
-                Dashboard Executivo
             </button>
         </div>
 
@@ -313,10 +302,6 @@ export default function SettingsForm({ initialFeegow, initialClinia }: SettingsF
 
             <div className={activeTab === 'indeed' ? 'block' : 'hidden'}>
                 <RecruitmentIndeedSettingsTab />
-            </div>
-
-            <div className={activeTab === 'dashboard_executive' ? 'block' : 'hidden'}>
-                <ExecutiveDashboardSettingsTab />
             </div>
         </div>
       </div>

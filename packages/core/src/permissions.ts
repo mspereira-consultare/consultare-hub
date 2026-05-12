@@ -39,6 +39,7 @@ export type PageKey =
   | 'intranet_chatbot'
   | 'ajuda'
   | 'users'
+  | 'dashboard_executive_governance'
   | 'contract_templates'
   | 'settings';
 
@@ -88,6 +89,7 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'intranet_chatbot', label: 'Intranet - Chatbot e Conhecimento', path: '/gestao/chatbot' },
   { key: 'ajuda', label: 'Ajuda', path: '/ajuda' },
   { key: 'users', label: 'Usuários', path: '/users' },
+  { key: 'dashboard_executive_governance', label: 'Dashboard Executivo - Governança', path: '/dashboard-executivo' },
   { key: 'contract_templates', label: 'Modelos de Contrato', path: '/modelos-contrato' },
   { key: 'settings', label: 'Configurações', path: '/settings' },
 ];
@@ -139,8 +141,8 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda', ...INTRANET_BACKOFFICE_PAGE_KEYS], { view: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', ...INTRANET_BACKOFFICE_PAGE_KEYS], { edit: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda', 'dashboard_executive_governance', ...INTRANET_BACKOFFICE_PAGE_KEYS], { view: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'dashboard_executive_governance', ...INTRANET_BACKOFFICE_PAGE_KEYS], { edit: true });
     setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'intranet_dashboard', 'intranet_chatbot'], { refresh: true });
     return matrix;
   }
@@ -232,6 +234,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/gestao/chatbot') return 'intranet_chatbot';
   if (path === '/ajuda') return 'ajuda';
   if (path === '/users') return 'users';
+  if (path === '/dashboard-executivo') return 'dashboard_executive_governance';
   if (path === '/modelos-contrato') return 'contract_templates';
   if (path === '/settings') return 'settings';
 
@@ -276,6 +279,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/intranet/chat')) return 'intranet_chat';
   if (path.startsWith('/api/admin/intranet')) return 'intranet_dashboard';
   if (path.startsWith('/api/admin/users')) return 'users';
+  if (path.startsWith('/api/admin/dashboard/executive/config')) return 'dashboard_executive_governance';
   if (path.startsWith('/api/admin/contract-templates')) return 'contract_templates';
   if (path.startsWith('/api/admin/settings')) return 'settings';
 
