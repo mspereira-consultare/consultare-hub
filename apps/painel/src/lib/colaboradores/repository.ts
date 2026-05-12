@@ -534,6 +534,24 @@ const employeeCatalogTableMap: Record<EmployeeCatalogOptionType, { table: string
   jobTitle: { table: 'employee_job_titles', label: 'cargo' },
 };
 
+const findEmployeeCatalogOption = async (
+  db: DbInterface,
+  type: EmployeeCatalogOptionType,
+  rawValue: string | null | undefined
+) => {
+  const value = clean(rawValue).replace(/\s+/g, ' ');
+  if (!value) return null;
+  const normalized = normalizeCatalogValue(value);
+  const { table } = employeeCatalogTableMap[type];
+  const rows = await db.query(`SELECT id, name FROM ${table} WHERE normalized_name = ? LIMIT 1`, [normalized]);
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    id: clean(row.id),
+    name: clean(row.name) || value,
+  };
+};
+
 const syncEmployeeCatalogOption = async (db: DbInterface, type: EmployeeCatalogOptionType, rawValue: string | null | undefined) => {
   const value = clean(rawValue).replace(/\s+/g, ' ');
   if (!value) return null;
@@ -563,6 +581,22 @@ const syncEmployeeCatalogOption = async (db: DbInterface, type: EmployeeCatalogO
   return value;
 };
 
+const syncEmployeeCatalogLink = async (
+  db: DbInterface,
+  type: EmployeeCatalogOptionType,
+  rawValue: string | null | undefined
+) => {
+  const savedValue = await syncEmployeeCatalogOption(db, type, rawValue);
+  if (!savedValue) {
+    return { value: null, catalogId: null };
+  }
+  const option = await findEmployeeCatalogOption(db, type, savedValue);
+  return {
+    value: savedValue,
+    catalogId: option?.id || null,
+  };
+};
+
 const seedEmployeeCatalogFromEmployees = async (db: DbInterface) => {
   const rows = await db.query(
     `
@@ -576,6 +610,38 @@ const seedEmployeeCatalogFromEmployees = async (db: DbInterface) => {
   for (const row of rows) {
     await syncEmployeeCatalogOption(db, 'department', clean(row.department) || null);
     await syncEmployeeCatalogOption(db, 'jobTitle', clean(row.job_title) || null);
+  }
+};
+
+const syncEmployeeCatalogIdsOnEmployees = async (db: DbInterface) => {
+  const rows = await db.query(
+    `
+    SELECT id, department, job_title, department_catalog_id, job_title_catalog_id
+    FROM employees
+    `
+  );
+
+  for (const row of rows) {
+    const departmentLink = await findEmployeeCatalogOption(db, 'department', clean(row.department) || null);
+    const jobTitleLink = await findEmployeeCatalogOption(db, 'jobTitle', clean(row.job_title) || null);
+
+    const nextDepartmentCatalogId = departmentLink?.id || null;
+    const nextJobTitleCatalogId = jobTitleLink?.id || null;
+    const currentDepartmentCatalogId = clean(row.department_catalog_id) || null;
+    const currentJobTitleCatalogId = clean(row.job_title_catalog_id) || null;
+
+    if (currentDepartmentCatalogId === nextDepartmentCatalogId && currentJobTitleCatalogId === nextJobTitleCatalogId) {
+      continue;
+    }
+
+    await db.execute(
+      `
+      UPDATE employees
+      SET department_catalog_id = ?, job_title_catalog_id = ?, updated_at = ?
+      WHERE id = ?
+      `,
+      [nextDepartmentCatalogId, nextJobTitleCatalogId, NOW(), clean(row.id)]
+    );
   }
 };
 
@@ -993,6 +1059,8 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employee_lifecycle_tasks ADD COLUMN source_type VARCHAR(40) NOT NULL DEFAULT 'MANUAL'`);
   await safeAddColumn(db, `ALTER TABLE employee_lifecycle_tasks ADD COLUMN source_ref VARCHAR(120) NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_lifecycle_tasks ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN department_catalog_id VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN job_title_catalog_id VARCHAR(64) NULL`);
 
   await safeCreateIndex(db, `CREATE INDEX idx_employees_full_name ON employees (full_name)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employees_status ON employees (status)`);
@@ -1011,6 +1079,7 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE UNIQUE INDEX idx_employee_job_titles_normalized ON employee_job_titles (normalized_name)`);
 
   await seedEmployeeCatalogFromEmployees(db);
+  await syncEmployeeCatalogIdsOnEmployees(db);
 
   tablesEnsured = true;
 };
@@ -1536,8 +1605,10 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
   const now = NOW();
 
   return runInTransaction(db, async (txDb) => {
-    input.department = await syncEmployeeCatalogOption(txDb, 'department', input.department);
-    input.jobTitle = await syncEmployeeCatalogOption(txDb, 'jobTitle', input.jobTitle);
+    const departmentLink = await syncEmployeeCatalogLink(txDb, 'department', input.department);
+    const jobTitleLink = await syncEmployeeCatalogLink(txDb, 'jobTitle', input.jobTitle);
+    input.department = departmentLink.value;
+    input.jobTitle = jobTitleLink.value;
     await txDb.execute(
       `
       INSERT INTO employees (
@@ -1546,12 +1617,13 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
         education_institution, education_level, course_name, current_semester,
         work_schedule, salary_amount, contract_duration_text, admission_date, contract_end_date,
         termination_date, termination_reason, termination_notes, units_json, job_title, department,
+        department_catalog_id, job_title_catalog_id,
         supervisor_name, cost_center, insalubrity_percent, transport_voucher_per_day,
         transport_voucher_mode, transport_voucher_monthly_fixed, meal_voucher_per_day,
         totalpass_discount_fixed, other_fixed_discount_amount, other_fixed_discount_description,
         payroll_notes, life_insurance_status, marital_status, has_children, children_count,
         bank_name, bank_agency, bank_account, pix_key, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
@@ -1585,6 +1657,8 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
         JSON.stringify(input.units || []),
         input.jobTitle,
         input.department,
+        departmentLink.catalogId,
+        jobTitleLink.catalogId,
         input.supervisorName,
         input.costCenter,
         input.insalubrityPercent,
@@ -1637,8 +1711,10 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
   const now = NOW();
 
   return runInTransaction(db, async (txDb) => {
-    input.department = await syncEmployeeCatalogOption(txDb, 'department', input.department);
-    input.jobTitle = await syncEmployeeCatalogOption(txDb, 'jobTitle', input.jobTitle);
+    const departmentLink = await syncEmployeeCatalogLink(txDb, 'department', input.department);
+    const jobTitleLink = await syncEmployeeCatalogLink(txDb, 'jobTitle', input.jobTitle);
+    input.department = departmentLink.value;
+    input.jobTitle = jobTitleLink.value;
     await txDb.execute(
       `
       UPDATE employees
@@ -1673,6 +1749,8 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
         units_json = ?,
         job_title = ?,
         department = ?,
+        department_catalog_id = ?,
+        job_title_catalog_id = ?,
         supervisor_name = ?,
         cost_center = ?,
         insalubrity_percent = ?,
@@ -1727,6 +1805,8 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
         JSON.stringify(input.units || []),
         input.jobTitle,
         input.department,
+        departmentLink.catalogId,
+        jobTitleLink.catalogId,
         input.supervisorName,
         input.costCenter,
         input.insalubrityPercent,
