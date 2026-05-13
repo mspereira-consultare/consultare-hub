@@ -28,6 +28,28 @@ export type ProfessionalChecklistItem = {
   updatedAt?: string;
 };
 
+export type ProfessionalAttendanceWeekday =
+  | 'SEGUNDA'
+  | 'TERCA'
+  | 'QUARTA'
+  | 'QUINTA'
+  | 'SEXTA'
+  | 'SABADO';
+
+export type ProfessionalAttendancePeriod = 'MANHA' | 'TARDE';
+
+export type ProfessionalAttendanceRecurrence = 'SEMANAL' | 'QUINZENAL';
+
+export type ProfessionalAttendanceSchedule = {
+  id?: string;
+  professionalId?: string;
+  serviceUnit: string;
+  specialty: string;
+  weekday: ProfessionalAttendanceWeekday;
+  period: ProfessionalAttendancePeriod;
+  recurrence: ProfessionalAttendanceRecurrence;
+};
+
 export type ProfessionalDocument = {
   id: string;
   professionalId: string;
@@ -82,6 +104,7 @@ export type Professional = {
   ageRange: string | null;
   serviceUnits: string[];
   attendanceModes: string[];
+  attendanceSchedules: ProfessionalAttendanceSchedule[];
   serviceLocationsText: string[];
   patientAgeText: string | null;
   walkInPolicyText: string | null;
@@ -132,6 +155,7 @@ export type ProfessionalInput = {
   ageRange?: string | null;
   serviceUnits?: string[];
   attendanceModes?: string[];
+  attendanceSchedules?: ProfessionalAttendanceSchedule[];
   serviceLocationsText?: string[];
   patientAgeText?: string | null;
   walkInPolicyText?: string | null;
@@ -203,4 +227,26 @@ export type ProfessionalFilters = {
   feegowPermissions: 'all' | 'yes' | 'no';
   page: number;
   pageSize: number;
+};
+
+export type ProfessionalAttendanceMapEntry = {
+  professionalId: string;
+  professionalName: string;
+  recurrence: ProfessionalAttendanceRecurrence;
+};
+
+export type ProfessionalAttendanceMapRow = {
+  weekday: ProfessionalAttendanceWeekday;
+  morning: ProfessionalAttendanceMapEntry[];
+  afternoon: ProfessionalAttendanceMapEntry[];
+};
+
+export type ProfessionalAttendanceMapUnit = {
+  serviceUnit: string;
+  rows: ProfessionalAttendanceMapRow[];
+};
+
+export type ProfessionalAttendanceMapSpecialty = {
+  specialty: string;
+  units: ProfessionalAttendanceMapUnit[];
 };

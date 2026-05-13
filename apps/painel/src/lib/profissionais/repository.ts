@@ -3,6 +3,9 @@ import type { DbInterface } from '@/lib/db';
 import { ensureContractTemplatesTables } from '@/lib/contract_templates/repository';
 import { ensureAgendaOcupacaoTables } from '@/lib/agenda_ocupacao/repository';
 import {
+  PROFESSIONAL_ATTENDANCE_PERIODS,
+  PROFESSIONAL_ATTENDANCE_RECURRENCES,
+  PROFESSIONAL_ATTENDANCE_WEEKDAYS,
   CHECKLIST_DOCUMENT_TYPES,
   CERTIDAO_DOC_TYPE,
   CONTRACT_TYPES,
@@ -24,6 +27,10 @@ import {
 import type {
   FeegowProcedureCatalogItem,
   Professional,
+  ProfessionalAttendanceMapEntry,
+  ProfessionalAttendanceMapRow,
+  ProfessionalAttendanceMapSpecialty,
+  ProfessionalAttendanceSchedule,
   ProfessionalChecklistItem,
   ProfessionalDocument,
   ProfessionalDocumentUploadInput,
@@ -59,6 +66,9 @@ const allowedDocTypes = new Set(DOCUMENT_TYPES.map((item) => item.code));
 const checklistDocTypes = new Set(CHECKLIST_DOCUMENT_TYPES.map((item) => item.code));
 const allowedPersonalDocTypes = new Set(PERSONAL_DOC_TYPES);
 const allowedServiceUnits = new Set(PROFESSIONAL_SERVICE_UNITS);
+const allowedAttendanceWeekdays = new Set(PROFESSIONAL_ATTENDANCE_WEEKDAYS);
+const allowedAttendancePeriods = new Set(PROFESSIONAL_ATTENDANCE_PERIODS);
+const allowedAttendanceRecurrences = new Set(PROFESSIONAL_ATTENDANCE_RECURRENCES);
 
 const parseDate = (value: any): string | null => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -115,6 +125,72 @@ const normalizeServiceUnits = (value: any): string[] => {
 const normalizeFreeTextList = (value: unknown): string[] => {
   const source = Array.isArray(value) ? value : clean(value).split('\n');
   return Array.from(new Set(source.map((item) => clean(item)).filter(Boolean)));
+};
+
+const normalizeAttendanceSchedules = (
+  value: unknown,
+  specialties: string[]
+): ProfessionalAttendanceSchedule[] => {
+  const source = Array.isArray(value) ? value : [];
+  const normalizedSpecialties = new Map(
+    specialties
+      .map((specialty) => clean(specialty))
+      .filter(Boolean)
+      .map((specialty) => [upper(specialty), specialty] as const)
+  );
+  const seen = new Set<string>();
+  const result: ProfessionalAttendanceSchedule[] = [];
+
+  for (const row of source) {
+    const serviceUnit = upper((row as any)?.serviceUnit);
+    const specialtyRaw = clean((row as any)?.specialty);
+    const specialty = normalizedSpecialties.get(upper(specialtyRaw)) || specialtyRaw;
+    const weekday = upper((row as any)?.weekday);
+    const period = upper((row as any)?.period);
+    const recurrence = upper((row as any)?.recurrence);
+
+    const isFullyEmpty =
+      !serviceUnit && !specialty && !weekday && !period && !recurrence;
+    if (isFullyEmpty) continue;
+
+    if (!serviceUnit || !specialty || !weekday || !period || !recurrence) {
+      throw new ProfessionalValidationError(
+        'Preencha unidade, especialidade, dia, periodo e recorrencia em cada horario de atendimento.'
+      );
+    }
+    if (!allowedServiceUnits.has(serviceUnit as any)) {
+      throw new ProfessionalValidationError(`Unidade de atendimento invalida: ${serviceUnit}.`);
+    }
+    if (!normalizedSpecialties.has(upper(specialty))) {
+      throw new ProfessionalValidationError(
+        `Especialidade do horario de atendimento deve pertencer as especialidades do profissional: ${specialty}.`
+      );
+    }
+    if (!allowedAttendanceWeekdays.has(weekday as any)) {
+      throw new ProfessionalValidationError(`Dia da semana invalido: ${weekday}.`);
+    }
+    if (!allowedAttendancePeriods.has(period as any)) {
+      throw new ProfessionalValidationError(`Periodo invalido: ${period}.`);
+    }
+    if (!allowedAttendanceRecurrences.has(recurrence as any)) {
+      throw new ProfessionalValidationError(`Recorrencia invalida: ${recurrence}.`);
+    }
+
+    const dedupeKey = [serviceUnit, upper(specialty), weekday, period, recurrence].join('|');
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+
+    result.push({
+      id: clean((row as any)?.id) || undefined,
+      serviceUnit,
+      specialty,
+      weekday: weekday as ProfessionalAttendanceSchedule['weekday'],
+      period: period as ProfessionalAttendanceSchedule['period'],
+      recurrence: recurrence as ProfessionalAttendanceSchedule['recurrence'],
+    });
+  }
+
+  return result;
 };
 
 const normalizeAgeRange = (value: any): string | null => {
@@ -257,7 +333,6 @@ const normalizeInput = (payload: any): ProfessionalInput => {
   const phone = normalizePhone(payload?.phone);
   const email = clean(payload?.email) || null;
   const ageRange = normalizeAgeRange(payload?.ageRange);
-  const serviceUnits = normalizeServiceUnits(payload?.serviceUnits);
   const attendanceModes = normalizeFreeTextList(payload?.attendanceModes);
   const serviceLocationsText = normalizeFreeTextList(payload?.serviceLocationsText);
   const normalizedSpecialties = normalizeSpecialties(
@@ -267,6 +342,16 @@ const normalizeInput = (payload: any): ProfessionalInput => {
   );
   const personalDocNumber = clean(payload?.personalDocNumber) || '-';
   const addressText = clean(payload?.addressText) || '-';
+  const attendanceSchedules = normalizeAttendanceSchedules(
+    payload?.attendanceSchedules,
+    normalizedSpecialties.specialties
+  );
+  const serviceUnits = Array.from(
+    new Set([
+      ...normalizeServiceUnits(payload?.serviceUnits),
+      ...attendanceSchedules.map((schedule) => schedule.serviceUnit),
+    ])
+  );
 
   if (!name) throw new ProfessionalValidationError('Nome do profissional e obrigatorio.');
 
@@ -353,6 +438,7 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     ageRange,
     serviceUnits,
     attendanceModes,
+    attendanceSchedules,
     serviceLocationsText,
     patientAgeText: clean(payload?.patientAgeText) || null,
     walkInPolicyText: clean(payload?.walkInPolicyText) || null,
@@ -423,6 +509,7 @@ const mapProfessional = (row: any): Professional => ({
       return [];
     }
   })(),
+  attendanceSchedules: [],
   serviceLocationsText: (() => {
     const raw = clean(row.service_locations_text_json);
     if (!raw) return [];
@@ -536,6 +623,16 @@ const mapProcedureCatalog = (row: any): FeegowProcedureCatalogItem => ({
       : Number(row.grupo_procedimento),
   valor: Number(row.valor || 0),
   updatedAt: clean(row.updated_at) || null,
+});
+
+const mapAttendanceSchedule = (row: any): ProfessionalAttendanceSchedule => ({
+  id: clean(row.id),
+  professionalId: clean(row.professional_id),
+  serviceUnit: upper(row.service_unit),
+  specialty: clean(row.specialty),
+  weekday: upper(row.weekday) as ProfessionalAttendanceSchedule['weekday'],
+  period: upper(row.period) as ProfessionalAttendanceSchedule['period'],
+  recurrence: upper(row.recurrence) as ProfessionalAttendanceSchedule['recurrence'],
 });
 
 const mapProfessionalProcedureRate = (row: any): ProfessionalProcedureRate => ({
@@ -673,6 +770,38 @@ const upsertRegistrations = async (
   }
 };
 
+const upsertAttendanceSchedules = async (
+  db: DbInterface,
+  professionalId: string,
+  schedules: ProfessionalAttendanceSchedule[],
+  now: string
+) => {
+  await db.execute(`DELETE FROM professional_attendance_schedules WHERE professional_id = ?`, [
+    professionalId,
+  ]);
+
+  for (const schedule of schedules) {
+    await db.execute(
+      `
+      INSERT INTO professional_attendance_schedules (
+        id, professional_id, service_unit, specialty, weekday, period, recurrence, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        schedule.id || randomUUID(),
+        professionalId,
+        schedule.serviceUnit,
+        schedule.specialty,
+        schedule.weekday,
+        schedule.period,
+        schedule.recurrence,
+        now,
+        now,
+      ]
+    );
+  }
+};
+
 const upsertChecklist = async (
   db: DbInterface,
   professionalId: string,
@@ -770,13 +899,20 @@ const loadRelations = async (
   registrationsByProfessional: Map<string, ProfessionalRegistration[]>;
   checklistByProfessional: Map<string, ProfessionalChecklistItem[]>;
   documentsByProfessional: Map<string, ProfessionalDocument[]>;
+  attendanceSchedulesByProfessional: Map<string, ProfessionalAttendanceSchedule[]>;
 }> => {
   const registrationsByProfessional = new Map<string, ProfessionalRegistration[]>();
   const checklistByProfessional = new Map<string, ProfessionalChecklistItem[]>();
   const documentsByProfessional = new Map<string, ProfessionalDocument[]>();
+  const attendanceSchedulesByProfessional = new Map<string, ProfessionalAttendanceSchedule[]>();
 
   if (professionalIds.length === 0) {
-    return { registrationsByProfessional, checklistByProfessional, documentsByProfessional };
+    return {
+      registrationsByProfessional,
+      checklistByProfessional,
+      documentsByProfessional,
+      attendanceSchedulesByProfessional,
+    };
   }
 
   const idsIn = buildIn(professionalIds);
@@ -830,7 +966,29 @@ const loadRelations = async (
     documentsByProfessional.set(mapped.professionalId || '', list);
   }
 
-  return { registrationsByProfessional, checklistByProfessional, documentsByProfessional };
+  const scheduleRows = await db.query(
+    `
+    SELECT *
+    FROM professional_attendance_schedules
+    WHERE professional_id IN ${idsIn.clause}
+    ORDER BY specialty ASC, service_unit ASC, weekday ASC, period ASC, recurrence ASC
+    `,
+    idsIn.params
+  );
+
+  for (const row of scheduleRows) {
+    const mapped = mapAttendanceSchedule(row);
+    const list = attendanceSchedulesByProfessional.get(mapped.professionalId || '') || [];
+    list.push(mapped);
+    attendanceSchedulesByProfessional.set(mapped.professionalId || '', list);
+  }
+
+  return {
+    registrationsByProfessional,
+    checklistByProfessional,
+    documentsByProfessional,
+    attendanceSchedulesByProfessional,
+  };
 };
 
 export const ensureProfessionalsTables = async (db: DbInterface) => {
@@ -963,6 +1121,20 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   );
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS professional_attendance_schedules (
+      id VARCHAR(64) PRIMARY KEY,
+      professional_id VARCHAR(64) NOT NULL,
+      service_unit VARCHAR(120) NOT NULL,
+      specialty VARCHAR(120) NOT NULL,
+      weekday VARCHAR(20) NOT NULL,
+      period VARCHAR(20) NOT NULL,
+      recurrence VARCHAR(20) NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS professional_documents (
       id VARCHAR(64) PRIMARY KEY,
       professional_id VARCHAR(64) NOT NULL,
@@ -1083,6 +1255,14 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   );
   await safeCreateIndex(
     db,
+    `CREATE INDEX idx_prof_attendance_prof ON professional_attendance_schedules (professional_id)`
+  );
+  await safeCreateIndex(
+    db,
+    `CREATE INDEX idx_prof_attendance_map ON professional_attendance_schedules (specialty, service_unit, weekday, period)`
+  );
+  await safeCreateIndex(
+    db,
     `CREATE INDEX idx_prof_proc_rates_prof ON professional_procedure_rates (professional_id)`
   );
   await safeCreateIndex(
@@ -1097,7 +1277,8 @@ const mergeProfessional = (
   professional: Professional,
   registrations: ProfessionalRegistration[],
   checklist: ProfessionalChecklistItem[],
-  documents: ProfessionalDocument[]
+  documents: ProfessionalDocument[],
+  attendanceSchedules: ProfessionalAttendanceSchedule[]
 ): ProfessionalListItem => {
   const missingFields = computeMissingFields(
     {
@@ -1121,6 +1302,7 @@ const mergeProfessional = (
 
   return {
     ...professional,
+    attendanceSchedules,
     registrations,
     primaryRegistration,
     checklist,
@@ -1174,7 +1356,9 @@ export const listProfessionals = async (
     const registrations = relations.registrationsByProfessional.get(professional.id) || [];
     const checklist = relations.checklistByProfessional.get(professional.id) || [];
     const documents = relations.documentsByProfessional.get(professional.id) || [];
-    return mergeProfessional(professional, registrations, checklist, documents);
+    const attendanceSchedules =
+      relations.attendanceSchedulesByProfessional.get(professional.id) || [];
+    return mergeProfessional(professional, registrations, checklist, documents, attendanceSchedules);
   });
 
   let filtered = enriched;
@@ -1228,10 +1412,95 @@ export const getProfessionalById = async (
   const registrations = relations.registrationsByProfessional.get(professional.id) || [];
   const checklist = relations.checklistByProfessional.get(professional.id) || [];
   const documents = relations.documentsByProfessional.get(professional.id) || [];
+  const attendanceSchedules =
+    relations.attendanceSchedulesByProfessional.get(professional.id) || [];
   const [item] = await attachCurrentMonthAgendaStatus(db, [
-    mergeProfessional(professional, registrations, checklist, documents),
+    mergeProfessional(professional, registrations, checklist, documents, attendanceSchedules),
   ]);
   return item || null;
+};
+
+export const getProfessionalAttendanceMap = async (
+  db: DbInterface
+): Promise<ProfessionalAttendanceMapSpecialty[]> => {
+  await ensureProfessionalsTables(db);
+
+  const rows = await db.query(
+    `
+    SELECT
+      s.professional_id,
+      p.name AS professional_name,
+      s.service_unit,
+      s.specialty,
+      s.weekday,
+      s.period,
+      s.recurrence
+    FROM professional_attendance_schedules s
+    INNER JOIN professionals p
+      ON p.id = s.professional_id
+    WHERE p.is_active = 1
+    ORDER BY s.specialty ASC, s.service_unit ASC, p.name ASC, s.weekday ASC, s.period ASC
+    `
+  );
+
+  const specialtiesMap = new Map<string, Map<string, Map<string, ProfessionalAttendanceMapEntry[]>>>();
+
+  for (const row of rows || []) {
+    const specialty = clean((row as any).specialty);
+    const serviceUnit = upper((row as any).service_unit);
+    const weekday = upper((row as any).weekday);
+    const period = upper((row as any).period);
+    const professionalId = clean((row as any).professional_id);
+    const professionalName = clean((row as any).professional_name);
+    const recurrence = upper((row as any).recurrence) as ProfessionalAttendanceMapEntry['recurrence'];
+
+    if (!specialty || !serviceUnit || !professionalId || !professionalName) continue;
+    if (!allowedAttendanceWeekdays.has(weekday as any) || !allowedAttendancePeriods.has(period as any)) {
+      continue;
+    }
+
+    const specialtyMap = specialtiesMap.get(specialty) || new Map();
+    const unitMap = specialtyMap.get(serviceUnit) || new Map<string, ProfessionalAttendanceMapEntry[]>();
+    const slotKey = `${weekday}|${period}`;
+    const slotEntries = unitMap.get(slotKey) || [];
+
+    slotEntries.push({
+      professionalId,
+      professionalName,
+      recurrence,
+    });
+
+    unitMap.set(slotKey, slotEntries);
+    specialtyMap.set(serviceUnit, unitMap);
+    specialtiesMap.set(specialty, specialtyMap);
+  }
+
+  return Array.from(specialtiesMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b, 'pt-BR'))
+    .map(([specialty, unitsMap]) => ({
+      specialty,
+      units: PROFESSIONAL_SERVICE_UNITS.map((serviceUnit) => {
+        const slotMap = unitsMap.get(serviceUnit) || new Map<string, ProfessionalAttendanceMapEntry[]>();
+        const rowsByWeekday: ProfessionalAttendanceMapRow[] = PROFESSIONAL_ATTENDANCE_WEEKDAYS.map((weekday) => {
+          const morning = [...(slotMap.get(`${weekday}|MANHA`) || [])].sort((a, b) =>
+            a.professionalName.localeCompare(b.professionalName, 'pt-BR')
+          );
+          const afternoon = [...(slotMap.get(`${weekday}|TARDE`) || [])].sort((a, b) =>
+            a.professionalName.localeCompare(b.professionalName, 'pt-BR')
+          );
+          return {
+            weekday: weekday as ProfessionalAttendanceMapRow['weekday'],
+            morning,
+            afternoon,
+          };
+        });
+
+        return {
+          serviceUnit,
+          rows: rowsByWeekday,
+        };
+      }),
+    }));
 };
 
 export const createProfessional = async (
@@ -1296,6 +1565,7 @@ export const createProfessional = async (
   );
 
   await upsertRegistrations(db, id, input.registrations, now);
+  await upsertAttendanceSchedules(db, id, input.attendanceSchedules || [], now);
   await upsertChecklist(db, id, input.checklist, actorUserId, now);
 
   await insertAudit(db, 'PROFESSIONAL_CREATED', actorUserId, id, {
@@ -1399,6 +1669,7 @@ export const updateProfessional = async (
   );
 
   await upsertRegistrations(db, professionalId, input.registrations, now);
+  await upsertAttendanceSchedules(db, professionalId, input.attendanceSchedules || [], now);
   await upsertChecklist(db, professionalId, input.checklist, actorUserId, now);
 
   await insertAudit(db, 'PROFESSIONAL_UPDATED', actorUserId, professionalId, {
@@ -1431,6 +1702,7 @@ export const deleteProfessional = async (
   await db.execute(`DELETE FROM professional_documents_inactive WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professional_documents WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professional_document_checklist WHERE professional_id = ?`, [professionalId]);
+  await db.execute(`DELETE FROM professional_attendance_schedules WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professional_procedure_rates WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professional_registrations WHERE professional_id = ?`, [professionalId]);
   await db.execute(`DELETE FROM professionals WHERE id = ?`, [professionalId]);

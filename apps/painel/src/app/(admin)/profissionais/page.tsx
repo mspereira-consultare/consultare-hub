@@ -4,6 +4,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { AlertCircle, AlertTriangle, CalendarCheck2, CalendarX2, CheckCircle2, ChevronDown, ChevronRight, Clock3, Download, Edit3, Eye, FileUp, Filter, Info, Loader2, Plus, RefreshCw, RotateCcw, Search, Trash2, User, X } from 'lucide-react';
 import {
+  PROFESSIONAL_ATTENDANCE_PERIODS,
+  PROFESSIONAL_ATTENDANCE_RECURRENCES,
+  PROFESSIONAL_ATTENDANCE_WEEKDAYS,
   BRAZIL_UFS,
   CHECKLIST_DOCUMENT_TYPES,
   CONTRACT_TYPES,
@@ -14,6 +17,7 @@ import {
   type ContractPartyType,
 } from '@/lib/profissionais/constants';
 import type {
+  ProfessionalAttendanceSchedule,
   FeegowProcedureCatalogItem,
   ProfessionalContract,
   ProfessionalDocument,
@@ -32,6 +36,14 @@ type FormRegistration = {
 };
 type FormChecklist = { docType: string; hasPhysicalCopy: boolean; hasDigitalCopy: boolean; expiresAt: string; notes: string };
 type FormSpecialty = { name: string; isPrimary: boolean };
+type FormAttendanceSchedule = {
+  id?: string;
+  serviceUnit: string;
+  specialty: string;
+  weekday: string;
+  period: string;
+  recurrence: string;
+};
 type ContractTemplateOption = { id: string; name: string; contractType: string; version: number };
 type ServiceStatus = {
   service_name: string;
@@ -49,6 +61,7 @@ type FormProcedureRate = {
 type FormState = {
   name: string; contractPartyType: ContractPartyType; contractType: string; cpf: string; cnpj: string; legalName: string;
   specialties: FormSpecialty[]; phone: string; email: string; ageMin: number; ageMax: number; serviceUnits: string[];
+  attendanceSchedules: FormAttendanceSchedule[];
   attendanceModesText: string; serviceLocationsText: string; patientAgeText: string; walkInPolicyText: string; idealRoomText: string; intranetNotesText: string;
   hasFeegowPermissions: boolean;
   paymentMinimumText: string;
@@ -59,6 +72,29 @@ type FormState = {
 type ModalTab = 'cadastro' | 'documentos' | 'procedimentos' | 'contratos';
 
 const pageSize = 20;
+const newAttendanceSchedule = (): FormAttendanceSchedule => ({
+  serviceUnit: '',
+  specialty: '',
+  weekday: '',
+  period: '',
+  recurrence: '',
+});
+const WEEKDAY_LABELS: Record<string, string> = {
+  SEGUNDA: 'Segunda',
+  TERCA: 'Terça',
+  QUARTA: 'Quarta',
+  QUINTA: 'Quinta',
+  SEXTA: 'Sexta',
+  SABADO: 'Sábado',
+};
+const PERIOD_LABELS: Record<string, string> = {
+  MANHA: 'Manhã',
+  TARDE: 'Tarde',
+};
+const RECURRENCE_LABELS: Record<string, string> = {
+  SEMANAL: 'Semanal',
+  QUINZENAL: 'Quinzenal',
+};
 
 const newChecklist = () => CHECKLIST_DOCUMENT_TYPES.map((d) => ({ docType: d.code, hasPhysicalCopy: false, hasDigitalCopy: false, expiresAt: '', notes: '' }));
 const stripDigits = (value: string | null | undefined) => String(value || '').replace(/\D/g, '');
@@ -105,6 +141,7 @@ const parseAgeRange = (value: string | null | undefined) => {
 const emptyForm = (): FormState => ({
   name: '', contractPartyType: 'PF', contractType: CONTRACT_TYPES.find((c) => c.isActive)?.code || '', cpf: '', cnpj: '', legalName: '',
   specialties: [{ name: '', isPrimary: true }], phone: '', email: '', ageMin: 0, ageMax: 120, serviceUnits: [], hasFeegowPermissions: false,
+  attendanceSchedules: [],
   attendanceModesText: 'Presencial', serviceLocationsText: '', patientAgeText: '', walkInPolicyText: '', idealRoomText: '', intranetNotesText: '',
   paymentMinimumText: '',
   personalDocType: 'CPF', personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
@@ -129,6 +166,16 @@ const toForm = (item: ProfessionalListItem): FormState => {
     name: item.name || '', contractPartyType: 'PF', contractType: item.contractType || '', cpf: formatCpf(item.cpf || ''),
     cnpj: formatCnpj(item.cnpj || ''), legalName: item.legalName || '', specialties,
     phone: formatPhone(item.phone || ''), email: item.email || '', ageMin: age.min, ageMax: age.max, serviceUnits: item.serviceUnits || [],
+    attendanceSchedules: Array.isArray(item.attendanceSchedules)
+      ? item.attendanceSchedules.map((schedule) => ({
+        id: schedule.id,
+        serviceUnit: schedule.serviceUnit || '',
+        specialty: schedule.specialty || '',
+        weekday: schedule.weekday || '',
+        period: schedule.period || '',
+        recurrence: schedule.recurrence || '',
+      }))
+      : [],
     attendanceModesText: (item.attendanceModes || []).join('\n'),
     serviceLocationsText: (item.serviceLocationsText || []).join('\n'),
     patientAgeText: item.patientAgeText || '',
@@ -401,6 +448,15 @@ export default function ProfessionalsPage() {
     }
     return Array.from(all).sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [specialties, form.specialties]);
+  const attendanceScheduleSpecialties = useMemo(
+    () =>
+      form.specialties
+        .map((specialty) => String(specialty.name || '').trim())
+        .filter(Boolean)
+        .filter((value, index, list) => list.indexOf(value) === index)
+        .sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    [form.specialties]
+  );
   const contractTemplateOptions = useMemo(
     () =>
       activeContractTemplates.filter((tpl) => {
@@ -1156,6 +1212,16 @@ export default function ProfessionalsPage() {
         email: form.email || null,
         ageRange: `${form.ageMin}-${form.ageMax}`,
         serviceUnits: form.serviceUnits || [],
+        attendanceSchedules: form.attendanceSchedules.map(
+          (schedule): ProfessionalAttendanceSchedule => ({
+            id: schedule.id,
+            serviceUnit: String(schedule.serviceUnit || '').trim().toUpperCase(),
+            specialty: String(schedule.specialty || '').trim(),
+            weekday: String(schedule.weekday || '').trim().toUpperCase() as ProfessionalAttendanceSchedule['weekday'],
+            period: String(schedule.period || '').trim().toUpperCase() as ProfessionalAttendanceSchedule['period'],
+            recurrence: String(schedule.recurrence || '').trim().toUpperCase() as ProfessionalAttendanceSchedule['recurrence'],
+          })
+        ),
         attendanceModes: form.attendanceModesText.split('\n').map((item) => item.trim()).filter(Boolean),
         serviceLocationsText: form.serviceLocationsText.split('\n').map((item) => item.trim()).filter(Boolean),
         patientAgeText: form.patientAgeText || null,
@@ -1639,9 +1705,18 @@ export default function ProfessionalsPage() {
                               value={sp.name}
                               onChange={(e) =>
                                 setForm((p) => {
+                                  const previousName = p.specialties[idx]?.name || '';
                                   const next = [...p.specialties];
                                   next[idx] = { ...next[idx], name: e.target.value };
-                                  return { ...p, specialties: next };
+                                  return {
+                                    ...p,
+                                    specialties: next,
+                                    attendanceSchedules: p.attendanceSchedules.map((schedule) =>
+                                      schedule.specialty === previousName
+                                        ? { ...schedule, specialty: e.target.value }
+                                        : schedule
+                                    ),
+                                  };
                                 })
                               }
                               className="col-span-8 px-3 py-2 border rounded-lg bg-white"
@@ -1674,9 +1749,16 @@ export default function ProfessionalsPage() {
                               onClick={() =>
                                 setForm((p) => {
                                   if (p.specialties.length <= 1) return p;
+                                  const removedSpecialty = p.specialties[idx]?.name || '';
                                   const next = p.specialties.filter((_, xIdx) => xIdx !== idx);
                                   if (!next.some((x) => x.isPrimary)) next[0] = { ...next[0], isPrimary: true };
-                                  return { ...p, specialties: next };
+                                  return {
+                                    ...p,
+                                    specialties: next,
+                                    attendanceSchedules: p.attendanceSchedules.filter(
+                                      (schedule) => schedule.specialty !== removedSpecialty
+                                    ),
+                                  };
                                 })
                               }
                               className="col-span-1 text-slate-500 hover:text-rose-600"
@@ -1793,6 +1875,188 @@ export default function ProfessionalsPage() {
                             </div>
                           </div>
                         </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                          <div>
+                            <h4 className="text-sm font-semibold text-slate-800">Horários fixos de atendimento</h4>
+                            <p className="mt-1 text-xs text-slate-500">
+                              Informe os dias, períodos e recorrências para compor o MAPA LISTA.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setForm((p) => ({
+                                ...p,
+                                attendanceSchedules: [...p.attendanceSchedules, newAttendanceSchedule()],
+                              }))
+                            }
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            <Plus size={13} />
+                            Horário de atendimento
+                          </button>
+                        </div>
+
+                        {form.attendanceSchedules.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-slate-300 px-4 py-6 text-center text-sm text-slate-500">
+                            Nenhum horário estruturado cadastrado.
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            {form.attendanceSchedules.map((schedule, idx) => (
+                              <div
+                                key={schedule.id || `attendance-schedule-${idx}`}
+                                className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 lg:grid-cols-12"
+                              >
+                                <div className="lg:col-span-3">
+                                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                                    Unidade
+                                  </label>
+                                  <select
+                                    value={schedule.serviceUnit}
+                                    onChange={(e) =>
+                                      setForm((p) => ({
+                                        ...p,
+                                        serviceUnits: e.target.value
+                                          ? Array.from(new Set([...p.serviceUnits, e.target.value]))
+                                          : p.serviceUnits,
+                                        attendanceSchedules: p.attendanceSchedules.map((item, itemIdx) =>
+                                          itemIdx === idx ? { ...item, serviceUnit: e.target.value } : item
+                                        ),
+                                      }))
+                                    }
+                                    className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                                  >
+                                    <option value="">Selecione</option>
+                                    {PROFESSIONAL_SERVICE_UNITS.map((unit) => (
+                                      <option key={unit} value={unit}>
+                                        {unit}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="lg:col-span-3">
+                                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                                    Especialidade
+                                  </label>
+                                  <select
+                                    value={schedule.specialty}
+                                    onChange={(e) =>
+                                      setForm((p) => ({
+                                        ...p,
+                                        attendanceSchedules: p.attendanceSchedules.map((item, itemIdx) =>
+                                          itemIdx === idx ? { ...item, specialty: e.target.value } : item
+                                        ),
+                                      }))
+                                    }
+                                    className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                                  >
+                                    <option value="">Selecione</option>
+                                    {attendanceScheduleSpecialties.map((specialty) => (
+                                      <option key={`${specialty}-${idx}`} value={specialty}>
+                                        {specialty}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="lg:col-span-2">
+                                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                                    Dia da semana
+                                  </label>
+                                  <select
+                                    value={schedule.weekday}
+                                    onChange={(e) =>
+                                      setForm((p) => ({
+                                        ...p,
+                                        attendanceSchedules: p.attendanceSchedules.map((item, itemIdx) =>
+                                          itemIdx === idx ? { ...item, weekday: e.target.value } : item
+                                        ),
+                                      }))
+                                    }
+                                    className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                                  >
+                                    <option value="">Selecione</option>
+                                    {PROFESSIONAL_ATTENDANCE_WEEKDAYS.map((weekday) => (
+                                      <option key={weekday} value={weekday}>
+                                        {WEEKDAY_LABELS[weekday] || weekday}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="lg:col-span-2">
+                                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                                    Período
+                                  </label>
+                                  <select
+                                    value={schedule.period}
+                                    onChange={(e) =>
+                                      setForm((p) => ({
+                                        ...p,
+                                        attendanceSchedules: p.attendanceSchedules.map((item, itemIdx) =>
+                                          itemIdx === idx ? { ...item, period: e.target.value } : item
+                                        ),
+                                      }))
+                                    }
+                                    className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                                  >
+                                    <option value="">Selecione</option>
+                                    {PROFESSIONAL_ATTENDANCE_PERIODS.map((period) => (
+                                      <option key={period} value={period}>
+                                        {PERIOD_LABELS[period] || period}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </div>
+
+                                <div className="lg:col-span-2">
+                                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                                    Recorrência
+                                  </label>
+                                  <div className="flex items-start gap-2">
+                                    <select
+                                      value={schedule.recurrence}
+                                      onChange={(e) =>
+                                        setForm((p) => ({
+                                          ...p,
+                                          attendanceSchedules: p.attendanceSchedules.map((item, itemIdx) =>
+                                            itemIdx === idx ? { ...item, recurrence: e.target.value } : item
+                                          ),
+                                        }))
+                                      }
+                                      className="w-full rounded-lg border bg-white px-3 py-2 text-sm"
+                                    >
+                                      <option value="">Selecione</option>
+                                      {PROFESSIONAL_ATTENDANCE_RECURRENCES.map((recurrence) => (
+                                        <option key={recurrence} value={recurrence}>
+                                          {RECURRENCE_LABELS[recurrence] || recurrence}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setForm((p) => ({
+                                          ...p,
+                                          attendanceSchedules: p.attendanceSchedules.filter((_, itemIdx) => itemIdx !== idx),
+                                        }))
+                                      }
+                                      className="inline-flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-lg border border-rose-200 text-rose-600 hover:bg-rose-50"
+                                      title="Remover horário"
+                                    >
+                                      <Trash2 size={14} />
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
 

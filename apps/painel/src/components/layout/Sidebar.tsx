@@ -26,6 +26,7 @@ import {
   ChevronDown,
   ChevronRight,
   Search,
+  LayoutGrid,
   Stethoscope,
   FileText,
   BarChart3,
@@ -113,6 +114,14 @@ const menuItems: MenuItem[] = [
     href: "/profissionais",
     label: "Gestão de Profissionais",
     icon: Stethoscope,
+    group: "OPERAÇÕES",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "profissionais",
+  },
+  {
+    href: "/profissionais/mapas",
+    label: "Mapas de Profissionais",
+    icon: LayoutGrid,
     group: "OPERAÇÕES",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "profissionais",
@@ -411,7 +420,16 @@ export function Sidebar() {
   const isItemActive = (item: MenuItem) => {
     const isExactMatch = pathname === item.href;
     const isSubRoute = pathname.startsWith(item.href + "/");
-    return item.href === "/metas" ? isExactMatch : isExactMatch || isSubRoute;
+    if (item.href === "/metas") return isExactMatch;
+    if (!isExactMatch && !isSubRoute) return false;
+
+    const hasMoreSpecificMatch = authorizedItems.some((otherItem) => {
+      if (otherItem.href === item.href) return false;
+      if (!otherItem.href.startsWith(item.href + "/")) return false;
+      return pathname === otherItem.href || pathname.startsWith(otherItem.href + "/");
+    });
+
+    return isExactMatch || (isSubRoute && !hasMoreSpecificMatch);
   };
 
   const activeItem = useMemo(() => {

@@ -265,6 +265,19 @@ export const PROFESSIONAL_SERVICE_UNITS = [
   'SHOPPING CAMPINAS',
 ] as const;
 
+export const PROFESSIONAL_ATTENDANCE_WEEKDAYS = [
+  'SEGUNDA',
+  'TERCA',
+  'QUARTA',
+  'QUINTA',
+  'SEXTA',
+  'SABADO',
+] as const;
+
+export const PROFESSIONAL_ATTENDANCE_PERIODS = ['MANHA', 'TARDE'] as const;
+
+export const PROFESSIONAL_ATTENDANCE_RECURRENCES = ['SEMANAL', 'QUINZENAL'] as const;
+
 export const PROFESSIONAL_AGE_RANGES = [
   'Pediatrico',
   'Adulto',
