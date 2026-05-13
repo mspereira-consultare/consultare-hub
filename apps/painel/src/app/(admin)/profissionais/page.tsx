@@ -1259,12 +1259,16 @@ export default function ProfessionalsPage() {
                   <button type="button" onClick={() => onSort('openAgenda')} className="inline-flex items-center gap-1">
                     Agenda mês <span>{sortIndicator('openAgenda')}</span>
                   </button>
-                  <span
-                    title="Consideramos a agenda aberta no mês atual quando o profissional tem ao menos 1 agendamento em status operacionais do módulo de ocupação ou ao menos 1 horário disponível no snapshot diário importado da Feegow."
-                    className="inline-flex cursor-help text-slate-400 hover:text-slate-600"
-                    aria-label="Ajuda sobre agenda mês"
-                  >
-                    <Info size={13} />
+                  <span className="relative inline-flex group">
+                    <span
+                      className="inline-flex cursor-help text-slate-400 hover:text-slate-600"
+                      aria-label="Ajuda sobre agenda mês"
+                    >
+                      <Info size={13} />
+                    </span>
+                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-72 -translate-x-1/2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] normal-case tracking-normal text-slate-600 shadow-lg group-hover:block">
+                      Consideramos a agenda aberta no mês atual quando o profissional tem ao menos 1 agendamento em status operacionais do módulo de ocupação ou ao menos 1 horário disponível no snapshot diário importado da Feegow.
+                    </span>
                   </span>
                 </div>
               </th>
@@ -1304,7 +1308,7 @@ export default function ProfessionalsPage() {
                     }
                     className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
                       item.hasOpenAgendaCurrentMonth
-                        ? 'bg-sky-100 text-sky-700'
+                        ? 'bg-emerald-100 text-emerald-700'
                         : 'bg-slate-100 text-slate-600'
                     }`}
                   >
