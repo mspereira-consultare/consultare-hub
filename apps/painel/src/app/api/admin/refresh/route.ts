@@ -106,7 +106,7 @@ const SERVICE_REFRESH_PAGES: Record<string, PageKey[]> = {
   clinia: ['monitor', 'checklist_crc'],
   monitor_medico: ['monitor'],
   monitor_recepcao: ['monitor'],
-  agenda_occupancy: ['agenda_ocupacao'],
+  agenda_occupancy: ['agenda_ocupacao', 'profissionais'],
   procedures_catalog: ['profissionais'],
   professionals_sync: ['profissionais'],
   qms_documentos: ['qualidade_documentos'],

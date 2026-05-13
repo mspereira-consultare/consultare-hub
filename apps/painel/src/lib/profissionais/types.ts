@@ -113,6 +113,8 @@ export type ProfessionalListItem = Professional & {
   pending: boolean;
   certidaoStatus: CertidaoStatus;
   certidaoExpiresAt: string | null;
+  hasOpenAgendaCurrentMonth: boolean;
+  openAgendaCurrentMonthUpdatedAt: string | null;
 };
 
 export type ProfessionalInput = {

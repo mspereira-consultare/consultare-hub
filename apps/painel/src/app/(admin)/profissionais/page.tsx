@@ -2,7 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { AlertCircle, ChevronDown, ChevronRight, Download, Edit3, Eye, FileUp, Filter, Loader2, Plus, RefreshCw, RotateCcw, Search, Trash2, User, X } from 'lucide-react';
+import { AlertCircle, CalendarCheck2, CalendarX2, ChevronDown, ChevronRight, Download, Edit3, Eye, FileUp, Filter, Info, Loader2, Plus, RefreshCw, RotateCcw, Search, Trash2, User, X } from 'lucide-react';
 import {
   BRAZIL_UFS,
   CHECKLIST_DOCUMENT_TYPES,
@@ -264,7 +264,7 @@ export default function ProfessionalsPage() {
   const [deleteTarget, setDeleteTarget] = useState<ProfessionalListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [isChecklistExpanded, setIsChecklistExpanded] = useState(false);
-  const [sortBy, setSortBy] = useState<'status' | 'name' | 'specialty' | 'registration' | 'contractType' | 'documents' | 'certidao'>('name');
+  const [sortBy, setSortBy] = useState<'status' | 'name' | 'specialty' | 'registration' | 'contractType' | 'documents' | 'certidao' | 'openAgenda'>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [modalTab, setModalTab] = useState<ModalTab>('cadastro');
   const [contractsLoading, setContractsLoading] = useState(false);
@@ -283,6 +283,7 @@ export default function ProfessionalsPage() {
   const [procedureWorkerRefreshing, setProcedureWorkerRefreshing] = useState(false);
   const [professionalsSyncStatus, setProfessionalsSyncStatus] = useState<ServiceStatus | null>(null);
   const [professionalsSyncRefreshing, setProfessionalsSyncRefreshing] = useState(false);
+  const [listRefreshing, setListRefreshing] = useState(false);
   const [selectedProcedureId, setSelectedProcedureId] = useState('');
   const [procedureRates, setProcedureRates] = useState<FormProcedureRate[]>([]);
 
@@ -363,6 +364,10 @@ export default function ProfessionalsPage() {
           av = a.certidaoStatus || '';
           bv = b.certidaoStatus || '';
           break;
+        case 'openAgenda':
+          av = a.hasOpenAgendaCurrentMonth ? 1 : 0;
+          bv = b.hasOpenAgendaCurrentMonth ? 1 : 0;
+          break;
       }
 
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * factor;
@@ -437,7 +442,7 @@ export default function ProfessionalsPage() {
   };
 
   const onSort = (
-    field: 'status' | 'name' | 'specialty' | 'registration' | 'contractType' | 'documents' | 'certidao'
+    field: 'status' | 'name' | 'specialty' | 'registration' | 'contractType' | 'documents' | 'certidao' | 'openAgenda'
   ) => {
     setSortBy((current) => {
       if (current === field) {
@@ -450,7 +455,7 @@ export default function ProfessionalsPage() {
   };
 
   const sortIndicator = (
-    field: 'status' | 'name' | 'specialty' | 'registration' | 'contractType' | 'documents' | 'certidao'
+    field: 'status' | 'name' | 'specialty' | 'registration' | 'contractType' | 'documents' | 'certidao' | 'openAgenda'
   ) => {
     if (sortBy !== field) return '<>';
     return sortDir === 'asc' ? '^' : 'v';
@@ -569,6 +574,23 @@ export default function ProfessionalsPage() {
     }
   };
 
+  const loadAgendaOccupancyWorkerStatus = async () => {
+    try {
+      const res = await fetch('/api/admin/status', { cache: 'no-store' });
+      const data = await res.json();
+      if (!res.ok || !Array.isArray(data)) return false;
+
+      const normalize = (v: string) => String(v || '').trim().toLowerCase();
+      const row = (data as ServiceStatus[]).find((item) =>
+        ['agenda_occupancy', 'agenda_ocupacao', 'ocupacao_agenda'].includes(normalize(item.service_name))
+      );
+      const st = normalize(String(row?.status || ''));
+      return st === 'pending' || st === 'queued' || st === 'running';
+    } catch {
+      return false;
+    }
+  };
+
   const triggerProfessionalsSyncRefresh = async () => {
     if (!canRefresh) {
       setError('Sem permissao para atualizar profissionais via Feegow.');
@@ -641,6 +663,40 @@ export default function ProfessionalsPage() {
       setModalError(e?.message || 'Falha ao atualizar catalogo de procedimentos.');
     } finally {
       setProcedureWorkerRefreshing(false);
+    }
+  };
+
+  const refreshListWithAgendaWorker = async () => {
+    setListRefreshing(true);
+    setError('');
+    try {
+      if (canRefresh) {
+        const refreshRes = await fetch('/api/admin/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ service: 'agenda_occupancy' }),
+        });
+        const refreshData = await refreshRes.json().catch(() => ({}));
+        if (!refreshRes.ok) {
+          throw new Error(refreshData?.error || 'Falha ao acionar atualização da agenda.');
+        }
+
+        let attempts = 0;
+        const maxAttempts = 25;
+        while (attempts < maxAttempts) {
+          attempts += 1;
+          const stillRunning = await loadAgendaOccupancyWorkerStatus();
+          if (!stillRunning) break;
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+        }
+      }
+
+      await fetchList(1);
+      setPage(1);
+    } catch (e: any) {
+      setError(e?.message || 'Falha ao recarregar lista de profissionais.');
+    } finally {
+      setListRefreshing(false);
     }
   };
 
@@ -1062,11 +1118,12 @@ export default function ProfessionalsPage() {
               {professionalsSyncRefreshing ? 'Sincronizando...' : 'Atualizar (Feegow)'}
             </button>
             <button
-              onClick={() => fetchList()}
-              className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2"
+              onClick={refreshListWithAgendaWorker}
+              disabled={listRefreshing}
+              className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2 disabled:opacity-60"
             >
-              <RefreshCw size={14} />
-              Recarregar lista
+              {listRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {listRefreshing ? 'Atualizando agenda...' : 'Recarregar lista'}
             </button>
             {canEdit && <button onClick={openCreate} className="px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm flex items-center gap-2"><Plus size={14} />Novo profissional</button>}
           </div>
@@ -1194,14 +1251,28 @@ export default function ProfessionalsPage() {
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('contractType')} className="inline-flex items-center gap-1">Tipo contrato <span>{sortIndicator('contractType')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('documents')} className="inline-flex items-center gap-1">Documentos <span>{sortIndicator('documents')}</span></button></th>
               <th className="px-4 py-3"><button type="button" onClick={() => onSort('certidao')} className="inline-flex items-center gap-1">Certidão <span>{sortIndicator('certidao')}</span></button></th>
+              <th className="px-4 py-3">
+                <div className="inline-flex items-center gap-1">
+                  <button type="button" onClick={() => onSort('openAgenda')} className="inline-flex items-center gap-1">
+                    Agenda mês <span>{sortIndicator('openAgenda')}</span>
+                  </button>
+                  <span
+                    title="Consideramos a agenda aberta no mês atual quando o profissional tem ao menos 1 agendamento em status operacionais do módulo de ocupação ou ao menos 1 horário disponível no snapshot diário importado da Feegow."
+                    className="inline-flex cursor-help text-slate-400 hover:text-slate-600"
+                    aria-label="Ajuda sobre agenda mês"
+                  >
+                    <Info size={13} />
+                  </span>
+                </div>
+              </th>
               <th className="px-4 py-3">Ações</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500"><span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" />Carregando...</span></td></tr>
+              <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500"><span className="inline-flex items-center gap-2"><Loader2 size={15} className="animate-spin" />Carregando...</span></td></tr>
             ) : sortedItems.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-10 text-center text-slate-500">Nenhum profissional encontrado.</td></tr>
+              <tr><td colSpan={9} className="px-4 py-10 text-center text-slate-500">Nenhum profissional encontrado.</td></tr>
             ) : sortedItems.map((item) => (
               <tr key={item.id} className="border-t">
                 <td className="px-4 py-3">
@@ -1221,6 +1292,23 @@ export default function ProfessionalsPage() {
                 <td className="px-4 py-3">{contractLabelByCode.get(item.contractType) || item.contractType}</td>
                 <td className="px-4 py-3 min-w-[190px] whitespace-nowrap">{item.requiredDocsDone}/{item.requiredDocsTotal} {item.pending && <span className="ml-2 text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700">Pendente</span>}</td>
                 <td className="px-4 py-3">{item.certidaoStatus} <span className="text-xs text-slate-500">{item.certidaoExpiresAt || '-'}</span></td>
+                <td className="px-4 py-3 whitespace-nowrap">
+                  <span
+                    title={
+                      item.openAgendaCurrentMonthUpdatedAt
+                        ? `Snapshot atualizado em ${formatDateTime(item.openAgendaCurrentMonthUpdatedAt)}`
+                        : 'Sem snapshot de agenda para o mês atual.'
+                    }
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${
+                      item.hasOpenAgendaCurrentMonth
+                        ? 'bg-sky-100 text-sky-700'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {item.hasOpenAgendaCurrentMonth ? <CalendarCheck2 size={12} /> : <CalendarX2 size={12} />}
+                    {item.hasOpenAgendaCurrentMonth ? 'SIM' : 'NÃO'}
+                  </span>
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
                     <button onClick={() => openEdit(item.id)} className="px-2 py-1 text-xs border rounded-md hover:bg-slate-50 inline-flex items-center gap-1"><Edit3 size={12} />Editar</button>

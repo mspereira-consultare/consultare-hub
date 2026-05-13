@@ -285,6 +285,39 @@ def _ensure_tables(db: "DatabaseManager"):
 
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS agenda_occupancy_professional_daily (
+              data_ref VARCHAR(10) NOT NULL,
+              unidade_id INTEGER NOT NULL,
+              unidade_nome VARCHAR(120) NOT NULL,
+              especialidade_id INTEGER NOT NULL,
+              especialidade_nome VARCHAR(180) NOT NULL,
+              feegow_professional_id INTEGER NOT NULL,
+              professional_name VARCHAR(180) NOT NULL,
+              agendamentos_count INTEGER NOT NULL,
+              horarios_disponiveis_count INTEGER NOT NULL,
+              has_open_agenda_flag INTEGER NOT NULL,
+              updated_at VARCHAR(32) NOT NULL,
+              PRIMARY KEY (data_ref, unidade_id, especialidade_id, feegow_professional_id)
+            )
+            """
+        )
+        _ensure_index(
+            db,
+            conn,
+            "agenda_occupancy_professional_daily",
+            "idx_agenda_occ_prof_daily_prof_date",
+            "feegow_professional_id, data_ref",
+        )
+        _ensure_index(
+            db,
+            conn,
+            "agenda_occupancy_professional_daily",
+            "idx_agenda_occ_prof_daily_unit_date",
+            "unidade_id, data_ref",
+        )
+
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS agenda_occupancy_jobs (
               id VARCHAR(64) PRIMARY KEY,
               status VARCHAR(20) NOT NULL,
@@ -465,7 +498,7 @@ def _list_professionals_by_unit(
     session: requests.Session,
     token: str,
     unit_id: int,
-) -> Tuple[Dict[int, Set[int]], Dict[int, str]]:
+) -> Tuple[Dict[int, Set[int]], Dict[int, str], Dict[int, str]]:
     data = _api_get(
         session,
         token,
@@ -478,6 +511,7 @@ def _list_professionals_by_unit(
 
     prof_specs: Dict[int, Set[int]] = {}
     spec_names: Dict[int, str] = {}
+    prof_names: Dict[int, str] = {}
 
     for item in items:
         if not isinstance(item, dict):
@@ -485,6 +519,14 @@ def _list_professionals_by_unit(
         prof_id = _to_int(item.get("profissional_id"), 0)
         if prof_id <= 0:
             continue
+        prof_name = str(
+            item.get("nome")
+            or item.get("nome_profissional")
+            or item.get("professional_name")
+            or ""
+        ).strip()
+        if prof_name and prof_id not in prof_names:
+            prof_names[prof_id] = prof_name
         specialties = item.get("especialidades")
         if not isinstance(specialties, list):
             continue
@@ -502,7 +544,7 @@ def _list_professionals_by_unit(
         if spec_set:
             prof_specs[prof_id] = spec_set
 
-    return prof_specs, spec_names
+    return prof_specs, spec_names, prof_names
 
 
 def _aggregate_appointments(
@@ -511,7 +553,7 @@ def _aggregate_appointments(
     unit_id: int,
     start_iso: str,
     end_iso: str,
-) -> Tuple[Dict[Tuple[str, int, int], int], Dict[int, Set[int]]]:
+) -> Tuple[Dict[Tuple[str, int, int], int], Dict[int, Set[int]], Dict[Tuple[str, int, int, int], int]]:
     params = {
         "data_start": _to_br_date(start_iso),
         "data_end": _to_br_date(end_iso),
@@ -520,10 +562,11 @@ def _aggregate_appointments(
     data = _api_get(session, token, "appoints/search", params)
     items = data.get("content") if isinstance(data, dict) else []
     if not isinstance(items, list):
-        return {}, {}
+        return {}, {}, {}
 
     agg: Dict[Tuple[str, int, int], int] = defaultdict(int)
     active_prof_by_spec: Dict[int, Set[int]] = defaultdict(set)
+    agg_by_professional: Dict[Tuple[str, int, int, int], int] = defaultdict(int)
     for row in items:
         if not isinstance(row, dict):
             continue
@@ -546,12 +589,14 @@ def _aggregate_appointments(
         prof_id = _to_int(row.get("profissional_id"), 0)
         if prof_id > 0:
             active_prof_by_spec[spec_id].add(prof_id)
-    return dict(agg), dict(active_prof_by_spec)
+            agg_by_professional[(data_iso, unit_id, spec_id, prof_id)] += 1
+    return dict(agg), dict(active_prof_by_spec), dict(agg_by_professional)
 
 
-def _extract_available_details(content: object) -> Tuple[Dict[str, int], Set[int]]:
+def _extract_available_details(content: object) -> Tuple[Dict[str, int], Set[int], Dict[Tuple[str, int], int]]:
     daily: Dict[str, int] = defaultdict(int)
     active_prof_ids: Set[int] = set()
+    daily_by_professional: Dict[Tuple[str, int], int] = defaultdict(int)
 
     if isinstance(content, list):
         # Formato alternativo: lista simples de slots
@@ -565,17 +610,22 @@ def _extract_available_details(content: object) -> Tuple[Dict[str, int], Set[int
             if not data_iso:
                 continue
             if isinstance(item.get("horarios"), list):
-                daily[data_iso] += len(item.get("horarios") or [])
+                slot_count = len(item.get("horarios") or [])
+                daily[data_iso] += slot_count
+                if pid > 0:
+                    daily_by_professional[(data_iso, pid)] += slot_count
             elif item.get("horario"):
                 daily[data_iso] += 1
-        return dict(daily), active_prof_ids
+                if pid > 0:
+                    daily_by_professional[(data_iso, pid)] += 1
+        return dict(daily), active_prof_ids, dict(daily_by_professional)
 
     if not isinstance(content, dict):
-        return {}, active_prof_ids
+        return {}, active_prof_ids, {}
 
     prof_map = content.get("profissional_id")
     if not isinstance(prof_map, dict):
-        return {}, active_prof_ids
+        return {}, active_prof_ids, {}
 
     for raw_prof_id, prof_data in prof_map.items():
         prof_id = _to_int(raw_prof_id, 0)
@@ -594,13 +644,16 @@ def _extract_available_details(content: object) -> Tuple[Dict[str, int], Set[int
                 if not data_iso:
                     continue
                 if isinstance(times, list):
-                    daily[data_iso] += len(times)
+                    slot_count = len(times)
+                    daily[data_iso] += slot_count
+                    if prof_id > 0:
+                        daily_by_professional[(data_iso, prof_id)] += slot_count
 
-    return dict(daily), active_prof_ids
+    return dict(daily), active_prof_ids, dict(daily_by_professional)
 
 
 def _extract_available_counts(content: object) -> Dict[str, int]:
-    daily, _ = _extract_available_details(content)
+    daily, _, _ = _extract_available_details(content)
     return daily
 
 
@@ -612,7 +665,7 @@ def _aggregate_available_slots(
     end_iso: str,
     unit_specialties: Set[int],
     prof_specs: Optional[Dict[int, Set[int]]] = None,
-) -> Tuple[Dict[Tuple[str, int, int], int], Dict[int, Set[int]]]:
+) -> Tuple[Dict[Tuple[str, int, int], int], Dict[int, Set[int]], Dict[Tuple[str, int, int, int], int]]:
     """
     Agrega slots disponíveis por unidade+especialidade.
 
@@ -625,6 +678,7 @@ def _aggregate_available_slots(
     """
     agg: Dict[Tuple[str, int, int], int] = defaultdict(int)
     active_prof_by_spec: Dict[int, Set[int]] = defaultdict(set)
+    agg_by_professional: Dict[Tuple[str, int, int, int], int] = defaultdict(int)
     start_br = _to_br_date(start_iso)
     end_br = _to_br_date(end_iso)
 
@@ -654,13 +708,17 @@ def _aggregate_available_slots(
         try:
             data = _api_get(session, token, "appoints/available-schedule", params)
             content = data.get("content") if isinstance(data, dict) else []
-            daily_counts, active_prof_ids = _extract_available_details(content)
+            daily_counts, active_prof_ids, daily_by_professional = _extract_available_details(content)
             for pid in active_prof_ids:
                 active_prof_by_spec[spec_id].add(pid)
             for data_iso, count in daily_counts.items():
                 if data_iso < start_iso or data_iso > end_iso:
                     continue
                 agg[(data_iso, unit_id, spec_id)] += int(count or 0)
+            for (data_iso, prof_id), count in daily_by_professional.items():
+                if data_iso < start_iso or data_iso > end_iso or prof_id <= 0:
+                    continue
+                agg_by_professional[(data_iso, unit_id, spec_id, prof_id)] += int(count or 0)
         except Exception as exc:
             used_fallback = True
             profs = spec_to_profs.get(spec_id) or []
@@ -680,13 +738,17 @@ def _aggregate_available_slots(
                 try:
                     data = _api_get(session, token, "appoints/available-schedule", prof_params)
                     content = data.get("content") if isinstance(data, dict) else []
-                    daily_counts, active_prof_ids = _extract_available_details(content)
+                    daily_counts, active_prof_ids, daily_by_professional = _extract_available_details(content)
                     for pid in active_prof_ids:
                         active_prof_by_spec[spec_id].add(pid)
                     for data_iso, count in daily_counts.items():
                         if data_iso < start_iso or data_iso > end_iso:
                             continue
                         agg[(data_iso, unit_id, spec_id)] += int(count or 0)
+                    for (data_iso, prof_id), count in daily_by_professional.items():
+                        if data_iso < start_iso or data_iso > end_iso or prof_id <= 0:
+                            continue
+                        agg_by_professional[(data_iso, unit_id, spec_id, prof_id)] += int(count or 0)
                 except Exception as inner_exc:
                     print(
                         f"[agenda_occupancy] aviso fallback available-schedule unidade={unit_id} "
@@ -701,7 +763,7 @@ def _aggregate_available_slots(
         if done_calls % 25 == 0 or done_calls == total_calls:
             print(f"[agenda_occupancy] available-schedule progresso: {done_calls}/{total_calls} (unidade={unit_id})")
 
-    return dict(agg), dict(active_prof_by_spec)
+    return dict(agg), dict(active_prof_by_spec), dict(agg_by_professional)
 
 
 def _aggregate_blocked_slots(
@@ -861,12 +923,48 @@ def _build_daily_rows(
     return rows, anomalies
 
 
+def _build_professional_daily_rows(
+    specialty_names: Dict[int, str],
+    professional_names: Dict[int, str],
+    agendamentos_profissional: Dict[Tuple[str, int, int, int], int],
+    disponiveis_profissional: Dict[Tuple[str, int, int, int], int],
+) -> List[Tuple]:
+    all_keys: Set[Tuple[str, int, int, int]] = set(agendamentos_profissional.keys()) | set(disponiveis_profissional.keys())
+    rows: List[Tuple] = []
+    now_iso = _now_iso()
+
+    for day_iso, unit_id, spec_id, prof_id in sorted(all_keys, key=lambda x: (x[0], x[1], x[2], x[3])):
+        ag = int(agendamentos_profissional.get((day_iso, unit_id, spec_id, prof_id), 0) or 0)
+        disp = int(disponiveis_profissional.get((day_iso, unit_id, spec_id, prof_id), 0) or 0)
+        if ag <= 0 and disp <= 0:
+            continue
+
+        rows.append(
+            (
+                day_iso,
+                unit_id,
+                UNIT_NAME_MAP.get(unit_id, f"UNIDADE {unit_id}"),
+                spec_id,
+                specialty_names.get(spec_id) or f"Especialidade {spec_id}",
+                prof_id,
+                professional_names.get(prof_id) or f"Profissional {prof_id}",
+                ag,
+                disp,
+                1 if (ag > 0 or disp > 0) else 0,
+                now_iso,
+            )
+        )
+
+    return rows
+
+
 def _replace_rows_for_period(
     db: "DatabaseManager",
     start_iso: str,
     end_iso: str,
     units: List[int],
     rows: List[Tuple],
+    professional_rows: List[Tuple],
 ):
     conn = db.get_connection()
     try:
@@ -874,6 +972,15 @@ def _replace_rows_for_period(
         conn.execute(
             f"""
             DELETE FROM agenda_occupancy_daily
+            WHERE data_ref >= ?
+              AND data_ref <= ?
+              AND unidade_id IN ({placeholders})
+            """,
+            tuple([start_iso, end_iso] + [int(u) for u in units]),
+        )
+        conn.execute(
+            f"""
+            DELETE FROM agenda_occupancy_professional_daily
             WHERE data_ref >= ?
               AND data_ref <= ?
               AND unidade_id IN ({placeholders})
@@ -902,6 +1009,28 @@ def _replace_rows_for_period(
                 conn.executemany(sql, rows)
             else:
                 for item in rows:
+                    conn.execute(sql, item)
+
+        if professional_rows:
+            sql = """
+                INSERT INTO agenda_occupancy_professional_daily (
+                  data_ref, unidade_id, unidade_nome, especialidade_id, especialidade_nome,
+                  feegow_professional_id, professional_name, agendamentos_count,
+                  horarios_disponiveis_count, has_open_agenda_flag, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(data_ref, unidade_id, especialidade_id, feegow_professional_id) DO UPDATE SET
+                  unidade_nome = excluded.unidade_nome,
+                  especialidade_nome = excluded.especialidade_nome,
+                  professional_name = excluded.professional_name,
+                  agendamentos_count = excluded.agendamentos_count,
+                  horarios_disponiveis_count = excluded.horarios_disponiveis_count,
+                  has_open_agenda_flag = excluded.has_open_agenda_flag,
+                  updated_at = excluded.updated_at
+            """
+            if hasattr(conn, "executemany"):
+                conn.executemany(sql, professional_rows)
+            else:
+                for item in professional_rows:
                     conn.execute(sql, item)
 
         if not db.use_turso:
@@ -933,15 +1062,19 @@ def _process_job(db: "DatabaseManager", job: Dict):
     specialty_names = _list_specialties(session, token)
     unit_prof_specs: Dict[int, Dict[int, Set[int]]] = {}
     unit_specialties: Dict[int, Set[int]] = {}
+    professional_names: Dict[int, str] = {}
 
     agendamentos: Dict[Tuple[str, int, int], int] = defaultdict(int)
     disponiveis: Dict[Tuple[str, int, int], int] = defaultdict(int)
     bloqueados: Dict[Tuple[str, int, int], int] = defaultdict(int)
+    agendamentos_profissional: Dict[Tuple[str, int, int, int], int] = defaultdict(int)
+    disponiveis_profissional: Dict[Tuple[str, int, int, int], int] = defaultdict(int)
 
     for unit_id in units:
-        prof_specs, specialty_names_from_prof = _list_professionals_by_unit(session, token, unit_id)
+        prof_specs, specialty_names_from_prof, professional_names_from_prof = _list_professionals_by_unit(session, token, unit_id)
         unit_prof_specs[unit_id] = prof_specs
         unit_specialties[unit_id] = set()
+        professional_names.update(professional_names_from_prof)
         for sid, sname in specialty_names_from_prof.items():
             if sid > 0 and sid not in specialty_names:
                 specialty_names[sid] = sname
@@ -955,12 +1088,15 @@ def _process_job(db: "DatabaseManager", job: Dict):
             f"especialidades={len(unit_specialties[unit_id])}"
         )
 
-        agg_ag, appt_active_prof_by_spec = _aggregate_appointments(session, token, unit_id, start_iso, end_iso)
+        agg_ag, appt_active_prof_by_spec, agg_ag_prof = _aggregate_appointments(session, token, unit_id, start_iso, end_iso)
         for k, v in agg_ag.items():
             agendamentos[k] += int(v or 0)
             unit_specialties[unit_id].add(k[2])
+        for k, v in agg_ag_prof.items():
+            agendamentos_profissional[k] += int(v or 0)
+            unit_specialties[unit_id].add(k[2])
 
-        agg_disp, avail_active_prof_by_spec = _aggregate_available_slots(
+        agg_disp, avail_active_prof_by_spec, agg_disp_prof = _aggregate_available_slots(
             session=session,
             token=token,
             unit_id=unit_id,
@@ -971,6 +1107,9 @@ def _process_job(db: "DatabaseManager", job: Dict):
         )
         for k, v in agg_disp.items():
             disponiveis[k] += int(v or 0)
+            unit_specialties[unit_id].add(k[2])
+        for k, v in agg_disp_prof.items():
+            disponiveis_profissional[k] += int(v or 0)
             unit_specialties[unit_id].add(k[2])
 
         active_prof_by_spec: Dict[int, Set[int]] = defaultdict(set)
@@ -1008,6 +1147,12 @@ def _process_job(db: "DatabaseManager", job: Dict):
         disponiveis=dict(disponiveis),
         bloqueados=dict(bloqueados),
     )
+    professional_rows = _build_professional_daily_rows(
+        specialty_names=specialty_names,
+        professional_names=professional_names,
+        agendamentos_profissional=dict(agendamentos_profissional),
+        disponiveis_profissional=dict(disponiveis_profissional),
+    )
 
     _replace_rows_for_period(
         db=db,
@@ -1015,15 +1160,19 @@ def _process_job(db: "DatabaseManager", job: Dict):
         end_iso=end_iso,
         units=units,
         rows=rows,
+        professional_rows=professional_rows,
     )
 
     details = (
-        f"job={job_id} rows={len(rows)} anomalias_capacidade={anomaly_count} "
+        f"job={job_id} rows={len(rows)} professional_rows={len(professional_rows)} anomalias_capacidade={anomaly_count} "
         f"periodo={start_iso}..{end_iso}"
     )
     _mark_job_done(db, job_id, STATUS_COMPLETED, "")
     db.update_heartbeat(SERVICE_NAME, STATUS_COMPLETED, details)
-    print(f"--- Agenda Occupancy finalizado | job={job_id} | rows={len(rows)} ---")
+    print(
+        f"--- Agenda Occupancy finalizado | job={job_id} | rows={len(rows)} "
+        f"| professional_rows={len(professional_rows)} ---"
+    )
 
 
 def process_pending_agenda_occupancy_jobs_once(

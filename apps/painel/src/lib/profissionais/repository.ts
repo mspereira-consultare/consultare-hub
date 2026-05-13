@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import { ensureContractTemplatesTables } from '@/lib/contract_templates/repository';
+import { ensureAgendaOcupacaoTables } from '@/lib/agenda_ocupacao/repository';
 import {
   CHECKLIST_DOCUMENT_TYPES,
   CERTIDAO_DOC_TYPE,
@@ -556,6 +557,90 @@ const buildIn = (values: string[]) => {
   };
 };
 
+const extractFeegowProfessionalId = (professionalId: string | null | undefined): number | null => {
+  const raw = clean(professionalId);
+  const match = raw.match(/^feegow:(\d+)$/i);
+  if (!match) return null;
+  const parsed = Number(match[1]);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+const getCurrentMonthRange = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const endDate = `${year}-${String(month).padStart(2, '0')}-${String(
+    new Date(year, month, 0).getDate()
+  ).padStart(2, '0')}`;
+  return { startDate, endDate };
+};
+
+const loadCurrentMonthOpenAgendaByFeegowProfessionalId = async (
+  db: DbInterface,
+  professionalIds: string[]
+): Promise<Map<number, { hasOpenAgendaCurrentMonth: boolean; updatedAt: string | null }>> => {
+  const ids = Array.from(
+    new Set(professionalIds.map((id) => extractFeegowProfessionalId(id)).filter((id): id is number => Boolean(id)))
+  );
+  const result = new Map<number, { hasOpenAgendaCurrentMonth: boolean; updatedAt: string | null }>();
+
+  if (ids.length === 0) return result;
+
+  await ensureAgendaOcupacaoTables(db);
+
+  const { startDate, endDate } = getCurrentMonthRange();
+  const idParams = ids.map((id) => String(id));
+  const idsIn = buildIn(idParams);
+  const rows = await db.query(
+    `
+    SELECT
+      feegow_professional_id,
+      MAX(has_open_agenda_flag) as has_open_agenda_flag,
+      MAX(updated_at) as updated_at
+    FROM agenda_occupancy_professional_daily
+    WHERE data_ref >= ?
+      AND data_ref <= ?
+      AND feegow_professional_id IN ${idsIn.clause}
+    GROUP BY feegow_professional_id
+    `,
+    [startDate, endDate, ...idsIn.params]
+  );
+
+  for (const row of rows || []) {
+    const feegowProfessionalId = Number((row as any).feegow_professional_id || 0);
+    if (!Number.isInteger(feegowProfessionalId) || feegowProfessionalId <= 0) continue;
+    result.set(feegowProfessionalId, {
+      hasOpenAgendaCurrentMonth: Number((row as any).has_open_agenda_flag || 0) > 0,
+      updatedAt: clean((row as any).updated_at) || null,
+    });
+  }
+
+  return result;
+};
+
+const attachCurrentMonthAgendaStatus = async (
+  db: DbInterface,
+  items: ProfessionalListItem[]
+): Promise<ProfessionalListItem[]> => {
+  if (items.length === 0) return items;
+
+  const byFeegowId = await loadCurrentMonthOpenAgendaByFeegowProfessionalId(
+    db,
+    items.map((item) => item.id)
+  );
+
+  return items.map((item) => {
+    const feegowProfessionalId = extractFeegowProfessionalId(item.id);
+    const agenda = feegowProfessionalId ? byFeegowId.get(feegowProfessionalId) : null;
+    return {
+      ...item,
+      hasOpenAgendaCurrentMonth: agenda?.hasOpenAgendaCurrentMonth || false,
+      openAgendaCurrentMonthUpdatedAt: agenda?.updatedAt || null,
+    };
+  });
+};
+
 const upsertRegistrations = async (
   db: DbInterface,
   professionalId: string,
@@ -1046,6 +1131,8 @@ const mergeProfessional = (
     pending: missingFields.length > 0 || missingDocs.length > 0,
     certidaoStatus: certidao.status,
     certidaoExpiresAt: certidao.expiresAt,
+    hasOpenAgendaCurrentMonth: false,
+    openAgendaCurrentMonthUpdatedAt: null,
   };
 };
 
@@ -1121,7 +1208,7 @@ export const listProfessionals = async (
   const page = Math.max(1, filters.page);
   const pageSize = Math.max(1, filters.pageSize);
   const start = (page - 1) * pageSize;
-  const paged = filtered.slice(start, start + pageSize);
+  const paged = await attachCurrentMonthAgendaStatus(db, filtered.slice(start, start + pageSize));
 
   return { items: paged, total };
 };
@@ -1141,8 +1228,10 @@ export const getProfessionalById = async (
   const registrations = relations.registrationsByProfessional.get(professional.id) || [];
   const checklist = relations.checklistByProfessional.get(professional.id) || [];
   const documents = relations.documentsByProfessional.get(professional.id) || [];
-
-  return mergeProfessional(professional, registrations, checklist, documents);
+  const [item] = await attachCurrentMonthAgendaStatus(db, [
+    mergeProfessional(professional, registrations, checklist, documents),
+  ]);
+  return item || null;
 };
 
 export const createProfessional = async (

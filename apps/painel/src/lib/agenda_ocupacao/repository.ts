@@ -192,6 +192,32 @@ export const ensureAgendaOcupacaoTables = async (db: DbInterface) => {
     );
   }
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS agenda_occupancy_professional_daily (
+      data_ref VARCHAR(10) NOT NULL,
+      unidade_id INTEGER NOT NULL,
+      unidade_nome VARCHAR(120) NOT NULL,
+      especialidade_id INTEGER NOT NULL,
+      especialidade_nome VARCHAR(180) NOT NULL,
+      feegow_professional_id INTEGER NOT NULL,
+      professional_name VARCHAR(180) NOT NULL,
+      agendamentos_count INTEGER NOT NULL,
+      horarios_disponiveis_count INTEGER NOT NULL,
+      has_open_agenda_flag INTEGER NOT NULL,
+      updated_at VARCHAR(32) NOT NULL,
+      PRIMARY KEY (data_ref, unidade_id, especialidade_id, feegow_professional_id)
+    )
+  `);
+
+  await safeExecute(
+    db,
+    'CREATE INDEX idx_agenda_occ_prof_daily_prof_date ON agenda_occupancy_professional_daily(feegow_professional_id, data_ref)'
+  );
+  await safeExecute(
+    db,
+    'CREATE INDEX idx_agenda_occ_prof_daily_unit_date ON agenda_occupancy_professional_daily(unidade_id, data_ref)'
+  );
+
   tablesEnsured = true;
 };
 
