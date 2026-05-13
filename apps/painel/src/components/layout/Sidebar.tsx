@@ -124,7 +124,7 @@ const menuItems: MenuItem[] = [
     icon: LayoutGrid,
     group: "OPERAÇÕES",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
-    pageKey: "profissionais",
+    pageKey: "profissionais_mapas",
   },
   {
     href: "/colaboradores",

@@ -21,6 +21,7 @@ export type PageKey =
   | 'produtividade'
   | 'agendamentos'
   | 'profissionais'
+  | 'profissionais_mapas'
   | 'qualidade_documentos'
   | 'vigilancia_sanitaria'
   | 'qualidade_treinamentos'
@@ -71,6 +72,7 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'produtividade', label: 'Produtividade', path: '/produtividade' },
   { key: 'agendamentos', label: 'Agendamentos', path: '/agendamentos' },
   { key: 'profissionais', label: 'Profissionais', path: '/profissionais' },
+  { key: 'profissionais_mapas', label: 'Mapas de Profissionais', path: '/profissionais/mapas' },
   { key: 'qualidade_documentos', label: 'Qualidade - POPs e Manuais', path: '/qualidade/documentos' },
   { key: 'vigilancia_sanitaria', label: 'Qualidade - Vigilância Sanitária', path: '/qualidade/vigilancia-sanitaria' },
   { key: 'qualidade_treinamentos', label: 'Qualidade - Treinamentos', path: '/qualidade/treinamentos' },
@@ -141,13 +143,13 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda', 'dashboard_executive_governance', ...INTRANET_BACKOFFICE_PAGE_KEYS], { view: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda', 'dashboard_executive_governance', ...INTRANET_BACKOFFICE_PAGE_KEYS], { view: true });
     setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'dashboard_executive_governance', ...INTRANET_BACKOFFICE_PAGE_KEYS], { edit: true });
     setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'intranet_dashboard', 'intranet_chatbot'], { refresh: true });
     return matrix;
   }
 
-  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_funil', 'ajuda'], { view: true });
+  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_funil', 'ajuda'], { view: true });
   setMany(matrix, ['propostas', 'checklist_crc', 'checklist_recepcao'], { edit: true });
   setMany(matrix, ['monitor', 'produtividade', 'agendamentos', 'colaboradores', 'equipamentos', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
   return matrix;
@@ -213,6 +215,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/agenda-ocupacao') return 'agenda_ocupacao';
   if (path === '/produtividade') return 'produtividade';
   if (path === '/agendamentos') return 'agendamentos';
+  if (path === '/profissionais/mapas') return 'profissionais_mapas';
   if (path === '/profissionais') return 'profissionais';
   if (path === '/qualidade/documentos') return 'qualidade_documentos';
   if (path === '/qualidade/vigilancia-sanitaria') return 'vigilancia_sanitaria';
@@ -257,6 +260,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/user-teams')) return 'produtividade';
   if (path.startsWith('/api/admin/teams')) return 'produtividade';
   if (path.startsWith('/api/admin/agendamentos')) return 'agendamentos';
+  if (path.startsWith('/api/admin/profissionais/mapas')) return 'profissionais_mapas';
   if (path.startsWith('/api/admin/profissionais')) return 'profissionais';
   if (path.startsWith('/api/admin/qms/documentos')) return 'qualidade_documentos';
   if (path.startsWith('/api/admin/vigilancia-sanitaria')) return 'vigilancia_sanitaria';

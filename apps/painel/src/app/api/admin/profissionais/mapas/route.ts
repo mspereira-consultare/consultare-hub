@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { requireProfissionaisPermission } from '@/lib/profissionais/auth';
+import { requireProfissionaisMapasPermission } from '@/lib/profissionais/auth';
 import { getProfessionalAttendanceMap } from '@/lib/profissionais/repository';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    const auth = await requireProfissionaisPermission('view');
+    const auth = await requireProfissionaisMapasPermission('view');
     if (!auth.ok) {
       return NextResponse.json({ error: auth.error }, { status: auth.status });
     }

@@ -73,6 +73,7 @@ const PAGE_PERMISSION_GROUP: Record<PageKey, PermissionGroupId> = {
   produtividade: 'operacoes',
   agendamentos: 'operacoes',
   profissionais: 'operacoes',
+  profissionais_mapas: 'operacoes',
   colaboradores: 'pessoas',
   folha_pagamento: 'pessoas',
   recrutamento: 'pessoas',
