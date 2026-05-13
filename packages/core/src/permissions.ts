@@ -29,6 +29,7 @@ export type PageKey =
   | 'checklist_crc'
   | 'checklist_recepcao'
   | 'intranet_dashboard'
+  | 'intranet_tarefas'
   | 'intranet_navegacao'
   | 'intranet_paginas'
   | 'intranet_noticias'
@@ -80,6 +81,7 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'checklist_crc', label: 'Checklist CRC', path: '/checklist-crc' },
   { key: 'checklist_recepcao', label: 'Checklist Recepção', path: '/checklist-recepcao' },
   { key: 'intranet_dashboard', label: 'Intranet - Dashboard', path: '/gestao' },
+  { key: 'intranet_tarefas', label: 'Intranet - Tarefas', path: '/tarefas' },
   { key: 'intranet_navegacao', label: 'Intranet - Navegação', path: '/gestao/navegacao' },
   { key: 'intranet_paginas', label: 'Intranet - Páginas', path: '/gestao/paginas' },
   { key: 'intranet_noticias', label: 'Intranet - Notícias e Avisos', path: '/gestao/noticias' },
@@ -118,6 +120,7 @@ const setMany = (matrix: PermissionMatrix, keys: PageKey[], patch: Partial<PageP
 
 export const INTRANET_BACKOFFICE_PAGE_KEYS: PageKey[] = [
   'intranet_dashboard',
+  'intranet_tarefas',
   'intranet_navegacao',
   'intranet_paginas',
   'intranet_noticias',
@@ -143,14 +146,14 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda', 'dashboard_executive_governance', ...INTRANET_BACKOFFICE_PAGE_KEYS], { view: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'dashboard_executive_governance', ...INTRANET_BACKOFFICE_PAGE_KEYS], { edit: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda', 'dashboard_executive_governance', 'intranet_tarefas', ...INTRANET_BACKOFFICE_PAGE_KEYS], { view: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'dashboard_executive_governance', 'intranet_tarefas', ...INTRANET_BACKOFFICE_PAGE_KEYS], { edit: true });
     setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'intranet_dashboard', 'intranet_chatbot'], { refresh: true });
     return matrix;
   }
 
-  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_funil', 'ajuda'], { view: true });
-  setMany(matrix, ['propostas', 'checklist_crc', 'checklist_recepcao'], { edit: true });
+  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_funil', 'ajuda', 'intranet_tarefas'], { view: true });
+  setMany(matrix, ['propostas', 'checklist_crc', 'checklist_recepcao', 'intranet_tarefas'], { edit: true });
   setMany(matrix, ['monitor', 'produtividade', 'agendamentos', 'colaboradores', 'equipamentos', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
   return matrix;
 };
@@ -226,6 +229,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/checklist-crc') return 'checklist_crc';
   if (path === '/checklist-recepcao') return 'checklist_recepcao';
   if (path === '/gestao') return 'intranet_dashboard';
+  if (path === '/tarefas') return 'intranet_tarefas';
   if (path === '/gestao/navegacao') return 'intranet_navegacao';
   if (path === '/gestao/paginas') return 'intranet_paginas';
   if (path === '/gestao/noticias') return 'intranet_noticias';
@@ -241,6 +245,9 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/modelos-contrato') return 'contract_templates';
   if (path === '/settings') return 'settings';
 
+  if (path === '/dashboard-executivo/tarefas') return 'dashboard_executive_governance';
+
+  if (path.startsWith('/api/tasks')) return 'intranet_tarefas';
   if (path.startsWith('/api/admin/financial/')) return 'financeiro';
   if (path.startsWith('/api/admin/contratos')) return 'contratos';
   if (path === '/api/admin/propostas' || path === '/api/admin/propostas/') return 'propostas_gerencial';
@@ -284,6 +291,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/intranet')) return 'intranet_dashboard';
   if (path.startsWith('/api/admin/users')) return 'users';
   if (path.startsWith('/api/admin/dashboard/executive/config')) return 'dashboard_executive_governance';
+  if (path.startsWith('/api/admin/tasks')) return 'dashboard_executive_governance';
   if (path.startsWith('/api/admin/contract-templates')) return 'contract_templates';
   if (path.startsWith('/api/admin/settings')) return 'settings';
 

@@ -8,6 +8,7 @@ import { ensureIntranetTables } from './repository';
 type IntranetPageKey = Extract<
   PageKey,
   | 'intranet_dashboard'
+  | 'intranet_tarefas'
   | 'intranet_navegacao'
   | 'intranet_paginas'
   | 'intranet_noticias'

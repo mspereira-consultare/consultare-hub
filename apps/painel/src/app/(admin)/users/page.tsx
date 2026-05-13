@@ -93,6 +93,7 @@ const PAGE_PERMISSION_GROUP: Record<PageKey, PermissionGroupId> = {
   marketing_controle: 'marketing',
   marketing_funil: 'marketing',
   intranet_dashboard: 'intranet',
+  intranet_tarefas: 'intranet',
   intranet_navegacao: 'intranet',
   intranet_paginas: 'intranet',
   intranet_noticias: 'intranet',
