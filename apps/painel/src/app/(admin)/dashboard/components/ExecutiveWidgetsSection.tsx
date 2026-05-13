@@ -4,10 +4,8 @@ import {
 } from '@/lib/dashboard_executive/catalog';
 import type {
   ExecutiveAreaKey,
-  ExecutiveIndicator,
   ExecutiveSnapshot,
-  ExecutiveWidgetDefinition,
-  ExecutiveWidgetKey,
+  ExecutiveWidgetSnapshot,
 } from '@/lib/dashboard_executive/types';
 import { ExecutiveIndicatorCard } from './ExecutiveIndicatorCard';
 import { ExecutiveStatusBadge } from './ExecutiveStatusBadge';
@@ -21,30 +19,7 @@ type ExecutiveWidgetsSectionProps = {
   snapshot: ExecutiveSnapshot;
 };
 
-type ResolvedWidget =
-  | {
-      kind: 'indicator';
-      definition: ExecutiveWidgetDefinition;
-      indicator: ExecutiveIndicator;
-    }
-  | {
-      kind: 'monitor';
-      definition: ExecutiveWidgetDefinition;
-      updatedAt: string | null;
-      values: Array<{ label: string; value: string }>;
-      note: string;
-      status: ExecutiveIndicator['status'];
-    };
-
 const AREA_ORDER: ExecutiveAreaKey[] = ['financeiro', 'comercial', 'operacao', 'pessoas', 'qualidade'];
-
-const INDICATOR_BY_WIDGET: Partial<Record<ExecutiveWidgetKey, string>> = {
-  faturamento_hoje_meta: 'faturamento_hoje',
-  faturamento_mes_meta: 'faturamento_mes',
-  propostas_aberto: 'aguardando_cliente',
-  demanda_whatsapp: 'whatsapp_digital',
-  documentos_equipamentos_vencendo: 'documentos_qms',
-};
 
 function MiniMetric({ label, value }: { label: string; value: string }) {
   return (
@@ -55,13 +30,13 @@ function MiniMetric({ label, value }: { label: string; value: string }) {
   );
 }
 
-function WidgetMonitorCard({ widget }: { widget: Extract<ResolvedWidget, { kind: 'monitor' }> }) {
+function WidgetSummaryCard({ widget }: { widget: ExecutiveWidgetSnapshot }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-semibold text-slate-700">{widget.definition.label}</p>
-          <p className="mt-1 text-sm text-slate-500">{widget.definition.description}</p>
+          <p className="text-sm font-semibold text-slate-700">{widget.label}</p>
+          <p className="mt-1 text-sm text-slate-500">{widget.description}</p>
         </div>
         <ExecutiveStatusBadge status={widget.status} />
       </div>
@@ -72,60 +47,21 @@ function WidgetMonitorCard({ widget }: { widget: Extract<ResolvedWidget, { kind:
         ))}
       </div>
 
-      <p className="mt-3 text-sm text-slate-500">{widget.note}</p>
+      {widget.note ? <p className="mt-3 text-sm text-slate-500">{widget.note}</p> : null}
       <p className="mt-3 text-xs text-slate-400">Atualizado em {formatSnapshotTimestamp(widget.updatedAt)}</p>
     </div>
   );
 }
 
-function buildResolvedWidgets(snapshot: ExecutiveSnapshot): ResolvedWidget[] {
-  const visibleKeys = new Set(snapshot.metrics.profile.visibleWidgetKeys);
-  const availableWidgets = EXECUTIVE_WIDGET_DEFINITIONS.filter(
-    (widget) => widget.status === 'available' && visibleKeys.has(widget.key)
-  ).sort((a, b) => a.sortOrder - b.sortOrder);
-
-  const indicators = snapshot.metrics.areas.flatMap((area) => area.indicators);
-  const indicatorsByKey = new Map(indicators.map((indicator) => [indicator.indicatorKey, indicator]));
-  const operationsArea = snapshot.metrics.areas.find((area) => area.areaKey === 'operacao');
-
-  return availableWidgets.flatMap<ResolvedWidget>((definition) => {
-    if (definition.key === 'monitoramento_filas') {
-      return [
-        {
-          kind: 'monitor' as const,
-          definition,
-          updatedAt: operationsArea?.updatedAt || snapshot.metrics.generatedAt,
-          status: operationsArea?.status || 'NO_DATA',
-          note: 'Visão consolidada das filas críticas do momento para priorização operacional.',
-          values: [
-            { label: 'Fila médica', value: String(snapshot.metrics.liveOperations.medicQueue) },
-            { label: 'Fila recepção', value: String(snapshot.metrics.liveOperations.receptionQueue) },
-            { label: 'WhatsApp', value: String(snapshot.metrics.liveOperations.whatsappQueue) },
-            { label: 'Espera crítica', value: String(snapshot.metrics.liveOperations.criticalWaitCount) },
-          ],
-        },
-      ];
-    }
-
-    const indicatorKey = INDICATOR_BY_WIDGET[definition.key];
-    if (!indicatorKey) return [];
-
-    const indicator = indicatorsByKey.get(indicatorKey);
-    if (!indicator) return [];
-
-    return [{ kind: 'indicator' as const, definition, indicator }];
-  });
-}
-
 export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionProps) {
-  const widgets = buildResolvedWidgets(snapshot);
+  const widgets = snapshot.metrics.widgets || [];
   const plannedVisibleCount = snapshot.metrics.profile.visibleWidgetKeys.filter((widgetKey) => {
     const definition = EXECUTIVE_WIDGET_DEFINITIONS.find((item) => item.key === widgetKey);
     return definition?.status === 'planned';
   }).length;
 
   const widgetsByArea = AREA_ORDER.map((areaKey) => {
-    const items = widgets.filter((widget) => widget.definition.areaKey === areaKey);
+    const items = widgets.filter((widget) => widget.areaKey === areaKey);
     return { areaKey, items };
   }).filter((group) => group.items.length > 0);
 
@@ -189,13 +125,13 @@ export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionPro
 
             <div className="grid gap-4 p-5 xl:grid-cols-2">
               {items.map((widget) =>
-                widget.kind === 'indicator' ? (
+                widget.indicator ? (
                   <ExecutiveIndicatorCard
-                    key={widget.definition.key}
-                    indicator={{ ...widget.indicator, label: widget.definition.label }}
+                    key={widget.key}
+                    indicator={widget.indicator}
                   />
                 ) : (
-                  <WidgetMonitorCard key={widget.definition.key} widget={widget} />
+                  <WidgetSummaryCard key={widget.key} widget={widget} />
                 )
               )}
             </div>

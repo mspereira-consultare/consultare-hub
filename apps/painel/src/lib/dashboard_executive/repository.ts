@@ -2,9 +2,12 @@ import { createHash, randomUUID } from 'crypto';
 import { runInTransaction, type DbInterface } from '@/lib/db';
 import { hasPermission } from '@/lib/permissions';
 import { loadUserPermissionMatrix } from '@/lib/permissions_server';
+import { getAgendaOcupacaoHeartbeat, listAgendaOcupacaoDailyRows } from '@/lib/agenda_ocupacao/repository';
 import { getEmployeeDashboard } from '@/lib/colaboradores/repository';
 import { getQmsOverviewMetrics } from '@/lib/qms/metrics_repository';
 import { listRecruitmentDashboard } from '@/lib/recrutamento/repository';
+import { getMarketingControleSummary } from '@/lib/marketing_controle/repository';
+import { getMarketingFunnelSummary } from '@/lib/marketing_funil/repository';
 import { getSurveillanceSummary } from '@/lib/vigilancia_sanitaria/repository';
 import {
   EXECUTIVE_PROFILE_DEFINITIONS,
@@ -40,6 +43,8 @@ import type {
   ExecutiveUserException,
   ExecutiveWidgetDefinition,
   ExecutiveWidgetKey,
+  ExecutiveWidgetSnapshot,
+  ExecutiveWidgetSnapshotValue,
 } from '@/lib/dashboard_executive/types';
 
 const EXECUTIVE_AREAS: ExecutiveAreaKey[] = ['financeiro', 'comercial', 'operacao', 'pessoas', 'qualidade'];
@@ -304,8 +309,14 @@ const getVisibleAreasFromWidgets = (widgetKeys: ExecutiveWidgetKey[]) =>
       widgetKeys
         .map((widgetKey) => getWidgetArea(widgetKey))
         .filter((areaKey): areaKey is ExecutiveAreaKey => EXECUTIVE_AREAS.includes(areaKey))
-    )
+      )
   );
+
+const getWidgetDefinition = (widgetKey: ExecutiveWidgetKey) =>
+  EXECUTIVE_WIDGET_DEFINITIONS.find((item) => item.key === widgetKey) || null;
+
+const getVisibleAvailableWidgets = (widgetKeys: ExecutiveWidgetKey[]) =>
+  widgetKeys.filter((widgetKey) => getWidgetDefinition(widgetKey)?.status === 'available');
 
 const serializeScopeInput = (scope: ExecutiveScope) => ({
   userId: scope.userId,
@@ -347,6 +358,66 @@ const formatCurrencyCompact = (value: number) =>
   }).format(value || 0);
 
 const formatPercent = (value: number | null) => (value == null ? '—' : `${value.toFixed(1)}%`);
+
+const formatPercentCompact = (value: number) =>
+  new Intl.NumberFormat('pt-BR', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value || 0);
+
+const buildWidgetValue = (label: string, value: string): ExecutiveWidgetSnapshotValue => ({ label, value });
+
+const buildIndicatorWidget = (
+  widgetKey: ExecutiveWidgetKey,
+  indicator: ExecutiveIndicator
+): ExecutiveWidgetSnapshot | null => {
+  const definition = getWidgetDefinition(widgetKey);
+  if (!definition) return null;
+  return {
+    key: definition.key,
+    label: definition.label,
+    areaKey: definition.areaKey,
+    status: indicator.status,
+    description: definition.description,
+    updatedAt: indicator.sourceUpdatedAt,
+    indicator: { ...indicator, label: definition.label },
+    values: [],
+    note: indicator.note,
+  };
+};
+
+const buildSummaryWidget = (
+  widgetKey: ExecutiveWidgetKey,
+  status: ExecutiveIndicatorStatus,
+  updatedAt: string | null,
+  values: ExecutiveWidgetSnapshotValue[],
+  note: string | null
+): ExecutiveWidgetSnapshot | null => {
+  const definition = getWidgetDefinition(widgetKey);
+  if (!definition) return null;
+  return {
+    key: definition.key,
+    label: definition.label,
+    areaKey: definition.areaKey,
+    status,
+    description: definition.description,
+    updatedAt,
+    indicator: null,
+    values,
+    note,
+  };
+};
+
+const unitIdsFromScope = (units: string[]) => {
+  const ids = new Set<number>();
+  for (const unit of units) {
+    const normalized = upper(unit);
+    if (normalized.includes('OURO VERDE')) ids.add(2);
+    if (normalized.includes('CAMBUI') || normalized.includes('CAMBUÍ')) ids.add(3);
+    if (normalized.includes('SHOPPING') || normalized.includes('CAMPINAS SHOPPING')) ids.add(12);
+  }
+  return Array.from(ids).sort((a, b) => a - b);
+};
 
 const normalizeScope = (
   userId: string,
@@ -1146,6 +1217,346 @@ const buildTopPriorities = (areas: ExecutiveAreaBlock[]): ExecutivePriority[] =>
     )
     .sort((a, b) => (a.severity === b.severity ? 0 : a.severity === 'high' ? -1 : 1))
     .slice(0, 5);
+};
+
+const buildAppointmentsWhere = (scope: ExecutiveScope, startDate: string, endDate: string) => {
+  let whereSql = 'WHERE f.scheduled_at BETWEEN ? AND ?';
+  const params: unknown[] = [`${startDate} 00:00:00`, `${endDate} 23:59:59`];
+  const unitIds = unitIdsFromScope(scope.units);
+
+  if (unitIds.length) {
+    const patternsById: Record<number, string[]> = {
+      2: ['OURO VERDE'],
+      3: ['CENTRO CAMBUI', 'CENTRO CAMBUÍ'],
+      12: ['CAMPINAS SHOPPING', 'SHOPPING CAMPINAS'],
+    };
+    const patterns = unitIds.flatMap((unitId) => patternsById[unitId] || []);
+    if (patterns.length) {
+      whereSql += ` AND (${patterns.map(() => 'UPPER(TRIM(f.unit_name)) LIKE ?').join(' OR ')})`;
+      params.push(...patterns.map((pattern) => `%${pattern}%`));
+    }
+  }
+
+  return { whereSql, params };
+};
+
+const aggregateAgendaDailyRows = (
+  rows: Array<{
+    dataRef: string;
+    unidadeId: number;
+    especialidadeId: number;
+    agendamentosCount: number;
+    horariosDisponiveisCount: number;
+    horariosBloqueadosCount: number;
+    capacidadeLiquidaCount: number;
+    updatedAt: string;
+  }>
+) => {
+  const total = rows.reduce(
+    (acc, row) => {
+      acc.agendamentos += toNumber(row.agendamentosCount);
+      acc.horariosDisponiveis += toNumber(row.horariosDisponiveisCount);
+      acc.horariosBloqueados += toNumber(row.horariosBloqueadosCount);
+      acc.capacidadeLiquida += toNumber(row.capacidadeLiquidaCount);
+      return acc;
+    },
+    {
+      agendamentos: 0,
+      horariosDisponiveis: 0,
+      horariosBloqueados: 0,
+      capacidadeLiquida: 0,
+    }
+  );
+
+  return {
+    ...total,
+    taxaOcupacao: total.capacidadeLiquida > 0 ? (total.agendamentos * 100) / total.capacidadeLiquida : 0,
+    especialidades: new Set(rows.map((row) => `${row.unidadeId}-${row.especialidadeId}`)).size,
+    updatedAt: rows
+      .map((row) => clean(row.updatedAt))
+      .filter(Boolean)
+      .sort()
+      .at(-1) || null,
+  };
+};
+
+const getAgendaConfirmationWidget = async (db: DbInterface, scope: ExecutiveScope) => {
+  const { today, monthStart } = getDateRange();
+  const { whereSql, params } = buildAppointmentsWhere(scope, monthStart, today);
+  const rows = await db.query(
+    `
+    SELECT
+      COUNT(*) as total_periodo,
+      SUM(CASE WHEN status_id IN (3,7) THEN 1 ELSE 0 END) as confirmados_periodo,
+      SUM(CASE WHEN f.scheduled_at BETWEEN ? AND ? THEN 1 ELSE 0 END) as total_hoje,
+      SUM(CASE WHEN f.scheduled_at BETWEEN ? AND ? AND status_id IN (3,7) THEN 1 ELSE 0 END) as confirmados_hoje
+    FROM feegow_appointments f
+    ${whereSql}
+    `,
+    [`${today} 00:00:00`, `${today} 23:59:59`, `${today} 00:00:00`, `${today} 23:59:59`, ...params]
+  );
+  const heartbeatRows = await getSystemHeartbeats(db, ['appointments', 'agendamentos']);
+  const base = rows[0] || {};
+  const totalPeriodo = toNumber((base as any).total_periodo);
+  const confirmadosPeriodo = toNumber((base as any).confirmados_periodo);
+  const totalHoje = toNumber((base as any).total_hoje);
+  const confirmadosHoje = toNumber((base as any).confirmados_hoje);
+  const taxaPeriodo = totalPeriodo > 0 ? (confirmadosPeriodo * 100) / totalPeriodo : 0;
+  const taxaHoje = totalHoje > 0 ? (confirmadosHoje * 100) / totalHoje : 0;
+  const status: ExecutiveIndicatorStatus =
+    totalPeriodo === 0 ? 'NO_DATA' : taxaPeriodo >= 70 ? 'SUCCESS' : taxaPeriodo >= 50 ? 'WARNING' : 'DANGER';
+
+  return buildSummaryWidget(
+    'confirmacao_agendas',
+    status,
+    heartbeatRows[0]?.lastRun || null,
+    [
+      buildWidgetValue('Taxa no mês', `${formatPercentCompact(taxaPeriodo)}%`),
+      buildWidgetValue('Confirmados', new Intl.NumberFormat('pt-BR').format(confirmadosPeriodo)),
+      buildWidgetValue('Hoje', `${confirmadosHoje}/${totalHoje || 0}`),
+      buildWidgetValue('Taxa hoje', `${formatPercentCompact(taxaHoje)}%`),
+    ],
+    totalPeriodo > 0
+      ? `${confirmadosPeriodo} agendamento(s) confirmados no período atual considerado pelo dashboard.`
+      : 'Ainda não há agendamentos suficientes no período para calcular a taxa de confirmação.'
+  );
+};
+
+const getAgendaWidgets = async (db: DbInterface, scope: ExecutiveScope) => {
+  const { today, weekStart, monthStart } = getDateRange();
+  const unitIds = unitIdsFromScope(scope.units);
+  const heartbeat = await getAgendaOcupacaoHeartbeat(db);
+  const dailyRows = await listAgendaOcupacaoDailyRows(db, {
+    startDate: monthStart,
+    endDate: today,
+    unitId: 'all',
+  });
+
+  const scopedRows = unitIds.length ? dailyRows.filter((row) => unitIds.includes(row.unidadeId)) : dailyRows;
+  const todayRows = scopedRows.filter((row) => row.dataRef === today);
+  const weekRows = scopedRows.filter((row) => row.dataRef >= weekStart);
+  const monthRows = scopedRows;
+
+  const todayAggregate = aggregateAgendaDailyRows(todayRows);
+  const weekAggregate = aggregateAgendaDailyRows(weekRows);
+  const monthAggregate = aggregateAgendaDailyRows(monthRows);
+
+  const occupancyStatus: ExecutiveIndicatorStatus =
+    monthAggregate.capacidadeLiquida === 0
+      ? 'NO_DATA'
+      : monthAggregate.taxaOcupacao >= 80
+        ? 'SUCCESS'
+        : monthAggregate.taxaOcupacao >= 60
+          ? 'WARNING'
+          : 'DANGER';
+
+  return [
+    buildSummaryWidget(
+      'ocupacao_agendas',
+      occupancyStatus,
+      heartbeat.lastRun || monthAggregate.updatedAt,
+      [
+        buildWidgetValue('Ocupação', `${formatPercentCompact(monthAggregate.taxaOcupacao)}%`),
+        buildWidgetValue('Agendados', new Intl.NumberFormat('pt-BR').format(monthAggregate.agendamentos)),
+        buildWidgetValue('Livres', new Intl.NumberFormat('pt-BR').format(monthAggregate.horariosDisponiveis)),
+        buildWidgetValue('Bloqueados', new Intl.NumberFormat('pt-BR').format(monthAggregate.horariosBloqueados)),
+      ],
+      monthAggregate.capacidadeLiquida > 0
+        ? `Base ofertável de ${new Intl.NumberFormat('pt-BR').format(monthAggregate.capacidadeLiquida)} horários no mês atual.`
+        : 'Ainda não há base de ocupação disponível para o recorte atual.'
+    ),
+    buildSummaryWidget(
+      'mapa_diario_agendas',
+      todayAggregate.capacidadeLiquida === 0 ? 'NO_DATA' : occupancyStatus,
+      heartbeat.lastRun || todayAggregate.updatedAt,
+      [
+        buildWidgetValue('Hoje', `${formatPercentCompact(todayAggregate.taxaOcupacao)}%`),
+        buildWidgetValue('Agendados', new Intl.NumberFormat('pt-BR').format(todayAggregate.agendamentos)),
+        buildWidgetValue('Livres', new Intl.NumberFormat('pt-BR').format(todayAggregate.horariosDisponiveis)),
+        buildWidgetValue('Especialidades', new Intl.NumberFormat('pt-BR').format(todayAggregate.especialidades)),
+      ],
+      todayAggregate.capacidadeLiquida > 0
+        ? 'Leitura diária da distribuição da agenda para priorização imediata.'
+        : 'Sem mapa diário disponível para a data atual.'
+    ),
+    buildSummaryWidget(
+      'mapa_semanal_agendas',
+      weekAggregate.capacidadeLiquida === 0 ? 'NO_DATA' : occupancyStatus,
+      heartbeat.lastRun || weekAggregate.updatedAt,
+      [
+        buildWidgetValue('Semana', `${formatPercentCompact(weekAggregate.taxaOcupacao)}%`),
+        buildWidgetValue('Agendados', new Intl.NumberFormat('pt-BR').format(weekAggregate.agendamentos)),
+        buildWidgetValue('Livres', new Intl.NumberFormat('pt-BR').format(weekAggregate.horariosDisponiveis)),
+        buildWidgetValue('Especialidades', new Intl.NumberFormat('pt-BR').format(weekAggregate.especialidades)),
+      ],
+      weekAggregate.capacidadeLiquida > 0
+        ? 'Consolidado semanal da agenda para leitura de distribuição e capacidade.'
+        : 'Sem dados suficientes para montar o mapa semanal no recorte atual.'
+    ),
+  ].filter(Boolean) as ExecutiveWidgetSnapshot[];
+};
+
+const getBirthdaysWidget = async (db: DbInterface, scope: ExecutiveScope) => {
+  const employees = await getEmployeeDashboard(db, {
+    status: 'all',
+    regime: 'all',
+    unit: scope.units.length === 1 ? scope.units[0] : 'all',
+    department: scope.departments.length === 1 ? scope.departments[0] : 'all',
+  });
+  const today = getDateRange().today;
+  const birthdaysToday = employees.birthdaysThisMonth.filter((person) => clean(person.date).slice(5) === today.slice(5));
+  const nextNames = birthdaysToday.slice(0, 3).map((person) => person.fullName);
+  const status: ExecutiveIndicatorStatus = birthdaysToday.length ? 'SUCCESS' : 'NO_DATA';
+
+  return buildSummaryWidget(
+    'aniversariantes_dia',
+    status,
+    employees.generatedAt,
+    [
+      buildWidgetValue('Hoje', new Intl.NumberFormat('pt-BR').format(birthdaysToday.length)),
+      buildWidgetValue('Mês', new Intl.NumberFormat('pt-BR').format(employees.birthdaysThisMonth.length)),
+      buildWidgetValue('Próx. 30 dias', new Intl.NumberFormat('pt-BR').format(employees.birthdaysNext30.length)),
+    ],
+    birthdaysToday.length
+      ? `Aniversariantes do dia: ${nextNames.join(', ')}${birthdaysToday.length > nextNames.length ? '...' : ''}`
+      : 'Nenhum aniversariante dentro do recorte configurado para hoje.'
+  );
+};
+
+const getMarketingWidgets = async (db: DbInterface) => {
+  const currentMonthRef = getDateRange().today.slice(0, 7);
+  const [controleSummary, funnelSummary] = await Promise.all([
+    getMarketingControleSummary(db, { monthRef: currentMonthRef, brand: 'consultare' }),
+    getMarketingFunnelSummary(db, { periodRef: currentMonthRef, brand: 'consultare' }),
+  ]);
+
+  const googleStatus: ExecutiveIndicatorStatus =
+    !controleSummary.hasAnyData ? 'NO_DATA' : controleSummary.cards.visitors > 0 ? 'SUCCESS' : 'WARNING';
+  const adsStatus: ExecutiveIndicatorStatus =
+    !controleSummary.hasAnyData ? 'NO_DATA' : controleSummary.cards.googleSpend > 0 ? 'SUCCESS' : 'WARNING';
+  const conversionRate = funnelSummary.performanceFunnel.contactToAppointmentRate || 0;
+  const conversionStatus: ExecutiveIndicatorStatus =
+    !controleSummary.hasAnyData
+      ? 'NO_DATA'
+      : conversionRate >= 20
+        ? 'SUCCESS'
+        : conversionRate >= 10
+          ? 'WARNING'
+          : 'DANGER';
+
+  return [
+    buildSummaryWidget(
+      'google',
+      googleStatus,
+      funnelSummary.lastSyncAt,
+      [
+        buildWidgetValue('Visitantes', new Intl.NumberFormat('pt-BR').format(controleSummary.cards.visitors)),
+        buildWidgetValue('Cliques WhatsApp', new Intl.NumberFormat('pt-BR').format(controleSummary.cards.whatsappClicks)),
+        buildWidgetValue('Novos contatos', new Intl.NumberFormat('pt-BR').format(controleSummary.cards.cliniaNewContacts)),
+      ],
+      controleSummary.hasAnyData
+        ? 'Leitura consolidada do tráfego e das entradas digitais associadas ao Google.'
+        : 'Ainda não há dados consolidados de Google para o mês atual.'
+    ),
+    buildSummaryWidget(
+      'investimento_ads',
+      adsStatus,
+      funnelSummary.lastSyncAt,
+      [
+        buildWidgetValue('Investimento', formatCurrencyCompact(controleSummary.cards.googleSpend)),
+        buildWidgetValue(
+          'Custo por contato',
+          controleSummary.cards.costPerNewContact == null ? '—' : formatCurrencyCompact(controleSummary.cards.costPerNewContact)
+        ),
+        buildWidgetValue(
+          'Custo por agendamento',
+          controleSummary.cards.costPerAppointment == null ? '—' : formatCurrencyCompact(controleSummary.cards.costPerAppointment)
+        ),
+      ],
+      controleSummary.hasAnyData
+        ? 'Resumo financeiro da mídia paga no mês corrente.'
+        : 'Sem dados suficientes de investimento em mídia para este período.'
+    ),
+    buildSummaryWidget(
+      'faturamento_campanha_conversao',
+      conversionStatus,
+      funnelSummary.lastSyncAt,
+      [
+        buildWidgetValue('Contatos Google', new Intl.NumberFormat('pt-BR').format(funnelSummary.performanceFunnel.googleContactsReceived)),
+        buildWidgetValue('Novos contatos', new Intl.NumberFormat('pt-BR').format(funnelSummary.performanceFunnel.googleNewContacts)),
+        buildWidgetValue('Agendamentos', new Intl.NumberFormat('pt-BR').format(funnelSummary.performanceFunnel.googleAppointmentsConverted)),
+        buildWidgetValue('Conversão', `${formatPercentCompact(conversionRate)}%`),
+      ],
+      controleSummary.hasAnyData
+        ? 'Relaciona investimento, entradas digitais e conversão em agendamentos confirmados pelo funil.'
+        : 'Sem base suficiente para calcular a conversão entre campanhas e agendamentos.'
+    ),
+  ].filter(Boolean) as ExecutiveWidgetSnapshot[];
+};
+
+const buildExecutiveWidgets = async (
+  db: DbInterface,
+  scope: ExecutiveScope,
+  areas: ExecutiveAreaBlock[]
+): Promise<ExecutiveWidgetSnapshot[]> => {
+  const indicatorMap = new Map(areas.flatMap((area) => area.indicators).map((indicator) => [indicator.indicatorKey, indicator]));
+  const availableKeys = getVisibleAvailableWidgets(scope.visibleWidgetKeys);
+  const widgets: ExecutiveWidgetSnapshot[] = [];
+
+  const indicatorKeyMap: Partial<Record<ExecutiveWidgetKey, string>> = {
+    faturamento_hoje_meta: 'faturamento_hoje',
+    faturamento_mes_meta: 'faturamento_mes',
+    propostas_aberto: 'aguardando_cliente',
+    demanda_whatsapp: 'whatsapp_digital',
+    documentos_equipamentos_vencendo: 'documentos_qms',
+  };
+
+  for (const widgetKey of availableKeys) {
+    const indicatorKey = indicatorKeyMap[widgetKey];
+    if (!indicatorKey) continue;
+    const indicator = indicatorMap.get(indicatorKey);
+    const widget = indicator ? buildIndicatorWidget(widgetKey, indicator) : null;
+    if (widget) widgets.push(widget);
+  }
+
+  if (availableKeys.includes('monitoramento_filas')) {
+    const liveArea = areas.find((area) => area.areaKey === 'operacao');
+    const widget = buildSummaryWidget(
+      'monitoramento_filas',
+      liveArea?.status || 'NO_DATA',
+      liveArea?.updatedAt || null,
+      [
+        buildWidgetValue('Fila médica', new Intl.NumberFormat('pt-BR').format(indicatorMap.get('fila_medica')?.currentValue || 0)),
+        buildWidgetValue('Fila recepção', new Intl.NumberFormat('pt-BR').format(indicatorMap.get('fila_recepcao')?.currentValue || 0)),
+        buildWidgetValue('WhatsApp', new Intl.NumberFormat('pt-BR').format(indicatorMap.get('whatsapp_digital')?.currentValue || 0)),
+      ],
+      'Visão consolidada das filas críticas do momento para priorização operacional.'
+    );
+    if (widget) widgets.push(widget);
+  }
+
+  if (availableKeys.some((key) => ['ocupacao_agendas', 'mapa_diario_agendas', 'mapa_semanal_agendas'].includes(key))) {
+    const agendaWidgets = await getAgendaWidgets(db, scope);
+    widgets.push(...agendaWidgets.filter((widget) => availableKeys.includes(widget.key)));
+  }
+
+  if (availableKeys.includes('confirmacao_agendas')) {
+    const confirmationWidget = await getAgendaConfirmationWidget(db, scope);
+    if (confirmationWidget) widgets.push(confirmationWidget);
+  }
+
+  if (availableKeys.includes('aniversariantes_dia')) {
+    const birthdaysWidget = await getBirthdaysWidget(db, scope);
+    if (birthdaysWidget) widgets.push(birthdaysWidget);
+  }
+
+  if (availableKeys.some((key) => ['google', 'investimento_ads', 'faturamento_campanha_conversao'].includes(key))) {
+    const marketingWidgets = await getMarketingWidgets(db);
+    widgets.push(...marketingWidgets.filter((widget) => availableKeys.includes(widget.key)));
+  }
+
+  const definitionOrder = new Map(EXECUTIVE_WIDGET_DEFINITIONS.map((item) => [item.key, item.sortOrder]));
+  return widgets.sort((a, b) => (definitionOrder.get(a.key) || 9999) - (definitionOrder.get(b.key) || 9999));
 };
 
 export const ensureExecutiveTables = async (db: DbInterface) => {
@@ -1974,6 +2385,7 @@ const buildExecutiveMetrics = async (db: DbInterface, scope: ExecutiveScope): Pr
       executiveSummary: buildExecutiveSummary([]),
       aiStatus: 'PENDING_PHASE_2',
       areas: [],
+      widgets: [],
       topPriorities: [],
       liveOperations: {
         medicQueue: 0,
@@ -2000,6 +2412,7 @@ const buildExecutiveMetrics = async (db: DbInterface, scope: ExecutiveScope): Pr
   const areas = [financeiro, comercial, operacaoBundle.area, pessoas, qualidade].filter((area) =>
     allowedAreas.includes(area.areaKey)
   );
+  const widgets = await buildExecutiveWidgets(db, scope, areas);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -2009,6 +2422,7 @@ const buildExecutiveMetrics = async (db: DbInterface, scope: ExecutiveScope): Pr
     executiveSummary: buildExecutiveSummary(areas),
     aiStatus: 'PENDING_PHASE_2',
     areas,
+    widgets,
     topPriorities: buildTopPriorities(areas),
     liveOperations: operacaoBundle.live,
   };

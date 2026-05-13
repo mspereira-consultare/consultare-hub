@@ -212,6 +212,23 @@ export type ExecutiveLiveOperations = {
   heartbeats: ExecutiveLiveHeartbeat[];
 };
 
+export type ExecutiveWidgetSnapshotValue = {
+  label: string;
+  value: string;
+};
+
+export type ExecutiveWidgetSnapshot = {
+  key: ExecutiveWidgetKey;
+  label: string;
+  areaKey: ExecutiveAreaKey;
+  status: ExecutiveIndicatorStatus;
+  description: string | null;
+  updatedAt: string | null;
+  indicator: ExecutiveIndicator | null;
+  values: ExecutiveWidgetSnapshotValue[];
+  note: string | null;
+};
+
 export type ExecutiveMetricsPayload = {
   generatedAt: string;
   scope: Omit<ExecutiveScope, 'updatedAt' | 'updatedBy'>;
@@ -220,6 +237,7 @@ export type ExecutiveMetricsPayload = {
   executiveSummary: string;
   aiStatus: 'PENDING_PHASE_2';
   areas: ExecutiveAreaBlock[];
+  widgets: ExecutiveWidgetSnapshot[];
   topPriorities: ExecutivePriority[];
   liveOperations: ExecutiveLiveOperations;
 };
