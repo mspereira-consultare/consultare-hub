@@ -4,6 +4,8 @@ import { invalidateCache } from '@/lib/api_cache';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { hasAnyRefresh, hasPermission, type PageKey } from '@/lib/permissions';
+import { getAgendaOcupacaoDefaultRange } from '@/lib/agenda_ocupacao/date_range';
+import { createAgendaOcupacaoJob } from '@/lib/agenda_ocupacao/repository';
 
 export const dynamic = 'force-dynamic';
 
@@ -146,17 +148,33 @@ export async function POST(request: Request) {
     }
 
     const db = getDbConnection();
+    let details = 'Solicitado via Painel';
+
+    if (serviceName === 'agenda_occupancy') {
+      const defaults = getAgendaOcupacaoDefaultRange();
+      const userId = String((session.user as any).id || '').trim();
+      const job = await createAgendaOcupacaoJob(
+        db,
+        {
+          startDate: defaults.startDate,
+          endDate: defaults.endDate,
+          unitScope: 'all',
+        },
+        userId || 'unknown'
+      );
+      details = `Job ${job.id} enfileirado`;
+    }
 
     // Query unificada (Upsert)
     const sql = `
         INSERT INTO system_status (service_name, status, last_run, details)
-        VALUES (?, 'PENDING', datetime('now'), 'Solicitado via Painel')
+        VALUES (?, 'PENDING', datetime('now'), ?)
         ON CONFLICT(service_name) 
-        DO UPDATE SET status = 'PENDING', details = 'Solicitado via Painel', last_run = datetime('now')
+        DO UPDATE SET status = 'PENDING', details = excluded.details, last_run = datetime('now')
     `;
 
     // Agora é AWAIT para compatibilidade com Turso
-    await db.execute(sql, [serviceName]);
+    await db.execute(sql, [serviceName, details]);
 
     invalidateCache('admin:');
     return NextResponse.json({ 

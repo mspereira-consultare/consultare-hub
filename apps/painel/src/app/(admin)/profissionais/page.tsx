@@ -574,9 +574,10 @@ export default function ProfessionalsPage() {
     }
   };
 
-  const loadAgendaOccupancyWorkerStatus = async () => {
+  const loadAgendaOccupancyWorkerStatus = async (forceFresh = false) => {
     try {
-      const res = await fetch('/api/admin/status', { cache: 'no-store' });
+      const refreshQ = forceFresh ? `?refresh=${Date.now()}` : '';
+      const res = await fetch(`/api/admin/status${refreshQ}`, { cache: 'no-store' });
       const data = await res.json();
       if (!res.ok || !Array.isArray(data)) return false;
 
@@ -667,28 +668,30 @@ export default function ProfessionalsPage() {
   };
 
   const refreshListWithAgendaWorker = async () => {
+    if (!canRefresh) {
+      setError('Sem permissao para atualizar a agenda dos profissionais.');
+      return;
+    }
     setListRefreshing(true);
     setError('');
     try {
-      if (canRefresh) {
-        const refreshRes = await fetch('/api/admin/refresh', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ service: 'agenda_occupancy' }),
-        });
-        const refreshData = await refreshRes.json().catch(() => ({}));
-        if (!refreshRes.ok) {
-          throw new Error(refreshData?.error || 'Falha ao acionar atualização da agenda.');
-        }
+      const refreshRes = await fetch('/api/admin/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ service: 'agenda_occupancy' }),
+      });
+      const refreshData = await refreshRes.json().catch(() => ({}));
+      if (!refreshRes.ok) {
+        throw new Error(refreshData?.error || 'Falha ao acionar atualização da agenda.');
+      }
 
-        let attempts = 0;
-        const maxAttempts = 25;
-        while (attempts < maxAttempts) {
-          attempts += 1;
-          const stillRunning = await loadAgendaOccupancyWorkerStatus();
-          if (!stillRunning) break;
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-        }
+      let attempts = 0;
+      const maxAttempts = 25;
+      while (attempts < maxAttempts) {
+        attempts += 1;
+        const stillRunning = await loadAgendaOccupancyWorkerStatus(true);
+        if (!stillRunning) break;
+        await new Promise((resolve) => setTimeout(resolve, 3000));
       }
 
       await fetchList(1);
@@ -1119,7 +1122,7 @@ export default function ProfessionalsPage() {
             </button>
             <button
               onClick={refreshListWithAgendaWorker}
-              disabled={listRefreshing}
+              disabled={!canRefresh || listRefreshing}
               className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2 disabled:opacity-60"
             >
               {listRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
