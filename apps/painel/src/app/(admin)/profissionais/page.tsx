@@ -222,7 +222,7 @@ const getSyncBadge = (status?: string | null, refreshing = false) => {
       };
     default:
       return {
-        label: 'Sem execucao',
+        label: 'Sem execução',
         tone: 'bg-slate-100 text-slate-600 border-slate-200',
         icon: RefreshCw,
         spin: false,
@@ -230,52 +230,56 @@ const getSyncBadge = (status?: string | null, refreshing = false) => {
   }
 };
 
-type ProfessionalsStatusCardProps = {
+type ProfessionalsStatusHoverCardProps = {
   title: string;
   subtitle: string;
   sourceLabel: string;
   status: ServiceStatus | null;
   refreshing?: boolean;
+  children: React.ReactNode;
 };
 
-function ProfessionalsStatusCard({
+function ProfessionalsStatusHoverCard({
   title,
   subtitle,
   sourceLabel,
   status,
   refreshing = false,
-}: ProfessionalsStatusCardProps) {
+  children,
+}: ProfessionalsStatusHoverCardProps) {
   const badge = getSyncBadge(status?.status, refreshing);
   const Icon = badge.icon;
   const details = String(status?.details || '').trim();
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</p>
-          <p className="mt-1 text-sm font-semibold text-slate-800">{subtitle}</p>
-        </div>
-        <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold ${badge.tone}`}>
-          <Icon size={14} className={badge.spin ? 'animate-spin' : ''} />
-          {badge.label}
-        </span>
-      </div>
-
-      <div className="mt-3 space-y-2 text-xs text-slate-600">
-        <div className="flex items-center justify-between gap-3">
-          <span className="font-medium text-slate-500">Ultima atualizacao</span>
-          <span className="text-right text-slate-700">{formatDateTime(status?.last_run)}</span>
-        </div>
+    <div className="group relative">
+      {children}
+      <div className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-[320px] rounded-xl border border-slate-200 bg-white p-3 shadow-lg group-hover:block group-focus-within:block">
         <div className="flex items-start justify-between gap-3">
-          <span className="font-medium text-slate-500">Fonte</span>
-          <span className="max-w-[240px] text-right text-slate-700">{sourceLabel}</span>
-        </div>
-        {details ? (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-700">
-            {details}
+          <div className="min-w-0">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">{title}</p>
+            <p className="mt-0.5 text-sm font-semibold text-slate-800">{subtitle}</p>
           </div>
-        ) : null}
+          <span className={`inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${badge.tone}`}>
+            <Icon size={14} className={badge.spin ? 'animate-spin' : ''} />
+            {badge.label}
+          </span>
+        </div>
+        <div className="mt-3 space-y-1.5 text-xs text-slate-600">
+          <div>
+            <span className="font-medium text-slate-500">Última atualização:</span>{' '}
+            <span className="text-slate-700">{formatDateTime(status?.last_run)}</span>
+          </div>
+          <div>
+            <span className="font-medium text-slate-500">Fonte:</span>{' '}
+            <span className="text-slate-700">{sourceLabel}</span>
+          </div>
+          {details ? (
+            <div className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px] text-slate-600">
+              {details}
+            </div>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -1219,41 +1223,41 @@ export default function ProfessionalsPage() {
         </div>
         <div className="flex flex-col items-stretch gap-1 md:items-end">
           <div className="flex items-center gap-2">
-            <button
-              onClick={triggerProfessionalsSyncRefresh}
-              disabled={!canRefresh || professionalsSyncRefreshing}
-              className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2 disabled:opacity-60"
+            <ProfessionalsStatusHoverCard
+              title="Cadastro Feegow"
+              subtitle="Atualiza a lista de profissionais"
+              sourceLabel="Cadastro de profissionais do Feegow"
+              status={professionalsSyncStatus}
+              refreshing={professionalsSyncRefreshing}
             >
-              {professionalsSyncRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              {professionalsSyncRefreshing ? 'Sincronizando...' : 'Atualizar cadastro'}
-            </button>
-            <button
-              onClick={refreshListWithAgendaWorker}
-              disabled={!canRefresh || listRefreshing}
-              className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2 disabled:opacity-60"
+              <button
+                onClick={triggerProfessionalsSyncRefresh}
+                disabled={!canRefresh || professionalsSyncRefreshing}
+                className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2 disabled:opacity-60"
+              >
+                {professionalsSyncRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                {professionalsSyncRefreshing ? 'Sincronizando...' : 'Atualizar cadastro'}
+              </button>
+            </ProfessionalsStatusHoverCard>
+            <ProfessionalsStatusHoverCard
+              title="Agenda do mês"
+              subtitle="Atualiza a coluna de agenda aberta"
+              sourceLabel="Agendamentos e relatório de ocupação de agendas do Feegow"
+              status={agendaOccupancyStatus}
+              refreshing={listRefreshing}
             >
-              {listRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              {listRefreshing ? 'Atualizando agenda...' : 'Atualizar agendas'}
-            </button>
+              <button
+                onClick={refreshListWithAgendaWorker}
+                disabled={!canRefresh || listRefreshing}
+                className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2 disabled:opacity-60"
+              >
+                {listRefreshing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                {listRefreshing ? 'Atualizando agenda...' : 'Atualizar agendas'}
+              </button>
+            </ProfessionalsStatusHoverCard>
             {canEdit && <button onClick={openCreate} className="px-3 py-2 rounded-lg bg-[#17407E] text-white text-sm flex items-center gap-2"><Plus size={14} />Novo profissional</button>}
           </div>
         </div>
-        </div>
-        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-          <ProfessionalsStatusCard
-            title="Cadastro Feegow"
-            subtitle="Atualiza a lista de profissionais do painel"
-            sourceLabel="Cadastro de profissionais do Feegow"
-            status={professionalsSyncStatus}
-            refreshing={professionalsSyncRefreshing}
-          />
-          <ProfessionalsStatusCard
-            title="Agenda do mes"
-            subtitle="Atualiza a coluna de agenda aberta"
-            sourceLabel="Agendamentos e relatorio de ocupacao de agendas do Feegow"
-            status={agendaOccupancyStatus}
-            refreshing={listRefreshing}
-          />
         </div>
       </div>
 
