@@ -198,7 +198,22 @@ const normalizeEmploymentRegime = (value: any): EmploymentRegime => {
 };
 
 const normalizeEmployeeStatus = (value: any): EmployeeStatus => {
-  const normalized = upper(value || 'ATIVO');
+  const raw = clean(value || 'ATIVO');
+  const normalized = normalizeCatalogValue(raw)
+    .replace(/-/g, '_')
+    .replace(/\s+/g, '_')
+    .toUpperCase();
+
+  if (normalized === 'PRE_ADMISSAO' || normalized === 'PREADMISSAO') {
+    return 'PRE_ADMISSAO';
+  }
+  if (normalized === 'ATIVO') {
+    return 'ATIVO';
+  }
+  if (normalized === 'DESLIGADO') {
+    return 'DESLIGADO';
+  }
+
   if (!allowedStatuses.has(normalized as EmployeeStatus)) {
     throw new EmployeeValidationError('Status do colaborador inválido.');
   }
@@ -266,7 +281,7 @@ const mapEmployee = (row: any): Employee => ({
   id: clean(row.id),
   fullName: clean(row.full_name),
   employmentRegime: upper(row.employment_regime) as EmploymentRegime,
-  status: upper(row.status) as EmployeeStatus,
+  status: normalizeEmployeeStatus(row.status),
   rg: clean(row.rg) || null,
   cpf: clean(row.cpf) || null,
   email: clean(row.email) || null,

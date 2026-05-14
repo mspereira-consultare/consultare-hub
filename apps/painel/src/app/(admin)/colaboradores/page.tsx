@@ -473,6 +473,9 @@ const mapStatusBadge = (status: EmployeeStatus) =>
       ? 'bg-blue-100 text-[#17407E] border-blue-200'
       : 'bg-rose-100 text-rose-700 border-rose-200';
 
+const getEmployeeStatusLabel = (status: EmployeeStatus) =>
+  status === 'ATIVO' ? 'Ativo' : status === 'PRE_ADMISSAO' ? 'Pré-admissão' : 'Desligado';
+
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { cache: 'no-store', ...init });
   const payload = await res.json().catch(() => ({}));
@@ -1431,7 +1434,7 @@ export default function ColaboradoresPage() {
                     <td className="px-4 py-3">{formatDateBr(item.admissionDate)}</td>
                     <td className="px-4 py-3">
                       <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${mapStatusBadge(item.status)}`}>
-                        {item.status === 'ATIVO' ? 'Ativo' : 'Desligado'}
+                        {getEmployeeStatusLabel(item.status)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
