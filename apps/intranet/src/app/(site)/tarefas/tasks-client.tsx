@@ -1,5 +1,6 @@
 'use client';
 
+import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
@@ -900,6 +901,364 @@ function SmallActionButton({
   );
 }
 
+function SearchableUserSelect({
+  label,
+  users,
+  value,
+  onChange,
+  placeholder = 'Selecione um colaborador',
+  emptyLabel,
+}: {
+  label: string;
+  users: Array<TaskUserOption & { label: string }>;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  emptyLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; minWidth: number } | null>(null);
+
+  const filteredUsers = useMemo(() => {
+    if (!searchTerm) return users;
+    const normalized = normalizeText(searchTerm);
+    return users.filter((user) => normalizeText(`${user.name} ${user.email} ${user.department}`).includes(normalized));
+  }, [searchTerm, users]);
+
+  const selectedUser = users.find((user) => user.id === value) || null;
+
+  useEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setDropdownStyle({
+        top: rect.bottom + 8,
+        left: rect.left,
+        minWidth: rect.width,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!containerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef}>
+      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={`${inputClassName} flex min-h-[44px] items-center justify-between text-left`}
+      >
+        <span className={`truncate ${selectedUser ? 'text-slate-800' : 'text-slate-400'}`}>
+          {selectedUser ? selectedUser.label : emptyLabel || placeholder}
+        </span>
+        <Search size={15} className="shrink-0 text-slate-400" />
+      </button>
+
+      {open && dropdownStyle
+        ? createPortal(
+            <div
+              ref={dropdownRef}
+              style={{
+                position: 'fixed',
+                top: dropdownStyle.top,
+                left: dropdownStyle.left,
+                minWidth: dropdownStyle.minWidth,
+              }}
+              className="z-[90] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl"
+            >
+              <div className="border-b border-slate-100 p-3">
+                <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <Search className="h-4 w-4 text-slate-400" />
+                  <input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder={`Buscar ${label.toLowerCase()}`}
+                    className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                  />
+                </label>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto p-2">
+                {emptyLabel ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onChange('');
+                      setOpen(false);
+                    }}
+                    className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+                      !value ? 'bg-slate-100 text-slate-900' : 'text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <span>{emptyLabel}</span>
+                    <span className={`flex h-5 w-5 items-center justify-center rounded-md border ${!value ? 'border-slate-500 bg-slate-500 text-white' : 'border-slate-300 bg-white text-transparent'}`}>
+                      <Check className="h-3.5 w-3.5" />
+                    </span>
+                  </button>
+                ) : null}
+
+                {filteredUsers.length ? (
+                  filteredUsers.map((user) => {
+                    const checked = user.id === value;
+                    return (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => {
+                          onChange(user.id);
+                          setOpen(false);
+                        }}
+                        className={`mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+                          checked ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="min-w-0 text-left">
+                          <span className="block truncate font-medium">{user.name}</span>
+                          <span className="block truncate text-xs text-slate-500">{user.department || user.email}</span>
+                        </span>
+                        <span className={`ml-3 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${checked ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 bg-white text-transparent'}`}>
+                          <Check className="h-3.5 w-3.5" />
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-3 py-6 text-center text-sm text-slate-500">Nenhum colaborador encontrado.</div>
+                )}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </div>
+  );
+}
+
+function SearchableUserMultiSelect({
+  label,
+  currentUserId,
+  users,
+  selectedIds,
+  onChange,
+}: {
+  label: string;
+  currentUserId: string;
+  users: Array<TaskUserOption & { label: string }>;
+  selectedIds: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; minWidth: number } | null>(null);
+
+  const filteredUsers = useMemo(() => {
+    if (!searchTerm) return users;
+    const normalized = normalizeText(searchTerm);
+    return users.filter((user) => normalizeText(`${user.name} ${user.email} ${user.department}`).includes(normalized));
+  }, [searchTerm, users]);
+
+  const selectedUsers = useMemo(
+    () => users.filter((user) => selectedIds.includes(user.id)),
+    [selectedIds, users]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setDropdownStyle({
+        top: rect.bottom + 8,
+        left: rect.left,
+        minWidth: rect.width,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!containerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  const toggleUser = (userId: string) => {
+    onChange(
+      selectedIds.includes(userId)
+        ? selectedIds.filter((id) => id !== userId)
+        : [...selectedIds, userId]
+    );
+  };
+
+  return (
+    <div ref={containerRef}>
+      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        className={`${inputClassName} flex min-h-[44px] items-center justify-between text-left`}
+      >
+        <span className={`truncate ${selectedUsers.length ? 'text-slate-800' : 'text-slate-400'}`}>
+          {selectedUsers.length
+            ? `${selectedUsers.length} colaborador(es) selecionado(s)`
+            : 'Selecione os responsáveis adicionais'}
+        </span>
+        <Search size={15} className="shrink-0 text-slate-400" />
+      </button>
+
+      {selectedUsers.length ? (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {selectedUsers.slice(0, 4).map((user) => (
+            <span key={user.id} className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+              {user.id === currentUserId ? `${user.name} (você)` : user.name}
+            </span>
+          ))}
+          {selectedUsers.length > 4 ? (
+            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+              +{selectedUsers.length - 4}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {open && dropdownStyle
+        ? createPortal(
+            <div
+              ref={dropdownRef}
+              style={{
+                position: 'fixed',
+                top: dropdownStyle.top,
+                left: dropdownStyle.left,
+                minWidth: dropdownStyle.minWidth,
+              }}
+              className="z-[90] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl"
+            >
+              <div className="border-b border-slate-100 p-3">
+                <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                  <Search className="h-4 w-4 text-slate-400" />
+                  <input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder={`Buscar ${label.toLowerCase()}`}
+                    className="w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                  />
+                </label>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto p-2">
+                <button
+                  type="button"
+                  onClick={() => onChange([])}
+                  className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-600 transition hover:bg-slate-50"
+                >
+                  <span>Limpar seleção</span>
+                  <X className="h-4 w-4 text-slate-400" />
+                </button>
+
+                {filteredUsers.length ? (
+                  filteredUsers.map((user) => {
+                    const checked = selectedIds.includes(user.id);
+                    return (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => toggleUser(user.id)}
+                        className={`mt-1 flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm transition ${
+                          checked ? 'bg-blue-50 text-blue-700' : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="min-w-0 text-left">
+                          <span className="block truncate font-medium">
+                            {user.id === currentUserId ? `${user.name} (você)` : user.name}
+                          </span>
+                          <span className="block truncate text-xs text-slate-500">{user.department || user.email}</span>
+                        </span>
+                        <span className={`ml-3 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${checked ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 bg-white text-transparent'}`}>
+                          <Check className="h-3.5 w-3.5" />
+                        </span>
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-3 py-6 text-center text-sm text-slate-500">Nenhum colaborador encontrado.</div>
+                )}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </div>
+  );
+}
+
 function TaskModal({
   title,
   currentUserId,
@@ -968,31 +1327,25 @@ function TaskModal({
           </div>
           <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
             <FieldInput label="Setor" value={form.department} onChange={(value) => onChange({ ...form, department: value })} placeholder="Ex.: RH, Operacional, Financeiro" />
-            <FieldSelect
+            <SearchableUserSelect
               label="Responsável principal"
               value={form.primaryAssigneeUserId}
               onChange={(value) => onChange({ ...form, primaryAssigneeUserId: value })}
-              options={users.map((user) => ({ value: user.id, label: user.label }))}
+              users={users}
             />
-            <MultiUserChecklist
+            <SearchableUserMultiSelect
               label="Responsáveis adicionais"
               currentUserId={currentUserId}
               users={users}
               selectedIds={form.assigneeUserIds}
-              onToggle={(userId) =>
-                onChange({
-                  ...form,
-                  assigneeUserIds: form.assigneeUserIds.includes(userId)
-                    ? form.assigneeUserIds.filter((id) => id !== userId)
-                    : [...form.assigneeUserIds, userId],
-                })
-              }
+              onChange={(assigneeUserIds) => onChange({ ...form, assigneeUserIds })}
             />
-            <FieldSelect
+            <SearchableUserSelect
               label="Aprovador"
               value={form.approverUserId}
               onChange={(value) => onChange({ ...form, approverUserId: value })}
-              options={[{ value: '', label: 'Sem aprovador no momento' }, ...users.map((user) => ({ value: user.id, label: user.label }))]}
+              users={users}
+              emptyLabel="Sem aprovador no momento"
             />
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
@@ -1136,32 +1489,26 @@ function TaskDetailModal({
                 </section>
 
                 <section className="grid gap-4 rounded-2xl border border-slate-200 p-4 md:grid-cols-2">
-                  <FieldSelect
+                  <SearchableUserSelect
                     label="Responsável principal"
                     value={form.primaryAssigneeUserId}
                     onChange={(value) => onFormChange({ ...form, primaryAssigneeUserId: value })}
-                    options={users.map((user) => ({ value: user.id, label: user.label }))}
+                    users={users}
                   />
-                  <FieldSelect
+                  <SearchableUserSelect
                     label="Aprovador"
                     value={form.approverUserId}
                     onChange={(value) => onFormChange({ ...form, approverUserId: value })}
-                    options={[{ value: '', label: 'Sem aprovador no momento' }, ...users.map((user) => ({ value: user.id, label: user.label }))]}
+                    users={users}
+                    emptyLabel="Sem aprovador no momento"
                   />
                   <div className="md:col-span-2">
-                    <MultiUserChecklist
+                    <SearchableUserMultiSelect
                       label="Responsáveis adicionais"
                       currentUserId={currentUserId}
                       users={users}
                       selectedIds={form.assigneeUserIds}
-                      onToggle={(userId) =>
-                        onFormChange({
-                          ...form,
-                          assigneeUserIds: form.assigneeUserIds.includes(userId)
-                            ? form.assigneeUserIds.filter((id) => id !== userId)
-                            : [...form.assigneeUserIds, userId],
-                        })
-                      }
+                      onChange={(assigneeUserIds) => onFormChange({ ...form, assigneeUserIds })}
                     />
                   </div>
                 </section>
@@ -1464,44 +1811,6 @@ function FieldSelect({
           </option>
         ))}
       </select>
-    </div>
-  );
-}
-
-function MultiUserChecklist({
-  label,
-  currentUserId,
-  users,
-  selectedIds,
-  onToggle,
-}: {
-  label: string;
-  currentUserId: string;
-  users: Array<TaskUserOption & { label: string }>;
-  selectedIds: string[];
-  onToggle: (userId: string) => void;
-}) {
-  return (
-    <div>
-      <label className="mb-2 block text-sm font-medium text-slate-700">{label}</label>
-      <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 bg-white">
-        {users.map((user) => (
-          <label key={user.id} className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-3 py-2.5 last:border-b-0 hover:bg-slate-50">
-            <input
-              type="checkbox"
-              checked={selectedIds.includes(user.id)}
-              onChange={() => onToggle(user.id)}
-              className="h-4 w-4 rounded border-slate-300 text-[#17407E]"
-            />
-            <span className="min-w-0">
-              <span className="block truncate text-sm font-medium text-slate-800">
-                {user.id === currentUserId ? `${user.name} (você)` : user.name}
-              </span>
-              <span className="block truncate text-xs text-slate-500">{user.department || user.email}</span>
-            </span>
-          </label>
-        ))}
-      </div>
     </div>
   );
 }
