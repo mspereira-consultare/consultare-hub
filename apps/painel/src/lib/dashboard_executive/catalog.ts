@@ -47,7 +47,7 @@ export const EXECUTIVE_PROFILE_DEFINITIONS: ExecutiveProfileDefinition[] = [
 ];
 
 const WIDGETS: WidgetSeed[] = [
-  { key: 'tarefas', label: 'Tarefas', areaKey: 'operacao', status: 'planned', sourceKey: null, description: 'Pendências operacionais e tarefas do setor.' },
+  { key: 'tarefas', label: 'Tarefas', areaKey: 'operacao', status: 'available', sourceKey: 'tasks.dashboard', description: 'Pendências operacionais, aprovações e tarefas sob seu escopo.' },
   { key: 'aniversariantes_dia', label: 'Aniversariantes do dia', areaKey: 'pessoas', status: 'available', sourceKey: 'employees.dashboard', description: 'Colaboradores aniversariantes no período.' },
   { key: 'banco_horas', label: 'Banco de horas', areaKey: 'pessoas', status: 'planned', sourceKey: null, description: 'Saldo e alertas de banco de horas por setor.' },
   { key: 'estoque_vencendo', label: 'Estoque / produtos vencendo', areaKey: 'qualidade', status: 'planned', sourceKey: null, description: 'Itens com vencimento próximo ou expirado.' },

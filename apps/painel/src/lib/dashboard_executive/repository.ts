@@ -9,6 +9,8 @@ import { listRecruitmentDashboard } from '@/lib/recrutamento/repository';
 import { getMarketingControleSummary } from '@/lib/marketing_controle/repository';
 import { getMarketingFunnelSummary } from '@/lib/marketing_funil/repository';
 import { getSurveillanceSummary } from '@/lib/vigilancia_sanitaria/repository';
+import { getTaskDashboardSummary } from '@consultare/core/tasks/repository';
+import type { TaskViewerContext } from '@consultare/core/tasks/types';
 import {
   EXECUTIVE_PROFILE_DEFINITIONS,
   EXECUTIVE_PROFILE_WIDGET_DEFAULTS,
@@ -1494,6 +1496,45 @@ const getMarketingWidgets = async (db: DbInterface) => {
   ].filter(Boolean) as ExecutiveWidgetSnapshot[];
 };
 
+const getTasksWidget = async (db: DbInterface, scope: ExecutiveScope) => {
+  const viewer: TaskViewerContext = {
+    userId: scope.userId,
+    canViewAll: scope.profileKey === 'diretoria_gerencia_adm',
+  };
+  const summary = await getTaskDashboardSummary(db, viewer);
+  const openTasks = summary.byStatus
+    .filter((item) => item.status !== 'CONCLUIDA' && item.status !== 'CANCELADA')
+    .reduce((total, item) => total + item.count, 0);
+
+  const status: ExecutiveIndicatorStatus =
+    summary.overdueTasks > 0
+      ? 'DANGER'
+      : summary.awaitingApprovalTasks > 0 || summary.dueSoonTasks > 0
+        ? 'WARNING'
+        : openTasks > 0 || summary.approvedTasks > 0
+          ? 'SUCCESS'
+          : 'NO_DATA';
+
+  const note =
+    viewer.canViewAll
+      ? 'Resumo consolidado de tarefas do ambiente inteiro, alinhado com a governança global do painel.'
+      : 'Resumo das tarefas visíveis dentro do seu escopo executivo atual.';
+
+  return buildSummaryWidget(
+    'tarefas',
+    status,
+    new Date().toISOString(),
+    [
+      buildWidgetValue('Abertas', new Intl.NumberFormat('pt-BR').format(openTasks)),
+      buildWidgetValue('Vencidas', new Intl.NumberFormat('pt-BR').format(summary.overdueTasks)),
+      buildWidgetValue('A vencer', new Intl.NumberFormat('pt-BR').format(summary.dueSoonTasks)),
+      buildWidgetValue('Aguardando aprovação', new Intl.NumberFormat('pt-BR').format(summary.awaitingApprovalTasks)),
+      buildWidgetValue('Aprovadas', new Intl.NumberFormat('pt-BR').format(summary.approvedTasks)),
+    ],
+    note
+  );
+};
+
 const buildExecutiveWidgets = async (
   db: DbInterface,
   scope: ExecutiveScope,
@@ -1553,6 +1594,11 @@ const buildExecutiveWidgets = async (
   if (availableKeys.some((key) => ['google', 'investimento_ads', 'faturamento_campanha_conversao'].includes(key))) {
     const marketingWidgets = await getMarketingWidgets(db);
     widgets.push(...marketingWidgets.filter((widget) => availableKeys.includes(widget.key)));
+  }
+
+  if (availableKeys.includes('tarefas')) {
+    const tasksWidget = await getTasksWidget(db, scope);
+    if (tasksWidget) widgets.push(tasksWidget);
   }
 
   const definitionOrder = new Map(EXECUTIVE_WIDGET_DEFINITIONS.map((item) => [item.key, item.sortOrder]));
