@@ -289,6 +289,14 @@ const menuItems: MenuItem[] = [
     pageKey: "dashboard_executive_governance",
   },
   {
+    href: "/dashboard-executivo/tarefas",
+    label: "Governança de Tarefas",
+    icon: ClipboardList,
+    group: "SISTEMA",
+    roles: ["ADMIN", "GESTOR"],
+    pageKey: "dashboard_executive_governance",
+  },
+  {
     href: "/modelos-contrato",
     label: "Modelos de Contrato",
     icon: FileText,
