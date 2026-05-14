@@ -661,7 +661,12 @@ export const ensureTaskTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_task_comment_attachments_comment ON task_comment_attachments (comment_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_approval_task ON task_approval_requests (task_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_approval_active ON task_approval_requests (task_id, is_active)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_task_activity_task ON task_activity_log (task_id, created_at)`);
+  await safeCreateIndex(
+    db,
+    isMysqlProvider()
+      ? `CREATE INDEX idx_task_activity_task ON task_activity_log (task_id, created_at(32))`
+      : `CREATE INDEX idx_task_activity_task ON task_activity_log (task_id, created_at)`
+  );
 
   tablesEnsured = true;
 };
