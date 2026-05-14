@@ -1011,7 +1011,7 @@ function TaskDetailPanel({
                     </div>
                     <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">{task.comments.length}</span>
                   </div>
-                  <div className="mt-4 space-y-3">
+                  <div className="mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1">
                     {task.comments.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
                         Nenhum comentário registrado.
@@ -1088,7 +1088,7 @@ function TaskDetailPanel({
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <h3 className="font-semibold text-slate-900">Histórico recente</h3>
-                <div className="mt-4 space-y-3">
+                <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
                   {task.activity.length === 0 ? (
                     <p className="text-sm text-slate-500">Nenhum evento registrado.</p>
                   ) : (
