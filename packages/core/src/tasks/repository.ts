@@ -493,25 +493,35 @@ const buildFilterClause = (filters: TaskListFilters) => {
 };
 
 const nextProtocolNumber = async (db: DbInterface) => {
-  await db.execute(
-    `
-    INSERT INTO task_protocol_sequences (scope_key, last_value, updated_at)
-    VALUES (?, ?, ?)
-    ON CONFLICT(scope_key) DO NOTHING
-    `,
-    ['global', 0, NOW()]
-  );
+  if (isMysqlProvider()) {
+    await db.execute(
+      `
+      INSERT IGNORE INTO task_protocol_sequences (scope_key, sequence_value, updated_at)
+      VALUES (?, ?, ?)
+      `,
+      ['global', 0, NOW()]
+    );
+  } else {
+    await db.execute(
+      `
+      INSERT INTO task_protocol_sequences (scope_key, sequence_value, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(scope_key) DO NOTHING
+      `,
+      ['global', 0, NOW()]
+    );
+  }
 
   const rows = await db.query(
     isMysqlProvider()
-      ? `SELECT scope_key, last_value FROM task_protocol_sequences WHERE scope_key = ? LIMIT 1 FOR UPDATE`
-      : `SELECT scope_key, last_value FROM task_protocol_sequences WHERE scope_key = ? LIMIT 1`,
+      ? `SELECT scope_key, sequence_value FROM task_protocol_sequences WHERE scope_key = ? LIMIT 1 FOR UPDATE`
+      : `SELECT scope_key, sequence_value FROM task_protocol_sequences WHERE scope_key = ? LIMIT 1`,
     ['global']
   );
 
-  const current = parseIntSafe((rows[0] as Row | undefined)?.last_value, 0);
+  const current = parseIntSafe((rows[0] as Row | undefined)?.sequence_value, 0);
   const next = current + 1;
-  await db.execute(`UPDATE task_protocol_sequences SET last_value = ?, updated_at = ? WHERE scope_key = ?`, [next, NOW(), 'global']);
+  await db.execute(`UPDATE task_protocol_sequences SET sequence_value = ?, updated_at = ? WHERE scope_key = ?`, [next, NOW(), 'global']);
   return next;
 };
 
@@ -521,10 +531,12 @@ export const ensureTaskTables = async (db: DbInterface) => {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS task_protocol_sequences (
       scope_key VARCHAR(40) PRIMARY KEY,
-      last_value INTEGER NOT NULL DEFAULT 0,
+      sequence_value INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL
     )
   `);
+
+  await safeAddColumn(db, `ALTER TABLE task_protocol_sequences ADD COLUMN sequence_value INTEGER NOT NULL DEFAULT 0`);
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS tasks (
