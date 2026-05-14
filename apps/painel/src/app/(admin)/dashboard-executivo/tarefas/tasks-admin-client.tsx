@@ -393,15 +393,14 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   return (
     <main className="space-y-6">
       <section className={`${panelClassName} p-5`}>
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-          <div className="flex items-start gap-4">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#17407E] ring-1 ring-blue-100">
-              <ShieldCheck size={22} />
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#17407E] ring-1 ring-blue-100">
+              <ShieldCheck size={20} />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#229A8A]">Dashboard executivo</p>
-              <h1 className="mt-2 text-3xl font-semibold text-slate-900">Governança global de tarefas</h1>
-              <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-600">
+              <h1 className="text-2xl font-semibold text-slate-900">Governança de tarefas</h1>
+              <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
                 Acompanhe o ritmo da operação, identifique atrasos, monitore aprovações e acompanhe a execução das demandas criadas em toda a intranet.
               </p>
             </div>
@@ -435,7 +434,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <ExecutiveMetricCard label="Total de tarefas" value={summary?.totalTasks || 0} helper="Tudo sob escopo global" tone="neutral" icon={<FileText size={18} />} />
         <ExecutiveMetricCard label="A vencer" value={summary?.dueSoonTasks || 0} helper="Próximos 2 dias" tone="warning" icon={<Clock3 size={18} />} />
         <ExecutiveMetricCard label="Vencidas" value={summary?.overdueTasks || 0} helper="Prazos já expirados" tone="danger" icon={<AlertCircle size={18} />} />
@@ -711,11 +710,15 @@ function ExecutiveMetricCard({
   };
 
   return (
-    <div className={`rounded-2xl border p-4 shadow-sm ${styles[tone]}`}>
-      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/75 ring-1 ring-black/5">{icon}</div>
-      <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] opacity-80">{label}</p>
-      <div className="mt-2 text-2xl font-semibold">{value}</div>
-      <p className="mt-1 text-sm opacity-80">{helper}</p>
+    <div className={`rounded-xl border px-4 py-3 shadow-sm ${styles[tone]}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] opacity-80">{label}</p>
+          <div className="mt-2 text-2xl font-semibold leading-none">{value}</div>
+          <p className="mt-2 text-xs opacity-80">{helper}</p>
+        </div>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 ring-1 ring-black/5">{icon}</div>
+      </div>
     </div>
   );
 }
