@@ -292,7 +292,7 @@ const menuItems: MenuItem[] = [
     href: "/dashboard-executivo/tarefas",
     label: "Governança de Tarefas",
     icon: ClipboardList,
-    group: "SISTEMA",
+    group: "INTELIGÊNCIA",
     roles: ["ADMIN", "GESTOR"],
     pageKey: "dashboard_executive_governance",
   },

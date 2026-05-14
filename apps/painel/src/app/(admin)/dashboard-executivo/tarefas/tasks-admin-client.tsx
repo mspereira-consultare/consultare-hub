@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Calendar,
@@ -151,6 +152,13 @@ const normalizeError = async (response: Response) => {
   }
 };
 
+const normalizeText = (value: unknown) =>
+  String(value ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
 const formatDate = (value: string | null) => {
   if (!value) return 'Sem prazo';
   const date = new Date(`${value}T00:00:00`);
@@ -235,6 +243,8 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [summary, setSummary] = useState<TaskDashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshingBoard, setRefreshingBoard] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -245,11 +255,23 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const [form, setForm] = useState<TaskFormState>(defaultForm());
 
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
-  const queryString = useMemo(() => buildQueryString(filters), [filters]);
+  const deferredSearch = useDeferredValue(filters.search);
+  const appliedFilters = useMemo(
+    () => ({
+      ...filters,
+      search: deferredSearch,
+    }),
+    [deferredSearch, filters]
+  );
+  const queryString = useMemo(() => buildQueryString(appliedFilters), [appliedFilters]);
 
   const loadBoard = async (focusTaskId?: string) => {
-    setLoading(true);
     setError(null);
+    if (hasLoadedOnce) {
+      setRefreshingBoard(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const [tasksResponse, summaryResponse] = await Promise.all([
         fetch(`/api/admin/tasks${queryString ? `?${queryString}` : ''}`, { cache: 'no-store' }),
@@ -273,10 +295,12 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       setError(err instanceof Error ? err.message : 'Erro ao carregar visão global de tarefas.');
     } finally {
       setLoading(false);
+      setRefreshingBoard(false);
+      setHasLoadedOnce(true);
     }
   };
 
-  const loadTaskDetail = async (taskId: string) => {
+  const loadTaskDetail = async (taskId: string, openPanel = true) => {
     if (!taskId) return;
     setLoadingDetail(true);
     try {
@@ -286,12 +310,19 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       const task = payload.data as TaskDetail;
       setSelectedTask(task);
       setForm(taskToForm(task));
-      setDetailOpen(true);
+      if (openPanel) {
+        setDetailOpen(true);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar detalhes da tarefa.');
     } finally {
       setLoadingDetail(false);
     }
+  };
+
+  const openTaskDetail = async (taskId: string) => {
+    setSelectedTaskId(taskId);
+    await loadTaskDetail(taskId, true);
   };
 
   useEffect(() => {
@@ -300,10 +331,14 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   }, [queryString]);
 
   useEffect(() => {
-    if (!selectedTaskId) return;
-    void loadTaskDetail(selectedTaskId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTaskId]);
+    if (!successMessage) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setSuccessMessage(null);
+    }, 4000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [successMessage]);
 
   const boardByColumn = useMemo(
     () =>
@@ -347,7 +382,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       if (!response.ok) throw new Error(await normalizeError(response));
       setSuccessMessage('Tarefa atualizada com sucesso.');
       await loadBoard(selectedTask.id);
-      await loadTaskDetail(selectedTask.id);
+      await loadTaskDetail(selectedTask.id, false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar tarefa.');
     } finally {
@@ -357,21 +392,28 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
 
   return (
     <main className="space-y-6">
-      <section className="rounded-2xl bg-[#053F74] p-6 text-white shadow-sm">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">Dashboard executivo</p>
-            <h1 className="mt-3 text-3xl font-semibold">Governança global de tarefas</h1>
-            <p className="mt-3 max-w-4xl text-sm leading-6 text-blue-50">
-              Acompanhe o ritmo da operação, identifique gargalos por prioridade e aproveite uma visão única das tarefas criadas em toda a intranet.
-            </p>
+      <section className={`${panelClassName} p-5`}>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#17407E] ring-1 ring-blue-100">
+              <ShieldCheck size={22} />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#229A8A]">Dashboard executivo</p>
+              <h1 className="mt-2 text-3xl font-semibold text-slate-900">Governança global de tarefas</h1>
+              <p className="mt-3 max-w-4xl text-sm leading-6 text-slate-600">
+                Acompanhe o ritmo da operação, identifique atrasos, monitore aprovações e acompanhe a execução das demandas criadas em toda a intranet.
+              </p>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-2 xl:justify-end">
             <button
               type="button"
               onClick={() => setViewMode('KANBAN')}
-              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                viewMode === 'KANBAN' ? 'bg-white text-[#17407E]' : 'bg-white/10 text-white hover:bg-white/15'
+              className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition ${
+                viewMode === 'KANBAN'
+                  ? 'border-blue-200 bg-blue-50 text-[#17407E]'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
               <LayoutGrid size={16} />
@@ -380,8 +422,10 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
             <button
               type="button"
               onClick={() => setViewMode('LIST')}
-              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                viewMode === 'LIST' ? 'bg-white text-[#17407E]' : 'bg-white/10 text-white hover:bg-white/15'
+              className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition ${
+                viewMode === 'LIST'
+                  ? 'border-blue-200 bg-blue-50 text-[#17407E]'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
               }`}
             >
               <Table2 size={16} />
@@ -406,7 +450,13 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
               <h2 className="text-lg font-semibold text-slate-900">Filtros globais</h2>
               <p className="mt-1 text-sm text-slate-500">Cruze setor, responsáveis, aprovadores, prioridade e prazo para encontrar gargalos com rapidez.</p>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 xl:justify-end">
+              {refreshingBoard ? (
+                <span className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#17407E]">
+                  <Loader2 size={14} className="animate-spin" />
+                  Atualizando visão
+                </span>
+              ) : null}
               <button
                 type="button"
                 onClick={() => setFiltersOpen((current) => !current)}
@@ -448,24 +498,27 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
                   <option key={department} value={department}>{department}</option>
                 ))}
               </select>
-              <select value={filters.createdBy} onChange={(event) => setFilters((current) => ({ ...current, createdBy: event.target.value }))} className={inputClassName}>
-                <option value="all">Todos os criadores</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>{user.name}</option>
-                ))}
-              </select>
-              <select value={filters.assigneeUserId} onChange={(event) => setFilters((current) => ({ ...current, assigneeUserId: event.target.value }))} className={inputClassName}>
-                <option value="all">Todos os responsáveis</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>{user.name}</option>
-                ))}
-              </select>
-              <select value={filters.approverUserId} onChange={(event) => setFilters((current) => ({ ...current, approverUserId: event.target.value }))} className={inputClassName}>
-                <option value="all">Todos os aprovadores</option>
-                {users.map((user) => (
-                  <option key={user.id} value={user.id}>{user.name}</option>
-                ))}
-              </select>
+              <SearchableFilterSelect
+                label="Criador"
+                value={filters.createdBy}
+                onChange={(value) => setFilters((current) => ({ ...current, createdBy: value }))}
+                allLabel="Todos os criadores"
+                options={users.map((user) => ({ value: user.id, label: `${user.name} · ${user.department || user.email}` }))}
+              />
+              <SearchableFilterSelect
+                label="Responsável"
+                value={filters.assigneeUserId}
+                onChange={(value) => setFilters((current) => ({ ...current, assigneeUserId: value }))}
+                allLabel="Todos os responsáveis"
+                options={users.map((user) => ({ value: user.id, label: `${user.name} · ${user.department || user.email}` }))}
+              />
+              <SearchableFilterSelect
+                label="Aprovador"
+                value={filters.approverUserId}
+                onChange={(value) => setFilters((current) => ({ ...current, approverUserId: value }))}
+                allLabel="Todos os aprovadores"
+                options={users.map((user) => ({ value: user.id, label: `${user.name} · ${user.department || user.email}` }))}
+              />
               <select value={filters.priority} onChange={(event) => setFilters((current) => ({ ...current, priority: event.target.value }))} className={inputClassName}>
                 <option value="all">Todas as prioridades</option>
                 <option value="BAIXA">Baixa</option>
@@ -500,9 +553,9 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
             </div>
           ) : viewMode === 'KANBAN' ? (
             <div className="overflow-x-auto">
-              <div className="grid min-w-[1200px] grid-cols-5 gap-4">
+              <div className="grid min-w-[1200px] grid-cols-5 items-start gap-4">
                 {boardByColumn.map((column) => (
-                  <div key={column.key} className="flex min-h-[540px] flex-col rounded-2xl border border-slate-200 bg-slate-50/70">
+                  <div key={column.key} className="flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border border-slate-200 bg-slate-50/70">
                     <div className="border-b border-slate-200 px-4 py-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -512,7 +565,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
                         <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">{column.tasks.length}</span>
                       </div>
                     </div>
-                    <div className="flex-1 space-y-3 p-3">
+                    <div className="flex-1 space-y-3 overflow-y-auto p-3">
                       {column.tasks.length === 0 ? (
                         <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
                           Nenhuma tarefa nesta coluna
@@ -522,7 +575,9 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
                           <button
                             key={task.id}
                             type="button"
-                            onClick={() => setSelectedTaskId(task.id)}
+                            onClick={() => {
+                              void openTaskDetail(task.id);
+                            }}
                             className={`w-full rounded-xl border p-4 text-left shadow-sm transition hover:border-[#17407E] hover:shadow-md ${
                               selectedTaskId === task.id ? 'border-blue-200 bg-blue-50/50 ring-2 ring-blue-100' : 'border-slate-200 bg-white'
                             }`}
@@ -589,7 +644,9 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
                   {tasks.map((task) => (
                     <tr
                       key={task.id}
-                      onClick={() => setSelectedTaskId(task.id)}
+                      onClick={() => {
+                        void openTaskDetail(task.id);
+                      }}
                       className={`cursor-pointer transition hover:bg-blue-50/40 ${selectedTaskId === task.id ? 'bg-blue-50/70' : 'bg-white'}`}
                     >
                       <td className="px-4 py-4 font-semibold text-[#17407E]">{task.protocolId}</td>
@@ -654,11 +711,169 @@ function ExecutiveMetricCard({
   };
 
   return (
-    <div className={`rounded-2xl border p-5 shadow-sm ${styles[tone]}`}>
-      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/70 ring-1 ring-black/5">{icon}</div>
-      <p className="mt-4 text-xs font-semibold uppercase tracking-wide opacity-80">{label}</p>
-      <div className="mt-2 text-3xl font-semibold">{value}</div>
-      <p className="mt-2 text-sm opacity-80">{helper}</p>
+    <div className={`rounded-2xl border p-4 shadow-sm ${styles[tone]}`}>
+      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/75 ring-1 ring-black/5">{icon}</div>
+      <p className="mt-3 text-[11px] font-semibold uppercase tracking-[0.14em] opacity-80">{label}</p>
+      <div className="mt-2 text-2xl font-semibold">{value}</div>
+      <p className="mt-1 text-sm opacity-80">{helper}</p>
+    </div>
+  );
+}
+
+function SearchableFilterSelect({
+  label,
+  value,
+  onChange,
+  allLabel,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  allLabel: string;
+  options: Array<{ value: string; label: string }>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; minWidth: number } | null>(null);
+
+  const selectedOption = options.find((option) => option.value === value) || null;
+  const visibleOptions = useMemo(() => {
+    if (!searchTerm.trim()) return options;
+    const normalized = normalizeText(searchTerm);
+    return options.filter((option) => normalizeText(option.label).includes(normalized));
+  }, [options, searchTerm]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setDropdownStyle({
+        top: rect.bottom + 8,
+        left: rect.left,
+        minWidth: rect.width,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!containerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <label className="sr-only">{label}</label>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => {
+          setOpen((current) => !current);
+          setSearchTerm('');
+        }}
+        className={`${inputClassName} flex items-center justify-between gap-3 text-left`}
+      >
+        <span className="truncate">{selectedOption?.label || allLabel}</span>
+        <span className="text-xs text-slate-400">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && dropdownStyle
+        ? createPortal(
+            <div
+              ref={dropdownRef}
+              className="fixed z-[80] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              style={{
+                top: dropdownStyle.top,
+                left: dropdownStyle.left,
+                minWidth: dropdownStyle.minWidth,
+              }}
+            >
+              <div className="border-b border-slate-200 p-3">
+                <div className="relative">
+                  <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    autoFocus
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder={`Buscar ${label.toLowerCase()}`}
+                    className={`${inputClassName} pl-9`}
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-72 overflow-y-auto p-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange('all');
+                    setOpen(false);
+                    setSearchTerm('');
+                  }}
+                  className={`flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                    value === 'all' ? 'bg-blue-50 font-semibold text-[#17407E]' : 'text-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  {allLabel}
+                </button>
+                {visibleOptions.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-sm text-slate-500">Nenhum usuário encontrado.</div>
+                ) : (
+                  visibleOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        onChange(option.value);
+                        setOpen(false);
+                        setSearchTerm('');
+                      }}
+                      className={`flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                        value === option.value ? 'bg-blue-50 font-semibold text-[#17407E]' : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="truncate">{option.label}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
