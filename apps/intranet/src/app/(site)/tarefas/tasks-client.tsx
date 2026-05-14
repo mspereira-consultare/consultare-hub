@@ -318,7 +318,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     }
   };
 
-  const loadTaskDetail = async (taskId: string) => {
+  const loadTaskDetail = async (taskId: string, openModal = true) => {
     if (!taskId) return;
     setTaskLoading(true);
     try {
@@ -328,12 +328,19 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       const task = json.data as TaskDetail;
       setSelectedTask(task);
       setEditForm(taskToForm(task));
-      setDetailOpen(true);
+      if (openModal) {
+        setDetailOpen(true);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar detalhes da tarefa.');
     } finally {
       setTaskLoading(false);
     }
+  };
+
+  const openTaskDetail = async (taskId: string) => {
+    setSelectedTaskId(taskId);
+    await loadTaskDetail(taskId, true);
   };
 
   useEffect(() => {
@@ -343,10 +350,14 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   }, []);
 
   useEffect(() => {
-    if (!selectedTaskId) return;
-    void loadTaskDetail(selectedTaskId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTaskId]);
+    if (!successMessage) return undefined;
+
+    const timeoutId = window.setTimeout(() => {
+      setSuccessMessage(null);
+    }, 4000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [successMessage]);
 
   const visibleTasks = useMemo(() => {
     const term = normalizeText(search);
@@ -443,7 +454,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       closeCreate();
       setSuccessMessage(`Tarefa ${task.protocolId} criada com sucesso.`);
       await loadTasks(task.id);
-      await loadTaskDetail(task.id);
+      await loadTaskDetail(task.id, true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao criar tarefa.');
     } finally {
@@ -486,7 +497,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
 
       setDetailTaskFiles([]);
       await loadTasks(selectedTask.id);
-      await loadTaskDetail(selectedTask.id);
+      await loadTaskDetail(selectedTask.id, detailOpen);
       setSuccessMessage('Tarefa atualizada com sucesso.');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao atualizar tarefa.');
@@ -506,8 +517,10 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       });
       if (!response.ok) throw new Error(await normalizeError(response));
       await loadTasks(task.id);
-      if (selectedTaskId === task.id) await loadTaskDetail(task.id);
       setSuccessMessage(`Tarefa ${task.protocolId} movida para ${statusLabelMap[status]}.`);
+      if (detailOpen && selectedTaskId === task.id) {
+        await loadTaskDetail(task.id, false);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao mover tarefa.');
     } finally {
@@ -542,7 +555,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       setCommentBody('');
       setCommentFiles([]);
       await loadTasks(selectedTask.id);
-      await loadTaskDetail(selectedTask.id);
+      await loadTaskDetail(selectedTask.id, detailOpen);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao comentar tarefa.');
     } finally {
@@ -566,7 +579,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       if (!response.ok) throw new Error(await normalizeError(response));
       setApprovalNotes('');
       await loadTasks(selectedTask.id);
-      await loadTaskDetail(selectedTask.id);
+      await loadTaskDetail(selectedTask.id, detailOpen);
       setSuccessMessage('Solicitação de aprovação enviada.');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao solicitar aprovação.');
@@ -591,7 +604,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       if (!response.ok) throw new Error(await normalizeError(response));
       setDecisionNotes('');
       await loadTasks(selectedTask.id);
-      await loadTaskDetail(selectedTask.id);
+      await loadTaskDetail(selectedTask.id, detailOpen);
       setSuccessMessage(`Solicitação ${approvalLabelMap[decisionStatus].toLowerCase()} com sucesso.`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao decidir aprovação.');
@@ -685,9 +698,9 @@ export function TasksClient({ currentUser }: TasksClientProps) {
               Carregando tarefas...
             </div>
           ) : (
-            <div className="grid min-w-[1200px] grid-cols-5 gap-4">
+            <div className="grid min-w-[1200px] grid-cols-5 items-start gap-4">
               {boardByColumn.map((column) => (
-                <div key={column.key} className="flex min-h-[520px] flex-col rounded-2xl border border-slate-200 bg-slate-50/70">
+                <div key={column.key} className="flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border border-slate-200 bg-slate-50/70">
                   <div className="border-b border-slate-200 px-4 py-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -699,17 +712,26 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                       </span>
                     </div>
                   </div>
-                  <div className="flex-1 space-y-3 p-3">
+                  <div className="flex-1 space-y-3 overflow-y-auto p-3">
                     {column.tasks.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
                         Nenhuma tarefa nesta coluna
                       </div>
                     ) : (
                       column.tasks.map((task) => (
-                        <button
+                        <div
                           key={task.id}
-                          type="button"
-                          onClick={() => setSelectedTaskId(task.id)}
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => {
+                            void openTaskDetail(task.id);
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter' || event.key === ' ') {
+                              event.preventDefault();
+                              void openTaskDetail(task.id);
+                            }
+                          }}
                           className={`w-full text-left ${cardBaseClassName} ${getTaskTone(task)} ${
                             selectedTaskId === task.id ? 'ring-2 ring-blue-200' : ''
                           }`}
@@ -771,7 +793,12 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                           </div>
                           <div className="mt-3 flex flex-wrap gap-2">
                             {canMoveBackward(column.key) ? (
-                              <SmallActionButton onClick={(event) => { event.stopPropagation(); void moveTask(task, previousStatus(column.key)); }}>
+                              <SmallActionButton
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  void moveTask(task, previousStatus(column.key));
+                                }}
+                              >
                                 Voltar
                               </SmallActionButton>
                             ) : null}
@@ -785,7 +812,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                               </SmallActionButton>
                             ) : null}
                           </div>
-                        </button>
+                        </div>
                       ))
                     )}
                   </div>
