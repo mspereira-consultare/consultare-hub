@@ -65,6 +65,11 @@ const isMysqlProvider = () => {
   return Boolean(process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL);
 };
 
+const userIdEqualsSql = (column: string) =>
+  isMysqlProvider()
+    ? `${column} COLLATE utf8mb4_unicode_ci = ? COLLATE utf8mb4_unicode_ci`
+    : `${column} = ?`;
+
 const safeCreateIndex = async (db: DbInterface, sql: string) => {
   try {
     await db.execute(sql);
@@ -122,14 +127,18 @@ const parseDate = (value: unknown): string | null => {
 const serializePayload = (payload: Record<string, unknown> | null) => (payload ? JSON.stringify(payload) : null);
 
 const ensureUserIsActive = async (db: DbInterface, userId: string) => {
+  const cleanUserId = clean(userId);
+  if (!cleanUserId) {
+    throw new TaskValidationError('Usuário informado não está ativo ou não existe.', 404);
+  }
   const rows = await db.query(
     `
     SELECT id
     FROM users
-    WHERE id = ? AND UPPER(COALESCE(status, 'ATIVO')) = 'ATIVO'
+    WHERE ${userIdEqualsSql('id')} AND UPPER(TRIM(COALESCE(status, 'ATIVO'))) = 'ATIVO'
     LIMIT 1
     `,
-    [userId]
+    [cleanUserId]
   );
   if (!rows[0]) {
     throw new TaskValidationError('Usuário informado não está ativo ou não existe.', 404);
@@ -152,10 +161,10 @@ const ensureViewerCanAccessTask = async (db: DbInterface, taskId: string, viewer
     LEFT JOIN task_assignees a ON a.task_id = t.id
     WHERE t.id = ?
       AND (
-        t.created_by = ?
-        OR t.primary_assignee_user_id = ?
-        OR t.approver_user_id = ?
-        OR a.user_id = ?
+        ${userIdEqualsSql('t.created_by')}
+        OR ${userIdEqualsSql('t.primary_assignee_user_id')}
+        OR ${userIdEqualsSql('t.approver_user_id')}
+        OR ${userIdEqualsSql('a.user_id')}
       )
     LIMIT 1
     `,
@@ -409,13 +418,13 @@ const buildListScopeClause = (viewer: TaskViewerContext) => {
   return {
     clause: `
       (
-        t.created_by = ?
-        OR t.primary_assignee_user_id = ?
-        OR t.approver_user_id = ?
+        ${userIdEqualsSql('t.created_by')}
+        OR ${userIdEqualsSql('t.primary_assignee_user_id')}
+        OR ${userIdEqualsSql('t.approver_user_id')}
         OR EXISTS (
           SELECT 1
           FROM task_assignees a
-          WHERE a.task_id = t.id AND a.user_id = ?
+          WHERE a.task_id = t.id AND ${userIdEqualsSql('a.user_id')}
         )
       )
     `,
