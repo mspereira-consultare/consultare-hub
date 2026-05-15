@@ -11,6 +11,7 @@ import {
   Clock3,
   FileText,
   Filter,
+  LayoutGrid,
   Loader2,
   MessageCircle,
   Paperclip,
@@ -19,6 +20,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  Table2,
   UserCheck,
   Users,
   X,
@@ -49,6 +51,8 @@ type CurrentUser = {
 type TasksClientProps = {
   currentUser: CurrentUser;
 };
+
+type ViewMode = 'KANBAN' | 'LIST';
 
 type FilterKey =
   | 'ALL'
@@ -323,6 +327,7 @@ const compareTasks = (left: TaskSummary, right: TaskSummary) => {
 };
 
 export function TasksClient({ currentUser }: TasksClientProps) {
+  const [viewMode, setViewMode] = useState<ViewMode>('KANBAN');
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [users, setUsers] = useState<TaskUserOption[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState('');
@@ -840,16 +845,42 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 p-5">
           <div className="flex flex-col gap-4">
-            <div className="max-w-5xl">
-              <div className="relative">
-                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Buscar por protocolo, título, descrição ou setor"
-                  className={`${inputClassName} pl-9`}
-                />
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+              <div className="max-w-5xl flex-1">
+                <div className="relative">
+                  <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    placeholder="Buscar por protocolo, título, descrição ou setor"
+                    className={`${inputClassName} pl-9`}
+                  />
+                </div>
               </div>
+              {!isRetiredFilter(activeFilter) ? (
+                <div className="inline-flex items-center gap-2 self-start rounded-2xl bg-slate-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('KANBAN')}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                      viewMode === 'KANBAN' ? 'bg-white text-[#17407E] shadow-sm' : 'text-slate-600 hover:text-slate-800'
+                    }`}
+                  >
+                    <LayoutGrid size={16} />
+                    Kanban
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('LIST')}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                      viewMode === 'LIST' ? 'bg-white text-[#17407E] shadow-sm' : 'text-slate-600 hover:text-slate-800'
+                    }`}
+                  >
+                    <Table2 size={16} />
+                    Lista
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
@@ -945,6 +976,59 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                     </div>
                   </button>
                 ))}
+              </div>
+            )
+          ) : viewMode === 'LIST' ? (
+            visibleTasks.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                Nenhuma tarefa encontrada neste recorte.
+              </div>
+            ) : (
+              <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+                <div className="grid grid-cols-[160px_minmax(0,1.5fr)_140px_180px_160px_130px] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <span>Protocolo</span>
+                  <span>Tarefa</span>
+                  <span>Prioridade</span>
+                  <span>Responsável</span>
+                  <span>Prazo</span>
+                  <span>Status</span>
+                </div>
+                <div className="divide-y divide-slate-200">
+                  {visibleTasks.sort(compareTasks).map((task) => (
+                    <button
+                      key={task.id}
+                      type="button"
+                      onClick={() => {
+                        void openTaskDetail(task.id);
+                      }}
+                      className="grid w-full grid-cols-[160px_minmax(0,1.5fr)_140px_180px_160px_130px] gap-3 px-4 py-4 text-left transition hover:bg-slate-50"
+                    >
+                      <span className="text-xs font-semibold uppercase tracking-wide text-[#17407E]">{task.protocolId}</span>
+                      <span className="min-w-0">
+                        <span className="block truncate font-semibold text-slate-900">{task.title}</span>
+                        <span className="mt-1 block truncate text-sm text-slate-500">{task.department}</span>
+                      </span>
+                      <span>
+                        <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold ${priorityStyles[task.priority]}`}>
+                          {priorityLabelMap[task.priority]}
+                        </span>
+                      </span>
+                      <span className="truncate text-sm text-slate-600">
+                        {task.primaryAssigneeUserId
+                          ? task.primaryAssigneeUserId === currentUser.id
+                            ? 'Você'
+                            : usersById.get(task.primaryAssigneeUserId)?.name || 'Atribuído'
+                          : 'Sem responsável'}
+                      </span>
+                      <span className="text-sm text-slate-600">{formatDate(task.dueDate)}</span>
+                      <span>
+                        <span className="inline-flex rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-700 ring-1 ring-slate-200">
+                          {statusLabelMap[task.status]}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
               </div>
             )
           ) : (
