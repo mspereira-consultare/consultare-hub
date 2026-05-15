@@ -33,6 +33,7 @@ import {
   Wrench,
   ShieldCheck,
   ExternalLink,
+  Bot,
 } from "lucide-react";
 import { hasPermission, type PageKey } from "@/lib/permissions";
 
@@ -295,6 +296,14 @@ const menuItems: MenuItem[] = [
     group: "INTELIGÊNCIA",
     roles: ["ADMIN", "GESTOR"],
     pageKey: "dashboard_executive_governance",
+  },
+  {
+    href: "/intranet/chatbot",
+    label: "Chatbot da Intranet",
+    icon: Bot,
+    group: "SISTEMA",
+    roles: ["ADMIN", "GESTOR"],
+    pageKey: "intranet_chatbot",
   },
   {
     href: "/modelos-contrato",

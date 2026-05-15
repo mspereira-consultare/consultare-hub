@@ -1,4 +1,5 @@
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import type { ElementType } from 'react';
 import type { PageKey } from '@consultare/core/permissions';
 import {
@@ -144,6 +145,40 @@ export default async function IntranetAdminModulePage({ params }: { params: Prom
 
   if (module === 'chat') {
     return <ChatAdmin canEdit={editAuth.ok} />;
+  }
+
+  if (module === 'chatbot') {
+    const painelUrl = String(process.env.PAINEL_PUBLIC_URL || process.env.NEXT_PUBLIC_PAINEL_URL || '').trim();
+    return (
+      <AdminModuleShell
+        icon={moduleConfig.icon}
+        eyebrow="Gestão centralizada no painel"
+        title={moduleConfig.title}
+        description={moduleConfig.description}
+      >
+        <section className="p-5">
+          <div className="rounded-md border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600">
+            A administração da base de conhecimento, upload de documentos, indexação e fila editorial do chatbot foi
+            centralizada no app painel para o V1.
+          </div>
+          {painelUrl ? (
+            <Link
+              href={`${painelUrl.replace(/\/+$/g, '')}/intranet/chatbot`}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-5 inline-flex rounded-md bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              Abrir gestão no painel
+            </Link>
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">
+              Configure `PAINEL_PUBLIC_URL` ou `NEXT_PUBLIC_PAINEL_URL` para exibir o atalho direto até a gestão no
+              painel.
+            </p>
+          )}
+        </section>
+      </AdminModuleShell>
+    );
   }
 
   return (

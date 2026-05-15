@@ -8,6 +8,7 @@
     "./auth": "./src/auth.ts",
     "./db": "./src/db.ts",
     "./intranet/catalog": "./src/intranet/catalog.ts",
+    "./intranet/chatbot": "./src/intranet/chatbot.ts",
     "./intranet/repository": "./src/intranet/repository.ts",
     "./permissions": "./src/permissions.ts",
     "./permissions-server": "./src/permissions_server.ts",

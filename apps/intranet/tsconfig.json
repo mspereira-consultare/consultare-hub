@@ -23,6 +23,7 @@
       "@consultare/core/auth": ["../../packages/core/src/auth.ts"],
       "@consultare/core/db": ["../../packages/core/src/db.ts"],
       "@consultare/core/intranet/catalog": ["../../packages/core/src/intranet/catalog.ts"],
+      "@consultare/core/intranet/chatbot": ["../../packages/core/src/intranet/chatbot.ts"],
       "@consultare/core/intranet/repository": ["../../packages/core/src/intranet/repository.ts"],
       "@consultare/core/tasks/types": ["../../packages/core/src/tasks/types.ts"],
       "@consultare/core/tasks/repository": ["../../packages/core/src/tasks/repository.ts"],
