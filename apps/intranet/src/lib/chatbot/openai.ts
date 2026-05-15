@@ -100,7 +100,6 @@ export const answerWithCitations = async (input: {
     },
     body: JSON.stringify({
       model: getChatModel(),
-      temperature: 0.1,
       response_format: { type: 'json_object' },
       messages: [
         {
@@ -154,4 +153,3 @@ export const answerWithCitations = async (input: {
       : [],
   };
 };
-
