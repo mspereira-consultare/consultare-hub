@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Bot, Loader2, MessageSquarePlus, Send, Sparkles } from 'lucide-react';
 
 type ChatSession = {
@@ -322,7 +322,17 @@ export function ChatbotClient() {
           if (event.type === 'done') {
             doneReceived = true;
             const persisted = event.payload.message;
-            setMessages((current) => current.map((message) => (message.id === tempAssistantIdRef.current ? persisted : message)));
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === tempAssistantIdRef.current
+                  ? {
+                      ...persisted,
+                      isStreaming: false,
+                      statusLabel: null,
+                    }
+                  : message
+              )
+            );
             setSessions((current) =>
               upsertSession(current, {
                 id: persisted.sessionId,
@@ -365,15 +375,32 @@ export function ChatbotClient() {
     } finally {
       setSending(false);
       setStreamPhase(null);
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === tempAssistantIdRef.current
+            ? {
+                ...item,
+                isStreaming: false,
+                statusLabel: null,
+              }
+            : item
+        )
+      );
       streamSessionIdRef.current = '';
       tempAssistantIdRef.current = '';
       tempUserIdRef.current = '';
     }
   };
 
+  const handleQuestionKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    event.preventDefault();
+    void sendQuestion();
+  };
+
   return (
-    <section className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-      <aside className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section className="grid h-[calc(100vh-13rem)] min-h-[680px] gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <aside className="flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
           <div>
             <p className="text-sm font-semibold text-slate-900">Conversas</p>
@@ -389,7 +416,7 @@ export function ChatbotClient() {
             Nova
           </button>
         </div>
-        <div className="max-h-[68vh] overflow-y-auto p-3">
+        <div className="min-h-0 flex-1 overflow-y-auto p-3">
           {loadingSessions ? (
             <div className="flex items-center justify-center py-10 text-sm text-slate-500">
               <Loader2 size={16} className="mr-2 animate-spin" />
@@ -422,7 +449,7 @@ export function ChatbotClient() {
         </div>
       </aside>
 
-      <div className="flex min-h-[70vh] flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex h-full min-h-0 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#17407E]">
@@ -439,7 +466,7 @@ export function ChatbotClient() {
 
         {error ? <div className="border-b border-rose-100 bg-rose-50 px-5 py-3 text-sm text-rose-700">{error}</div> : null}
 
-        <div className="flex-1 overflow-y-auto px-5 py-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           {loadingMessages ? (
             <div className="flex items-center justify-center py-16 text-sm text-slate-500">
               <Loader2 size={16} className="mr-2 animate-spin" />
@@ -511,6 +538,7 @@ export function ChatbotClient() {
             <textarea
               value={question}
               onChange={(event) => setQuestion(event.target.value)}
+              onKeyDown={handleQuestionKeyDown}
               placeholder="Digite sua pergunta sobre a empresa, processos, documentos ou serviços..."
               className="min-h-[110px] w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100"
             />
