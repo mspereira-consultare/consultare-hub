@@ -304,6 +304,56 @@ const cosineSimilarity = (left: number[], right: number[]) => {
   return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
 };
 
+const INSTITUTIONAL_QUERY_TERMS = [
+  'unidade',
+  'unidades',
+  'clinica',
+  'clínica',
+  'enderecos',
+  'endereços',
+  'endereco',
+  'endereço',
+  'empresa',
+  'consultare',
+  'localizacao',
+  'localização',
+  'onde fica',
+  'filial',
+  'filiais',
+];
+
+const PROFESSIONAL_QUERY_TERMS = [
+  'medico',
+  'médico',
+  'medica',
+  'médica',
+  'doutor',
+  'doutora',
+  'profissional',
+  'profissionais',
+  'especialidade',
+  'especialidades',
+  'consulta',
+  'consultas',
+  'atende',
+  'atendem',
+];
+
+const normalizeForMatching = (value: string) =>
+  normalizeText(value)
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const countKeywordMatches = (haystack: string, needles: string[]) => {
+  if (!haystack) return 0;
+  let matches = 0;
+  for (const needle of needles) {
+    if (haystack.includes(normalizeForMatching(needle))) matches += 1;
+  }
+  return matches;
+};
+
 const userMatchesAudience = async (db: DbInterface, audienceGroupId: string, user: ChatbotViewer) => {
   const assignments = await safeQuery(
     db,
@@ -1052,18 +1102,59 @@ export const rankKnowledgeChunks = async (
   db: DbInterface,
   user: ChatbotViewer,
   questionEmbedding: number[],
+  questionTextRaw = '',
   limitRaw = 6
 ) => {
   const chunks = await listKnowledgeChunksForUser(db, user);
   const limit = Math.max(1, Math.min(12, Number(limitRaw || 6)));
-  return chunks
-    .map((chunk) => ({
-      ...chunk,
-      score: cosineSimilarity(questionEmbedding, chunk.embeddingJson),
-    }))
+  const questionText = normalizeForMatching(questionTextRaw);
+  const institutionalIntent = countKeywordMatches(questionText, INSTITUTIONAL_QUERY_TERMS) > 0;
+  const professionalIntent = countKeywordMatches(questionText, PROFESSIONAL_QUERY_TERMS) > 0;
+
+  const ranked = chunks
+    .map((chunk) => {
+      const semanticScore = cosineSimilarity(questionEmbedding, chunk.embeddingJson);
+      const titleText = normalizeForMatching(chunk.sourceTitle || '');
+      const bodyText = normalizeForMatching(chunk.chunkText || '');
+      const titleMatchScore = questionText ? countKeywordMatches(titleText, questionText.split(' ').filter(Boolean)) : 0;
+      const bodyMatchScore = questionText ? countKeywordMatches(bodyText, questionText.split(' ').filter(Boolean)) : 0;
+
+      let intentAdjustment = 0;
+      if (institutionalIntent && !professionalIntent) {
+        if (chunk.sourceType === 'professional') intentAdjustment -= 0.08;
+        if (chunk.sourceType === 'page' || chunk.sourceType === 'faq') intentAdjustment += 0.04;
+      }
+      if (professionalIntent) {
+        if (chunk.sourceType === 'professional') intentAdjustment += 0.06;
+      }
+
+      return {
+        ...chunk,
+        score:
+          semanticScore +
+          Math.min(0.06, titleMatchScore * 0.015) +
+          Math.min(0.04, bodyMatchScore * 0.004) +
+          intentAdjustment,
+      };
+    })
     .filter((chunk) => chunk.score > 0.1)
-    .sort((left, right) => right.score - left.score)
-    .slice(0, limit);
+    .sort((left, right) => right.score - left.score);
+
+  if (!(institutionalIntent && !professionalIntent)) {
+    return ranked.slice(0, limit);
+  }
+
+  const selected: typeof ranked = [];
+  let professionalCount = 0;
+
+  for (const chunk of ranked) {
+    if (chunk.sourceType === 'professional' && professionalCount >= 1) continue;
+    selected.push(chunk);
+    if (chunk.sourceType === 'professional') professionalCount += 1;
+    if (selected.length >= limit) break;
+  }
+
+  return selected;
 };
 
 export const listChatbotSessions = async (db: DbInterface, userId: string) => {

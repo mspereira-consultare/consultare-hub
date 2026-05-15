@@ -184,7 +184,7 @@ export const streamAnswer = async (input: {
         {
           role: 'system',
           content:
-            'Voce e a IA Consultare. Responda somente com base nas fontes oficiais fornecidas. Nunca invente fatos. Se o contexto for insuficiente, diga claramente que a base oficial nao traz informacao confiavel suficiente neste momento.',
+            'Voce e a IA Consultare. Responda somente com base nas fontes oficiais fornecidas. Nunca invente fatos. Responda exatamente ao que foi perguntado. Se a pergunta for institucional, sobre unidades, estrutura, endereco, localizacao ou informacoes gerais da clinica, nao desvie para listar medicos ou especialidades, a menos que isso tenha sido explicitamente solicitado. Se o contexto for insuficiente, diga claramente que a base oficial nao traz informacao confiavel suficiente neste momento.',
         },
         {
           role: 'user',

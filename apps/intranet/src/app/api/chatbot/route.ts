@@ -79,7 +79,7 @@ export async function POST(request: Request) {
             await syncPublishedKnowledgeSources(auth.db);
 
             const { embedding } = await embedText(question);
-            const ranked = await rankKnowledgeChunks(auth.db, auth.user, embedding, 6);
+            const ranked = await rankKnowledgeChunks(auth.db, auth.user, embedding, question, 6);
 
             if (!ranked.length) {
               await createUnansweredQuestion(auth.db, {
