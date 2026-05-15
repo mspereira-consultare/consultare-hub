@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Bot, Loader2, MessageSquarePlus, Send, Sparkles } from 'lucide-react';
 
 type ChatSession = {
@@ -17,7 +17,19 @@ type ChatMessage = {
   content: string;
   sourcesJson: Array<{ sourceId: string; title: string; url: string | null }>;
   createdAt: string;
+  isStreaming?: boolean;
+  statusLabel?: string | null;
+  isError?: boolean;
 };
+
+type StreamEvent =
+  | { type: 'session'; payload: { sessionId: string } }
+  | { type: 'user_message'; payload: { message: ChatMessage } }
+  | { type: 'status'; payload: { code: string; label: string } }
+  | { type: 'delta'; payload: { content: string } }
+  | { type: 'sources'; payload: { sources: Array<{ sourceId: string; title: string; url: string | null }> } }
+  | { type: 'done'; payload: { sessionId: string; message: ChatMessage } }
+  | { type: 'error'; payload: { message: string } };
 
 const formatDateTime = (value: string) => {
   const date = new Date(value);
@@ -34,6 +46,39 @@ const normalizeError = async (response: Response) => {
   }
 };
 
+const parseStreamEvents = (chunk: string) => {
+  const events: StreamEvent[] = [];
+  const blocks = chunk.split('\n\n');
+
+  for (const block of blocks) {
+    const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
+    if (!lines.length) continue;
+    const eventLine = lines.find((line) => line.startsWith('event:'));
+    const dataLine = lines.filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n');
+    if (!eventLine || !dataLine) continue;
+
+    const type = eventLine.slice(6).trim() as StreamEvent['type'];
+    try {
+      events.push({ type, payload: JSON.parse(dataLine) } as StreamEvent);
+    } catch {
+      continue;
+    }
+  }
+
+  return events;
+};
+
+const upsertSession = (sessions: ChatSession[], next: ChatSession) => {
+  const merged = [next, ...sessions.filter((item) => item.id !== next.id)];
+  return merged.sort((left, right) => String(right.updatedAt).localeCompare(String(left.updatedAt)));
+};
+
+const TYPING_STATUS_BY_CODE: Record<string, string> = {
+  buscando_fontes: 'Buscando fontes oficiais...',
+  pensando: 'Pensando...',
+  gerando_resposta: 'Escrevendo a resposta...',
+};
+
 export function ChatbotClient() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [selectedSessionId, setSelectedSessionId] = useState('');
@@ -43,6 +88,11 @@ export function ChatbotClient() {
   const [sending, setSending] = useState(false);
   const [question, setQuestion] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [streamPhase, setStreamPhase] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const streamSessionIdRef = useRef<string>('');
+  const tempAssistantIdRef = useRef<string>('');
+  const tempUserIdRef = useRef<string>('');
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedSessionId) || null,
@@ -58,7 +108,7 @@ export function ChatbotClient() {
       const json = await response.json();
       const data = Array.isArray(json.data) ? (json.data as ChatSession[]) : [];
       setSessions(data);
-      setSelectedSessionId(focusSessionId || data[0]?.id || '');
+      setSelectedSessionId((current) => focusSessionId || current || data[0]?.id || '');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar conversas.');
     } finally {
@@ -71,6 +121,7 @@ export function ChatbotClient() {
       setMessages([]);
       return;
     }
+    if (sending && streamSessionIdRef.current === sessionId) return;
     setLoadingMessages(true);
     setError(null);
     try {
@@ -93,6 +144,10 @@ export function ChatbotClient() {
     void loadMessages(selectedSessionId);
   }, [selectedSessionId]);
 
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages, streamPhase]);
+
   const createSession = async () => {
     setSending(true);
     setError(null);
@@ -105,7 +160,8 @@ export function ChatbotClient() {
       if (!response.ok) throw new Error(await normalizeError(response));
       const json = await response.json();
       const session = json.data as ChatSession;
-      await loadSessions(session.id);
+      setSessions((current) => upsertSession(current, session));
+      setSelectedSessionId(session.id);
       setMessages([]);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao criar conversa.');
@@ -115,28 +171,203 @@ export function ChatbotClient() {
   };
 
   const sendQuestion = async () => {
-    if (!question.trim() || sending) return;
-    setSending(true);
+    const text = question.trim();
+    if (!text || sending) return;
+
+    const stamp = new Date().toISOString();
+    const tempUserId = `temp-user-${Date.now()}`;
+    const tempAssistantId = `temp-assistant-${Date.now()}`;
+    tempUserIdRef.current = tempUserId;
+    tempAssistantIdRef.current = tempAssistantId;
+    streamSessionIdRef.current = selectedSessionId;
+
+    const optimisticUserMessage: ChatMessage = {
+      id: tempUserId,
+      sessionId: selectedSessionId || 'pending',
+      role: 'user',
+      content: text,
+      sourcesJson: [],
+      createdAt: stamp,
+    };
+
+    const optimisticAssistantMessage: ChatMessage = {
+      id: tempAssistantId,
+      sessionId: selectedSessionId || 'pending',
+      role: 'assistant',
+      content: '',
+      sourcesJson: [],
+      createdAt: stamp,
+      isStreaming: true,
+      statusLabel: TYPING_STATUS_BY_CODE.buscando_fontes,
+    };
+
     setError(null);
+    setSending(true);
+    setQuestion('');
+    setStreamPhase('buscando_fontes');
+    setMessages((current) => [...current, optimisticUserMessage, optimisticAssistantMessage]);
+
+    let doneReceived = false;
+
     try {
       const response = await fetch('/api/chatbot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           sessionId: selectedSessionId || undefined,
-          question: question.trim(),
+          question: text,
         }),
       });
       if (!response.ok) throw new Error(await normalizeError(response));
-      const json = await response.json();
-      const nextSessionId = String(json.data?.sessionId || '');
-      setQuestion('');
-      await loadSessions(nextSessionId);
-      await loadMessages(nextSessionId);
+      if (!response.body) throw new Error('A resposta do chatbot nao retornou streaming.');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+
+        for (const event of parts.flatMap((part) => parseStreamEvents(part))) {
+          if (event.type === 'session') {
+            const nextSessionId = String(event.payload.sessionId || '').trim();
+            if (!nextSessionId) continue;
+            streamSessionIdRef.current = nextSessionId;
+            setSelectedSessionId(nextSessionId);
+            setSessions((current) =>
+              upsertSession(current, {
+                id: nextSessionId,
+                title: text.slice(0, 120),
+                startedAt: stamp,
+                updatedAt: stamp,
+              })
+            );
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === tempUserId || message.id === tempAssistantId
+                  ? { ...message, sessionId: nextSessionId }
+                  : message
+              )
+            );
+            continue;
+          }
+
+          if (event.type === 'user_message') {
+            const persisted = event.payload.message;
+            setMessages((current) => current.map((message) => (message.id === tempUserId ? persisted : message)));
+            setSessions((current) =>
+              upsertSession(current, {
+                id: persisted.sessionId,
+                title: selectedSession?.title || text.slice(0, 120),
+                startedAt: stamp,
+                updatedAt: persisted.createdAt,
+              })
+            );
+            continue;
+          }
+
+          if (event.type === 'status') {
+            setStreamPhase(String(event.payload.code || 'pensando'));
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === tempAssistantIdRef.current
+                  ? {
+                      ...message,
+                      statusLabel:
+                        String(event.payload.label || '').trim() ||
+                        TYPING_STATUS_BY_CODE[String(event.payload.code || '')] ||
+                        'Pensando...',
+                    }
+                  : message
+              )
+            );
+            continue;
+          }
+
+          if (event.type === 'delta') {
+            setStreamPhase('gerando_resposta');
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === tempAssistantIdRef.current
+                  ? {
+                      ...message,
+                      content: `${message.content}${String(event.payload.content || '')}`,
+                      statusLabel: TYPING_STATUS_BY_CODE.gerando_resposta,
+                    }
+                  : message
+              )
+            );
+            continue;
+          }
+
+          if (event.type === 'sources') {
+            setMessages((current) =>
+              current.map((message) =>
+                message.id === tempAssistantIdRef.current
+                  ? {
+                      ...message,
+                      sourcesJson: Array.isArray(event.payload.sources) ? event.payload.sources : [],
+                    }
+                  : message
+              )
+            );
+            continue;
+          }
+
+          if (event.type === 'done') {
+            doneReceived = true;
+            const persisted = event.payload.message;
+            setMessages((current) => current.map((message) => (message.id === tempAssistantIdRef.current ? persisted : message)));
+            setSessions((current) =>
+              upsertSession(current, {
+                id: persisted.sessionId,
+                title: selectedSession?.title || text.slice(0, 120),
+                startedAt: stamp,
+                updatedAt: persisted.createdAt,
+              })
+            );
+            setStreamPhase(null);
+            continue;
+          }
+
+          if (event.type === 'error') {
+            throw new Error(String(event.payload.message || 'Erro ao responder pergunta.'));
+          }
+        }
+      }
+
+      if (!doneReceived) {
+        throw new Error('A resposta do chatbot foi interrompida antes de ser concluida.');
+      }
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao enviar pergunta.');
+      const message = err instanceof Error ? err.message : 'Erro ao enviar pergunta.';
+      setError(message);
+      setMessages((current) =>
+        current.map((item) =>
+          item.id === tempAssistantIdRef.current
+            ? {
+                ...item,
+                isStreaming: false,
+                isError: true,
+                statusLabel: 'Nao foi possivel concluir a resposta.',
+                content:
+                  item.content ||
+                  'Nao foi possivel concluir a resposta agora. Tente novamente em instantes.',
+              }
+            : item
+        )
+      );
     } finally {
       setSending(false);
+      setStreamPhase(null);
+      streamSessionIdRef.current = '';
+      tempAssistantIdRef.current = '';
+      tempUserIdRef.current = '';
     }
   };
 
@@ -175,11 +406,12 @@ export function ChatbotClient() {
                   key={session.id}
                   type="button"
                   onClick={() => setSelectedSessionId(session.id)}
+                  disabled={sending}
                   className={`w-full rounded-xl border px-3 py-3 text-left transition ${
                     selectedSessionId === session.id
                       ? 'border-[#17407E] bg-blue-50 text-[#17407E]'
                       : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-                  }`}
+                  } disabled:opacity-60`}
                 >
                   <div className="truncate text-sm font-semibold">{session.title || 'Nova conversa'}</div>
                   <div className="mt-1 text-xs text-slate-500">{formatDateTime(session.updatedAt)}</div>
@@ -205,9 +437,7 @@ export function ChatbotClient() {
           </div>
         </div>
 
-        {error ? (
-          <div className="border-b border-rose-100 bg-rose-50 px-5 py-3 text-sm text-rose-700">{error}</div>
-        ) : null}
+        {error ? <div className="border-b border-rose-100 bg-rose-50 px-5 py-3 text-sm text-rose-700">{error}</div> : null}
 
         <div className="flex-1 overflow-y-auto px-5 py-5">
           {loadingMessages ? (
@@ -232,22 +462,34 @@ export function ChatbotClient() {
                   className={`rounded-2xl px-4 py-4 ${
                     message.role === 'user'
                       ? 'ml-auto max-w-3xl bg-[#17407E] text-white'
-                      : 'max-w-4xl border border-slate-200 bg-slate-50 text-slate-800'
+                      : message.isError
+                        ? 'max-w-4xl border border-rose-200 bg-rose-50 text-rose-800'
+                        : 'max-w-4xl border border-slate-200 bg-slate-50 text-slate-800'
                   }`}
                 >
-                  <div className="text-xs font-semibold uppercase tracking-wide opacity-80">
-                    {message.role === 'user' ? 'Você' : 'IA Consultare'}
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-80">
+                    <span>{message.role === 'user' ? 'Você' : 'IA Consultare'}</span>
+                    {message.role === 'assistant' && message.isStreaming ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-[#17407E]">
+                        <TypingDots />
+                        {message.statusLabel || TYPING_STATUS_BY_CODE[streamPhase || ''] || 'Pensando...'}
+                      </span>
+                    ) : null}
+                    {message.role === 'assistant' && message.isError ? (
+                      <span className="rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-semibold text-rose-700">
+                        Resposta interrompida
+                      </span>
+                    ) : null}
                   </div>
-                  <p className="mt-2 whitespace-pre-line text-sm leading-6">{message.content}</p>
+                  <p className="mt-2 whitespace-pre-line text-sm leading-6">
+                    {message.content || (message.isStreaming ? ' ' : '')}
+                  </p>
                   {message.sourcesJson.length ? (
                     <div className="mt-4 grid gap-2">
                       {message.sourcesJson.map((source) => (
                         <a
                           key={`${message.id}-${source.sourceId}-${source.title}`}
-                          href={
-                            source.url ||
-                            `/api/chatbot/sources/${encodeURIComponent(source.sourceId)}/download`
-                          }
+                          href={source.url || `/api/chatbot/sources/${encodeURIComponent(source.sourceId)}/download`}
                           target="_blank"
                           rel="noreferrer"
                           className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-[#17407E] hover:border-slate-300"
@@ -259,6 +501,7 @@ export function ChatbotClient() {
                   ) : null}
                 </article>
               ))}
+              <div ref={messagesEndRef} />
             </div>
           )}
         </div>
@@ -273,7 +516,9 @@ export function ChatbotClient() {
             />
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs text-slate-500">
-                Se a base oficial não tiver resposta confiável, sua pergunta será registrada para revisão.
+                {sending
+                  ? TYPING_STATUS_BY_CODE[streamPhase || ''] || 'Pensando...'
+                  : 'Se a base oficial não tiver resposta confiável, sua pergunta será registrada para revisão.'}
               </p>
               <button
                 type="button"
@@ -282,7 +527,7 @@ export function ChatbotClient() {
                 className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
               >
                 {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                Enviar
+                {sending ? 'Respondendo...' : 'Enviar'}
               </button>
             </div>
           </div>
@@ -292,3 +537,12 @@ export function ChatbotClient() {
   );
 }
 
+function TypingDots() {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.2s]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current [animation-delay:-0.1s]" />
+      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-current" />
+    </span>
+  );
+}

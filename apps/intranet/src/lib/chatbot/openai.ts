@@ -153,3 +153,92 @@ export const answerWithCitations = async (input: {
       : [],
   };
 };
+
+export const streamAnswer = async (input: {
+  question: string;
+  context: Array<{
+    sourceId: string;
+    sourceTitle: string;
+    canonicalUrl: string | null;
+    chunkText: string;
+  }>;
+  onDelta: (delta: string) => void | Promise<void>;
+}) => {
+  const contextText = input.context
+    .map(
+      (item, index) =>
+        `Fonte ${index + 1}\nsource_id: ${item.sourceId}\ntitle: ${item.sourceTitle}\nurl: ${item.canonicalUrl || 'null'}\ncontent:\n${item.chunkText}`
+    )
+    .join('\n\n---\n\n');
+
+  const response = await fetch(`${OPENAI_API_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${requireOpenAiKey()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: getChatModel(),
+      stream: true,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Voce e a IA Consultare. Responda somente com base nas fontes oficiais fornecidas. Nunca invente fatos. Se o contexto for insuficiente, diga claramente que a base oficial nao traz informacao confiavel suficiente neste momento.',
+        },
+        {
+          role: 'user',
+          content: `Pergunta:\n${input.question}\n\nContexto oficial disponível:\n${contextText}`,
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const error = new Error(await parseOpenAiError(response));
+    (error as Error & { status?: number }).status = response.status;
+    throw error;
+  }
+
+  if (!response.body) {
+    const error = new Error('A OpenAI nao retornou corpo de streaming para esta resposta.');
+    (error as Error & { status?: number }).status = 502;
+    throw error;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let answer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split('\n');
+    buffer = parts.pop() || '';
+
+    for (const rawLine of parts) {
+      const line = rawLine.trim();
+      if (!line.startsWith('data:')) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(payload);
+      } catch {
+        parsed = null;
+      }
+      const delta = String(parsed?.choices?.[0]?.delta?.content || '');
+      if (!delta) continue;
+      answer += delta;
+      await input.onDelta(delta);
+    }
+  }
+
+  const finalAnswer = answer.trim();
+  return {
+    answer: finalAnswer || 'Nao encontrei uma resposta confiavel na base oficial neste momento.',
+  };
+};
