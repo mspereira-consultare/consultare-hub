@@ -155,6 +155,10 @@ const UNANSWERED_STATUSES = new Set<UnansweredQuestionStatus>([
   'rejected',
 ]);
 const AUTO_SYNC_SOURCE_TYPES: KnowledgeSourceType[] = ['page', 'news', 'faq', 'qms_document', 'professional', 'procedure'];
+const isMysql =
+  String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' ||
+  !!process.env.MYSQL_URL ||
+  !!process.env.MYSQL_PUBLIC_URL;
 
 let tablesEnsured = false;
 
@@ -459,7 +463,10 @@ export const ensureIntranetChatbotTables = async (db: DbInterface) => {
       created_at TEXT NOT NULL
     )
   `);
-  await safeCreateIndex(db, `CREATE INDEX idx_intranet_knowledge_jobs_status ON intranet_knowledge_jobs (status, created_at)`);
+  await safeCreateIndex(
+    db,
+    `CREATE INDEX idx_intranet_knowledge_jobs_status ON intranet_knowledge_jobs (status, ${isMysql ? 'created_at(32)' : 'created_at'})`
+  );
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_chatbot_sessions (
@@ -470,7 +477,10 @@ export const ensureIntranetChatbotTables = async (db: DbInterface) => {
       updated_at TEXT NOT NULL
     )
   `);
-  await safeCreateIndex(db, `CREATE INDEX idx_intranet_chatbot_sessions_user ON intranet_chatbot_sessions (user_id, updated_at)`);
+  await safeCreateIndex(
+    db,
+    `CREATE INDEX idx_intranet_chatbot_sessions_user ON intranet_chatbot_sessions (user_id, ${isMysql ? 'updated_at(32)' : 'updated_at'})`
+  );
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_chatbot_messages (
@@ -482,7 +492,10 @@ export const ensureIntranetChatbotTables = async (db: DbInterface) => {
       created_at TEXT NOT NULL
     )
   `);
-  await safeCreateIndex(db, `CREATE INDEX idx_intranet_chatbot_messages_session ON intranet_chatbot_messages (session_id, created_at)`);
+  await safeCreateIndex(
+    db,
+    `CREATE INDEX idx_intranet_chatbot_messages_session ON intranet_chatbot_messages (session_id, ${isMysql ? 'created_at(32)' : 'created_at'})`
+  );
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_chatbot_unanswered_questions (
@@ -506,7 +519,10 @@ export const ensureIntranetChatbotTables = async (db: DbInterface) => {
       published_at TEXT NULL
     )
   `);
-  await safeCreateIndex(db, `CREATE INDEX idx_intranet_chatbot_unanswered_status ON intranet_chatbot_unanswered_questions (status, created_at)`);
+  await safeCreateIndex(
+    db,
+    `CREATE INDEX idx_intranet_chatbot_unanswered_status ON intranet_chatbot_unanswered_questions (status, ${isMysql ? 'created_at(32)' : 'created_at'})`
+  );
 
   await safeAddColumn(db, `ALTER TABLE intranet_knowledge_sources ADD COLUMN content_text LONGTEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE intranet_knowledge_sources ADD COLUMN meta_json LONGTEXT NULL`);
