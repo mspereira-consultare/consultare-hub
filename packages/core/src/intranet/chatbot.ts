@@ -194,6 +194,17 @@ const safeAddColumn = async (db: DbInterface, sql: string) => {
     throw error;
   }
 };
+const safeCreateIndex = async (db: DbInterface, sql: string) => {
+  try {
+    await db.execute(sql);
+  } catch (error: unknown) {
+    const err = error as { message?: string; code?: string };
+    const message = String(err?.message || '');
+    const code = String(err?.code || '');
+    if (code === 'ER_DUP_KEYNAME' || /duplicate key name/i.test(message) || /already exists/i.test(message)) return;
+    throw error;
+  }
+};
 const safeQuery = async (db: DbInterface, sql: string, params: unknown[] = []) => {
   try {
     return await db.query(sql, params);
@@ -416,8 +427,8 @@ export const ensureIntranetChatbotTables = async (db: DbInterface) => {
       updated_at TEXT NOT NULL
     )
   `);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_intranet_knowledge_sources_status ON intranet_knowledge_sources (status)`);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_intranet_knowledge_sources_type ON intranet_knowledge_sources (source_type)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_intranet_knowledge_sources_status ON intranet_knowledge_sources (status)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_intranet_knowledge_sources_type ON intranet_knowledge_sources (source_type)`);
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_knowledge_chunks (
@@ -433,7 +444,7 @@ export const ensureIntranetChatbotTables = async (db: DbInterface) => {
       created_at TEXT NOT NULL
     )
   `);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_intranet_knowledge_chunks_source ON intranet_knowledge_chunks (knowledge_source_id, chunk_index)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_intranet_knowledge_chunks_source ON intranet_knowledge_chunks (knowledge_source_id, chunk_index)`);
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_knowledge_jobs (
@@ -448,7 +459,7 @@ export const ensureIntranetChatbotTables = async (db: DbInterface) => {
       created_at TEXT NOT NULL
     )
   `);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_intranet_knowledge_jobs_status ON intranet_knowledge_jobs (status, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_intranet_knowledge_jobs_status ON intranet_knowledge_jobs (status, created_at)`);
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_chatbot_sessions (
@@ -459,7 +470,7 @@ export const ensureIntranetChatbotTables = async (db: DbInterface) => {
       updated_at TEXT NOT NULL
     )
   `);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_intranet_chatbot_sessions_user ON intranet_chatbot_sessions (user_id, updated_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_intranet_chatbot_sessions_user ON intranet_chatbot_sessions (user_id, updated_at)`);
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_chatbot_messages (
@@ -471,7 +482,7 @@ export const ensureIntranetChatbotTables = async (db: DbInterface) => {
       created_at TEXT NOT NULL
     )
   `);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_intranet_chatbot_messages_session ON intranet_chatbot_messages (session_id, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_intranet_chatbot_messages_session ON intranet_chatbot_messages (session_id, created_at)`);
 
   await db.execute(`
     CREATE TABLE IF NOT EXISTS intranet_chatbot_unanswered_questions (
@@ -495,7 +506,7 @@ export const ensureIntranetChatbotTables = async (db: DbInterface) => {
       published_at TEXT NULL
     )
   `);
-  await db.execute(`CREATE INDEX IF NOT EXISTS idx_intranet_chatbot_unanswered_status ON intranet_chatbot_unanswered_questions (status, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_intranet_chatbot_unanswered_status ON intranet_chatbot_unanswered_questions (status, created_at)`);
 
   await safeAddColumn(db, `ALTER TABLE intranet_knowledge_sources ADD COLUMN content_text LONGTEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE intranet_knowledge_sources ADD COLUMN meta_json LONGTEXT NULL`);
