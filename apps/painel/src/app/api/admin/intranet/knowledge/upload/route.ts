@@ -122,6 +122,7 @@ export async function POST(request: Request) {
     const data = await createKnowledgeAssetSource(auth.db, {
       assetId: asset.id,
       title,
+      originalName: filePart.name,
       storageProvider: upload.provider,
       storageBucket: upload.bucket,
       storageKey: upload.key,

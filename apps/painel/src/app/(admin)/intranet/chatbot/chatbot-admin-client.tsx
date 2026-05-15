@@ -9,7 +9,15 @@ type Summary = {
   pendingSources: number;
   failedSources: number;
   unansweredPending: number;
-  recentJobs: Array<{ id: string; jobType: string; status: string; createdAt: string }>;
+  recentJobs: Array<{
+    id: string;
+    jobType: string;
+    status: string;
+    createdAt: string;
+    startedAt?: string | null;
+    finishedAt?: string | null;
+    errorMessage?: string | null;
+  }>;
 };
 
 type Source = {
@@ -67,9 +75,10 @@ export function ChatbotAdminClient() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadTitle, setUploadTitle] = useState('');
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [notice, setNotice] = useState<string | null>(null);
 
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const [summaryResponse, sourcesResponse, unansweredResponse, sessionsResponse] = await Promise.all([
@@ -107,13 +116,26 @@ export function ChatbotAdminClient() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar gestão do chatbot.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     void loadData();
   }, []);
+
+  const hasActiveJobs = useMemo(
+    () => (summary?.recentJobs || []).some((item) => ['pending', 'running'].includes(String(item.status || '').toLowerCase())),
+    [summary]
+  );
+
+  useEffect(() => {
+    if (!hasActiveJobs) return;
+    const timer = window.setInterval(() => {
+      void loadData({ silent: true });
+    }, 8000);
+    return () => window.clearInterval(timer);
+  }, [hasActiveJobs]);
 
   const filteredSources = useMemo(
     () =>
@@ -126,6 +148,7 @@ export function ChatbotAdminClient() {
   const reindex = async () => {
     setSaving(true);
     setError(null);
+    setNotice(null);
     try {
       const response = await fetch('/api/admin/intranet/knowledge/reindex', {
         method: 'POST',
@@ -133,6 +156,7 @@ export function ChatbotAdminClient() {
         body: JSON.stringify({}),
       });
       if (!response.ok) throw new Error(await normalizeError(response));
+      setNotice('Reindexação enfileirada com sucesso. O worker vai processar a base em segundo plano.');
       await loadData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao reindexar base.');
@@ -145,6 +169,7 @@ export function ChatbotAdminClient() {
     if (!uploadFile || saving) return;
     setSaving(true);
     setError(null);
+    setNotice(null);
     try {
       const data = new FormData();
       data.append('file', uploadFile);
@@ -156,6 +181,7 @@ export function ChatbotAdminClient() {
       if (!response.ok) throw new Error(await normalizeError(response));
       setUploadFile(null);
       setUploadTitle('');
+      setNotice('Documento enviado com sucesso. A indexação foi enfileirada e aparecerá nos jobs recentes.');
       await loadData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao enviar documento.');
@@ -216,6 +242,7 @@ export function ChatbotAdminClient() {
   return (
     <div className="space-y-6">
       {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+      {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard label="Fontes totais" value={summary?.sourcesTotal || 0} helper="Base rastreada" />
@@ -285,6 +312,62 @@ export function ChatbotAdminClient() {
                   ))
                 )}
               </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-900">Jobs recentes</h2>
+                <p className="mt-1 text-sm text-slate-500">Acompanhe a fila e o processamento do worker de conhecimento.</p>
+              </div>
+              {hasActiveJobs ? (
+                <span className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-[#17407E]">
+                  <Loader2 size={12} className="animate-spin" />
+                  Atualização automática ativa
+                </span>
+              ) : null}
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {(summary?.recentJobs || []).length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  Nenhum job registrado ainda.
+                </div>
+              ) : (
+                (summary?.recentJobs || []).map((job) => {
+                  const status = String(job.status || '').toLowerCase();
+                  const toneClassName =
+                    status === 'completed'
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                      : status === 'failed'
+                        ? 'border-rose-200 bg-rose-50 text-rose-800'
+                        : status === 'running'
+                          ? 'border-blue-200 bg-blue-50 text-[#17407E]'
+                          : 'border-amber-200 bg-amber-50 text-amber-800';
+
+                  return (
+                    <article key={job.id} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-900">
+                            {job.jobType === 'reindex' ? 'Reindexação' : 'Indexação'} · {job.id.slice(0, 8)}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            Criado em {formatDateTime(job.createdAt)}
+                            {job.startedAt ? ` · iniciado em ${formatDateTime(job.startedAt)}` : ''}
+                            {job.finishedAt ? ` · finalizado em ${formatDateTime(job.finishedAt)}` : ''}
+                          </div>
+                        </div>
+                        <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold uppercase tracking-wide ${toneClassName}`}>
+                          {status}
+                        </span>
+                      </div>
+                      {job.errorMessage ? <div className="mt-2 text-xs text-rose-700">{job.errorMessage}</div> : null}
+                    </article>
+                  );
+                })
+              )}
             </div>
           </div>
 
@@ -437,4 +520,3 @@ function MetricCard({
     </div>
   );
 }
-

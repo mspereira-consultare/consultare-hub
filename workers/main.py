@@ -74,6 +74,7 @@ try:
     from worker_marketing_funnel_google import process_pending_marketing_funnel_jobs_once
     from worker_clinia_ads import process_pending_clinia_ads_jobs_once
     from worker_recruitment_ai import run_recruitment_ai_loop
+    from worker_intranet_knowledge import run_intranet_knowledge_index_loop
     from worker_auth import FeegowTokenRenewer
     from worker_auth_clinia import CliniaCookieRenewer
     
@@ -169,6 +170,7 @@ KNOWN_ACTIONS = {
     'payroll_point_import', # Importacao ass?ncrona do ponto da folha
     'marketing_funnel', # Funil de Marketing (Google Ads + GA4)
     'clinia_ads', # Estatisticas de anuncios do Clinia
+    'intranet_knowledge_index', # Indexacao da base de conhecimento da intranet
 }
 
 def _normalize_service_key(service_raw: str) -> str:
@@ -244,6 +246,9 @@ ALIAS_ACTION_MAP = {
     'clinia_ads': 'clinia_ads',
     'ads_clinia': 'clinia_ads',
     'worker_clinia_ads': 'clinia_ads',
+    'intranet_knowledge_index': 'intranet_knowledge_index',
+    'worker_intranet_knowledge': 'intranet_knowledge_index',
+    'knowledge_index': 'intranet_knowledge_index',
 }
 
 # Mapeia ação para nome canônico no `system_status`
@@ -266,6 +271,7 @@ CANONICAL_NAME = {
     'payroll_point_import': 'Folha de Pagamento - Importacao de Ponto',
     'marketing_funnel': 'Marketing Funil (Google API)',
     'clinia_ads': 'Clinia Ads (API nao oficial)',
+    'intranet_knowledge_index': 'Base de Conhecimento (Intranet IA)',
 }
 
 def canonicalize(service_raw: str):
@@ -1042,6 +1048,7 @@ def start_orchestrator():
         threading.Thread(target=run_monitor_medico_safe, name="MonMed", daemon=True),
         threading.Thread(target=run_clinia_safe, name="Clinia", daemon=True),
         threading.Thread(target=run_recruitment_ai_loop, name="RecruitAI", daemon=True),
+        threading.Thread(target=run_intranet_knowledge_index_loop, name="IntraKnow", daemon=True),
         threading.Thread(target=_run_serial_queue_executor, name="SerialQueue", daemon=True),
         threading.Thread(target=_run_repasse_job_dispatcher, name="RepasseDispatch", daemon=True),
         threading.Thread(target=run_watchdog, name="Watchdog", daemon=True),

@@ -827,6 +827,7 @@ export const createKnowledgeAssetSource = async (
   input: {
     assetId: string;
     title: string;
+    originalName?: string | null;
     storageProvider: string;
     storageBucket: string | null;
     storageKey: string;
@@ -843,13 +844,14 @@ export const createKnowledgeAssetSource = async (
     status: 'pending',
     visibilityRefJson: (input.audienceGroupIds || []).map(clean).filter(Boolean),
     contentText: null,
-    metaJson: {
-      storageProvider: clean(input.storageProvider),
-      storageBucket: nullable(input.storageBucket),
-      storageKey: clean(input.storageKey),
-      mimeType: clean(input.mimeType),
-    },
-  });
+      metaJson: {
+        storageProvider: clean(input.storageProvider),
+        storageBucket: nullable(input.storageBucket),
+        storageKey: clean(input.storageKey),
+        mimeType: clean(input.mimeType),
+        originalName: nullable(input.originalName),
+      },
+    });
   await queueKnowledgeJob(db, {
     knowledgeSourceId: source.id,
     jobType: 'index',
