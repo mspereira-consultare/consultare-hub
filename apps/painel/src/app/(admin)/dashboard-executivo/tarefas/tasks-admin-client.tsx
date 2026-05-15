@@ -105,6 +105,13 @@ const approvalLabelMap: Record<TaskApprovalDecisionStatus, string> = {
   CANCELADA: 'Cancelada',
 };
 
+const priorityLabelMap: Record<TaskPriority, string> = {
+  BAIXA: 'Baixa',
+  MEDIA: 'Média',
+  ALTA: 'Alta',
+  URGENTE: 'Urgente',
+};
+
 const RETIRED_TASK_STATUSES: TaskStatus[] = ['ARQUIVADA', 'CANCELADA'];
 
 const inputClassName =
@@ -178,6 +185,57 @@ const formatDateTime = (value: string | null) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+};
+
+const formatFileSize = (value: number) => {
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+  return `${value} B`;
+};
+
+const parseActivityPayload = (payloadJson: string | null) => {
+  if (!payloadJson) return null;
+  try {
+    return JSON.parse(payloadJson) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+const describeTaskActivity = (action: string, payloadJson: string | null) => {
+  const payload = parseActivityPayload(payloadJson);
+  switch (action) {
+    case 'TASK_CREATED':
+      return 'Tarefa criada';
+    case 'TASK_UPDATED':
+      return 'Dados da tarefa atualizados';
+    case 'TASK_COMMENTED':
+      return 'Comentário registrado';
+    case 'TASK_ATTACHMENT_ADDED':
+      return 'Anexo incluído na tarefa';
+    case 'TASK_COMMENT_ATTACHMENT_ADDED':
+      return 'Anexo incluído em comentário';
+    case 'TASK_APPROVAL_REQUESTED':
+      return 'Aprovação solicitada';
+    case 'TASK_APPROVAL_DECIDED': {
+      const decision = typeof payload?.decisionStatus === 'string' ? payload.decisionStatus : null;
+      return decision && decision in approvalLabelMap
+        ? `Aprovação ${approvalLabelMap[decision as TaskApprovalDecisionStatus].toLowerCase()}`
+        : 'Decisão de aprovação registrada';
+    }
+    case 'TASK_ARCHIVED':
+      return 'Tarefa arquivada';
+    case 'TASK_CANCELED':
+      return 'Tarefa cancelada';
+    case 'TASK_RESTORED': {
+      const restoredStatus = typeof payload?.restoredStatus === 'string' ? payload.restoredStatus : null;
+      return restoredStatus && restoredStatus in statusLabelMap
+        ? `Tarefa restaurada para ${statusLabelMap[restoredStatus as TaskStatus]}`
+        : 'Tarefa restaurada';
+    }
+    default:
+      return action.replace(/_/g, ' ').toLowerCase();
+  }
 };
 
 const isDueSoon = (dueDate: string | null, status: TaskStatus) => {
@@ -1065,21 +1123,42 @@ function TaskDetailPanel({
   onRestore: () => void;
 }) {
   const taskIsRetired = isRetiredTaskStatus(task.status);
+  const orderedComments = [...task.comments].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const orderedActivity = [...task.activity].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const approvalStateLabel = task.latestApproval ? approvalLabelMap[task.latestApproval.decisionStatus] : 'Sem ciclo aberto';
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-4">
-      <div className="mx-auto w-full max-w-7xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 p-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#17407E]">{task.protocolId}</p>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-900">{task.title}</h2>
+      <div className="mx-auto flex max-h-[calc(100vh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="border-b border-slate-200 px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#17407E]">{task.protocolId}</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-900">{form.title}</h2>
+              <p className="mt-2 max-w-3xl text-sm text-slate-500">
+                Visão executiva da tarefa para acompanhar responsáveis, prazos, histórico e governança operacional.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <ModalPill label={statusLabelMap[form.status]} tone="status" />
+              <ModalPill label={priorityLabelMap[form.priority]} tone="priority" />
+              {isOverdue(form.dueDate || null, task.status) ? <ModalPill label="Vencida" tone="danger" /> : null}
+              {!isOverdue(form.dueDate || null, task.status) && isDueSoon(form.dueDate || null, task.status) ? <ModalPill label="A vencer" tone="warning" /> : null}
+              <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
+                <X size={18} />
+              </button>
+            </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
-            <X size={18} />
-          </button>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <QuickMetaCard label="Criador" value={usersById.get(task.createdBy)?.name || 'Usuário'} />
+            <QuickMetaCard label="Responsável" value={usersById.get(form.primaryAssigneeUserId)?.name || 'Não definido'} />
+            <QuickMetaCard label="Prazo" value={form.dueDate ? formatDate(form.dueDate) : 'Sem prazo'} />
+            <QuickMetaCard label="Aprovação" value={approvalStateLabel} />
+          </div>
         </div>
 
-        <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_440px]">
-          <div className="space-y-6 p-5">
+        <div className="grid min-h-0 flex-1 gap-0 xl:grid-cols-[minmax(0,1fr)_440px]">
+          <div className="min-h-0 overflow-y-auto p-6">
+            <div className="space-y-5">
             {loading ? (
               <div className="flex min-h-[260px] items-center justify-center text-slate-500">
                 <Loader2 size={18} className="mr-2 animate-spin" />
@@ -1087,7 +1166,11 @@ function TaskDetailPanel({
               </div>
             ) : (
               <>
-                <section className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 md:grid-cols-2">
+                <TaskSectionCard
+                  title="Visão operacional"
+                  description="Edite metadados principais e mantenha a governança alinhada com a execução."
+                >
+                <div className="grid gap-4 md:grid-cols-2">
                   <FieldInput label="Título" value={form.title} onChange={(value) => onFormChange({ ...form, title: value })} disabled={!canEdit} />
                   <FieldInput label="Setor" value={form.department} onChange={(value) => onFormChange({ ...form, department: value })} disabled={!canEdit} />
                   <FieldSelect
@@ -1113,9 +1196,13 @@ function TaskDetailPanel({
                   />
                   <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} disabled={!canEdit} />
                   <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} disabled={!canEdit} />
-                </section>
+                </div>
+                </TaskSectionCard>
 
-                <section>
+                <TaskSectionCard
+                  title="Descrição"
+                  description="Leitura rápida do escopo e do contexto da demanda para acompanhamento gerencial."
+                >
                   <label className="mb-1 block text-sm font-medium text-slate-700">Descrição</label>
                   <textarea
                     value={form.description}
@@ -1123,9 +1210,13 @@ function TaskDetailPanel({
                     disabled={!canEdit}
                     className={`${inputClassName} min-h-[120px] resize-y disabled:bg-slate-50`}
                   />
-                </section>
+                </TaskSectionCard>
 
-                <section className="grid gap-4 rounded-2xl border border-slate-200 p-4 md:grid-cols-2">
+                <TaskSectionCard
+                  title="Responsáveis e aprovação"
+                  description="Consolide responsável principal, colaboradores e aprovador em um mesmo bloco."
+                >
+                <div className="grid gap-4 md:grid-cols-2">
                   <FieldSelect
                     label="Responsável principal"
                     value={form.primaryAssigneeUserId}
@@ -1167,103 +1258,92 @@ function TaskDetailPanel({
                       ))}
                     </div>
                   </div>
-                </section>
+                </div>
+                </TaskSectionCard>
 
-                <section className="rounded-2xl border border-slate-200 p-4">
+                <TaskSectionCard
+                  title="Comentários"
+                  description="Linha do tempo conversacional da intranet para leitura executiva do contexto."
+                >
                   <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold text-slate-900">Comentários</h3>
-                      <p className="mt-1 text-sm text-slate-500">Leitura consolidada do contexto registrado na intranet.</p>
-                    </div>
                     <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">{task.comments.length}</span>
                   </div>
                   <div className="mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1">
-                    {task.comments.length === 0 ? (
+                    {orderedComments.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
                         Nenhum comentário registrado.
                       </div>
                     ) : (
-                      task.comments.map((comment) => (
+                      orderedComments.map((comment) => (
                         <article key={comment.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                          <div className="text-sm font-semibold text-slate-900">{usersById.get(comment.authorUserId)?.name || 'Usuário'}</div>
-                          <div className="mt-1 text-xs text-slate-500">{formatDateTime(comment.createdAt)}</div>
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <div className="text-sm font-semibold text-slate-900">{usersById.get(comment.authorUserId)?.name || 'Usuário'}</div>
+                              <div className="mt-1 text-xs text-slate-500">{formatDateTime(comment.createdAt)}</div>
+                            </div>
+                            {orderedComments[0]?.id === comment.id ? (
+                              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">Mais recente</span>
+                            ) : null}
+                          </div>
                           <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{comment.body}</p>
                           {comment.attachments.length ? (
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {comment.attachments.map((attachment) => (
-                                <a
-                                  key={attachment.id}
-                                  href={`/api/admin/tasks/${encodeURIComponent(task.id)}/comments/${encodeURIComponent(comment.id)}/attachments/${encodeURIComponent(attachment.id)}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 hover:border-slate-300"
-                                >
-                                  <Paperclip size={14} className="text-[#17407E]" />
-                                  {attachment.originalName}
-                                </a>
-                              ))}
-                            </div>
+                            <TaskAttachmentList
+                              items={comment.attachments.map((attachment) => ({
+                                id: attachment.id,
+                                href: `/api/admin/tasks/${encodeURIComponent(task.id)}/comments/${encodeURIComponent(comment.id)}/attachments/${encodeURIComponent(attachment.id)}`,
+                                name: attachment.originalName,
+                                subtitle: 'Anexo do comentário',
+                                sizeLabel: formatFileSize(attachment.sizeBytes),
+                              }))}
+                              emptyLabel=""
+                              compact
+                            />
                           ) : null}
                         </article>
                       ))
                     )}
                   </div>
-                </section>
+                </TaskSectionCard>
               </>
             )}
+            </div>
           </div>
 
-          <aside className="border-l border-slate-200 bg-slate-50/60 p-5">
+          <aside className="min-h-0 overflow-y-auto border-l border-slate-200 bg-slate-50/60 p-6">
             <div className="space-y-5">
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <h3 className="font-semibold text-slate-900">Resumo executivo</h3>
                 <div className="mt-4 space-y-3 text-sm text-slate-600">
-                  <InfoRow icon={<Clock3 size={15} />} label="Status" value={statusLabelMap[task.status]} />
-                  <InfoRow icon={<AlertCircle size={15} />} label="Prioridade" value={task.priority} />
-                  <InfoRow icon={<Calendar size={15} />} label="Prazo" value={formatDate(task.dueDate)} />
+                  <InfoRow icon={<Clock3 size={15} />} label="Status" value={statusLabelMap[form.status]} />
+                  <InfoRow icon={<AlertCircle size={15} />} label="Prioridade" value={priorityLabelMap[form.priority]} />
+                  <InfoRow icon={<Calendar size={15} />} label="Prazo" value={formatDate(form.dueDate || null)} />
                   <InfoRow icon={<Users size={15} />} label="Criador" value={usersById.get(task.createdBy)?.name || 'Usuário'} />
-                  <InfoRow icon={<ShieldCheck size={15} />} label="Aprovador" value={task.approverUserId ? usersById.get(task.approverUserId)?.name || 'Usuário atribuído' : 'Não definido'} />
+                  <InfoRow icon={<ShieldCheck size={15} />} label="Aprovador" value={form.approverUserId ? usersById.get(form.approverUserId)?.name || 'Usuário atribuído' : 'Não definido'} />
                   <InfoRow icon={<MessageCircle size={15} />} label="Comentários" value={String(task.comments.length)} />
                 </div>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <h3 className="font-semibold text-slate-900">Anexos da tarefa</h3>
-                <div className="mt-4 space-y-2">
-                  {task.attachments.length === 0 ? (
-                    <p className="text-sm text-slate-500">Nenhum anexo enviado para esta tarefa.</p>
-                  ) : (
-                    task.attachments.map((attachment) => (
-                      <a
-                        key={attachment.id}
-                        href={`/api/admin/tasks/${encodeURIComponent(task.id)}/attachments/${encodeURIComponent(attachment.id)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 hover:border-slate-300"
-                      >
-                        <span className="inline-flex min-w-0 items-center gap-2">
-                          <Paperclip size={14} className="shrink-0 text-[#17407E]" />
-                          <span className="truncate">{attachment.originalName}</span>
-                        </span>
-                        <span className="text-xs text-slate-500">{Math.round(attachment.sizeBytes / 1024)} KB</span>
-                      </a>
-                    ))
-                  )}
-                </div>
+                <TaskAttachmentList
+                  items={task.attachments.map((attachment) => ({
+                    id: attachment.id,
+                    href: `/api/admin/tasks/${encodeURIComponent(task.id)}/attachments/${encodeURIComponent(attachment.id)}`,
+                    name: attachment.originalName,
+                    subtitle: formatDateTime(attachment.createdAt),
+                    sizeLabel: formatFileSize(attachment.sizeBytes),
+                  }))}
+                  emptyLabel="Nenhum anexo enviado para esta tarefa."
+                />
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <h3 className="font-semibold text-slate-900">Histórico recente</h3>
                 <div className="mt-4 max-h-[360px] space-y-3 overflow-y-auto pr-1">
-                  {task.activity.length === 0 ? (
+                  {orderedActivity.length === 0 ? (
                     <p className="text-sm text-slate-500">Nenhum evento registrado.</p>
                   ) : (
-                    task.activity.slice(0, 12).map((item) => (
-                      <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-[#17407E]">{item.action}</div>
-                        <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)}</div>
-                      </div>
-                    ))
+                    <TaskActivityTimeline items={orderedActivity.slice(0, 12)} />
                   )}
                 </div>
               </div>
@@ -1322,7 +1402,7 @@ function TaskDetailPanel({
           </aside>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-200 p-5">
+        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur">
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             Fechar
           </button>
@@ -1339,6 +1419,118 @@ function TaskDetailPanel({
           ) : null}
         </div>
       </div>
+    </div>
+  );
+}
+
+function ModalPill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: 'status' | 'priority' | 'warning' | 'danger';
+}) {
+  const toneClassName =
+    tone === 'status'
+      ? 'border-blue-200 bg-blue-50 text-[#17407E]'
+      : tone === 'priority'
+        ? 'border-slate-200 bg-slate-50 text-slate-700'
+        : tone === 'warning'
+          ? 'border-amber-200 bg-amber-50 text-amber-700'
+          : 'border-rose-200 bg-rose-50 text-rose-700';
+
+  return <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${toneClassName}`}>{label}</span>;
+}
+
+function QuickMetaCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1 text-sm font-medium text-slate-800">{value}</div>
+    </div>
+  );
+}
+
+function TaskSectionCard({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="mb-4">
+        <h3 className="font-semibold text-slate-900">{title}</h3>
+        {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+      </div>
+      <div className="space-y-4">{children}</div>
+    </section>
+  );
+}
+
+function TaskAttachmentList({
+  items,
+  emptyLabel,
+  compact = false,
+}: {
+  items: Array<{ id: string; href: string; name: string; subtitle: string; sizeLabel: string }>;
+  emptyLabel: string;
+  compact?: boolean;
+}) {
+  if (!items.length) {
+    return emptyLabel ? <p className="mt-4 text-sm text-slate-500">{emptyLabel}</p> : null;
+  }
+
+  return (
+    <div className="mt-4 grid gap-2">
+      {items.map((item) => (
+        <a
+          key={item.id}
+          href={item.href}
+          target="_blank"
+          rel="noreferrer"
+          className={`flex items-center justify-between gap-3 rounded-xl border border-slate-200 ${compact ? 'bg-white px-3 py-2.5' : 'bg-slate-50 px-3 py-3'} text-sm text-slate-700 hover:border-slate-300`}
+        >
+          <span className="inline-flex min-w-0 items-center gap-2">
+            <Paperclip size={14} className="shrink-0 text-[#17407E]" />
+            <span className="min-w-0">
+              <span className="block truncate">{item.name}</span>
+              <span className="block truncate text-xs text-slate-500">{item.subtitle}</span>
+            </span>
+          </span>
+          <span className="shrink-0 text-xs text-slate-500">{item.sizeLabel}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function TaskActivityTimeline({
+  items,
+}: {
+  items: TaskDetail['activity'];
+}) {
+  return (
+    <div className="space-y-3">
+      {items.map((item) => (
+        <div key={item.id} className="relative pl-5">
+          <span className="absolute left-0 top-2.5 h-2.5 w-2.5 rounded-full bg-[#17407E]" />
+          <span className="absolute left-[4px] top-5 h-[calc(100%-0.25rem)] w-px bg-slate-200" />
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+            <div className="text-sm font-semibold text-slate-900">{describeTaskActivity(item.action, item.payloadJson)}</div>
+            <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)}</div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

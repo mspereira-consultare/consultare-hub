@@ -139,6 +139,13 @@ const approvalLabelMap: Record<TaskApprovalDecisionStatus, string> = {
   CANCELADA: 'Cancelada',
 };
 
+const priorityLabelMap: Record<TaskPriority, string> = {
+  BAIXA: 'Baixa',
+  MEDIA: 'Média',
+  ALTA: 'Alta',
+  URGENTE: 'Urgente',
+};
+
 const RETIRED_TASK_STATUSES: TaskStatus[] = ['ARQUIVADA', 'CANCELADA'];
 
 const priorityRank: Record<TaskPriority, number> = {
@@ -207,6 +214,65 @@ const formatDateTime = (value: string | null) => {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+};
+
+const formatFileSize = (value: number) => {
+  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  if (value >= 1024) return `${Math.round(value / 1024)} KB`;
+  return `${value} B`;
+};
+
+const parseActivityPayload = (payloadJson: string | null) => {
+  if (!payloadJson) return null;
+  try {
+    return JSON.parse(payloadJson) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+};
+
+const describeTaskActivity = (action: string, payloadJson: string | null) => {
+  const payload = parseActivityPayload(payloadJson);
+  switch (action) {
+    case 'TASK_CREATED':
+      return 'Tarefa criada';
+    case 'TASK_UPDATED':
+      return 'Campos da tarefa atualizados';
+    case 'TASK_STATUS_CHANGED': {
+      const nextStatus = typeof payload?.nextStatus === 'string' ? payload.nextStatus : null;
+      return nextStatus && nextStatus in statusLabelMap
+        ? `Status alterado para ${statusLabelMap[nextStatus as TaskStatus]}`
+        : 'Status alterado';
+    }
+    case 'TASK_PRIORITY_CHANGED':
+      return 'Prioridade ajustada';
+    case 'TASK_COMMENTED':
+      return 'Comentário publicado';
+    case 'TASK_ATTACHMENT_ADDED':
+      return 'Anexo incluído na tarefa';
+    case 'TASK_COMMENT_ATTACHMENT_ADDED':
+      return 'Arquivo incluído em comentário';
+    case 'TASK_APPROVAL_REQUESTED':
+      return 'Aprovação solicitada';
+    case 'TASK_APPROVAL_DECIDED': {
+      const decision = typeof payload?.decisionStatus === 'string' ? payload.decisionStatus : null;
+      return decision && decision in approvalLabelMap
+        ? `Aprovação ${approvalLabelMap[decision as TaskApprovalDecisionStatus].toLowerCase()}`
+        : 'Decisão de aprovação registrada';
+    }
+    case 'TASK_ARCHIVED':
+      return 'Tarefa arquivada';
+    case 'TASK_CANCELED':
+      return 'Tarefa cancelada';
+    case 'TASK_RESTORED': {
+      const restoredStatus = typeof payload?.restoredStatus === 'string' ? payload.restoredStatus : null;
+      return restoredStatus && restoredStatus in statusLabelMap
+        ? `Tarefa restaurada para ${statusLabelMap[restoredStatus as TaskStatus]}`
+        : 'Tarefa restaurada';
+    }
+    default:
+      return action.replace(/_/g, ' ').toLowerCase();
+  }
 };
 
 const isDueSoon = (dueDate: string | null, status: TaskStatus) => {
@@ -1483,93 +1549,124 @@ function TaskModal({
 }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
-      <div className="w-full max-w-4xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 p-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#17407E]">Cadastro</p>
-            <h2 className="mt-1 text-xl font-semibold text-slate-900">{title}</h2>
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="border-b border-slate-200 px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#17407E]">Nova tarefa</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-900">{title}</h2>
+              <p className="mt-2 max-w-2xl text-sm text-slate-500">
+                Organize a demanda com responsável, prazo, aprovador e contexto completo desde o primeiro registro.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <ModalPill label={priorityLabelMap[form.priority]} tone="priority" />
+              <ModalPill label={statusLabelMap[form.status]} tone="status" />
+              <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
+                <X size={18} />
+              </button>
+            </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
-            <X size={18} />
-          </button>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <QuickMetaCard label="Responsável inicial" value={users.find((user) => user.id === form.primaryAssigneeUserId)?.name || 'Defina no formulário'} />
+            <QuickMetaCard label="Setor" value={form.department || 'Preencha o setor'} />
+            <QuickMetaCard label="Prazo" value={form.dueDate ? formatDate(form.dueDate) : 'Sem prazo definido'} />
+          </div>
         </div>
-        <div className="grid gap-6 p-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
-          <div className="space-y-4">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Título</label>
-              <input
-                value={form.title}
-                onChange={(event) => onChange({ ...form, title: event.target.value })}
-                className={inputClassName}
-                placeholder="Ex.: Atualizar material do setor"
-              />
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+            <div className="space-y-5">
+              <TaskSectionCard
+                title="Contexto da entrega"
+                description="Defina o que precisa ser entregue e o contexto operacional da tarefa."
+              >
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Título</label>
+                  <input
+                    value={form.title}
+                    onChange={(event) => onChange({ ...form, title: event.target.value })}
+                    className={inputClassName}
+                    placeholder="Ex.: Atualizar material do setor"
+                  />
+                </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <FieldSelect label="Prioridade" value={form.priority} onChange={(value) => onChange({ ...form, priority: value as TaskPriority })} options={PRIORITY_OPTIONS} />
+                  <FieldSelect
+                    label="Status inicial"
+                    value={form.status}
+                    onChange={(value) => onChange({ ...form, status: value as TaskStatus })}
+                    options={STATUS_OPTIONS.filter((item) => item.value !== 'CANCELADA' && item.value !== 'ARQUIVADA')}
+                  />
+                  <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onChange({ ...form, dueDate: value })} />
+                  <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onChange({ ...form, startDate: value })} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">Descrição</label>
+                  <textarea
+                    value={form.description}
+                    onChange={(event) => onChange({ ...form, description: event.target.value })}
+                    className={textAreaClassName}
+                    placeholder="Contexto, objetivo, passos esperados e observações importantes"
+                  />
+                </div>
+              </TaskSectionCard>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Descrição</label>
-              <textarea
-                value={form.description}
-                onChange={(event) => onChange({ ...form, description: event.target.value })}
-                className={textAreaClassName}
-                placeholder="Contexto, objetivo e anexos relevantes"
-              />
-            </div>
-            <div className="grid gap-4 md:grid-cols-2">
-              <FieldSelect label="Prioridade" value={form.priority} onChange={(value) => onChange({ ...form, priority: value as TaskPriority })} options={PRIORITY_OPTIONS} />
-              <FieldSelect
-                label="Status inicial"
-                value={form.status}
-                onChange={(value) => onChange({ ...form, status: value as TaskStatus })}
-                options={STATUS_OPTIONS.filter((item) => item.value !== 'CANCELADA' && item.value !== 'ARQUIVADA')}
-              />
-              <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onChange({ ...form, dueDate: value })} />
-              <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onChange({ ...form, startDate: value })} />
-            </div>
-          </div>
-          <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-            <FieldInput label="Setor" value={form.department} onChange={(value) => onChange({ ...form, department: value })} placeholder="Ex.: RH, Operacional, Financeiro" />
-            <SearchableUserSelect
-              label="Responsável principal"
-              value={form.primaryAssigneeUserId}
-              onChange={(value) => onChange({ ...form, primaryAssigneeUserId: value })}
-              users={users}
-            />
-            <SearchableUserMultiSelect
-              label="Responsáveis adicionais"
-              currentUserId={currentUserId}
-              users={users}
-              selectedIds={form.assigneeUserIds}
-              onChange={(assigneeUserIds) => onChange({ ...form, assigneeUserIds })}
-            />
-            <SearchableUserSelect
-              label="Aprovador"
-              value={form.approverUserId}
-              onChange={(value) => onChange({ ...form, approverUserId: value })}
-              users={users}
-              emptyLabel="Sem aprovador no momento"
-            />
-            <div>
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <label className="text-sm font-medium text-slate-700">Anexos iniciais</label>
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Adicionar arquivo
-                </button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  onChange={(event) => onFilesChange(Array.from(event.target.files || []))}
+
+            <div className="space-y-5">
+              <TaskSectionCard
+                title="Governança e responsáveis"
+                description="Defina quem executa, quem acompanha e se a tarefa terá aprovação."
+              >
+                <FieldInput label="Setor" value={form.department} onChange={(value) => onChange({ ...form, department: value })} placeholder="Ex.: RH, Operacional, Financeiro" />
+                <SearchableUserSelect
+                  label="Responsável principal"
+                  value={form.primaryAssigneeUserId}
+                  onChange={(value) => onChange({ ...form, primaryAssigneeUserId: value })}
+                  users={users}
                 />
-              </div>
-              <FileList files={files} onRemove={(index) => onFilesChange(files.filter((_, currentIndex) => currentIndex !== index))} />
+                <SearchableUserMultiSelect
+                  label="Responsáveis adicionais"
+                  currentUserId={currentUserId}
+                  users={users}
+                  selectedIds={form.assigneeUserIds}
+                  onChange={(assigneeUserIds) => onChange({ ...form, assigneeUserIds })}
+                />
+                <SearchableUserSelect
+                  label="Aprovador"
+                  value={form.approverUserId}
+                  onChange={(value) => onChange({ ...form, approverUserId: value })}
+                  users={users}
+                  emptyLabel="Sem aprovador no momento"
+                />
+              </TaskSectionCard>
+
+              <TaskSectionCard
+                title="Arquivos iniciais"
+                description="Inclua materiais de apoio já no cadastro para reduzir retrabalho da equipe."
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm text-slate-500">Anexos enviados agora ficam associados ao protocolo desde a criação.</p>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                  >
+                    Adicionar arquivo
+                  </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(event) => onFilesChange(Array.from(event.target.files || []))}
+                  />
+                </div>
+                <FileList files={files} onRemove={(index) => onFilesChange(files.filter((_, currentIndex) => currentIndex !== index))} />
+              </TaskSectionCard>
             </div>
           </div>
         </div>
-        <div className="flex justify-end gap-2 border-t border-slate-200 p-5">
+        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur">
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             Fechar
           </button>
@@ -1660,21 +1757,42 @@ function TaskDetailModal({
   onRestore: () => void;
 }) {
   const taskIsRetired = isRetiredTaskStatus(task.status);
+  const orderedComments = [...task.comments].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const orderedActivity = [...task.activity].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+  const approvalStateLabel = task.latestApproval ? approvalLabelMap[task.latestApproval.decisionStatus] : 'Sem ciclo aberto';
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-4">
-      <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 p-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#17407E]">{task.protocolId}</p>
-            <h2 className="mt-1 text-2xl font-semibold text-slate-900">{task.title}</h2>
+      <div className="mx-auto flex max-h-[calc(100vh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="border-b border-slate-200 px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#17407E]">{task.protocolId}</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-900">{form.title}</h2>
+              <p className="mt-2 max-w-3xl text-sm text-slate-500">
+                Acompanhe execução, responsáveis, aprovação e evidências da tarefa em um único lugar.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <ModalPill label={statusLabelMap[form.status]} tone="status" />
+              <ModalPill label={priorityLabelMap[form.priority]} tone="priority" />
+              {isOverdue(form.dueDate || null, task.status) ? <ModalPill label="Vencida" tone="danger" /> : null}
+              {!isOverdue(form.dueDate || null, task.status) && isDueSoon(form.dueDate || null, task.status) ? <ModalPill label="A vencer" tone="warning" /> : null}
+              <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
+                <X size={18} />
+              </button>
+            </div>
           </div>
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
-            <X size={18} />
-          </button>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <QuickMetaCard label="Prazo" value={form.dueDate ? formatDate(form.dueDate) : 'Sem prazo'} />
+            <QuickMetaCard label="Responsável" value={usersById.get(form.primaryAssigneeUserId)?.name || 'Não definido'} />
+            <QuickMetaCard label="Aprovação" value={approvalStateLabel} />
+            <QuickMetaCard label="Setor" value={form.department || 'Não definido'} />
+          </div>
         </div>
 
-        <div className="grid gap-0 xl:grid-cols-[minmax(0,1.05fr)_420px]">
-          <div className="space-y-6 p-5">
+        <div className="grid min-h-0 flex-1 gap-0 xl:grid-cols-[minmax(0,1.08fr)_420px]">
+          <div className="min-h-0 overflow-y-auto p-6">
+            <div className="space-y-5">
             {loading ? (
               <div className="flex min-h-[240px] items-center justify-center text-slate-500">
                 <Loader2 size={18} className="mr-2 animate-spin" />
@@ -1682,7 +1800,11 @@ function TaskDetailModal({
               </div>
             ) : (
               <>
-                <section className="grid gap-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 md:grid-cols-2">
+                <TaskSectionCard
+                  title="Visão operacional"
+                  description="Edite os principais campos da tarefa sem perder contexto de prazo, prioridade e execução."
+                >
+                <div className="grid gap-4 md:grid-cols-2">
                   <FieldInput label="Título" value={form.title} onChange={(value) => onFormChange({ ...form, title: value })} />
                   <FieldInput label="Setor" value={form.department} onChange={(value) => onFormChange({ ...form, department: value })} />
                   <FieldSelect label="Prioridade" value={form.priority} onChange={(value) => onFormChange({ ...form, priority: value as TaskPriority })} options={PRIORITY_OPTIONS} />
@@ -1694,9 +1816,13 @@ function TaskDetailModal({
                   />
                   <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} />
                   <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} />
-                </section>
+                </div>
+                </TaskSectionCard>
 
-                <section>
+                <TaskSectionCard
+                  title="Descrição"
+                  description="Centralize objetivo, contexto, dependências e critérios de entrega da demanda."
+                >
                   <label className="mb-1 block text-sm font-medium text-slate-700">Descrição</label>
                   <textarea
                     value={form.description}
@@ -1704,9 +1830,13 @@ function TaskDetailModal({
                     className={textAreaClassName}
                     placeholder="Detalhe a entrega, os passos e o contexto esperado"
                   />
-                </section>
+                </TaskSectionCard>
 
-                <section className="grid gap-4 rounded-2xl border border-slate-200 p-4 md:grid-cols-2">
+                <TaskSectionCard
+                  title="Responsáveis e aprovação"
+                  description="Agrupe quem executa, quem colabora e quem aprova a entrega."
+                >
+                <div className="grid gap-4 md:grid-cols-2">
                   <SearchableUserSelect
                     label="Responsável principal"
                     value={form.primaryAssigneeUserId}
@@ -1729,14 +1859,14 @@ function TaskDetailModal({
                       onChange={(assigneeUserIds) => onFormChange({ ...form, assigneeUserIds })}
                     />
                   </div>
-                </section>
+                </div>
+                </TaskSectionCard>
 
-                <section className="rounded-2xl border border-slate-200 p-4">
+                <TaskSectionCard
+                  title="Arquivos da tarefa"
+                  description="Reúna materiais de apoio, evidências de execução e documentos úteis do protocolo."
+                >
                   <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold text-slate-900">Arquivos da tarefa</h3>
-                      <p className="mt-1 text-sm text-slate-500">Anexe materiais de apoio e evidências da execução.</p>
-                    </div>
                     {!taskIsRetired ? (
                       <button
                         type="button"
@@ -1755,32 +1885,24 @@ function TaskDetailModal({
                       onChange={(event) => onFilesChange(Array.from(event.target.files || []))}
                     />
                   </div>
-                  <div className="mt-4 grid gap-3">
-                    {task.attachments.map((attachment) => (
-                      <a
-                        key={attachment.id}
-                        href={`/api/tasks/${encodeURIComponent(task.id)}/attachments/${encodeURIComponent(attachment.id)}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700 hover:border-slate-300"
-                      >
-                        <span className="inline-flex min-w-0 items-center gap-2">
-                          <Paperclip size={14} className="shrink-0 text-[#17407E]" />
-                          <span className="truncate">{attachment.originalName}</span>
-                        </span>
-                        <span className="text-xs text-slate-500">{Math.round(attachment.sizeBytes / 1024)} KB</span>
-                      </a>
-                    ))}
-                    <FileList files={files} onRemove={(index) => onFilesChange(files.filter((_, currentIndex) => currentIndex !== index))} />
-                  </div>
-                </section>
+                  <TaskAttachmentList
+                    items={task.attachments.map((attachment) => ({
+                      id: attachment.id,
+                      href: `/api/tasks/${encodeURIComponent(task.id)}/attachments/${encodeURIComponent(attachment.id)}`,
+                      name: attachment.originalName,
+                      subtitle: formatDateTime(attachment.createdAt),
+                      sizeLabel: formatFileSize(attachment.sizeBytes),
+                    }))}
+                    emptyLabel="Nenhum anexo enviado para esta tarefa."
+                  />
+                  <FileList files={files} onRemove={(index) => onFilesChange(files.filter((_, currentIndex) => currentIndex !== index))} />
+                </TaskSectionCard>
 
-                <section className="rounded-2xl border border-slate-200 p-4">
+                <TaskSectionCard
+                  title="Comentários"
+                  description="Mantenha alinhamentos, devolutivas e decisões recentes sempre visíveis para a equipe."
+                >
                   <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold text-slate-900">Comentários</h3>
-                      <p className="mt-1 text-sm text-slate-500">Registre alinhamentos, ajustes e devolutivas.</p>
-                    </div>
                     <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
                       {task.comments.length}
                     </span>
@@ -1831,62 +1953,65 @@ function TaskDetailModal({
                       </div>
                     )}
 
-                    {task.comments.length === 0 ? (
+                    {orderedComments.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
                         Nenhum comentário registrado ainda.
                       </div>
                     ) : (
-                      task.comments.map((comment) => (
+                      <div className="max-h-[520px] space-y-3 overflow-y-auto pr-1">
+                      {orderedComments.map((comment) => (
                         <article key={comment.id} className="rounded-xl border border-slate-200 bg-white p-4">
-                          <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="text-sm font-semibold text-slate-900">
-                                {comment.authorUserId === currentUserId
-                                  ? 'Você'
-                                  : usersById.get(comment.authorUserId)?.name || 'Usuário'}
+                                {comment.authorUserId === currentUserId ? 'Você' : usersById.get(comment.authorUserId)?.name || 'Usuário'}
                               </div>
                               <div className="mt-1 text-xs text-slate-500">{formatDateTime(comment.createdAt)}</div>
                             </div>
-                            {comment.attachments.length ? (
-                              <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-[#17407E]">
-                                {comment.attachments.length} anexo(s)
-                              </span>
-                            ) : null}
+                            <div className="flex items-center gap-2">
+                              {comment.attachments.length ? (
+                                <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-[#17407E]">
+                                  {comment.attachments.length} anexo(s)
+                                </span>
+                              ) : null}
+                              {orderedComments[0]?.id === comment.id ? (
+                                <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">Mais recente</span>
+                              ) : null}
+                            </div>
                           </div>
                           <p className="mt-3 whitespace-pre-line text-sm leading-6 text-slate-700">{comment.body}</p>
                           {comment.attachments.length ? (
-                            <div className="mt-3 grid gap-2">
-                              {comment.attachments.map((attachment) => (
-                                <a
-                                  key={attachment.id}
-                                  href={`/api/tasks/${encodeURIComponent(task.id)}/comments/${encodeURIComponent(comment.id)}/attachments/${encodeURIComponent(attachment.id)}`}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 hover:border-slate-300"
-                                >
-                                  <Paperclip size={14} className="text-[#17407E]" />
-                                  {attachment.originalName}
-                                </a>
-                              ))}
-                            </div>
+                            <TaskAttachmentList
+                              items={comment.attachments.map((attachment) => ({
+                                id: attachment.id,
+                                href: `/api/tasks/${encodeURIComponent(task.id)}/comments/${encodeURIComponent(comment.id)}/attachments/${encodeURIComponent(attachment.id)}`,
+                                name: attachment.originalName,
+                                subtitle: 'Anexo do comentário',
+                                sizeLabel: formatFileSize(attachment.sizeBytes),
+                              }))}
+                              emptyLabel=""
+                              compact
+                            />
                           ) : null}
                         </article>
-                      ))
+                      ))}
+                      </div>
                     )}
                   </div>
-                </section>
+                </TaskSectionCard>
               </>
             )}
+            </div>
           </div>
 
-          <aside className="border-l border-slate-200 bg-slate-50/60 p-5">
+          <aside className="min-h-0 overflow-y-auto border-l border-slate-200 bg-slate-50/60 p-6">
             <div className="space-y-5">
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <h3 className="font-semibold text-slate-900">Resumo rápido</h3>
-                <div className="mt-4 space-y-3 text-sm text-slate-600">
-                  <InfoRow icon={<Clock3 size={15} />} label="Status" value={statusLabelMap[task.status]} />
-                  <InfoRow icon={<AlertCircle size={15} />} label="Prioridade" value={task.priority} />
-                  <InfoRow icon={<Calendar size={15} />} label="Prazo" value={formatDate(task.dueDate)} />
+                <div className="mt-4 grid gap-3 text-sm text-slate-600">
+                  <InfoRow icon={<Clock3 size={15} />} label="Status" value={statusLabelMap[form.status]} />
+                  <InfoRow icon={<AlertCircle size={15} />} label="Prioridade" value={priorityLabelMap[form.priority]} />
+                  <InfoRow icon={<Calendar size={15} />} label="Prazo" value={formatDate(form.dueDate || null)} />
                   <InfoRow icon={<UserCheck size={15} />} label="Criada em" value={formatDateTime(task.createdAt)} />
                   <InfoRow icon={<Users size={15} />} label="Comentários" value={String(task.comments.length)} />
                   <InfoRow icon={<FileText size={15} />} label="Anexos" value={String(task.attachments.length)} />
@@ -1899,12 +2024,12 @@ function TaskDetailModal({
                   <InfoRow
                     icon={<ShieldCheck size={15} />}
                     label="Aprovador"
-                    value={task.approverUserId ? usersById.get(task.approverUserId)?.name || 'Usuário atribuído' : 'Não definido'}
+                    value={form.approverUserId ? usersById.get(form.approverUserId)?.name || 'Usuário atribuído' : 'Não definido'}
                   />
                   <InfoRow
                     icon={<CheckCircle2 size={15} />}
                     label="Última decisão"
-                    value={task.latestApproval ? approvalLabelMap[task.latestApproval.decisionStatus] : 'Sem ciclo aberto'}
+                    value={approvalStateLabel}
                   />
                   <InfoRow
                     icon={<MessageCircle size={15} />}
@@ -2013,16 +2138,11 @@ function TaskDetailModal({
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <h3 className="font-semibold text-slate-900">Histórico recente</h3>
-                <div className="mt-4 space-y-3">
-                  {task.activity.length === 0 ? (
+                <div className="mt-4 max-h-[360px] overflow-y-auto pr-1">
+                  {orderedActivity.length === 0 ? (
                     <p className="text-sm text-slate-500">Nenhum evento registrado.</p>
                   ) : (
-                    task.activity.slice(0, 8).map((item) => (
-                      <div key={item.id} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                        <div className="text-xs font-semibold uppercase tracking-wide text-[#17407E]">{item.action}</div>
-                        <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)}</div>
-                      </div>
-                    ))
+                    <TaskActivityTimeline items={orderedActivity.slice(0, 12)} />
                   )}
                 </div>
               </div>
@@ -2030,7 +2150,7 @@ function TaskDetailModal({
           </aside>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-slate-200 p-5">
+        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur">
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
             Fechar
           </button>
@@ -2045,6 +2165,118 @@ function TaskDetailModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ModalPill({
+  label,
+  tone,
+}: {
+  label: string;
+  tone: 'status' | 'priority' | 'warning' | 'danger';
+}) {
+  const toneClassName =
+    tone === 'status'
+      ? 'border-blue-200 bg-blue-50 text-[#17407E]'
+      : tone === 'priority'
+        ? 'border-slate-200 bg-slate-50 text-slate-700'
+        : tone === 'warning'
+          ? 'border-amber-200 bg-amber-50 text-amber-700'
+          : 'border-rose-200 bg-rose-50 text-rose-700';
+
+  return <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${toneClassName}`}>{label}</span>;
+}
+
+function QuickMetaCard({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</div>
+      <div className="mt-1 text-sm font-medium text-slate-800">{value}</div>
+    </div>
+  );
+}
+
+function TaskSectionCard({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="mb-4">
+        <h3 className="font-semibold text-slate-900">{title}</h3>
+        {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+      </div>
+      <div className="space-y-4">{children}</div>
+    </section>
+  );
+}
+
+function TaskAttachmentList({
+  items,
+  emptyLabel,
+  compact = false,
+}: {
+  items: Array<{ id: string; href: string; name: string; subtitle: string; sizeLabel: string }>;
+  emptyLabel: string;
+  compact?: boolean;
+}) {
+  if (!items.length) {
+    return emptyLabel ? <p className="mt-4 text-sm text-slate-500">{emptyLabel}</p> : null;
+  }
+
+  return (
+    <div className={`mt-4 grid gap-2 ${compact ? '' : ''}`}>
+      {items.map((item) => (
+        <a
+          key={item.id}
+          href={item.href}
+          target="_blank"
+          rel="noreferrer"
+          className={`flex items-center justify-between gap-3 rounded-xl border border-slate-200 ${compact ? 'bg-slate-50 px-3 py-2.5' : 'bg-slate-50 px-3 py-3'} text-sm text-slate-700 hover:border-slate-300`}
+        >
+          <span className="inline-flex min-w-0 items-center gap-2">
+            <Paperclip size={14} className="shrink-0 text-[#17407E]" />
+            <span className="min-w-0">
+              <span className="block truncate">{item.name}</span>
+              <span className="block truncate text-xs text-slate-500">{item.subtitle}</span>
+            </span>
+          </span>
+          <span className="shrink-0 text-xs text-slate-500">{item.sizeLabel}</span>
+        </a>
+      ))}
+    </div>
+  );
+}
+
+function TaskActivityTimeline({
+  items,
+}: {
+  items: TaskDetail['activity'];
+}) {
+  return (
+    <div className="space-y-3">
+      {items.map((item) => (
+        <div key={item.id} className="relative pl-5">
+          <span className="absolute left-0 top-2.5 h-2.5 w-2.5 rounded-full bg-[#17407E]" />
+          <span className="absolute left-[4px] top-5 h-[calc(100%-0.25rem)] w-px bg-slate-200 last:hidden" />
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+            <div className="text-sm font-semibold text-slate-900">{describeTaskActivity(item.action, item.payloadJson)}</div>
+            <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)}</div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
