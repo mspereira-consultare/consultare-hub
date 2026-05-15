@@ -4,6 +4,7 @@ import type { EquipmentListItem } from '@/lib/equipamentos/types';
 
 const operationalStatusLabel: Record<string, string> = {
   ATIVO: 'Ativo',
+  ENVIAR_MANUTENCAO: 'Enviar para manutenção',
   EM_MANUTENCAO: 'Em manutenção',
   INATIVO: 'Inativo',
   DESCARTADO: 'Descartado',
@@ -27,6 +28,7 @@ const calibrationBadgeClassName = (status: string) => {
 
 const operationalBadgeClassName = (status: string) => {
   if (status === 'ATIVO') return 'bg-emerald-50 text-emerald-700 ring-emerald-200';
+  if (status === 'ENVIAR_MANUTENCAO') return 'bg-orange-50 text-orange-700 ring-orange-200';
   if (status === 'EM_MANUTENCAO') return 'bg-amber-50 text-amber-700 ring-amber-200';
   if (status === 'INATIVO') return 'bg-slate-100 text-slate-600 ring-slate-200';
   if (status === 'DESCARTADO') return 'bg-rose-50 text-rose-700 ring-rose-200';

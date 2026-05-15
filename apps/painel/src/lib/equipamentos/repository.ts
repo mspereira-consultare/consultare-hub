@@ -494,6 +494,7 @@ export const listEquipment = async (
           item.model,
           item.serialNumber,
           item.locationDetail,
+          item.operationalStatus,
           item.calibrationResponsible,
         ]
           .filter(Boolean)
@@ -528,7 +529,7 @@ export const listEquipment = async (
     calibrationDueSoon: list.filter((item) => item.calibrationStatus === 'VENCENDO').length,
     calibrationOverdue: list.filter((item) => item.calibrationStatus === 'VENCIDO').length,
     calibrationNoSchedule: list.filter((item) => item.calibrationStatus === 'SEM_PROGRAMACAO').length,
-    maintenanceCount: list.filter((item) => item.operationalStatus === 'EM_MANUTENCAO').length,
+    maintenanceCount: list.filter((item) => ['ENVIAR_MANUTENCAO', 'EM_MANUTENCAO'].includes(item.operationalStatus)).length,
   };
 
   const page = Math.max(1, filters.page || 1);

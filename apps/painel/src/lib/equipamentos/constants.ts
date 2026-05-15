@@ -24,6 +24,7 @@ export type EquipmentType = (typeof EQUIPMENT_TYPES)[number]['value'];
 
 export const EQUIPMENT_OPERATIONAL_STATUSES = [
   { value: 'ATIVO', label: 'Ativo' },
+  { value: 'ENVIAR_MANUTENCAO', label: 'Enviar para manutenção' },
   { value: 'EM_MANUTENCAO', label: 'Em manutenção' },
   { value: 'INATIVO', label: 'Inativo' },
   { value: 'DESCARTADO', label: 'Descartado' },
