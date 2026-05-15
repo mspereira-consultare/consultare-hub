@@ -855,27 +855,6 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                               </span>
                             </span>
                           </div>
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {canMoveBackward(column.key) ? (
-                              <SmallActionButton
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void moveTask(task, previousStatus(column.key));
-                                }}
-                              >
-                                Voltar
-                              </SmallActionButton>
-                            ) : null}
-                            {canMoveForward(task) ? (
-                              <SmallActionButton
-                                onClick={(event) => { event.stopPropagation(); void moveTask(task, nextStatus(column.key)); }}
-                                disabled={column.key === 'EM_ANDAMENTO' && !task.approverUserId}
-                                title={column.key === 'EM_ANDAMENTO' && !task.approverUserId ? 'Defina um aprovador antes de enviar para aprovação.' : undefined}
-                              >
-                                Avançar
-                              </SmallActionButton>
-                            ) : null}
-                          </div>
                         </div>
                       ))
                     )}
@@ -965,30 +944,6 @@ function SummaryCard({
       <div className="mt-3 text-3xl font-semibold">{value}</div>
       <p className="mt-2 text-sm opacity-80">{helper}</p>
     </div>
-  );
-}
-
-function SmallActionButton({
-  children,
-  onClick,
-  disabled = false,
-  title,
-}: {
-  children: React.ReactNode;
-  onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
-  disabled?: boolean;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {children}
-    </button>
   );
 }
 
