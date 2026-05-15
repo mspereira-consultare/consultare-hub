@@ -236,6 +236,13 @@ const buildQueryString = (filters: FiltersState) => {
   return params.toString();
 };
 
+const canDropTaskToStatus = (task: TaskSummary, status: TaskStatus, canEdit: boolean) => {
+  if (!canEdit) return false;
+  if (task.status === status || status === 'CANCELADA') return false;
+  if (status === 'AGUARDANDO_APROVACAO' && !task.approverUserId) return false;
+  return true;
+};
+
 export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveTasksClientProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('KANBAN');
   const [filters, setFilters] = useState<FiltersState>(defaultFilters);
@@ -253,6 +260,9 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [form, setForm] = useState<TaskFormState>(defaultForm());
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
+  const dragClickGuardRef = useRef<string | null>(null);
 
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
   const deferredSearch = useDeferredValue(filters.search);
@@ -388,6 +398,68 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
     } finally {
       setSaving(false);
     }
+  };
+
+  const moveTask = async (task: TaskSummary, status: TaskStatus) => {
+    if (!canEdit || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/tasks/${encodeURIComponent(task.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      setSuccessMessage(`Tarefa ${task.protocolId} movida para ${statusLabelMap[status]}.`);
+      await loadBoard(task.id);
+      if (detailOpen && selectedTaskId === task.id) {
+        await loadTaskDetail(task.id, false);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao mover tarefa.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleTaskDragStart = (task: TaskSummary, event: React.DragEvent<HTMLElement>) => {
+    if (!canEdit || saving) return;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', task.id);
+    setDraggedTaskId(task.id);
+    dragClickGuardRef.current = task.id;
+  };
+
+  const handleTaskDragEnd = (taskId: string) => {
+    setDraggedTaskId(null);
+    setDragOverColumn(null);
+    window.setTimeout(() => {
+      if (dragClickGuardRef.current === taskId) {
+        dragClickGuardRef.current = null;
+      }
+    }, 0);
+  };
+
+  const handleColumnDragOver = (status: TaskStatus, event: React.DragEvent<HTMLDivElement>) => {
+    const taskId = draggedTaskId || event.dataTransfer.getData('text/plain');
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task || !canDropTaskToStatus(task, status, canEdit) || saving) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if (dragOverColumn !== status) {
+      setDragOverColumn(status);
+    }
+  };
+
+  const handleColumnDrop = async (status: TaskStatus, event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const taskId = draggedTaskId || event.dataTransfer.getData('text/plain');
+    const task = tasks.find((item) => item.id === taskId);
+    setDragOverColumn(null);
+    setDraggedTaskId(null);
+    if (!task || !canDropTaskToStatus(task, status, canEdit) || saving) return;
+    await moveTask(task, status);
   };
 
   return (
@@ -554,7 +626,21 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
             <div className="overflow-x-auto">
               <div className="grid min-w-[1200px] grid-cols-5 items-start gap-4">
                 {boardByColumn.map((column) => (
-                  <div key={column.key} className="flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border border-slate-200 bg-slate-50/70">
+                  <div
+                    key={column.key}
+                    onDragOver={(event) => handleColumnDragOver(column.key, event)}
+                    onDragLeave={() => {
+                      if (dragOverColumn === column.key) {
+                        setDragOverColumn(null);
+                      }
+                    }}
+                    onDrop={(event) => {
+                      void handleColumnDrop(column.key, event);
+                    }}
+                    className={`flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border bg-slate-50/70 transition ${
+                      dragOverColumn === column.key ? 'border-blue-300 ring-2 ring-blue-100' : 'border-slate-200'
+                    }`}
+                  >
                     <div className="border-b border-slate-200 px-4 py-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
@@ -574,11 +660,20 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
                           <button
                             key={task.id}
                             type="button"
+                            draggable={canEdit && !saving}
+                            onDragStart={(event) => handleTaskDragStart(task, event)}
+                            onDragEnd={() => handleTaskDragEnd(task.id)}
                             onClick={() => {
+                              if (dragClickGuardRef.current === task.id) {
+                                dragClickGuardRef.current = null;
+                                return;
+                              }
                               void openTaskDetail(task.id);
                             }}
                             className={`w-full rounded-xl border p-4 text-left shadow-sm transition hover:border-[#17407E] hover:shadow-md ${
                               selectedTaskId === task.id ? 'border-blue-200 bg-blue-50/50 ring-2 ring-blue-100' : 'border-slate-200 bg-white'
+                            } ${
+                              canEdit ? (draggedTaskId === task.id ? 'cursor-grabbing opacity-60' : 'cursor-grab') : ''
                             }`}
                           >
                             <div className="flex items-start justify-between gap-3">

@@ -261,9 +261,12 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
   const [approvalNotes, setApprovalNotes] = useState('');
   const [decisionNotes, setDecisionNotes] = useState('');
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const createFileRef = useRef<HTMLInputElement | null>(null);
   const detailFileRef = useRef<HTMLInputElement | null>(null);
   const commentFileRef = useRef<HTMLInputElement | null>(null);
+  const dragClickGuardRef = useRef<string | null>(null);
 
   const loadTasks = async (focusTaskId?: string) => {
     setBoardLoading(true);
@@ -528,6 +531,44 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     }
   };
 
+  const handleTaskDragStart = (task: TaskSummary, event: React.DragEvent<HTMLElement>) => {
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', task.id);
+    setDraggedTaskId(task.id);
+    dragClickGuardRef.current = task.id;
+  };
+
+  const handleTaskDragEnd = (taskId: string) => {
+    setDraggedTaskId(null);
+    setDragOverColumn(null);
+    window.setTimeout(() => {
+      if (dragClickGuardRef.current === taskId) {
+        dragClickGuardRef.current = null;
+      }
+    }, 0);
+  };
+
+  const handleColumnDragOver = (status: TaskStatus, event: React.DragEvent<HTMLDivElement>) => {
+    const taskId = draggedTaskId || event.dataTransfer.getData('text/plain');
+    const task = tasks.find((item) => item.id === taskId);
+    if (!task || !canDropTaskToStatus(task, status) || saving) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if (dragOverColumn !== status) {
+      setDragOverColumn(status);
+    }
+  };
+
+  const handleColumnDrop = async (status: TaskStatus, event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const taskId = draggedTaskId || event.dataTransfer.getData('text/plain');
+    const task = tasks.find((item) => item.id === taskId);
+    setDragOverColumn(null);
+    setDraggedTaskId(null);
+    if (!task || !canDropTaskToStatus(task, status) || saving) return;
+    await moveTask(task, status);
+  };
+
   const sendComment = async () => {
     if (!selectedTask || !commentBody.trim() || saving) return;
     setSaving(true);
@@ -700,7 +741,21 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           ) : (
             <div className="grid min-w-[1200px] grid-cols-5 items-start gap-4">
               {boardByColumn.map((column) => (
-                <div key={column.key} className="flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border border-slate-200 bg-slate-50/70">
+                <div
+                  key={column.key}
+                  onDragOver={(event) => handleColumnDragOver(column.key, event)}
+                  onDragLeave={() => {
+                    if (dragOverColumn === column.key) {
+                      setDragOverColumn(null);
+                    }
+                  }}
+                  onDrop={(event) => {
+                    void handleColumnDrop(column.key, event);
+                  }}
+                  className={`flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border bg-slate-50/70 transition ${
+                    dragOverColumn === column.key ? 'border-blue-300 ring-2 ring-blue-100' : 'border-slate-200'
+                  }`}
+                >
                   <div className="border-b border-slate-200 px-4 py-4">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -723,7 +778,14 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                           key={task.id}
                           role="button"
                           tabIndex={0}
+                          draggable={!saving}
+                          onDragStart={(event) => handleTaskDragStart(task, event)}
+                          onDragEnd={() => handleTaskDragEnd(task.id)}
                           onClick={() => {
+                            if (dragClickGuardRef.current === task.id) {
+                              dragClickGuardRef.current = null;
+                              return;
+                            }
                             void openTaskDetail(task.id);
                           }}
                           onKeyDown={(event) => {
@@ -734,6 +796,8 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                           }}
                           className={`w-full text-left ${cardBaseClassName} ${getTaskTone(task)} ${
                             selectedTaskId === task.id ? 'ring-2 ring-blue-200' : ''
+                          } ${
+                            draggedTaskId === task.id ? 'cursor-grabbing opacity-60' : 'cursor-grab'
                           }`}
                         >
                           <div className="flex items-start justify-between gap-3">
@@ -1908,4 +1972,11 @@ const canMoveForward = (task: TaskSummary) => {
     return false;
   }
   return nextStatus(task.status) !== task.status;
+};
+
+const canDropTaskToStatus = (task: TaskSummary, status: TaskStatus) => {
+  if (task.status === status || status === 'CANCELADA') return false;
+  if (canMoveBackward(task.status) && previousStatus(task.status) === status) return true;
+  if (canMoveForward(task) && nextStatus(task.status) === status) return true;
+  return false;
 };
