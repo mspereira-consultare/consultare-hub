@@ -772,31 +772,45 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       </section>
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="grid gap-3 border-b border-slate-200 p-5 xl:grid-cols-[minmax(260px,1fr)_minmax(0,1fr)]">
-          <div className="relative">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Buscar por protocolo, título, descrição ou setor"
-              className={`${inputClassName} pl-9`}
-            />
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {FILTERS.map((filter) => (
-              <button
-                key={filter.key}
-                type="button"
-                onClick={() => setActiveFilter(filter.key)}
-                className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${
-                  activeFilter === filter.key
-                    ? 'border-[#17407E] bg-blue-50 text-[#17407E]'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                }`}
-              >
-                {filter.label}
-              </button>
-            ))}
+        <div className="border-b border-slate-200 p-5">
+          <div className="flex flex-col gap-4">
+            <div className="max-w-5xl">
+              <div className="relative">
+                <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar por protocolo, título, descrição ou setor"
+                  className={`${inputClassName} pl-9`}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Filtros rápidos</p>
+                <p className="mt-1 text-sm text-slate-500">Escolha o recorte que você quer acompanhar no board.</p>
+              </div>
+
+              <div className="-mx-1 overflow-x-auto pb-1">
+                <div className="flex min-w-max flex-wrap gap-2 px-1 lg:justify-end">
+                  {FILTERS.map((filter) => (
+                    <button
+                      key={filter.key}
+                      type="button"
+                      onClick={() => setActiveFilter(filter.key)}
+                      className={`rounded-full border px-3 py-2 text-xs font-semibold whitespace-nowrap transition ${
+                        activeFilter === filter.key
+                          ? 'border-[#17407E] bg-blue-50 text-[#17407E]'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                      }`}
+                    >
+                      {filter.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
