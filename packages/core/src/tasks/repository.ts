@@ -55,8 +55,16 @@ const nullable = (value: unknown) => {
 };
 
 const PRIORITIES: TaskPriority[] = ['BAIXA', 'MEDIA', 'ALTA', 'URGENTE'];
-const STATUSES: TaskStatus[] = ['BACKLOG', 'A_FAZER', 'EM_ANDAMENTO', 'AGUARDANDO_APROVACAO', 'CONCLUIDA', 'CANCELADA'];
+const STATUSES: TaskStatus[] = ['BACKLOG', 'A_FAZER', 'EM_ANDAMENTO', 'AGUARDANDO_APROVACAO', 'CONCLUIDA', 'ARQUIVADA', 'CANCELADA'];
 const APPROVAL_DECISIONS = ['PENDENTE', 'APROVADA', 'REPROVADA', 'DEVOLVIDA', 'CANCELADA'] as const;
+const RETIRED_STATUSES: TaskStatus[] = ['ARQUIVADA', 'CANCELADA'];
+const OPERATIONAL_STATUSES: Array<Exclude<TaskStatus, 'ARQUIVADA' | 'CANCELADA'>> = [
+  'BACKLOG',
+  'A_FAZER',
+  'EM_ANDAMENTO',
+  'AGUARDANDO_APROVACAO',
+  'CONCLUIDA',
+];
 
 const isMysqlProvider = () => {
   const provider = clean(process.env.DB_PROVIDER).toLowerCase();
@@ -104,6 +112,8 @@ const normalizeStatus = (value: unknown, fallback: TaskStatus = 'BACKLOG'): Task
   return fallback;
 };
 
+const isRetiredStatus = (status: TaskStatus) => RETIRED_STATUSES.includes(status);
+
 const parseDate = (value: unknown): string | null => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10);
@@ -150,6 +160,13 @@ const ensureTaskExists = async (db: DbInterface, taskId: string) => {
   const row = rows[0] as Row | undefined;
   if (!row) throw new TaskValidationError('Tarefa não encontrada.', 404);
   return row;
+};
+
+const ensureTaskIsActiveForMutation = (taskRow: Row) => {
+  const status = normalizeStatus(taskRow.status);
+  if (isRetiredStatus(status)) {
+    throw new TaskValidationError('Esta tarefa está encerrada. Restaure a tarefa antes de continuar.', 409);
+  }
 };
 
 const ensureViewerCanAccessTask = async (db: DbInterface, taskId: string, viewer: TaskViewerContext) => {
@@ -272,6 +289,7 @@ const mapSummaryRow = (
   completedAt: nullable(row.completed_at),
   canceledAt: nullable(row.canceled_at),
   cancellationReason: nullable(row.cancellation_reason),
+  previousOperationalStatus: nullable(row.previous_operational_status) as TaskSummary['previousOperationalStatus'],
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
   assignees,
@@ -446,8 +464,8 @@ const buildFilterClause = (filters: TaskListFilters) => {
     where.push(`t.status IN (${filters.statuses.map(() => '?').join(', ')})`);
     params.push(...filters.statuses);
   } else if (!filters.includeCanceled) {
-    where.push(`t.status <> ?`);
-    params.push('CANCELADA');
+    where.push(`t.status NOT IN (?, ?)`);
+    params.push('CANCELADA', 'ARQUIVADA');
   }
 
   if (filters.priorities?.length) {
@@ -487,14 +505,14 @@ const buildFilterClause = (filters: TaskListFilters) => {
   if (filters.dueBucket === 'OVERDUE') {
     where.push(
       isMysqlProvider()
-        ? `t.due_date IS NOT NULL AND DATE(t.due_date) < CURDATE() AND t.status NOT IN ('CONCLUIDA', 'CANCELADA')`
-        : `t.due_date IS NOT NULL AND DATE(t.due_date) < date('now') AND t.status NOT IN ('CONCLUIDA', 'CANCELADA')`
+        ? `t.due_date IS NOT NULL AND DATE(t.due_date) < CURDATE() AND t.status NOT IN ('CONCLUIDA', 'CANCELADA', 'ARQUIVADA')`
+        : `t.due_date IS NOT NULL AND DATE(t.due_date) < date('now') AND t.status NOT IN ('CONCLUIDA', 'CANCELADA', 'ARQUIVADA')`
     );
   } else if (filters.dueBucket === 'DUE_SOON') {
     where.push(
       isMysqlProvider()
-        ? `t.due_date IS NOT NULL AND DATE(t.due_date) BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 2 DAY) AND t.status NOT IN ('CONCLUIDA', 'CANCELADA')`
-        : `t.due_date IS NOT NULL AND DATE(t.due_date) BETWEEN date('now') AND date('now', '+2 day') AND t.status NOT IN ('CONCLUIDA', 'CANCELADA')`
+        ? `t.due_date IS NOT NULL AND DATE(t.due_date) BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL 2 DAY) AND t.status NOT IN ('CONCLUIDA', 'CANCELADA', 'ARQUIVADA')`
+        : `t.due_date IS NOT NULL AND DATE(t.due_date) BETWEEN date('now') AND date('now', '+2 day') AND t.status NOT IN ('CONCLUIDA', 'CANCELADA', 'ARQUIVADA')`
     );
   }
 
@@ -565,6 +583,7 @@ export const ensureTaskTables = async (db: DbInterface) => {
       completed_at TEXT NULL,
       canceled_at TEXT NULL,
       cancellation_reason TEXT NULL,
+      previous_operational_status VARCHAR(30) NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     )
@@ -652,6 +671,7 @@ export const ensureTaskTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN completed_at TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN canceled_at TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN cancellation_reason TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN previous_operational_status VARCHAR(30) NULL`);
 
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_tasks_protocol_number ON tasks (protocol_number)`);
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_tasks_protocol_id ON tasks (protocol_id)`);
@@ -754,6 +774,9 @@ export const createTask = async (db: DbInterface, input: TaskCreateInput, actorU
   const description = clean(input.description);
   const priority = normalizePriority(input.priority, 'MEDIA');
   const status = normalizeStatus(input.status, 'BACKLOG');
+  if (isRetiredStatus(status)) {
+    throw new TaskValidationError('Não é permitido criar tarefas já encerradas.');
+  }
   const dueDate = parseDate(input.dueDate);
   const startDate = parseDate(input.startDate);
   const approverUserId = nullable(input.approverUserId);
@@ -778,8 +801,8 @@ export const createTask = async (db: DbInterface, input: TaskCreateInput, actorU
       INSERT INTO tasks (
         id, protocol_number, protocol_id, title, description, department, priority, status,
         due_date, start_date, primary_assignee_user_id, approver_user_id, created_by,
-        completed_at, canceled_at, cancellation_reason, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        completed_at, canceled_at, cancellation_reason, previous_operational_status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         taskId,
@@ -797,6 +820,7 @@ export const createTask = async (db: DbInterface, input: TaskCreateInput, actorU
         actorUserId,
         status === 'CONCLUIDA' ? now : null,
         status === 'CANCELADA' ? now : null,
+        null,
         null,
         now,
         now,
@@ -830,12 +854,35 @@ export const updateTask = async (
 
   return runInTransaction(db, async (txDb) => {
     const currentStatus = normalizeStatus(current.status);
+    const currentIsRetired = isRetiredStatus(currentStatus);
+    if (currentIsRetired && !viewer.canViewAll && clean(current.created_by) !== actorUserId) {
+      throw new TaskValidationError('Apenas o criador da tarefa pode editar uma tarefa encerrada.', 403);
+    }
     const nextStatus = input.status ? normalizeStatus(input.status, currentStatus) : currentStatus;
+    const nextIsRetired = isRetiredStatus(nextStatus);
+    const isClosureTransition = !currentIsRetired && nextIsRetired && currentStatus !== nextStatus;
+    const isRestoreTransition = currentIsRetired && !nextIsRetired && currentStatus !== nextStatus;
+    const isRetiredToRetiredTransition = currentIsRetired && nextIsRetired && currentStatus !== nextStatus;
+
+    if (isClosureTransition || isRestoreTransition) {
+      if (!viewer.canViewAll && clean(current.created_by) !== actorUserId) {
+        throw new TaskValidationError('Apenas o criador da tarefa pode cancelar, arquivar ou restaurar esta tarefa.', 403);
+      }
+    }
+
+    if (isRetiredToRetiredTransition) {
+      throw new TaskValidationError('Restaure a tarefa antes de alterar o tipo de encerramento.', 409);
+    }
+
     const nextApprover = Object.prototype.hasOwnProperty.call(input, 'approverUserId')
       ? nullable(input.approverUserId)
       : nullable(current.approver_user_id);
     if (nextStatus === 'AGUARDANDO_APROVACAO' && !nextApprover) {
       throw new TaskValidationError('Defina um aprovador antes de mover a tarefa para aguardando aprovação.');
+    }
+
+    if (nextStatus === 'CANCELADA' && !nullable(input.cancellationReason)) {
+      throw new TaskValidationError('Informe um motivo para cancelar a tarefa.');
     }
 
     const nextPrimaryAssigneeUserId = Object.prototype.hasOwnProperty.call(input, 'primaryAssigneeUserId')
@@ -874,17 +921,31 @@ export const updateTask = async (
     if (!nextTitle) throw new TaskValidationError('Título obrigatório.');
     if (!nextDepartment) throw new TaskValidationError('Setor obrigatório.');
 
+    const currentPreviousOperationalStatus = nullable(current.previous_operational_status) as TaskSummary['previousOperationalStatus'];
+    const nextPreviousOperationalStatus = isClosureTransition
+      ? (currentIsRetired ? currentPreviousOperationalStatus : currentStatus as TaskSummary['previousOperationalStatus'])
+      : isRestoreTransition
+        ? null
+        : currentPreviousOperationalStatus;
+
     const nextCompletedAt =
-      nextStatus === 'CONCLUIDA' ? nullable(current.completed_at) || updatedAt : null;
-    const nextCanceledAt =
-      nextStatus === 'CANCELADA' ? nullable(current.canceled_at) || updatedAt : null;
+      nextStatus === 'CONCLUIDA'
+        ? nullable(current.completed_at) || updatedAt
+        : nextStatus === 'ARQUIVADA' && currentStatus === 'CONCLUIDA'
+          ? nullable(current.completed_at) || updatedAt
+          : null;
+    const nextCanceledAt = nextStatus === 'CANCELADA' ? nullable(current.canceled_at) || updatedAt : null;
+    const finalCancellationReason =
+      nextStatus === 'CANCELADA' || nextStatus === 'ARQUIVADA'
+        ? nextCancellationReason
+        : null;
 
     await txDb.execute(
       `
       UPDATE tasks
       SET title = ?, description = ?, department = ?, priority = ?, status = ?, due_date = ?, start_date = ?,
           primary_assignee_user_id = ?, approver_user_id = ?, completed_at = ?, canceled_at = ?,
-          cancellation_reason = ?, updated_at = ?
+          cancellation_reason = ?, previous_operational_status = ?, updated_at = ?
       WHERE id = ?
       `,
       [
@@ -899,7 +960,8 @@ export const updateTask = async (
         nextApprover,
         nextCompletedAt,
         nextCanceledAt,
-        nextCancellationReason,
+        finalCancellationReason,
+        nextPreviousOperationalStatus,
         updatedAt,
         cleanTaskId,
       ]
@@ -909,13 +971,23 @@ export const updateTask = async (
       await replaceAssignees(txDb, cleanTaskId, nextPrimaryAssigneeUserId, requestedAssigneeIds);
     }
 
-    await insertActivity(txDb, cleanTaskId, 'TASK_UPDATED', actorUserId, {
+    const activityAction = isRestoreTransition
+      ? 'TASK_RESTORED'
+      : nextStatus === 'ARQUIVADA' && isClosureTransition
+        ? 'TASK_ARCHIVED'
+        : nextStatus === 'CANCELADA' && isClosureTransition
+          ? 'TASK_CANCELED'
+          : 'TASK_UPDATED';
+
+    await insertActivity(txDb, cleanTaskId, activityAction, actorUserId, {
       previousStatus: currentStatus,
       nextStatus,
       previousPriority: normalizePriority(current.priority),
       nextPriority,
       approverUserId: nextApprover,
       primaryAssigneeUserId: nextPrimaryAssigneeUserId,
+      cancellationReason: finalCancellationReason,
+      previousOperationalStatus: nextPreviousOperationalStatus,
     });
 
     return getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
@@ -932,7 +1004,8 @@ export const addTaskAttachment = async (
   await ensureTaskTables(db);
   const cleanTaskId = clean(taskId);
   await ensureViewerCanAccessTask(db, cleanTaskId, viewer);
-  await ensureTaskExists(db, cleanTaskId);
+  const taskRow = await ensureTaskExists(db, cleanTaskId);
+  ensureTaskIsActiveForMutation(taskRow);
 
   const storageKey = clean(input.storageKey);
   const originalName = clean(input.originalName);
@@ -993,7 +1066,8 @@ export const addTaskComment = async (
   await ensureTaskTables(db);
   const cleanTaskId = clean(taskId);
   await ensureViewerCanAccessTask(db, cleanTaskId, viewer);
-  await ensureTaskExists(db, cleanTaskId);
+  const taskRow = await ensureTaskExists(db, cleanTaskId);
+  ensureTaskIsActiveForMutation(taskRow);
   const body = clean(input.body);
   if (!body) throw new TaskValidationError('Comentário obrigatório.');
 
@@ -1030,9 +1104,19 @@ export const addTaskCommentAttachment = async (
   actorUserId: string
 ): Promise<TaskCommentAttachment> => {
   await ensureTaskTables(db);
-  const rows = await db.query(`SELECT id, task_id FROM task_comments WHERE id = ? LIMIT 1`, [clean(commentId)]);
+  const rows = await db.query(
+    `
+    SELECT c.id, c.task_id, t.status
+    FROM task_comments c
+    INNER JOIN tasks t ON t.id = c.task_id
+    WHERE c.id = ?
+    LIMIT 1
+    `,
+    [clean(commentId)]
+  );
   const commentRow = rows[0] as Row | undefined;
   if (!commentRow) throw new TaskValidationError('Comentário não encontrado.', 404);
+  ensureTaskIsActiveForMutation(commentRow);
 
   const item: TaskCommentAttachment = {
     id: randomUUID(),
@@ -1092,6 +1176,7 @@ export const requestTaskApproval = async (
   const cleanTaskId = clean(taskId);
   await ensureViewerCanAccessTask(db, cleanTaskId, viewer);
   const current = await ensureTaskExists(db, cleanTaskId);
+  ensureTaskIsActiveForMutation(current);
   const approverUserId = clean(input.approverUserId) || nullable(current.approver_user_id);
   if (!approverUserId) {
     throw new TaskValidationError('Defina um aprovador para solicitar aprovação.');
@@ -1149,6 +1234,7 @@ export const decideTaskApproval = async (
   await ensureTaskTables(db);
   const cleanTaskId = clean(taskId);
   await ensureViewerCanAccessTask(db, cleanTaskId, viewer);
+  ensureTaskIsActiveForMutation(await ensureTaskExists(db, cleanTaskId));
   const decisionStatus = upper(input.decisionStatus);
   if (!APPROVAL_DECISIONS.includes(decisionStatus as any) || decisionStatus === 'PENDENTE') {
     throw new TaskValidationError('Decisão de aprovação inválida.');
@@ -1181,11 +1267,15 @@ export const decideTaskApproval = async (
         : decisionStatus === 'CANCELADA'
           ? 'CANCELADA'
           : 'EM_ANDAMENTO';
+    const nextPreviousOperationalStatus =
+      nextStatus === 'CANCELADA'
+        ? normalizeStatus((await ensureTaskExists(txDb, cleanTaskId)).status) as TaskSummary['previousOperationalStatus']
+        : null;
 
     await txDb.execute(
       `
       UPDATE tasks
-      SET status = ?, completed_at = ?, canceled_at = ?, cancellation_reason = ?, updated_at = ?
+      SET status = ?, completed_at = ?, canceled_at = ?, cancellation_reason = ?, previous_operational_status = ?, updated_at = ?
       WHERE id = ?
       `,
       [
@@ -1193,6 +1283,7 @@ export const decideTaskApproval = async (
         decisionStatus === 'APROVADA' ? now : null,
         decisionStatus === 'CANCELADA' ? now : null,
         decisionStatus === 'CANCELADA' ? nullable(input.notes) : null,
+        nextPreviousOperationalStatus,
         now,
         cleanTaskId,
       ]
@@ -1201,6 +1292,7 @@ export const decideTaskApproval = async (
     await insertActivity(txDb, cleanTaskId, 'TASK_APPROVAL_DECIDED', actorUserId, {
       decisionStatus,
       nextStatus,
+      previousOperationalStatus: nextPreviousOperationalStatus,
     });
 
     return getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
@@ -1217,7 +1309,7 @@ export const getTaskDashboardSummary = async (
   const totalTasks = tasks.length;
   const dueSoonTasks = tasks.filter((task) => {
     if (!task.dueDate) return false;
-    if (task.status === 'CONCLUIDA' || task.status === 'CANCELADA') return false;
+    if (task.status === 'CONCLUIDA' || task.status === 'CANCELADA' || task.status === 'ARQUIVADA') return false;
     const due = new Date(`${task.dueDate}T00:00:00`);
     const today = new Date();
     const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -1228,7 +1320,7 @@ export const getTaskDashboardSummary = async (
 
   const overdueTasks = tasks.filter((task) => {
     if (!task.dueDate) return false;
-    if (task.status === 'CONCLUIDA' || task.status === 'CANCELADA') return false;
+    if (task.status === 'CONCLUIDA' || task.status === 'CANCELADA' || task.status === 'ARQUIVADA') return false;
     const due = new Date(`${task.dueDate}T00:00:00`);
     const today = new Date();
     const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());

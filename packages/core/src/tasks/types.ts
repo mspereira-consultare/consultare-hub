@@ -5,6 +5,7 @@ export type TaskStatus =
   | 'EM_ANDAMENTO'
   | 'AGUARDANDO_APROVACAO'
   | 'CONCLUIDA'
+  | 'ARQUIVADA'
   | 'CANCELADA';
 export type TaskAssigneeRoleType = 'PRIMARY' | 'COLLABORATOR';
 export type TaskApprovalDecisionStatus = 'PENDENTE' | 'APROVADA' | 'REPROVADA' | 'DEVOLVIDA' | 'CANCELADA';
@@ -98,6 +99,7 @@ export type TaskSummary = {
   completedAt: string | null;
   canceledAt: string | null;
   cancellationReason: string | null;
+  previousOperationalStatus: Exclude<TaskStatus, 'ARQUIVADA' | 'CANCELADA'> | null;
   createdAt: string;
   updatedAt: string;
   assignees: TaskAssignee[];

@@ -76,6 +76,8 @@ const KANBAN_COLUMNS: Array<{ key: TaskStatus; label: string; description: strin
   { key: 'EM_ANDAMENTO', label: 'Em andamento', description: 'Execução ativa pela equipe.' },
   { key: 'AGUARDANDO_APROVACAO', label: 'Aguardando aprovação', description: 'Em revisão formal.' },
   { key: 'CONCLUIDA', label: 'Concluídas', description: 'Entregas encerradas.' },
+  { key: 'ARQUIVADA', label: 'Arquivadas', description: 'Tarefas retiradas do fluxo operacional.' },
+  { key: 'CANCELADA', label: 'Canceladas', description: 'Demandas descontinuadas com histórico preservado.' },
 ];
 
 const priorityStyles: Record<TaskPriority, string> = {
@@ -91,6 +93,7 @@ const statusLabelMap: Record<TaskStatus, string> = {
   EM_ANDAMENTO: 'Em andamento',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
   CONCLUIDA: 'Concluída',
+  ARQUIVADA: 'Arquivada',
   CANCELADA: 'Cancelada',
 };
 
@@ -101,6 +104,8 @@ const approvalLabelMap: Record<TaskApprovalDecisionStatus, string> = {
   DEVOLVIDA: 'Devolvida',
   CANCELADA: 'Cancelada',
 };
+
+const RETIRED_TASK_STATUSES: TaskStatus[] = ['ARQUIVADA', 'CANCELADA'];
 
 const inputClassName =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100';
@@ -159,6 +164,8 @@ const normalizeText = (value: unknown) =>
     .toLowerCase()
     .trim();
 
+const isRetiredTaskStatus = (status: TaskStatus) => RETIRED_TASK_STATUSES.includes(status);
+
 const formatDate = (value: string | null) => {
   if (!value) return 'Sem prazo';
   const date = new Date(`${value}T00:00:00`);
@@ -174,7 +181,7 @@ const formatDateTime = (value: string | null) => {
 };
 
 const isDueSoon = (dueDate: string | null, status: TaskStatus) => {
-  if (!dueDate || status === 'CONCLUIDA' || status === 'CANCELADA') return false;
+  if (!dueDate || status === 'CONCLUIDA' || isRetiredTaskStatus(status)) return false;
   const due = new Date(`${dueDate}T00:00:00`);
   const today = new Date();
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -184,7 +191,7 @@ const isDueSoon = (dueDate: string | null, status: TaskStatus) => {
 };
 
 const isOverdue = (dueDate: string | null, status: TaskStatus) => {
-  if (!dueDate || status === 'CONCLUIDA' || status === 'CANCELADA') return false;
+  if (!dueDate || status === 'CONCLUIDA' || isRetiredTaskStatus(status)) return false;
   const due = new Date(`${dueDate}T00:00:00`);
   const today = new Date();
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -225,6 +232,7 @@ const compareTasks = (left: TaskSummary, right: TaskSummary) => {
 
 const buildQueryString = (filters: FiltersState) => {
   const params = new URLSearchParams();
+  params.set('includeCanceled', '1');
   if (filters.search.trim()) params.set('search', filters.search.trim());
   if (filters.department !== 'all') params.set('department', filters.department);
   if (filters.createdBy !== 'all') params.set('createdBy', filters.createdBy);
@@ -238,7 +246,7 @@ const buildQueryString = (filters: FiltersState) => {
 
 const canDropTaskToStatus = (task: TaskSummary, status: TaskStatus, canEdit: boolean) => {
   if (!canEdit) return false;
-  if (task.status === status || status === 'CANCELADA') return false;
+  if (task.status === status || status === 'CANCELADA' || status === 'ARQUIVADA') return false;
   if (status === 'AGUARDANDO_APROVACAO' && !task.approverUserId) return false;
   return true;
 };
@@ -260,6 +268,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [form, setForm] = useState<TaskFormState>(defaultForm());
+  const [lifecycleReason, setLifecycleReason] = useState('');
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const dragClickGuardRef = useRef<string | null>(null);
@@ -320,6 +329,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       const task = payload.data as TaskDetail;
       setSelectedTask(task);
       setForm(taskToForm(task));
+      setLifecycleReason(task.cancellationReason || '');
       if (openPanel) {
         setDetailOpen(true);
       }
@@ -395,6 +405,46 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       await loadTaskDetail(selectedTask.id, false);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar tarefa.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const changeTaskLifecycle = async (status: TaskStatus) => {
+    if (!selectedTask || !canEdit || saving) return;
+    if (status === 'CANCELADA' && !lifecycleReason.trim()) {
+      setError('Informe um motivo para cancelar a tarefa.');
+      return;
+    }
+
+    const restoreStatus = selectedTask.previousOperationalStatus || 'BACKLOG';
+
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/tasks/${encodeURIComponent(selectedTask.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: status === 'BACKLOG' ? restoreStatus : status,
+          cancellationReason: status === 'BACKLOG' ? null : lifecycleReason.trim() || null,
+        }),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const payload = await response.json();
+      const task = payload.data as TaskDetail;
+      setSuccessMessage(
+        status === 'ARQUIVADA'
+          ? `Tarefa ${task.protocolId} arquivada com sucesso.`
+          : status === 'CANCELADA'
+            ? `Tarefa ${task.protocolId} cancelada com sucesso.`
+            : `Tarefa ${task.protocolId} restaurada com sucesso.`
+      );
+      setLifecycleReason(task.cancellationReason || '');
+      await loadBoard(task.id);
+      await loadTaskDetail(task.id, false);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao alterar o encerramento da tarefa.');
     } finally {
       setSaving(false);
     }
@@ -777,6 +827,11 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
           onFormChange={setForm}
           onClose={() => setDetailOpen(false)}
           onSave={() => void handleSave()}
+          lifecycleReason={lifecycleReason}
+          onLifecycleReasonChange={setLifecycleReason}
+          onArchive={() => void changeTaskLifecycle('ARQUIVADA')}
+          onCancelTask={() => void changeTaskLifecycle('CANCELADA')}
+          onRestore={() => void changeTaskLifecycle('BACKLOG')}
         />
       ) : null}
     </main>
@@ -987,6 +1042,11 @@ function TaskDetailPanel({
   onFormChange,
   onClose,
   onSave,
+  lifecycleReason,
+  onLifecycleReasonChange,
+  onArchive,
+  onCancelTask,
+  onRestore,
 }: {
   task: TaskDetail;
   users: UserOption[];
@@ -998,7 +1058,13 @@ function TaskDetailPanel({
   onFormChange: (value: TaskFormState) => void;
   onClose: () => void;
   onSave: () => void;
+  lifecycleReason: string;
+  onLifecycleReasonChange: (value: string) => void;
+  onArchive: () => void;
+  onCancelTask: () => void;
+  onRestore: () => void;
 }) {
+  const taskIsRetired = isRetiredTaskStatus(task.status);
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-4">
       <div className="mx-auto w-full max-w-7xl overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -1041,7 +1107,9 @@ function TaskDetailPanel({
                     value={form.status}
                     onChange={(value) => onFormChange({ ...form, status: value as TaskStatus })}
                     disabled={!canEdit}
-                    options={Object.entries(statusLabelMap).map(([value, label]) => ({ value, label }))}
+                    options={Object.entries(statusLabelMap)
+                      .filter(([value]) => value !== 'ARQUIVADA' && value !== 'CANCELADA')
+                      .map(([value, label]) => ({ value, label }))}
                   />
                   <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} disabled={!canEdit} />
                   <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} disabled={!canEdit} />
@@ -1199,6 +1267,57 @@ function TaskDetailPanel({
                   )}
                 </div>
               </div>
+
+              {canEdit ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <h3 className="font-semibold text-slate-900">Encerramento da tarefa</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {taskIsRetired
+                      ? 'A tarefa está fora do fluxo operacional, mas pode ser restaurada quando necessário.'
+                      : 'Arquive ou cancele a tarefa sem perder histórico, comentários ou anexos.'}
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    <textarea
+                      value={lifecycleReason}
+                      onChange={(event) => onLifecycleReasonChange(event.target.value)}
+                      className={`${inputClassName} min-h-[110px] resize-y`}
+                      placeholder="Motivo do cancelamento ou observação do arquivamento"
+                    />
+                    {taskIsRetired ? (
+                      <button
+                        type="button"
+                        onClick={onRestore}
+                        disabled={saving}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        <CheckCircle2 size={15} />
+                        Restaurar tarefa
+                      </button>
+                    ) : (
+                      <div className="grid gap-2">
+                        <button
+                          type="button"
+                          onClick={onArchive}
+                          disabled={saving}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          <FileText size={15} />
+                          Arquivar tarefa
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onCancelTask}
+                          disabled={saving || !lifecycleReason.trim()}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                        >
+                          <X size={15} />
+                          Cancelar tarefa
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
             </div>
           </aside>
         </div>

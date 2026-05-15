@@ -50,7 +50,15 @@ type TasksClientProps = {
   currentUser: CurrentUser;
 };
 
-type FilterKey = 'ALL' | 'CREATED_BY_ME' | 'ASSIGNED_TO_ME' | 'AWAITING_MY_APPROVAL' | 'OVERDUE' | 'DUE_SOON';
+type FilterKey =
+  | 'ALL'
+  | 'CREATED_BY_ME'
+  | 'ASSIGNED_TO_ME'
+  | 'AWAITING_MY_APPROVAL'
+  | 'OVERDUE'
+  | 'DUE_SOON'
+  | 'ARCHIVED_BY_ME'
+  | 'CANCELED_BY_ME';
 
 type TaskFormState = {
   title: string;
@@ -86,6 +94,7 @@ const STATUS_OPTIONS: Array<{ value: TaskStatus; label: string }> = [
   { value: 'EM_ANDAMENTO', label: 'Em andamento' },
   { value: 'AGUARDANDO_APROVACAO', label: 'Aguardando aprovação' },
   { value: 'CONCLUIDA', label: 'Concluída' },
+  { value: 'ARQUIVADA', label: 'Arquivada' },
   { value: 'CANCELADA', label: 'Cancelada' },
 ];
 
@@ -96,6 +105,8 @@ const FILTERS: Array<{ key: FilterKey; label: string }> = [
   { key: 'AWAITING_MY_APPROVAL', label: 'Aguardando minha aprovação' },
   { key: 'OVERDUE', label: 'Vencidas' },
   { key: 'DUE_SOON', label: 'A vencer' },
+  { key: 'ARCHIVED_BY_ME', label: 'Arquivadas por mim' },
+  { key: 'CANCELED_BY_ME', label: 'Canceladas por mim' },
 ];
 
 const inputClassName =
@@ -116,6 +127,7 @@ const statusLabelMap: Record<TaskStatus, string> = {
   EM_ANDAMENTO: 'Em andamento',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
   CONCLUIDA: 'Concluída',
+  ARQUIVADA: 'Arquivada',
   CANCELADA: 'Cancelada',
 };
 
@@ -126,6 +138,8 @@ const approvalLabelMap: Record<TaskApprovalDecisionStatus, string> = {
   DEVOLVIDA: 'Devolvida',
   CANCELADA: 'Cancelada',
 };
+
+const RETIRED_TASK_STATUSES: TaskStatus[] = ['ARQUIVADA', 'CANCELADA'];
 
 const priorityRank: Record<TaskPriority, number> = {
   URGENTE: 0,
@@ -149,6 +163,9 @@ const normalizeText = (value: unknown) =>
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
+
+const isRetiredTaskStatus = (status: TaskStatus) => RETIRED_TASK_STATUSES.includes(status);
+const isRetiredFilter = (filter: FilterKey) => filter === 'ARCHIVED_BY_ME' || filter === 'CANCELED_BY_ME';
 
 const defaultForm = (currentUser: CurrentUser): TaskFormState => ({
   title: '',
@@ -193,7 +210,7 @@ const formatDateTime = (value: string | null) => {
 };
 
 const isDueSoon = (dueDate: string | null, status: TaskStatus) => {
-  if (!dueDate || status === 'CONCLUIDA' || status === 'CANCELADA') return false;
+  if (!dueDate || status === 'CONCLUIDA' || isRetiredTaskStatus(status)) return false;
   const due = new Date(`${dueDate}T00:00:00`);
   const today = new Date();
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -203,7 +220,7 @@ const isDueSoon = (dueDate: string | null, status: TaskStatus) => {
 };
 
 const isOverdue = (dueDate: string | null, status: TaskStatus) => {
-  if (!dueDate || status === 'CONCLUIDA' || status === 'CANCELADA') return false;
+  if (!dueDate || status === 'CONCLUIDA' || isRetiredTaskStatus(status)) return false;
   const due = new Date(`${dueDate}T00:00:00`);
   const today = new Date();
   const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
@@ -261,6 +278,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const [commentFiles, setCommentFiles] = useState<File[]>([]);
   const [approvalNotes, setApprovalNotes] = useState('');
   const [decisionNotes, setDecisionNotes] = useState('');
+  const [lifecycleReason, setLifecycleReason] = useState('');
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const createFileRef = useRef<HTMLInputElement | null>(null);
@@ -272,7 +290,14 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     setBoardLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/tasks', { cache: 'no-store' });
+      const params = new URLSearchParams();
+      if (activeFilter === 'ARCHIVED_BY_ME') {
+        params.set('statuses', 'ARQUIVADA');
+      }
+      if (activeFilter === 'CANCELED_BY_ME') {
+        params.set('statuses', 'CANCELADA');
+      }
+      const response = await fetch(`/api/tasks${params.size ? `?${params.toString()}` : ''}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(await normalizeError(response));
       const json = await response.json();
       const nextTasks = Array.isArray(json.data) ? (json.data as TaskSummary[]) : [];
@@ -331,6 +356,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       const task = json.data as TaskDetail;
       setSelectedTask(task);
       setEditForm(taskToForm(task));
+      setLifecycleReason(task.cancellationReason || '');
       if (openModal) {
         setDetailOpen(true);
       }
@@ -347,10 +373,14 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   };
 
   useEffect(() => {
-    void loadTasks();
     void loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    void loadTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFilter]);
 
   useEffect(() => {
     if (!successMessage) return undefined;
@@ -380,6 +410,8 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       if (activeFilter === 'AWAITING_MY_APPROVAL' && !(task.approverUserId === currentUser.id && task.status === 'AGUARDANDO_APROVACAO')) return false;
       if (activeFilter === 'OVERDUE' && !isOverdue(task.dueDate, task.status)) return false;
       if (activeFilter === 'DUE_SOON' && !isDueSoon(task.dueDate, task.status)) return false;
+      if (activeFilter === 'ARCHIVED_BY_ME' && !(task.createdBy === currentUser.id && task.status === 'ARQUIVADA')) return false;
+      if (activeFilter === 'CANCELED_BY_ME' && !(task.createdBy === currentUser.id && task.status === 'CANCELADA')) return false;
       return true;
     });
   }, [activeFilter, currentUser.id, search, tasks]);
@@ -417,6 +449,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     setCommentBody('');
     setApprovalNotes('');
     setDecisionNotes('');
+    setLifecycleReason('');
   };
 
   const createTask = async () => {
@@ -569,6 +602,46 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     await moveTask(task, status);
   };
 
+  const changeTaskLifecycle = async (status: TaskStatus) => {
+    if (!selectedTask || saving) return;
+    if (status === 'CANCELADA' && !lifecycleReason.trim()) {
+      setError('Informe um motivo para cancelar a tarefa.');
+      return;
+    }
+
+    const restoreStatus = selectedTask.previousOperationalStatus || 'BACKLOG';
+
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(selectedTask.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: status === 'BACKLOG' ? restoreStatus : status,
+          cancellationReason: status === 'BACKLOG' ? null : lifecycleReason.trim() || null,
+        }),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const json = await response.json();
+      const task = json.data as TaskDetail;
+      setSuccessMessage(
+        status === 'ARQUIVADA'
+          ? `Tarefa ${task.protocolId} arquivada com sucesso.`
+          : status === 'CANCELADA'
+            ? `Tarefa ${task.protocolId} cancelada com sucesso.`
+            : `Tarefa ${task.protocolId} restaurada com sucesso.`
+      );
+      setLifecycleReason(task.cancellationReason || '');
+      await loadTasks(task.id);
+      await loadTaskDetail(task.id, detailOpen);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao alterar o encerramento da tarefa.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const sendComment = async () => {
     if (!selectedTask || !commentBody.trim() || saving) return;
     setSaving(true);
@@ -665,6 +738,8 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     selectedTask?.status === 'AGUARDANDO_APROVACAO' &&
     selectedTask.approverUserId === currentUser.id &&
     selectedTask.latestApproval?.decisionStatus === 'PENDENTE';
+  const canManageLifecycle = selectedTask?.createdBy === currentUser.id;
+  const selectedTaskIsRetired = selectedTask ? isRetiredTaskStatus(selectedTask.status) : false;
 
   return (
     <main className="px-4 py-6 lg:px-8">
@@ -738,6 +813,60 @@ export function TasksClient({ currentUser }: TasksClientProps) {
               <Loader2 size={18} className="mr-2 animate-spin" />
               Carregando tarefas...
             </div>
+          ) : isRetiredFilter(activeFilter) ? (
+            visibleTasks.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">
+                Nenhuma tarefa encerrada encontrada neste filtro.
+              </div>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+                {visibleTasks.sort(compareTasks).map((task) => (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => {
+                      void openTaskDetail(task.id);
+                    }}
+                    className={`w-full text-left ${cardBaseClassName} ${getTaskTone(task)} ${
+                      selectedTaskId === task.id ? 'ring-2 ring-blue-200' : ''
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-[#17407E]">{task.protocolId}</p>
+                        <h3 className="mt-1 line-clamp-2 font-semibold text-slate-900">{task.title}</h3>
+                      </div>
+                      <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold ${priorityStyles[task.priority]}`}>
+                        {task.priority}
+                      </span>
+                    </div>
+                    <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{task.description || 'Sem descrição detalhada.'}</p>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                      <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{task.department}</span>
+                      <span
+                        className={`rounded-full px-2 py-1 font-semibold ring-1 ${
+                          task.status === 'ARQUIVADA'
+                            ? 'bg-slate-100 text-slate-700 ring-slate-200'
+                            : 'bg-rose-100 text-rose-700 ring-rose-200'
+                        }`}
+                      >
+                        {statusLabelMap[task.status]}
+                      </span>
+                    </div>
+                    <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
+                      <span className="inline-flex items-center gap-1">
+                        <Calendar size={12} />
+                        {formatDate(task.dueDate)}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <Clock3 size={12} />
+                        {formatDateTime(task.updatedAt)}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )
           ) : (
             <div className="grid min-w-[1200px] grid-cols-5 items-start gap-4">
               {boardByColumn.map((column) => (
@@ -913,6 +1042,12 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           onApprove={() => void decideApproval('APROVADA')}
           onReject={() => void decideApproval('REPROVADA')}
           onReturnToWork={() => void decideApproval('DEVOLVIDA')}
+          lifecycleReason={lifecycleReason}
+          onLifecycleReasonChange={setLifecycleReason}
+          canManageLifecycle={Boolean(canManageLifecycle)}
+          onArchive={() => void changeTaskLifecycle('ARQUIVADA')}
+          onCancelTask={() => void changeTaskLifecycle('CANCELADA')}
+          onRestore={() => void changeTaskLifecycle('BACKLOG')}
         />
       ) : null}
     </main>
@@ -1366,7 +1501,12 @@ function TaskModal({
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <FieldSelect label="Prioridade" value={form.priority} onChange={(value) => onChange({ ...form, priority: value as TaskPriority })} options={PRIORITY_OPTIONS} />
-              <FieldSelect label="Status inicial" value={form.status} onChange={(value) => onChange({ ...form, status: value as TaskStatus })} options={STATUS_OPTIONS.filter((item) => item.value !== 'CANCELADA')} />
+              <FieldSelect
+                label="Status inicial"
+                value={form.status}
+                onChange={(value) => onChange({ ...form, status: value as TaskStatus })}
+                options={STATUS_OPTIONS.filter((item) => item.value !== 'CANCELADA' && item.value !== 'ARQUIVADA')}
+              />
               <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onChange({ ...form, dueDate: value })} />
               <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onChange({ ...form, startDate: value })} />
             </div>
@@ -1463,6 +1603,12 @@ function TaskDetailModal({
   onApprove,
   onReject,
   onReturnToWork,
+  lifecycleReason,
+  onLifecycleReasonChange,
+  canManageLifecycle,
+  onArchive,
+  onCancelTask,
+  onRestore,
 }: {
   task: TaskDetail;
   currentUserId: string;
@@ -1492,7 +1638,14 @@ function TaskDetailModal({
   onApprove: () => void;
   onReject: () => void;
   onReturnToWork: () => void;
+  lifecycleReason: string;
+  onLifecycleReasonChange: (value: string) => void;
+  canManageLifecycle: boolean;
+  onArchive: () => void;
+  onCancelTask: () => void;
+  onRestore: () => void;
 }) {
+  const taskIsRetired = isRetiredTaskStatus(task.status);
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-4">
       <div className="mx-auto w-full max-w-6xl overflow-hidden rounded-2xl bg-white shadow-2xl">
@@ -1519,7 +1672,12 @@ function TaskDetailModal({
                   <FieldInput label="Título" value={form.title} onChange={(value) => onFormChange({ ...form, title: value })} />
                   <FieldInput label="Setor" value={form.department} onChange={(value) => onFormChange({ ...form, department: value })} />
                   <FieldSelect label="Prioridade" value={form.priority} onChange={(value) => onFormChange({ ...form, priority: value as TaskPriority })} options={PRIORITY_OPTIONS} />
-                  <FieldSelect label="Status" value={form.status} onChange={(value) => onFormChange({ ...form, status: value as TaskStatus })} options={STATUS_OPTIONS} />
+                  <FieldSelect
+                    label="Status"
+                    value={form.status}
+                    onChange={(value) => onFormChange({ ...form, status: value as TaskStatus })}
+                    options={STATUS_OPTIONS.filter((item) => item.value !== 'ARQUIVADA' && item.value !== 'CANCELADA')}
+                  />
                   <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} />
                   <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} />
                 </section>
@@ -1565,18 +1723,21 @@ function TaskDetailModal({
                       <h3 className="font-semibold text-slate-900">Arquivos da tarefa</h3>
                       <p className="mt-1 text-sm text-slate-500">Anexe materiais de apoio e evidências da execução.</p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                    >
-                      Incluir anexo
-                    </button>
+                    {!taskIsRetired ? (
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                      >
+                        Incluir anexo
+                      </button>
+                    ) : null}
                     <input
                       ref={fileInputRef}
                       type="file"
                       multiple
                       className="hidden"
+                      disabled={taskIsRetired}
                       onChange={(event) => onFilesChange(Array.from(event.target.files || []))}
                     />
                   </div>
@@ -1611,44 +1772,50 @@ function TaskDetailModal({
                     </span>
                   </div>
                   <div className="mt-4 space-y-4">
-                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
-                      <textarea
-                        value={commentBody}
-                        onChange={(event) => onCommentBodyChange(event.target.value)}
-                        className={textAreaClassName}
-                        placeholder="Escreva um comentário para a equipe"
-                      />
-                      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                        <div className="flex items-center gap-2">
+                    {taskIsRetired ? (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                        Esta tarefa está encerrada. Restaure a tarefa para voltar a comentar ou anexar novos arquivos.
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                        <textarea
+                          value={commentBody}
+                          onChange={(event) => onCommentBodyChange(event.target.value)}
+                          className={textAreaClassName}
+                          placeholder="Escreva um comentário para a equipe"
+                        />
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => commentFileRef.current?.click()}
+                              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                            >
+                              Anexar comentário
+                            </button>
+                            <input
+                              ref={commentFileRef}
+                              type="file"
+                              multiple
+                              className="hidden"
+                              onChange={(event) => onCommentFilesChange(Array.from(event.target.files || []))}
+                            />
+                          </div>
                           <button
                             type="button"
-                            onClick={() => commentFileRef.current?.click()}
-                            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                            onClick={onSendComment}
+                            disabled={saving || !commentBody.trim()}
+                            className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
                           >
-                            Anexar comentário
+                            {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
+                            Publicar comentário
                           </button>
-                          <input
-                            ref={commentFileRef}
-                            type="file"
-                            multiple
-                            className="hidden"
-                            onChange={(event) => onCommentFilesChange(Array.from(event.target.files || []))}
-                          />
                         </div>
-                        <button
-                          type="button"
-                          onClick={onSendComment}
-                          disabled={saving || !commentBody.trim()}
-                          className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
-                        >
-                          {saving ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-                          Publicar comentário
-                        </button>
+                        <div className="mt-3">
+                          <FileList files={commentFiles} onRemove={(index) => onCommentFilesChange(commentFiles.filter((_, currentIndex) => currentIndex !== index))} />
+                        </div>
                       </div>
-                      <div className="mt-3">
-                        <FileList files={commentFiles} onRemove={(index) => onCommentFilesChange(commentFiles.filter((_, currentIndex) => currentIndex !== index))} />
-                      </div>
-                    </div>
+                    )}
 
                     {task.comments.length === 0 ? (
                       <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
@@ -1732,25 +1899,27 @@ function TaskDetailModal({
                   />
                 </div>
 
-                <div className="mt-4 space-y-3">
-                  <textarea
-                    value={approvalNotes}
-                    onChange={(event) => onApprovalNotesChange(event.target.value)}
-                    className={textAreaClassName}
-                    placeholder="Observação opcional para enviar à aprovação"
-                  />
-                  <button
-                    type="button"
-                    onClick={onRequestApproval}
-                    disabled={saving || !form.approverUserId}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
-                  >
-                    {saving ? <Loader2 size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
-                    Enviar para aprovação
-                  </button>
-                </div>
+                {!taskIsRetired ? (
+                  <div className="mt-4 space-y-3">
+                    <textarea
+                      value={approvalNotes}
+                      onChange={(event) => onApprovalNotesChange(event.target.value)}
+                      className={textAreaClassName}
+                      placeholder="Observação opcional para enviar à aprovação"
+                    />
+                    <button
+                      type="button"
+                      onClick={onRequestApproval}
+                      disabled={saving || !form.approverUserId}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 size={15} className="animate-spin" /> : <ShieldCheck size={15} />}
+                      Enviar para aprovação
+                    </button>
+                  </div>
+                ) : null}
 
-                {canCurrentUserApprove ? (
+                {canCurrentUserApprove && !taskIsRetired ? (
                   <div className="mt-5 space-y-3 rounded-xl border border-violet-200 bg-violet-50 p-4">
                     <div className="text-sm font-semibold text-violet-900">Ação do aprovador</div>
                     <textarea
@@ -1776,6 +1945,57 @@ function TaskDetailModal({
                   </div>
                 ) : null}
               </div>
+
+              {canManageLifecycle ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <h3 className="font-semibold text-slate-900">Encerramento da tarefa</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {taskIsRetired
+                      ? 'Esta tarefa está encerrada e fora do fluxo operacional padrão.'
+                      : 'Use essas ações para retirar a tarefa do fluxo sem apagá-la do histórico.'}
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    <textarea
+                      value={lifecycleReason}
+                      onChange={(event) => onLifecycleReasonChange(event.target.value)}
+                      className={textAreaClassName}
+                      placeholder="Motivo do cancelamento ou observação do arquivamento"
+                    />
+                    {task.status === 'CANCELADA' || task.status === 'ARQUIVADA' ? (
+                      <button
+                        type="button"
+                        onClick={onRestore}
+                        disabled={saving}
+                        className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        {saving ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                        Restaurar tarefa
+                      </button>
+                    ) : (
+                      <div className="grid gap-2">
+                        <button
+                          type="button"
+                          onClick={onArchive}
+                          disabled={saving}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                        >
+                          <FileText size={15} />
+                          Arquivar tarefa
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onCancelTask}
+                          disabled={saving || !lifecycleReason.trim()}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+                        >
+                          <X size={15} />
+                          Cancelar tarefa
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
                 <h3 className="font-semibold text-slate-900">Histórico recente</h3>
@@ -1913,7 +2133,7 @@ const previousStatus = (status: TaskStatus): TaskStatus => {
 };
 
 const canMoveBackward = (status: TaskStatus) => {
-  return previousStatus(status) !== status && status !== 'BACKLOG' && status !== 'CANCELADA';
+  return previousStatus(status) !== status && status !== 'BACKLOG' && !isRetiredTaskStatus(status);
 };
 
 const nextStatus = (status: TaskStatus): TaskStatus => {
@@ -1923,14 +2143,14 @@ const nextStatus = (status: TaskStatus): TaskStatus => {
 };
 
 const canMoveForward = (task: TaskSummary) => {
-  if (task.status === 'CONCLUIDA' || task.status === 'CANCELADA' || task.status === 'AGUARDANDO_APROVACAO') {
+  if (task.status === 'CONCLUIDA' || isRetiredTaskStatus(task.status) || task.status === 'AGUARDANDO_APROVACAO') {
     return false;
   }
   return nextStatus(task.status) !== task.status;
 };
 
 const canDropTaskToStatus = (task: TaskSummary, status: TaskStatus) => {
-  if (task.status === status || status === 'CANCELADA') return false;
+  if (task.status === status || isRetiredTaskStatus(task.status) || isRetiredTaskStatus(status)) return false;
   if (canMoveBackward(task.status) && previousStatus(task.status) === status) return true;
   if (canMoveForward(task) && nextStatus(task.status) === status) return true;
   return false;
