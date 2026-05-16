@@ -13,7 +13,7 @@ import {
   Trash2,
   TrendingUp,
 } from 'lucide-react';
-import { calculateGoalProjection, calculateGoalRemaining } from '@/lib/goals_metrics';
+import { calculateGoalProjectedPercentage, calculateGoalProjection, calculateGoalRemaining } from '@/lib/goals_metrics';
 import { Goal } from '../constants';
 
 interface GoalTableProps {
@@ -120,6 +120,11 @@ export const GoalTable = ({ goals, dashboardData, onEdit, onDelete, onViewDetail
                         target: goal.target_value,
                         periodicity: goal.periodicity,
                       });
+                      const projectedPercentage = calculateGoalProjectedPercentage({
+                        current: data.current || 0,
+                        target: goal.target_value,
+                        periodicity: goal.periodicity,
+                      });
                       const remaining = calculateGoalRemaining({
                         current: data.current || 0,
                         target: goal.target_value,
@@ -192,7 +197,20 @@ export const GoalTable = ({ goals, dashboardData, onEdit, onDelete, onViewDetail
                           </td>
 
                           <td className="px-4 py-2.5">
-                            <div className="text-xs font-semibold text-slate-700">{formatValue(projection, goal.unit)}</div>
+                            <div className="text-xs font-semibold text-slate-700">
+                              {formatValue(projection, goal.unit)}
+                              <span
+                                className={`ml-1 font-bold ${
+                                  projectedPercentage >= 100
+                                    ? 'text-emerald-600'
+                                    : projectedPercentage >= 70
+                                      ? 'text-amber-600'
+                                      : 'text-red-500'
+                                }`}
+                              >
+                                · {projectedPercentage}%
+                              </span>
+                            </div>
                           </td>
 
                           <td className="px-4 py-2.5">
