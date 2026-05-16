@@ -1889,7 +1889,7 @@ function TaskModal({
           </div>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+          <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.18fr)_minmax(340px,0.82fr)]">
             <div className="space-y-5">
               <TaskSectionCard
                 title="Contexto da entrega"
@@ -1924,6 +1924,15 @@ function TaskModal({
                     placeholder="Contexto, objetivo, passos esperados e observações importantes"
                   />
                 </div>
+                <div className="border-t border-slate-200 pt-4">
+                  <ChecklistSectionHeader
+                    title="Checklist inicial"
+                    description="Quebre a entrega em subtarefas desde a abertura para acompanhar o progresso desde o início."
+                  />
+                  <div className="mt-4">
+                    <DraftChecklistSection items={checklistItems} onChange={onChecklistChange} saving={saving} />
+                  </div>
+                </div>
               </TaskSectionCard>
             </div>
 
@@ -1932,32 +1941,36 @@ function TaskModal({
                 title="Governança e responsáveis"
                 description="Defina quem executa, quem acompanha e se a tarefa terá aprovação."
               >
-                <FieldSelect
-                  label="Setor"
-                  value={form.department}
-                  onChange={(value) => onChange({ ...form, department: value })}
-                  options={departmentOptions.map((department) => ({ value: department, label: department }))}
-                />
-                <SearchableUserSelect
-                  label="Responsável principal"
-                  value={form.primaryAssigneeUserId}
-                  onChange={(value) => onChange({ ...form, primaryAssigneeUserId: value })}
-                  users={users}
-                />
-                <SearchableUserMultiSelect
-                  label="Responsáveis adicionais"
-                  currentUserId={currentUserId}
-                  users={users}
-                  selectedIds={form.assigneeUserIds}
-                  onChange={(assigneeUserIds) => onChange({ ...form, assigneeUserIds })}
-                />
-                <SearchableUserSelect
-                  label="Aprovador"
-                  value={form.approverUserId}
-                  onChange={(value) => onChange({ ...form, approverUserId: value })}
-                  users={users}
-                  emptyLabel="Sem aprovador no momento"
-                />
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                  <FieldSelect
+                    label="Setor"
+                    value={form.department}
+                    onChange={(value) => onChange({ ...form, department: value })}
+                    options={departmentOptions.map((department) => ({ value: department, label: department }))}
+                  />
+                  <SearchableUserSelect
+                    label="Responsável principal"
+                    value={form.primaryAssigneeUserId}
+                    onChange={(value) => onChange({ ...form, primaryAssigneeUserId: value })}
+                    users={users}
+                  />
+                  <div className="md:col-span-2 xl:col-span-1 2xl:col-span-2">
+                    <SearchableUserMultiSelect
+                      label="Responsáveis adicionais"
+                      currentUserId={currentUserId}
+                      users={users}
+                      selectedIds={form.assigneeUserIds}
+                      onChange={(assigneeUserIds) => onChange({ ...form, assigneeUserIds })}
+                    />
+                  </div>
+                  <SearchableUserSelect
+                    label="Aprovador"
+                    value={form.approverUserId}
+                    onChange={(value) => onChange({ ...form, approverUserId: value })}
+                    users={users}
+                    emptyLabel="Sem aprovador no momento"
+                  />
+                </div>
               </TaskSectionCard>
 
               <TaskSectionCard
@@ -1984,12 +1997,6 @@ function TaskModal({
                 <FileList files={files} onRemove={(index) => onFilesChange(files.filter((_, currentIndex) => currentIndex !== index))} />
               </TaskSectionCard>
 
-              <TaskSectionCard
-                title="Checklist inicial"
-                description="Quebre a entrega em subtarefas desde a abertura para acompanhar o progresso desde o início."
-              >
-                <DraftChecklistSection items={checklistItems} onChange={onChecklistChange} saving={saving} />
-              </TaskSectionCard>
             </div>
           </div>
         </div>
@@ -2590,6 +2597,21 @@ function TaskSectionCard({
       </div>
       <div className="space-y-4">{children}</div>
     </section>
+  );
+}
+
+function ChecklistSectionHeader({
+  title,
+  description,
+}: {
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div>
+      <h4 className="font-semibold text-slate-900">{title}</h4>
+      {description ? <p className="mt-1 text-sm text-slate-500">{description}</p> : null}
+    </div>
   );
 }
 
