@@ -21,7 +21,7 @@ import { GoalsDashboardExecutiveView } from './components/GoalsDashboardExecutiv
 import { GoalsDashboardTable } from './components/GoalsDashboardTable';
 import { GoalsDashboardTabNav } from './components/GoalsDashboardTabNav';
 import { DashboardGoal, GoalFilters } from './types';
-import { calculateGoalProjection, calculateGoalRemaining } from '@/lib/goals_metrics';
+import { calculateGoalProjectedPercentage, calculateGoalProjection, calculateGoalRemaining } from '@/lib/goals_metrics';
 
 const DEFAULT_FILTERS: GoalFilters = {
   name: '',
@@ -368,6 +368,11 @@ export default function GoalsDashboardPage() {
         target: goal.target,
         periodicity: goal.periodicity,
       });
+      const projectedPercentage = calculateGoalProjectedPercentage({
+        current: goal.current,
+        target: goal.target,
+        periodicity: goal.periodicity,
+      });
       const remaining = calculateGoalRemaining({
         current: goal.current,
         target: goal.target,
@@ -389,6 +394,7 @@ export default function GoalsDashboardPage() {
         targetLabel: formatValue(goal.target, goal.unit),
         currentLabel: formatValue(goal.current, goal.unit),
         projectionLabel: formatValue(projection, goal.unit),
+        projectionPercentageLabel: `${projectedPercentage}%`,
         remainingLabel: formatValue(remaining, goal.unit),
         percentageLabel: `${goal.percentage}%`,
         statusLabel: STATUS_LABELS[goal.status],

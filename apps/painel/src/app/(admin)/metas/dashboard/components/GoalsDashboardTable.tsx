@@ -1,5 +1,5 @@
 import { ChevronRight } from 'lucide-react';
-import { calculateGoalProjection, calculateGoalRemaining } from '@/lib/goals_metrics';
+import { calculateGoalProjectedPercentage, calculateGoalProjection, calculateGoalRemaining } from '@/lib/goals_metrics';
 import { DashboardGoal } from '../types';
 
 interface GoalsDashboardTableProps {
@@ -61,6 +61,7 @@ export function GoalsDashboardTable({
               <th className="px-4 py-3 text-left">Meta</th>
               <th className="px-4 py-3 text-left">Realizado</th>
               <th className="px-4 py-3 text-left">Projeção</th>
+              <th className="px-4 py-3 text-left">Projeção (%)</th>
               <th className="px-4 py-3 text-left">Falta</th>
               <th className="px-4 py-3 text-left">%</th>
               <th className="px-4 py-3 text-left">Contexto</th>
@@ -71,6 +72,11 @@ export function GoalsDashboardTable({
             {goals.map((goal) => {
               const boundedPercentage = Math.max(0, Math.min(goal.percentage, 100));
               const projection = calculateGoalProjection({
+                current: goal.current,
+                target: goal.target,
+                periodicity: goal.periodicity,
+              });
+              const projectedPercentage = calculateGoalProjectedPercentage({
                 current: goal.current,
                 target: goal.target,
                 periodicity: goal.periodicity,
@@ -98,6 +104,20 @@ export function GoalsDashboardTable({
                   <td className="px-4 py-3 align-top">
                     <div className="font-semibold text-slate-700">{formatValue(projection, goal.unit)}</div>
                     <div className="mt-1 text-[11px] text-slate-500">{getPeriodicityLabel(goal)}</div>
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <div
+                      className={`font-semibold ${
+                        projectedPercentage >= 100
+                          ? 'text-emerald-700'
+                          : projectedPercentage >= 70
+                            ? 'text-amber-700'
+                            : 'text-rose-700'
+                      }`}
+                    >
+                      {projectedPercentage}%
+                    </div>
+                    <div className="mt-1 text-[11px] text-slate-500">Atingimento projetado</div>
                   </td>
                   <td className="px-4 py-3 align-top">
                     <div className="font-semibold text-slate-700">{formatValue(remaining, goal.unit)}</div>

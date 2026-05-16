@@ -35,6 +35,14 @@ export function calculateGoalProjection(goal: GoalMetricShape, now = new Date())
   return currentValue;
 }
 
+export function calculateGoalProjectedPercentage(goal: GoalMetricShape, now = new Date()) {
+  const targetValue = Number(goal.target || 0);
+  if (targetValue <= 0) return 0;
+
+  const projection = calculateGoalProjection(goal, now);
+  return Math.round((projection / targetValue) * 100);
+}
+
 export function calculateGoalRemaining(goal: Pick<GoalMetricShape, 'current' | 'target'>) {
   const targetValue = Number(goal.target || 0);
   const currentValue = Number(goal.current || 0);

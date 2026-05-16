@@ -28,6 +28,7 @@ type ExportGoalRow = {
   targetLabel: string;
   currentLabel: string;
   projectionLabel: string;
+  projectionPercentageLabel: string;
   remainingLabel: string;
   percentageLabel: string;
   statusLabel: string;
@@ -242,6 +243,7 @@ const buildWorkbook = async (payload: ExportPayload) => {
     { header: 'Meta', key: 'targetLabel', width: 16 },
     { header: 'Atual', key: 'currentLabel', width: 16 },
     { header: 'Projeção', key: 'projectionLabel', width: 16 },
+    { header: 'Projeção (%)', key: 'projectionPercentageLabel', width: 16 },
     { header: 'Falta', key: 'remainingLabel', width: 16 },
     { header: '%', key: 'percentageLabel', width: 10 },
     { header: 'Status', key: 'statusLabel', width: 16 },
@@ -262,6 +264,7 @@ const buildWorkbook = async (payload: ExportPayload) => {
       targetLabel: goal.targetLabel,
       currentLabel: goal.currentLabel,
       projectionLabel: goal.projectionLabel,
+      projectionPercentageLabel: goal.projectionPercentageLabel,
       remainingLabel: goal.remainingLabel,
       percentageLabel: goal.percentageLabel,
       statusLabel: goal.statusLabel,
@@ -299,17 +302,18 @@ const buildPdf = async (payload: ExportPayload) => {
   const sectionGap = 12;
 
   const columns = [
-    { label: 'Meta', width: 170, align: 'left' as const, maxLines: 3 },
-    { label: 'Escopo', width: 64, align: 'left' as const, maxLines: 2 },
-    { label: 'Periodicidade', width: 70, align: 'left' as const, maxLines: 2 },
-    { label: 'KPI', width: 95, align: 'left' as const, maxLines: 3 },
-    { label: 'Detalhes', width: 315, align: 'left' as const, maxLines: 5 },
-    { label: 'Meta', width: 74, align: 'right' as const, maxLines: 2 },
-    { label: 'Atual', width: 74, align: 'right' as const, maxLines: 2 },
-    { label: 'Projeção', width: 78, align: 'right' as const, maxLines: 2 },
-    { label: 'Falta', width: 82, align: 'right' as const, maxLines: 2 },
+    { label: 'Meta', width: 165, align: 'left' as const, maxLines: 3 },
+    { label: 'Escopo', width: 60, align: 'left' as const, maxLines: 2 },
+    { label: 'Periodicidade', width: 66, align: 'left' as const, maxLines: 2 },
+    { label: 'KPI', width: 90, align: 'left' as const, maxLines: 3 },
+    { label: 'Detalhes', width: 300, align: 'left' as const, maxLines: 5 },
+    { label: 'Meta', width: 70, align: 'right' as const, maxLines: 2 },
+    { label: 'Atual', width: 70, align: 'right' as const, maxLines: 2 },
+    { label: 'Projeção', width: 74, align: 'right' as const, maxLines: 2 },
+    { label: 'Proj. %', width: 50, align: 'right' as const, maxLines: 1 },
+    { label: 'Falta', width: 78, align: 'right' as const, maxLines: 2 },
     { label: '%', width: 32, align: 'center' as const, maxLines: 1 },
-    { label: 'Status', width: 69, align: 'center' as const, maxLines: 2 },
+    { label: 'Status', width: 68, align: 'center' as const, maxLines: 2 },
   ];
 
   const drawLines = (
@@ -484,6 +488,7 @@ const buildPdf = async (payload: ExportPayload) => {
       goal.targetLabel,
       goal.currentLabel,
       goal.projectionLabel,
+      goal.projectionPercentageLabel,
       goal.remainingLabel,
       goal.percentageLabel,
       goal.statusLabel,
