@@ -82,6 +82,25 @@ export type TaskActivityLog = {
   createdAt: string;
 };
 
+export type TaskChecklistItem = {
+  id: string;
+  taskId: string;
+  title: string;
+  isCompleted: boolean;
+  sortOrder: number;
+  createdBy: string;
+  completedBy: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TaskChecklistSummary = {
+  totalItems: number;
+  completedItems: number;
+  progressPercent: number;
+};
+
 export type TaskSummary = {
   id: string;
   protocolNumber: number;
@@ -106,6 +125,9 @@ export type TaskSummary = {
   latestApproval: TaskApprovalRequest | null;
   commentCount: number;
   attachmentCount: number;
+  checklistTotalItems: number;
+  checklistCompletedItems: number;
+  checklistProgressPercent: number;
 };
 
 export type TaskDetail = TaskSummary & {
@@ -113,6 +135,7 @@ export type TaskDetail = TaskSummary & {
   comments: TaskComment[];
   approvalRequests: TaskApprovalRequest[];
   activity: TaskActivityLog[];
+  checklist: TaskChecklistItem[];
 };
 
 export type TaskCreateInput = {
@@ -186,4 +209,14 @@ export type TaskDashboardSummary = {
   byStatus: Array<{ status: TaskStatus; count: number }>;
   byPriority: Array<{ priority: TaskPriority; count: number }>;
   byDepartment: Array<{ department: string; count: number }>;
+};
+
+export type TaskChecklistItemCreateInput = {
+  title: string;
+};
+
+export type TaskChecklistItemUpdateInput = {
+  title?: string | null;
+  isCompleted?: boolean | null;
+  sortOrder?: number | null;
 };

@@ -226,6 +226,16 @@ const formatFileSize = (value: number) => {
   return `${value} B`;
 };
 
+const sortByLocalizedText = (items: string[]) => [...items].sort((left, right) => left.localeCompare(right, 'pt-BR'));
+
+const buildDepartmentOptions = (primary: string[], legacy: string[] = [], currentValue?: string | null) =>
+  sortByLocalizedText(
+    Array.from(new Set([...primary, ...legacy, String(currentValue || '').trim()].filter(Boolean)))
+  );
+
+const formOrTaskDepartment = (task: TaskDetail | null, form: TaskFormState) =>
+  String(form.department || task?.department || '').trim();
+
 const parseActivityPayload = (payloadJson: string | null) => {
   if (!payloadJson) return null;
   try {
@@ -274,6 +284,14 @@ const describeTaskActivity = (action: string, payloadJson: string | null) => {
         ? `Tarefa restaurada para ${statusLabelMap[restoredStatus as TaskStatus]}`
         : 'Tarefa restaurada';
     }
+    case 'TASK_CHECKLIST_ITEM_ADDED':
+      return 'Item adicionado ao checklist';
+    case 'TASK_CHECKLIST_ITEM_UPDATED':
+      return 'Item do checklist atualizado';
+    case 'TASK_CHECKLIST_ITEM_TOGGLED':
+      return 'Progresso do checklist atualizado';
+    case 'TASK_CHECKLIST_ITEM_DELETED':
+      return 'Item removido do checklist';
     default:
       return action.replace(/_/g, ' ').toLowerCase();
   }
@@ -339,6 +357,8 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKey>('ALL');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [departmentFilter, setDepartmentFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [createForm, setCreateForm] = useState<TaskFormState>(defaultForm(currentUser));
@@ -367,6 +387,12 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       }
       if (activeFilter === 'CANCELED_BY_ME') {
         params.set('statuses', 'CANCELADA');
+      }
+      if (assigneeFilter) {
+        params.set('assigneeUserId', assigneeFilter);
+      }
+      if (departmentFilter) {
+        params.set('department', departmentFilter);
       }
       const response = await fetch(`/api/tasks${params.size ? `?${params.toString()}` : ''}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(await normalizeError(response));
@@ -451,7 +477,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   useEffect(() => {
     void loadTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter]);
+  }, [activeFilter, assigneeFilter, departmentFilter]);
 
   useEffect(() => {
     if (!successMessage) return undefined;
@@ -713,6 +739,64 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     }
   };
 
+  const addChecklistItem = async (title: string) => {
+    if (!selectedTask || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(selectedTask.id)}/checklist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      await loadTasks(selectedTask.id);
+      await loadTaskDetail(selectedTask.id, detailOpen);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao criar item do checklist.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateChecklistItem = async (itemId: string, input: { title?: string; isCompleted?: boolean }) => {
+    if (!selectedTask || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(selectedTask.id)}/checklist/${encodeURIComponent(itemId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      await loadTasks(selectedTask.id);
+      await loadTaskDetail(selectedTask.id, detailOpen);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao atualizar item do checklist.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteChecklistItem = async (itemId: string) => {
+    if (!selectedTask || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/tasks/${encodeURIComponent(selectedTask.id)}/checklist/${encodeURIComponent(itemId)}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      await loadTasks(selectedTask.id);
+      await loadTaskDetail(selectedTask.id, detailOpen);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao remover item do checklist.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const sendComment = async () => {
     if (!selectedTask || !commentBody.trim() || saving) return;
     setSaving(true);
@@ -804,6 +888,28 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   );
 
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
+  const officialDepartments = useMemo(
+    () =>
+      sortByLocalizedText(
+        Array.from(
+          new Set(
+            [currentUser.department, ...users.map((user) => user.department)]
+              .map((value) => String(value || '').trim())
+              .filter(Boolean)
+          )
+        )
+      ),
+    [currentUser.department, users]
+  );
+  const departmentFilterOptions = useMemo(
+    () => buildDepartmentOptions(officialDepartments, tasks.map((task) => task.department), selectedTask?.department),
+    [officialDepartments, tasks, selectedTask?.department]
+  );
+  const createDepartmentOptions = officialDepartments;
+  const editDepartmentOptions = useMemo(
+    () => buildDepartmentOptions(officialDepartments, tasks.map((task) => task.department), formOrTaskDepartment(selectedTask, editForm)),
+    [officialDepartments, tasks, selectedTask, editForm]
+  );
 
   const canCurrentUserApprove =
     selectedTask?.status === 'AGUARDANDO_APROVACAO' &&
@@ -908,6 +1014,45 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                 </div>
               </div>
             </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_320px_240px]">
+              <SearchableUserSelect
+                label="Responsável"
+                value={assigneeFilter}
+                onChange={setAssigneeFilter}
+                users={selectableUsers}
+                emptyLabel="Todos os responsáveis"
+                placeholder="Filtrar por responsável"
+              />
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Setor</label>
+                <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} className={inputClassName}>
+                  <option value="">Todos os setores</option>
+                  {departmentFilterOptions.map((department) => (
+                    <option key={department} value={department}>
+                      {department}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-wrap items-end gap-2 text-xs text-slate-500">
+                <span className="rounded-full bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
+                  {visibleTasks.length} tarefa(s) no recorte
+                </span>
+                {(assigneeFilter || departmentFilter) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAssigneeFilter('');
+                      setDepartmentFilter('');
+                    }}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-600 transition hover:bg-slate-50"
+                  >
+                    Limpar filtros extras
+                  </button>
+                ) : null}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -952,6 +1097,15 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                       </span>
                     </div>
                     <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{task.description || 'Sem descrição detalhada.'}</p>
+                    {task.checklistTotalItems > 0 ? (
+                      <div className="mt-3">
+                        <ChecklistProgressInline
+                          completedItems={task.checklistCompletedItems}
+                          totalItems={task.checklistTotalItems}
+                          progressPercent={task.checklistProgressPercent}
+                        />
+                      </div>
+                    ) : null}
                     <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
                       <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{task.department}</span>
                       <span
@@ -1007,6 +1161,15 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                       <span className="min-w-0">
                         <span className="block truncate font-semibold text-slate-900">{task.title}</span>
                         <span className="mt-1 block truncate text-sm text-slate-500">{task.department}</span>
+                        {task.checklistTotalItems > 0 ? (
+                          <div className="mt-2 max-w-[240px]">
+                            <ChecklistProgressInline
+                              completedItems={task.checklistCompletedItems}
+                              totalItems={task.checklistTotalItems}
+                              progressPercent={task.checklistProgressPercent}
+                            />
+                          </div>
+                        ) : null}
                       </span>
                       <span>
                         <span className={`inline-flex rounded-full border px-2 py-1 text-[10px] font-semibold ${priorityStyles[task.priority]}`}>
@@ -1105,6 +1268,15 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                             </span>
                           </div>
                           <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{task.description || 'Sem descrição detalhada.'}</p>
+                          {task.checklistTotalItems > 0 ? (
+                            <div className="mt-3">
+                              <ChecklistProgressInline
+                                completedItems={task.checklistCompletedItems}
+                                totalItems={task.checklistTotalItems}
+                                progressPercent={task.checklistProgressPercent}
+                              />
+                            </div>
+                          ) : null}
                           <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
                             <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{task.department}</span>
                             <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">
@@ -1165,6 +1337,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           currentUserId={currentUser.id}
           saving={saving}
           users={selectableUsers}
+          departmentOptions={createDepartmentOptions}
           form={createForm}
           onChange={setCreateForm}
           files={newTaskFiles}
@@ -1183,6 +1356,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           saving={saving}
           loading={taskLoading}
           users={selectableUsers}
+          departmentOptions={editDepartmentOptions}
           usersById={usersById}
           form={editForm}
           onFormChange={setEditForm}
@@ -1212,6 +1386,9 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           onArchive={() => void changeTaskLifecycle('ARQUIVADA')}
           onCancelTask={() => void changeTaskLifecycle('CANCELADA')}
           onRestore={() => void changeTaskLifecycle('BACKLOG')}
+          onChecklistCreate={(title) => void addChecklistItem(title)}
+          onChecklistUpdate={(itemId, input) => void updateChecklistItem(itemId, input)}
+          onChecklistDelete={(itemId) => void deleteChecklistItem(itemId)}
         />
       ) : null}
     </main>
@@ -1609,6 +1786,7 @@ function TaskModal({
   currentUserId,
   saving,
   users,
+  departmentOptions,
   form,
   onChange,
   files,
@@ -1622,6 +1800,7 @@ function TaskModal({
   currentUserId: string;
   saving: boolean;
   users: Array<TaskUserOption & { label: string }>;
+  departmentOptions: string[];
   form: TaskFormState;
   onChange: (next: TaskFormState) => void;
   files: File[];
@@ -1701,7 +1880,12 @@ function TaskModal({
                 title="Governança e responsáveis"
                 description="Defina quem executa, quem acompanha e se a tarefa terá aprovação."
               >
-                <FieldInput label="Setor" value={form.department} onChange={(value) => onChange({ ...form, department: value })} placeholder="Ex.: RH, Operacional, Financeiro" />
+                <FieldSelect
+                  label="Setor"
+                  value={form.department}
+                  onChange={(value) => onChange({ ...form, department: value })}
+                  options={departmentOptions.map((department) => ({ value: department, label: department }))}
+                />
                 <SearchableUserSelect
                   label="Responsável principal"
                   value={form.primaryAssigneeUserId}
@@ -1775,6 +1959,7 @@ function TaskDetailModal({
   saving,
   loading,
   users,
+  departmentOptions,
   form,
   onFormChange,
   files,
@@ -1804,12 +1989,16 @@ function TaskDetailModal({
   onArchive,
   onCancelTask,
   onRestore,
+  onChecklistCreate,
+  onChecklistUpdate,
+  onChecklistDelete,
 }: {
   task: TaskDetail;
   currentUserId: string;
   saving: boolean;
   loading: boolean;
   users: Array<TaskUserOption & { label: string }>;
+  departmentOptions: string[];
   form: TaskFormState;
   onFormChange: (next: TaskFormState) => void;
   files: File[];
@@ -1839,6 +2028,9 @@ function TaskDetailModal({
   onArchive: () => void;
   onCancelTask: () => void;
   onRestore: () => void;
+  onChecklistCreate: (title: string) => void;
+  onChecklistUpdate: (itemId: string, input: { title?: string; isCompleted?: boolean }) => void;
+  onChecklistDelete: (itemId: string) => void;
 }) {
   const taskIsRetired = isRetiredTaskStatus(task.status);
   const orderedComments = [...task.comments].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -1870,7 +2062,14 @@ function TaskDetailModal({
             <QuickMetaCard label="Prazo" value={form.dueDate ? formatDate(form.dueDate) : 'Sem prazo'} />
             <QuickMetaCard label="Responsável" value={usersById.get(form.primaryAssigneeUserId)?.name || 'Não definido'} />
             <QuickMetaCard label="Aprovação" value={approvalStateLabel} />
-            <QuickMetaCard label="Setor" value={form.department || 'Não definido'} />
+            <QuickMetaCard
+              label="Checklist"
+              value={
+                task.checklistTotalItems
+                  ? `${task.checklistCompletedItems}/${task.checklistTotalItems} concluídos`
+                  : 'Sem itens'
+              }
+            />
           </div>
         </div>
 
@@ -1890,7 +2089,12 @@ function TaskDetailModal({
                 >
                 <div className="grid gap-4 md:grid-cols-2">
                   <FieldInput label="Título" value={form.title} onChange={(value) => onFormChange({ ...form, title: value })} />
-                  <FieldInput label="Setor" value={form.department} onChange={(value) => onFormChange({ ...form, department: value })} />
+                  <FieldSelect
+                    label="Setor"
+                    value={form.department}
+                    onChange={(value) => onFormChange({ ...form, department: value })}
+                    options={departmentOptions.map((department) => ({ value: department, label: department }))}
+                  />
                   <FieldSelect label="Prioridade" value={form.priority} onChange={(value) => onFormChange({ ...form, priority: value as TaskPriority })} options={PRIORITY_OPTIONS} />
                   <FieldSelect
                     label="Status"
@@ -1944,6 +2148,24 @@ function TaskDetailModal({
                     />
                   </div>
                 </div>
+                </TaskSectionCard>
+
+                <TaskSectionCard
+                  title="Checklist"
+                  description="Quebre a tarefa em subtarefas menores e acompanhe o progresso sem alterar o status automaticamente."
+                >
+                  <ChecklistSection
+                    items={task.checklist}
+                    progressPercent={task.checklistProgressPercent}
+                    completedItems={task.checklistCompletedItems}
+                    totalItems={task.checklistTotalItems}
+                    saving={saving}
+                    readOnly={taskIsRetired}
+                    onCreate={onChecklistCreate}
+                    onToggle={(itemId, isCompleted) => onChecklistUpdate(itemId, { isCompleted })}
+                    onRename={(itemId, title) => onChecklistUpdate(itemId, { title })}
+                    onDelete={onChecklistDelete}
+                  />
                 </TaskSectionCard>
 
                 <TaskSectionCard
@@ -2098,6 +2320,11 @@ function TaskDetailModal({
                   <InfoRow icon={<Calendar size={15} />} label="Prazo" value={formatDate(form.dueDate || null)} />
                   <InfoRow icon={<UserCheck size={15} />} label="Criada em" value={formatDateTime(task.createdAt)} />
                   <InfoRow icon={<Users size={15} />} label="Comentários" value={String(task.comments.length)} />
+                  <InfoRow
+                    icon={<CheckCircle2 size={15} />}
+                    label="Checklist"
+                    value={task.checklistTotalItems ? `${task.checklistCompletedItems}/${task.checklistTotalItems}` : 'Sem itens'}
+                  />
                   <InfoRow icon={<FileText size={15} />} label="Anexos" value={String(task.attachments.length)} />
                 </div>
               </div>
@@ -2304,6 +2531,200 @@ function TaskSectionCard({
       </div>
       <div className="space-y-4">{children}</div>
     </section>
+  );
+}
+
+function ChecklistSection({
+  items,
+  progressPercent,
+  completedItems,
+  totalItems,
+  saving,
+  readOnly,
+  onCreate,
+  onToggle,
+  onRename,
+  onDelete,
+}: {
+  items: TaskDetail['checklist'];
+  progressPercent: number;
+  completedItems: number;
+  totalItems: number;
+  saving: boolean;
+  readOnly: boolean;
+  onCreate: (title: string) => void;
+  onToggle: (itemId: string, isCompleted: boolean) => void;
+  onRename: (itemId: string, title: string) => void;
+  onDelete: (itemId: string) => void;
+}) {
+  const [newTitle, setNewTitle] = useState('');
+
+  const submitCreate = () => {
+    const title = newTitle.trim();
+    if (!title || saving || readOnly) return;
+    onCreate(title);
+    setNewTitle('');
+  };
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <ChecklistProgressInline
+          completedItems={completedItems}
+          totalItems={totalItems}
+          progressPercent={progressPercent}
+          detailed
+        />
+      </div>
+
+      {readOnly ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+          Esta tarefa está encerrada. Restaure a tarefa para editar o checklist.
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            value={newTitle}
+            onChange={(event) => setNewTitle(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                submitCreate();
+              }
+            }}
+            placeholder="Adicionar item ao checklist"
+            className={inputClassName}
+          />
+          <button
+            type="button"
+            onClick={submitCreate}
+            disabled={saving || !newTitle.trim()}
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
+          >
+            <Plus size={15} />
+            Adicionar
+          </button>
+        </div>
+      )}
+
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+          Nenhum item no checklist ainda.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <ChecklistRow
+              key={item.id}
+              item={item}
+              saving={saving}
+              readOnly={readOnly}
+              onToggle={(isCompleted) => onToggle(item.id, isCompleted)}
+              onRename={(title) => onRename(item.id, title)}
+              onDelete={() => onDelete(item.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ChecklistRow({
+  item,
+  saving,
+  readOnly,
+  onToggle,
+  onRename,
+  onDelete,
+}: {
+  item: TaskDetail['checklist'][number];
+  saving: boolean;
+  readOnly: boolean;
+  onToggle: (isCompleted: boolean) => void;
+  onRename: (title: string) => void;
+  onDelete: () => void;
+}) {
+  const [title, setTitle] = useState(item.title);
+
+  useEffect(() => {
+    setTitle(item.title);
+  }, [item.title]);
+
+  return (
+    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3">
+      <input
+        type="checkbox"
+        checked={item.isCompleted}
+        disabled={saving || readOnly}
+        onChange={(event) => onToggle(event.target.checked)}
+        className="h-4 w-4 rounded border-slate-300 text-[#17407E]"
+      />
+      <input
+        value={title}
+        disabled={saving || readOnly}
+        onChange={(event) => setTitle(event.target.value)}
+        onBlur={() => {
+          const nextTitle = title.trim();
+          if (nextTitle && nextTitle !== item.title) {
+            onRename(nextTitle);
+          } else if (!nextTitle) {
+            setTitle(item.title);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            const nextTitle = title.trim();
+            if (nextTitle && nextTitle !== item.title) {
+              onRename(nextTitle);
+            }
+          }
+          if (event.key === 'Escape') {
+            setTitle(item.title);
+          }
+        }}
+        className={`min-w-0 flex-1 bg-transparent text-sm outline-none ${item.isCompleted ? 'text-slate-400 line-through' : 'text-slate-700'}`}
+      />
+      {!readOnly ? (
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={saving}
+          className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500 hover:bg-slate-50 disabled:opacity-50"
+          aria-label="Remover item do checklist"
+        >
+          <X size={14} />
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ChecklistProgressInline({
+  completedItems,
+  totalItems,
+  progressPercent,
+  detailed = false,
+}: {
+  completedItems: number;
+  totalItems: number;
+  progressPercent: number;
+  detailed?: boolean;
+}) {
+  const safePercent = Math.max(0, Math.min(100, Number(progressPercent) || 0));
+  const label = totalItems ? `${completedItems}/${totalItems} concluídos` : 'Sem checklist';
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="font-semibold text-slate-600">{detailed ? 'Progresso do checklist' : label}</span>
+        <span className="text-slate-500">{detailed ? `${label} · ${safePercent}%` : `${safePercent}%`}</span>
+      </div>
+      <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+        <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${safePercent}%` }} />
+      </div>
+    </div>
   );
 }
 

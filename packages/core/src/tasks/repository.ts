@@ -9,6 +9,9 @@ import type {
   TaskAssignee,
   TaskAttachment,
   TaskAttachmentInput,
+  TaskChecklistItem,
+  TaskChecklistItemCreateInput,
+  TaskChecklistItemUpdateInput,
   TaskComment,
   TaskCommentAttachment,
   TaskCommentInput,
@@ -266,12 +269,26 @@ const mapActivity = (row: Row): TaskActivityLog => ({
   createdAt: clean(row.created_at),
 });
 
+const mapChecklistItem = (row: Row): TaskChecklistItem => ({
+  id: clean(row.id),
+  taskId: clean(row.task_id),
+  title: clean(row.title),
+  isCompleted: parseBool(row.is_completed),
+  sortOrder: parseIntSafe(row.sort_order),
+  createdBy: clean(row.created_by),
+  completedBy: nullable(row.completed_by),
+  completedAt: nullable(row.completed_at),
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
 const mapSummaryRow = (
   row: Row,
   assignees: TaskAssignee[],
   latestApproval: TaskApprovalRequest | null,
   commentCount: number,
-  attachmentCount: number
+  attachmentCount: number,
+  checklistSummary: { totalItems: number; completedItems: number; progressPercent: number }
 ): TaskSummary => ({
   id: clean(row.id),
   protocolNumber: parseIntSafe(row.protocol_number),
@@ -296,6 +313,9 @@ const mapSummaryRow = (
   latestApproval,
   commentCount,
   attachmentCount,
+  checklistTotalItems: checklistSummary.totalItems,
+  checklistCompletedItems: checklistSummary.completedItems,
+  checklistProgressPercent: checklistSummary.progressPercent,
 });
 
 const loadTaskCollections = async (db: DbInterface, taskIds: string[]) => {
@@ -304,16 +324,18 @@ const loadTaskCollections = async (db: DbInterface, taskIds: string[]) => {
       assigneesByTask: new Map<string, TaskAssignee[]>(),
       attachmentsByTask: new Map<string, TaskAttachment[]>(),
       commentsByTask: new Map<string, TaskComment[]>(),
+      checklistByTask: new Map<string, TaskChecklistItem[]>(),
       approvalsByTask: new Map<string, TaskApprovalRequest[]>(),
       activityByTask: new Map<string, TaskActivityLog[]>(),
       latestApprovalByTask: new Map<string, TaskApprovalRequest | null>(),
       commentCountByTask: new Map<string, number>(),
       attachmentCountByTask: new Map<string, number>(),
+      checklistSummaryByTask: new Map<string, { totalItems: number; completedItems: number; progressPercent: number }>(),
     };
   }
 
   const placeholders = taskIds.map(() => '?').join(', ');
-  const [assigneeRows, attachmentRows, commentRows, commentAttachmentRows, approvalRows, activityRows] = await Promise.all([
+  const [assigneeRows, attachmentRows, commentRows, commentAttachmentRows, checklistRows, approvalRows, activityRows] = await Promise.all([
     db.query(`SELECT * FROM task_assignees WHERE task_id IN (${placeholders}) ORDER BY created_at ASC`, taskIds),
     db.query(`SELECT * FROM task_attachments WHERE task_id IN (${placeholders}) ORDER BY created_at ASC`, taskIds),
     db.query(`SELECT * FROM task_comments WHERE task_id IN (${placeholders}) ORDER BY created_at ASC`, taskIds),
@@ -327,6 +349,7 @@ const loadTaskCollections = async (db: DbInterface, taskIds: string[]) => {
       `,
       taskIds
     ),
+    db.query(`SELECT * FROM task_checklist_items WHERE task_id IN (${placeholders}) ORDER BY sort_order ASC, created_at ASC`, taskIds),
     db.query(`SELECT * FROM task_approval_requests WHERE task_id IN (${placeholders}) ORDER BY cycle_number DESC, requested_at DESC`, taskIds),
     db.query(`SELECT * FROM task_activity_log WHERE task_id IN (${placeholders}) ORDER BY created_at DESC`, taskIds),
   ]);
@@ -365,6 +388,12 @@ const loadTaskCollections = async (db: DbInterface, taskIds: string[]) => {
     commentsByTask.set(taskId, [...(commentsByTask.get(taskId) || []), item]);
   }
 
+  const checklistByTask = new Map<string, TaskChecklistItem[]>();
+  for (const raw of checklistRows as Row[]) {
+    const item = mapChecklistItem(raw);
+    checklistByTask.set(item.taskId, [...(checklistByTask.get(item.taskId) || []), item]);
+  }
+
   const approvalsByTask = new Map<string, TaskApprovalRequest[]>();
   const latestApprovalByTask = new Map<string, TaskApprovalRequest | null>();
   for (const raw of approvalRows as Row[]) {
@@ -389,15 +418,29 @@ const loadTaskCollections = async (db: DbInterface, taskIds: string[]) => {
     attachmentCountByTask.set(taskId, (attachmentsByTask.get(taskId) || []).length);
   }
 
+  const checklistSummaryByTask = new Map<string, { totalItems: number; completedItems: number; progressPercent: number }>();
+  for (const taskId of taskIds) {
+    const items = checklistByTask.get(taskId) || [];
+    const totalItems = items.length;
+    const completedItems = items.filter((item) => item.isCompleted).length;
+    checklistSummaryByTask.set(taskId, {
+      totalItems,
+      completedItems,
+      progressPercent: totalItems ? Math.round((completedItems / totalItems) * 100) : 0,
+    });
+  }
+
   return {
     assigneesByTask,
     attachmentsByTask,
     commentsByTask,
+    checklistByTask,
     approvalsByTask,
     activityByTask,
     latestApprovalByTask,
     commentCountByTask,
     attachmentCountByTask,
+    checklistSummaryByTask,
   };
 };
 
@@ -626,6 +669,21 @@ export const ensureTaskTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS task_checklist_items (
+      id VARCHAR(64) PRIMARY KEY,
+      task_id VARCHAR(64) NOT NULL,
+      title VARCHAR(255) NOT NULL,
+      is_completed INTEGER NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_by VARCHAR(64) NOT NULL,
+      completed_by VARCHAR(64) NULL,
+      completed_at TEXT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS task_comment_attachments (
       id VARCHAR(64) PRIMARY KEY,
       comment_id VARCHAR(64) NOT NULL,
@@ -687,6 +745,7 @@ export const ensureTaskTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_task_assignees_task_user ON task_assignees (task_id, user_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_attachments_task ON task_attachments (task_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_comments_task ON task_comments (task_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_task_checklist_task ON task_checklist_items (task_id, sort_order)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_comment_attachments_comment ON task_comment_attachments (comment_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_approval_task ON task_approval_requests (task_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_approval_active ON task_approval_requests (task_id, is_active)`);
@@ -735,7 +794,8 @@ export const listTasks = async (db: DbInterface, viewer: TaskViewerContext, filt
       collections.assigneesByTask.get(taskId) || [],
       collections.latestApprovalByTask.get(taskId) || null,
       collections.commentCountByTask.get(taskId) || 0,
-      collections.attachmentCountByTask.get(taskId) || 0
+      collections.attachmentCountByTask.get(taskId) || 0,
+      collections.checklistSummaryByTask.get(taskId) || { totalItems: 0, completedItems: 0, progressPercent: 0 }
     );
   });
 };
@@ -752,13 +812,15 @@ export const getTaskById = async (db: DbInterface, taskId: string, viewer: TaskV
     collections.assigneesByTask.get(cleanTaskId) || [],
     collections.latestApprovalByTask.get(cleanTaskId) || null,
     collections.commentCountByTask.get(cleanTaskId) || 0,
-    collections.attachmentCountByTask.get(cleanTaskId) || 0
+    collections.attachmentCountByTask.get(cleanTaskId) || 0,
+    collections.checklistSummaryByTask.get(cleanTaskId) || { totalItems: 0, completedItems: 0, progressPercent: 0 }
   );
 
   return {
     ...summary,
     attachments: collections.attachmentsByTask.get(cleanTaskId) || [],
     comments: collections.commentsByTask.get(cleanTaskId) || [],
+    checklist: collections.checklistByTask.get(cleanTaskId) || [],
     approvalRequests: collections.approvalsByTask.get(cleanTaskId) || [],
     activity: collections.activityByTask.get(cleanTaskId) || [],
   };
@@ -988,6 +1050,158 @@ export const updateTask = async (
       primaryAssigneeUserId: nextPrimaryAssigneeUserId,
       cancellationReason: finalCancellationReason,
       previousOperationalStatus: nextPreviousOperationalStatus,
+    });
+
+    return getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
+  });
+};
+
+export const addTaskChecklistItem = async (
+  db: DbInterface,
+  taskId: string,
+  input: TaskChecklistItemCreateInput,
+  actorUserId: string,
+  viewer: TaskViewerContext
+): Promise<TaskDetail> => {
+  await ensureTaskTables(db);
+  const cleanTaskId = clean(taskId);
+  await ensureViewerCanAccessTask(db, cleanTaskId, viewer);
+  const taskRow = await ensureTaskExists(db, cleanTaskId);
+  ensureTaskIsActiveForMutation(taskRow);
+  const title = clean(input.title);
+  if (!title) throw new TaskValidationError('Título do item do checklist obrigatório.');
+
+  return runInTransaction(db, async (txDb) => {
+    const sortRows = await txDb.query(
+      `SELECT COALESCE(MAX(sort_order), -1) AS max_sort FROM task_checklist_items WHERE task_id = ?`,
+      [cleanTaskId]
+    );
+    const sortOrder = parseIntSafe((sortRows[0] as Row | undefined)?.max_sort, -1) + 1;
+    const now = NOW();
+    const itemId = randomUUID();
+
+    await txDb.execute(
+      `
+      INSERT INTO task_checklist_items (
+        id, task_id, title, is_completed, sort_order, created_by, completed_by, completed_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [itemId, cleanTaskId, title, 0, sortOrder, actorUserId, null, null, now, now]
+    );
+
+    await insertActivity(txDb, cleanTaskId, 'TASK_CHECKLIST_ITEM_ADDED', actorUserId, {
+      checklistItemId: itemId,
+      title,
+      sortOrder,
+    });
+
+    return getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
+  });
+};
+
+export const updateTaskChecklistItem = async (
+  db: DbInterface,
+  taskId: string,
+  itemId: string,
+  input: TaskChecklistItemUpdateInput,
+  actorUserId: string,
+  viewer: TaskViewerContext
+): Promise<TaskDetail> => {
+  await ensureTaskTables(db);
+  const cleanTaskId = clean(taskId);
+  const cleanItemId = clean(itemId);
+  await ensureViewerCanAccessTask(db, cleanTaskId, viewer);
+  const taskRow = await ensureTaskExists(db, cleanTaskId);
+  ensureTaskIsActiveForMutation(taskRow);
+
+  return runInTransaction(db, async (txDb) => {
+    const rows = await txDb.query(
+      `SELECT * FROM task_checklist_items WHERE id = ? AND task_id = ? LIMIT 1`,
+      [cleanItemId, cleanTaskId]
+    );
+    const current = rows[0] as Row | undefined;
+    if (!current) throw new TaskValidationError('Item do checklist não encontrado.', 404);
+
+    const nextTitle = Object.prototype.hasOwnProperty.call(input, 'title') ? clean(input.title) : clean(current.title);
+    if (!nextTitle) throw new TaskValidationError('Título do item do checklist obrigatório.');
+
+    const currentCompleted = parseBool(current.is_completed);
+    const nextCompleted = Object.prototype.hasOwnProperty.call(input, 'isCompleted')
+      ? Boolean(input.isCompleted)
+      : currentCompleted;
+    const nextSortOrder = Object.prototype.hasOwnProperty.call(input, 'sortOrder')
+      ? parseIntSafe(input.sortOrder, parseIntSafe(current.sort_order))
+      : parseIntSafe(current.sort_order);
+    const now = NOW();
+    const completedChanged = currentCompleted !== nextCompleted;
+    const titleChanged = nextTitle !== clean(current.title);
+    const sortChanged = nextSortOrder !== parseIntSafe(current.sort_order);
+
+    await txDb.execute(
+      `
+      UPDATE task_checklist_items
+      SET title = ?, is_completed = ?, sort_order = ?, completed_by = ?, completed_at = ?, updated_at = ?
+      WHERE id = ? AND task_id = ?
+      `,
+      [
+        nextTitle,
+        nextCompleted ? 1 : 0,
+        nextSortOrder,
+        nextCompleted ? actorUserId : null,
+        nextCompleted ? now : null,
+        now,
+        cleanItemId,
+        cleanTaskId,
+      ]
+    );
+
+    await insertActivity(
+      txDb,
+      cleanTaskId,
+      completedChanged ? 'TASK_CHECKLIST_ITEM_TOGGLED' : 'TASK_CHECKLIST_ITEM_UPDATED',
+      actorUserId,
+      {
+        checklistItemId: cleanItemId,
+        title: nextTitle,
+        isCompleted: nextCompleted,
+        sortOrder: nextSortOrder,
+        titleChanged,
+        sortChanged,
+      }
+    );
+
+    return getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
+  });
+};
+
+export const deleteTaskChecklistItem = async (
+  db: DbInterface,
+  taskId: string,
+  itemId: string,
+  actorUserId: string,
+  viewer: TaskViewerContext
+): Promise<TaskDetail> => {
+  await ensureTaskTables(db);
+  const cleanTaskId = clean(taskId);
+  const cleanItemId = clean(itemId);
+  await ensureViewerCanAccessTask(db, cleanTaskId, viewer);
+  const taskRow = await ensureTaskExists(db, cleanTaskId);
+  ensureTaskIsActiveForMutation(taskRow);
+
+  return runInTransaction(db, async (txDb) => {
+    const rows = await txDb.query(
+      `SELECT * FROM task_checklist_items WHERE id = ? AND task_id = ? LIMIT 1`,
+      [cleanItemId, cleanTaskId]
+    );
+    const current = rows[0] as Row | undefined;
+    if (!current) throw new TaskValidationError('Item do checklist não encontrado.', 404);
+
+    await txDb.execute(`DELETE FROM task_checklist_items WHERE id = ? AND task_id = ?`, [cleanItemId, cleanTaskId]);
+
+    await insertActivity(txDb, cleanTaskId, 'TASK_CHECKLIST_ITEM_DELETED', actorUserId, {
+      checklistItemId: cleanItemId,
+      title: clean(current.title),
+      isCompleted: parseBool(current.is_completed),
     });
 
     return getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
