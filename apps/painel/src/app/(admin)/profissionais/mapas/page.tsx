@@ -56,14 +56,18 @@ function PlannerCell({ entries }: { entries: ProfessionalAttendanceMapEntry[] })
       {entries.map((entry, index) => (
         <div
           key={`${entry.professionalId}-${entry.recurrence}-${index}`}
-          className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5"
+          className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2"
         >
-          <span className="truncate text-[13px] font-medium text-slate-700">
-            {formatProfessionalDisplayName(entry.professionalName)}
-          </span>
-          <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#17407E] ring-1 ring-slate-200">
-            {RECURRENCE_BADGES[entry.recurrence] || entry.recurrence}
-          </span>
+          <div className="space-y-1">
+            <div className="text-[13px] font-medium leading-4 text-slate-700 break-words">
+              {formatProfessionalDisplayName(entry.professionalName)}
+            </div>
+            <div>
+              <span className="inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#17407E] ring-1 ring-slate-200">
+                {RECURRENCE_BADGES[entry.recurrence] || entry.recurrence}
+              </span>
+            </div>
+          </div>
         </div>
       ))}
     </div>
