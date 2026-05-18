@@ -24,6 +24,26 @@ const SERVICE_UNIT_LABELS: Record<string, string> = {
   'SHOPPING CAMPINAS': 'Shopping Campinas',
 };
 
+const toTitleCaseWord = (value: string) => {
+  const raw = String(value || '').trim().toLocaleLowerCase('pt-BR');
+  if (!raw) return '';
+  return raw.charAt(0).toLocaleUpperCase('pt-BR') + raw.slice(1);
+};
+
+const formatProfessionalDisplayName = (value: string) => {
+  const parts = String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (parts.length === 0) return '-';
+  if (parts.length === 1) return toTitleCaseWord(parts[0]);
+
+  const firstName = toTitleCaseWord(parts[0]);
+  const lastName = toTitleCaseWord(parts[parts.length - 1]);
+  return `${firstName} ${lastName}`;
+};
+
 const renderCellLines = (values: string[]) => {
   if (values.length === 0) return <span className="text-slate-300">-</span>;
   return (
@@ -145,7 +165,9 @@ export default function ProfissionaisMapasPage() {
                                 {WEEKDAY_LABELS[row.weekday] || row.weekday}
                               </td>
                               <td className="border-b border-r border-slate-200 px-3 py-2">
-                                {renderCellLines(row.morning.map((entry) => entry.professionalName))}
+                                {renderCellLines(
+                                  row.morning.map((entry) => formatProfessionalDisplayName(entry.professionalName))
+                                )}
                               </td>
                               <td className="border-b border-r border-slate-200 px-3 py-2">
                                 {renderCellLines(
@@ -153,7 +175,9 @@ export default function ProfissionaisMapasPage() {
                                 )}
                               </td>
                               <td className="border-b border-r border-slate-200 px-3 py-2">
-                                {renderCellLines(row.afternoon.map((entry) => entry.professionalName))}
+                                {renderCellLines(
+                                  row.afternoon.map((entry) => formatProfessionalDisplayName(entry.professionalName))
+                                )}
                               </td>
                               <td className="border-b border-slate-200 px-3 py-2">
                                 {renderCellLines(
