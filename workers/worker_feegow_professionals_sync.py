@@ -157,6 +157,29 @@ def _safe_add_column(conn, sql):
         raise
 
 
+def _optional_text(value):
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _result_rows(rs):
+    if hasattr(rs, "fetchall"):
+        return rs.fetchall()
+    if hasattr(rs, "rows"):
+        return rs.rows
+    return []
+
+
+def _registration_key(council_type, council_number, council_uf):
+    return (
+        _clean(council_type).upper(),
+        _clean(council_number),
+        _clean(council_uf).upper(),
+    )
+
+
 def _ensure_tables(db):
     conn = db.get_connection()
     try:
@@ -242,6 +265,12 @@ def _ensure_tables(db):
             """
         )
 
+        _safe_add_column(conn, "ALTER TABLE professionals ADD COLUMN attendance_modes_json LONGTEXT NULL")
+        _safe_add_column(conn, "ALTER TABLE professionals ADD COLUMN service_locations_text_json LONGTEXT NULL")
+        _safe_add_column(conn, "ALTER TABLE professionals ADD COLUMN patient_age_text TEXT NULL")
+        _safe_add_column(conn, "ALTER TABLE professionals ADD COLUMN walk_in_policy_text TEXT NULL")
+        _safe_add_column(conn, "ALTER TABLE professionals ADD COLUMN ideal_room_text TEXT NULL")
+        _safe_add_column(conn, "ALTER TABLE professionals ADD COLUMN intranet_notes_text TEXT NULL")
         _safe_add_column(conn, "ALTER TABLE professional_registrations ADD COLUMN rqe VARCHAR(40) NULL")
         conn.commit()
     finally:
@@ -473,7 +502,16 @@ def _find_existing_professional(db, professional_id, cpf):
         """
         SELECT
           id,
+          contract_party_type,
           contract_type,
+          cnpj,
+          legal_name,
+          attendance_modes_json,
+          service_locations_text_json,
+          patient_age_text,
+          walk_in_policy_text,
+          ideal_room_text,
+          intranet_notes_text,
           has_physical_folder,
           physical_folder_note,
           payment_minimum_text,
@@ -493,7 +531,16 @@ def _find_existing_professional(db, professional_id, cpf):
             """
             SELECT
               id,
+              contract_party_type,
               contract_type,
+              cnpj,
+              legal_name,
+              attendance_modes_json,
+              service_locations_text_json,
+              patient_age_text,
+              walk_in_policy_text,
+              ideal_room_text,
+              intranet_notes_text,
               has_physical_folder,
               physical_folder_note,
               payment_minimum_text,
@@ -513,22 +560,161 @@ def _find_existing_professional(db, professional_id, cpf):
 
     return {
         "id": _clean(_get_col(row, 0, "id")),
-        "contract_type": _clean(_get_col(row, 1, "contract_type")) or DEFAULT_CONTRACT_TYPE,
-        "has_physical_folder": 1 if _get_col(row, 2, "has_physical_folder") else 0,
-        "physical_folder_note": _clean(_get_col(row, 3, "physical_folder_note")) or None,
-        "payment_minimum_text": _clean(_get_col(row, 4, "payment_minimum_text")) or None,
-        "contract_template_id": _clean(_get_col(row, 5, "contract_template_id")) or None,
-        "contract_start_date": _clean(_get_col(row, 6, "contract_start_date")) or None,
-        "contract_end_date": _clean(_get_col(row, 7, "contract_end_date")) or None,
-        "created_at": _clean(_get_col(row, 8, "created_at")) or _now(),
+        "contract_party_type": _clean(_get_col(row, 1, "contract_party_type")).upper() or "PF",
+        "contract_type": _clean(_get_col(row, 2, "contract_type")) or DEFAULT_CONTRACT_TYPE,
+        "cnpj": _optional_text(_get_col(row, 3, "cnpj")),
+        "legal_name": _optional_text(_get_col(row, 4, "legal_name")),
+        "attendance_modes_json": _optional_text(_get_col(row, 5, "attendance_modes_json")),
+        "service_locations_text_json": _optional_text(_get_col(row, 6, "service_locations_text_json")),
+        "patient_age_text": _optional_text(_get_col(row, 7, "patient_age_text")),
+        "walk_in_policy_text": _optional_text(_get_col(row, 8, "walk_in_policy_text")),
+        "ideal_room_text": _optional_text(_get_col(row, 9, "ideal_room_text")),
+        "intranet_notes_text": _optional_text(_get_col(row, 10, "intranet_notes_text")),
+        "has_physical_folder": 1 if _get_col(row, 11, "has_physical_folder") else 0,
+        "physical_folder_note": _optional_text(_get_col(row, 12, "physical_folder_note")),
+        "payment_minimum_text": _optional_text(_get_col(row, 13, "payment_minimum_text")),
+        "contract_template_id": _optional_text(_get_col(row, 14, "contract_template_id")),
+        "contract_start_date": _optional_text(_get_col(row, 15, "contract_start_date")),
+        "contract_end_date": _optional_text(_get_col(row, 16, "contract_end_date")),
+        "created_at": _clean(_get_col(row, 17, "created_at")) or _now(),
     }
+
+
+def _merge_professional_registrations(conn, professional_key, registrations, now):
+    if not registrations:
+        return
+
+    rs = conn.execute(
+        """
+        SELECT
+          id,
+          council_type,
+          council_number,
+          council_uf,
+          is_primary
+        FROM professional_registrations
+        WHERE professional_id = ?
+        """,
+        [professional_key],
+    )
+    existing_rows = _result_rows(rs)
+    existing_by_key = {}
+    for row in existing_rows:
+        key = _registration_key(
+            _get_col(row, 1, "council_type"),
+            _get_col(row, 2, "council_number"),
+            _get_col(row, 3, "council_uf"),
+        )
+        existing_by_key[key] = row
+
+    incoming_keys = set()
+    has_primary_from_feegow = False
+    for reg in registrations:
+        key = _registration_key(reg["council_type"], reg["council_number"], reg["council_uf"])
+        incoming_keys.add(key)
+        is_primary = 1 if reg.get("is_primary") else 0
+        has_primary_from_feegow = has_primary_from_feegow or bool(is_primary)
+        existing_row = existing_by_key.get(key)
+
+        if existing_row:
+            conn.execute(
+                """
+                UPDATE professional_registrations
+                SET
+                  rqe = ?,
+                  is_primary = ?,
+                  updated_at = ?
+                WHERE id = ?
+                """,
+                [
+                    reg.get("rqe"),
+                    is_primary,
+                    now,
+                    _get_col(existing_row, 0, "id"),
+                ],
+            )
+            continue
+
+        conn.execute(
+            """
+            INSERT INTO professional_registrations (
+              id, professional_id, council_type, council_number, rqe, council_uf, is_primary, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                str(uuid.uuid4()),
+                professional_key,
+                reg["council_type"],
+                reg["council_number"],
+                reg.get("rqe"),
+                reg["council_uf"],
+                is_primary,
+                now,
+                now,
+            ],
+        )
+
+    if not has_primary_from_feegow:
+        return
+
+    for key, row in existing_by_key.items():
+        if key in incoming_keys:
+            continue
+        if _get_col(row, 4, "is_primary"):
+            conn.execute(
+                """
+                UPDATE professional_registrations
+                SET
+                  is_primary = 0,
+                  updated_at = ?
+                WHERE id = ?
+                """,
+                [
+                    now,
+                    _get_col(row, 0, "id"),
+                ],
+            )
 
 
 def _save_professional(db, payload, existing):
     now = _now()
     professional_key = existing["id"] if existing else f"feegow:{payload['source_professional_id']}"
     created_at = existing["created_at"] if existing else now
-    contract_type = existing["contract_type"] if existing else DEFAULT_CONTRACT_TYPE
+    # Feegow updates the operational profile; panel-owned fields stay untouched once curated locally.
+    feegow_managed = {
+        "name": payload["name"],
+        "cpf": payload["cpf"],
+        "specialty": payload["specialty"],
+        "primary_specialty": payload["primary_specialty"],
+        "specialties_json": json.dumps(payload["specialties"], ensure_ascii=False),
+        "phone": payload["phone"],
+        "email": payload["email"],
+        "age_range": payload["age_range"],
+        "service_units_json": json.dumps(payload["service_units"], ensure_ascii=False),
+        "has_feegow_permissions": payload["has_feegow_permissions"],
+        "personal_doc_type": payload["personal_doc_type"],
+        "personal_doc_number": payload["personal_doc_number"] or "",
+        "address_text": payload["address_text"] or "",
+        "is_active": 1,
+    }
+    panel_managed = {
+        "contract_party_type": existing["contract_party_type"] if existing else "PF",
+        "contract_type": existing["contract_type"] if existing else DEFAULT_CONTRACT_TYPE,
+        "cnpj": existing["cnpj"] if existing else None,
+        "legal_name": existing["legal_name"] if existing else None,
+        "attendance_modes_json": existing["attendance_modes_json"] if existing else None,
+        "service_locations_text_json": existing["service_locations_text_json"] if existing else None,
+        "patient_age_text": existing["patient_age_text"] if existing else None,
+        "walk_in_policy_text": existing["walk_in_policy_text"] if existing else None,
+        "ideal_room_text": existing["ideal_room_text"] if existing else None,
+        "intranet_notes_text": existing["intranet_notes_text"] if existing else None,
+        "has_physical_folder": existing["has_physical_folder"] if existing else 0,
+        "physical_folder_note": existing["physical_folder_note"] if existing else None,
+        "payment_minimum_text": existing["payment_minimum_text"] if existing else None,
+        "contract_template_id": existing["contract_template_id"] if existing else None,
+        "contract_start_date": existing["contract_start_date"] if existing else None,
+        "contract_end_date": existing["contract_end_date"] if existing else None,
+    }
 
     conn = db.get_connection()
     try:
@@ -550,6 +736,12 @@ def _save_professional(db, payload, existing):
                   email = ?,
                   age_range = ?,
                   service_units_json = ?,
+                  attendance_modes_json = ?,
+                  service_locations_text_json = ?,
+                  patient_age_text = ?,
+                  walk_in_policy_text = ?,
+                  ideal_room_text = ?,
+                  intranet_notes_text = ?,
                   has_feegow_permissions = ?,
                   personal_doc_type = ?,
                   personal_doc_number = ?,
@@ -565,30 +757,36 @@ def _save_professional(db, payload, existing):
                 WHERE id = ?
                 """,
                 [
-                    payload["name"],
-                    "PF",
-                    contract_type,
-                    payload["cpf"],
-                    None,
-                    None,
-                    payload["specialty"],
-                    payload["primary_specialty"],
-                    json.dumps(payload["specialties"], ensure_ascii=False),
-                    payload["phone"],
-                    payload["email"],
-                    payload["age_range"],
-                    json.dumps(payload["service_units"], ensure_ascii=False),
-                    payload["has_feegow_permissions"],
-                    payload["personal_doc_type"],
-                    payload["personal_doc_number"] or "",
-                    payload["address_text"] or "",
-                    1,
-                    existing["has_physical_folder"],
-                    existing["physical_folder_note"],
-                    existing["payment_minimum_text"],
-                    existing["contract_template_id"],
-                    existing["contract_start_date"],
-                    existing["contract_end_date"],
+                    feegow_managed["name"],
+                    panel_managed["contract_party_type"],
+                    panel_managed["contract_type"],
+                    feegow_managed["cpf"],
+                    panel_managed["cnpj"],
+                    panel_managed["legal_name"],
+                    feegow_managed["specialty"],
+                    feegow_managed["primary_specialty"],
+                    feegow_managed["specialties_json"],
+                    feegow_managed["phone"],
+                    feegow_managed["email"],
+                    feegow_managed["age_range"],
+                    feegow_managed["service_units_json"],
+                    panel_managed["attendance_modes_json"],
+                    panel_managed["service_locations_text_json"],
+                    panel_managed["patient_age_text"],
+                    panel_managed["walk_in_policy_text"],
+                    panel_managed["ideal_room_text"],
+                    panel_managed["intranet_notes_text"],
+                    feegow_managed["has_feegow_permissions"],
+                    feegow_managed["personal_doc_type"],
+                    feegow_managed["personal_doc_number"],
+                    feegow_managed["address_text"],
+                    feegow_managed["is_active"],
+                    panel_managed["has_physical_folder"],
+                    panel_managed["physical_folder_note"],
+                    panel_managed["payment_minimum_text"],
+                    panel_managed["contract_template_id"],
+                    panel_managed["contract_start_date"],
+                    panel_managed["contract_end_date"],
                     now,
                     professional_key,
                 ],
@@ -599,62 +797,51 @@ def _save_professional(db, payload, existing):
                 INSERT INTO professionals (
                   id, name, contract_party_type, contract_type, cpf, cnpj, legal_name,
                   specialty, primary_specialty, specialties_json, phone, email, age_range, service_units_json,
+                  attendance_modes_json, service_locations_text_json, patient_age_text, walk_in_policy_text,
+                  ideal_room_text, intranet_notes_text,
                   has_feegow_permissions, personal_doc_type, personal_doc_number, address_text, is_active,
                   has_physical_folder, physical_folder_note, contract_template_id, contract_start_date, contract_end_date,
                   payment_minimum_text, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     professional_key,
-                    payload["name"],
-                    "PF",
-                    DEFAULT_CONTRACT_TYPE,
-                    payload["cpf"],
-                    None,
-                    None,
-                    payload["specialty"],
-                    payload["primary_specialty"],
-                    json.dumps(payload["specialties"], ensure_ascii=False),
-                    payload["phone"],
-                    payload["email"],
-                    payload["age_range"],
-                    json.dumps(payload["service_units"], ensure_ascii=False),
-                    payload["has_feegow_permissions"],
-                    payload["personal_doc_type"],
-                    payload["personal_doc_number"] or "",
-                    payload["address_text"] or "",
-                    1,
-                    0,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
+                    feegow_managed["name"],
+                    panel_managed["contract_party_type"],
+                    panel_managed["contract_type"],
+                    feegow_managed["cpf"],
+                    panel_managed["cnpj"],
+                    panel_managed["legal_name"],
+                    feegow_managed["specialty"],
+                    feegow_managed["primary_specialty"],
+                    feegow_managed["specialties_json"],
+                    feegow_managed["phone"],
+                    feegow_managed["email"],
+                    feegow_managed["age_range"],
+                    feegow_managed["service_units_json"],
+                    panel_managed["attendance_modes_json"],
+                    panel_managed["service_locations_text_json"],
+                    panel_managed["patient_age_text"],
+                    panel_managed["walk_in_policy_text"],
+                    panel_managed["ideal_room_text"],
+                    panel_managed["intranet_notes_text"],
+                    feegow_managed["has_feegow_permissions"],
+                    feegow_managed["personal_doc_type"],
+                    feegow_managed["personal_doc_number"],
+                    feegow_managed["address_text"],
+                    feegow_managed["is_active"],
+                    panel_managed["has_physical_folder"],
+                    panel_managed["physical_folder_note"],
+                    panel_managed["contract_template_id"],
+                    panel_managed["contract_start_date"],
+                    panel_managed["contract_end_date"],
+                    panel_managed["payment_minimum_text"],
                     created_at,
                     now,
                 ],
             )
 
-        conn.execute("DELETE FROM professional_registrations WHERE professional_id = ?", [professional_key])
-        for reg in payload["registrations"]:
-            conn.execute(
-                """
-                INSERT INTO professional_registrations (
-                  id, professional_id, council_type, council_number, rqe, council_uf, is_primary, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    str(uuid.uuid4()),
-                    professional_key,
-                    reg["council_type"],
-                    reg["council_number"],
-                    reg.get("rqe"),
-                    reg["council_uf"],
-                    reg["is_primary"],
-                    now,
-                    now,
-                ],
-            )
+        _merge_professional_registrations(conn, professional_key, payload["registrations"], now)
 
         conn.commit()
     finally:

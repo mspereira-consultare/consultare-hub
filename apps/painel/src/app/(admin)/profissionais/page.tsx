@@ -435,6 +435,7 @@ export default function ProfessionalsPage() {
   const [procedureWorkerRefreshing, setProcedureWorkerRefreshing] = useState(false);
   const [professionalsSyncStatus, setProfessionalsSyncStatus] = useState<ServiceStatus | null>(null);
   const [professionalsSyncRefreshing, setProfessionalsSyncRefreshing] = useState(false);
+  const [isProfessionalsSyncConfirmOpen, setIsProfessionalsSyncConfirmOpen] = useState(false);
   const [agendaOccupancyStatus, setAgendaOccupancyStatus] = useState<ServiceStatus | null>(null);
   const [listRefreshing, setListRefreshing] = useState(false);
   const [selectedProcedureId, setSelectedProcedureId] = useState('');
@@ -791,6 +792,15 @@ export default function ProfessionalsPage() {
     } finally {
       setProfessionalsSyncRefreshing(false);
     }
+  };
+
+  const openProfessionalsSyncConfirm = () => {
+    if (!canRefresh) {
+      setError('Sem permissao para atualizar profissionais via Feegow.');
+      return;
+    }
+    setError('');
+    setIsProfessionalsSyncConfirmOpen(true);
   };
 
   const triggerProceduresCatalogRefresh = async () => {
@@ -1297,7 +1307,7 @@ export default function ProfessionalsPage() {
               refreshing={professionalsSyncRefreshing}
             >
               <button
-                onClick={triggerProfessionalsSyncRefresh}
+                onClick={openProfessionalsSyncConfirm}
                 disabled={!canRefresh || professionalsSyncRefreshing}
                 className="px-3 py-2 border rounded-lg bg-white text-sm flex items-center gap-2 disabled:opacity-60"
               >
@@ -2860,6 +2870,48 @@ export default function ProfessionalsPage() {
                   {saving ? 'Salvando...' : 'Salvar'}
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isProfessionalsSyncConfirmOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/40 p-4 flex items-center justify-center">
+          <div className="w-full max-w-md bg-white border rounded-2xl p-5">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-full bg-amber-100 p-2 text-amber-700">
+                <AlertTriangle size={18} />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-slate-800">Confirmar sincronizacao</h3>
+                <p className="text-sm text-slate-600 mt-2">
+                  Esta acao atualiza o cadastro de profissionais com os dados vindos do Feegow.
+                  Campos internos gerenciados pelo painel serao preservados, mas dados cadastrais do medico
+                  como telefone, email, endereco, especialidades, unidades e permissoes Feegow podem ser atualizados.
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsProfessionalsSyncConfirmOpen(false)}
+                className="px-3 py-2 border rounded-lg"
+                disabled={professionalsSyncRefreshing}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsProfessionalsSyncConfirmOpen(false);
+                  void triggerProfessionalsSyncRefresh();
+                }}
+                disabled={professionalsSyncRefreshing}
+                className="px-3 py-2 rounded-lg bg-[#17407E] text-white disabled:opacity-60 inline-flex items-center gap-2"
+              >
+                {professionalsSyncRefreshing && <Loader2 size={14} className="animate-spin" />}
+                {professionalsSyncRefreshing ? 'Sincronizando...' : 'Confirmar sincronizacao'}
+              </button>
             </div>
           </div>
         </div>
