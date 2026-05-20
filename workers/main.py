@@ -128,6 +128,61 @@ def _now_work_tz():
         return datetime.datetime.now(WORK_TZ)
     return datetime.datetime.now()
 
+
+def _parse_system_status_ts(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        parsed = datetime.datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+    except Exception:
+        return None
+    if WORK_TZ is not None:
+        try:
+            return parsed.replace(tzinfo=WORK_TZ)
+        except Exception:
+            return parsed
+    return parsed
+
+
+def _is_stale_running_request(action: str, stale_seconds: int) -> bool:
+    if stale_seconds <= 0:
+        return False
+    try:
+        db = DatabaseManager()
+        rows = db.execute_query(
+            """
+            SELECT status, last_run
+            FROM system_status
+            WHERE service_name = ?
+            LIMIT 1
+            """,
+            (action,),
+        )
+        if not rows:
+            return False
+        row = rows[0]
+        status = (
+            str(row[0]).strip().upper()
+            if isinstance(row, (tuple, list))
+            else str(getattr(row, "status", "") or row.get("status") or "").strip().upper()
+        )
+        if status not in ("PENDING", "QUEUED", "RUNNING"):
+            return False
+        last_run = (
+            row[1]
+            if isinstance(row, (tuple, list))
+            else getattr(row, "last_run", None) or row.get("last_run")
+        )
+        parsed = _parse_system_status_ts(last_run)
+        if parsed is None:
+            return False
+        age = (_now_work_tz() - parsed).total_seconds()
+        return age >= stale_seconds
+    except Exception as exc:
+        print(f"⚠️ Falha ao verificar stale lock de {action}: {exc}")
+        return False
+
 def is_working_hours():
     now = _now_work_tz()
     start = now.replace(hour=START_HOUR, minute=START_MINUTE, second=0, microsecond=0)
@@ -145,6 +200,7 @@ SERIALIZED_SCRAPER_SERVICES = {"faturamento", "repasses", "repasse_consolidacao"
 SERIAL_QUEUE_POLL_SEC = max(1, int(os.getenv("FEGOW_SERIAL_QUEUE_POLL_SEC", "5")))
 REPASSE_JOB_DISPATCH_POLL_SEC = max(5, int(os.getenv("REPASSE_JOB_DISPATCH_POLL_SEC", "20")))
 REPASSE_JOB_STALE_MINUTES = max(5, int(os.getenv("REPASSE_JOB_STALE_MINUTES", "20")))
+APPOINTMENTS_STALE_LOCK_SEC = max(60, int(os.getenv("APPOINTMENTS_STALE_LOCK_SEC", "180")))
 
 _serial_queue = deque()
 _serial_queue_lock = threading.Lock()
@@ -389,6 +445,24 @@ def _enqueue_serial_service(action: str, display_name: str, reason: str, raw_key
 def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
     lock = service_locks.setdefault(action, threading.Lock())
     if not lock.acquire(blocking=False):
+        if action == "appointments" and _is_stale_running_request(action, APPOINTMENTS_STALE_LOCK_SEC):
+            print(f"⚠️ Lock stale detectado para {display_name}. Forçando destravamento após {APPOINTMENTS_STALE_LOCK_SEC}s.")
+            try:
+                lock.release()
+            except RuntimeError:
+                pass
+            if not lock.acquire(blocking=False):
+                db = DatabaseManager()
+                db.update_heartbeat(action, "RUNNING", "Serviço já em execução.")
+                if raw_key and raw_key != action:
+                    db.update_heartbeat(raw_key, "RUNNING", "Serviço já em execução.")
+                print(f"⏭️ Serviço já em execução: {display_name} — pulando execução.")
+                return
+
+        db = DatabaseManager()
+        db.update_heartbeat(action, "RUNNING", "Serviço já em execução.")
+        if raw_key and raw_key != action:
+            db.update_heartbeat(raw_key, "RUNNING", "Serviço já em execução.")
         print(f"⏭️ Serviço já em execução: {display_name} — pulando execução.")
         return
 

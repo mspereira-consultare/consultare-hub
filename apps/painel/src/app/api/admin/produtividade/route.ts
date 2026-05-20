@@ -5,6 +5,18 @@ import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 export const dynamic = 'force-dynamic';
 const CACHE_TTL_MS = 30 * 60 * 1000;
 
+const nowInSaoPaulo = () =>
+  new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date()).replace(' ', ' ');
+
 export async function GET(request: Request) {
   try {
     const cacheKey = buildCacheKey('admin', request.url);
@@ -102,14 +114,26 @@ export async function GET(request: Request) {
 export async function POST() {
     try {
         const db = getDbConnection();
+        const requestedAt = nowInSaoPaulo();
+        const currentRows = await db.query(`
+            SELECT status
+            FROM system_status
+            WHERE service_name = 'appointments'
+            LIMIT 1
+        `);
+        const currentStatus = String(currentRows[0]?.status || '').trim().toUpperCase();
+        if (currentStatus === 'RUNNING' || currentStatus === 'QUEUED') {
+            invalidateCache('admin:');
+            return NextResponse.json({ success: true, message: "Atualização já está em execução" });
+        }
         await db.execute(`
             INSERT INTO system_status (service_name, status, last_run, details)
-            VALUES ('appointments', 'PENDING', datetime('now'), 'Solicitado via Painel')
+            VALUES ('appointments', 'PENDING', ?, 'Solicitado via Painel')
             ON CONFLICT(service_name) DO UPDATE SET
                 status = 'PENDING',
                 details = 'Solicitado via Painel',
-                last_run = datetime('now')
-        `);
+                last_run = excluded.last_run
+        `, [requestedAt]);
         invalidateCache('admin:');
         return NextResponse.json({ success: true, message: "Atualização solicitada" });
     } catch (error: any) {

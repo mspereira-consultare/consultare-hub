@@ -368,9 +368,15 @@ export default function ProductivityPage() {
     const filteredUsers = rankingData.filter(u => u.user.toLowerCase().includes(searchTerm.toLowerCase()));
     const formatLastUpdate = (dateString: string) => {
         if (!dateString) return 'Nunca';
-        const isoString = dateString.includes('T') ? dateString : dateString.replace(' ', 'T');
-        const parsed = new Date(isoString);
-        return Number.isNaN(parsed.getTime()) ? dateString : parsed.toLocaleString('pt-BR');
+        const raw = String(dateString).trim();
+        const localMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/);
+        if (localMatch) {
+            return `${localMatch[3]}/${localMatch[2]}/${localMatch[1]}, ${localMatch[4]}:${localMatch[5]}:${localMatch[6]}`;
+        }
+
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return raw;
+        return parsed.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
     };
 
     if (loading && !rankingData.length) return (

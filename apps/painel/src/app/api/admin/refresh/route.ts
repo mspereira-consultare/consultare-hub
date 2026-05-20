@@ -9,6 +9,18 @@ import { createAgendaOcupacaoJob } from '@/lib/agenda_ocupacao/repository';
 
 export const dynamic = 'force-dynamic';
 
+const nowInSaoPaulo = () =>
+  new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(new Date()).replace(' ', ' ');
+
 const SERVICE_ALIASES: Record<string, string> = {
   appointments: 'appointments',
   agendamentos: 'appointments',
@@ -149,6 +161,7 @@ export async function POST(request: Request) {
 
     const db = getDbConnection();
     let details = 'Solicitado via Painel';
+    const requestedAt = nowInSaoPaulo();
 
     if (serviceName === 'agenda_occupancy') {
       const defaults = getAgendaOcupacaoDefaultRange();
@@ -165,16 +178,33 @@ export async function POST(request: Request) {
       details = `Job ${job.id} enfileirado`;
     }
 
-    // Query unificada (Upsert)
+    const currentRows = await db.query(
+      `
+        SELECT status, last_run, details
+        FROM system_status
+        WHERE service_name = ?
+        LIMIT 1
+      `,
+      [serviceName]
+    );
+    const current = currentRows[0] as { status?: string; last_run?: string | null; details?: string | null } | undefined;
+    const currentStatus = String(current?.status || '').trim().toUpperCase();
+    if (currentStatus === 'RUNNING' || currentStatus === 'QUEUED') {
+      invalidateCache('admin:');
+      return NextResponse.json({
+        success: true,
+        message: 'Serviço já está em execução.',
+      });
+    }
+
     const sql = `
         INSERT INTO system_status (service_name, status, last_run, details)
-        VALUES (?, 'PENDING', datetime('now'), ?)
+        VALUES (?, 'PENDING', ?, ?)
         ON CONFLICT(service_name) 
-        DO UPDATE SET status = 'PENDING', details = excluded.details, last_run = datetime('now')
+        DO UPDATE SET status = 'PENDING', details = excluded.details, last_run = excluded.last_run
     `;
 
-    // Agora é AWAIT para compatibilidade com Turso
-    await db.execute(sql, [serviceName, details]);
+    await db.execute(sql, [serviceName, requestedAt, details]);
 
     invalidateCache('admin:');
     return NextResponse.json({ 
