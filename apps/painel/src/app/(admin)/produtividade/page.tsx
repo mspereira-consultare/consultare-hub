@@ -9,6 +9,7 @@ import {
 export default function ProductivityPage() {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
+    const [error, setError] = useState('');
     
     // Filtros
     const today = new Date();
@@ -179,10 +180,42 @@ export default function ProductivityPage() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showTeamGoals, setShowTeamGoals] = useState(true);
 
+    const isWorkerUpdating = (statusRaw: string | null | undefined) => {
+        const status = String(statusRaw || '').trim().toUpperCase();
+        return status === 'PENDING' || status === 'QUEUED' || status === 'RUNNING';
+    };
+
+    const fetchAppointmentsWorkerStatus = async (forceFresh = false) => {
+        try {
+            const refreshQ = forceFresh ? `?refresh=${Date.now()}` : '';
+            const res = await fetch(`/api/admin/status${refreshQ}`, { cache: 'no-store' });
+            const data = await res.json();
+            if (!res.ok || !Array.isArray(data)) return null;
+
+            const normalize = (value: string) =>
+                String(value || '')
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .toLowerCase()
+                    .trim();
+
+            return (
+                data.find((row: any) =>
+                    ['appointments', 'agendamentos', 'financeiro', 'worker_feegow', 'worker_feegow_appointments'].includes(
+                        normalize(row?.service_name)
+                    )
+                ) || null
+            );
+        } catch {
+            return null;
+        }
+    };
+
     // --- BUSCA DADOS PRINCIPAIS ---
     const fetchData = async (forceFresh = false) => {
         if (!heartbeat) setLoading(true);
         try {
+            setError('');
             const params = new URLSearchParams({ 
                 startDate: dateRange.start, 
                 endDate: dateRange.end,
@@ -202,7 +235,12 @@ export default function ProductivityPage() {
             if (prodData.userStats) setRankingData(prodData.userStats);
             if (prodData.globalStats) setGlobalStats(prodData.globalStats);
             if (prodData.teamStats) setTeamStats(prodData.teamStats);
-            if (prodData.heartbeat) setHeartbeat(prodData.heartbeat);
+            if (prodData.heartbeat) {
+                setHeartbeat(prodData.heartbeat);
+                if (isWorkerUpdating(prodData.heartbeat.status)) {
+                    setIsUpdating(true);
+                }
+            }
             
             // Filtra apenas metas relacionadas a agendamentos/produtividade
             if (Array.isArray(goalsDataRes)) {
@@ -214,14 +252,10 @@ export default function ProductivityPage() {
                 });
                 setGoalsData(filteredGoals);
             }
-
-            if (prodData.heartbeat && (prodData.heartbeat.status === 'RUNNING' || prodData.heartbeat.status === 'PENDING')) {
-                setIsUpdating(true);
-                setTimeout(() => fetchData(true), 3000); 
-            } else {
-                setIsUpdating(false);
-            }
-        } catch (error) { console.error(error); } finally { setLoading(false); }
+        } catch (error) {
+            console.error(error);
+            setError('Falha ao carregar os dados de produtividade.');
+        } finally { setLoading(false); }
     };
 
     // --- GERENCIAMENTO DE EQUIPES (MODAL) ---
@@ -277,10 +311,58 @@ export default function ProductivityPage() {
     useEffect(() => { fetchData(); }, [dateRange, selectedTeam]);
     useEffect(() => { if (!isModalOpen) fetchConfigUsers(); }, [isModalOpen]);
 
+    useEffect(() => {
+        if (!isUpdating) return;
+
+        let cancelled = false;
+
+        const poll = async () => {
+            const statusRow = await fetchAppointmentsWorkerStatus(true);
+            if (cancelled) return;
+
+            const currentStatus = String(statusRow?.status || heartbeat?.status || '').trim().toUpperCase();
+
+            await fetchData(true);
+            if (cancelled) return;
+
+            if (!isWorkerUpdating(currentStatus)) {
+                setIsUpdating(false);
+            }
+        };
+
+        void poll();
+        const interval = setInterval(() => {
+            void poll();
+        }, 3000);
+
+        return () => {
+            cancelled = true;
+            clearInterval(interval);
+        };
+    }, [isUpdating, dateRange, selectedTeam]);
+
     const handleManualUpdate = async () => {
-        setIsUpdating(true);
-        await fetch('/api/admin/produtividade', { method: 'POST' });
-        setTimeout(() => fetchData(true), 1000);
+        setError('');
+        try {
+            const res = await fetch('/api/admin/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ service: 'appointments' }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                throw new Error(data?.error || 'Falha ao solicitar atualizacao dos agendamentos.');
+            }
+
+            setIsUpdating(true);
+            const statusRow = await fetchAppointmentsWorkerStatus(true);
+            if (statusRow) setHeartbeat(statusRow);
+            await fetchData(true);
+        } catch (error: any) {
+            console.error(error);
+            setIsUpdating(false);
+            setError(error?.message || 'Falha ao atualizar os agendamentos.');
+        }
     };
 
     const filteredUsers = rankingData.filter(u => u.user.toLowerCase().includes(searchTerm.toLowerCase()));
@@ -299,6 +381,12 @@ export default function ProductivityPage() {
 
     return (
         <div className="p-6 bg-slate-50 min-h-screen space-y-6 relative">
+            {error ? (
+                <div className="flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    <X size={14} />
+                    {error}
+                </div>
+            ) : null}
             
             {/* HEADER */}
             <div className="flex flex-col xl:flex-row justify-between items-center bg-white p-4 rounded-xl shadow-sm border border-slate-200 gap-4">
