@@ -62,6 +62,9 @@ export type ExecutiveWidgetKey =
 
 export type ExecutiveIndicatorStatus = 'SUCCESS' | 'WARNING' | 'DANGER' | 'NO_DATA';
 export type ExecutiveTrend = 'up' | 'down' | 'stable' | 'unknown';
+export type ExecutiveAiStatus = 'PENDING_PHASE_2' | 'READY' | 'UNAVAILABLE' | 'FAILED';
+export type ExecutiveAiSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type ExecutiveAiHorizon = 'now' | 'week' | 'month' | null;
 
 export type ExecutiveWidgetDefinition = {
   key: ExecutiveWidgetKey;
@@ -229,13 +232,55 @@ export type ExecutiveWidgetSnapshot = {
   note: string | null;
 };
 
+export type ExecutiveAiPriority = {
+  areaKey: ExecutiveAreaKey | null;
+  severity: ExecutiveAiSeverity;
+  horizon: ExecutiveAiHorizon;
+  title: string;
+  description: string;
+  rationale: string;
+};
+
+export type ExecutiveAiAreaDiagnosis = {
+  areaKey: ExecutiveAreaKey;
+  status: ExecutiveIndicatorStatus;
+  attentionLevel: ExecutiveAiSeverity;
+  summary: string;
+  rationale: string;
+};
+
+export type ExecutiveAiInsightItem = {
+  areaKey: ExecutiveAreaKey | null;
+  severity: ExecutiveAiSeverity;
+  horizon: ExecutiveAiHorizon;
+  title: string;
+  description: string;
+  rationale: string;
+};
+
+export type ExecutiveAiActionPlan = ExecutiveAiInsightItem;
+
+export type ExecutiveAiSummary = {
+  model: string | null;
+  generatedAt: string;
+  overallStatus: ExecutiveIndicatorStatus;
+  executiveSummary: string;
+  topPriorities: ExecutiveAiPriority[];
+  areaDiagnoses: ExecutiveAiAreaDiagnosis[];
+  actionPlans: ExecutiveAiActionPlan[];
+  risks: ExecutiveAiInsightItem[];
+  opportunities: ExecutiveAiInsightItem[];
+  dataGaps: ExecutiveAiInsightItem[];
+};
+
 export type ExecutiveMetricsPayload = {
   generatedAt: string;
   scope: Omit<ExecutiveScope, 'updatedAt' | 'updatedBy'>;
   profile: ExecutiveResolvedProfile;
   overallStatus: ExecutiveIndicatorStatus;
   executiveSummary: string;
-  aiStatus: 'PENDING_PHASE_2';
+  aiStatus: ExecutiveAiStatus;
+  aiMessage: string | null;
   areas: ExecutiveAreaBlock[];
   widgets: ExecutiveWidgetSnapshot[];
   topPriorities: ExecutivePriority[];
@@ -250,7 +295,7 @@ export type ExecutiveSnapshot = {
   scopeHash: string;
   status: ExecutiveSnapshotStatus;
   metrics: ExecutiveMetricsPayload;
-  aiSummary: null;
+  aiSummary: ExecutiveAiSummary | null;
   errorMessage: string | null;
   createdAt: string;
   completedAt: string | null;

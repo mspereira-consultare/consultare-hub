@@ -11,6 +11,7 @@ import { getMarketingFunnelSummary } from '@/lib/marketing_funil/repository';
 import { getSurveillanceSummary } from '@/lib/vigilancia_sanitaria/repository';
 import { getTaskDashboardSummary } from '@consultare/core/tasks/repository';
 import type { TaskViewerContext } from '@consultare/core/tasks/types';
+import { generateExecutiveAiSummary } from '@/lib/dashboard_executive/openai';
 import {
   EXECUTIVE_PROFILE_DEFINITIONS,
   EXECUTIVE_PROFILE_WIDGET_DEFAULTS,
@@ -19,6 +20,7 @@ import {
 } from '@/lib/dashboard_executive/catalog';
 import type { SurveillanceSummaryFilters } from '@/lib/vigilancia_sanitaria/types';
 import type {
+  ExecutiveAiSummary,
   ExecutiveAreaBlock,
   ExecutiveAreaKey,
   ExecutiveConfigurationSnapshot,
@@ -551,6 +553,9 @@ const buildResolvedProfile = (
 
 const parseSnapshotRow = (row: any): ExecutiveSnapshot => {
   const metrics = JSON.parse(clean(row.metrics_json) || '{}') as ExecutiveMetricsPayload;
+  const aiSummary = clean(row.ai_summary_json)
+    ? (JSON.parse(clean(row.ai_summary_json)) as ExecutiveAiSummary)
+    : null;
   if (!metrics.profile) {
     metrics.profile = buildResolvedProfile(
       isProfileKey(clean((metrics.scope as any)?.profileKey)) ? (clean((metrics.scope as any)?.profileKey) as ExecutiveProfileKey) : null,
@@ -564,13 +569,19 @@ const parseSnapshotRow = (row: any): ExecutiveSnapshot => {
       clean((metrics.scope as any)?.configurationIssue) || null
     );
   }
+  if (!metrics.aiStatus) {
+    metrics.aiStatus = aiSummary ? 'READY' : metrics.profile.profileKey ? 'PENDING_PHASE_2' : 'UNAVAILABLE';
+  }
+  if (typeof metrics.aiMessage === 'undefined') {
+    metrics.aiMessage = null;
+  }
   return {
     id: clean(row.id),
     userId: clean(row.user_id),
     scopeHash: clean(row.scope_hash),
     status: (clean(row.status) || 'FAILED') as ExecutiveSnapshotStatus,
     metrics,
-    aiSummary: null,
+    aiSummary,
     errorMessage: clean(row.error_message) || null,
     createdAt: clean(row.created_at),
     completedAt: clean(row.completed_at) || null,
@@ -2429,7 +2440,8 @@ const buildExecutiveMetrics = async (db: DbInterface, scope: ExecutiveScope): Pr
       profile,
       overallStatus: 'NO_DATA',
       executiveSummary: buildExecutiveSummary([]),
-      aiStatus: 'PENDING_PHASE_2',
+      aiStatus: 'UNAVAILABLE',
+      aiMessage: 'A leitura de IA depende de um perfil executivo configurado para este acesso.',
       areas: [],
       widgets: [],
       topPriorities: [],
@@ -2467,6 +2479,7 @@ const buildExecutiveMetrics = async (db: DbInterface, scope: ExecutiveScope): Pr
     overallStatus: worstStatus(areas.map((area) => area.status)),
     executiveSummary: buildExecutiveSummary(areas),
     aiStatus: 'PENDING_PHASE_2',
+    aiMessage: null,
     areas,
     widgets,
     topPriorities: buildTopPriorities(areas),
@@ -2506,7 +2519,35 @@ export const createExecutiveSnapshot = async (
     const snapshotId = randomUUID();
     const createdAt = new Date().toISOString();
     try {
-      const metrics = await buildExecutiveMetrics(txDb, normalizedScope);
+      const baseMetrics = await buildExecutiveMetrics(txDb, normalizedScope);
+      let metrics: ExecutiveMetricsPayload = baseMetrics;
+      let aiSummary: ExecutiveAiSummary | null = null;
+
+      if (normalizedScope.profileKey && baseMetrics.areas.length) {
+        try {
+          aiSummary = await generateExecutiveAiSummary(baseMetrics);
+          metrics = {
+            ...baseMetrics,
+            aiStatus: 'READY',
+            aiMessage: null,
+          };
+        } catch (error: any) {
+          const aiMessage = error instanceof Error ? error.message : 'Falha ao gerar a leitura executiva da IA.';
+          const aiStatus = Number((error as { status?: number })?.status) === 503 ? 'UNAVAILABLE' : 'FAILED';
+          metrics = {
+            ...baseMetrics,
+            aiStatus,
+            aiMessage,
+          };
+        }
+      } else if (normalizedScope.profileKey) {
+        metrics = {
+          ...baseMetrics,
+          aiStatus: 'UNAVAILABLE',
+          aiMessage: 'Este perfil ainda não possui base consolidada suficiente para a leitura executiva da IA.',
+        };
+      }
+
       const completedAt = new Date().toISOString();
       await txDb.execute(
         `
@@ -2519,7 +2560,7 @@ export const createExecutiveSnapshot = async (
           userId,
           scopeHash,
           JSON.stringify(metrics),
-          null,
+          aiSummary ? JSON.stringify(aiSummary) : null,
           'COMPLETED',
           null,
           createdAt,
@@ -2533,7 +2574,7 @@ export const createExecutiveSnapshot = async (
         scopeHash,
         status: 'COMPLETED' as const,
         metrics,
-        aiSummary: null,
+        aiSummary,
         errorMessage: null,
         createdAt,
         completedAt,

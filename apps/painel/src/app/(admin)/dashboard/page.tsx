@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import type { ExecutiveSnapshot } from '@/lib/dashboard_executive/types';
+import { ExecutiveAiInsightsSection } from './components/ExecutiveAiInsightsSection';
 import { ExecutiveHeaderSection } from './components/ExecutiveHeaderSection';
 import { ExecutiveLiveSection } from './components/ExecutiveLiveSection';
-import { ExecutivePrioritiesSection } from './components/ExecutivePrioritiesSection';
+import { ExecutivePrioritiesSection, type DashboardPriorityItem } from './components/ExecutivePrioritiesSection';
 import { ExecutiveWidgetsSection } from './components/ExecutiveWidgetsSection';
 
 type ExecutiveApiResponse = {
@@ -68,7 +69,27 @@ export default function DashboardPage() {
     }
   }, [fetchExecutiveDashboard]);
 
-  const priorities = snapshot?.metrics.topPriorities || [];
+  const priorities = useMemo<DashboardPriorityItem[]>(() => {
+    if (!snapshot) return [];
+
+    if (snapshot.aiSummary?.topPriorities?.length) {
+      return snapshot.aiSummary.topPriorities.map((priority) => ({
+        key: `${priority.areaKey || 'geral'}-${priority.title}`,
+        title: priority.title,
+        description: priority.description,
+        severity: priority.severity,
+        helper: priority.rationale,
+      }));
+    }
+
+    return (snapshot.metrics.topPriorities || []).map((priority) => ({
+      key: `${priority.areaKey}-${priority.title}`,
+      title: priority.title,
+      description: priority.description,
+      severity: priority.severity,
+      helper: null,
+    }));
+  }, [snapshot]);
   const heartbeats = snapshot?.metrics.liveOperations.heartbeats || [];
   const needsConfiguration = Boolean(snapshot && !snapshot.metrics.profile.profileKey);
 
@@ -143,6 +164,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
+            <ExecutiveAiInsightsSection snapshot={snapshot} />
             <ExecutivePrioritiesSection priorities={priorities} />
             <ExecutiveWidgetsSection snapshot={snapshot} />
             <ExecutiveLiveSection heartbeats={heartbeats} />

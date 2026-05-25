@@ -22,6 +22,23 @@ export function ExecutiveHeaderSection({
   refreshing,
   onRefresh,
 }: ExecutiveHeaderSectionProps) {
+  const aiStatus = snapshot?.metrics.aiStatus || 'PENDING_PHASE_2';
+  const aiSummary = snapshot?.aiSummary?.executiveSummary || snapshot?.metrics.executiveSummary || 'Sem snapshot executivo disponível no momento.';
+  const aiStatusLabel =
+    aiStatus === 'READY'
+      ? 'IA pronta'
+      : aiStatus === 'FAILED'
+        ? 'IA indisponível'
+        : aiStatus === 'UNAVAILABLE'
+          ? 'IA não disponível'
+          : 'IA pendente';
+  const aiStatusTone =
+    aiStatus === 'READY'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : aiStatus === 'FAILED'
+        ? 'border-rose-200 bg-rose-50 text-rose-700'
+        : 'border-amber-200 bg-amber-50 text-amber-700';
+
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-4 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
@@ -36,12 +53,15 @@ export function ExecutiveHeaderSection({
             </div>
             <h1 className="text-xl font-bold text-slate-800">Visão consolidada para priorização da liderança</h1>
             <p className="max-w-3xl text-sm text-slate-500">
-              {snapshot?.metrics.executiveSummary || 'Sem snapshot executivo disponível no momento.'}
+              {aiSummary}
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${aiStatusTone}`}>
+            {aiStatusLabel}
+          </span>
           <ExecutiveStatusBadge status={snapshot?.metrics.overallStatus || 'NO_DATA'} />
           <button
             type="button"
