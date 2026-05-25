@@ -18,6 +18,7 @@ export default function DashboardPage() {
   const [snapshot, setSnapshot] = useState<ExecutiveSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchExecutiveDashboard = useCallback(async () => {
@@ -69,6 +70,36 @@ export default function DashboardPage() {
     }
   }, [fetchExecutiveDashboard]);
 
+  const handleExportPdf = useCallback(async () => {
+    if (!snapshot?.id) return;
+    setExportingPdf(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/admin/dashboard/executive/export?snapshotId=${encodeURIComponent(snapshot.id)}`, {
+        method: 'GET',
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || 'Falha ao exportar o dashboard executivo em PDF.');
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `painel-executivo-${snapshot.id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Falha ao exportar o dashboard executivo em PDF.');
+    } finally {
+      setExportingPdf(false);
+    }
+  }, [snapshot]);
+
   const priorities = useMemo<DashboardPriorityItem[]>(() => {
     if (!snapshot) return [];
 
@@ -92,6 +123,18 @@ export default function DashboardPage() {
   }, [snapshot]);
   const heartbeats = snapshot?.metrics.liveOperations.heartbeats || [];
   const needsConfiguration = Boolean(snapshot && !snapshot.metrics.profile.profileKey);
+  const priorityHighlights = useMemo(() => {
+    return priorities.slice(0, 3).map((priority) => ({
+      key: priority.key,
+      label: priority.title,
+      tone:
+        priority.severity === 'critical' || priority.severity === 'high'
+          ? 'border-rose-200 bg-rose-50 text-rose-700'
+          : priority.severity === 'medium'
+            ? 'border-amber-200 bg-amber-50 text-amber-700'
+            : 'border-slate-200 bg-slate-100 text-slate-700',
+    }));
+  }, [priorities]);
 
   const overviewCards = useMemo(() => {
     const liveOperations = snapshot?.metrics.liveOperations;
@@ -138,8 +181,11 @@ export default function DashboardPage() {
         <ExecutiveHeaderSection
           snapshot={snapshot}
           overviewCards={overviewCards}
+          priorityHighlights={priorityHighlights}
           refreshing={refreshing}
+          exportingPdf={exportingPdf}
           onRefresh={handleRefresh}
+          onExportPdf={handleExportPdf}
         />
 
         {error ? (
@@ -164,8 +210,8 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
-            <ExecutiveAiInsightsSection snapshot={snapshot} />
             <ExecutivePrioritiesSection priorities={priorities} />
+            <ExecutiveAiInsightsSection snapshot={snapshot} />
             <ExecutiveWidgetsSection snapshot={snapshot} />
             <ExecutiveLiveSection heartbeats={heartbeats} />
           </>

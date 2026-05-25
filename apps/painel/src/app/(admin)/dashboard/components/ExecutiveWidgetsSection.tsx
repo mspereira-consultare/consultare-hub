@@ -13,6 +13,8 @@ import {
   areaAccentStyles,
   areaIcons,
   formatSnapshotTimestamp,
+  formatAreaLabel,
+  truncateText,
 } from './dashboardExecutiveUtils';
 
 type ExecutiveWidgetsSectionProps = {
@@ -36,7 +38,7 @@ function WidgetSummaryCard({ widget }: { widget: ExecutiveWidgetSnapshot }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-slate-700">{widget.label}</p>
-          <p className="mt-1 text-sm text-slate-500">{widget.description}</p>
+          {widget.description ? <p className="mt-1 text-sm text-slate-500">{truncateText(widget.description, 88)}</p> : null}
         </div>
         <ExecutiveStatusBadge status={widget.status} />
       </div>
@@ -47,7 +49,6 @@ function WidgetSummaryCard({ widget }: { widget: ExecutiveWidgetSnapshot }) {
         ))}
       </div>
 
-      {widget.note ? <p className="mt-3 text-sm text-slate-500">{widget.note}</p> : null}
       <p className="mt-3 text-xs text-slate-400">Atualizado em {formatSnapshotTimestamp(widget.updatedAt)}</p>
     </div>
   );
@@ -82,21 +83,20 @@ export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionPro
 
   return (
     <section className="space-y-5">
-      <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <LayoutGrid size={18} className="text-slate-500" />
             <h2 className="text-lg font-semibold text-slate-900">Indicadores do seu perfil</h2>
           </div>
           <p className="text-sm text-slate-500">
-            Esta visão mostra apenas os widgets já consolidados para o perfil e o escopo do seu acesso.
+            Widgets executivos consolidados para o seu perfil e escopo atual.
           </p>
         </div>
 
         {plannedVisibleCount > 0 ? (
-          <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 lg:max-w-md">
-            {plannedVisibleCount} widget(s) do seu perfil continuam em preparação e entrarão nas próximas entregas,
-            sem impactar os indicadores já disponíveis.
+          <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-medium text-sky-800 lg:max-w-md">
+            {plannedVisibleCount} widget(s) do perfil seguem em preparação.
           </div>
         ) : null}
       </div>
@@ -114,9 +114,9 @@ export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionPro
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">
-                    {definition ? definition.areaKey.charAt(0).toUpperCase() + definition.areaKey.slice(1) : areaKey}
+                    {definition ? formatAreaLabel(definition.areaKey) : formatAreaLabel(areaKey)}
                   </h3>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-xs text-slate-500">
                     {items.length} widget(s) consolidados para este eixo do dashboard.
                   </p>
                 </div>

@@ -42,6 +42,21 @@ export const priorityStyles: Record<ExecutivePriority['severity'], string> = {
   medium: 'border-amber-200 bg-amber-50 text-amber-700',
 };
 
+export function truncateText(value: string | null | undefined, maxLength: number) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+export function formatAreaLabel(areaKey: ExecutiveAreaKey) {
+  if (areaKey === 'financeiro') return 'Financeiro';
+  if (areaKey === 'comercial') return 'Comercial';
+  if (areaKey === 'operacao') return 'Operação';
+  if (areaKey === 'pessoas') return 'Pessoas';
+  return 'Qualidade';
+}
+
 export function formatSnapshotTimestamp(value: string | null | undefined) {
   if (!value) return 'Nunca';
   const date = new Date(value);

@@ -2504,6 +2504,22 @@ export const getLatestExecutiveSnapshot = async (db: DbInterface, userId: string
   return rows[0] ? parseSnapshotRow(rows[0]) : null;
 };
 
+export const getExecutiveSnapshotById = async (db: DbInterface, userId: string, snapshotId: string) => {
+  await ensureExecutiveTables(db);
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM dashboard_executive_snapshots
+    WHERE id = ?
+      AND user_id = ?
+      AND status = 'COMPLETED'
+    LIMIT 1
+    `,
+    [snapshotId, userId]
+  );
+  return rows[0] ? parseSnapshotRow(rows[0]) : null;
+};
+
 export const createExecutiveSnapshot = async (
   db: DbInterface,
   userId: string,
