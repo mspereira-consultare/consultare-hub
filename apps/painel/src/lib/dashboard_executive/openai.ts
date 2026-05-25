@@ -49,6 +49,25 @@ const extractResponseText = (payload: any) => {
   return textParts.join('\n').trim();
 };
 
+const sanitizeJsonCandidate = (text: string) => {
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return trimmed;
+
+  const withoutFences = trimmed
+    .replace(/^```json\s*/i, '')
+    .replace(/^```\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+
+  const firstBrace = withoutFences.indexOf('{');
+  const lastBrace = withoutFences.lastIndexOf('}');
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return withoutFences.slice(firstBrace, lastBrace + 1);
+  }
+
+  return withoutFences;
+};
+
 const areaLabel = (areaKey: ExecutiveAreaKey) => {
   const labels: Record<ExecutiveAreaKey, string> = {
     financeiro: 'Financeiro',
@@ -162,6 +181,7 @@ const EXECUTIVE_AI_SCHEMA = {
     },
     executive_summary: {
       type: 'string',
+      maxLength: 500,
     },
     top_priorities: {
       type: 'array',
@@ -184,8 +204,8 @@ const EXECUTIVE_AI_SCHEMA = {
             enum: ['now', 'week', 'month', null],
           },
           title: { type: 'string' },
-          description: { type: 'string' },
-          rationale: { type: 'string' },
+          description: { type: 'string', maxLength: 320 },
+          rationale: { type: 'string', maxLength: 320 },
         },
       },
     },
@@ -209,8 +229,8 @@ const EXECUTIVE_AI_SCHEMA = {
             type: 'string',
             enum: ['low', 'medium', 'high', 'critical'],
           },
-          summary: { type: 'string' },
-          rationale: { type: 'string' },
+          summary: { type: 'string', maxLength: 320 },
+          rationale: { type: 'string', maxLength: 320 },
         },
       },
     },
@@ -234,9 +254,9 @@ const EXECUTIVE_AI_SCHEMA = {
             type: ['string', 'null'],
             enum: ['now', 'week', 'month', null],
           },
-          title: { type: 'string' },
-          description: { type: 'string' },
-          rationale: { type: 'string' },
+          title: { type: 'string', maxLength: 140 },
+          description: { type: 'string', maxLength: 320 },
+          rationale: { type: 'string', maxLength: 320 },
         },
       },
     },
@@ -260,9 +280,9 @@ const EXECUTIVE_AI_SCHEMA = {
             type: ['string', 'null'],
             enum: ['now', 'week', 'month', null],
           },
-          title: { type: 'string' },
-          description: { type: 'string' },
-          rationale: { type: 'string' },
+          title: { type: 'string', maxLength: 140 },
+          description: { type: 'string', maxLength: 320 },
+          rationale: { type: 'string', maxLength: 320 },
         },
       },
     },
@@ -286,9 +306,9 @@ const EXECUTIVE_AI_SCHEMA = {
             type: ['string', 'null'],
             enum: ['now', 'week', 'month', null],
           },
-          title: { type: 'string' },
-          description: { type: 'string' },
-          rationale: { type: 'string' },
+          title: { type: 'string', maxLength: 140 },
+          description: { type: 'string', maxLength: 320 },
+          rationale: { type: 'string', maxLength: 320 },
         },
       },
     },
@@ -312,9 +332,9 @@ const EXECUTIVE_AI_SCHEMA = {
             type: ['string', 'null'],
             enum: ['now', 'week', 'month', null],
           },
-          title: { type: 'string' },
-          description: { type: 'string' },
-          rationale: { type: 'string' },
+          title: { type: 'string', maxLength: 140 },
+          description: { type: 'string', maxLength: 320 },
+          rationale: { type: 'string', maxLength: 320 },
         },
       },
     },
@@ -369,7 +389,7 @@ export const generateExecutiveAiSummary = async (metrics: ExecutiveMetricsPayloa
             {
               type: 'input_text',
               text:
-                'Você é a camada interpretativa do Painel Executivo da Consultare. Use apenas o payload fornecido. Não invente dados, metas, causas, diagnósticos ou planos sem base explícita. Diferencie fatos observados de recomendações. Priorize criticidade real, considere dia, semana, mês, meta e projeção quando houver, adapte a narrativa ao perfil e ao escopo já aplicados, e registre em data_gaps tudo o que estiver insuficiente para uma conclusão segura. Retorne somente o JSON exigido pelo schema.',
+                'Você é a camada interpretativa do Painel Executivo da Consultare. Use apenas o payload fornecido. Não invente dados, metas, causas, diagnósticos ou planos sem base explícita. Diferencie fatos observados de recomendações. Priorize criticidade real, considere dia, semana, mês, meta e projeção quando houver, adapte a narrativa ao perfil e ao escopo já aplicados, e registre em data_gaps tudo o que estiver insuficiente para uma conclusão segura. Seja conciso: cada texto deve caber em 1 ou 2 frases curtas. Retorne somente o JSON exigido pelo schema.',
             },
           ],
         },
@@ -391,7 +411,7 @@ export const generateExecutiveAiSummary = async (metrics: ExecutiveMetricsPayloa
           strict: true,
         },
       },
-      max_output_tokens: 3200,
+      max_output_tokens: 5000,
     }),
   });
 
@@ -402,12 +422,18 @@ export const generateExecutiveAiSummary = async (metrics: ExecutiveMetricsPayloa
   }
 
   const json = await response.json();
-  const outputText = extractResponseText(json);
+  const outputText = sanitizeJsonCandidate(extractResponseText(json));
   if (!outputText) {
     throw new Error('A OpenAI não retornou conteúdo estruturado para o resumo executivo.');
   }
 
-  const parsed = JSON.parse(outputText) as RawExecutiveAiSummary;
+  let parsed: RawExecutiveAiSummary;
+  try {
+    parsed = JSON.parse(outputText) as RawExecutiveAiSummary;
+  } catch (error: any) {
+    const detail = error instanceof Error ? error.message : 'Falha ao interpretar o JSON da OpenAI.';
+    throw new Error(`Falha ao interpretar a resposta estruturada da OpenAI: ${detail}`);
+  }
 
   return {
     model: EXECUTIVE_MODEL,
