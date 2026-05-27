@@ -85,6 +85,12 @@ export type IntranetProfessionalProfile = {
   photoAssetId: string | null;
   photoDocumentId: string | null;
   photoUrl: string | null;
+  photoCrop: {
+    aspectRatio: '4:5';
+    zoom: number;
+    focusX: number;
+    focusY: number;
+  } | null;
   cardHighlight: string | null;
   specialties: string[];
   serviceUnits: string[];
@@ -212,6 +218,19 @@ const stringifyArray = (value: unknown) => {
 };
 
 const stringifyJson = (value: unknown, fallback: unknown = {}) => JSON.stringify(value ?? fallback);
+const parsePhotoCrop = (value: unknown) => {
+  const parsed = parseJson<Record<string, unknown> | null>(value, null);
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  const zoom = Number(parsed.zoom);
+  const focusX = Number(parsed.focusX);
+  const focusY = Number(parsed.focusY);
+  return {
+    aspectRatio: '4:5' as const,
+    zoom: Number.isFinite(zoom) ? Math.max(1, Math.min(2.5, zoom)) : 1,
+    focusX: Number.isFinite(focusX) ? Math.max(0, Math.min(100, focusX)) : 50,
+    focusY: Number.isFinite(focusY) ? Math.max(0, Math.min(100, focusY)) : 50,
+  };
+};
 
 const normalizeSlug = (value: unknown) =>
   clean(value)
@@ -562,6 +581,7 @@ const mapProfessional = (row: Row): IntranetProfessionalProfile => {
     photoAssetId: photoDocumentId,
     photoDocumentId,
     photoUrl: photoDocumentId ? `/api/intranet/professionals/${encodeURIComponent(professionalId)}/photo` : null,
+    photoCrop: parsePhotoCrop(row.photo_crop_json),
     cardHighlight: clean(row.primary_specialty || row.specialty) || null,
     specialties,
     serviceUnits,

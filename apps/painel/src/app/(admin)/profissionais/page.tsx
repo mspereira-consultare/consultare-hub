@@ -22,9 +22,15 @@ import type {
   ProfessionalContract,
   ProfessionalDocument,
   ProfessionalListItem,
+  ProfessionalPhotoCrop,
   ProfessionalProcedureRate,
 } from '@/lib/profissionais/types';
 import { hasPermission } from '@/lib/permissions';
+import {
+  buildProfessionalPhotoStyle,
+  DEFAULT_PROFESSIONAL_PHOTO_CROP,
+  ProfessionalPhotoEditor,
+} from './components/ProfessionalPhotoEditor';
 
 type FormRegistration = {
   id?: string;
@@ -65,6 +71,7 @@ type FormState = {
   attendanceModesText: string; serviceLocationsText: string; patientAgeText: string; walkInPolicyText: string; idealRoomText: string; intranetNotesText: string;
   hasFeegowPermissions: boolean;
   paymentMinimumText: string;
+  photoCrop: ProfessionalPhotoCrop;
   personalDocType: string; personalDocNumber: string; addressText: string; isActive: boolean;
   hasPhysicalFolder: boolean; physicalFolderNote: string; contractTemplateId: string; contractStartDate: string; contractEndDate: string;
   registrations: FormRegistration[]; checklist: FormChecklist[];
@@ -144,6 +151,7 @@ const emptyForm = (): FormState => ({
   attendanceSchedules: [],
   attendanceModesText: 'Presencial', serviceLocationsText: '', patientAgeText: '', walkInPolicyText: '', idealRoomText: '', intranetNotesText: '',
   paymentMinimumText: '',
+  photoCrop: DEFAULT_PROFESSIONAL_PHOTO_CROP,
   personalDocType: 'CPF', personalDocNumber: '', addressText: '', isActive: true, hasPhysicalFolder: false,
   physicalFolderNote: '', contractTemplateId: '', contractStartDate: '', contractEndDate: '',
   registrations: [{ councilType: 'CRM', councilNumber: '', rqe: '', councilUf: 'SP', isPrimary: true }], checklist: newChecklist(),
@@ -184,6 +192,7 @@ const toForm = (item: ProfessionalListItem): FormState => {
     intranetNotesText: item.intranetNotesText || '',
     hasFeegowPermissions: Boolean(item.hasFeegowPermissions),
     paymentMinimumText: item.paymentMinimumText || '',
+    photoCrop: item.photoCrop || DEFAULT_PROFESSIONAL_PHOTO_CROP,
     personalDocType: item.personalDocType === 'CNH' ? 'CNH' : 'CPF',
     personalDocNumber: item.personalDocNumber || '', addressText: item.addressText || '', isActive: Boolean(item.isActive),
     hasPhysicalFolder: Boolean(item.hasPhysicalFolder), physicalFolderNote: item.physicalFolderNote || '',
@@ -410,6 +419,7 @@ export default function ProfessionalsPage() {
   const [modalError, setModalError] = useState('');
   const [modalNotice, setModalNotice] = useState('');
   const [photoLoadError, setPhotoLoadError] = useState(false);
+  const [isPhotoEditorOpen, setIsPhotoEditorOpen] = useState(false);
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [activeContractTemplates, setActiveContractTemplates] = useState<ContractTemplateOption[]>([]);
   const [specialtiesSource, setSpecialtiesSource] = useState<'feegow_api' | 'database' | 'unknown'>('unknown');
@@ -471,6 +481,10 @@ export default function ProfessionalsPage() {
     () => uploadedDocs.find((doc) => doc.docType === 'FOTO' && doc.isActive),
     [uploadedDocs]
   );
+  const photoPreviewUrl = useMemo(() => {
+    if (!editingId || !photoDoc || photoLoadError) return null;
+    return `/api/admin/profissionais/documentos/${encodeURIComponent(photoDoc.id)}/download?inline=1`;
+  }, [editingId, photoDoc, photoLoadError]);
   const activeProfessionalDocuments = useMemo(
     () => uploadedDocs.filter((doc) => doc.isActive),
     [uploadedDocs]
@@ -1068,6 +1082,11 @@ export default function ProfessionalsPage() {
         return next;
       });
       await fetchDocuments(editingId);
+      if (docType === 'FOTO') {
+        setPhotoLoadError(false);
+        setIsPhotoEditorOpen(false);
+        setForm((prev) => ({ ...prev, photoCrop: DEFAULT_PROFESSIONAL_PHOTO_CROP }));
+      }
       setForm((prev) => ({
         ...prev,
         checklist: prev.checklist.map((row) =>
@@ -1173,6 +1192,7 @@ export default function ProfessionalsPage() {
     setModalError('');
     setModalNotice('');
     setIsChecklistExpanded(false);
+    setIsPhotoEditorOpen(false);
     setModalTab('cadastro');
     setIsModalOpen(true);
   };
@@ -1191,6 +1211,7 @@ export default function ProfessionalsPage() {
       setProcedureSearch('');
       setSelectedProcedureId('');
       setIsChecklistExpanded(false);
+      setIsPhotoEditorOpen(false);
       setModalTab('cadastro');
       setModalNotice('');
       setIsModalOpen(true);
@@ -1240,6 +1261,7 @@ export default function ProfessionalsPage() {
         intranetNotesText: form.intranetNotesText || null,
         hasFeegowPermissions: form.hasFeegowPermissions,
         paymentMinimumText: form.paymentMinimumText || null,
+        photoCrop: form.photoCrop || DEFAULT_PROFESSIONAL_PHOTO_CROP,
         physicalFolderNote: form.physicalFolderNote || null,
         contractTemplateId: form.contractTemplateId || null,
         contractStartDate: form.contractStartDate || null,
@@ -1593,13 +1615,14 @@ export default function ProfessionalsPage() {
                     <div className="xl:col-span-3">
                       <div className="border rounded-xl p-3 bg-slate-50/60 h-full min-h-[230px]">
                         <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-2">Foto do profissional</label>
-                        <div className="h-[240px] bg-white border rounded-lg overflow-hidden flex items-center justify-center">
-                          {editingId && photoDoc && !photoLoadError ? (
+                        <div className="aspect-[4/5] bg-white border rounded-lg overflow-hidden flex items-center justify-center">
+                          {photoPreviewUrl ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
-                              src={`/api/admin/profissionais/documentos/${encodeURIComponent(photoDoc.id)}/download?inline=1`}
+                              src={photoPreviewUrl}
                               alt="Foto do profissional"
-                              className="w-full h-full object-cover"
+                              className="w-full h-full"
+                              style={buildProfessionalPhotoStyle(form.photoCrop)}
                               onError={() => setPhotoLoadError(true)}
                             />
                           ) : (
@@ -1609,6 +1632,29 @@ export default function ProfessionalsPage() {
                             </div>
                           )}
                         </div>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsPhotoEditorOpen(true)}
+                            disabled={!photoPreviewUrl}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Ajustar enquadramento
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setForm((prev) => ({ ...prev, photoCrop: DEFAULT_PROFESSIONAL_PHOTO_CROP }))
+                            }
+                            disabled={!photoPreviewUrl}
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            Resetar
+                          </button>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-slate-500">
+                          O enquadramento salvo aqui será refletido na intranet e nas demais telas que exibem a foto do profissional.
+                        </p>
                       </div>
                     </div>
 
@@ -2874,6 +2920,44 @@ export default function ProfessionalsPage() {
           </div>
         </div>
       )}
+
+      {isPhotoEditorOpen && photoPreviewUrl ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Ajustar enquadramento da foto</h3>
+                <p className="text-sm text-slate-500">
+                  Use o recorte oficial em 4:5. O arquivo original não será substituído.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPhotoEditorOpen(false)}
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-5">
+              <ProfessionalPhotoEditor
+                imageUrl={photoPreviewUrl}
+                value={form.photoCrop}
+                onChange={(crop) => setForm((prev) => ({ ...prev, photoCrop: crop }))}
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setIsPhotoEditorOpen(false)}
+                className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {isProfessionalsSyncConfirmOpen && (
         <div className="fixed inset-0 z-[60] bg-black/40 p-4 flex items-center justify-center">

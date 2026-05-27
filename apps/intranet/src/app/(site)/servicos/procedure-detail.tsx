@@ -1,8 +1,7 @@
-/* eslint-disable @next/next/no-img-element -- Fotos vêm do endpoint autenticado de profissionais da intranet. */
-
 import { Clock, DollarSign, Stethoscope, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import type { IntranetProcedureProfile, IntranetProfessionalProfile } from '@consultare/core/intranet/catalog';
+import { ProfessionalPhoto } from '@/components/ProfessionalPhoto';
 
 const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
 
@@ -44,13 +43,11 @@ export function ProcedureDetail({ item, kind, professionals = [] }: { item: Intr
                 <div className="mt-3 space-y-3">
                   {professionals.map((professional) => (
                     <div key={professional.professionalId} className="flex gap-3 rounded-lg bg-white p-3 ring-1 ring-slate-100">
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-blue-50 text-xs font-semibold text-[#17407E]">
-                        {professional.photoUrl ? (
-                          <img src={professional.photoUrl} alt="" className="h-full w-full object-cover" />
-                        ) : (
-                          professional.displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('')
-                        )}
-                      </div>
+                      <ProfessionalPhoto
+                        professional={professional}
+                        className="aspect-[4/5] h-16 shrink-0 overflow-hidden rounded-lg bg-blue-50"
+                        fallbackClassName="flex h-full w-full items-center justify-center bg-blue-50 text-xs font-semibold text-[#17407E]"
+                      />
                       <div className="min-w-0">
                         <p className="font-semibold text-slate-900">{professional.displayName}</p>
                         {professional.specialties.length ? <p className="mt-1 text-xs text-slate-500">{professional.specialties.join(' · ')}</p> : null}

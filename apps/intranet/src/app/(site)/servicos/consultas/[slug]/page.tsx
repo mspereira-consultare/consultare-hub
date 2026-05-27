@@ -11,8 +11,7 @@ import {
   type IntranetProcedureProfile,
 } from '@consultare/core/intranet/catalog';
 import { BlockRenderer } from '../../../blocks';
-
-/* eslint-disable @next/next/no-img-element -- Fotos dos profissionais vêm do endpoint autenticado de assets da intranet. */
+import { ProfessionalPhoto } from '@/components/ProfessionalPhoto';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,19 +95,12 @@ function FallbackSpecialtyContent({ description, serviceGuidance }: { descriptio
 }
 
 function ProfessionalCard({ professional, procedures }: { professional: IntranetProfessionalProfile; procedures: IntranetProcedureProfile[] }) {
-  const initials = professional.displayName.split(/\s+/).slice(0, 2).map((part) => part[0]).join('');
   const units = professional.serviceLocations.length ? professional.serviceLocations : professional.serviceUnits;
   const notes = professional.intranetNotesText || professional.contactNotes;
   const patientAge = professional.patientAgeText || formatAgeRange(professional.ageRange);
   return (
     <article className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <div className="aspect-[4/3] overflow-hidden rounded-lg bg-blue-50">
-        {professional.photoUrl ? (
-          <img src={professional.photoUrl} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-3xl font-semibold text-[#17407E]">{initials}</div>
-        )}
-      </div>
+      <ProfessionalPhoto professional={professional} className="aspect-[4/5] overflow-hidden rounded-lg bg-blue-50" />
       <h3 className="mt-4 text-center text-xl font-semibold text-[#17407E]">{professional.displayName}</h3>
       <div className="mt-5 space-y-4 text-sm leading-6 text-slate-700">
         <InfoList title="Atendimento" items={professional.attendanceModes} />

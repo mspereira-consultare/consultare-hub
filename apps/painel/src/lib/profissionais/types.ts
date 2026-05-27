@@ -67,6 +67,13 @@ export type ProfessionalDocument = {
   createdAt: string;
 };
 
+export type ProfessionalPhotoCrop = {
+  aspectRatio: '4:5';
+  zoom: number;
+  focusX: number;
+  focusY: number;
+};
+
 export type ProfessionalContractStatus = 'PROCESSANDO' | 'GERADO' | 'ERRO' | 'ASSINADO';
 
 export type ProfessionalContract = {
@@ -118,6 +125,7 @@ export type Professional = {
   hasPhysicalFolder: boolean;
   physicalFolderNote: string | null;
   paymentMinimumText: string | null;
+  photoCrop: ProfessionalPhotoCrop | null;
   contractTemplateId: string | null;
   contractStartDate: string | null;
   contractEndDate: string | null;
@@ -169,6 +177,7 @@ export type ProfessionalInput = {
   hasPhysicalFolder: boolean;
   physicalFolderNote?: string | null;
   paymentMinimumText?: string | null;
+  photoCrop?: ProfessionalPhotoCrop | null;
   contractTemplateId?: string | null;
   contractStartDate?: string | null;
   contractEndDate?: string | null;

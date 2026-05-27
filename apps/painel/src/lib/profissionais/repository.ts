@@ -54,6 +54,12 @@ export class ProfessionalValidationError extends Error {
 let tablesEnsured = false;
 
 const NOW = () => new Date().toISOString();
+const DEFAULT_PROFESSIONAL_PHOTO_CROP = {
+  aspectRatio: '4:5',
+  zoom: 1,
+  focusX: 50,
+  focusY: 50,
+} as const;
 
 const clean = (value: any) => String(value ?? '').trim();
 const upper = (value: any) => clean(value).toUpperCase();
@@ -84,6 +90,32 @@ const parseDate = (value: any): string | null => {
   const iso = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!iso) return null;
   return `${iso[1]}-${iso[2]}-${iso[3]}`;
+};
+
+const normalizePhotoCrop = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value as Record<string, unknown>;
+  const zoom = Number(raw.zoom);
+  const focusX = Number(raw.focusX);
+  const focusY = Number(raw.focusY);
+  return {
+    aspectRatio: '4:5' as const,
+    zoom: Number.isFinite(zoom) ? Math.max(1, Math.min(2.5, zoom)) : 1,
+    focusX: Number.isFinite(focusX) ? Math.max(0, Math.min(100, focusX)) : 50,
+    focusY: Number.isFinite(focusY) ? Math.max(0, Math.min(100, focusY)) : 50,
+  };
+};
+
+const parsePhotoCrop = (value: unknown) => {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    try {
+      return normalizePhotoCrop(JSON.parse(value));
+    } catch {
+      return null;
+    }
+  }
+  return normalizePhotoCrop(value);
 };
 
 const normalizeContractPartyType = (value: any): ContractPartyType => {
@@ -452,6 +484,7 @@ const normalizeInput = (payload: any): ProfessionalInput => {
     hasPhysicalFolder: bool(payload?.hasPhysicalFolder),
     physicalFolderNote: clean(payload?.physicalFolderNote) || null,
     paymentMinimumText: clean(payload?.paymentMinimumText) || null,
+    photoCrop: normalizePhotoCrop(payload?.photoCrop),
     contractTemplateId,
     contractStartDate,
     contractEndDate,
@@ -533,6 +566,7 @@ const mapProfessional = (row: any): Professional => ({
   hasPhysicalFolder: bool(row.has_physical_folder),
   physicalFolderNote: clean(row.physical_folder_note) || null,
   paymentMinimumText: clean(row.payment_minimum_text) || null,
+  photoCrop: parsePhotoCrop(row.photo_crop_json),
   contractTemplateId: clean(row.contract_template_id) || null,
   contractStartDate: parseDate(row.contract_start_date),
   contractEndDate: parseDate(row.contract_end_date),
@@ -1024,6 +1058,7 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
       has_physical_folder INTEGER NOT NULL DEFAULT 0,
       physical_folder_note TEXT,
       payment_minimum_text TEXT,
+      photo_crop_json LONGTEXT,
       contract_template_id VARCHAR(64) NULL,
       contract_start_date DATE NULL,
       contract_end_date DATE NULL,
@@ -1099,6 +1134,10 @@ export const ensureProfessionalsTables = async (db: DbInterface) => {
   await safeAddColumn(
     db,
     `ALTER TABLE professionals ADD COLUMN payment_minimum_text TEXT NULL`
+  );
+  await safeAddColumn(
+    db,
+    `ALTER TABLE professionals ADD COLUMN photo_crop_json LONGTEXT NULL`
   );
 
   await db.execute(`
@@ -1523,9 +1562,9 @@ export const createProfessional = async (
       attendance_modes_json, service_locations_text_json, patient_age_text, walk_in_policy_text,
       ideal_room_text, intranet_notes_text, has_feegow_permissions, personal_doc_type, personal_doc_number, address_text, is_active,
       has_physical_folder, physical_folder_note, contract_template_id, contract_start_date, contract_end_date,
-      payment_minimum_text,
+      payment_minimum_text, photo_crop_json,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       id,
@@ -1559,6 +1598,7 @@ export const createProfessional = async (
       input.contractStartDate,
       input.contractEndDate,
       input.paymentMinimumText || null,
+      JSON.stringify(input.photoCrop || DEFAULT_PROFESSIONAL_PHOTO_CROP),
       now,
       now,
     ]
@@ -1626,6 +1666,7 @@ export const updateProfessional = async (
       has_physical_folder = ?,
       physical_folder_note = ?,
       payment_minimum_text = ?,
+      photo_crop_json = ?,
       contract_template_id = ?,
       contract_start_date = ?,
       contract_end_date = ?,
@@ -1660,6 +1701,7 @@ export const updateProfessional = async (
       input.hasPhysicalFolder ? 1 : 0,
       input.physicalFolderNote,
       input.paymentMinimumText || null,
+      JSON.stringify(input.photoCrop || DEFAULT_PROFESSIONAL_PHOTO_CROP),
       input.contractTemplateId || null,
       input.contractStartDate,
       input.contractEndDate,
@@ -1943,6 +1985,17 @@ export const createProfessionalDocumentRecord = async (
       WHERE professional_id = ? AND doc_type = ? AND is_active = 1
       `,
       [professionalId, docType]
+    );
+  }
+
+  if (docType === 'FOTO') {
+    await db.execute(
+      `
+      UPDATE professionals
+      SET photo_crop_json = ?, updated_at = ?
+      WHERE id = ?
+      `,
+      [JSON.stringify(DEFAULT_PROFESSIONAL_PHOTO_CROP), now, professionalId]
     );
   }
 
