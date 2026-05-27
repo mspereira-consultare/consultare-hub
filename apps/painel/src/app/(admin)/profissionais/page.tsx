@@ -420,6 +420,7 @@ export default function ProfessionalsPage() {
   const [modalNotice, setModalNotice] = useState('');
   const [photoLoadError, setPhotoLoadError] = useState(false);
   const [isPhotoEditorOpen, setIsPhotoEditorOpen] = useState(false);
+  const [photoCropDraft, setPhotoCropDraft] = useState<ProfessionalPhotoCrop>(DEFAULT_PROFESSIONAL_PHOTO_CROP);
   const [specialties, setSpecialties] = useState<string[]>([]);
   const [activeContractTemplates, setActiveContractTemplates] = useState<ContractTemplateOption[]>([]);
   const [specialtiesSource, setSpecialtiesSource] = useState<'feegow_api' | 'database' | 'unknown'>('unknown');
@@ -1085,6 +1086,7 @@ export default function ProfessionalsPage() {
       if (docType === 'FOTO') {
         setPhotoLoadError(false);
         setIsPhotoEditorOpen(false);
+        setPhotoCropDraft(DEFAULT_PROFESSIONAL_PHOTO_CROP);
         setForm((prev) => ({ ...prev, photoCrop: DEFAULT_PROFESSIONAL_PHOTO_CROP }));
       }
       setForm((prev) => ({
@@ -1179,9 +1181,22 @@ export default function ProfessionalsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!isPhotoEditorOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsPhotoEditorOpen(false);
+        setPhotoCropDraft(form.photoCrop || DEFAULT_PROFESSIONAL_PHOTO_CROP);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [form.photoCrop, isPhotoEditorOpen]);
+
   const openCreate = () => {
     setEditingId(null);
     setForm(emptyForm());
+    setPhotoCropDraft(DEFAULT_PROFESSIONAL_PHOTO_CROP);
     setUploadedDocs([]);
     setContracts([]);
     setProcedureRates([]);
@@ -1206,6 +1221,7 @@ export default function ProfessionalsPage() {
       if (!res.ok) throw new Error(data?.error || 'Falha ao abrir profissional.');
       setEditingId(id);
       setForm(toForm(data.data));
+      setPhotoCropDraft(data.data.photoCrop || DEFAULT_PROFESSIONAL_PHOTO_CROP);
       setDocumentDrafts({});
       setUploadingDocKey(null);
       setProcedureSearch('');
@@ -1633,12 +1649,15 @@ export default function ProfessionalsPage() {
                           )}
                         </div>
                         <div className="mt-3 flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => setIsPhotoEditorOpen(true)}
-                            disabled={!photoPreviewUrl}
-                            className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPhotoCropDraft(form.photoCrop || DEFAULT_PROFESSIONAL_PHOTO_CROP);
+                                setIsPhotoEditorOpen(true);
+                              }}
+                              disabled={!photoPreviewUrl}
+                              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
                             Ajustar enquadramento
                           </button>
                           <button
@@ -2923,7 +2942,7 @@ export default function ProfessionalsPage() {
 
       {isPhotoEditorOpen && photoPreviewUrl ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/50 p-4">
-          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl">
+          <div className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b px-5 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">Ajustar enquadramento da foto</h3>
@@ -2933,27 +2952,48 @@ export default function ProfessionalsPage() {
               </div>
               <button
                 type="button"
-                onClick={() => setIsPhotoEditorOpen(false)}
+                onClick={() => {
+                  setIsPhotoEditorOpen(false);
+                  setPhotoCropDraft(form.photoCrop || DEFAULT_PROFESSIONAL_PHOTO_CROP);
+                }}
                 className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
               >
                 <X size={18} />
               </button>
             </div>
-            <div className="p-5">
+            <div className="overflow-y-auto p-5">
               <ProfessionalPhotoEditor
                 imageUrl={photoPreviewUrl}
-                value={form.photoCrop}
-                onChange={(crop) => setForm((prev) => ({ ...prev, photoCrop: crop }))}
+                value={photoCropDraft}
+                onChange={setPhotoCropDraft}
               />
             </div>
-            <div className="flex items-center justify-end gap-2 border-t px-5 py-4">
+            <div className="flex items-center justify-between gap-3 border-t px-5 py-4">
+              <p className="text-sm text-slate-500">
+                Cancelar descarta o ajuste. Aplicar enquadramento atualiza a visualização da foto no cadastro e na intranet.
+              </p>
+              <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => setIsPhotoEditorOpen(false)}
+                onClick={() => {
+                  setIsPhotoEditorOpen(false);
+                  setPhotoCropDraft(form.photoCrop || DEFAULT_PROFESSIONAL_PHOTO_CROP);
+                }}
                 className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"
               >
-                Fechar
+                Cancelar
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setForm((prev) => ({ ...prev, photoCrop: photoCropDraft }));
+                  setIsPhotoEditorOpen(false);
+                }}
+                className="rounded-lg bg-[#17407E] px-4 py-2 text-sm font-medium text-white hover:bg-[#14386d]"
+              >
+                Aplicar enquadramento
+              </button>
+              </div>
             </div>
           </div>
         </div>
