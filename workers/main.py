@@ -756,8 +756,8 @@ def run_scheduler():
             print(f"⚠️ Falha no prewarm monitor médico: {e}")
         
     # Agendamento
-    schedule.every().day.at("05:00").do(run_token_renewal)
-    schedule.every().day.at("05:10").do(run_clinia_token_renewal)
+    schedule.every().day.at("05:00").do(lambda: run_service('auth'))
+    schedule.every().day.at("05:10").do(lambda: run_service('auth_clinia'))
     schedule.every().day.at("05:20").do(lambda: run_service('procedures_catalog'))
     schedule.every().day.at("05:30").do(lambda: run_service('patients_registry'))
     schedule.every().day.at("05:35").do(lambda: run_service('clinia_ads'))
@@ -766,8 +766,8 @@ def run_scheduler():
 
     schedule.every().day.at("12:00").do(lambda: run_service('contratos'))
 
-    schedule.every().day.at("12:00").do(run_token_renewal)
-    schedule.every().day.at("12:10").do(run_clinia_token_renewal)
+    schedule.every().day.at("12:00").do(lambda: run_service('auth'))
+    schedule.every().day.at("12:10").do(lambda: run_service('auth_clinia'))
     schedule.every().day.at("12:20").do(lambda: run_service('procedures_catalog'))
     schedule.every().day.at("12:30").do(lambda: run_service('patients_registry'))
     schedule.every().day.at("12:35").do(lambda: run_service('clinia_ads'))

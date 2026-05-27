@@ -12,7 +12,6 @@ from io import StringIO
 from datetime import datetime
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
-from playwright.sync_api import sync_playwright
 
 load_dotenv()
 
@@ -35,6 +34,9 @@ except ImportError:
         login_feegow_app4,
         switch_feegow_unit,
     )
+    from .playwright_runtime import chromium_session
+else:
+    from playwright_runtime import chromium_session
 
 def get_feegow_config_from_db():
     """Busca credenciais no banco de dados (Híbrido)"""
@@ -152,8 +154,7 @@ class FeegowSystem:
         headless = str(os.getenv("PLAYWRIGHT_HEADLESS", "1")).strip().lower() in ("1", "true", "yes")
         try:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Tentando login via app4...")
-            with sync_playwright() as p:
-                browser = p.chromium.launch(headless=headless)
+            with chromium_session(headless=headless) as browser:
                 context = browser.new_context(ignore_https_errors=True)
                 page = context.new_page()
                 try:
@@ -163,10 +164,6 @@ class FeegowSystem:
                 finally:
                     try:
                         context.close()
-                    except Exception:
-                        pass
-                    try:
-                        browser.close()
                     except Exception:
                         pass
 

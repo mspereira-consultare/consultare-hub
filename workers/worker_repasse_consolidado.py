@@ -12,16 +12,18 @@ from decimal import Decimal, InvalidOperation
 from typing import Dict, List, Optional, Tuple
 
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from database_manager import DatabaseManager
     from feegow_web_auth import APP4_BASE_URL, login_feegow_app4, switch_feegow_unit
+    from playwright_runtime import chromium_session
 except ImportError:
     DatabaseManager = None
     from .feegow_web_auth import APP4_BASE_URL, login_feegow_app4, switch_feegow_unit
+    from .playwright_runtime import chromium_session
 
 
 BASE_URL = APP4_BASE_URL
@@ -1408,12 +1410,11 @@ def _process_job(job: Dict):
     any_error = False
     any_success = False
 
-    with sync_playwright() as p:
-        headless = str(os.getenv("PLAYWRIGHT_HEADLESS", "1")).strip().lower() in ("1", "true", "yes")
-        browser = p.chromium.launch(
-            headless=headless,
-            args=["--disable-notifications"],
-        )
+    headless = str(os.getenv("PLAYWRIGHT_HEADLESS", "1")).strip().lower() in ("1", "true", "yes")
+    with chromium_session(
+        headless=headless,
+        launch_args=["--disable-notifications"],
+    ) as browser:
         context = browser.new_context()
         page = context.new_page()
         page.add_init_script(
@@ -1560,10 +1561,6 @@ def _process_job(job: Dict):
         finally:
             try:
                 context.close()
-            except Exception:
-                pass
-            try:
-                browser.close()
             except Exception:
                 pass
 

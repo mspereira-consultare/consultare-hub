@@ -2,9 +2,8 @@ import logging
 import os
 from datetime import datetime
 
-from playwright.sync_api import sync_playwright
-
 from database_manager import DatabaseManager
+from playwright_runtime import chromium_session
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -88,8 +87,10 @@ class CliniaCookieRenewer:
             logging.error("Credenciais Clinia ausentes (integrations_config ou env CLINIA_USER/CLINIA_PASS).")
             return None
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=self.headless, args=["--no-sandbox"])
+        with chromium_session(
+            headless=self.headless,
+            launch_args=["--no-sandbox"],
+        ) as browser:
             context = browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
                 "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
@@ -165,7 +166,6 @@ class CliniaCookieRenewer:
                 return None
             finally:
                 context.close()
-                browser.close()
 
 
 if __name__ == "__main__":
@@ -175,4 +175,3 @@ if __name__ == "__main__":
         print("OK: cookie Clinia renovado.")
     else:
         print("ERRO: nao foi possivel renovar cookie Clinia.")
-

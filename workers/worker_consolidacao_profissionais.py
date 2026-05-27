@@ -15,16 +15,17 @@ from typing import Dict, List, Optional, Tuple
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
-from playwright.sync_api import sync_playwright
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
     from database_manager import DatabaseManager
     from feegow_web_auth import APP4_BASE_URL, login_feegow_app4, switch_feegow_unit
+    from playwright_runtime import chromium_session
 except ImportError:
     DatabaseManager = None
     from .feegow_web_auth import APP4_BASE_URL, login_feegow_app4, switch_feegow_unit
+    from .playwright_runtime import chromium_session
 
 
 BASE_URL = APP4_BASE_URL
@@ -1614,8 +1615,7 @@ def _process_job(
     )
     _hb(db, "RUNNING", job_id, "init", f"periodo={period_ref} profissionais={len(professionals)}")
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=headless)
+    with chromium_session(headless=headless) as browser:
         context = browser.new_context(ignore_https_errors=True)
         page = context.new_page()
         page.on("dialog", lambda dialog: dialog.accept())
@@ -1756,7 +1756,6 @@ def _process_job(
                     print(f"[{idx}/{len(professionals)}] ERROR {prof['name']}: {message}")
         finally:
             context.close()
-            browser.close()
 
     if counters["error"] >= len(professionals):
         final_status = STATUS_FAILED

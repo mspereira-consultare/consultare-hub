@@ -10,9 +10,9 @@ import calendar
 import hashlib
 import hashlib
 import unicodedata
-from playwright.sync_api import sync_playwright
 from io import StringIO
 from feegow_web_auth import APP4_BASE_URL, login_feegow_app4, switch_feegow_unit
+from playwright_runtime import chromium_session
 
 # --- SETUP DE IMPORTS ---
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -956,8 +956,7 @@ def run_scraper():
     print(f"📅 Janela: {inicio_vis} até {fim_vis}")
     db.update_heartbeat("faturamento", "RUNNING", f"Extraindo {inicio_vis}-{fim_vis}")
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+    with chromium_session(headless=True) as browser:
         context = browser.new_context()
         page = context.new_page()
 
@@ -1074,9 +1073,6 @@ def run_scraper():
         except Exception as e:
             print(f"❌ Erro Scraping: {e}")
             db.update_heartbeat("faturamento", "ERROR", str(e))
-        finally:
-            browser.close()
 
 if __name__ == "__main__":
     run_scraper()
-

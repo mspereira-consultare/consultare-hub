@@ -2,10 +2,9 @@ import logging
 import os
 import time
 
-from playwright.sync_api import sync_playwright
-
 from database_manager import DatabaseManager
 from feegow_web_auth import collect_unit_token_payload, login_feegow_app4
+from playwright_runtime import chromium_session
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -25,13 +24,11 @@ class FeegowTokenRenewer:
             logging.error("Credenciais do Feegow não encontradas.")
             raise RuntimeError("Credenciais do Feegow não encontradas.")
 
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-
+        with chromium_session(headless=True) as browser:
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+            )
             try:
-                context = browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
-                )
                 page = context.new_page()
                 login_feegow_app4(page, user, pwd, logger=logging.info)
 
@@ -62,8 +59,6 @@ class FeegowTokenRenewer:
                         logging.info(f"⏳ Aguardando {self.delay_seconds}s antes da Unidade {next_unit}...")
                         time.sleep(self.delay_seconds)
 
-                context.close()
-
                 if not success_units:
                     raise RuntimeError("Nenhuma unidade teve token renovado com sucesso.")
 
@@ -72,7 +67,7 @@ class FeegowTokenRenewer:
                     summary += f" | falharam: {', '.join(map(str, failed_units))}"
                 return summary
             finally:
-                browser.close()
+                context.close()
 
 
 if __name__ == "__main__":
