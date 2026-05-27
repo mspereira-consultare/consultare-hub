@@ -79,22 +79,24 @@ export function ProfessionalPhotoEditor({ imageUrl, value, onChange }: Props) {
 
   return (
     <div className="space-y-3">
-      <div
-        ref={frameRef}
-        onMouseDown={(event) => startDrag(event.clientX, event.clientY)}
-        className="relative aspect-[4/5] overflow-hidden rounded-xl border bg-slate-100 select-none cursor-grab active:cursor-grabbing"
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={imageUrl}
-          alt="Ajuste de foto do profissional"
-          className="h-full w-full transition-transform duration-75"
-          style={previewStyle}
-          draggable={false}
-        />
-        <div className="pointer-events-none absolute inset-x-3 bottom-3 inline-flex items-center gap-2 self-end rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
-          <Grip size={14} />
-          Arraste para reenquadrar
+      <div className="mx-auto w-full max-w-[420px]">
+        <div
+          ref={frameRef}
+          onMouseDown={(event) => startDrag(event.clientX, event.clientY)}
+          className="relative aspect-[4/5] overflow-hidden rounded-xl border bg-slate-100 select-none cursor-grab active:cursor-grabbing"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={imageUrl}
+            alt="Ajuste de foto do profissional"
+            className="h-full w-full transition-transform duration-75"
+            style={previewStyle}
+            draggable={false}
+          />
+          <div className="pointer-events-none absolute inset-x-3 bottom-3 inline-flex items-center gap-2 self-end rounded-full bg-white/90 px-3 py-1 text-xs font-medium text-slate-600 shadow-sm">
+            <Grip size={14} />
+            Arraste para reenquadrar
+          </div>
         </div>
       </div>
 
