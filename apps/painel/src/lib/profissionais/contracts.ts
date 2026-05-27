@@ -24,6 +24,10 @@ const DOCX_MIME =
 
 const clean = (value: unknown) => String(value ?? '').trim();
 
+const OPTIONAL_EMPTY_CONTRACT_SOURCES = new Set<string>([
+  'professional.payment_minimum_text',
+]);
+
 const toDateBr = (isoDate: string | null | undefined) => {
   const raw = clean(isoDate);
   const m = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -457,7 +461,8 @@ export const generateProfessionalContract = async (
       continue;
     }
     const value = resolveSourceValue(source, { professional, proceduresBlock });
-    if (mapItem.required && !clean(value)) {
+    const canOmitWhenEmpty = OPTIONAL_EMPTY_CONTRACT_SOURCES.has(source);
+    if (mapItem.required && !clean(value) && !canOmitWhenEmpty) {
       missingRequired.push(token);
     }
     resolvedValues[token] = value;
