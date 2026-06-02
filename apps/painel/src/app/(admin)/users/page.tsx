@@ -218,7 +218,7 @@ export default function UsersPage() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/users');
+      const res = await fetch('/api/admin/users', { cache: 'no-store' });
       if (res.ok) {
         const data = await res.json();
         setUsers(data);

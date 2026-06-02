@@ -14,12 +14,12 @@ const userEmployeeJoinClause = isMysql
 
 export const dynamic = 'force-dynamic';
 const CACHE_TTL_MS = 30 * 60 * 1000;
-const USERS_CACHE_VERSION = 'v2';
+const USERS_CACHE_VERSION = 'v3';
 
 // --- LISTAR USUÁRIOS (GET) ---
 export async function GET(request: Request) {
   try {
-    const cacheKey = buildCacheKey(`admin-users:${USERS_CACHE_VERSION}`, request.url);
+    const cacheKey = buildCacheKey(`admin:users:${USERS_CACHE_VERSION}`, request.url);
     const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
       const db = getDbConnection();
       await ensureUserAccountColumns(db);
