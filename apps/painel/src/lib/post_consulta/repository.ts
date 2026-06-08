@@ -1,0 +1,768 @@
+import { createHash } from 'crypto';
+import { getDbConnection, type DbInterface } from '@/lib/db';
+
+const isMysqlProvider =
+  String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' ||
+  Boolean(process.env.MYSQL_URL) ||
+  Boolean(process.env.MYSQL_PUBLIC_URL);
+
+const ANALITICO_DATE_SQL = isMysqlProvider
+  ? `(CASE WHEN INSTR(data_do_pagamento, '/') > 0 THEN CONCAT(SUBSTR(data_do_pagamento, 7, 4), '-', SUBSTR(data_do_pagamento, 4, 2), '-', SUBSTR(data_do_pagamento, 1, 2)) ELSE data_do_pagamento END)`
+  : `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
+const INTEGER_CAST_TYPE = isMysqlProvider ? 'UNSIGNED' : 'INTEGER';
+
+export type PostConsultFilters = {
+  startDate: string;
+  endDate: string;
+  unit: string;
+  status: string;
+  responsible: string;
+  closed: string;
+  page: number;
+  pageSize: number;
+};
+
+export type PostConsultOptions = {
+  availableUnits: string[];
+  availableStatuses: string[];
+  availableResponsibles: string[];
+};
+
+export type PostConsultProposalItem = {
+  proposalId: number;
+  proposalDate: string;
+  status: string;
+  unitName: string;
+  professionalName: string;
+  totalValue: number;
+};
+
+export type PostConsultRow = {
+  eventKey: string;
+  patientKey: string;
+  patientId: number | null;
+  patientName: string;
+  patientPhone: string;
+  patientEmail: string;
+  consultDate: string;
+  consultUnit: string;
+  consultProcedure: string;
+  attendantResponsible: string;
+  proposalCount: number;
+  proposalStatusSummary: string;
+  proposalStatuses: string[];
+  proposals: PostConsultProposalItem[];
+  firstContactClosed: boolean | null;
+  firstContactAt: string | null;
+  secondContactClosed: boolean | null;
+  secondContactAt: string | null;
+  observation: string | null;
+  updatedByUserName: string | null;
+  updatedAt: string | null;
+  closed: boolean;
+};
+
+export type PostConsultSummary = {
+  totalEvents: number;
+  totalProposals: number;
+  totalClosedEvents: number;
+  conversionRate: number;
+  pendingPatients: number;
+  afterSecondNoClosePatients: number;
+};
+
+export type PostConsultDetailResult = {
+  summary: PostConsultSummary;
+  rows: PostConsultRow[];
+  page: number;
+  pageSize: number;
+  totalRows: number;
+  totalPages: number;
+};
+
+export type PostConsultFollowupSourceSnapshot = {
+  patientId: number | null;
+  patientName: string;
+  consultDate: string;
+  consultUnit: string;
+  consultProcedure: string;
+  attendantResponsible: string;
+};
+
+export type PostConsultFollowupUpdateInput = {
+  eventKey: string;
+  firstContactClosed: boolean | null;
+  firstContactAt: string | null;
+  secondContactClosed: boolean | null;
+  secondContactAt: string | null;
+  observation: string | null;
+  updatedByUserId: string;
+  updatedByUserName: string;
+  sourceSnapshot: PostConsultFollowupSourceSnapshot;
+};
+
+type ContactCacheRow = {
+  patient_id?: number | string | null;
+  patient_name?: string | null;
+  phone_primary?: string | null;
+  email_primary?: string | null;
+};
+
+type ConsultationSourceRow = {
+  consult_date?: string | null;
+  patient_id?: number | string | null;
+  patient_name?: string | null;
+  consult_unit?: string | null;
+  consult_procedure?: string | null;
+  attendant_responsible?: string | null;
+};
+
+type ProposalSourceRow = {
+  proposal_id?: number | string | null;
+  proposal_date?: string | null;
+  status?: string | null;
+  unit_name?: string | null;
+  professional_name?: string | null;
+  total_value?: number | string | null;
+  patient_id?: number | string | null;
+  proposal_patient_name?: string | null;
+};
+
+type FollowupControlRow = {
+  event_key?: string | null;
+  first_contact_closed?: number | string | boolean | null;
+  first_contact_at?: string | null;
+  second_contact_closed?: number | string | boolean | null;
+  second_contact_at?: string | null;
+  observation?: string | null;
+  updated_by_user_name?: string | null;
+  updated_at?: string | null;
+};
+
+type RowLike = Record<string, unknown>;
+
+const normalizeString = (value: unknown) => String(value || '').trim();
+const normalizeNumber = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+
+const normalizeComparableText = (value: unknown) =>
+  normalizeString(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+
+const normalizeDateParam = (value: string | null | undefined, fallback: string) => {
+  const raw = normalizeString(value);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return fallback;
+};
+
+const normalizeIsoDate = (value: unknown) => {
+  const raw = normalizeString(value);
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
+};
+
+const normalizeDateTimeInput = (value: unknown) => {
+  const raw = normalizeString(value).replace(' ', 'T');
+  if (!raw) return '';
+  const trimmed = raw.length >= 16 ? raw.slice(0, 16) : raw;
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmed) ? trimmed : '';
+};
+
+const formatDateTimeForStorage = (value: string | null | undefined) => {
+  const normalized = normalizeDateTimeInput(value);
+  if (!normalized) return null;
+  return `${normalized.replace('T', ' ')}:00`;
+};
+
+const normalizeBooleanInput = (value: unknown): boolean | null => {
+  if (value === null || value === undefined || value === '') return null;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const normalized = normalizeString(value).toLowerCase();
+  if (['1', 'true', 'sim', 'yes'].includes(normalized)) return true;
+  if (['0', 'false', 'nao', 'não', 'no'].includes(normalized)) return false;
+  return null;
+};
+
+const normalizeObservation = (value: unknown) => normalizeString(value).slice(0, 2000);
+const createHttpError = (message: string, status: number) => {
+  const error = new Error(message) as Error & { status: number };
+  error.status = status;
+  return error;
+};
+
+const listColumnNames = async (db: DbInterface, tableName: string) => {
+  const rows = await db.query(`PRAGMA table_info(${tableName})`);
+  return new Set(rows.map((row) => normalizeString((row as RowLike)?.name || (row as RowLike)?.COLUMN_NAME)).filter(Boolean));
+};
+
+const ensureColumn = async (db: DbInterface, tableName: string, columnName: string, definition: string) => {
+  const columns = await listColumnNames(db, tableName);
+  if (columns.has(columnName)) return;
+  await db.execute(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+};
+
+export const ensurePostConsultSupportTable = async (db: DbInterface = getDbConnection()) => {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS post_consulta_followup_control (
+      event_key VARCHAR(64) PRIMARY KEY,
+      patient_id BIGINT NULL,
+      patient_name TEXT NULL,
+      consult_date TEXT NULL,
+      consult_unit TEXT NULL,
+      consult_procedure TEXT NULL,
+      attendant_responsible TEXT NULL,
+      first_contact_closed INTEGER NULL,
+      first_contact_at TEXT NULL,
+      second_contact_closed INTEGER NULL,
+      second_contact_at TEXT NULL,
+      observation TEXT NULL,
+      updated_by_user_id VARCHAR(64) NULL,
+      updated_by_user_name TEXT NULL,
+      updated_at TEXT NULL
+    )
+  `);
+
+  await ensureColumn(db, 'post_consulta_followup_control', 'patient_id', 'BIGINT NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'patient_name', 'TEXT NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'consult_date', 'TEXT NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'consult_unit', 'TEXT NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'consult_procedure', 'TEXT NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'attendant_responsible', 'TEXT NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'first_contact_closed', 'INTEGER NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'first_contact_at', 'TEXT NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'second_contact_closed', 'INTEGER NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'second_contact_at', 'TEXT NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'observation', 'TEXT NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'updated_by_user_id', 'VARCHAR(64) NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'updated_by_user_name', 'TEXT NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'updated_at', 'TEXT NULL');
+};
+
+const getTodayRef = () =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+
+const getMonthStartRef = () => {
+  const now = new Date();
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+  }).format(now).concat('-01');
+};
+
+const getParam = (params: URLSearchParams | Record<string, unknown>, key: string) => {
+  if (params instanceof URLSearchParams) return params.get(key);
+  const raw = params[key];
+  return raw == null ? null : String(raw);
+};
+
+export const normalizePostConsultFilters = (params: URLSearchParams | Record<string, unknown>): PostConsultFilters => {
+  const fallbackEndDate = getTodayRef();
+  const fallbackStartDate = getMonthStartRef();
+  const startDate = normalizeDateParam(getParam(params, 'startDate'), fallbackStartDate);
+  const endDate = normalizeDateParam(getParam(params, 'endDate'), fallbackEndDate);
+
+  return {
+    startDate,
+    endDate,
+    unit: normalizeString(getParam(params, 'unit')) || 'all',
+    status: normalizeString(getParam(params, 'status')) || 'all',
+    responsible: normalizeString(getParam(params, 'responsible')) || 'all',
+    closed: normalizeString(getParam(params, 'closed')) || 'all',
+    page: clamp(normalizeNumber(getParam(params, 'page')) || 1, 1, 999999),
+    pageSize: clamp(normalizeNumber(getParam(params, 'pageSize')) || 25, 10, 200),
+  };
+};
+
+const buildPatientKey = (patientId: number | null, patientName: string) => {
+  if (patientId && patientId > 0) return `id:${patientId}`;
+  const normalizedName = normalizeComparableText(patientName);
+  return normalizedName ? `name:${normalizedName}` : 'unknown';
+};
+
+const buildEventKeyFromSnapshot = (snapshot: PostConsultFollowupSourceSnapshot) => {
+  const patientId = snapshot.patientId && snapshot.patientId > 0 ? Math.trunc(snapshot.patientId) : null;
+  const patientKey = buildPatientKey(patientId, snapshot.patientName);
+  const raw = [
+    patientKey,
+    normalizeIsoDate(snapshot.consultDate),
+    normalizeComparableText(snapshot.consultUnit),
+    normalizeComparableText(snapshot.consultProcedure),
+    normalizeComparableText(snapshot.attendantResponsible),
+  ].join('|');
+  return createHash('md5').update(raw).digest('hex');
+};
+
+const readContactCache = async (db: DbInterface, patientIds: number[]) => {
+  const ids = Array.from(new Set(patientIds.filter((value) => value > 0)));
+  if (!ids.length) return new Map<number, ContactCacheRow>();
+
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = await db.query(
+    `
+      SELECT patient_id, patient_name, phone_primary, email_primary
+      FROM feegow_patient_contacts_cache
+      WHERE patient_id IN (${placeholders})
+    `,
+    ids,
+  );
+
+  const map = new Map<number, ContactCacheRow>();
+  for (const row of rows as ContactCacheRow[]) {
+    const patientId = normalizeNumber((row as RowLike)?.patient_id);
+    if (patientId > 0) map.set(patientId, row);
+  }
+  return map;
+};
+
+const chunkArray = <T>(items: T[], size: number) => {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+};
+
+const readFollowupControlRows = async (db: DbInterface, eventKeys: string[]) => {
+  if (!eventKeys.length) return new Map<string, FollowupControlRow>();
+  const result = new Map<string, FollowupControlRow>();
+
+  for (const chunk of chunkArray(Array.from(new Set(eventKeys)), 300)) {
+    const placeholders = chunk.map(() => '?').join(',');
+    const rows = await db.query(
+      `
+        SELECT
+          event_key,
+          first_contact_closed,
+          first_contact_at,
+          second_contact_closed,
+          second_contact_at,
+          observation,
+          updated_by_user_name,
+          updated_at
+        FROM post_consulta_followup_control
+        WHERE event_key IN (${placeholders})
+      `,
+      chunk,
+    );
+
+    for (const row of rows as FollowupControlRow[]) {
+      const eventKey = normalizeString((row as RowLike)?.event_key);
+      if (eventKey) result.set(eventKey, row);
+    }
+  }
+
+  return result;
+};
+
+const hasSecondAttempt = (row: PostConsultRow) =>
+  Boolean(row.secondContactAt) || row.secondContactClosed === true || row.secondContactClosed === false;
+
+const buildRowClosedState = (row: Pick<PostConsultRow, 'firstContactClosed' | 'secondContactClosed'>) =>
+  row.firstContactClosed === true || row.secondContactClosed === true;
+
+const sortRows = (rows: PostConsultRow[]) =>
+  [...rows].sort((left, right) => {
+    const rank = (row: PostConsultRow) => {
+      if (row.closed) return 3;
+      if (!row.firstContactAt && !row.secondContactAt && row.firstContactClosed !== true && row.secondContactClosed !== true) return 0;
+      if (hasSecondAttempt(row)) return 2;
+      return 1;
+    };
+
+    const rankDiff = rank(left) - rank(right);
+    if (rankDiff !== 0) return rankDiff;
+    if (left.consultDate !== right.consultDate) return right.consultDate.localeCompare(left.consultDate);
+    return left.patientName.localeCompare(right.patientName, 'pt-BR');
+  });
+
+const buildProposalStatusSummary = (statuses: string[]) => {
+  const uniqueStatuses = Array.from(new Set(statuses.map((item) => normalizeString(item)).filter(Boolean)));
+  if (!uniqueStatuses.length) return { summary: 'Sem status', statuses: [] as string[] };
+  if (uniqueStatuses.length === 1) return { summary: uniqueStatuses[0], statuses: uniqueStatuses };
+  return { summary: 'Múltiplos status', statuses: uniqueStatuses.sort((a, b) => a.localeCompare(b, 'pt-BR')) };
+};
+
+const proposalMatchesStatus = (proposal: PostConsultProposalItem, status: string) =>
+  normalizeComparableText(proposal.status) === normalizeComparableText(status);
+
+const rowMatchesClosedFilter = (row: PostConsultRow, closedFilter: string) => {
+  const normalized = normalizeComparableText(closedFilter);
+  if (!normalized || normalized === 'all') return true;
+  if (normalized === 'sim' || normalized === 'yes') return row.closed;
+  if (normalized === 'nao' || normalized === 'não' || normalized === 'no') return !row.closed;
+  return true;
+};
+
+const mapFollowupControlToRow = (row: PostConsultRow, control: FollowupControlRow | undefined): PostConsultRow => {
+  const nextRow: PostConsultRow = {
+    ...row,
+    firstContactClosed: normalizeBooleanInput(control?.first_contact_closed),
+    firstContactAt: normalizeDateTimeInput(control?.first_contact_at) || null,
+    secondContactClosed: normalizeBooleanInput(control?.second_contact_closed),
+    secondContactAt: normalizeDateTimeInput(control?.second_contact_at) || null,
+    observation: normalizeString(control?.observation) || null,
+    updatedByUserName: normalizeString(control?.updated_by_user_name) || null,
+    updatedAt: normalizeString(control?.updated_at) || null,
+    closed: false,
+  };
+
+  nextRow.closed = buildRowClosedState(nextRow);
+  return nextRow;
+};
+
+const buildSummary = (rows: PostConsultRow[]): PostConsultSummary => {
+  const pendingPatients = new Set<string>();
+  const afterSecondNoClosePatients = new Set<string>();
+  let totalProposals = 0;
+  let totalClosedEvents = 0;
+
+  for (const row of rows) {
+    totalProposals += row.proposalCount;
+    if (row.closed) totalClosedEvents += 1;
+    if (!row.firstContactAt && !row.secondContactAt && row.firstContactClosed !== true && row.secondContactClosed !== true) {
+      pendingPatients.add(row.patientKey);
+    }
+    if (!row.closed && hasSecondAttempt(row)) {
+      afterSecondNoClosePatients.add(row.patientKey);
+    }
+  }
+
+  return {
+    totalEvents: rows.length,
+    totalProposals,
+    totalClosedEvents,
+    conversionRate: rows.length > 0 ? (totalClosedEvents * 100) / rows.length : 0,
+    pendingPatients: pendingPatients.size,
+    afterSecondNoClosePatients: afterSecondNoClosePatients.size,
+  };
+};
+
+const fetchConsultationRows = async (filters: PostConsultFilters, db: DbInterface) =>
+  (await db.query(
+    `
+      SELECT DISTINCT
+        ${ANALITICO_DATE_SQL} AS consult_date,
+        CAST(COALESCE(\`prontuário\`, 0) AS ${INTEGER_CAST_TYPE}) AS patient_id,
+        TRIM(COALESCE(paciente, '')) AS patient_name,
+        TRIM(COALESCE(unidade, '')) AS consult_unit,
+        TRIM(COALESCE(procedimento, '')) AS consult_procedure,
+        TRIM(COALESCE(usuario_da_conta, '')) AS attendant_responsible
+      FROM faturamento_analitico
+      WHERE UPPER(TRIM(COALESCE(tipo_do_procedimento, ''))) = 'CONSULTA'
+        AND ${ANALITICO_DATE_SQL} BETWEEN ? AND ?
+    `,
+    [filters.startDate, filters.endDate],
+  )) as ConsultationSourceRow[];
+
+const fetchProposalRows = async (filters: PostConsultFilters, db: DbInterface, hasProposalPatientName: boolean) => {
+  const proposalPatientNameSelect = hasProposalPatientName
+    ? `TRIM(COALESCE(patient_name, '')) AS proposal_patient_name`
+    : `'' AS proposal_patient_name`;
+
+  return (await db.query(
+    `
+      SELECT
+        proposal_id,
+        date AS proposal_date,
+        status,
+        unit_name,
+        professional_name,
+        total_value,
+        patient_id,
+        ${proposalPatientNameSelect}
+      FROM feegow_proposals
+      WHERE date BETWEEN ? AND ?
+    `,
+    [filters.startDate, filters.endDate],
+  )) as ProposalSourceRow[];
+};
+
+const buildLinkedRows = async (filters: PostConsultFilters, db: DbInterface) => {
+  await ensurePostConsultSupportTable(db);
+  const proposalColumns = await listColumnNames(db, 'feegow_proposals');
+  const hasProposalPatientName = proposalColumns.has('patient_name');
+
+  const [consultationRows, proposalRows] = await Promise.all([
+    fetchConsultationRows(filters, db),
+    fetchProposalRows(filters, db, hasProposalPatientName),
+  ]);
+
+  const proposalByPatientId = new Map<string, ProposalSourceRow[]>();
+  const proposalByPatientName = new Map<string, ProposalSourceRow[]>();
+
+  for (const proposal of proposalRows) {
+    const proposalDate = normalizeIsoDate(proposal.proposal_date);
+    if (!proposalDate) continue;
+
+    const patientId = normalizeNumber(proposal.patient_id);
+    if (patientId > 0) {
+      const key = `${proposalDate}|${patientId}`;
+      const bucket = proposalByPatientId.get(key) || [];
+      bucket.push(proposal);
+      proposalByPatientId.set(key, bucket);
+    }
+
+    const proposalPatientName = normalizeComparableText(proposal.proposal_patient_name);
+    if (proposalPatientName) {
+      const key = `${proposalDate}|${proposalPatientName}`;
+      const bucket = proposalByPatientName.get(key) || [];
+      bucket.push(proposal);
+      proposalByPatientName.set(key, bucket);
+    }
+  }
+
+  const patientIds = consultationRows
+    .map((row) => normalizeNumber(row.patient_id))
+    .filter((patientId) => patientId > 0);
+  const contactCacheMap = await readContactCache(db, patientIds);
+
+  const rows: PostConsultRow[] = [];
+  const eventKeys: string[] = [];
+
+  for (const source of consultationRows) {
+    const consultDate = normalizeIsoDate(source.consult_date);
+    const patientId = normalizeNumber(source.patient_id);
+    const patientNameFromBilling = normalizeString(source.patient_name);
+    const consultUnit = normalizeString(source.consult_unit) || 'Sem unidade';
+    const consultProcedure = normalizeString(source.consult_procedure) || 'Consulta';
+    const attendantResponsible = normalizeString(source.attendant_responsible) || 'Não informado';
+    if (!consultDate) continue;
+
+    const contact = patientId > 0 ? contactCacheMap.get(patientId) : undefined;
+    const patientName = normalizeString(contact?.patient_name) || patientNameFromBilling || 'Não informado';
+    const patientPhone = normalizeString(contact?.phone_primary) || 'Não informado';
+    const patientEmail = normalizeString(contact?.email_primary) || '';
+
+    let linkedProposals: ProposalSourceRow[] = [];
+    if (patientId > 0) {
+      linkedProposals = proposalByPatientId.get(`${consultDate}|${patientId}`) || [];
+    }
+    if (!linkedProposals.length) {
+      const normalizedName = normalizeComparableText(patientName);
+      if (normalizedName) {
+        linkedProposals = proposalByPatientName.get(`${consultDate}|${normalizedName}`) || [];
+      }
+    }
+    if (!linkedProposals.length) continue;
+
+    const proposals = Array.from(
+      new Map(
+        linkedProposals.map((proposal) => {
+          const item: PostConsultProposalItem = {
+            proposalId: Math.trunc(normalizeNumber(proposal.proposal_id)),
+            proposalDate: normalizeIsoDate(proposal.proposal_date) || consultDate,
+            status: normalizeString(proposal.status) || 'Sem status',
+            unitName: normalizeString(proposal.unit_name) || 'Sem unidade',
+            professionalName: normalizeString(proposal.professional_name) || 'Não informado',
+            totalValue: normalizeNumber(proposal.total_value),
+          };
+          return [item.proposalId, item] as const;
+        }),
+      ).values(),
+    ).sort((left, right) => right.proposalId - left.proposalId);
+
+    const snapshot: PostConsultFollowupSourceSnapshot = {
+      patientId: patientId > 0 ? Math.trunc(patientId) : null,
+      patientName,
+      consultDate,
+      consultUnit,
+      consultProcedure,
+      attendantResponsible,
+    };
+    const eventKey = buildEventKeyFromSnapshot(snapshot);
+    const statusSummary = buildProposalStatusSummary(proposals.map((proposal) => proposal.status));
+
+    const row: PostConsultRow = {
+      eventKey,
+      patientKey: buildPatientKey(snapshot.patientId, patientName),
+      patientId: snapshot.patientId,
+      patientName,
+      patientPhone,
+      patientEmail,
+      consultDate,
+      consultUnit,
+      consultProcedure,
+      attendantResponsible,
+      proposalCount: proposals.length,
+      proposalStatusSummary: statusSummary.summary,
+      proposalStatuses: statusSummary.statuses,
+      proposals,
+      firstContactClosed: null,
+      firstContactAt: null,
+      secondContactClosed: null,
+      secondContactAt: null,
+      observation: null,
+      updatedByUserName: null,
+      updatedAt: null,
+      closed: false,
+    };
+
+    rows.push(row);
+    eventKeys.push(eventKey);
+  }
+
+  const controlMap = await readFollowupControlRows(db, eventKeys);
+  return rows.map((row) => mapFollowupControlToRow(row, controlMap.get(row.eventKey)));
+};
+
+const applyFilters = (rows: PostConsultRow[], filters: PostConsultFilters) =>
+  rows.filter((row) => {
+    if (normalizeComparableText(filters.unit) !== 'all' && normalizeComparableText(row.consultUnit) !== normalizeComparableText(filters.unit)) {
+      return false;
+    }
+
+    if (
+      normalizeComparableText(filters.responsible) !== 'all' &&
+      normalizeComparableText(row.attendantResponsible) !== normalizeComparableText(filters.responsible)
+    ) {
+      return false;
+    }
+
+    if (
+      normalizeComparableText(filters.status) !== 'all' &&
+      !row.proposals.some((proposal) => proposalMatchesStatus(proposal, filters.status))
+    ) {
+      return false;
+    }
+
+    if (!rowMatchesClosedFilter(row, filters.closed)) {
+      return false;
+    }
+
+    return true;
+  });
+
+export const listPostConsultOptions = async (
+  filters: PostConsultFilters,
+  db: DbInterface = getDbConnection(),
+): Promise<PostConsultOptions> => {
+  const rows = await buildLinkedRows(filters, db);
+  return {
+    availableUnits: Array.from(new Set(rows.map((row) => row.consultUnit))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    availableStatuses: Array.from(new Set(rows.flatMap((row) => row.proposalStatuses))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    availableResponsibles: Array.from(new Set(rows.map((row) => row.attendantResponsible))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+  };
+};
+
+export const listPostConsultDetails = async (
+  filters: PostConsultFilters,
+  db: DbInterface = getDbConnection(),
+): Promise<PostConsultDetailResult> => {
+  const baseRows = await buildLinkedRows(filters, db);
+  const filteredRows = sortRows(applyFilters(baseRows, filters));
+  const summary = buildSummary(filteredRows);
+  const totalRows = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / filters.pageSize));
+  const safePage = clamp(filters.page, 1, totalPages);
+  const offset = (safePage - 1) * filters.pageSize;
+
+  return {
+    summary,
+    rows: filteredRows.slice(offset, offset + filters.pageSize),
+    page: safePage,
+    pageSize: filters.pageSize,
+    totalRows,
+    totalPages,
+  };
+};
+
+export const upsertPostConsultFollowup = async (
+  input: PostConsultFollowupUpdateInput,
+  db: DbInterface = getDbConnection(),
+) => {
+  await ensurePostConsultSupportTable(db);
+
+  const snapshot: PostConsultFollowupSourceSnapshot = {
+    patientId: input.sourceSnapshot.patientId && input.sourceSnapshot.patientId > 0 ? Math.trunc(input.sourceSnapshot.patientId) : null,
+    patientName: normalizeString(input.sourceSnapshot.patientName),
+    consultDate: normalizeIsoDate(input.sourceSnapshot.consultDate),
+    consultUnit: normalizeString(input.sourceSnapshot.consultUnit),
+    consultProcedure: normalizeString(input.sourceSnapshot.consultProcedure),
+    attendantResponsible: normalizeString(input.sourceSnapshot.attendantResponsible),
+  };
+  const expectedEventKey = buildEventKeyFromSnapshot(snapshot);
+  const eventKey = normalizeString(input.eventKey);
+
+  if (!eventKey || eventKey !== expectedEventKey) {
+    throw createHttpError('Evento de pós-consulta inválido.', 400);
+  }
+
+  if (!snapshot.consultDate || !snapshot.patientName) {
+    throw createHttpError('Dados de origem insuficientes para salvar o pós-consulta.', 400);
+  }
+
+  const firstContactClosed = normalizeBooleanInput(input.firstContactClosed);
+  const secondContactClosed = normalizeBooleanInput(input.secondContactClosed);
+  const firstContactAt = formatDateTimeForStorage(input.firstContactAt);
+  const secondContactAt = formatDateTimeForStorage(input.secondContactAt);
+  const observation = normalizeObservation(input.observation) || null;
+  const updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+  await db.execute(
+    `
+      INSERT INTO post_consulta_followup_control (
+        event_key,
+        patient_id,
+        patient_name,
+        consult_date,
+        consult_unit,
+        consult_procedure,
+        attendant_responsible,
+        first_contact_closed,
+        first_contact_at,
+        second_contact_closed,
+        second_contact_at,
+        observation,
+        updated_by_user_id,
+        updated_by_user_name,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(event_key) DO UPDATE SET
+        patient_id = excluded.patient_id,
+        patient_name = excluded.patient_name,
+        consult_date = excluded.consult_date,
+        consult_unit = excluded.consult_unit,
+        consult_procedure = excluded.consult_procedure,
+        attendant_responsible = excluded.attendant_responsible,
+        first_contact_closed = excluded.first_contact_closed,
+        first_contact_at = excluded.first_contact_at,
+        second_contact_closed = excluded.second_contact_closed,
+        second_contact_at = excluded.second_contact_at,
+        observation = excluded.observation,
+        updated_by_user_id = excluded.updated_by_user_id,
+        updated_by_user_name = excluded.updated_by_user_name,
+        updated_at = excluded.updated_at
+    `,
+    [
+      eventKey,
+      snapshot.patientId,
+      snapshot.patientName,
+      snapshot.consultDate,
+      snapshot.consultUnit,
+      snapshot.consultProcedure,
+      snapshot.attendantResponsible,
+      firstContactClosed === null ? null : firstContactClosed ? 1 : 0,
+      firstContactAt,
+      secondContactClosed === null ? null : secondContactClosed ? 1 : 0,
+      secondContactAt,
+      observation,
+      normalizeString(input.updatedByUserId) || null,
+      normalizeString(input.updatedByUserName) || 'Usuário',
+      updatedAt,
+    ],
+  );
+
+  return { eventKey };
+};

@@ -7,6 +7,7 @@ export type PageKey =
   | 'financeiro'
   | 'contratos'
   | 'propostas'
+  | 'propostas_pos_consulta'
   | 'propostas_gerencial'
   | 'repasses'
   | 'marketing_controle'
@@ -59,6 +60,7 @@ export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
   { key: 'financeiro', label: 'Financeiro', path: '/financeiro' },
   { key: 'contratos', label: 'ResolveSaúde', path: '/contratos' },
   { key: 'propostas', label: 'Propostas - Base de trabalho', path: '/propostas' },
+  { key: 'propostas_pos_consulta', label: 'Propostas - Pós-consulta', path: '/propostas/pos-consulta' },
   { key: 'propostas_gerencial', label: 'Propostas - Visão gerencial', path: '/propostas/gerencial' },
   { key: 'repasses', label: 'Fechamento de Repasses', path: '/repasses' },
   { key: 'marketing_controle', label: 'Marketing - Controle', path: '/marketing/controle' },
@@ -146,14 +148,14 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda', 'dashboard_executive_governance', 'intranet_tarefas', ...INTRANET_BACKOFFICE_PAGE_KEYS], { view: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'dashboard_executive_governance', 'intranet_tarefas', ...INTRANET_BACKOFFICE_PAGE_KEYS], { edit: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'intranet_dashboard', 'intranet_chatbot'], { refresh: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_pos_consulta', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda', 'dashboard_executive_governance', 'intranet_tarefas', ...INTRANET_BACKOFFICE_PAGE_KEYS], { view: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_pos_consulta', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'dashboard_executive_governance', 'intranet_tarefas', ...INTRANET_BACKOFFICE_PAGE_KEYS], { edit: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_pos_consulta', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'intranet_dashboard', 'intranet_chatbot'], { refresh: true });
     return matrix;
   }
 
-  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_funil', 'ajuda', 'intranet_tarefas'], { view: true });
-  setMany(matrix, ['propostas', 'checklist_crc', 'checklist_recepcao', 'intranet_tarefas'], { edit: true });
+  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'propostas_pos_consulta', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_funil', 'ajuda', 'intranet_tarefas'], { view: true });
+  setMany(matrix, ['propostas', 'propostas_pos_consulta', 'checklist_crc', 'checklist_recepcao', 'intranet_tarefas'], { edit: true });
   setMany(matrix, ['monitor', 'produtividade', 'agendamentos', 'colaboradores', 'equipamentos', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
   return matrix;
 };
@@ -207,6 +209,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path === '/financeiro') return 'financeiro';
   if (path === '/contratos') return 'contratos';
   if (path === '/propostas') return 'propostas';
+  if (path === '/propostas/pos-consulta') return 'propostas_pos_consulta';
   if (path === '/propostas/gerencial') return 'propostas_gerencial';
   if (path === '/repasses') return 'repasses';
   if (path === '/marketing/controle') return 'marketing_controle';
@@ -251,6 +254,7 @@ export const getPageFromPath = (pathname: string): PageKey | null => {
   if (path.startsWith('/api/admin/financial/')) return 'financeiro';
   if (path.startsWith('/api/admin/contratos')) return 'contratos';
   if (path === '/api/admin/propostas' || path === '/api/admin/propostas/') return 'propostas_gerencial';
+  if (path.startsWith('/api/admin/propostas/pos-consulta')) return 'propostas_pos_consulta';
   if (path.startsWith('/api/admin/propostas/details')) return 'propostas';
   if (path.startsWith('/api/admin/propostas/export')) return 'propostas';
   if (path.startsWith('/api/admin/propostas/options')) return 'propostas';

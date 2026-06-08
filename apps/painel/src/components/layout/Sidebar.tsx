@@ -217,6 +217,14 @@ const menuItems: MenuItem[] = [
     pageKey: "propostas",
   },
   {
+    href: "/propostas/pos-consulta",
+    label: "Pós-consulta",
+    icon: PhoneCall,
+    group: "OPERAÇÕES",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "propostas_pos_consulta",
+  },
+  {
     href: "/propostas/gerencial",
     label: "Visão gerencial",
     icon: BarChart3,

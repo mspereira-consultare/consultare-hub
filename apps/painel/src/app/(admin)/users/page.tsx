@@ -85,6 +85,7 @@ const PAGE_PERMISSION_GROUP: Record<PageKey, PermissionGroupId> = {
   financeiro: 'financeiro',
   contratos: 'financeiro',
   propostas: 'financeiro',
+  propostas_pos_consulta: 'operacoes',
   propostas_gerencial: 'financeiro',
   repasses: 'financeiro',
   metas_dashboard: 'inteligencia',
