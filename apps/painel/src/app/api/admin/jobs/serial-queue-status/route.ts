@@ -10,7 +10,7 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const CACHE_TTL_MS = 8_000;
-const SERIAL_SERVICES = ['faturamento', 'repasses', 'repasse_consolidacao'] as const;
+const SERIAL_SERVICES = ['faturamento', 'repasses', 'repasse_consolidacao', 'comercial'] as const;
 type SerialServiceName = (typeof SERIAL_SERVICES)[number];
 
 type QueueServiceRow = {
@@ -24,10 +24,22 @@ type QueueServiceRow = {
   isQueued: boolean;
 };
 
+type SessionUserShape = {
+  role?: string | null;
+};
+
+type SystemStatusRow = {
+  service_name?: string | null;
+  status?: string | null;
+  last_run?: string | null;
+  details?: string | null;
+};
+
 const SERVICE_PAGE_MAP: Record<SerialServiceName, PageKey> = {
   faturamento: 'financeiro',
   repasses: 'repasses',
   repasse_consolidacao: 'repasses',
+  comercial: 'propostas_pos_consulta',
 };
 
 const normalizeServices = (raw: string | null): SerialServiceName[] => {
@@ -59,7 +71,8 @@ export async function GET(request: Request) {
     }
 
     const userId = String(session.user.id);
-    const role = String((session.user as any)?.role || 'OPERADOR').toUpperCase();
+    const sessionUser = session.user as SessionUserShape;
+    const role = String(sessionUser.role || 'OPERADOR').toUpperCase();
     const db = getDbConnection();
     const matrix = await loadUserPermissionMatrix(db, userId, role);
 
@@ -90,13 +103,13 @@ export async function GET(request: Request) {
       );
 
       const byService = new Map<string, { status: string; lastRun: string | null; details: string }>();
-      for (const row of rows || []) {
-        const serviceName = String((row as any).service_name || '').trim().toLowerCase();
+      for (const row of rows as SystemStatusRow[]) {
+        const serviceName = String(row.service_name || '').trim().toLowerCase();
         if (!serviceName) continue;
         byService.set(serviceName, {
-          status: String((row as any).status || 'UNKNOWN').trim().toUpperCase(),
-          lastRun: String((row as any).last_run || '').trim() || null,
-          details: String((row as any).details || '').trim(),
+          status: String(row.status || 'UNKNOWN').trim().toUpperCase(),
+          lastRun: String(row.last_run || '').trim() || null,
+          details: String(row.details || '').trim(),
         });
       }
 
@@ -157,12 +170,14 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({ status: 'success', data });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro ao consultar fila serial de scrapers:', error);
     return NextResponse.json(
-      { error: error?.message || 'Erro interno ao consultar fila serial.' },
-      { status: Number(error?.status) || 500 }
+      { error: error instanceof Error ? error.message : 'Erro interno ao consultar fila serial.' },
+      {
+        status:
+          typeof error === 'object' && error && 'status' in error ? Number((error as { status?: unknown }).status) || 500 : 500,
+      }
     );
   }
 }
-

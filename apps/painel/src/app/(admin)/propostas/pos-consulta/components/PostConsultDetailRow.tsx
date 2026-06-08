@@ -83,11 +83,11 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
         ? 'group align-top bg-rose-50/40 hover:bg-rose-50'
         : 'group align-top hover:bg-slate-50';
   const stickyCellClassName = row.closed
-    ? 'bg-emerald-50/50 group-hover:bg-emerald-50'
+    ? 'bg-emerald-50 group-hover:bg-emerald-50'
     : !row.firstContactAt && !row.secondContactAt && row.firstContactClosed !== true && row.secondContactClosed !== true
-      ? 'bg-amber-50/50 group-hover:bg-amber-50'
+      ? 'bg-amber-50 group-hover:bg-amber-50'
       : row.secondContactAt || row.secondContactClosed === false
-        ? 'bg-rose-50/40 group-hover:bg-rose-50'
+        ? 'bg-rose-50 group-hover:bg-rose-50'
         : 'bg-white group-hover:bg-slate-50';
 
   const handleCopyPhone = async () => {
@@ -138,10 +138,10 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
   return (
     <>
       <tr className={rowClassName}>
-        <td className={`sticky left-0 z-10 whitespace-nowrap px-4 py-3 text-slate-700 shadow-[1px_0_0_0_rgba(226,232,240,1)] ${stickyCellClassName}`}>
+        <td className={`sticky left-0 z-20 whitespace-nowrap px-4 py-3 text-slate-700 shadow-[1px_0_0_0_rgba(226,232,240,1)] ${stickyCellClassName}`}>
           {formatDateOnly(row.consultDate)}
         </td>
-        <td className={`sticky left-[120px] z-10 min-w-[240px] px-4 py-3 shadow-[1px_0_0_0_rgba(226,232,240,1)] ${stickyCellClassName}`}>
+        <td className={`sticky left-[120px] z-20 min-w-[240px] px-4 py-3 shadow-[1px_0_0_0_rgba(226,232,240,1)] ${stickyCellClassName}`}>
           <div className="font-medium text-slate-800">{row.patientName}</div>
           <div className="mt-1 text-xs text-slate-500">Prontuário {row.patientId || '—'}</div>
           <div className="mt-1 text-xs text-slate-500">{row.patientPhone}</div>

@@ -26,6 +26,11 @@ export type PostConsultOptions = {
   availableUnits: string[];
   availableStatuses: string[];
   availableResponsibles: string[];
+  heartbeat: {
+    status: string;
+    last_run: string | null;
+    details: string | null;
+  };
 };
 
 export type PostConsultProposalItem = {
@@ -644,16 +649,40 @@ const applyFilters = (rows: PostConsultRow[], filters: PostConsultFilters) =>
     return true;
   });
 
+const getCommercialHeartbeat = async (db: DbInterface) => {
+  const rows = await db.query(`
+    SELECT status, last_run, details
+    FROM system_status
+    WHERE service_name = 'comercial'
+  `);
+  const first = rows[0] as { status?: unknown; last_run?: unknown; details?: unknown } | undefined;
+  return {
+    status: normalizeString(first?.status || 'UNKNOWN') || 'UNKNOWN',
+    last_run: normalizeString(first?.last_run) || null,
+    details: normalizeString(first?.details) || null,
+  };
+};
+
 export const listPostConsultOptions = async (
   filters: PostConsultFilters,
   db: DbInterface = getDbConnection(),
 ): Promise<PostConsultOptions> => {
   const rows = await buildLinkedRows(filters, db);
+  const heartbeat = await getCommercialHeartbeat(db);
   return {
     availableUnits: Array.from(new Set(rows.map((row) => row.consultUnit))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     availableStatuses: Array.from(new Set(rows.flatMap((row) => row.proposalStatuses))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     availableResponsibles: Array.from(new Set(rows.map((row) => row.attendantResponsible))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    heartbeat,
   };
+};
+
+export const listPostConsultExportRows = async (
+  filters: PostConsultFilters,
+  db: DbInterface = getDbConnection(),
+) => {
+  const baseRows = await buildLinkedRows(filters, db);
+  return sortRows(applyFilters(baseRows, filters));
 };
 
 export const listPostConsultDetails = async (

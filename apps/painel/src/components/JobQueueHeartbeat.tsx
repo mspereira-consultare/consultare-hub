@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { formatSystemStatusTimestamp, parseSystemStatusTimestamp } from '@/lib/system_status_time';
 
-type QueueServiceName = 'faturamento' | 'repasses' | 'repasse_consolidacao';
+type QueueServiceName = 'faturamento' | 'repasses' | 'repasse_consolidacao' | 'comercial';
 
 type QueueServiceItem = {
   serviceName: QueueServiceName;
@@ -28,6 +28,10 @@ type QueueApiResponse = {
   };
 };
 
+type QueueApiError = {
+  error?: string;
+};
+
 type JobQueueHeartbeatProps = {
   services: QueueServiceName[];
   fallbackLastSyncAt?: string | null;
@@ -40,6 +44,7 @@ const SERVICE_LABEL: Record<QueueServiceName, string> = {
   faturamento: 'Faturamento',
   repasses: 'Repasses',
   repasse_consolidacao: 'Consolidação',
+  comercial: 'Comercial',
 };
 
 const statusBadgeClass = (running: boolean, queued: boolean) => {
@@ -77,11 +82,9 @@ export function JobQueueHeartbeat({
       const res = await fetch(`/api/admin/jobs/serial-queue-status?services=${encodeURIComponent(serviceParam)}`, {
         cache: 'no-store',
       });
-      const json = (await res.json().catch(() => ({}))) as QueueApiResponse | { error?: string };
-      if (!res.ok) throw new Error((json as any)?.error || `Falha HTTP ${res.status}`);
-      const nextItems = Array.isArray((json as QueueApiResponse)?.data?.services)
-        ? (json as QueueApiResponse).data.services
-        : [];
+      const json = (await res.json().catch(() => ({}))) as QueueApiResponse | QueueApiError;
+      if (!res.ok) throw new Error(('error' in json && json.error) || `Falha HTTP ${res.status}`);
+      const nextItems = 'data' in json && Array.isArray(json.data?.services) ? json.data.services : [];
       setItems(nextItems);
       setFailed(false);
     } catch {

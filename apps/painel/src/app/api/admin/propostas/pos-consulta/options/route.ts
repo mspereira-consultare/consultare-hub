@@ -27,6 +27,7 @@ export async function GET(request: Request) {
       data: {
         ...options,
         canEdit: Boolean(auth.permissions?.propostas_pos_consulta?.edit),
+        canRefresh: Boolean(auth.permissions?.propostas_pos_consulta?.refresh),
       },
     });
   } catch (error: unknown) {

@@ -52,7 +52,13 @@ export type PostConsultDetailResponse = {
 
 export type PostConsultOptions = {
   canEdit: boolean;
+  canRefresh: boolean;
   availableUnits: string[];
   availableStatuses: string[];
   availableResponsibles: string[];
+  heartbeat: {
+    status?: string;
+    last_run?: string | null;
+    details?: string | null;
+  } | null;
 };

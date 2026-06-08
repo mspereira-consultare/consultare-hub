@@ -3,9 +3,12 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
+import { Download, HelpCircle, Loader2, RefreshCw } from 'lucide-react';
+import { JobQueueHeartbeat } from '@/components/JobQueueHeartbeat';
 import { hasPermission } from '@/lib/permissions';
 import { ProposalsFiltersPanel } from '../components/ProposalsFiltersPanel';
 import { PostConsultDetailSection } from './components/PostConsultDetailSection';
+import { PostConsultHelpModal } from './components/PostConsultHelpModal';
 import type { PostConsultDetailResponse, PostConsultOptions } from './components/types';
 
 type SessionUserShape = {
@@ -31,9 +34,11 @@ const EMPTY_DETAIL_DATA: PostConsultDetailResponse = {
 
 const EMPTY_OPTIONS: PostConsultOptions = {
   canEdit: false,
+  canRefresh: false,
   availableUnits: [],
   availableStatuses: [],
   availableResponsibles: [],
+  heartbeat: null,
 };
 
 const getDefaultDateRange = () => {
@@ -92,7 +97,14 @@ function PostConsultPageContent() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailData, setDetailData] = useState<PostConsultDetailResponse>(EMPTY_DETAIL_DATA);
   const [detailPage, setDetailPage] = useState(1);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
+  const [notice, setNotice] = useState('');
   const [options, setOptions] = useState<PostConsultOptions>(EMPTY_OPTIONS);
+  const heartbeat = options.heartbeat;
+  const canRefresh = options.canRefresh;
+  const isUpdating = refreshing || ['PENDING', 'RUNNING'].includes(String(heartbeat?.status || '').toUpperCase());
 
   const effectiveUnit = useMemo(() => {
     if (selectedUnit === 'all') return 'all';
@@ -185,6 +197,18 @@ function PostConsultPageContent() {
   }, [canView, dateRange.end, dateRange.start, detailPage, effectiveResponsible, effectiveStatus, effectiveUnit, fetchDetailData, selectedClosed]);
 
   useEffect(() => {
+    const heartbeatStatus = String(heartbeat?.status || '').toUpperCase();
+    if (!['PENDING', 'RUNNING'].includes(heartbeatStatus)) return;
+
+    const timeoutId = window.setTimeout(() => {
+      void loadOptions();
+      void fetchDetailData();
+    }, 3000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [fetchDetailData, heartbeat?.status, loadOptions]);
+
+  useEffect(() => {
     if (!pathname) return;
     const params = new URLSearchParams({
       startDate: dateRange.start,
@@ -199,6 +223,67 @@ function PostConsultPageContent() {
 
   const handleRowSaved = () => {
     void fetchDetailData();
+  };
+
+  const handleManualUpdate = async () => {
+    if (!canRefresh) return;
+    setRefreshing(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await fetch('/api/admin/propostas/pos-consulta/refresh', { method: 'POST' });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(String(payload?.error || 'Falha ao solicitar atualização do pós-consulta.'));
+      }
+
+      setNotice('Atualização solicitada. Vamos acompanhar a fila e recarregar os dados automaticamente.');
+      window.setTimeout(() => {
+        void loadOptions();
+        void fetchDetailData();
+      }, 1000);
+    } catch (updateError) {
+      console.error('Erro ao solicitar atualização do pós-consulta:', updateError);
+      setError(normalizeFetchError(updateError, 'Erro ao solicitar atualização do pós-consulta.'));
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  const handleExport = async (format: 'xlsx' | 'pdf') => {
+    setExporting(format);
+    setError('');
+    try {
+      const params = new URLSearchParams({
+        startDate: dateRange.start,
+        endDate: dateRange.end,
+        unit: effectiveUnit,
+        status: effectiveStatus,
+        responsible: effectiveResponsible,
+        closed: selectedClosed,
+        format,
+      });
+      const response = await fetch(`/api/admin/propostas/pos-consulta/export?${params.toString()}`);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(String(payload?.error || `Falha ao exportar ${format.toUpperCase()}.`));
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `pos-consulta-${dateRange.start}_${dateRange.end}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (exportError) {
+      console.error('Erro ao exportar base de pós-consulta:', exportError);
+      setError(normalizeFetchError(exportError, 'Erro ao exportar a base de pós-consulta.'));
+    } finally {
+      setExporting(null);
+    }
   };
 
   if (!canView) {
@@ -282,7 +367,61 @@ function PostConsultPageContent() {
         }}
       />
 
+      <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-col gap-1">
+            <JobQueueHeartbeat services={['comercial']} fallbackLastSyncAt={heartbeat?.last_run || null} label="Sincronização comercial" />
+            <p className="text-xs text-slate-500">
+              A atualização manual solicita novo processamento da base comercial e a página se recarrega automaticamente quando a fila concluir.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              <HelpCircle size={14} />
+              Ajuda
+            </button>
+            <button
+              type="button"
+              onClick={handleManualUpdate}
+              disabled={!canRefresh || isUpdating}
+              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                isUpdating
+                  ? 'cursor-wait border-blue-200 bg-blue-50 text-blue-700'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              {isUpdating ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+              {isUpdating ? 'Sincronizando...' : 'Atualizar dados'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExport('xlsx')}
+              disabled={exporting !== null}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {exporting === 'xlsx' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              Exportar Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExport('pdf')}
+              disabled={exporting !== null}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {exporting === 'pdf' ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+              Exportar PDF
+            </button>
+          </div>
+        </div>
+      </div>
+
       {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+      {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
 
       <PostConsultDetailSection
         detailData={detailData}
@@ -291,6 +430,7 @@ function PostConsultPageContent() {
         onChangePage={setDetailPage}
         onRowSaved={handleRowSaved}
       />
+      <PostConsultHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </div>
   );
 }
