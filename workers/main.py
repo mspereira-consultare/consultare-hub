@@ -66,6 +66,7 @@ try:
     from worker_contracts import run_worker_contracts
     from worker_repasse_consolidado import process_pending_repasse_jobs_once
     from worker_consolidacao_profissionais import process_pending_consolidacao_jobs_once
+    from worker_repasse_email import process_pending_repasse_email_jobs_once
     from worker_agenda_ocupacao import (
         enqueue_agenda_occupancy_job,
         process_pending_agenda_occupancy_jobs_once,
@@ -216,6 +217,7 @@ KNOWN_ACTIONS = {
     'comercial', # Propostas (API)
     'repasses', # Repasses consolidados (scraping)
     'repasse_consolidacao', # Repasses a consolidar (scraping)
+    'repasse_email', # Envios de fechamento de repasses
     'contratos', # Cartão de Benefícios (API)
     'auth', # Obtém cookies e x-access-token Feegow
     'auth_clinia', # Obtém cookie Clinia
@@ -277,6 +279,10 @@ ALIAS_ACTION_MAP = {
     'consolidacao_repasses': 'repasse_consolidacao',
     'consolidacao': 'repasse_consolidacao',
     'worker_consolidacao_profissionais': 'repasse_consolidacao',
+    'repasse_email': 'repasse_email',
+    'repasses_email': 'repasse_email',
+    'fechamento_email': 'repasse_email',
+    'worker_repasse_email': 'repasse_email',
     'contratos': 'contratos',
     'contratos_api': 'contratos',
     'cartao_de_beneficios_api': 'contratos',
@@ -317,6 +323,7 @@ CANONICAL_NAME = {
     'comercial': 'Propostas (API)',
     'repasses': 'Repasses Consolidados (Scraping)',
     'repasse_consolidacao': 'Repasses A Consolidar (Scraping)',
+    'repasse_email': 'Envios de Fechamento (Repasses)',
     'contratos': 'Cartão de Beneficios (API)',
     'auth': 'Auth Feegow',
     'auth_clinia': 'Auth Clinia',
@@ -506,6 +513,14 @@ def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
             ):
                 drained += 1
             print(f"🔁 Repasse consolidação: jobs drenados={drained}")
+        elif action == "repasse_email":
+            drained = 0
+            while process_pending_repasse_email_jobs_once(
+                max_jobs=1,
+                requested_by="system_status",
+            ):
+                drained += 1
+            print(f"🔁 Repasse e-mail: jobs drenados={drained}")
         elif action == "contratos":
             run_worker_contracts()
         elif action == "auth":
@@ -1002,6 +1017,10 @@ def _run_repasse_job_dispatcher():
                     CANONICAL_NAME["repasse_consolidacao"],
                     f"dispatcher pending={pending_consol}",
                 )
+
+            pending_email = _query_pending_count(db, "repasse_email_jobs")
+            if pending_email > 0:
+                run_service("repasse_email")
         except Exception as e:
             print(f"⚠️ Dispatcher de repasses erro: {e}")
 

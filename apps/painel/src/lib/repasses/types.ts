@@ -364,3 +364,183 @@ export type RepassePdfArtifactListFilters = {
 };
 
 export type RepassePdfFilenameMode = 'current' | 'full_name';
+
+export type RepasseEmailBatchStatus =
+  | 'DRAFT'
+  | 'READY'
+  | 'QUEUED'
+  | 'SENDING'
+  | 'COMPLETED'
+  | 'PARTIAL'
+  | 'FAILED'
+  | 'CANCELLED';
+
+export type RepasseEmailValidationStatus = 'VALID' | 'WARNING' | 'ERROR';
+
+export type RepasseEmailRecipientSendStatus =
+  | 'IMPORTED'
+  | 'READY'
+  | 'QUEUED'
+  | 'SENDING'
+  | 'ACCEPTED_PROVIDER'
+  | 'DELIVERED'
+  | 'DEFERRED'
+  | 'SOFT_BOUNCE'
+  | 'HARD_BOUNCE'
+  | 'SPAM_COMPLAINT'
+  | 'FAILED'
+  | 'SKIPPED'
+  | 'MANUAL_CONFIRMED';
+
+export type RepasseEmailJobStatus =
+  | 'PENDING'
+  | 'RUNNING'
+  | 'COMPLETED'
+  | 'PARTIAL'
+  | 'FAILED'
+  | 'CANCELLED';
+
+export type RepasseEmailJobScope = 'sheet_import' | 'all_ready' | 'selected' | 'retry_failed';
+
+export type RepasseEmailMessageStatus =
+  | 'CREATED'
+  | 'SENDING'
+  | 'ACCEPTED_PROVIDER'
+  | 'FAILED_REQUEST'
+  | 'DELIVERED'
+  | 'DEFERRED'
+  | 'SOFT_BOUNCE'
+  | 'HARD_BOUNCE'
+  | 'SPAM_COMPLAINT';
+
+export type RepasseEmailEventProcessingStatus = 'PROCESSED' | 'DUPLICATE' | 'IGNORED' | 'FAILED';
+
+export type RepasseEmailSuppressionReason = 'HARD_BOUNCE' | 'SPAM_COMPLAINT' | 'MANUAL_BLOCK';
+
+export type RepasseEmailBatch = {
+  id: string;
+  periodRef: string;
+  dueDateNf: string;
+  status: RepasseEmailBatchStatus;
+  totalRecipients: number;
+  readyCount: number;
+  warningCount: number;
+  errorCount: number;
+  acceptedCount: number;
+  deliveredCount: number;
+  failedCount: number;
+  requestedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+};
+
+export type RepasseEmailRecipient = {
+  id: string;
+  batchId: string;
+  periodRef: string;
+  professionalId: string;
+  professionalName: string;
+  recipientEmail: string;
+  amountValue: number;
+  dueDateNf: string;
+  pdfArtifactId: string | null;
+  storageProvider: string | null;
+  storageBucket: string | null;
+  storageKey: string | null;
+  driveFileId: string | null;
+  driveFileUrl: string | null;
+  fileName: string | null;
+  validationStatus: RepasseEmailValidationStatus;
+  validationErrors: string[];
+  sendStatus: RepasseEmailRecipientSendStatus;
+  lastMessageId: string | null;
+  lastProviderMessageId: string | null;
+  lastEventType: string | null;
+  lastEventAt: string | null;
+  manualConfirmedBy: string | null;
+  manualConfirmedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RepasseEmailBatchPrepareRow = {
+  professionalId?: string;
+  professionalName?: string;
+  recipientEmail?: string;
+  amountValue?: number | string | null;
+  dueDateNf?: string;
+  driveFileId?: string;
+  driveFileUrl?: string;
+  fileName?: string;
+};
+
+export type RepasseEmailBatchPrepareInput = {
+  periodRef?: string;
+  dueDateNf: string;
+  rows?: RepasseEmailBatchPrepareRow[];
+  rowsText?: string;
+};
+
+export type RepasseEmailBatchListFilters = {
+  periodRef?: string;
+  limit?: number;
+};
+
+export type RepasseEmailRecipientListFilters = {
+  batchId: string;
+  status?: string;
+  limit?: number;
+};
+
+export type RepasseEmailJob = {
+  id: string;
+  batchId: string;
+  periodRef: string;
+  scope: RepasseEmailJobScope;
+  recipientIds: string[];
+  status: RepasseEmailJobStatus;
+  requestedBy: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RepasseEmailJobInput = {
+  batchId: string;
+  scope?: RepasseEmailJobScope;
+  recipientIds?: string[];
+};
+
+export type RepasseEmailJobListFilters = {
+  batchId?: string;
+  periodRef?: string;
+  limit?: number;
+};
+
+export type RepasseEmailEvent = {
+  id: string;
+  provider: string;
+  providerEventId: string;
+  providerMessageId: string | null;
+  messageId: string | null;
+  recipientId: string | null;
+  batchId: string | null;
+  eventType: string;
+  normalizedStatus: RepasseEmailRecipientSendStatus | string;
+  payloadJson: string;
+  receivedAt: string;
+  processedAt: string | null;
+  processingStatus: RepasseEmailEventProcessingStatus;
+  errorMessage: string | null;
+};
+
+export type RepasseEmailEventListFilters = {
+  batchId?: string;
+  recipientId?: string;
+  limit?: number;
+};

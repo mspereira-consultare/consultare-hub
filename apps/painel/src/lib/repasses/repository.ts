@@ -18,6 +18,22 @@ import type {
   RepasseConsolidacaoProfessionalStatus,
   RepasseConsolidacaoStatusFilter,
   RepasseConsolidacaoScope,
+  RepasseEmailBatch,
+  RepasseEmailBatchListFilters,
+  RepasseEmailBatchPrepareInput,
+  RepasseEmailBatchPrepareRow,
+  RepasseEmailBatchStatus,
+  RepasseEmailEvent,
+  RepasseEmailEventListFilters,
+  RepasseEmailEventProcessingStatus,
+  RepasseEmailJob,
+  RepasseEmailJobInput,
+  RepasseEmailJobListFilters,
+  RepasseEmailJobScope,
+  RepasseEmailJobStatus,
+  RepasseEmailRecipient,
+  RepasseEmailRecipientListFilters,
+  RepasseEmailRecipientSendStatus,
   RepasseJobListFilters,
   RepassePdfArtifact,
   RepassePdfArtifactListFilters,
@@ -44,6 +60,7 @@ export class RepasseValidationError extends Error {
 
 let repasseTablesEnsured = false;
 let repasseConsolidacaoTablesEnsured = false;
+let repasseEmailTablesEnsured = false;
 
 const nowIso = () => new Date().toISOString();
 const clean = (value: unknown) => String(value ?? '').trim();
@@ -107,6 +124,18 @@ const normalizePage = (value: unknown) => {
   if (!Number.isFinite(n)) return 1;
   return Math.max(1, Math.floor(n));
 };
+
+const normalizeDueDateNf = (value: unknown) => {
+  const raw = clean(value);
+  if (!raw) {
+    throw new RepasseValidationError('Informe a data limite para envio da NF.');
+  }
+  return raw;
+};
+
+const normalizeEmailAddress = (value: unknown) => clean(value).toLowerCase();
+
+const isValidEmailAddress = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
 const normalizeScope = (value: unknown): RepassePdfScope => {
   const raw = clean(value).toLowerCase();
@@ -230,6 +259,110 @@ const mapPdfArtifact = (row: any): RepassePdfArtifact => ({
   sizeBytes: Number(row.size_bytes) || 0,
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
+});
+
+const parseJsonStringArray = (value: unknown): string[] => {
+  const raw = clean(value);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((item) => clean(item)).filter(Boolean);
+  } catch {
+    return [];
+  }
+};
+
+const mapEmailBatch = (row: any): RepasseEmailBatch => ({
+  id: clean(row.id),
+  periodRef: clean(row.period_ref),
+  dueDateNf: clean(row.due_date_nf),
+  status: clean(row.status).toUpperCase() as RepasseEmailBatchStatus,
+  totalRecipients: Number(row.total_recipients) || 0,
+  readyCount: Number(row.ready_count) || 0,
+  warningCount: Number(row.warning_count) || 0,
+  errorCount: Number(row.error_count) || 0,
+  acceptedCount: Number(row.accepted_count) || 0,
+  deliveredCount: Number(row.delivered_count) || 0,
+  failedCount: Number(row.failed_count) || 0,
+  requestedBy: clean((row as any).requested_by_display || row.requested_by) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+  startedAt: clean(row.started_at) || null,
+  finishedAt: clean(row.finished_at) || null,
+  error: clean(row.error) || null,
+});
+
+const mapEmailRecipient = (row: any): RepasseEmailRecipient => ({
+  id: clean(row.id),
+  batchId: clean(row.batch_id),
+  periodRef: clean(row.period_ref),
+  professionalId: clean(row.professional_id),
+  professionalName: clean(row.professional_name),
+  recipientEmail: clean(row.recipient_email),
+  amountValue: Number(row.amount_value) || 0,
+  dueDateNf: clean(row.due_date_nf),
+  pdfArtifactId: clean(row.pdf_artifact_id) || null,
+  storageProvider: clean(row.storage_provider) || null,
+  storageBucket: clean(row.storage_bucket) || null,
+  storageKey: clean(row.storage_key) || null,
+  driveFileId: clean(row.drive_file_id) || null,
+  driveFileUrl: clean(row.drive_file_url) || null,
+  fileName: clean(row.file_name) || null,
+  validationStatus: clean(row.validation_status).toUpperCase() as RepasseEmailRecipient['validationStatus'],
+  validationErrors: parseJsonStringArray(row.validation_errors_json),
+  sendStatus: clean(row.send_status).toUpperCase() as RepasseEmailRecipientSendStatus,
+  lastMessageId: clean(row.last_message_id) || null,
+  lastProviderMessageId: clean(row.last_provider_message_id) || null,
+  lastEventType: clean(row.last_event_type) || null,
+  lastEventAt: clean(row.last_event_at) || null,
+  manualConfirmedBy: clean(row.manual_confirmed_by) || null,
+  manualConfirmedAt: clean(row.manual_confirmed_at) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const normalizeEmailJobScope = (value: unknown, hasRecipientIds: boolean): RepasseEmailJobScope => {
+  const raw = clean(value).toLowerCase();
+  if (raw === 'sheet_import' || raw === 'selected' || raw === 'retry_failed' || raw === 'all_ready') return raw;
+  return hasRecipientIds ? 'selected' : 'all_ready';
+};
+
+const parseEmailRecipientIdsJson = (value: unknown): string[] => parseJsonStringArray(value);
+
+const mapEmailJob = (row: any): RepasseEmailJob => {
+  const recipientIds = parseEmailRecipientIdsJson(row.recipient_ids_json);
+  return {
+    id: clean(row.id),
+    batchId: clean(row.batch_id),
+    periodRef: clean(row.period_ref),
+    scope: normalizeEmailJobScope(row.scope, recipientIds.length > 0),
+    recipientIds,
+    status: clean(row.status).toUpperCase() as RepasseEmailJobStatus,
+    requestedBy: clean((row as any).requested_by_display || row.requested_by),
+    startedAt: clean(row.started_at) || null,
+    finishedAt: clean(row.finished_at) || null,
+    error: clean(row.error) || null,
+    createdAt: clean(row.created_at),
+    updatedAt: clean(row.updated_at),
+  };
+};
+
+const mapEmailEvent = (row: any): RepasseEmailEvent => ({
+  id: clean(row.id),
+  provider: clean(row.provider),
+  providerEventId: clean(row.provider_event_id),
+  providerMessageId: clean(row.provider_message_id) || null,
+  messageId: clean(row.message_id) || null,
+  recipientId: clean(row.recipient_id) || null,
+  batchId: clean(row.batch_id) || null,
+  eventType: clean(row.event_type),
+  normalizedStatus: clean(row.normalized_status),
+  payloadJson: clean(row.payload_json),
+  receivedAt: clean(row.received_at),
+  processedAt: clean(row.processed_at) || null,
+  processingStatus: clean(row.processing_status).toUpperCase() as RepasseEmailEventProcessingStatus,
+  errorMessage: clean(row.error_message) || null,
 });
 
 const normalizeProfessionalStatusFilter = (
@@ -1623,6 +1756,1085 @@ export const ensureRepasseConsolidacaoTables = async (db: DbInterface) => {
   );
 
   repasseConsolidacaoTablesEnsured = true;
+};
+
+export const ensureRepasseEmailTables = async (db: DbInterface) => {
+  if (repasseEmailTablesEnsured) return;
+  await ensureRepasseConsolidacaoTables(db);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_email_batches (
+      id VARCHAR(64) PRIMARY KEY,
+      period_ref VARCHAR(7) NOT NULL,
+      due_date_nf VARCHAR(32) NOT NULL,
+      status VARCHAR(30) NOT NULL,
+      total_recipients INTEGER NOT NULL DEFAULT 0,
+      ready_count INTEGER NOT NULL DEFAULT 0,
+      warning_count INTEGER NOT NULL DEFAULT 0,
+      error_count INTEGER NOT NULL DEFAULT 0,
+      accepted_count INTEGER NOT NULL DEFAULT 0,
+      delivered_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      requested_by VARCHAR(64),
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL,
+      started_at VARCHAR(32),
+      finished_at VARCHAR(32),
+      error TEXT
+    )
+  `);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_batches_period ON repasse_email_batches(period_ref)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_batches_status ON repasse_email_batches(status)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_batches_created ON repasse_email_batches(created_at)`);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_email_recipients (
+      id VARCHAR(64) PRIMARY KEY,
+      batch_id VARCHAR(64) NOT NULL,
+      period_ref VARCHAR(7) NOT NULL,
+      professional_id VARCHAR(64) NOT NULL,
+      professional_name VARCHAR(180) NOT NULL,
+      recipient_email VARCHAR(220) NOT NULL,
+      amount_value DECIMAL(14,2) NOT NULL,
+      due_date_nf VARCHAR(32) NOT NULL,
+      pdf_artifact_id VARCHAR(64),
+      storage_provider VARCHAR(30),
+      storage_bucket VARCHAR(120),
+      storage_key VARCHAR(255),
+      drive_file_id VARCHAR(180),
+      drive_file_url VARCHAR(500),
+      file_name VARCHAR(255),
+      validation_status VARCHAR(20) NOT NULL,
+      validation_errors_json LONGTEXT,
+      send_status VARCHAR(40) NOT NULL,
+      last_message_id VARCHAR(128),
+      last_provider_message_id VARCHAR(128),
+      last_event_type VARCHAR(80),
+      last_event_at VARCHAR(32),
+      manual_confirmed_by VARCHAR(64),
+      manual_confirmed_at VARCHAR(32),
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+  await safeExecute(
+    db,
+    `CREATE UNIQUE INDEX ux_repasse_email_recipients_batch_prof ON repasse_email_recipients(batch_id, professional_id)`
+  );
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_recipients_batch ON repasse_email_recipients(batch_id)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_recipients_period ON repasse_email_recipients(period_ref)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_recipients_prof ON repasse_email_recipients(professional_id)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_recipients_status ON repasse_email_recipients(send_status)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_recipients_email ON repasse_email_recipients(recipient_email)`);
+  await safeExecute(db, `ALTER TABLE repasse_email_recipients ADD COLUMN drive_file_id VARCHAR(180)`);
+  await safeExecute(db, `ALTER TABLE repasse_email_recipients ADD COLUMN drive_file_url VARCHAR(500)`);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_email_jobs (
+      id VARCHAR(64) PRIMARY KEY,
+      batch_id VARCHAR(64) NOT NULL,
+      period_ref VARCHAR(7) NOT NULL,
+      scope VARCHAR(30) NOT NULL,
+      recipient_ids_json LONGTEXT,
+      status VARCHAR(20) NOT NULL,
+      requested_by VARCHAR(64) NOT NULL,
+      started_at VARCHAR(32),
+      finished_at VARCHAR(32),
+      error TEXT,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_jobs_batch ON repasse_email_jobs(batch_id)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_jobs_period ON repasse_email_jobs(period_ref)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_jobs_status ON repasse_email_jobs(status)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_jobs_created ON repasse_email_jobs(created_at)`);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_email_messages (
+      id VARCHAR(64) PRIMARY KEY,
+      batch_id VARCHAR(64) NOT NULL,
+      recipient_id VARCHAR(64) NOT NULL,
+      job_id VARCHAR(64),
+      message_id VARCHAR(128) NOT NULL,
+      provider VARCHAR(40) NOT NULL,
+      provider_message_id VARCHAR(128),
+      to_email VARCHAR(220) NOT NULL,
+      from_email VARCHAR(220) NOT NULL,
+      subject VARCHAR(255) NOT NULL,
+      template_key VARCHAR(80),
+      pdf_artifact_id VARCHAR(64),
+      attachment_file_name VARCHAR(255),
+      status VARCHAR(40) NOT NULL,
+      request_payload_json LONGTEXT,
+      response_payload_json LONGTEXT,
+      error TEXT,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_messages_recipient ON repasse_email_messages(recipient_id)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_messages_provider_id ON repasse_email_messages(provider_message_id)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_messages_message_id ON repasse_email_messages(message_id)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_messages_status ON repasse_email_messages(status)`);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_email_events (
+      id VARCHAR(64) PRIMARY KEY,
+      provider VARCHAR(40) NOT NULL,
+      provider_event_id VARCHAR(180) NOT NULL,
+      provider_message_id VARCHAR(128),
+      message_id VARCHAR(128),
+      recipient_id VARCHAR(64),
+      batch_id VARCHAR(64),
+      event_type VARCHAR(80) NOT NULL,
+      normalized_status VARCHAR(40) NOT NULL,
+      payload_json LONGTEXT NOT NULL,
+      received_at VARCHAR(32) NOT NULL,
+      processed_at VARCHAR(32),
+      processing_status VARCHAR(30) NOT NULL,
+      error_message TEXT
+    )
+  `);
+  await safeExecute(
+    db,
+    `CREATE UNIQUE INDEX ux_repasse_email_events_provider ON repasse_email_events(provider, provider_event_id)`
+  );
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_events_message ON repasse_email_events(provider_message_id)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_events_recipient ON repasse_email_events(recipient_id)`);
+  await safeExecute(db, `CREATE INDEX idx_repasse_email_events_batch ON repasse_email_events(batch_id)`);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS repasse_email_suppressions (
+      id VARCHAR(64) PRIMARY KEY,
+      email VARCHAR(220) NOT NULL,
+      reason VARCHAR(40) NOT NULL,
+      provider VARCHAR(40),
+      source_event_id VARCHAR(64),
+      created_at VARCHAR(32) NOT NULL,
+      created_by VARCHAR(64),
+      notes TEXT
+    )
+  `);
+  await safeExecute(
+    db,
+    `CREATE UNIQUE INDEX ux_repasse_email_suppressions_email ON repasse_email_suppressions(email)`
+  );
+
+  repasseEmailTablesEnsured = true;
+};
+
+const batchCountersSql = `
+  SELECT
+    COUNT(*) as total_recipients,
+    COALESCE(SUM(CASE WHEN send_status = 'READY' THEN 1 ELSE 0 END), 0) as ready_count,
+    COALESCE(SUM(CASE WHEN validation_status = 'WARNING' THEN 1 ELSE 0 END), 0) as warning_count,
+    COALESCE(SUM(CASE WHEN validation_status = 'ERROR' THEN 1 ELSE 0 END), 0) as error_count,
+    COALESCE(SUM(CASE WHEN send_status = 'ACCEPTED_PROVIDER' THEN 1 ELSE 0 END), 0) as accepted_count,
+    COALESCE(SUM(CASE WHEN send_status = 'DELIVERED' THEN 1 ELSE 0 END), 0) as delivered_count,
+    COALESCE(SUM(CASE WHEN send_status IN ('FAILED', 'SOFT_BOUNCE', 'HARD_BOUNCE', 'SPAM_COMPLAINT') THEN 1 ELSE 0 END), 0) as failed_count
+  FROM repasse_email_recipients
+  WHERE batch_id = ?
+`;
+
+const updateRepasseEmailBatchCounters = async (
+  db: DbInterface,
+  batchId: string,
+  status?: RepasseEmailBatchStatus
+) => {
+  const counters = (await db.query(batchCountersSql, [clean(batchId)]))[0] as any;
+  const now = nowIso();
+  const params: any[] = [
+    Number(counters?.total_recipients) || 0,
+    Number(counters?.ready_count) || 0,
+    Number(counters?.warning_count) || 0,
+    Number(counters?.error_count) || 0,
+    Number(counters?.accepted_count) || 0,
+    Number(counters?.delivered_count) || 0,
+    Number(counters?.failed_count) || 0,
+    now,
+  ];
+
+  let statusSql = '';
+  if (status) {
+    statusSql = 'status = ?,';
+    params.unshift(status);
+  }
+
+  await db.execute(
+    `
+    UPDATE repasse_email_batches
+    SET ${statusSql}
+        total_recipients = ?,
+        ready_count = ?,
+        warning_count = ?,
+        error_count = ?,
+        accepted_count = ?,
+        delivered_count = ?,
+        failed_count = ?,
+        updated_at = ?
+    WHERE id = ?
+    `,
+    [...params, clean(batchId)]
+  );
+};
+
+const buildRepasseEmailSheetBatchId = (
+  periodRef: string,
+  dueDateNf: string,
+  rows: RepasseEmailBatchPrepareRow[]
+) => {
+  const scopeKey = rows
+    .map((row) =>
+      [
+        clean(row.professionalId),
+        clean(row.professionalName),
+        normalizeEmailAddress(row.recipientEmail),
+        clean(row.amountValue),
+        clean(row.driveFileId),
+        clean(row.driveFileUrl),
+      ].join('|')
+    )
+    .sort()
+    .join('||');
+  return stableHash64(`repasse-email-sheet-batch|${periodRef}|${dueDateNf}|${scopeKey}`);
+};
+
+const parseSheetLine = (line: string, delimiter: string) => {
+  const values: string[] = [];
+  let current = '';
+  let quoted = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (quoted && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (char === delimiter && !quoted) {
+      values.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  values.push(current.trim());
+  return values;
+};
+
+const normalizeSheetHeader = (value: string) =>
+  clean(value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+
+const rowValue = (row: Record<string, string>, keys: string[]) => {
+  for (const key of keys) {
+    const value = row[key];
+    if (clean(value)) return clean(value);
+  }
+  return '';
+};
+
+const extractGoogleDriveFileId = (value: unknown) => {
+  const raw = clean(value);
+  if (!raw) return '';
+  const patterns = [
+    /\/file\/d\/([a-zA-Z0-9_-]+)/,
+    /[?&]id=([a-zA-Z0-9_-]+)/,
+    /\/d\/([a-zA-Z0-9_-]+)/,
+  ];
+  for (const pattern of patterns) {
+    const match = raw.match(pattern);
+    if (match?.[1]) return match[1];
+  }
+  return /^[a-zA-Z0-9_-]{20,}$/.test(raw) ? raw : '';
+};
+
+const parseRepasseEmailRowsText = (rowsText?: string): RepasseEmailBatchPrepareRow[] => {
+  const text = clean(rowsText);
+  if (!text) return [];
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length < 2) {
+    throw new RepasseValidationError('Cole a planilha com cabecalho e ao menos uma linha de destinatario.');
+  }
+
+  const headerLine = lines[0];
+  const delimiter = headerLine.includes('\t')
+    ? '\t'
+    : headerLine.includes(';') && !headerLine.includes(',')
+      ? ';'
+      : ',';
+  const headers = parseSheetLine(headerLine, delimiter).map(normalizeSheetHeader);
+
+  return lines.slice(1).map((line) => {
+    const values = parseSheetLine(line, delimiter);
+    const row: Record<string, string> = {};
+    headers.forEach((header, index) => {
+      row[header] = values[index] || '';
+    });
+    const driveUrl = rowValue(row, [
+      'drive_file_url',
+      'drive_url',
+      'google_drive_url',
+      'pdf_url',
+      'url_pdf',
+      'link_pdf',
+      'link',
+    ]);
+    return {
+      professionalId: rowValue(row, ['professional_id', 'id_profissional', 'profissional_id', 'id']),
+      professionalName: rowValue(row, ['professional_name', 'nome_profissional', 'profissional', 'nome']),
+      recipientEmail: rowValue(row, ['recipient_email', 'email', 'e_mail', 'email_profissional']),
+      amountValue: rowValue(row, ['amount_value', 'valor', 'valor_final', 'total_final', 'repasse', 'valor_repasse']),
+      dueDateNf: rowValue(row, ['due_date_nf', 'due_date_nota', 'due_date', 'data_limite_nf', 'prazo_nf']),
+      driveFileId:
+        rowValue(row, ['drive_file_id', 'google_drive_file_id', 'file_id', 'id_arquivo']) ||
+        extractGoogleDriveFileId(driveUrl),
+      driveFileUrl: driveUrl,
+      fileName: rowValue(row, ['file_name', 'filename', 'nome_arquivo', 'arquivo', 'pdf']),
+    };
+  });
+};
+
+const normalizeRepasseEmailPrepareRows = (input: RepasseEmailBatchPrepareInput) => {
+  const rawRows = Array.isArray(input.rows) && input.rows.length ? input.rows : parseRepasseEmailRowsText(input.rowsText);
+  const rows = rawRows
+    .map((row) => {
+      const driveFileUrl = clean(row.driveFileUrl);
+      const driveFileId = clean(row.driveFileId) || extractGoogleDriveFileId(driveFileUrl);
+      const amountValue = parseLocalizedMoneyInput(row.amountValue);
+      return {
+        professionalId: clean(row.professionalId),
+        professionalName: clean(row.professionalName),
+        recipientEmail: normalizeEmailAddress(row.recipientEmail),
+        amountValue,
+        dueDateNf: clean(row.dueDateNf),
+        driveFileId,
+        driveFileUrl,
+        fileName: clean(row.fileName),
+      };
+    })
+    .filter(
+      (row) =>
+        row.professionalName ||
+        row.recipientEmail ||
+        row.amountValue !== null ||
+        row.driveFileId ||
+        row.driveFileUrl
+    );
+
+  if (!rows.length) {
+    throw new RepasseValidationError('Nenhuma linha valida da planilha foi informada.');
+  }
+  return rows;
+};
+
+const loadRepasseEmailSuppressions = async (db: DbInterface, emails: string[]) => {
+  const normalized = Array.from(new Set(emails.map(normalizeEmailAddress).filter(Boolean)));
+  if (!normalized.length) return new Map<string, string>();
+  const placeholders = normalized.map(() => '?').join(', ');
+  const rows = await db.query(
+    `
+    SELECT email, reason
+    FROM repasse_email_suppressions
+    WHERE email IN (${placeholders})
+    `,
+    normalized
+  );
+  return new Map(rows.map((row) => [normalizeEmailAddress((row as any).email), clean((row as any).reason)]));
+};
+
+export const createRepasseEmailSheetImportJob = async (
+  db: DbInterface,
+  input: RepasseEmailBatchPrepareInput,
+  actorUserId: string
+): Promise<{ batch: RepasseEmailBatch; job: RepasseEmailJob }> => {
+  await ensureRepasseEmailTables(db);
+
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const dueDateNf = normalizeDueDateNf(input.dueDateNf);
+  const batchId = stableHash64(`repasse-email-sheet-import|${periodRef}|${dueDateNf}`);
+  const jobId = randomUUID();
+  const now = nowIso();
+
+  await db.execute(
+    `
+    INSERT INTO repasse_email_batches (
+      id, period_ref, due_date_nf, status, total_recipients, ready_count, warning_count,
+      error_count, accepted_count, delivered_count, failed_count, requested_by,
+      created_at, updated_at, started_at, finished_at, error
+    ) VALUES (?, ?, ?, 'QUEUED', 0, 0, 0, 0, 0, 0, 0, ?, ?, ?, NULL, NULL, NULL)
+    ON DUPLICATE KEY UPDATE
+      due_date_nf = ?,
+      status = CASE
+        WHEN status IN ('DRAFT', 'READY', 'FAILED', 'PARTIAL') THEN 'QUEUED'
+        ELSE status
+      END,
+      requested_by = ?,
+      updated_at = ?,
+      error = NULL
+    `,
+    [batchId, periodRef, dueDateNf, clean(actorUserId), now, now, dueDateNf, clean(actorUserId), now]
+  );
+
+  await db.execute(
+    `
+    INSERT INTO repasse_email_jobs (
+      id, batch_id, period_ref, scope, recipient_ids_json, status, requested_by,
+      started_at, finished_at, error, created_at, updated_at
+    ) VALUES (?, ?, ?, 'sheet_import', NULL, 'PENDING', ?, NULL, NULL, NULL, ?, ?)
+    `,
+    [jobId, batchId, periodRef, clean(actorUserId), now, now]
+  );
+
+  const batchRows = await db.query(`SELECT * FROM repasse_email_batches WHERE id = ? LIMIT 1`, [batchId]);
+  const jobRows = await db.query(`SELECT * FROM repasse_email_jobs WHERE id = ? LIMIT 1`, [jobId]);
+  return {
+    batch: mapEmailBatch(batchRows[0]),
+    job: mapEmailJob(jobRows[0]),
+  };
+};
+
+export const prepareRepasseEmailBatch = async (
+  db: DbInterface,
+  input: RepasseEmailBatchPrepareInput,
+  actorUserId: string
+): Promise<{ batch: RepasseEmailBatch; recipients: RepasseEmailRecipient[] }> => {
+  await ensureRepasseEmailTables(db);
+
+  const periodRef = normalizePeriodRef(input.periodRef);
+  const dueDateNf = normalizeDueDateNf(input.dueDateNf);
+  const sheetRows = normalizeRepasseEmailPrepareRows(input);
+  const batchId = buildRepasseEmailSheetBatchId(periodRef, dueDateNf, sheetRows);
+  const now = nowIso();
+
+  await db.execute(
+    `
+    INSERT INTO repasse_email_batches (
+      id, period_ref, due_date_nf, status, total_recipients, ready_count, warning_count,
+      error_count, accepted_count, delivered_count, failed_count, requested_by,
+      created_at, updated_at, started_at, finished_at, error
+    ) VALUES (?, ?, ?, 'DRAFT', 0, 0, 0, 0, 0, 0, 0, ?, ?, ?, NULL, NULL, NULL)
+    ON DUPLICATE KEY UPDATE
+      due_date_nf = ?,
+      requested_by = ?,
+      updated_at = ?,
+      error = NULL
+    `,
+    [batchId, periodRef, dueDateNf, clean(actorUserId), now, now, dueDateNf, clean(actorUserId), now]
+  );
+
+  const suppressions = await loadRepasseEmailSuppressions(
+    db,
+    sheetRows.map((row) => row.recipientEmail || '')
+  );
+
+  for (const [index, row] of sheetRows.entries()) {
+    const professionalId = row.professionalId || stableHash64(`sheet-row|${batchId}|${index}`).slice(0, 24);
+    const professionalName = row.professionalName || professionalId;
+    const recipientEmail = row.recipientEmail || '';
+    const rowDueDateNf = normalizeDueDateNf(row.dueDateNf || dueDateNf);
+    const amountValue = row.amountValue ?? 0;
+    const driveFileId = row.driveFileId || extractGoogleDriveFileId(row.driveFileUrl);
+    const driveFileUrl = row.driveFileUrl || (driveFileId ? `https://drive.google.com/file/d/${driveFileId}/view` : '');
+    const fileName = row.fileName || `Relatorio_${professionalName.replace(/\s+/g, '_')}.pdf`;
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    if (!professionalName) errors.push('Nome do profissional ausente na planilha.');
+    if (!recipientEmail) errors.push('E-mail ausente na planilha.');
+    else if (!isValidEmailAddress(recipientEmail)) errors.push('E-mail invalido na planilha.');
+    if (recipientEmail && suppressions.has(recipientEmail)) {
+      errors.push(`E-mail bloqueado por suppression: ${suppressions.get(recipientEmail)}.`);
+    }
+    if (!driveFileId && !driveFileUrl) errors.push('Arquivo do Google Drive ausente na planilha.');
+    if (amountValue <= 0) warnings.push('Valor informado na planilha zerado ou negativo.');
+
+    const validationStatus =
+      errors.length > 0 ? 'ERROR' : warnings.length > 0 ? 'WARNING' : 'VALID';
+    const sendStatus = errors.length > 0 ? 'SKIPPED' : 'READY';
+    const validationPayload = JSON.stringify([...errors, ...warnings]);
+    const recipientId = stableHash64(`repasse-email-recipient|${batchId}|${professionalId}|${recipientEmail}|${driveFileId || driveFileUrl}`);
+
+    await db.execute(
+      `
+      INSERT INTO repasse_email_recipients (
+        id, batch_id, period_ref, professional_id, professional_name, recipient_email,
+        amount_value, due_date_nf, pdf_artifact_id, storage_provider, storage_bucket, storage_key,
+        drive_file_id, drive_file_url, file_name, validation_status, validation_errors_json, send_status, last_message_id,
+        last_provider_message_id, last_event_type, last_event_at, manual_confirmed_by,
+        manual_confirmed_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'google_drive', NULL, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        professional_name = ?,
+        recipient_email = ?,
+        amount_value = ?,
+        due_date_nf = ?,
+        storage_key = ?,
+        drive_file_id = ?,
+        drive_file_url = ?,
+        file_name = ?,
+        validation_status = ?,
+        validation_errors_json = ?,
+        send_status = CASE
+          WHEN send_status IN ('IMPORTED', 'READY', 'SKIPPED', 'FAILED', 'SOFT_BOUNCE', 'DEFERRED') THEN ?
+          ELSE send_status
+        END,
+        updated_at = ?
+      `,
+      [
+        recipientId,
+        batchId,
+        periodRef,
+        professionalId,
+        professionalName,
+        recipientEmail,
+        amountValue,
+        rowDueDateNf,
+        driveFileId || driveFileUrl,
+        driveFileId || null,
+        driveFileUrl || null,
+        fileName,
+        validationStatus,
+        validationPayload,
+        sendStatus,
+        now,
+        now,
+        professionalName,
+        recipientEmail,
+        amountValue,
+        rowDueDateNf,
+        driveFileId || driveFileUrl,
+        driveFileId || null,
+        driveFileUrl || null,
+        fileName,
+        validationStatus,
+        validationPayload,
+        sendStatus,
+        now,
+      ]
+    );
+  }
+
+  const counters = (await db.query(batchCountersSql, [batchId]))[0] as any;
+  const nextStatus = Number(counters?.ready_count) > 0 ? 'READY' : 'DRAFT';
+  await updateRepasseEmailBatchCounters(db, batchId, nextStatus);
+
+  const batchRows = await db.query(`SELECT * FROM repasse_email_batches WHERE id = ? LIMIT 1`, [batchId]);
+  const recipients = await listRepasseEmailRecipients(db, { batchId, limit: 500 });
+  return {
+    batch: mapEmailBatch(batchRows[0]),
+    recipients: recipients.items,
+  };
+};
+
+export const listRepasseEmailBatches = async (
+  db: DbInterface,
+  filters: RepasseEmailBatchListFilters = {}
+): Promise<{ items: RepasseEmailBatch[]; total: number }> => {
+  await ensureRepasseEmailTables(db);
+  const where: string[] = ['1=1'];
+  const params: any[] = [];
+  const periodRef = clean(filters.periodRef);
+  const limit = normalizeLimit(filters.limit, 20);
+  if (periodRef) {
+    where.push('b.period_ref = ?');
+    params.push(periodRef);
+  }
+  const userJoinCondition = buildRequestedByUserJoin('b');
+  const rows = await db.query(
+    `
+    SELECT b.*, COALESCE(u.name, u.email, b.requested_by) as requested_by_display
+    FROM repasse_email_batches b
+    LEFT JOIN users u ON ${userJoinCondition}
+    WHERE ${where.join(' AND ')}
+    ORDER BY b.created_at DESC
+    LIMIT ?
+    `,
+    [...params, limit]
+  );
+  const countRows = await db.query(
+    `
+    SELECT COUNT(*) as total
+    FROM repasse_email_batches b
+    WHERE ${where.join(' AND ')}
+    `,
+    params
+  );
+  return {
+    items: rows.map(mapEmailBatch),
+    total: readCount(countRows[0]),
+  };
+};
+
+export const getRepasseEmailBatchById = async (
+  db: DbInterface,
+  batchIdRaw: string
+): Promise<RepasseEmailBatch | null> => {
+  await ensureRepasseEmailTables(db);
+  const batchId = clean(batchIdRaw);
+  if (!batchId) return null;
+  const rows = await db.query(`SELECT * FROM repasse_email_batches WHERE id = ? LIMIT 1`, [batchId]);
+  return rows.length ? mapEmailBatch(rows[0]) : null;
+};
+
+export const listRepasseEmailRecipients = async (
+  db: DbInterface,
+  filters: RepasseEmailRecipientListFilters
+): Promise<{ items: RepasseEmailRecipient[]; total: number }> => {
+  await ensureRepasseEmailTables(db);
+  const batchId = clean(filters.batchId);
+  if (!batchId) throw new RepasseValidationError('Lote de e-mail invalido.');
+  const where: string[] = ['batch_id = ?'];
+  const params: any[] = [batchId];
+  const status = clean(filters.status).toUpperCase();
+  const limit = normalizeLimit(filters.limit, 500);
+  if (status && status !== 'ALL') {
+    where.push('send_status = ?');
+    params.push(status);
+  }
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM repasse_email_recipients
+    WHERE ${where.join(' AND ')}
+    ORDER BY professional_name ASC
+    LIMIT ?
+    `,
+    [...params, limit]
+  );
+  const countRows = await db.query(
+    `
+    SELECT COUNT(*) as total
+    FROM repasse_email_recipients
+    WHERE ${where.join(' AND ')}
+    `,
+    params
+  );
+  return {
+    items: rows.map(mapEmailRecipient),
+    total: readCount(countRows[0]),
+  };
+};
+
+const getRepasseEmailRecipientRowsForJob = async (
+  db: DbInterface,
+  batchId: string,
+  scope: RepasseEmailJobScope,
+  recipientIds: string[]
+) => {
+  const where: string[] = ['r.batch_id = ?'];
+  const params: any[] = [batchId];
+  const allowedStatuses = ['READY'];
+
+  if (scope === 'selected') {
+    if (!recipientIds.length) {
+      throw new RepasseValidationError('Selecione ao menos um destinatario para enfileirar.');
+    }
+    where.push(`r.id IN (${recipientIds.map(() => '?').join(', ')})`);
+    params.push(...recipientIds);
+    allowedStatuses.push('FAILED', 'SOFT_BOUNCE', 'DEFERRED');
+  } else if (scope === 'retry_failed') {
+    allowedStatuses.splice(0, allowedStatuses.length, 'FAILED', 'SOFT_BOUNCE', 'DEFERRED');
+  }
+
+  where.push(`r.send_status IN (${allowedStatuses.map(() => '?').join(', ')})`);
+  params.push(...allowedStatuses);
+
+  const rows = await db.query(
+    `
+    SELECT r.*
+    FROM repasse_email_recipients r
+    LEFT JOIN repasse_email_suppressions s ON s.email = r.recipient_email
+    WHERE ${where.join(' AND ')}
+      AND s.id IS NULL
+    ORDER BY r.professional_name ASC
+    `,
+    params
+  );
+  return rows.map(mapEmailRecipient);
+};
+
+export const createRepasseEmailJob = async (
+  db: DbInterface,
+  input: RepasseEmailJobInput,
+  actorUserId: string
+): Promise<RepasseEmailJob> => {
+  await ensureRepasseEmailTables(db);
+  const batchId = clean(input.batchId);
+  const batch = await getRepasseEmailBatchById(db, batchId);
+  if (!batch) throw new RepasseValidationError('Lote de e-mail nao encontrado.', 404);
+  const recipientIds = parseJsonStringArray(JSON.stringify(input.recipientIds || []));
+  const scope = normalizeEmailJobScope(input.scope, recipientIds.length > 0);
+  const recipients = await getRepasseEmailRecipientRowsForJob(db, batchId, scope, recipientIds);
+  if (!recipients.length) {
+    throw new RepasseValidationError('Nenhum destinatario elegivel para envio no lote.');
+  }
+
+  const now = nowIso();
+  const jobId = randomUUID();
+  const selectedIds = recipients.map((recipient) => recipient.id);
+  await db.execute(
+    `
+    INSERT INTO repasse_email_jobs (
+      id, batch_id, period_ref, scope, recipient_ids_json, status, requested_by,
+      started_at, finished_at, error, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, 'PENDING', ?, NULL, NULL, NULL, ?, ?)
+    `,
+    [jobId, batchId, batch.periodRef, scope, JSON.stringify(selectedIds), clean(actorUserId), now, now]
+  );
+
+  const placeholders = selectedIds.map(() => '?').join(', ');
+  await db.execute(
+    `
+    UPDATE repasse_email_recipients
+    SET send_status = 'QUEUED',
+        updated_at = ?
+    WHERE id IN (${placeholders})
+    `,
+    [now, ...selectedIds]
+  );
+  await updateRepasseEmailBatchCounters(db, batchId, 'QUEUED');
+
+  const rows = await db.query(`SELECT * FROM repasse_email_jobs WHERE id = ? LIMIT 1`, [jobId]);
+  return mapEmailJob(rows[0]);
+};
+
+export const listRepasseEmailJobs = async (
+  db: DbInterface,
+  filters: RepasseEmailJobListFilters = {}
+): Promise<{ items: RepasseEmailJob[]; total: number }> => {
+  await ensureRepasseEmailTables(db);
+  const where: string[] = ['1=1'];
+  const params: any[] = [];
+  const batchId = clean(filters.batchId);
+  const periodRef = clean(filters.periodRef);
+  const limit = normalizeLimit(filters.limit, 20);
+  if (batchId) {
+    where.push('j.batch_id = ?');
+    params.push(batchId);
+  }
+  if (periodRef) {
+    where.push('j.period_ref = ?');
+    params.push(periodRef);
+  }
+  const userJoinCondition = buildRequestedByUserJoin('j');
+  const rows = await db.query(
+    `
+    SELECT j.*, COALESCE(u.name, u.email, j.requested_by) as requested_by_display
+    FROM repasse_email_jobs j
+    LEFT JOIN users u ON ${userJoinCondition}
+    WHERE ${where.join(' AND ')}
+    ORDER BY j.created_at DESC
+    LIMIT ?
+    `,
+    [...params, limit]
+  );
+  const countRows = await db.query(
+    `
+    SELECT COUNT(*) as total
+    FROM repasse_email_jobs j
+    WHERE ${where.join(' AND ')}
+    `,
+    params
+  );
+  return {
+    items: rows.map(mapEmailJob),
+    total: readCount(countRows[0]),
+  };
+};
+
+export const createRetryRepasseEmailRecipientJob = async (
+  db: DbInterface,
+  recipientIdRaw: string,
+  actorUserId: string
+): Promise<RepasseEmailJob> => {
+  await ensureRepasseEmailTables(db);
+  const recipientId = clean(recipientIdRaw);
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM repasse_email_recipients
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [recipientId]
+  );
+  if (!rows.length) throw new RepasseValidationError('Destinatario nao encontrado.', 404);
+  const recipient = mapEmailRecipient(rows[0]);
+  if (!['FAILED', 'SOFT_BOUNCE', 'DEFERRED'].includes(recipient.sendStatus)) {
+    throw new RepasseValidationError('Apenas falhas recuperaveis podem ser reenviadas.');
+  }
+  const suppressions = await loadRepasseEmailSuppressions(db, [recipient.recipientEmail]);
+  if (suppressions.has(recipient.recipientEmail)) {
+    throw new RepasseValidationError('Destinatario bloqueado por suppression.');
+  }
+  return createRepasseEmailJob(
+    db,
+    {
+      batchId: recipient.batchId,
+      scope: 'selected',
+      recipientIds: [recipient.id],
+    },
+    actorUserId
+  );
+};
+
+export const markRepasseEmailRecipientManualConfirmed = async (
+  db: DbInterface,
+  recipientIdRaw: string,
+  actorUserId: string
+): Promise<RepasseEmailRecipient> => {
+  await ensureRepasseEmailTables(db);
+  const recipientId = clean(recipientIdRaw);
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM repasse_email_recipients
+    WHERE id = ?
+    LIMIT 1
+    `,
+    [recipientId]
+  );
+  if (!rows.length) throw new RepasseValidationError('Destinatario nao encontrado.', 404);
+  const now = nowIso();
+  await db.execute(
+    `
+    UPDATE repasse_email_recipients
+    SET send_status = 'MANUAL_CONFIRMED',
+        manual_confirmed_by = ?,
+        manual_confirmed_at = ?,
+        last_event_type = 'manual_confirmed',
+        last_event_at = ?,
+        updated_at = ?
+    WHERE id = ?
+    `,
+    [clean(actorUserId), now, now, now, recipientId]
+  );
+  const updatedRows = await db.query(`SELECT * FROM repasse_email_recipients WHERE id = ? LIMIT 1`, [
+    recipientId,
+  ]);
+  const recipient = mapEmailRecipient(updatedRows[0]);
+  await updateRepasseEmailBatchCounters(db, recipient.batchId);
+  return recipient;
+};
+
+const normalizeMailerSendEventStatus = (eventType: string): RepasseEmailRecipientSendStatus | null => {
+  const normalized = clean(eventType).toLowerCase();
+  if (normalized === 'activity.sent') return 'ACCEPTED_PROVIDER';
+  if (normalized === 'activity.delivered') return 'DELIVERED';
+  if (normalized === 'activity.soft_bounced') return 'SOFT_BOUNCE';
+  if (normalized === 'activity.hard_bounced') return 'HARD_BOUNCE';
+  if (normalized === 'activity.deferred') return 'DEFERRED';
+  if (normalized === 'activity.spam_complaint') return 'SPAM_COMPLAINT';
+  if (normalized.includes('failed') || normalized.includes('rejected')) return 'FAILED';
+  return null;
+};
+
+const getMailerSendProviderMessageId = (payload: any) => {
+  const data = payload?.data || {};
+  return (
+    clean(data.message_id) ||
+    clean(data.email_id) ||
+    clean(data?.email?.message?.id) ||
+    clean(data?.email?.id) ||
+    clean(data?.message?.id)
+  );
+};
+
+export const processRepasseMailerSendWebhookEvent = async (
+  db: DbInterface,
+  payload: any
+): Promise<RepasseEmailEvent> => {
+  await ensureRepasseEmailTables(db);
+  const eventType = clean(payload?.type);
+  if (!eventType) throw new RepasseValidationError('Payload MailerSend sem tipo de evento.');
+  const data = payload?.data || {};
+  const provider = 'mailersend';
+  const providerMessageId = getMailerSendProviderMessageId(payload);
+  const providerEventId =
+    clean(data.id) ||
+    stableHash64(`${eventType}|${providerMessageId}|${clean(payload?.created_at)}|${JSON.stringify(payload)}`).slice(
+      0,
+      180
+    );
+
+  const existingRows = await db.query(
+    `
+    SELECT *
+    FROM repasse_email_events
+    WHERE provider = ?
+      AND provider_event_id = ?
+    LIMIT 1
+    `,
+    [provider, providerEventId]
+  );
+  if (existingRows.length) return mapEmailEvent(existingRows[0]);
+
+  const status = normalizeMailerSendEventStatus(eventType);
+  let messageRow: any = null;
+  if (providerMessageId) {
+    const messageRows = await db.query(
+      `
+      SELECT *
+      FROM repasse_email_messages
+      WHERE provider = ?
+        AND (provider_message_id = ? OR message_id = ?)
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [provider, providerMessageId, providerMessageId]
+    );
+    messageRow = messageRows[0] || null;
+  }
+
+  const messageId = clean(messageRow?.message_id) || null;
+  const recipientId = clean(messageRow?.recipient_id) || null;
+  const batchId = clean(messageRow?.batch_id) || null;
+  const now = nowIso();
+  const processingStatus: RepasseEmailEventProcessingStatus = status && messageRow ? 'PROCESSED' : 'IGNORED';
+  const eventId = randomUUID();
+
+  await db.execute(
+    `
+    INSERT INTO repasse_email_events (
+      id, provider, provider_event_id, provider_message_id, message_id, recipient_id,
+      batch_id, event_type, normalized_status, payload_json, received_at, processed_at,
+      processing_status, error_message
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      eventId,
+      provider,
+      providerEventId,
+      providerMessageId || null,
+      messageId,
+      recipientId,
+      batchId,
+      eventType,
+      status || 'IGNORED',
+      JSON.stringify(payload),
+      now,
+      now,
+      processingStatus,
+      status ? null : 'Evento sem mapeamento operacional.',
+    ]
+  );
+
+  if (status && messageRow) {
+    await db.execute(
+      `
+      UPDATE repasse_email_messages
+      SET status = ?,
+          updated_at = ?
+      WHERE id = ?
+      `,
+      [status, now, clean(messageRow.id)]
+    );
+    await db.execute(
+      `
+      UPDATE repasse_email_recipients
+      SET send_status = ?,
+          last_provider_message_id = COALESCE(?, last_provider_message_id),
+          last_event_type = ?,
+          last_event_at = ?,
+          updated_at = ?
+      WHERE id = ?
+      `,
+      [status, providerMessageId || null, eventType, now, now, recipientId]
+    );
+
+    if (status === 'HARD_BOUNCE' || status === 'SPAM_COMPLAINT') {
+      const recipientRows = await db.query(
+        `SELECT recipient_email FROM repasse_email_recipients WHERE id = ? LIMIT 1`,
+        [recipientId]
+      );
+      const email = normalizeEmailAddress((recipientRows[0] as any)?.recipient_email || data.email);
+      if (email) {
+        await db.execute(
+          `
+          INSERT INTO repasse_email_suppressions (
+            id, email, reason, provider, source_event_id, created_at, created_by, notes
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON DUPLICATE KEY UPDATE
+            reason = ?,
+            provider = ?,
+            source_event_id = ?,
+            notes = ?
+          `,
+          [
+            randomUUID(),
+            email,
+            status,
+            provider,
+            eventId,
+            now,
+            'mailersend_webhook',
+            eventType,
+            status,
+            provider,
+            eventId,
+            eventType,
+          ]
+        );
+      }
+    }
+
+    if (batchId) await updateRepasseEmailBatchCounters(db, batchId);
+  }
+
+  const rows = await db.query(`SELECT * FROM repasse_email_events WHERE id = ? LIMIT 1`, [eventId]);
+  return mapEmailEvent(rows[0]);
+};
+
+export const listRepasseEmailEvents = async (
+  db: DbInterface,
+  filters: RepasseEmailEventListFilters = {}
+): Promise<{ items: RepasseEmailEvent[]; total: number }> => {
+  await ensureRepasseEmailTables(db);
+  const where: string[] = ['1=1'];
+  const params: any[] = [];
+  const batchId = clean(filters.batchId);
+  const recipientId = clean(filters.recipientId);
+  const limit = normalizeLimit(filters.limit, 100);
+  if (batchId) {
+    where.push('batch_id = ?');
+    params.push(batchId);
+  }
+  if (recipientId) {
+    where.push('recipient_id = ?');
+    params.push(recipientId);
+  }
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM repasse_email_events
+    WHERE ${where.join(' AND ')}
+    ORDER BY received_at DESC
+    LIMIT ?
+    `,
+    [...params, limit]
+  );
+  const countRows = await db.query(
+    `
+    SELECT COUNT(*) as total
+    FROM repasse_email_events
+    WHERE ${where.join(' AND ')}
+    `,
+    params
+  );
+  return {
+    items: rows.map(mapEmailEvent),
+    total: readCount(countRows[0]),
+  };
 };
 
 export const createRepasseSyncJob = async (
