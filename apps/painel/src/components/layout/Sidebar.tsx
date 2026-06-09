@@ -40,7 +40,7 @@ import { hasPermission, type PageKey } from "@/lib/permissions";
 const cn = (...classes: (string | undefined | null | false)[]) =>
   classes.filter(Boolean).join(" ");
 
-type UserRole = "ADMIN" | "GESTOR" | "OPERADOR";
+type UserRole = "ADMIN" | "GESTOR" | "OPERADOR" | "INTRANET";
 
 interface MenuItem {
   href: string;
@@ -68,8 +68,8 @@ const menuItems: MenuItem[] = [
     icon: ExternalLink,
     group: "PRINCIPAL",
     openInNewTab: true,
-    roles: ["ADMIN", "GESTOR", "OPERADOR"],
-    pageKey: "dashboard",
+    roles: ["ADMIN", "GESTOR", "OPERADOR", "INTRANET"],
+    pageKey: "intranet_portal",
   },
   {
     href: "/monitor",
@@ -213,7 +213,7 @@ const menuItems: MenuItem[] = [
     icon: Briefcase,
     group: "FINANCEIRO",
     subgroup: "Propostas",
-    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    roles: ["ADMIN", "GESTOR", "OPERADOR", "INTRANET"],
     pageKey: "propostas",
   },
   {
@@ -221,7 +221,7 @@ const menuItems: MenuItem[] = [
     label: "Pós-consulta",
     icon: PhoneCall,
     group: "OPERAÇÕES",
-    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    roles: ["ADMIN", "GESTOR", "OPERADOR", "INTRANET"],
     pageKey: "propostas_pos_consulta",
   },
   {
@@ -246,7 +246,7 @@ const menuItems: MenuItem[] = [
     label: "Painel de Metas",
     icon: Target,
     group: "INTELIGÊNCIA",
-    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    roles: ["ADMIN", "GESTOR", "OPERADOR", "INTRANET"],
     pageKey: "metas_dashboard",
   },
   {
@@ -347,6 +347,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   ADMIN: "Administrador",
   GESTOR: "Gestor",
   OPERADOR: "Operador",
+  INTRANET: "Intranet",
 };
 
 type GroupSection =

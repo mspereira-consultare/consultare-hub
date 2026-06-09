@@ -4,7 +4,12 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Eye, EyeOff } from 'lucide-react';
 import { signIn, useSession } from 'next-auth/react';
-import { PAGE_DEFS, hasPermission } from '@/lib/permissions';
+import { getDefaultLandingPath } from '@/lib/permissions';
+
+type SessionUserLike = {
+  role?: string;
+  permissions?: unknown;
+};
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,18 +20,12 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const getFirstAllowedPage = (permissions: unknown, roleRaw: string) => {
-    for (const page of PAGE_DEFS) {
-      if (hasPermission(permissions, page.key, 'view', roleRaw)) return page.path;
-    }
-    return '/dashboard';
-  };
-
   useEffect(() => {
     if (status !== 'authenticated') return;
-    const role = String((session?.user as any)?.role || 'OPERADOR');
-    const permissions = (session?.user as any)?.permissions;
-    const target = getFirstAllowedPage(permissions, role);
+    const sessionUser = session?.user as SessionUserLike | undefined;
+    const role = String(sessionUser?.role || 'OPERADOR');
+    const permissions = sessionUser?.permissions;
+    const target = getDefaultLandingPath(permissions, role);
     router.replace(target);
   }, [status, session, router]);
 
@@ -53,7 +52,7 @@ export default function LoginPage() {
       router.push('/dashboard');
       router.refresh();
 
-    } catch (err) {
+    } catch {
       setError("Erro ao conectar com o servidor.");
       setLoading(false);
     }

@@ -66,6 +66,7 @@ const PERMISSION_GROUPS: Array<{ id: PermissionGroupId; label: string; descripti
 ];
 
 const PAGE_PERMISSION_GROUP: Record<PageKey, PermissionGroupId> = {
+  intranet_portal: 'intranet',
   dashboard: 'principal',
   monitor: 'operacoes',
   checklist_crc: 'operacoes',

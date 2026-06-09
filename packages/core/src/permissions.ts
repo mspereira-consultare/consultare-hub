@@ -2,6 +2,7 @@ export type UserRole = 'ADMIN' | 'GESTOR' | 'OPERADOR' | 'INTRANET';
 export type PermissionAction = 'view' | 'edit' | 'refresh';
 
 export type PageKey =
+  | 'intranet_portal'
   | 'dashboard'
   | 'monitor'
   | 'financeiro'
@@ -55,6 +56,7 @@ export type PagePermission = {
 export type PermissionMatrix = Record<PageKey, PagePermission>;
 
 export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
+  { key: 'intranet_portal', label: 'Abrir Intranet', path: '/intranet' },
   { key: 'dashboard', label: 'Visão Geral', path: '/dashboard' },
   { key: 'monitor', label: 'Monitor', path: '/monitor' },
   { key: 'financeiro', label: 'Financeiro', path: '/financeiro' },
@@ -139,6 +141,10 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   const matrix = createEmptyMatrix();
 
   if (role === 'INTRANET') {
+    // O papel basico do colaborador abre o portal da intranet e um pacote minimo do painel.
+    setMany(matrix, ['intranet_portal', 'intranet_tarefas', 'propostas', 'propostas_pos_consulta', 'metas_dashboard'], { view: true });
+    setMany(matrix, ['intranet_tarefas', 'propostas', 'propostas_pos_consulta'], { edit: true });
+    setMany(matrix, ['propostas', 'propostas_pos_consulta', 'metas_dashboard'], { refresh: true });
     return matrix;
   }
 
@@ -201,9 +207,30 @@ export const hasAnyRefresh = (matrixRaw: unknown, roleRaw = 'OPERADOR') => {
   return PAGE_KEYS.some((key) => matrix[key].refresh);
 };
 
+export const getDefaultLandingPath = (matrixRaw: unknown, roleRaw = 'OPERADOR') => {
+  const role = String(roleRaw || 'OPERADOR').toUpperCase() as UserRole;
+  const preferredKeys: PageKey[] =
+    role === 'INTRANET'
+      ? ['intranet_portal', 'intranet_tarefas', 'propostas_pos_consulta', 'propostas', 'metas_dashboard']
+      : ['dashboard'];
+
+  for (const key of preferredKeys) {
+    if (hasPermission(matrixRaw, key, 'view', role)) {
+      return PAGE_DEFS.find((page) => page.key === key)?.path || '/dashboard';
+    }
+  }
+
+  for (const page of PAGE_DEFS) {
+    if (hasPermission(matrixRaw, page.key, 'view', role)) return page.path;
+  }
+
+  return role === 'INTRANET' ? '/intranet' : '/dashboard';
+};
+
 export const getPageFromPath = (pathname: string): PageKey | null => {
   const path = String(pathname || '').trim();
 
+  if (path === '/intranet') return 'intranet_portal';
   if (path === '/dashboard') return 'dashboard';
   if (path === '/monitor') return 'monitor';
   if (path === '/financeiro') return 'financeiro';

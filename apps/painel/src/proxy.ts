@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
 import { SHARED_NEXTAUTH_SESSION_COOKIE_NAME } from '@consultare/core/auth';
-import { PAGE_DEFS, getPageFromPath, hasAnyRefresh, hasPermission } from '@/lib/permissions';
+import { getDefaultLandingPath, getPageFromPath, hasAnyRefresh, hasPermission } from '@/lib/permissions';
 
 const isApiPath = (pathname: string) => pathname.startsWith('/api/');
 
@@ -15,12 +15,7 @@ const getApiAction = (method: string) => {
 const denyApi = (status: number, error: string) =>
   NextResponse.json({ error }, { status });
 
-const firstAllowedPage = (permissions: unknown, roleRaw: string) => {
-  for (const page of PAGE_DEFS) {
-    if (hasPermission(permissions, page.key, 'view', roleRaw)) return page.path;
-  }
-  return '/dashboard';
-};
+const firstAllowedPage = (permissions: unknown, roleRaw: string) => getDefaultLandingPath(permissions, roleRaw);
 
 type PermissionToken = {
   permissions?: unknown;
