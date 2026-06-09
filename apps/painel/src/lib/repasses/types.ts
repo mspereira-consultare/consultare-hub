@@ -400,7 +400,7 @@ export type RepasseEmailJobStatus =
   | 'FAILED'
   | 'CANCELLED';
 
-export type RepasseEmailJobScope = 'sheet_import' | 'all_ready' | 'selected' | 'retry_failed';
+export type RepasseEmailJobScope = 'all_ready' | 'selected' | 'retry_failed';
 
 export type RepasseEmailMessageStatus =
   | 'CREATED'
@@ -453,6 +453,15 @@ export type RepasseEmailRecipient = {
   driveFileId: string | null;
   driveFileUrl: string | null;
   fileName: string | null;
+  professionalMatchStatus: string | null;
+  professionalMatchScore: number | null;
+  attachmentMatchStatus: string | null;
+  attachmentSource: string | null;
+  attachmentCode: string | null;
+  originalSheetRowJson: string | null;
+  observations: string | null;
+  attachmentSizeBytes: number | null;
+  attachmentContentType: string | null;
   validationStatus: RepasseEmailValidationStatus;
   validationErrors: string[];
   sendStatus: RepasseEmailRecipientSendStatus;
@@ -475,6 +484,13 @@ export type RepasseEmailBatchPrepareRow = {
   driveFileId?: string;
   driveFileUrl?: string;
   fileName?: string;
+  attachmentCode?: string;
+  arquivo?: string;
+  observations?: string;
+  statusEnvio?: string;
+  dataEnvio?: string;
+  anoReferencia?: string | number;
+  mesReferencia?: string | number;
 };
 
 export type RepasseEmailBatchPrepareInput = {

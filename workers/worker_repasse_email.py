@@ -16,6 +16,11 @@ try:
 except ImportError:
     DatabaseManager = None
 
+try:
+    from storage_s3 import download_s3_object_bytes
+except ImportError:
+    download_s3_object_bytes = None
+
 
 SERVICE_NAME = "repasse_email"
 PROVIDER = "mailersend"
@@ -24,7 +29,6 @@ STATUS_RUNNING = "RUNNING"
 STATUS_COMPLETED = "COMPLETED"
 STATUS_PARTIAL = "PARTIAL"
 STATUS_FAILED = "FAILED"
-GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token"
 
 
 def _now_iso() -> str:
@@ -97,60 +101,6 @@ def _parse_money(value) -> float:
 
 def _is_valid_email(value: str) -> bool:
     return bool(re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", _clean(value)))
-
-
-def _normalize_header(value: str) -> str:
-    text = _clean(value).lower()
-    replacements = {
-        "á": "a", "à": "a", "ã": "a", "â": "a",
-        "é": "e", "ê": "e",
-        "í": "i",
-        "ó": "o", "õ": "o", "ô": "o",
-        "ú": "u",
-        "ç": "c",
-    }
-    for src, dst in replacements.items():
-        text = text.replace(src, dst)
-    return re.sub(r"[^a-z0-9]+", "_", text).strip("_")
-
-
-def _extract_drive_file_id(value) -> str:
-    raw = _clean(value)
-    if not raw:
-        return ""
-    match = re.search(r"[-\w]{25,}", raw)
-    return match.group(0) if match else ""
-
-
-def _google_access_token() -> str:
-    client_id = _clean(os.getenv("GOOGLE_OAUTH_CLIENT_ID"))
-    client_secret = _clean(os.getenv("GOOGLE_OAUTH_CLIENT_SECRET"))
-    refresh_token = _clean(os.getenv("GOOGLE_OAUTH_REFRESH_TOKEN"))
-    if not client_id or not client_secret or not refresh_token:
-        raise RuntimeError(
-            "Credenciais OAuth Google ausentes. Configure GOOGLE_OAUTH_CLIENT_ID, "
-            "GOOGLE_OAUTH_CLIENT_SECRET e GOOGLE_OAUTH_REFRESH_TOKEN."
-        )
-    response = requests.post(
-        GOOGLE_OAUTH_TOKEN_URL,
-        data={
-            "client_id": client_id,
-            "client_secret": client_secret,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-        },
-        timeout=30,
-    )
-    if response.status_code >= 400:
-        raise RuntimeError(f"Falha OAuth Google ({response.status_code}): {response.text[:300]}")
-    token = _clean((response.json() if response.content else {}).get("access_token"))
-    if not token:
-        raise RuntimeError("OAuth Google nao retornou access_token.")
-    return token
-
-
-def _google_headers(access_token: str) -> Dict[str, str]:
-    return {"Authorization": f"Bearer {access_token}"}
 
 
 def _ensure_tables(db: "DatabaseManager"):
@@ -257,6 +207,15 @@ def _ensure_tables(db: "DatabaseManager"):
         for statement in (
             "ALTER TABLE repasse_email_recipients ADD COLUMN drive_file_id VARCHAR(180)",
             "ALTER TABLE repasse_email_recipients ADD COLUMN drive_file_url VARCHAR(500)",
+            "ALTER TABLE repasse_email_recipients ADD COLUMN professional_match_status VARCHAR(40)",
+            "ALTER TABLE repasse_email_recipients ADD COLUMN professional_match_score DECIMAL(8,4)",
+            "ALTER TABLE repasse_email_recipients ADD COLUMN attachment_match_status VARCHAR(40)",
+            "ALTER TABLE repasse_email_recipients ADD COLUMN attachment_source VARCHAR(40)",
+            "ALTER TABLE repasse_email_recipients ADD COLUMN attachment_code VARCHAR(180)",
+            "ALTER TABLE repasse_email_recipients ADD COLUMN original_sheet_row_json LONGTEXT",
+            "ALTER TABLE repasse_email_recipients ADD COLUMN observations LONGTEXT",
+            "ALTER TABLE repasse_email_recipients ADD COLUMN attachment_size_bytes INTEGER",
+            "ALTER TABLE repasse_email_recipients ADD COLUMN attachment_content_type VARCHAR(120)",
         ):
             try:
                 conn.execute(statement)
@@ -392,222 +351,6 @@ def _get_batch(db: "DatabaseManager", batch_id: str):
     return rows[0] if rows else None
 
 
-def _sheet_row_value(row: Dict[str, str], keys: List[str]) -> str:
-    for key in keys:
-        value = _clean(row.get(key))
-        if value:
-            return value
-    return ""
-
-
-def _load_sheet_rows(access_token: str) -> List[Dict[str, str]]:
-    spreadsheet_id = _clean(os.getenv("REPASSE_EMAIL_GOOGLE_SHEET_ID")) or _clean(
-        os.getenv("GOOGLE_SHEETS_REPASSE_EMAIL_SPREADSHEET_ID")
-    )
-    range_name = _clean(os.getenv("REPASSE_EMAIL_GOOGLE_SHEET_RANGE", "Fechamento!A1:J"))
-    if not spreadsheet_id:
-        raise RuntimeError("REPASSE_EMAIL_GOOGLE_SHEET_ID nao configurado.")
-    url = (
-        "https://sheets.googleapis.com/v4/spreadsheets/"
-        f"{spreadsheet_id}/values/{requests.utils.quote(range_name, safe='')}"
-    )
-    response = requests.get(url, headers=_google_headers(access_token), timeout=30)
-    if response.status_code >= 400:
-        raise RuntimeError(f"Falha ao ler Google Sheets ({response.status_code}): {response.text[:500]}")
-    values = (response.json() if response.content else {}).get("values") or []
-    if len(values) < 2:
-        return []
-    headers = [_normalize_header(value) for value in values[0]]
-    rows: List[Dict[str, str]] = []
-    for raw in values[1:]:
-        row = {}
-        for index, header in enumerate(headers):
-            row[header] = _clean(raw[index] if index < len(raw) else "")
-        rows.append(row)
-    return rows
-
-
-def _period_matches(row: Dict[str, str], period_ref: str) -> bool:
-    month_raw = _sheet_row_value(row, ["mes_referencia", "mes", "competencia"])
-    year_raw = _sheet_row_value(row, ["ano_referencia", "ano"])
-    if not month_raw and not year_raw:
-        return True
-    if re.match(r"^\d{4}-\d{2}$", month_raw):
-        return month_raw == period_ref
-    if year_raw and month_raw:
-        months = {
-            "janeiro": "01", "jan": "01",
-            "fevereiro": "02", "fev": "02",
-            "marco": "03", "mar": "03",
-            "abril": "04", "abr": "04",
-            "maio": "05", "mai": "05",
-            "junho": "06", "jun": "06",
-            "julho": "07", "jul": "07",
-            "agosto": "08", "ago": "08",
-            "setembro": "09", "set": "09",
-            "outubro": "10", "out": "10",
-            "novembro": "11", "nov": "11",
-            "dezembro": "12", "dez": "12",
-        }
-        month_key = _normalize_header(month_raw).replace("_", "")
-        month = months.get(month_key) or month_raw.zfill(2)
-        return f"{year_raw}-{month}" == period_ref
-    return True
-
-
-def _upsert_sheet_recipient(
-    db: "DatabaseManager",
-    batch_id: str,
-    period_ref: str,
-    default_due_date_nf: str,
-    row: Dict[str, str],
-    row_index: int,
-) -> Tuple[bool, bool]:
-    status_envio = _sheet_row_value(row, ["status_envio", "status"])
-    if _clean(status_envio).upper() == "ENVIADO":
-        return False, False
-
-    professional_name = _sheet_row_value(row, ["nome_profissional", "professional_name", "profissional", "nome"])
-    recipient_email = _sheet_row_value(row, ["email", "recipient_email", "e_mail"])
-    amount_value = _parse_money(_sheet_row_value(row, ["valor", "amount_value", "valor_final", "repasse"]))
-    drive_url = _sheet_row_value(row, ["arquivo", "drive_file_url", "drive_url", "link_pdf", "pdf_url", "link"])
-    drive_file_id = _sheet_row_value(row, ["drive_file_id", "file_id", "id_arquivo"]) or _extract_drive_file_id(drive_url)
-    due_date_nf = _sheet_row_value(row, ["data_limite_nf", "due_date_nf", "prazo_nf"]) or default_due_date_nf
-    professional_id = _sheet_row_value(row, ["professional_id", "id_profissional", "profissional_id"]) or _stable_hash(
-        f"{professional_name}|{recipient_email}|{drive_file_id}|{row_index}"
-    )[:24]
-    file_name = _sheet_row_value(row, ["file_name", "nome_arquivo", "pdf"]) or f"Relatorio_{professional_name.replace(' ', '_')}.pdf"
-
-    errors: List[str] = []
-    warnings: List[str] = []
-    if not professional_name:
-        errors.append("Nome do profissional ausente na planilha.")
-    if not recipient_email:
-        errors.append("E-mail ausente na planilha.")
-    elif not _is_valid_email(recipient_email):
-        errors.append("E-mail invalido na planilha.")
-    if not drive_file_id:
-        errors.append("Arquivo do Google Drive ausente ou invalido na planilha.")
-    if amount_value <= 0:
-        warnings.append("Valor informado na planilha zerado ou negativo.")
-
-    validation_status = "ERROR" if errors else "WARNING" if warnings else "VALID"
-    send_status = "SKIPPED" if errors else "READY"
-    recipient_id = _stable_hash(f"repasse-email-recipient|{batch_id}|{professional_id}|{recipient_email}|{drive_file_id}")
-    now = _now_iso()
-
-    _execute(
-        db,
-        """
-        INSERT INTO repasse_email_recipients (
-          id, batch_id, period_ref, professional_id, professional_name, recipient_email,
-          amount_value, due_date_nf, pdf_artifact_id, storage_provider, storage_bucket, storage_key,
-          drive_file_id, drive_file_url, file_name, validation_status, validation_errors_json,
-          send_status, last_message_id, last_provider_message_id, last_event_type, last_event_at,
-          manual_confirmed_by, manual_confirmed_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, 'google_drive', NULL, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
-        ON DUPLICATE KEY UPDATE
-          professional_name = ?,
-          recipient_email = ?,
-          amount_value = ?,
-          due_date_nf = ?,
-          storage_provider = 'google_drive',
-          storage_key = ?,
-          drive_file_id = ?,
-          drive_file_url = ?,
-          file_name = ?,
-          validation_status = ?,
-          validation_errors_json = ?,
-          send_status = CASE
-            WHEN send_status IN ('IMPORTED', 'READY', 'SKIPPED', 'FAILED', 'SOFT_BOUNCE', 'DEFERRED') THEN ?
-            ELSE send_status
-          END,
-          updated_at = ?
-        """,
-        (
-            recipient_id,
-            batch_id,
-            period_ref,
-            professional_id,
-            professional_name,
-            recipient_email,
-            amount_value,
-            due_date_nf,
-            drive_file_id,
-            drive_file_id,
-            drive_url,
-            file_name,
-            validation_status,
-            json.dumps(errors + warnings, ensure_ascii=False),
-            send_status,
-            now,
-            now,
-            professional_name,
-            recipient_email,
-            amount_value,
-            due_date_nf,
-            drive_file_id,
-            drive_file_id,
-            drive_url,
-            file_name,
-            validation_status,
-            json.dumps(errors + warnings, ensure_ascii=False),
-            send_status,
-            now,
-        ),
-    )
-    return True, validation_status == "ERROR"
-
-
-def _process_sheet_import_job(db: "DatabaseManager", job, access_token: str) -> bool:
-    job_id = _clean(_row_get(job, 0, "id"))
-    batch_id = _clean(_row_get(job, 1, "batch_id"))
-    batch = _get_batch(db, batch_id)
-    if not batch:
-        raise RuntimeError("Lote de importacao nao encontrado.")
-    period_ref = _clean(_row_get(batch, 1, "period_ref"))
-    due_date_nf = _clean(_row_get(batch, 2, "due_date_nf"))
-
-    rows = _load_sheet_rows(access_token)
-    imported = 0
-    errors = 0
-    for index, row in enumerate(rows, start=2):
-        if not _period_matches(row, period_ref):
-            continue
-        did_import, has_error = _upsert_sheet_recipient(db, batch_id, period_ref, due_date_nf, row, index)
-        if did_import:
-            imported += 1
-        if has_error:
-            errors += 1
-
-    _update_batch_counters(db, batch_id)
-    counters = _query(
-        db,
-        "SELECT ready_count FROM repasse_email_batches WHERE id = ? LIMIT 1",
-        (batch_id,),
-    )
-    ready_count = int(_row_get(counters[0], 0, "ready_count") or 0) if counters else 0
-    batch_status = "READY" if ready_count > 0 else "FAILED"
-    _execute(
-        db,
-        "UPDATE repasse_email_batches SET status = ?, error = ?, updated_at = ? WHERE id = ?",
-        (
-            batch_status,
-            None if ready_count > 0 else "Nenhum destinatario pronto importado do Google Sheets.",
-            _now_iso(),
-            batch_id,
-        ),
-    )
-    _mark_job_finished(
-        db,
-        job_id,
-        STATUS_COMPLETED if ready_count > 0 else STATUS_FAILED,
-        None if ready_count > 0 else "Nenhum destinatario pronto importado.",
-    )
-    _heartbeat(db, STATUS_COMPLETED if ready_count > 0 else STATUS_FAILED, f"sheet_import batch={batch_id} importados={imported} erros={errors} prontos={ready_count}")
-    return ready_count > 0
-
-
 def _load_job_recipients(db: "DatabaseManager", job) -> List:
     batch_id = _clean(_row_get(job, 1, "batch_id"))
     recipient_ids = _json_list(_row_get(job, 4, "recipient_ids_json"))
@@ -628,19 +371,15 @@ def _load_job_recipients(db: "DatabaseManager", job) -> List:
     )
 
 
-def _drive_get_pdf(access_token: str, file_id: str) -> bytes:
-    if not file_id:
-        raise RuntimeError("PDF sem drive_file_id.")
-    response = requests.get(
-        f"https://www.googleapis.com/drive/v3/files/{file_id}?alt=media",
-        headers=_google_headers(access_token),
-        timeout=60,
-    )
-    if response.status_code >= 400:
-        raise RuntimeError(f"Falha ao baixar PDF do Drive ({response.status_code}): {response.text[:300]}")
-    if not response.content:
-        raise RuntimeError("PDF do Drive vazio.")
-    return response.content
+def _s3_get_pdf(bucket: str, key: str) -> bytes:
+    if download_s3_object_bytes is None:
+        raise RuntimeError("storage_s3 indisponivel para download do PDF.")
+    if not key:
+        raise RuntimeError("PDF sem storage_key.")
+    pdf_bytes = download_s3_object_bytes(key, bucket or None)
+    if not pdf_bytes:
+        raise RuntimeError("PDF do S3 vazio.")
+    return pdf_bytes
 
 
 def _build_email_payload(recipient, pdf_bytes: bytes) -> Tuple[Dict, Dict]:
@@ -810,12 +549,11 @@ def _mark_message_result(
     )
 
 
-def _send_recipient(db: "DatabaseManager", job_id: str, recipient, access_token: str) -> bool:
+def _send_recipient(db: "DatabaseManager", job_id: str, recipient) -> bool:
     recipient_id = _clean(_row_get(recipient, 0, "id"))
-    drive_file_id = _clean(_row_get(recipient, 12, "drive_file_id")) or _extract_drive_file_id(
-        _row_get(recipient, 13, "drive_file_url")
-    )
-    pdf_bytes = _drive_get_pdf(access_token, drive_file_id)
+    storage_bucket = _clean(_row_get(recipient, 10, "storage_bucket"))
+    storage_key = _clean(_row_get(recipient, 11, "storage_key"))
+    pdf_bytes = _s3_get_pdf(storage_bucket, storage_key)
     payload, audit_payload = _build_email_payload(recipient, pdf_bytes)
     subject = _clean(payload.get("subject"))
     message_id = _insert_message(db, recipient, job_id, subject, audit_payload)
@@ -867,21 +605,19 @@ def process_pending_repasse_email_jobs_once(max_jobs: int = 1, requested_by: str
         _execute(
             db,
             "UPDATE repasse_email_batches SET status = ?, started_at = COALESCE(started_at, ?), updated_at = ? WHERE id = ?",
-            ("QUEUED" if scope == "sheet_import" else "SENDING", _now_iso(), _now_iso(), batch_id),
+            ("SENDING", _now_iso(), _now_iso(), batch_id),
         )
         _heartbeat(db, STATUS_RUNNING, f"job={job_id} batch={batch_id} requested_by={requested_by}")
 
         if scope == "sheet_import":
-            try:
-                _process_sheet_import_job(db, job, _google_access_token())
-            except Exception as exc:
-                _mark_job_finished(db, job_id, STATUS_FAILED, str(exc))
-                _execute(
-                    db,
-                    "UPDATE repasse_email_batches SET status = 'FAILED', error = ?, finished_at = ?, updated_at = ? WHERE id = ?",
-                    (str(exc), _now_iso(), _now_iso(), batch_id),
-                )
-                _heartbeat(db, STATUS_FAILED, f"sheet_import job={job_id} erro={exc}")
+            message = "Job sheet_import obsoleto. Importe a planilha pelo painel e envie PDFs para S3."
+            _mark_job_finished(db, job_id, STATUS_FAILED, message)
+            _execute(
+                db,
+                "UPDATE repasse_email_batches SET status = 'FAILED', error = ?, finished_at = ?, updated_at = ? WHERE id = ?",
+                (message, _now_iso(), _now_iso(), batch_id),
+            )
+            _heartbeat(db, STATUS_FAILED, f"sheet_import job={job_id} obsoleto")
             continue
 
         recipients = _load_job_recipients(db, job)[:max_recipients]
@@ -893,10 +629,9 @@ def process_pending_repasse_email_jobs_once(max_jobs: int = 1, requested_by: str
 
         sent = 0
         failed = 0
-        access_token = _google_access_token()
         for recipient in recipients:
             try:
-                ok = _send_recipient(db, job_id, recipient, access_token)
+                ok = _send_recipient(db, job_id, recipient)
                 if ok:
                     sent += 1
                 else:

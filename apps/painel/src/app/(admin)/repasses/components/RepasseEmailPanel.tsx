@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Loader2, MailCheck, RefreshCw, RotateCcw, Send } from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2, MailCheck, Paperclip, RefreshCw, RotateCcw, Send, Upload } from "lucide-react";
 import type {
   RepasseEmailBatch,
   RepasseEmailJob,
@@ -59,8 +59,11 @@ export function RepasseEmailPanel({
   const [activeBatchId, setActiveBatchId] = useState("");
   const [recipients, setRecipients] = useState<RepasseEmailRecipient[]>([]);
   const [jobs, setJobs] = useState<RepasseEmailJob[]>([]);
+  const [sheetFile, setSheetFile] = useState<File | null>(null);
+  const [attachmentFiles, setAttachmentFiles] = useState<FileList | null>(null);
   const [loading, setLoading] = useState(false);
   const [preparing, setPreparing] = useState(false);
+  const [uploadingAttachments, setUploadingAttachments] = useState(false);
   const [enqueueing, setEnqueueing] = useState(false);
   const [actionByRecipient, setActionByRecipient] = useState<Record<string, boolean>>({});
   const [notice, setNotice] = useState("");
@@ -135,22 +138,26 @@ export function RepasseEmailPanel({
       setError("Informe a data limite para envio da NF.");
       return;
     }
+    if (!sheetFile) {
+      setError("Selecione a planilha .xlsx de fechamento.");
+      return;
+    }
     setPreparing(true);
     setError("");
     setNotice("");
     try {
+      const formData = new FormData();
+      formData.append("file", sheetFile);
+      formData.append("periodRef", periodRef);
+      formData.append("dueDateNf", dueDateNf);
       const res = await fetch("/api/admin/repasses/email-batches/prepare", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          periodRef,
-          dueDateNf,
-        }),
+        body: formData,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Falha ao preparar lote de e-mail.");
       const batch: RepasseEmailBatch | null = data?.data?.batch || null;
-      setNotice(`Importacao enfileirada. Lote: ${batch?.id || "-"}.`);
+      setNotice(`Planilha importada. Lote: ${batch?.id || "-"}.`);
       if (batch?.id) setActiveBatchId(batch.id);
       await loadEmailPanel();
       if (batch?.id) await loadRecipients(batch.id);
@@ -158,6 +165,35 @@ export function RepasseEmailPanel({
       setError(errorMessage(e, "Erro ao preparar lote de e-mail."));
     } finally {
       setPreparing(false);
+    }
+  };
+
+  const uploadAttachments = async (files: FileList | File[] | null, recipientId?: string) => {
+    if (!canRefresh || !activeBatch || !files || files.length === 0) return;
+    setUploadingAttachments(true);
+    setActionByRecipient((prev) => recipientId ? ({ ...prev, [recipientId]: true }) : prev);
+    setError("");
+    setNotice("");
+    try {
+      const formData = new FormData();
+      Array.from(files).forEach((file) => formData.append("files", file));
+      if (recipientId) formData.append("recipientId", recipientId);
+      const res = await fetch(`/api/admin/repasses/email-batches/${encodeURIComponent(activeBatch.id)}/attachments`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Falha ao enviar anexos.");
+      const summary = data?.data || {};
+      setNotice(`Anexos processados: ${summary.matched || 0} vinculados, ${summary.unmatched || 0} sem match, ${summary.ambiguous || 0} ambiguos.`);
+      setAttachmentFiles(null);
+      await loadRecipients(activeBatch.id);
+      await loadEmailPanel();
+    } catch (e: unknown) {
+      setError(errorMessage(e, "Erro ao enviar anexos."));
+    } finally {
+      setUploadingAttachments(false);
+      if (recipientId) setActionByRecipient((prev) => ({ ...prev, [recipientId]: false }));
     }
   };
 
@@ -218,12 +254,21 @@ export function RepasseEmailPanel({
             <h2 className="text-sm font-semibold text-slate-800">Envios de fechamento</h2>
           </div>
           <p className="mt-1 max-w-3xl text-xs text-slate-500">
-            O worker le a planilha de fechamento no Google Sheets e baixa os anexos do Google Drive.
-            Aceito pelo provedor nao significa entregue. O status final depende dos eventos de entrega, bounce ou falha recebidos por webhook.
+            Importe a planilha .xlsx de fechamento, envie os PDFs para o S3 e confira os vinculos antes de enfileirar.
+            Aceito pelo provedor nao significa entregue; o status final vem dos webhooks de entrega, bounce ou falha.
           </p>
         </div>
 
         <div className="flex flex-wrap items-end gap-2">
+          <label className="flex min-w-[220px] flex-col gap-1 text-xs font-medium text-slate-600">
+            Planilha
+            <input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(event) => setSheetFile(event.target.files?.[0] || null)}
+              className="h-9 rounded-lg border bg-white px-2 py-1 text-xs"
+            />
+          </label>
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
             Data limite NF
             <input
@@ -239,8 +284,8 @@ export function RepasseEmailPanel({
             disabled={!canRefresh || preparing}
             className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#17407E] px-3 text-xs font-semibold text-white disabled:opacity-50"
           >
-            {preparing ? <Loader2 size={14} className="animate-spin" /> : <MailCheck size={14} />}
-            Importar do Google Sheets
+            {preparing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+            Importar planilha
           </button>
           <button
             type="button"
@@ -317,15 +362,40 @@ export function RepasseEmailPanel({
         )}
       </div>
 
+      {activeBatch && (
+        <div className="mt-3 flex flex-wrap items-end gap-2 rounded-lg border bg-slate-50 p-3">
+          <label className="flex min-w-[260px] flex-col gap-1 text-xs font-medium text-slate-600">
+            PDFs ou ZIP
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.zip,application/pdf,application/zip"
+              onChange={(event) => setAttachmentFiles(event.target.files)}
+              className="h-9 rounded-lg border bg-white px-2 py-1 text-xs"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => uploadAttachments(attachmentFiles)}
+            disabled={!canRefresh || uploadingAttachments || !attachmentFiles || attachmentFiles.length === 0}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {uploadingAttachments ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
+            Enviar anexos
+          </button>
+        </div>
+      )}
+
       <div className="mt-3 overflow-x-auto rounded-lg border">
-        <table className="min-w-[980px] w-full border-collapse text-left text-xs">
+        <table className="min-w-[1120px] w-full border-collapse text-left text-xs">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-2 py-2">Profissional</th>
               <th className="px-2 py-2">E-mail</th>
               <th className="px-2 py-2">Valor</th>
               <th className="px-2 py-2">Prazo NF</th>
-              <th className="px-2 py-2">Drive</th>
+              <th className="px-2 py-2">Prof. match</th>
+              <th className="px-2 py-2">Anexo</th>
               <th className="px-2 py-2">Validacao</th>
               <th className="px-2 py-2">Envio</th>
               <th className="px-2 py-2">Ultimo evento</th>
@@ -335,14 +405,14 @@ export function RepasseEmailPanel({
           <tbody>
             {loading && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={10} className="px-3 py-6 text-center text-slate-500">
                   Carregando envios...
                 </td>
               </tr>
             )}
             {!loading && recipients.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={10} className="px-3 py-6 text-center text-slate-500">
                   Nenhum lote de envio preparado para o periodo.
                 </td>
               </tr>
@@ -357,7 +427,37 @@ export function RepasseEmailPanel({
                     <td className="px-2 py-2 text-slate-600">{recipient.recipientEmail || "-"}</td>
                     <td className="px-2 py-2 font-semibold text-slate-700">{formatCurrency(recipient.amountValue)}</td>
                     <td className="px-2 py-2 text-slate-600">{recipient.dueDateNf || "-"}</td>
-                    <td className="px-2 py-2 text-slate-600">{recipient.fileName || recipient.driveFileId || "Arquivo ausente"}</td>
+                    <td className="px-2 py-2">
+                      <div className="flex flex-col gap-1">
+                        <StatusPill value={recipient.professionalMatchStatus || "-"} />
+                        {recipient.professionalMatchScore !== null ? (
+                          <span className="text-[11px] text-slate-400">score {recipient.professionalMatchScore.toFixed(2)}</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-2 py-2 text-slate-600">
+                      <div className="flex max-w-[210px] flex-col gap-1">
+                        <StatusPill value={recipient.attachmentMatchStatus || "SEM_ANEXO"} />
+                        <span className="truncate" title={recipient.fileName || recipient.attachmentCode || ""}>
+                          {recipient.fileName || recipient.attachmentCode || "Arquivo ausente"}
+                        </span>
+                        <label className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-[#17407E]">
+                          <Paperclip size={12} />
+                          Upload individual
+                          <input
+                            type="file"
+                            accept=".pdf,application/pdf"
+                            className="hidden"
+                            disabled={!canRefresh || busy}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              if (file) void uploadAttachments([file], recipient.id);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                    </td>
                     <td className="px-2 py-2">
                       <div className="flex flex-col gap-1">
                         <StatusPill value={recipient.validationStatus} />
