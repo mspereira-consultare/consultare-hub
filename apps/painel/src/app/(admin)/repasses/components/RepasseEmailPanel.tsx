@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Download, Loader2, MailCheck, Paperclip, RefreshCw, RotateCcw, Send, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, Eye, Loader2, MailCheck, Paperclip, RefreshCw, RotateCcw, Send, Upload, X } from "lucide-react";
 import type {
   RepasseEmailBatch,
   RepasseEmailJob,
   RepasseEmailRecipient,
+  RepasseEmailRecipientSendStatus,
 } from "@/lib/repasses/types";
 
 type RepasseEmailPanelProps = {
@@ -48,6 +49,31 @@ const StatusPill = ({ value }: { value: string }) => (
   </span>
 );
 
+const dispatchableStatuses: RepasseEmailRecipientSendStatus[] = [
+  "READY",
+  "FAILED",
+  "SOFT_BOUNCE",
+  "DEFERRED",
+  "ACCEPTED_PROVIDER",
+  "DELIVERED",
+];
+
+const resendStatuses: RepasseEmailRecipientSendStatus[] = [
+  "FAILED",
+  "SOFT_BOUNCE",
+  "DEFERRED",
+  "ACCEPTED_PROVIDER",
+  "DELIVERED",
+];
+
+type EmailPreview = {
+  subject: string;
+  html: string;
+  text: string;
+  hasAttachment: boolean;
+  recipient?: RepasseEmailRecipient;
+};
+
 export function RepasseEmailPanel({
   periodRef,
   canView,
@@ -67,6 +93,8 @@ export function RepasseEmailPanel({
   const [enqueueing, setEnqueueing] = useState(false);
   const [actionByRecipient, setActionByRecipient] = useState<Record<string, boolean>>({});
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([]);
+  const [preview, setPreview] = useState<EmailPreview | null>(null);
+  const [previewLoadingId, setPreviewLoadingId] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -80,17 +108,17 @@ export function RepasseEmailPanel({
     [recipients]
   );
 
-  const readyRecipientIds = useMemo(
-    () => recipients.filter((recipient) => recipient.sendStatus === "READY").map((recipient) => recipient.id),
+  const dispatchableRecipientIds = useMemo(
+    () => recipients.filter((recipient) => dispatchableStatuses.includes(recipient.sendStatus)).map((recipient) => recipient.id),
     [recipients]
   );
 
-  const selectedReadyIds = useMemo(
-    () => selectedRecipientIds.filter((id) => readyRecipientIds.includes(id)),
-    [readyRecipientIds, selectedRecipientIds]
+  const selectedDispatchableIds = useMemo(
+    () => selectedRecipientIds.filter((id) => dispatchableRecipientIds.includes(id)),
+    [dispatchableRecipientIds, selectedRecipientIds]
   );
 
-  const allReadySelected = readyRecipientIds.length > 0 && readyRecipientIds.every((id) => selectedRecipientIds.includes(id));
+  const allDispatchableSelected = dispatchableRecipientIds.length > 0 && dispatchableRecipientIds.every((id) => selectedRecipientIds.includes(id));
 
   const loadRecipients = useCallback(async (batchId: string) => {
     if (!canView || !batchId) {
@@ -216,8 +244,8 @@ export function RepasseEmailPanel({
 
   const enqueueSelected = async () => {
     if (!canRefresh || !activeBatch) return;
-    if (selectedReadyIds.length === 0) {
-      setError("Selecione ao menos um destinatário pronto para envio.");
+    if (selectedDispatchableIds.length === 0) {
+      setError("Selecione ao menos um destinatário elegível para envio ou reenvio.");
       return;
     }
     setEnqueueing(true);
@@ -230,7 +258,7 @@ export function RepasseEmailPanel({
         body: JSON.stringify({
           batchId: activeBatch.id,
           scope: "selected",
-          recipientIds: selectedReadyIds,
+          recipientIds: selectedDispatchableIds,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -255,8 +283,8 @@ export function RepasseEmailPanel({
 
   const toggleAllReady = () => {
     setSelectedRecipientIds((prev) => {
-      if (allReadySelected) return prev.filter((id) => !readyRecipientIds.includes(id));
-      return Array.from(new Set([...prev, ...readyRecipientIds]));
+      if (allDispatchableSelected) return prev.filter((id) => !dispatchableRecipientIds.includes(id));
+      return Array.from(new Set([...prev, ...dispatchableRecipientIds]));
     });
   };
 
@@ -278,6 +306,23 @@ export function RepasseEmailPanel({
       setError(errorMessage(e, "Erro ao atualizar destinatário."));
     } finally {
       setActionByRecipient((prev) => ({ ...prev, [recipientId]: false }));
+    }
+  };
+
+  const openPreview = async (recipientId: string) => {
+    setPreviewLoadingId(recipientId);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/repasses/email-recipients/${encodeURIComponent(recipientId)}/preview`, {
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Falha ao gerar prévia do e-mail.");
+      setPreview(data?.data || null);
+    } catch (e: unknown) {
+      setError(errorMessage(e, "Erro ao gerar prévia do e-mail."));
+    } finally {
+      setPreviewLoadingId("");
     }
   };
 
@@ -432,23 +477,23 @@ export function RepasseEmailPanel({
             <button
               type="button"
               onClick={toggleAllReady}
-              disabled={readyRecipientIds.length === 0}
+              disabled={dispatchableRecipientIds.length === 0}
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
             >
-              {allReadySelected ? "Limpar prontos" : "Selecionar todos prontos"}
+              {allDispatchableSelected ? "Limpar seleção" : "Selecionar elegíveis"}
             </button>
             <span className="text-xs text-slate-500">
-              {selectedReadyIds.length} selecionado(s) de {readyCount} pronto(s)
+              {selectedDispatchableIds.length} selecionado(s) de {dispatchableRecipientIds.length} elegível(is), {readyCount} pronto(s)
             </span>
           </div>
           <button
             type="button"
             onClick={enqueueSelected}
-            disabled={!canRefresh || enqueueing || !activeBatch || selectedReadyIds.length === 0}
+            disabled={!canRefresh || enqueueing || !activeBatch || selectedDispatchableIds.length === 0}
             className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#229A8A] px-4 text-xs font-semibold text-white transition hover:bg-[#1b7d70] disabled:opacity-50"
           >
             {enqueueing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            Enfileirar selecionados ({selectedReadyIds.length})
+            Enfileirar selecionados ({selectedDispatchableIds.length})
           </button>
         </div>
 
@@ -459,11 +504,11 @@ export function RepasseEmailPanel({
               <th className="w-10 px-2 py-2">
                 <input
                   type="checkbox"
-                  checked={allReadySelected}
-                  disabled={readyRecipientIds.length === 0}
+                  checked={allDispatchableSelected}
+                  disabled={dispatchableRecipientIds.length === 0}
                   onChange={toggleAllReady}
                   className="h-4 w-4 rounded border-slate-300 text-[#17407E]"
-                  aria-label="Selecionar todos os prontos"
+                  aria-label="Selecionar todos os elegíveis"
                 />
               </th>
               <th className="px-2 py-2">Profissional</th>
@@ -496,9 +541,10 @@ export function RepasseEmailPanel({
             {!loading &&
               recipients.map((recipient) => {
                 const busy = !!actionByRecipient[recipient.id];
-                const canRetry = ["FAILED", "SOFT_BOUNCE", "DEFERRED"].includes(recipient.sendStatus);
-                const canSelect = recipient.sendStatus === "READY";
+                const canRetry = resendStatuses.includes(recipient.sendStatus);
+                const canSelect = dispatchableStatuses.includes(recipient.sendStatus);
                 const isSelected = selectedRecipientIds.includes(recipient.id);
+                const previewLoading = previewLoadingId === recipient.id;
                 return (
                   <tr key={recipient.id} className="border-t align-top hover:bg-slate-50/70">
                     <td className="px-2 py-2">
@@ -567,12 +613,21 @@ export function RepasseEmailPanel({
                       <div className="flex justify-end gap-1">
                         <button
                           type="button"
+                          onClick={() => openPreview(recipient.id)}
+                          disabled={previewLoading}
+                          className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-40"
+                        >
+                          {previewLoading ? <Loader2 size={12} className="animate-spin" /> : <Eye size={12} />}
+                          Prévia
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => recipientAction(recipient.id, "retry")}
                           disabled={!canEdit || busy || !canRetry}
                           className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[11px] font-semibold text-slate-700 disabled:opacity-40"
                         >
                           {busy ? <Loader2 size={12} className="animate-spin" /> : <RotateCcw size={12} />}
-                          Retry
+                          Reenviar
                         </button>
                         <button
                           type="button"
@@ -592,6 +647,43 @@ export function RepasseEmailPanel({
         </table>
         </div>
       </div>
+
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
+          <div className="flex max-h-[88vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Prévia do e-mail</p>
+                <h3 className="mt-1 truncate text-base font-bold text-slate-800">{preview.subject}</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  {preview.hasAttachment ? "Será enviado com anexo." : "Será enviado sem anexo."}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreview(null)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 text-slate-600 transition hover:bg-slate-50"
+                aria-label="Fechar prévia"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[1fr_280px]">
+              <iframe
+                title="Prévia HTML do e-mail"
+                srcDoc={preview.html}
+                className="h-[62vh] w-full bg-white"
+              />
+              <aside className="overflow-auto border-t border-slate-200 bg-slate-50 p-4 lg:border-l lg:border-t-0">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Texto simples</p>
+                <pre className="mt-3 whitespace-pre-wrap rounded-lg border border-slate-200 bg-white p-3 text-xs leading-relaxed text-slate-700">
+                  {preview.text}
+                </pre>
+              </aside>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -2164,6 +2164,57 @@ const isProfessionalMatchResolved = (status: string | null | undefined) =>
 const isAttachmentResolved = (status: string | null | undefined) =>
   clean(status).toUpperCase() === 'RESOLVED';
 
+const isRepasseEmailResendAllowed = (status: string | null | undefined) =>
+  ['FAILED', 'SOFT_BOUNCE', 'DEFERRED', 'ACCEPTED_PROVIDER', 'DELIVERED'].includes(clean(status).toUpperCase());
+
+const escapeRepasseEmailHtml = (value: unknown) =>
+  clean(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const formatRepasseEmailBrl = (value: number) =>
+  Number(value || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+const renderRepasseEmailContent = (recipient: RepasseEmailRecipient) => {
+  const professionalName = recipient.professionalName || 'profissional';
+  const periodRef = recipient.periodRef || '-';
+  const dueDateNf = recipient.dueDateNf || '-';
+  const amountText = formatRepasseEmailBrl(recipient.amountValue);
+  const hasAttachment = Boolean(recipient.storageKey && isAttachmentResolved(recipient.attachmentMatchStatus));
+  const attachmentText = hasAttachment
+    ? `Segue em anexo o fechamento mensal de repasses referente a ${periodRef}.`
+    : `Encaminhamos as informacoes do fechamento mensal de repasses referente a ${periodRef}. Nao ha PDF de fechamento vinculado para este profissional neste lote.`;
+  const attachmentHtml = hasAttachment
+    ? `Segue em anexo o fechamento mensal de repasses referente a <strong>${escapeRepasseEmailHtml(periodRef)}</strong>.`
+    : `Encaminhamos as informações do fechamento mensal de repasses referente a <strong>${escapeRepasseEmailHtml(periodRef)}</strong>. Não há PDF de fechamento vinculado para este profissional neste lote.`;
+  const subject = `Fechamento Mensal ${periodRef} - CONSULTARE`;
+  const text = (
+    `Ola, ${professionalName}.\n\n` +
+    `${attachmentText}\n` +
+    `Valor final: ${amountText}.\n` +
+    `Data limite para envio da NF: ${dueDateNf}.\n\n` +
+    `Atenciosamente,\nFinanceiro Consultare`
+  );
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
+      <p>Olá, <strong>${escapeRepasseEmailHtml(professionalName)}</strong>.</p>
+      <p>${attachmentHtml}</p>
+      <p><strong>Valor final:</strong> ${escapeRepasseEmailHtml(amountText)}<br />
+      <strong>Data limite para envio da NF:</strong> ${escapeRepasseEmailHtml(dueDateNf)}</p>
+      <p>Atenciosamente,<br />Financeiro Consultare</p>
+    </div>
+  `.trim();
+  return { subject, text, html, hasAttachment };
+};
+
 const buildRepasseEmailValidation = (params: {
   professionalName: string;
   recipientEmail: string;
@@ -2184,7 +2235,7 @@ const buildRepasseEmailValidation = (params: {
     warnings.push(params.professionalWarning || 'Vinculo com professional pendente de conferencia.');
   }
   if (!isAttachmentResolved(params.attachmentMatchStatus)) {
-    errors.push('Anexo PDF ainda nao vinculado.');
+    warnings.push('Sem PDF vinculado; o envio sera feito sem anexo.');
   }
   if (params.amountValue <= 0) warnings.push('Valor informado na planilha zerado ou negativo.');
 
@@ -2211,6 +2262,49 @@ const loadRepasseEmailSuppressions = async (db: DbInterface, emails: string[]) =
     const suppression = row as Record<string, unknown>;
     return [normalizeEmailAddress(suppression.email), clean(suppression.reason)] as const;
   }));
+};
+
+const refreshRepasseEmailBatchReadiness = async (db: DbInterface, batchId: string) => {
+  const rows = await db.query(`SELECT * FROM repasse_email_recipients WHERE batch_id = ?`, [batchId]);
+  const recipients = rows.map(mapEmailRecipient);
+  if (!recipients.length) return;
+  const suppressions = await loadRepasseEmailSuppressions(
+    db,
+    recipients.map((recipient) => recipient.recipientEmail)
+  );
+  const now = nowIso();
+  for (const recipient of recipients) {
+    const validation = buildRepasseEmailValidation({
+      professionalName: recipient.professionalName,
+      recipientEmail: recipient.recipientEmail,
+      amountValue: recipient.amountValue,
+      suppressionReason: suppressions.get(recipient.recipientEmail),
+      professionalMatchStatus: recipient.professionalMatchStatus,
+      professionalWarning: 'Vinculo com professional pendente de conferencia.',
+      attachmentMatchStatus: recipient.attachmentMatchStatus,
+    });
+    await db.execute(
+      `
+      UPDATE repasse_email_recipients
+      SET validation_status = ?,
+          validation_errors_json = ?,
+          send_status = CASE
+            WHEN send_status IN ('IMPORTED', 'READY', 'SKIPPED', 'FAILED', 'SOFT_BOUNCE', 'DEFERRED') THEN ?
+            ELSE send_status
+          END,
+          updated_at = ?
+      WHERE id = ?
+      `,
+      [
+        validation.validationStatus,
+        JSON.stringify([...validation.errors, ...validation.warnings]),
+        validation.sendStatus,
+        now,
+        recipient.id,
+      ]
+    );
+  }
+  await updateRepasseEmailBatchCounters(db, batchId);
 };
 
 export const prepareRepasseEmailBatch = async (
@@ -2434,6 +2528,7 @@ export const listRepasseEmailRecipients = async (
   const params: any[] = [batchId];
   const status = clean(filters.status).toUpperCase();
   const limit = normalizeLimit(filters.limit, 500);
+  await refreshRepasseEmailBatchReadiness(db, batchId);
   if (status && status !== 'ALL') {
     where.push('send_status = ?');
     params.push(status);
@@ -2459,6 +2554,22 @@ export const listRepasseEmailRecipients = async (
   return {
     items: rows.map(mapEmailRecipient),
     total: readCount(countRows[0]),
+  };
+};
+
+export const getRepasseEmailRecipientPreview = async (
+  db: DbInterface,
+  recipientIdRaw: string
+): Promise<{ recipient: RepasseEmailRecipient; subject: string; text: string; html: string; hasAttachment: boolean }> => {
+  await ensureRepasseEmailTables(db);
+  const recipientId = clean(recipientIdRaw);
+  if (!recipientId) throw new RepasseValidationError('Destinatario invalido.');
+  const rows = await db.query(`SELECT * FROM repasse_email_recipients WHERE id = ? LIMIT 1`, [recipientId]);
+  if (!rows.length) throw new RepasseValidationError('Destinatario nao encontrado.', 404);
+  const recipient = mapEmailRecipient(rows[0]);
+  return {
+    recipient,
+    ...renderRepasseEmailContent(recipient),
   };
 };
 
@@ -2641,7 +2752,7 @@ const getRepasseEmailRecipientRowsForJob = async (
     }
     where.push(`r.id IN (${recipientIds.map(() => '?').join(', ')})`);
     params.push(...recipientIds);
-    allowedStatuses.push('FAILED', 'SOFT_BOUNCE', 'DEFERRED');
+    allowedStatuses.push('FAILED', 'SOFT_BOUNCE', 'DEFERRED', 'ACCEPTED_PROVIDER', 'DELIVERED');
   } else if (scope === 'retry_failed') {
     allowedStatuses.splice(0, allowedStatuses.length, 'FAILED', 'SOFT_BOUNCE', 'DEFERRED');
   }
@@ -2656,9 +2767,6 @@ const getRepasseEmailRecipientRowsForJob = async (
     LEFT JOIN repasse_email_suppressions s ON s.email = r.recipient_email
     WHERE ${where.join(' AND ')}
       AND s.id IS NULL
-      AND r.storage_provider = 's3'
-      AND COALESCE(r.storage_key, '') <> ''
-      AND r.attachment_match_status = 'RESOLVED'
       AND r.professional_match_status IN ('RESOLVED_ID', 'RESOLVED_EMAIL', 'RESOLVED_NAME', 'RESOLVED_APPROX', 'MANUAL_CONFIRMED')
     ORDER BY r.professional_name ASC
     `,
@@ -2774,8 +2882,8 @@ export const createRetryRepasseEmailRecipientJob = async (
   );
   if (!rows.length) throw new RepasseValidationError('Destinatario nao encontrado.', 404);
   const recipient = mapEmailRecipient(rows[0]);
-  if (!['FAILED', 'SOFT_BOUNCE', 'DEFERRED'].includes(recipient.sendStatus)) {
-    throw new RepasseValidationError('Apenas falhas recuperaveis podem ser reenviadas.');
+  if (!isRepasseEmailResendAllowed(recipient.sendStatus)) {
+    throw new RepasseValidationError('Apenas e-mails enviados ou falhas recuperaveis podem ser reenviados.');
   }
   const suppressions = await loadRepasseEmailSuppressions(db, [recipient.recipientEmail]);
   if (suppressions.has(recipient.recipientEmail)) {

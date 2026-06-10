@@ -1,6 +1,7 @@
 import argparse
 import base64
 import hashlib
+import html as html_lib
 import json
 import os
 import re
@@ -382,7 +383,7 @@ def _s3_get_pdf(bucket: str, key: str) -> bytes:
     return pdf_bytes
 
 
-def _build_email_payload(recipient, pdf_bytes: bytes) -> Tuple[Dict, Dict]:
+def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, Dict]:
     professional_name = _clean(_row_get(recipient, 4, "professional_name"))
     to_email = _clean(_row_get(recipient, 5, "recipient_email"))
     amount_value = _row_get(recipient, 6, "amount_value")
@@ -397,19 +398,32 @@ def _build_email_payload(recipient, pdf_bytes: bytes) -> Tuple[Dict, Dict]:
 
     subject = f"Fechamento Mensal {period_ref} - CONSULTARE"
     amount_text = _format_brl(amount_value)
+    has_attachment = bool(pdf_bytes)
+    attachment_text = (
+        f"Segue em anexo o fechamento mensal de repasses referente a {period_ref}."
+        if has_attachment
+        else f"Encaminhamos as informacoes do fechamento mensal de repasses referente a {period_ref}. "
+        "Nao ha PDF de fechamento vinculado para este profissional neste lote."
+    )
+    attachment_html = (
+        f"Segue em anexo o fechamento mensal de repasses referente a <strong>{html_lib.escape(period_ref)}</strong>."
+        if has_attachment
+        else f"Encaminhamos as informações do fechamento mensal de repasses referente a <strong>{html_lib.escape(period_ref)}</strong>. "
+        "Não há PDF de fechamento vinculado para este profissional neste lote."
+    )
     text = (
         f"Ola, {professional_name}.\n\n"
-        f"Segue em anexo o fechamento mensal de repasses referente a {period_ref}.\n"
+        f"{attachment_text}\n"
         f"Valor final: {amount_text}.\n"
         f"Data limite para envio da NF: {due_date_nf}.\n\n"
         "Atenciosamente,\nFinanceiro Consultare"
     )
-    html = f"""
+    html_body = f"""
     <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
-      <p>Ola, <strong>{professional_name}</strong>.</p>
-      <p>Segue em anexo o fechamento mensal de repasses referente a <strong>{period_ref}</strong>.</p>
-      <p><strong>Valor final:</strong> {amount_text}<br />
-      <strong>Data limite para envio da NF:</strong> {due_date_nf}</p>
+      <p>Olá, <strong>{html_lib.escape(professional_name)}</strong>.</p>
+      <p>{attachment_html}</p>
+      <p><strong>Valor final:</strong> {html_lib.escape(amount_text)}<br />
+      <strong>Data limite para envio da NF:</strong> {html_lib.escape(due_date_nf)}</p>
       <p>Atenciosamente,<br />Financeiro Consultare</p>
     </div>
     """.strip()
@@ -419,29 +433,34 @@ def _build_email_payload(recipient, pdf_bytes: bytes) -> Tuple[Dict, Dict]:
         "to": [{"email": to_email, "name": professional_name}],
         "subject": subject,
         "text": text,
-        "html": html,
-        "attachments": [
+        "html": html_body,
+        "tags": ["repasses", "fechamento"],
+    }
+    if pdf_bytes:
+        payload["attachments"] = [
             {
                 "content": base64.b64encode(pdf_bytes).decode("ascii"),
                 "filename": file_name,
                 "disposition": "attachment",
             }
-        ],
-        "tags": ["repasses", "fechamento"],
-    }
+        ]
     if reply_to:
         payload["reply_to"] = {"email": reply_to, "name": from_name}
 
     audit_payload = dict(payload)
-    audit_payload["attachments"] = [
-        {"filename": file_name, "disposition": "attachment", "size_bytes": len(pdf_bytes)}
-    ]
+    audit_payload["attachments"] = (
+        [{"filename": file_name, "disposition": "attachment", "size_bytes": len(pdf_bytes)}]
+        if pdf_bytes
+        else []
+    )
     return payload, audit_payload
 
 
 def _insert_message(db: "DatabaseManager", recipient, job_id: str, subject: str, audit_payload: Dict) -> str:
     now = _now_iso()
     message_id = str(uuid.uuid4())
+    attachments = audit_payload.get("attachments") or []
+    attachment_file_name = _clean(attachments[0].get("filename")) if attachments else None
     _execute(
         db,
         """
@@ -464,7 +483,7 @@ def _insert_message(db: "DatabaseManager", recipient, job_id: str, subject: str,
             subject,
             "repasse_fechamento_v1",
             _clean(_row_get(recipient, 8, "pdf_artifact_id")) or None,
-            _clean(_row_get(recipient, 14, "file_name")) or "repasse.pdf",
+            attachment_file_name,
             json.dumps(audit_payload, ensure_ascii=False),
             now,
             now,
@@ -553,7 +572,7 @@ def _send_recipient(db: "DatabaseManager", job_id: str, recipient) -> bool:
     recipient_id = _clean(_row_get(recipient, 0, "id"))
     storage_bucket = _clean(_row_get(recipient, 10, "storage_bucket"))
     storage_key = _clean(_row_get(recipient, 11, "storage_key"))
-    pdf_bytes = _s3_get_pdf(storage_bucket, storage_key)
+    pdf_bytes = _s3_get_pdf(storage_bucket, storage_key) if storage_key else None
     payload, audit_payload = _build_email_payload(recipient, pdf_bytes)
     subject = _clean(payload.get("subject"))
     message_id = _insert_message(db, recipient, job_id, subject, audit_payload)
