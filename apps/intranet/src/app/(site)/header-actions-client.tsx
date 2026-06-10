@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { Bell, Bot, Loader2, MessageCircle } from 'lucide-react';
+import { Bell, Loader2, MessageCircle } from 'lucide-react';
 import type { IntranetNotification, IntranetNotificationSummary } from '@consultare/core/intranet/notifications';
 
 const normalizeError = async (response: Response) => {
@@ -247,14 +247,6 @@ export function HeaderActionsClient({
 
   return (
     <div className="relative flex items-center gap-2">
-      <Link
-        href="/ia"
-        className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-[#17407E] transition hover:bg-blue-50"
-        aria-label="IA Consultare"
-      >
-        <Bot size={18} />
-      </Link>
-
       <button
         ref={buttonRef}
         type="button"
