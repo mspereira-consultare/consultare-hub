@@ -2043,7 +2043,6 @@ const buildRepasseEmailUploadBatchId = (
         clean(row.attachmentCode),
         clean(row.arquivo),
         clean(row.fileName),
-        clean(row.statusEnvio),
       ].join('|')
     )
     .sort()
@@ -2069,8 +2068,6 @@ const normalizeRepasseEmailPrepareRows = (input: RepasseEmailBatchPrepareInput) 
         attachmentCode,
         arquivo,
         observations: clean(row.observations),
-        statusEnvio: clean(row.statusEnvio),
-        dataEnvio: clean(row.dataEnvio),
         anoReferencia: clean(row.anoReferencia),
         mesReferencia: clean(row.mesReferencia),
       };
@@ -2171,7 +2168,6 @@ const buildRepasseEmailValidation = (params: {
   professionalName: string;
   recipientEmail: string;
   amountValue: number;
-  statusEnvio?: string;
   suppressionReason?: string;
   professionalMatchStatus?: string | null;
   professionalWarning?: string;
@@ -2184,9 +2180,6 @@ const buildRepasseEmailValidation = (params: {
   if (!params.recipientEmail) errors.push('E-mail ausente na planilha.');
   else if (!isValidEmailAddress(params.recipientEmail)) errors.push('E-mail invalido na planilha.');
   if (params.suppressionReason) errors.push(`E-mail bloqueado por suppression: ${params.suppressionReason}.`);
-  if (clean(params.statusEnvio).toUpperCase() === 'ENVIADO') {
-    errors.push('Linha marcada como ENVIADO na planilha; bloqueada para reenvio automatico.');
-  }
   if (!isProfessionalMatchResolved(params.professionalMatchStatus)) {
     warnings.push(params.professionalWarning || 'Vinculo com professional pendente de conferencia.');
   }
@@ -2269,7 +2262,6 @@ export const prepareRepasseEmailBatch = async (
       professionalName,
       recipientEmail,
       amountValue,
-      statusEnvio: row.statusEnvio,
       suppressionReason: recipientEmail ? suppressions.get(recipientEmail) : '',
       professionalMatchStatus: match.status,
       professionalWarning: match.warning,
@@ -2287,8 +2279,6 @@ export const prepareRepasseEmailBatch = async (
       fileName: row.fileName,
       attachmentCode,
       observations: row.observations,
-      statusEnvio: row.statusEnvio,
-      dataEnvio: row.dataEnvio,
       anoReferencia: row.anoReferencia,
       mesReferencia: row.mesReferencia,
     });
@@ -2472,26 +2462,15 @@ export const listRepasseEmailRecipients = async (
   };
 };
 
-const parseOriginalSheetRow = (value: unknown) => {
-  try {
-    const parsed = JSON.parse(clean(value));
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
-  } catch {
-    return {};
-  }
-};
-
 const refreshRepasseEmailRecipientReadiness = async (db: DbInterface, recipientId: string) => {
   const rows = await db.query(`SELECT * FROM repasse_email_recipients WHERE id = ? LIMIT 1`, [recipientId]);
   if (!rows.length) return null;
   const recipient = mapEmailRecipient(rows[0]);
-  const original = parseOriginalSheetRow(recipient.originalSheetRowJson);
   const suppressions = await loadRepasseEmailSuppressions(db, [recipient.recipientEmail]);
   const validation = buildRepasseEmailValidation({
     professionalName: recipient.professionalName,
     recipientEmail: recipient.recipientEmail,
     amountValue: recipient.amountValue,
-    statusEnvio: clean(original.statusEnvio),
     suppressionReason: suppressions.get(recipient.recipientEmail),
     professionalMatchStatus: recipient.professionalMatchStatus,
     professionalWarning: 'Vinculo com professional pendente de conferencia.',

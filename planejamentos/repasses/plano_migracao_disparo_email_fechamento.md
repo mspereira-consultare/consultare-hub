@@ -29,8 +29,6 @@ Planilha `.xlsx` enviada pelo painel, aceitando o modelo atual:
 - `ARQUIVO`
 - `OBSERVACOES`
 - `DATA_LIMITE_NF`
-- `STATUS_ENVIO`
-- `DATA_ENVIO`
 
 Colunas opcionais recomendadas:
 
@@ -38,6 +36,7 @@ Colunas opcionais recomendadas:
 - `CODIGO_ANEXO`
 
 `ARQUIVO` passa a ser nome/chave esperada do PDF, nao URL do Drive.
+Status de envio, data de envio e eventos de entrega nao devem vir da planilha; esses dados pertencem ao historico do proprio sistema de disparo.
 
 ## Vinculo com professionals
 
@@ -105,6 +104,7 @@ Campos `drive_file_id` e `drive_file_url` podem existir por compatibilidade hist
 Rotas admin:
 
 - `GET /api/admin/repasses/email-batches`
+- `GET /api/admin/repasses/email-batches/template`
 - `POST /api/admin/repasses/email-batches/prepare`
 - `POST /api/admin/repasses/email-batches/[batchId]/attachments`
 - `GET /api/admin/repasses/email-batches/[batchId]/recipients`
@@ -146,6 +146,7 @@ Controles:
 
 - competencia;
 - upload de planilha `.xlsx`;
+- download de template `.xlsx`;
 - data limite da NF;
 - upload em massa de PDFs ou `.zip`;
 - upload individual de PDF por linha;
@@ -221,7 +222,6 @@ Casos manuais:
 - nome ambiguo;
 - PDF nao encontrado;
 - PDF ambiguo;
-- linha com `STATUS_ENVIO = ENVIADO`;
 - enfileirar somente destinatarios prontos;
 - envio dry-run;
 - webhook duplicado;

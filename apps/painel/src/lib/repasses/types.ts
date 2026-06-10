@@ -487,8 +487,6 @@ export type RepasseEmailBatchPrepareRow = {
   attachmentCode?: string;
   arquivo?: string;
   observations?: string;
-  statusEnvio?: string;
-  dataEnvio?: string;
   anoReferencia?: string | number;
   mesReferencia?: string | number;
 };

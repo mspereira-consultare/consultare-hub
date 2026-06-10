@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertCircle, CheckCircle2, Loader2, MailCheck, Paperclip, RefreshCw, RotateCcw, Send, Upload } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, Loader2, MailCheck, Paperclip, RefreshCw, RotateCcw, Send, Upload } from "lucide-react";
 import type {
   RepasseEmailBatch,
   RepasseEmailJob,
@@ -300,7 +300,7 @@ export function RepasseEmailPanel({
           </p>
         </div>
 
-        <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-[minmax(240px,1fr)_180px_auto_auto] xl:max-w-5xl">
+        <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-[minmax(240px,1fr)_180px_auto_auto_auto] xl:max-w-6xl">
           <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-slate-500">
             Planilha
             <input
@@ -328,6 +328,13 @@ export function RepasseEmailPanel({
             {preparing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             Importar planilha
           </button>
+          <a
+            href="/api/admin/repasses/email-batches/template"
+            className="inline-flex h-10 items-center justify-center gap-2 self-end rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            <Download size={14} />
+            Baixar template
+          </a>
           <button
             type="button"
             onClick={loadEmailPanel}

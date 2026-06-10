@@ -91,8 +91,6 @@ const parseWorkbookRows = async (file: File): Promise<RepasseEmailBatchPrepareRo
       arquivo,
       attachmentCode: readRowValue(raw, ['codigo_anexo', 'attachment_code', 'cod_anexo']),
       observations: readRowValue(raw, ['observacoes', 'observacao', 'notes']),
-      statusEnvio: readRowValue(raw, ['status_envio', 'status']),
-      dataEnvio: readRowValue(raw, ['data_envio', 'sent_at']),
       anoReferencia: readRowValue(raw, ['ano_referencia', 'ano']),
       mesReferencia: readRowValue(raw, ['mes_referencia', 'mes', 'competencia']),
     };
