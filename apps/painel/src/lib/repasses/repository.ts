@@ -2276,7 +2276,7 @@ export const prepareRepasseEmailBatch = async (
       attachmentMatchStatus,
     });
     const validationPayload = JSON.stringify([...validation.errors, ...validation.warnings]);
-    const recipientId = stableHash64(`repasse-email-recipient|${batchId}|${index}|${professionalId}|${recipientEmail}|${attachmentCode}`);
+    const recipientId = stableHash64(`repasse-email-recipient|${batchId}|${professionalId}|${recipientEmail}|${attachmentCode}|${amountValue}`);
     const originalSheetRowJson = JSON.stringify({
       professionalId: row.professionalId,
       professionalName: row.professionalName,

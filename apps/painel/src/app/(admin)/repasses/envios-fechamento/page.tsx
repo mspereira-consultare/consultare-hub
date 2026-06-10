@@ -35,7 +35,7 @@ export default function RepasseEmailPage() {
     return (
       <main className="p-6">
         <div className="rounded-lg border bg-white p-4 text-sm text-slate-600">
-          Modulo de repasses desabilitado.
+          Módulo de repasses desabilitado.
         </div>
       </main>
     );
@@ -45,16 +45,17 @@ export default function RepasseEmailPage() {
     return (
       <main className="p-6">
         <div className="rounded-lg border bg-white p-4 text-sm text-slate-600">
-          Voce nao tem permissao para visualizar envios de fechamento.
+          Você não tem permissão para visualizar envios de fechamento.
         </div>
       </main>
     );
   }
 
   return (
-    <main className="flex flex-col gap-4 p-4 md:p-6">
-      <header className="flex flex-col gap-3 rounded-xl border bg-white p-4 shadow-sm md:flex-row md:items-center md:justify-between">
-        <div>
+    <main className="flex min-h-screen flex-col gap-6 bg-slate-50 p-4 md:p-6">
+      <header className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-slate-100 p-5 md:flex-row md:items-center md:justify-between">
+          <div>
           <Link
             href="/repasses"
             className="mb-2 inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
@@ -64,18 +65,22 @@ export default function RepasseEmailPage() {
           </Link>
           <div className="flex items-center gap-2">
             <MailCheck size={18} className="text-[#17407E]" />
-            <h1 className="text-lg font-semibold text-slate-900">Envios de fechamento</h1>
+            <h1 className="text-xl font-bold text-slate-800">Envios de fechamento</h1>
           </div>
+          <p className="mt-1 max-w-2xl text-xs text-slate-500">
+            Importe a planilha, vincule os anexos e selecione os destinatários antes de enfileirar o envio.
+          </p>
         </div>
-        <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
-          Competencia
+        <label className="flex w-full flex-col gap-1 text-xs font-bold uppercase tracking-wider text-slate-500 md:w-48">
+          Competência
           <input
             type="month"
             value={periodRef}
             onChange={(event) => setPeriodRef(event.target.value)}
-            className="h-9 rounded-lg border bg-white px-2 text-sm"
+            className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
           />
         </label>
+        </div>
       </header>
 
       <RepasseEmailPanel

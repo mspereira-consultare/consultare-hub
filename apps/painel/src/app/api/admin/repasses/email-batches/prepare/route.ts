@@ -61,7 +61,7 @@ const parseWorkbookRows = async (file: File): Promise<RepasseEmailBatchPrepareRo
   const arrayBuffer = await file.arrayBuffer();
   await workbook.xlsx.load(arrayBuffer as Parameters<typeof workbook.xlsx.load>[0]);
   const worksheet = workbook.worksheets[0];
-  if (!worksheet) throw new RepasseValidationError('A planilha enviada nao possui abas.');
+  if (!worksheet) throw new RepasseValidationError('A planilha enviada não possui abas.');
 
   const headerRow = worksheet.getRow(1);
   const headers: string[] = [];
@@ -106,7 +106,7 @@ const parseWorkbookRows = async (file: File): Promise<RepasseEmailBatchPrepareRo
 export async function POST(request: Request) {
   try {
     if (!isRepassesModuleEnabledServer()) {
-      return NextResponse.json({ error: 'Modulo de repasses desabilitado.' }, { status: 404 });
+      return NextResponse.json({ error: 'Módulo de repasses desabilitado.' }, { status: 404 });
     }
     const auth = await requireRepassesPermission('refresh');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });

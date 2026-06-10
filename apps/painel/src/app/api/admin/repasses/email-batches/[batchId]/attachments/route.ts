@@ -104,7 +104,7 @@ const collectUploads = async (batchId: string, formData: FormData) => {
 export async function POST(request: Request, context: ParamsContext) {
   try {
     if (!isRepassesModuleEnabledServer()) {
-      return NextResponse.json({ error: 'Modulo de repasses desabilitado.' }, { status: 404 });
+      return NextResponse.json({ error: 'Módulo de repasses desabilitado.' }, { status: 404 });
     }
     const auth = await requireRepassesPermission('refresh');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });

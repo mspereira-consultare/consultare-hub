@@ -34,6 +34,7 @@ import {
   ShieldCheck,
   ExternalLink,
   Bot,
+  Send,
 } from "lucide-react";
 import { hasPermission, type PageKey } from "@/lib/permissions";
 
@@ -238,6 +239,16 @@ const menuItems: MenuItem[] = [
     label: "Fechamento de Repasses",
     icon: FileText,
     group: "FINANCEIRO",
+    subgroup: "Repasses",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "repasses",
+  },
+  {
+    href: "/repasses/envios-fechamento",
+    label: "Envios de fechamento",
+    icon: Send,
+    group: "FINANCEIRO",
+    subgroup: "Repasses",
     roles: ["ADMIN", "GESTOR", "OPERADOR"],
     pageKey: "repasses",
   },
