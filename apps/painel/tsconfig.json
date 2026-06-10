@@ -23,6 +23,7 @@
       "@consultare/core/auth": ["../../packages/core/src/auth.ts"],
       "@consultare/core/db": ["../../packages/core/src/db.ts"],
       "@consultare/core/intranet/chatbot": ["../../packages/core/src/intranet/chatbot.ts"],
+      "@consultare/core/intranet/notifications": ["../../packages/core/src/intranet/notifications.ts"],
       "@consultare/core/permissions": ["../../packages/core/src/permissions.ts"],
       "@consultare/core/permissions-server": ["../../packages/core/src/permissions_server.ts"],
       "@consultare/core/tasks/types": ["../../packages/core/src/tasks/types.ts"],

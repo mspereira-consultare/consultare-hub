@@ -12,7 +12,6 @@ import {
   LayoutGrid,
   ListChecks,
   Megaphone,
-  MessageCircle,
   Microscope,
   Search,
   ShieldCheck,
@@ -20,11 +19,12 @@ import {
   Users,
 } from 'lucide-react';
 import { getDbConnection } from '@consultare/core/db';
+import { getIntranetNotificationSummary } from '@consultare/core/intranet/notifications';
 import { listPublishedNavigationNodes } from '@consultare/core/intranet/repository';
 import { hasPermission } from '@consultare/core/permissions';
 import { loadUserPermissionMatrix } from '@consultare/core/permissions-server';
 import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { getChatUnreadCount } from '@/lib/intranet/chat';
+import { HeaderActionsClient } from './header-actions-client';
 import SignOutButton from './sign-out-button';
 
 export const dynamic = 'force-dynamic';
@@ -165,10 +165,10 @@ export default async function SiteLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   const user = await getUser();
   const db = getDbConnection();
-  const [navItems, permissions, chatUnreadCount] = await Promise.all([
+  const [navItems, permissions, notificationSummary] = await Promise.all([
     listPublishedNavigationNodes(db, user),
     loadUserPermissionMatrix(db, user.id, user.role),
-    getChatUnreadCount(db, user),
+    getIntranetNotificationSummary(db, user.id, 8),
   ]);
   const canManageIntranet = hasPermission(permissions, 'intranet_dashboard', 'view', user.role);
   const splitNav = splitNavByFixedSections(navItems);
@@ -280,27 +280,7 @@ export default async function SiteLayout({
                 />
               </form>
 
-              <div className="flex items-center gap-2">
-                <Link
-                  href="/ia"
-                  className="flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-[#17407E] transition hover:bg-blue-50"
-                  aria-label="IA Consultare"
-                >
-                  <Bot size={18} />
-                </Link>
-                <Link
-                  href="/chat"
-                  className="relative flex h-9 w-9 items-center justify-center rounded-md border border-slate-200 text-[#17407E] transition hover:bg-blue-50"
-                  aria-label="Chat interno"
-                >
-                  <MessageCircle size={18} />
-                  {chatUnreadCount ? (
-                    <span className="absolute -right-1 -top-1 min-w-4 rounded-full bg-rose-600 px-1 text-center text-[10px] font-semibold leading-4 text-white">
-                      {chatUnreadCount > 9 ? '9+' : chatUnreadCount}
-                    </span>
-                  ) : null}
-                </Link>
-              </div>
+              <HeaderActionsClient initialSummary={notificationSummary} />
             </div>
           </header>
 

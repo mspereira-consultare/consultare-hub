@@ -5,6 +5,7 @@ export * from './permissions';
 export * from './permissions_server';
 export * from './intranet/catalog';
 export * from './intranet/chatbot';
+export * from './intranet/notifications';
 export * from './intranet/repository';
 export * from './tasks/types';
 export * from './tasks/repository';

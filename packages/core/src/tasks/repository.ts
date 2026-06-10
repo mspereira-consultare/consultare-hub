@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '../db';
 import { runInTransaction } from '../db';
+import { createIntranetNotifications, type IntranetNotificationCreateInput, type IntranetNotificationEventType } from '../intranet/notifications';
 import type {
   TaskActivityLog,
   TaskApprovalDecisionInput,
@@ -116,6 +117,17 @@ const normalizeStatus = (value: unknown, fallback: TaskStatus = 'BACKLOG'): Task
 };
 
 const isRetiredStatus = (status: TaskStatus) => RETIRED_STATUSES.includes(status);
+const taskHref = (taskId: string) => `/tarefas?task=${encodeURIComponent(taskId)}`;
+const taskStatusLabel = (status: TaskStatus) =>
+  ({
+    BACKLOG: 'Backlog',
+    A_FAZER: 'A fazer',
+    EM_ANDAMENTO: 'Em andamento',
+    AGUARDANDO_APROVACAO: 'Aguardando aprovação',
+    CONCLUIDA: 'Concluída',
+    ARQUIVADA: 'Arquivada',
+    CANCELADA: 'Cancelada',
+  })[status];
 
 const parseDate = (value: unknown): string | null => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -281,6 +293,35 @@ const mapChecklistItem = (row: Row): TaskChecklistItem => ({
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
+
+const collectTaskParticipantIds = (task: TaskDetail) => {
+  const ids = new Set<string>();
+  ids.add(task.createdBy);
+  if (task.primaryAssigneeUserId) ids.add(task.primaryAssigneeUserId);
+  if (task.approverUserId) ids.add(task.approverUserId);
+  for (const assignee of task.assignees) {
+    if (assignee.userId) ids.add(assignee.userId);
+  }
+  return Array.from(ids).filter(Boolean);
+};
+
+const notifyTaskUsers = async (
+  db: DbInterface,
+  task: TaskDetail,
+  actorUserId: string,
+  recipientUserIds: string[],
+  build: (userId: string) => Omit<IntranetNotificationCreateInput, 'userId'>
+) => {
+  const ids = Array.from(new Set(recipientUserIds.map(clean).filter((userId) => userId && userId !== actorUserId)));
+  if (!ids.length) return [];
+  return createIntranetNotifications(
+    db,
+    ids.map((userId) => ({
+      userId,
+      ...build(userId),
+    }))
+  );
+};
 
 const mapSummaryRow = (
   row: Row,
@@ -897,8 +938,36 @@ export const createTask = async (db: DbInterface, input: TaskCreateInput, actorU
       primaryAssigneeUserId,
       approverUserId,
     });
+    const task = await getTaskById(txDb, taskId, { userId: actorUserId, canViewAll: true });
+    const collaboratorRecipients = task.assignees
+      .filter((assignee) => assignee.roleType === 'COLLABORATOR')
+      .map((assignee) => assignee.userId);
 
-    return getTaskById(txDb, taskId, { userId: actorUserId, canViewAll: true });
+    await notifyTaskUsers(txDb, task, actorUserId, primaryAssigneeUserId ? [primaryAssigneeUserId] : [], () => ({
+      channel: 'task',
+      eventType: 'task_assigned_primary',
+      title: `Você foi definido como responsável em ${task.protocolId}`,
+      body: task.title,
+      href: taskHref(task.id),
+      entityType: 'task',
+      entityId: task.id,
+      sourceUserId: actorUserId,
+      dedupeKey: `task-created-primary:${task.id}:${primaryAssigneeUserId}`,
+    }));
+
+    await notifyTaskUsers(txDb, task, actorUserId, collaboratorRecipients, (userId) => ({
+      channel: 'task',
+      eventType: 'task_assigned_collaborator',
+      title: `Você foi incluído na tarefa ${task.protocolId}`,
+      body: task.title,
+      href: taskHref(task.id),
+      entityType: 'task',
+      entityId: task.id,
+      sourceUserId: actorUserId,
+      dedupeKey: `task-created-collaborator:${task.id}:${userId}`,
+    }));
+
+    return task;
   });
 };
 
@@ -915,6 +984,10 @@ export const updateTask = async (
   const current = await ensureTaskExists(db, cleanTaskId);
 
   return runInTransaction(db, async (txDb) => {
+    const previousAssigneeRows = await txDb.query(
+      `SELECT user_id, role_type FROM task_assignees WHERE task_id = ?`,
+      [cleanTaskId]
+    );
     const currentStatus = normalizeStatus(current.status);
     const currentIsRetired = isRetiredStatus(currentStatus);
     if (currentIsRetired && !viewer.canViewAll && clean(current.created_by) !== actorUserId) {
@@ -1051,8 +1124,91 @@ export const updateTask = async (
       cancellationReason: finalCancellationReason,
       previousOperationalStatus: nextPreviousOperationalStatus,
     });
+    const task = await getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
+    const previousAssigneeIds = new Set((previousAssigneeRows as Row[]).map((row) => clean(row.user_id)).filter(Boolean));
+    const previousPrimaryAssigneeUserId = nullable(current.primary_assignee_user_id);
+    const nextAssigneeIds = new Set(task.assignees.map((assignee) => assignee.userId).filter(Boolean));
+    const addedCollaboratorIds = [...nextAssigneeIds].filter(
+      (userId) => userId !== task.primaryAssigneeUserId && !previousAssigneeIds.has(userId)
+    );
 
-    return getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
+    if (task.primaryAssigneeUserId && task.primaryAssigneeUserId !== previousPrimaryAssigneeUserId) {
+      await notifyTaskUsers(txDb, task, actorUserId, [task.primaryAssigneeUserId], () => ({
+        channel: 'task',
+        eventType: 'task_assigned_primary',
+        title: `Você foi definido como responsável em ${task.protocolId}`,
+        body: task.title,
+        href: taskHref(task.id),
+        entityType: 'task',
+        entityId: task.id,
+        sourceUserId: actorUserId,
+        dedupeKey: `task-update-primary:${task.id}:${task.primaryAssigneeUserId}:${task.updatedAt}`,
+      }));
+    }
+
+    if (addedCollaboratorIds.length) {
+      await notifyTaskUsers(txDb, task, actorUserId, addedCollaboratorIds, (userId) => ({
+        channel: 'task',
+        eventType: 'task_assigned_collaborator',
+        title: `Você foi incluído na tarefa ${task.protocolId}`,
+        body: task.title,
+        href: taskHref(task.id),
+        entityType: 'task',
+        entityId: task.id,
+        sourceUserId: actorUserId,
+        dedupeKey: `task-update-collaborator:${task.id}:${userId}:${task.updatedAt}`,
+      }));
+    }
+
+    if (currentStatus !== nextStatus) {
+      const eventType: IntranetNotificationEventType =
+        activityAction === 'TASK_ARCHIVED'
+          ? 'task_archived'
+          : activityAction === 'TASK_CANCELED'
+            ? 'task_canceled'
+            : activityAction === 'TASK_RESTORED'
+              ? 'task_restored'
+              : 'task_status_changed';
+      const title =
+        activityAction === 'TASK_ARCHIVED'
+          ? `Tarefa ${task.protocolId} arquivada`
+          : activityAction === 'TASK_CANCELED'
+            ? `Tarefa ${task.protocolId} cancelada`
+            : activityAction === 'TASK_RESTORED'
+              ? `Tarefa ${task.protocolId} restaurada`
+              : `Status atualizado em ${task.protocolId}`;
+      const body =
+        activityAction === 'TASK_RESTORED'
+          ? `${task.title} voltou para ${taskStatusLabel(nextStatus)}.`
+          : `${task.title} agora está em ${taskStatusLabel(nextStatus)}.`;
+      await notifyTaskUsers(txDb, task, actorUserId, collectTaskParticipantIds(task), () => ({
+        channel: 'task',
+        eventType,
+        title,
+        body,
+        href: taskHref(task.id),
+        entityType: 'task',
+        entityId: task.id,
+        sourceUserId: actorUserId,
+        dedupeKey: `task-status:${task.id}:${nextStatus}:${task.updatedAt}`,
+      }));
+    }
+
+    if (parseDate(current.due_date) !== nextDueDate) {
+      await notifyTaskUsers(txDb, task, actorUserId, collectTaskParticipantIds(task), () => ({
+        channel: 'task',
+        eventType: 'task_due_date_changed',
+        title: `Prazo atualizado em ${task.protocolId}`,
+        body: nextDueDate ? `${task.title} agora vence em ${nextDueDate}.` : `${task.title} ficou sem prazo definido.`,
+        href: taskHref(task.id),
+        entityType: 'task',
+        entityId: task.id,
+        sourceUserId: actorUserId,
+        dedupeKey: `task-due-date:${task.id}:${nextDueDate || 'none'}:${task.updatedAt}`,
+      }));
+    }
+
+    return task;
   });
 };
 
@@ -1308,6 +1464,19 @@ export const addTaskComment = async (
     commentId: comment.id,
   });
 
+  const task = await getTaskById(db, cleanTaskId, { userId: actorUserId, canViewAll: true });
+  await notifyTaskUsers(db, task, actorUserId, collectTaskParticipantIds(task), () => ({
+    channel: 'task',
+    eventType: 'task_comment_added',
+    title: `Novo comentário em ${task.protocolId}`,
+    body: task.title,
+    href: taskHref(task.id),
+    entityType: 'task',
+    entityId: task.id,
+    sourceUserId: actorUserId,
+    dedupeKey: `task-comment:${comment.id}`,
+  }));
+
   return comment;
 };
 
@@ -1433,8 +1602,20 @@ export const requestTaskApproval = async (
       approverUserId,
       cycleNumber,
     });
+    const task = await getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
+    await notifyTaskUsers(txDb, task, actorUserId, [approverUserId], () => ({
+      channel: 'task',
+      eventType: 'task_approval_requested',
+      title: `Aprovação solicitada em ${task.protocolId}`,
+      body: task.title,
+      href: taskHref(task.id),
+      entityType: 'task',
+      entityId: task.id,
+      sourceUserId: actorUserId,
+      dedupeKey: `task-approval-request:${task.id}:${cycleNumber}:${approverUserId}`,
+    }));
 
-    return getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
+    return task;
   });
 };
 
@@ -1508,8 +1689,20 @@ export const decideTaskApproval = async (
       nextStatus,
       previousOperationalStatus: nextPreviousOperationalStatus,
     });
+    const task = await getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
+    await notifyTaskUsers(txDb, task, actorUserId, collectTaskParticipantIds(task), () => ({
+      channel: 'task',
+      eventType: 'task_approval_decided',
+      title: `Aprovação atualizada em ${task.protocolId}`,
+      body: `${task.title} foi ${decisionStatus.toLowerCase()}.`,
+      href: taskHref(task.id),
+      entityType: 'task',
+      entityId: task.id,
+      sourceUserId: actorUserId,
+      dedupeKey: `task-approval-decision:${task.id}:${decisionStatus}:${task.updatedAt}`,
+    }));
 
-    return getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
+    return task;
   });
 };
 

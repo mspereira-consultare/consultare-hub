@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   CheckCheck,
   Edit3,
@@ -113,6 +114,8 @@ const normalizeText = (value: unknown) =>
     .toLowerCase();
 
 export function ChatClient() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [users, setUsers] = useState<ChatUser[]>([]);
@@ -131,6 +134,8 @@ export function ChatClient() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageMenuRef = useRef<HTMLDivElement | null>(null);
 
+  const requestedConversationId = searchParams.get('conversation') || '';
+
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedId) || null,
     [conversations, selectedId]
@@ -141,17 +146,23 @@ export function ChatClient() {
       const res = await fetch('/api/chat/conversations', { cache: 'no-store' });
       if (!res.ok) throw new Error(await normalizeError(res));
       const json = await res.json();
-      const nextConversations = Array.isArray(json.data?.conversations) ? json.data.conversations : [];
+      const nextConversations: ChatConversation[] = Array.isArray(json.data?.conversations) ? json.data.conversations : [];
       setConversations(nextConversations);
       setCapabilities(json.data?.capabilities || { canCreateGroups: false, canManageChat: false });
       setCurrentUserId(String(json.data?.currentUserId || ''));
-      setSelectedId((current) => current || nextConversations[0]?.id || '');
+      setSelectedId((current) => {
+        if (current) return current;
+        if (requestedConversationId && nextConversations.some((conversation) => conversation.id === requestedConversationId)) {
+          return requestedConversationId;
+        }
+        return nextConversations[0]?.id || '';
+      });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar conversas.');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [requestedConversationId]);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -197,6 +208,20 @@ export function ChatClient() {
     }, 0);
     return () => window.clearTimeout(timeout);
   }, [loadConversations, loadUsers]);
+
+  useEffect(() => {
+    if (!requestedConversationId) return;
+    if (!conversations.some((conversation) => conversation.id === requestedConversationId)) return;
+    setSelectedId(requestedConversationId);
+  }, [conversations, requestedConversationId]);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.get('conversation') === selectedId) return;
+    params.set('conversation', selectedId);
+    router.replace(`/chat?${params.toString()}`, { scroll: false });
+  }, [router, searchParams, selectedId]);
 
   useEffect(() => {
     if (!selectedId) return;

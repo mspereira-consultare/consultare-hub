@@ -2,6 +2,7 @@
 
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
   Calendar,
@@ -357,6 +358,7 @@ const compareTasks = (left: TaskSummary, right: TaskSummary) => {
 };
 
 export function TasksClient({ currentUser }: TasksClientProps) {
+  const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>('KANBAN');
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [users, setUsers] = useState<TaskUserOption[]>([]);
@@ -389,6 +391,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const detailFileRef = useRef<HTMLInputElement | null>(null);
   const commentFileRef = useRef<HTMLInputElement | null>(null);
   const dragClickGuardRef = useRef<string | null>(null);
+  const requestedTaskId = searchParams.get('task') || '';
 
   const loadTasks = async (focusTaskId?: string) => {
     setBoardLoading(true);
@@ -501,6 +504,14 @@ export function TasksClient({ currentUser }: TasksClientProps) {
 
     return () => window.clearTimeout(timeoutId);
   }, [successMessage]);
+
+  useEffect(() => {
+    if (!requestedTaskId || detailOpen || taskLoading) return;
+    if (!tasks.some((task) => task.id === requestedTaskId)) return;
+    setSelectedTaskId(requestedTaskId);
+    void loadTaskDetail(requestedTaskId, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailOpen, requestedTaskId, taskLoading, tasks]);
 
   const visibleTasks = useMemo(() => {
     const term = normalizeText(search);

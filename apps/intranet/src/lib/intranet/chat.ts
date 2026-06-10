@@ -2,6 +2,7 @@ import 'server-only';
 
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@consultare/core/db';
+import { createIntranetNotifications, markIntranetNotificationsReadByEntity } from '@consultare/core/intranet/notifications';
 import { hasPermission } from '@consultare/core/permissions';
 import { loadUserPermissionMatrix } from '@consultare/core/permissions-server';
 
@@ -601,6 +602,35 @@ export const sendChatMessage = async (db: DbInterface, user: ChatUserContext, co
     );
   }
   await db.execute(`UPDATE intranet_chat_conversations SET updated_at = ? WHERE ${chatCollate('id')} = ?`, [now, conversationId]);
+  const members = await loadMembers(db, conversationId);
+  const conversationRows = await db.query(
+    `SELECT name, conversation_type FROM intranet_chat_conversations WHERE ${chatCollate('id')} = ? LIMIT 1`,
+    [conversationId]
+  );
+  const conversationRow = conversationRows[0] as Row | undefined;
+  const conversationType = clean(conversationRow?.conversation_type);
+  const conversationName =
+    conversationType === 'dm'
+      ? members.find((member) => member.userId !== user.id)?.name || 'Conversa privada'
+      : clean(conversationRow?.name) || 'Conversa';
+
+  await createIntranetNotifications(
+    db,
+    members
+      .filter((member) => member.userId !== user.id)
+      .map((member) => ({
+        userId: member.userId,
+        channel: 'chat',
+        eventType: 'chat_message_received',
+        title: `Nova mensagem em ${conversationName}`,
+        body: clean(input.body) || 'Nova mensagem com anexo.',
+        href: `/chat?conversation=${encodeURIComponent(conversationId)}`,
+        entityType: 'chat_conversation',
+        entityId: conversationId,
+        sourceUserId: user.id,
+        dedupeKey: `chat-message:${id}:${member.userId}`,
+      }))
+  );
   await markConversationRead(db, user, conversationId, id);
   return (await listChatMessages(db, user, conversationId, { after: '', limit: 1 })).find((message) => message.id === id) || null;
 };
@@ -620,6 +650,7 @@ export const markConversationRead = async (db: DbInterface, user: ChatUserContex
     `UPDATE intranet_chat_conversation_members SET last_read_message_id = ?, last_read_at = ? WHERE ${chatCollate('conversation_id')} = ? AND ${chatCollate('user_id')} = ?`,
     [messageId || null, nowIso(), conversationId, user.id]
   );
+  await markIntranetNotificationsReadByEntity(db, user.id, 'chat', 'chat_conversation', conversationId);
   return { conversationId, messageId: messageId || null };
 };
 
