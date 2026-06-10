@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import {
   CheckCheck,
   Edit3,
@@ -114,7 +114,6 @@ const normalizeText = (value: unknown) =>
     .toLowerCase();
 
 export function ChatClient() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -133,6 +132,7 @@ export function ChatClient() {
   const [messageActionMenu, setMessageActionMenu] = useState<MessageActionMenu>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageMenuRef = useRef<HTMLDivElement | null>(null);
+  const lastAppliedConversationParamRef = useRef('');
 
   const requestedConversationId = searchParams.get('conversation') || '';
 
@@ -210,8 +210,13 @@ export function ChatClient() {
   }, [loadConversations, loadUsers]);
 
   useEffect(() => {
-    if (!requestedConversationId) return;
+    if (!requestedConversationId) {
+      lastAppliedConversationParamRef.current = '';
+      return;
+    }
     if (!conversations.some((conversation) => conversation.id === requestedConversationId)) return;
+    if (lastAppliedConversationParamRef.current === requestedConversationId) return;
+    lastAppliedConversationParamRef.current = requestedConversationId;
     setSelectedId(requestedConversationId);
   }, [conversations, requestedConversationId]);
 
@@ -220,8 +225,9 @@ export function ChatClient() {
     const params = new URLSearchParams(searchParams.toString());
     if (params.get('conversation') === selectedId) return;
     params.set('conversation', selectedId);
-    router.replace(`/chat?${params.toString()}`, { scroll: false });
-  }, [router, searchParams, selectedId]);
+    const nextUrl = `/chat?${params.toString()}`;
+    window.history.replaceState(window.history.state, '', nextUrl);
+  }, [searchParams, selectedId]);
 
   useEffect(() => {
     if (!selectedId) return;

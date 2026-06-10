@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   ListChecks,
   Megaphone,
+  MessageCircle,
   Microscope,
   Search,
   ShieldCheck,
@@ -194,6 +195,13 @@ export default async function SiteLayout({
             >
               <Home size={17} />
               Home
+            </Link>
+            <Link
+              href="/chat"
+              className="mb-2 flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-blue-50 hover:text-[#17407E]"
+            >
+              <MessageCircle size={17} className="text-[#229A8A]" />
+              Chat interno
             </Link>
             <Link
               href="/faq"
