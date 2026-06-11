@@ -713,17 +713,43 @@ const applyFilters = (rows: PostConsultRow[], filters: PostConsultFilters) =>
     return true;
   });
 
-const getCommercialHeartbeat = async (db: DbInterface) => {
-  const rows = await db.query(`
-    SELECT status, last_run, details
-    FROM system_status
-    WHERE service_name = 'comercial'
-  `);
-  const first = rows[0] as { status?: unknown; last_run?: unknown; details?: unknown } | undefined;
+const getPostConsultHeartbeat = async (db: DbInterface) => {
+  const rows = (await db.query(
+    `
+      SELECT service_name, status, last_run, details
+      FROM system_status
+      WHERE service_name IN (?, ?)
+    `,
+    ['faturamento', 'comercial'],
+  )) as Array<{ service_name?: unknown; status?: unknown; last_run?: unknown; details?: unknown }>;
+
+  const normalizedRows = rows.map((row) => ({
+    serviceName: normalizeString(row?.service_name).toLowerCase(),
+    status: normalizeString(row?.status || 'UNKNOWN').toUpperCase() || 'UNKNOWN',
+    lastRun: normalizeString(row?.last_run) || null,
+    details: normalizeString(row?.details) || null,
+  }));
+
+  const pickStatus = () => {
+    if (normalizedRows.some((row) => row.status === 'RUNNING')) return 'RUNNING';
+    if (normalizedRows.some((row) => row.status === 'PENDING' || row.status === 'QUEUED')) return 'PENDING';
+    if (normalizedRows.some((row) => row.status === 'ERROR')) return 'ERROR';
+    if (normalizedRows.some((row) => row.status === 'ONLINE')) return 'ONLINE';
+    if (normalizedRows.some((row) => row.status === 'COMPLETED')) return 'COMPLETED';
+    return normalizedRows[0]?.status || 'UNKNOWN';
+  };
+
+  const sortedByLastRun = [...normalizedRows].sort((left, right) => normalizeString(right.lastRun).localeCompare(normalizeString(left.lastRun)));
+  const latest = sortedByLastRun[0];
+  const details = normalizedRows
+    .filter((row) => row.details)
+    .map((row) => `${row.serviceName}: ${row.details}`)
+    .join(' | ');
+
   return {
-    status: normalizeString(first?.status || 'UNKNOWN') || 'UNKNOWN',
-    last_run: normalizeString(first?.last_run) || null,
-    details: normalizeString(first?.details) || null,
+    status: pickStatus(),
+    last_run: latest?.lastRun || null,
+    details: details || null,
   };
 };
 
@@ -732,7 +758,7 @@ export const listPostConsultOptions = async (
   db: DbInterface = getDbConnection(),
 ): Promise<PostConsultOptions> => {
   const rows = await buildLinkedRows(filters, db);
-  const heartbeat = await getCommercialHeartbeat(db);
+  const heartbeat = await getPostConsultHeartbeat(db);
   return {
     availableUnits: Array.from(new Set(rows.map((row) => row.consultUnit))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     availableStatuses: Array.from(new Set(rows.flatMap((row) => row.proposalStatuses))).sort((a, b) => a.localeCompare(b, 'pt-BR')),

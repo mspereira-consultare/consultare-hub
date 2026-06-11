@@ -370,9 +370,13 @@ function PostConsultPageContent() {
       <div className="rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-col gap-1">
-            <JobQueueHeartbeat services={['comercial']} fallbackLastSyncAt={heartbeat?.last_run || null} label="Sincronização comercial" />
+            <JobQueueHeartbeat
+              services={['faturamento', 'comercial']}
+              fallbackLastSyncAt={heartbeat?.last_run || null}
+              label="Sincronização do pós-consulta"
+            />
             <p className="text-xs text-slate-500">
-              A atualização manual solicita novo processamento da base comercial e a página se recarrega automaticamente quando a fila concluir.
+              A atualização manual solicita novo processamento do faturamento e das propostas, e a página se recarrega automaticamente enquanto houver atualização pendente.
             </p>
           </div>
 

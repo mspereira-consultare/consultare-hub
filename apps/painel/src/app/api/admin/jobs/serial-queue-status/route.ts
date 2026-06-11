@@ -35,11 +35,11 @@ type SystemStatusRow = {
   details?: string | null;
 };
 
-const SERVICE_PAGE_MAP: Record<SerialServiceName, PageKey> = {
-  faturamento: 'financeiro',
-  repasses: 'repasses',
-  repasse_consolidacao: 'repasses',
-  comercial: 'propostas_pos_consulta',
+const SERVICE_PAGE_MAP: Record<SerialServiceName, PageKey[]> = {
+  faturamento: ['financeiro', 'propostas_pos_consulta'],
+  repasses: ['repasses'],
+  repasse_consolidacao: ['repasses'],
+  comercial: ['propostas', 'propostas_pos_consulta'],
 };
 
 const normalizeServices = (raw: string | null): SerialServiceName[] => {
@@ -79,7 +79,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const requestedServices = normalizeServices(searchParams.get('services'));
     const visibleServices = requestedServices.filter((service) =>
-      hasPermission(matrix, SERVICE_PAGE_MAP[service], 'view', role)
+      SERVICE_PAGE_MAP[service].some((page) => hasPermission(matrix, page, 'view', role))
     );
 
     if (visibleServices.length === 0) {
