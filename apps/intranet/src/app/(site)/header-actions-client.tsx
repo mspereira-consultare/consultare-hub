@@ -201,7 +201,7 @@ export function HeaderActionsClient({
           for (const toast of nextToasts) {
             const timeoutId = window.setTimeout(() => {
               dismissToast(toast.toastKey);
-            }, 7000);
+            }, 10000);
             toastTimersRef.current.set(toast.toastKey, timeoutId);
           }
         }

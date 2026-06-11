@@ -609,6 +609,7 @@ export const sendChatMessage = async (db: DbInterface, user: ChatUserContext, co
   );
   const conversationRow = conversationRows[0] as Row | undefined;
   const conversationType = clean(conversationRow?.conversation_type);
+  const senderName = members.find((member) => member.userId === user.id)?.name || 'um colaborador';
   const conversationName =
     conversationType === 'dm'
       ? members.find((member) => member.userId !== user.id)?.name || 'Conversa privada'
@@ -623,7 +624,7 @@ export const sendChatMessage = async (db: DbInterface, user: ChatUserContext, co
           userId: member.userId,
           channel: 'chat',
           eventType: 'chat_message_received',
-          title: `Nova mensagem em ${conversationName}`,
+          title: conversationType === 'dm' ? `Nova mensagem de ${senderName}` : `Nova mensagem em ${conversationName}`,
           body: clean(input.body) || 'Nova mensagem com anexo.',
           href: `/chat?conversation=${encodeURIComponent(conversationId)}`,
           entityType: 'chat_conversation',
