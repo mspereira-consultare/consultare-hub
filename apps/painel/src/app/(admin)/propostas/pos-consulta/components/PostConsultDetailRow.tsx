@@ -321,6 +321,12 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
                 </span>
               </div>
 
+              {row.billingSourceRowCount > 1 ? (
+                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  {row.billingSourceRowCount} lançamentos do faturamento foram agrupados neste atendimento.
+                </div>
+              ) : null}
+
               <div className="grid gap-3 xl:grid-cols-2">
                 {row.proposals.map((proposal) => (
                   <div key={proposal.proposalId} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">

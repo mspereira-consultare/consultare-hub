@@ -1,15 +1,22 @@
 import { createHash } from 'crypto';
 import { getDbConnection, type DbInterface } from '@/lib/db';
 
-const isMysqlProvider =
-  String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' ||
-  Boolean(process.env.MYSQL_URL) ||
-  Boolean(process.env.MYSQL_PUBLIC_URL);
+type SqlDialect = 'mysql' | 'sqlite';
 
-const ANALITICO_DATE_SQL = isMysqlProvider
-  ? `(CASE WHEN INSTR(data_do_pagamento, '/') > 0 THEN CONCAT(SUBSTR(data_do_pagamento, 7, 4), '-', SUBSTR(data_do_pagamento, 4, 2), '-', SUBSTR(data_do_pagamento, 1, 2)) ELSE data_do_pagamento END)`
-  : `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
-const INTEGER_CAST_TYPE = isMysqlProvider ? 'UNSIGNED' : 'INTEGER';
+const getRuntimeSqlDialect = (): SqlDialect => {
+  const provider = String(process.env.DB_PROVIDER || '').toLowerCase().trim();
+  if (provider === 'mysql' || process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL) {
+    return 'mysql';
+  }
+  return 'sqlite';
+};
+
+const getAnaliticoDateSql = (dialect: SqlDialect) =>
+  dialect === 'mysql'
+    ? `(CASE WHEN INSTR(data_do_pagamento, '/') > 0 THEN CONCAT(SUBSTR(data_do_pagamento, 7, 4), '-', SUBSTR(data_do_pagamento, 4, 2), '-', SUBSTR(data_do_pagamento, 1, 2)) ELSE data_do_pagamento END)`
+    : `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
+
+const getIntegerCastType = (dialect: SqlDialect) => (dialect === 'mysql' ? 'UNSIGNED' : 'INTEGER');
 
 export type PostConsultFilters = {
   startDate: string;
@@ -53,6 +60,7 @@ export type PostConsultRow = {
   consultUnit: string;
   consultProcedure: string;
   attendantResponsible: string;
+  billingSourceRowCount: number;
   proposalCount: number;
   proposalStatusSummary: string;
   proposalStatuses: string[];
@@ -113,13 +121,17 @@ type ContactCacheRow = {
   email_primary?: string | null;
 };
 
-type ConsultationSourceRow = {
+type RawConsultationSourceRow = {
   consult_date?: string | null;
   patient_id?: number | string | null;
   patient_name?: string | null;
   consult_unit?: string | null;
   consult_procedure?: string | null;
   attendant_responsible?: string | null;
+};
+
+type ConsultationSourceRow = RawConsultationSourceRow & {
+  billing_source_row_count: number;
 };
 
 type ProposalSourceRow = {
@@ -454,22 +466,73 @@ const buildSummary = (rows: PostConsultRow[]): PostConsultSummary => {
   };
 };
 
+const groupConsultationRows = (rows: RawConsultationSourceRow[]): ConsultationSourceRow[] => {
+  const grouped = new Map<string, ConsultationSourceRow>();
+
+  for (const row of rows) {
+    const consultDate = normalizeIsoDate(row.consult_date);
+    if (!consultDate) continue;
+
+    const patientId = normalizeNumber(row.patient_id);
+    const patientName = normalizeString(row.patient_name) || 'Não informado';
+    const consultUnit = normalizeString(row.consult_unit) || 'Sem unidade';
+    const consultProcedure = normalizeString(row.consult_procedure) || 'Consulta';
+    const attendantResponsible = normalizeString(row.attendant_responsible) || 'Não informado';
+    const patientGroupKey =
+      patientId > 0 ? `id:${Math.trunc(patientId)}` : `name:${normalizeComparableText(patientName) || patientName.toLowerCase()}`;
+    const groupKey = [
+      patientGroupKey,
+      consultDate,
+      normalizeComparableText(consultUnit),
+      normalizeComparableText(consultProcedure),
+      normalizeComparableText(attendantResponsible),
+    ].join('|');
+
+    const current = grouped.get(groupKey);
+    if (current) {
+      current.billing_source_row_count += 1;
+      if (!normalizeString(current.patient_name)) current.patient_name = patientName;
+      continue;
+    }
+
+    grouped.set(groupKey, {
+      consult_date: consultDate,
+      patient_id: patientId > 0 ? Math.trunc(patientId) : null,
+      patient_name: patientName,
+      consult_unit: consultUnit,
+      consult_procedure: consultProcedure,
+      attendant_responsible: attendantResponsible,
+      billing_source_row_count: 1,
+    });
+  }
+
+  return Array.from(grouped.values());
+};
+
 const fetchConsultationRows = async (filters: PostConsultFilters, db: DbInterface) =>
-  (await db.query(
-    `
-      SELECT DISTINCT
-        ${ANALITICO_DATE_SQL} AS consult_date,
-        CAST(COALESCE(\`prontuário\`, 0) AS ${INTEGER_CAST_TYPE}) AS patient_id,
-        TRIM(COALESCE(paciente, '')) AS patient_name,
-        TRIM(COALESCE(unidade, '')) AS consult_unit,
-        TRIM(COALESCE(procedimento, '')) AS consult_procedure,
-        TRIM(COALESCE(usuario_da_conta, '')) AS attendant_responsible
-      FROM faturamento_analitico
-      WHERE UPPER(TRIM(COALESCE(tipo_do_procedimento, ''))) = 'CONSULTA'
-        AND ${ANALITICO_DATE_SQL} BETWEEN ? AND ?
-    `,
-    [filters.startDate, filters.endDate],
-  )) as ConsultationSourceRow[];
+  (async () => {
+    const dialect = getRuntimeSqlDialect();
+    const analiticoDateSql = getAnaliticoDateSql(dialect);
+    const integerCastType = getIntegerCastType(dialect);
+
+    const rawRows = (await db.query(
+      `
+        SELECT
+          ${analiticoDateSql} AS consult_date,
+          CAST(COALESCE(\`prontuário\`, 0) AS ${integerCastType}) AS patient_id,
+          TRIM(COALESCE(paciente, '')) AS patient_name,
+          TRIM(COALESCE(unidade, '')) AS consult_unit,
+          TRIM(COALESCE(procedimento, '')) AS consult_procedure,
+          TRIM(COALESCE(usuario_da_conta, '')) AS attendant_responsible
+        FROM faturamento_analitico
+        WHERE UPPER(TRIM(COALESCE(tipo_do_procedimento, ''))) = 'CONSULTA'
+          AND ${analiticoDateSql} BETWEEN ? AND ?
+      `,
+      [filters.startDate, filters.endDate],
+    )) as RawConsultationSourceRow[];
+
+    return groupConsultationRows(rawRows);
+  })();
 
 const fetchProposalRows = async (filters: PostConsultFilters, db: DbInterface, hasProposalPatientName: boolean) => {
   const proposalPatientNameSelect = hasProposalPatientName
@@ -600,6 +663,7 @@ const buildLinkedRows = async (filters: PostConsultFilters, db: DbInterface) => 
       consultUnit,
       consultProcedure,
       attendantResponsible,
+      billingSourceRowCount: Math.max(1, Math.trunc(normalizeNumber(source.billing_source_row_count))),
       proposalCount: proposals.length,
       proposalStatusSummary: statusSummary.summary,
       proposalStatuses: statusSummary.statuses,

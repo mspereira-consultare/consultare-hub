@@ -18,6 +18,7 @@ export type PostConsultRow = {
   consultUnit: string;
   consultProcedure: string;
   attendantResponsible: string;
+  billingSourceRowCount: number;
   proposalCount: number;
   proposalStatusSummary: string;
   proposalStatuses: string[];

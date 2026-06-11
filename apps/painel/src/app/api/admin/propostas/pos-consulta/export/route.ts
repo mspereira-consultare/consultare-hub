@@ -44,6 +44,7 @@ const buildXlsx = async (args: {
     { header: 'Unidade da consulta', key: 'consultUnit', width: 24 },
     { header: 'Atendente responsável', key: 'attendantResponsible', width: 28 },
     { header: 'Consulta', key: 'consultProcedure', width: 30 },
+    { header: 'Lançamentos faturamento', key: 'billingSourceRowCount', width: 18 },
     { header: 'Qtd. propostas', key: 'proposalCount', width: 14 },
     { header: 'IDs das propostas', key: 'proposalIds', width: 24 },
     { header: 'Status resumo', key: 'proposalStatusSummary', width: 24 },
@@ -58,17 +59,17 @@ const buildXlsx = async (args: {
     { header: 'Última edição em', key: 'updatedAt', width: 22 },
   ];
 
-  worksheet.mergeCells('A1:T1');
+  worksheet.mergeCells('A1:U1');
   worksheet.getCell('A1').value = 'Propostas - base operacional de pós-consulta';
   worksheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
   worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17407E' } };
 
-  worksheet.mergeCells('A2:T2');
+  worksheet.mergeCells('A2:U2');
   worksheet.getCell('A2').value =
     `Período: ${args.filters.startDate} até ${args.filters.endDate} | Unidade: ${args.filters.unit === 'all' ? 'Todas as unidades' : args.filters.unit} | Status: ${args.filters.status === 'all' ? 'Todos' : args.filters.status} | Atendente: ${args.filters.responsible === 'all' ? 'Todos' : args.filters.responsible} | Fechou: ${args.filters.closed === 'all' ? 'Todos' : args.filters.closed}`;
   worksheet.getCell('A2').font = { size: 10 };
 
-  worksheet.mergeCells('A3:T3');
+  worksheet.mergeCells('A3:U3');
   worksheet.getCell('A3').value = `Gerado em: ${args.generatedAt}`;
   worksheet.getCell('A3').font = { size: 10 };
 
@@ -96,6 +97,7 @@ const buildXlsx = async (args: {
       row.consultUnit,
       row.attendantResponsible,
       row.consultProcedure,
+      row.billingSourceRowCount,
       row.proposalCount,
       row.proposals.map((proposal) => `#${proposal.proposalId}`).join(', '),
       row.proposalStatusSummary,
