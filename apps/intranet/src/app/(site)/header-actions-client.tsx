@@ -40,23 +40,31 @@ const playChatTone = async (contextRef: MutableRefObject<AudioContext | null>) =
   const now = context.currentTime;
   const gain = context.createGain();
   gain.gain.setValueAtTime(0.0001, now);
-  gain.gain.exponentialRampToValueAtTime(0.08, now + 0.02);
-  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+  gain.gain.exponentialRampToValueAtTime(0.18, now + 0.02);
+  gain.gain.exponentialRampToValueAtTime(0.07, now + 0.18);
+  gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.52);
   gain.connect(context.destination);
 
   const first = context.createOscillator();
   first.type = 'sine';
-  first.frequency.setValueAtTime(880, now);
+  first.frequency.setValueAtTime(1046, now);
   first.connect(gain);
   first.start(now);
-  first.stop(now + 0.14);
+  first.stop(now + 0.16);
 
   const second = context.createOscillator();
   second.type = 'sine';
-  second.frequency.setValueAtTime(660, now + 0.16);
+  second.frequency.setValueAtTime(1318, now + 0.2);
   second.connect(gain);
-  second.start(now + 0.16);
-  second.stop(now + 0.28);
+  second.start(now + 0.2);
+  second.stop(now + 0.34);
+
+  const third = context.createOscillator();
+  third.type = 'triangle';
+  third.frequency.setValueAtTime(1568, now + 0.38);
+  third.connect(gain);
+  third.start(now + 0.38);
+  third.stop(now + 0.52);
 };
 
 export function HeaderActionsClient({
@@ -76,8 +84,10 @@ export function HeaderActionsClient({
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const knownIdsRef = useRef(new Set((initialSummary.items || []).map((item) => item.id)));
-  const initializedRef = useRef(false);
+  const seenUnreadChatIdsRef = useRef(
+    new Set((initialSummary.items || []).filter((item) => item.channel === 'chat' && !item.isRead).map((item) => item.id))
+  );
+  const lastUnreadChatCountRef = useRef(initialSummary.unreadByChannel?.chat || 0);
   const lastSoundAtRef = useRef(0);
 
   const unreadChatCount = summary.unreadByChannel?.chat || 0;
@@ -97,7 +107,16 @@ export function HeaderActionsClient({
   };
 
   useEffect(() => {
-    const unlock = () => setAudioUnlocked(true);
+    const unlock = () => {
+      setAudioUnlocked(true);
+      const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      const context = audioContextRef.current || new Ctx();
+      audioContextRef.current = context;
+      if (context.state === 'suspended') {
+        void context.resume();
+      }
+    };
     window.addEventListener('pointerdown', unlock, { once: true });
     window.addEventListener('keydown', unlock, { once: true });
     return () => {
@@ -142,14 +161,12 @@ export function HeaderActionsClient({
         const next = await loadSummary();
         if (cancelled) return;
 
-        const unseenUnreadChat = next.items.filter(
-          (item) => item.channel === 'chat' && !item.isRead && !knownIdsRef.current.has(item.id)
-        );
-        for (const item of next.items) {
-          knownIdsRef.current.add(item.id);
-        }
+        const unreadChatItems = next.items.filter((item) => item.channel === 'chat' && !item.isRead);
+        const unseenUnreadChat = unreadChatItems.filter((item) => !seenUnreadChatIdsRef.current.has(item.id));
+        const nextUnreadChatCount = next.unreadByChannel?.chat || 0;
+        const hasNewChatActivity = unseenUnreadChat.length > 0 || nextUnreadChatCount > lastUnreadChatCountRef.current;
 
-        if (initializedRef.current && unseenUnreadChat.length > 0) {
+        if (hasNewChatActivity) {
           setChatPulse(true);
           setBellPulse(true);
           if (audioUnlocked && Date.now() - lastSoundAtRef.current > 4000) {
@@ -158,9 +175,11 @@ export function HeaderActionsClient({
           }
         }
 
+        seenUnreadChatIdsRef.current = new Set(unreadChatItems.map((item) => item.id));
+        lastUnreadChatCountRef.current = nextUnreadChatCount;
+
         setSummary(next);
         if (!open) setItems(next.items || []);
-        initializedRef.current = true;
       } catch (err: unknown) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : 'Erro ao atualizar notificações.');
@@ -171,11 +190,19 @@ export function HeaderActionsClient({
     const interval = window.setInterval(() => {
       if (document.visibilityState === 'hidden') return;
       void refresh();
-    }, 10000);
+    }, 5000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refresh();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       cancelled = true;
       window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [audioUnlocked, open]);
 
@@ -188,9 +215,6 @@ export function HeaderActionsClient({
       try {
         const nextItems = await loadItems();
         setItems(nextItems);
-        for (const item of nextItems) {
-          knownIdsRef.current.add(item.id);
-        }
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Erro ao carregar notificações.');
       } finally {

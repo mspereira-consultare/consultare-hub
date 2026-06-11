@@ -282,7 +282,7 @@ export const getIntranetNotificationSummary = async (
       `,
       [userId]
     ),
-    listIntranetNotifications(db, userId, { limit }),
+    listIntranetNotifications(db, userId, { limit, unreadOnly: true }),
   ]);
 
   const unreadByChannel: Record<IntranetNotificationChannel, number> = { chat: 0, task: 0 };
