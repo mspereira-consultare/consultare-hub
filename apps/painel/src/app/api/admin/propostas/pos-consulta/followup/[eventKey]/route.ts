@@ -28,6 +28,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ event
         firstContactAt: body?.firstContactAt ?? null,
         secondContactClosed: body?.secondContactClosed ?? null,
         secondContactAt: body?.secondContactAt ?? null,
+        nonClosureReason: body?.nonClosureReason ?? null,
         observation: body?.observation ?? null,
         updatedByUserId: auth.userId,
         updatedByUserName: auth.userName,

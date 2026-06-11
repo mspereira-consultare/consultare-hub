@@ -1,15 +1,18 @@
 'use client';
 
-import { AlertCircle, Check, ChevronDown, ChevronUp, Copy, Loader2, MessageCircle, Save } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { AlertCircle, Check, ChevronDown, ChevronUp, Copy, Loader2, MessageCircle } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCurrency, formatDateOnly, formatDateTime, formatLastUpdate, normalizePhoneForWhatsApp } from './formatters';
 import type { PostConsultRow } from './types';
 
 type Props = {
   row: PostConsultRow;
   canEdit: boolean;
+  nonClosureReasons: Array<{ value: string; label: string }>;
   onSaved: () => void;
 };
+
+const AUTOSAVE_DELAY_MS = 800;
 
 const closedBadgeClassName = (value: boolean | null) => {
   if (value === true) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
@@ -44,15 +47,39 @@ const buildDraftFromRow = (row: PostConsultRow) => ({
   firstContactAt: row.firstContactAt || '',
   secondContactClosed: boolToDraft(row.secondContactClosed),
   secondContactAt: row.secondContactAt || '',
+  nonClosureReason: row.nonClosureReason || '',
   observation: row.observation || '',
 });
 
-export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
+
+export function PostConsultDetailRow({ row, canEdit, nonClosureReasons, onSaved }: Props) {
   const [copiedEventKey, setCopiedEventKey] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [saveError, setSaveError] = useState('');
   const [draft, setDraft] = useState(() => buildDraftFromRow(row));
+  const saveTimeoutRef = useRef<number | null>(null);
+  const savedIndicatorTimeoutRef = useRef<number | null>(null);
+  const requestIdRef = useRef(0);
+  const lastSavedSnapshotRef = useRef(JSON.stringify(buildDraftFromRow(row)));
+
+  useEffect(() => {
+    const nextDraft = buildDraftFromRow(row);
+    setDraft(nextDraft);
+    setSaveError('');
+    setSaveStatus('idle');
+    lastSavedSnapshotRef.current = JSON.stringify(nextDraft);
+    if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+    if (savedIndicatorTimeoutRef.current) window.clearTimeout(savedIndicatorTimeoutRef.current);
+  }, [row]);
+
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+      if (savedIndicatorTimeoutRef.current) window.clearTimeout(savedIndicatorTimeoutRef.current);
+    };
+  }, []);
 
   const whatsappNumber = normalizePhoneForWhatsApp(row.patientPhone);
   const hasPhone = whatsappNumber.length > 0 && row.patientPhone !== 'Não informado';
@@ -60,20 +87,29 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
   const iconButtonBaseClassName =
     'inline-flex h-8 w-8 items-center justify-center rounded-lg border transition disabled:cursor-not-allowed disabled:opacity-50';
 
-  const hasChanges =
-    draft.firstContactClosed !== boolToDraft(row.firstContactClosed) ||
-    draft.firstContactAt !== (row.firstContactAt || '') ||
-    draft.secondContactClosed !== boolToDraft(row.secondContactClosed) ||
-    draft.secondContactAt !== (row.secondContactAt || '') ||
-    draft.observation !== (row.observation || '');
+  const draftFirstContactClosed = draftToBool(draft.firstContactClosed);
+  const draftSecondContactClosed = draftToBool(draft.secondContactClosed);
+  const draftEffectiveClosed = row.autoClosedByExecution || draftFirstContactClosed === true || draftSecondContactClosed === true;
+  const hasManualNo = draftFirstContactClosed === false || draftSecondContactClosed === false;
+  const requiresNonClosureReason = hasManualNo && !draftEffectiveClosed;
+  const validationError = requiresNonClosureReason && !draft.nonClosureReason ? 'Informe o motivo do não fechamento.' : '';
+  const currentSnapshot = JSON.stringify(draft);
+  const hasChanges = currentSnapshot !== lastSavedSnapshotRef.current;
+
+  useEffect(() => {
+    if (saveStatus !== 'saving') {
+      setSaveError('');
+      if (saveStatus === 'error') setSaveStatus('idle');
+    }
+  }, [currentSnapshot]);
 
   const firstContactBadge = useMemo(
-    () => closedBadgeClassName(canEdit ? draftToBool(draft.firstContactClosed) : row.firstContactClosed),
-    [canEdit, draft.firstContactClosed, row.firstContactClosed],
+    () => closedBadgeClassName(canEdit ? draftFirstContactClosed : row.firstContactClosed),
+    [canEdit, draftFirstContactClosed, row.firstContactClosed],
   );
   const secondContactBadge = useMemo(
-    () => closedBadgeClassName(canEdit ? draftToBool(draft.secondContactClosed) : row.secondContactClosed),
-    [canEdit, draft.secondContactClosed, row.secondContactClosed],
+    () => closedBadgeClassName(canEdit ? draftSecondContactClosed : row.secondContactClosed),
+    [canEdit, draftSecondContactClosed, row.secondContactClosed],
   );
   const rowClassName = row.closed
     ? 'group align-top bg-emerald-50/50 hover:bg-emerald-50'
@@ -90,6 +126,12 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
         ? 'bg-rose-50 group-hover:bg-rose-50'
         : 'bg-white group-hover:bg-slate-50';
 
+  const triggerSavedIndicator = () => {
+    setSaveStatus('saved');
+    if (savedIndicatorTimeoutRef.current) window.clearTimeout(savedIndicatorTimeoutRef.current);
+    savedIndicatorTimeoutRef.current = window.setTimeout(() => setSaveStatus('idle'), 1800);
+  };
+
   const handleCopyPhone = async () => {
     try {
       await navigator.clipboard.writeText(row.patientPhone);
@@ -100,18 +142,29 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
     }
   };
 
-  const handleSave = async () => {
-    setSaving(true);
+  const persistDraft = async () => {
+    if (!canEdit || !hasChanges) return;
+    if (validationError) {
+      setSaveError(validationError);
+      setSaveStatus('error');
+      return;
+    }
+
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    setSaveStatus('saving');
     setSaveError('');
+
     try {
       const response = await fetch(`/api/admin/propostas/pos-consulta/followup/${encodeURIComponent(row.eventKey)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firstContactClosed: draftToBool(draft.firstContactClosed),
+          firstContactClosed: draftFirstContactClosed,
           firstContactAt: draft.firstContactAt || null,
-          secondContactClosed: draftToBool(draft.secondContactClosed),
+          secondContactClosed: draftSecondContactClosed,
           secondContactAt: draft.secondContactAt || null,
+          nonClosureReason: draft.nonClosureReason || null,
           observation: draft.observation || null,
           sourceSnapshot: {
             patientId: row.patientId,
@@ -127,13 +180,54 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
       if (!response.ok) {
         throw new Error(String(payload?.error || 'Falha ao salvar pós-consulta.'));
       }
+      if (requestId !== requestIdRef.current) return;
+      lastSavedSnapshotRef.current = currentSnapshot;
+      triggerSavedIndicator();
       onSaved();
     } catch (error: unknown) {
+      if (requestId !== requestIdRef.current) return;
       setSaveError(error instanceof Error ? error.message : 'Erro ao salvar.');
-    } finally {
-      setSaving(false);
+      setSaveStatus('error');
     }
   };
+
+  useEffect(() => {
+    if (!canEdit || !hasChanges) return;
+    if (validationError) {
+      setSaveError(validationError);
+      setSaveStatus('error');
+      return;
+    }
+
+    if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = window.setTimeout(() => {
+      void persistDraft();
+    }, AUTOSAVE_DELAY_MS);
+
+    return () => {
+      if (saveTimeoutRef.current) window.clearTimeout(saveTimeoutRef.current);
+    };
+  }, [canEdit, currentSnapshot, hasChanges, validationError]);
+
+  const flushSaveOnBlur = () => {
+    if (!canEdit || !hasChanges || validationError) return;
+    if (saveTimeoutRef.current) {
+      window.clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+    void persistDraft();
+  };
+
+  const saveStatusLabel =
+    saveStatus === 'saving'
+      ? 'Salvando...'
+      : saveStatus === 'saved'
+        ? 'Salvo'
+        : saveStatus === 'error'
+          ? 'Erro ao salvar'
+          : hasChanges
+            ? 'Alterações pendentes'
+            : 'Sem alterações';
 
   return (
     <>
@@ -172,15 +266,28 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
           </div>
         </td>
         <td className="min-w-[210px] px-4 py-3">
-          <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClassName(row.proposalStatusSummary)}`}>
-            {row.proposalStatusSummary}
-          </span>
+          <div className="space-y-2">
+            <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClassName(row.proposalStatusSummary)}`}>
+              {row.proposalStatusSummary}
+            </span>
+            {row.autoClosedByExecution ? (
+              <div className="text-xs font-medium text-emerald-700">Fechamento automático: todas as propostas executadas</div>
+            ) : null}
+          </div>
         </td>
-        <td className="min-w-[150px] px-4 py-3">
-          {canEdit ? (
+        <td className="min-w-[170px] px-4 py-3">
+          {row.autoClosedByExecution ? (
+            <div className="space-y-2">
+              <span className="inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                Sim automático
+              </span>
+              <div className="text-xs text-slate-500">Bloqueado por execução total</div>
+            </div>
+          ) : canEdit ? (
             <select
               value={draft.firstContactClosed}
               onChange={(event) => setDraft((current) => ({ ...current, firstContactClosed: event.target.value }))}
+              onBlur={flushSaveOnBlur}
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
             >
               <option value="">Não definido</option>
@@ -199,17 +306,26 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
               type="datetime-local"
               value={draft.firstContactAt}
               onChange={(event) => setDraft((current) => ({ ...current, firstContactAt: event.target.value }))}
+              onBlur={flushSaveOnBlur}
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
             />
           ) : (
             <span className="text-sm text-slate-600">{formatDateTime(row.firstContactAt)}</span>
           )}
         </td>
-        <td className="min-w-[150px] px-4 py-3">
-          {canEdit ? (
+        <td className="min-w-[170px] px-4 py-3">
+          {row.autoClosedByExecution ? (
+            <div className="space-y-2">
+              <span className="inline-flex rounded-full border border-slate-200 bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500">
+                Bloqueado
+              </span>
+              <div className="text-xs text-slate-500">Fechamento já reconhecido automaticamente</div>
+            </div>
+          ) : canEdit ? (
             <select
               value={draft.secondContactClosed}
               onChange={(event) => setDraft((current) => ({ ...current, secondContactClosed: event.target.value }))}
+              onBlur={flushSaveOnBlur}
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
             >
               <option value="">Não definido</option>
@@ -228,17 +344,42 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
               type="datetime-local"
               value={draft.secondContactAt}
               onChange={(event) => setDraft((current) => ({ ...current, secondContactAt: event.target.value }))}
+              onBlur={flushSaveOnBlur}
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
             />
           ) : (
             <span className="text-sm text-slate-600">{formatDateTime(row.secondContactAt)}</span>
           )}
         </td>
+        <td className="min-w-[220px] px-4 py-3">
+          {canEdit ? (
+            <select
+              value={draft.nonClosureReason}
+              onChange={(event) => setDraft((current) => ({ ...current, nonClosureReason: event.target.value }))}
+              onBlur={flushSaveOnBlur}
+              disabled={row.autoClosedByExecution || !hasManualNo}
+              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-1 focus:ring-slate-200 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+            >
+              <option value="">
+                {row.autoClosedByExecution ? 'Não aplicável' : hasManualNo ? 'Selecione' : 'Marque Não para informar'}
+              </option>
+              {nonClosureReasons.map((reason) => (
+                <option key={reason.value} value={reason.value}>
+                  {reason.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-sm text-slate-600">{row.nonClosureReasonLabel || '—'}</span>
+          )}
+          {validationError ? <div className="mt-1 text-xs font-medium text-rose-600">{validationError}</div> : null}
+        </td>
         <td className="min-w-[280px] px-4 py-3">
           {canEdit ? (
             <textarea
               value={draft.observation}
               onChange={(event) => setDraft((current) => ({ ...current, observation: event.target.value }))}
+              onBlur={flushSaveOnBlur}
               rows={2}
               maxLength={2000}
               className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-1 focus:ring-slate-200"
@@ -287,29 +428,23 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
             >
               <MessageCircle size={13} />
             </a>
-            {canEdit ? (
-              <button
-                type="button"
-                onClick={handleSave}
-                disabled={!hasChanges || saving}
-                title={saving ? 'Salvando alterações' : hasChanges ? 'Salvar alterações' : 'Nenhuma alteração pendente'}
-                aria-label={saving ? 'Salvando alterações' : hasChanges ? 'Salvar alterações' : 'Nenhuma alteração pendente'}
-                className={`${iconButtonBaseClassName} border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100`}
-              >
-                {saving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
-              </button>
-            ) : null}
+          </div>
+          <div className="mt-2 flex items-center justify-center gap-1 text-[11px] text-slate-500">
+            {saveStatus === 'saving' ? <Loader2 size={12} className="animate-spin text-blue-600" /> : null}
+            {saveStatus === 'error' ? <AlertCircle size={12} className="text-rose-600" /> : null}
+            {saveStatus === 'saved' ? <Check size={12} className="text-emerald-600" /> : null}
+            <span className={saveStatus === 'error' ? 'text-rose-600' : saveStatus === 'saved' ? 'text-emerald-600' : ''}>{saveStatusLabel}</span>
           </div>
           {saveError ? (
-            <div title={saveError} aria-label={saveError} className="mt-2 flex items-center justify-center text-rose-600">
-              <AlertCircle size={14} />
+            <div title={saveError} aria-label={saveError} className="mt-1 text-center text-[11px] text-rose-600">
+              {saveError}
             </div>
           ) : null}
         </td>
       </tr>
       {expanded ? (
         <tr className="bg-slate-50/80">
-          <td colSpan={14} className="px-4 pb-4 pt-0">
+          <td colSpan={15} className="px-4 pb-4 pt-0">
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
@@ -321,9 +456,28 @@ export function PostConsultDetailRow({ row, canEdit, onSaved }: Props) {
                 </span>
               </div>
 
-              {row.billingSourceRowCount > 1 ? (
-                <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  {row.billingSourceRowCount} lançamentos do faturamento foram agrupados neste atendimento.
+              <div className="mb-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                {row.autoClosedByExecution ? (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                    Fechamento automático aplicado porque todas as propostas estão executadas.
+                  </div>
+                ) : null}
+                {row.billingSourceRowCount > 1 ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    {row.billingSourceRowCount} lançamentos do faturamento foram agrupados neste atendimento.
+                  </div>
+                ) : null}
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                  Total das propostas: <span className="font-semibold">{formatCurrency(row.totalProposalValue)}</span>
+                </div>
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                  Executado: <span className="font-semibold">{row.executedProposalCount} proposta(s) · {formatCurrency(row.executedProposalValue)}</span>
+                </div>
+              </div>
+
+              {row.nonClosureReasonLabel ? (
+                <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                  Motivo registrado para não fechamento: <span className="font-semibold">{row.nonClosureReasonLabel}</span>
                 </div>
               ) : null}
 

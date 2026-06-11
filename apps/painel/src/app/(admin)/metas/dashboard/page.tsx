@@ -20,8 +20,10 @@ import { GOAL_SCOPES, KPIS_AVAILABLE, PERIODICITY_OPTIONS, SECTORS, UNITS } from
 import { GoalsDashboardExecutiveView } from './components/GoalsDashboardExecutiveView';
 import { GoalsDashboardTable } from './components/GoalsDashboardTable';
 import { GoalsDashboardTabNav } from './components/GoalsDashboardTabNav';
+import { PostConsultRankingPanel } from './components/PostConsultRankingPanel';
 import { DashboardGoal, GoalFilters } from './types';
 import { calculateGoalProjectedPercentage, calculateGoalProjection, calculateGoalRemaining } from '@/lib/goals_metrics';
+import type { PostConsultRankingResponse } from '@/app/(admin)/propostas/pos-consulta/components/types';
 
 const DEFAULT_FILTERS: GoalFilters = {
   name: '',
@@ -108,6 +110,36 @@ function formatLastUpdated(value: Date) {
   });
 }
 
+const getTodayIso = () => {
+  const now = new Date();
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
+};
+
+const getMonthStartIso = () => {
+  const now = new Date();
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+  }).format(now).concat('-01');
+};
+
+const EMPTY_POST_CONSULT_RANKING: PostConsultRankingResponse = {
+  summary: {
+    totalAttendants: 0,
+    totalEvents: 0,
+    totalClosedEvents: 0,
+    conversionRate: 0,
+    executedProposalValue: 0,
+  },
+  rows: [],
+};
+
 export default function GoalsDashboardPage() {
   const [goals, setGoals] = useState<DashboardGoal[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,6 +154,12 @@ export default function GoalsDashboardPage() {
   const [exportingXlsx, setExportingXlsx] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [activeTab, setActiveTab] = useState('executive');
+  const [postConsultRanking, setPostConsultRanking] = useState<PostConsultRankingResponse>(EMPTY_POST_CONSULT_RANKING);
+  const [postConsultRankingLoading, setPostConsultRankingLoading] = useState(false);
+  const [postConsultRankingError, setPostConsultRankingError] = useState('');
+  const [postConsultUnits, setPostConsultUnits] = useState<string[]>([]);
+  const [postConsultDateRange, setPostConsultDateRange] = useState({ start: getMonthStartIso(), end: getTodayIso() });
+  const [postConsultSelectedUnit, setPostConsultSelectedUnit] = useState('all');
 
   const fetchData = async (forceFresh = false) => {
     setLoading(true);
@@ -175,6 +213,72 @@ export default function GoalsDashboardPage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    if (activeTab !== 'post-consulta') return;
+
+    (async () => {
+      try {
+        const params = new URLSearchParams({
+          startDate: postConsultDateRange.start,
+          endDate: postConsultDateRange.end,
+        });
+        const response = await fetch(`/api/admin/propostas/pos-consulta/options?${params.toString()}`, { cache: 'no-store' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(String(payload?.error || 'Falha ao carregar unidades do pós-consulta.'));
+        if (mounted) {
+          const units = Array.isArray(payload?.data?.availableUnits) ? payload.data.availableUnits : [];
+          setPostConsultUnits(units);
+          if (postConsultSelectedUnit !== 'all' && !units.includes(postConsultSelectedUnit)) {
+            setPostConsultSelectedUnit('all');
+          }
+        }
+      } catch {
+        if (mounted) setPostConsultUnits([]);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, postConsultDateRange.end, postConsultDateRange.start, postConsultSelectedUnit]);
+
+  useEffect(() => {
+    let mounted = true;
+    if (activeTab !== 'post-consulta') return;
+
+    (async () => {
+      setPostConsultRankingLoading(true);
+      setPostConsultRankingError('');
+      try {
+        const params = new URLSearchParams({
+          startDate: postConsultDateRange.start,
+          endDate: postConsultDateRange.end,
+          unit: postConsultSelectedUnit,
+        });
+        const response = await fetch(`/api/admin/goals/dashboard/post-consulta-ranking?${params.toString()}`, { cache: 'no-store' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(String(payload?.error || 'Não foi possível carregar o ranking de pós-consulta.'));
+        }
+        if (mounted) {
+          setPostConsultRanking(payload?.data || EMPTY_POST_CONSULT_RANKING);
+        }
+      } catch (error) {
+        if (mounted) {
+          setPostConsultRanking(EMPTY_POST_CONSULT_RANKING);
+          setPostConsultRankingError(error instanceof Error ? error.message : 'Não foi possível carregar o ranking de pós-consulta.');
+        }
+      } finally {
+        if (mounted) setPostConsultRankingLoading(false);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, postConsultDateRange.end, postConsultDateRange.start, postConsultSelectedUnit]);
 
   const availableOptions = useMemo(
     () => ({
@@ -241,6 +345,7 @@ export default function GoalsDashboardPage() {
   const tabDefinitions = useMemo(() => {
     const tabs: Array<{ id: string; label: string; count: number }> = [
       { id: 'executive', label: 'Executivo', count: filteredGoals.length },
+      { id: 'post-consulta', label: 'Pós-consulta', count: postConsultRanking.rows.length },
       ...sectorTabs,
     ];
 
@@ -249,7 +354,7 @@ export default function GoalsDashboardPage() {
     }
 
     return tabs;
-  }, [filteredGoals.length, resolveGoals.length, sectorTabs]);
+  }, [filteredGoals.length, postConsultRanking.rows.length, resolveGoals.length, sectorTabs]);
 
   useEffect(() => {
     if (!tabDefinitions.some((tab) => tab.id === activeTab)) {
@@ -840,6 +945,17 @@ export default function GoalsDashboardPage() {
               <Loader2 size={40} className="mb-4 animate-spin text-blue-600" />
               <p className="text-sm">Calculando indicadores...</p>
             </div>
+          ) : activeTab === 'post-consulta' ? (
+            <PostConsultRankingPanel
+              data={postConsultRanking}
+              loading={postConsultRankingLoading}
+              errorMessage={postConsultRankingError}
+              dateRange={postConsultDateRange}
+              selectedUnit={postConsultSelectedUnit}
+              unitOptions={postConsultUnits}
+              onChangeDateRange={setPostConsultDateRange}
+              onChangeUnit={setPostConsultSelectedUnit}
+            />
           ) : activeTab === 'executive' ? (
             <GoalsDashboardExecutiveView
               riskGoals={riskGoals}
@@ -871,13 +987,13 @@ export default function GoalsDashboardPage() {
             </section>
           )}
 
-          {!loading && goals.length === 0 && (
+          {!loading && activeTab !== 'post-consulta' && goals.length === 0 && (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
               Nenhuma meta configurada para o período atual.
             </div>
           )}
 
-          {!loading && goals.length > 0 && filteredGoals.length === 0 && (
+          {!loading && activeTab !== 'post-consulta' && goals.length > 0 && filteredGoals.length === 0 && (
             <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
               Nenhuma meta encontrada com os filtros aplicados.
             </div>

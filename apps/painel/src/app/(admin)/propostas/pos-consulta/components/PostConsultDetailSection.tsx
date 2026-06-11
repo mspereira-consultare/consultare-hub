@@ -1,7 +1,7 @@
 'use client';
 
 import { Loader2 } from 'lucide-react';
-import { formatPercent } from './formatters';
+import { formatCurrency, formatPercent } from './formatters';
 import { PostConsultDetailTable } from './PostConsultDetailTable';
 import type { PostConsultDetailResponse } from './types';
 
@@ -9,11 +9,12 @@ type Props = {
   detailData: PostConsultDetailResponse;
   loading: boolean;
   canEdit: boolean;
+  nonClosureReasons: Array<{ value: string; label: string }>;
   onChangePage: (page: number) => void;
   onRowSaved: () => void;
 };
 
-export function PostConsultDetailSection({ detailData, loading, canEdit, onChangePage, onRowSaved }: Props) {
+export function PostConsultDetailSection({ detailData, loading, canEdit, nonClosureReasons, onChangePage, onRowSaved }: Props) {
   const fromRow = detailData.totalRows === 0 ? 0 : (detailData.page - 1) * detailData.pageSize + 1;
   const toRow = Math.min(detailData.totalRows, detailData.page * detailData.pageSize);
 
@@ -33,7 +34,7 @@ export function PostConsultDetailSection({ detailData, loading, canEdit, onChang
       </div>
 
       <div className="p-5">
-        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total de propostas</p>
             <p className="mt-1 text-2xl font-bold text-slate-800">{detailData.summary.totalProposals}</p>
@@ -47,7 +48,7 @@ export function PostConsultDetailSection({ detailData, loading, canEdit, onChang
           <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
             <p className="text-[11px] font-bold uppercase tracking-wider text-blue-700">Taxa de conversão</p>
             <p className="mt-1 text-2xl font-bold text-blue-800">{formatPercent(detailData.summary.conversionRate)}</p>
-            <p className="mt-1 text-xs text-blue-700/80">Fechamentos / atendimentos</p>
+            <p className="mt-1 text-xs text-blue-700/80">Fechamentos / atendimentos · Meta mínima 40%</p>
           </div>
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
             <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Pendentes de contato</p>
@@ -58,6 +59,11 @@ export function PostConsultDetailSection({ detailData, loading, canEdit, onChang
             <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700">Sem fechamento após 2º contato</p>
             <p className="mt-1 text-2xl font-bold text-rose-800">{detailData.summary.afterSecondNoClosePatients}</p>
             <p className="mt-1 text-xs text-rose-700/80">Pacientes distintos no recorte</p>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Valor executado no pós-consulta</p>
+            <p className="mt-1 text-2xl font-bold text-emerald-800">{formatCurrency(detailData.summary.executedProposalValue)}</p>
+            <p className="mt-1 text-xs text-emerald-700/80">Somente propostas executadas no recorte</p>
           </div>
         </div>
 
@@ -72,7 +78,7 @@ export function PostConsultDetailSection({ detailData, loading, canEdit, onChang
           </div>
         ) : (
           <>
-            <PostConsultDetailTable rows={detailData.rows} canEdit={canEdit} onSaved={onRowSaved} />
+            <PostConsultDetailTable rows={detailData.rows} canEdit={canEdit} nonClosureReasons={nonClosureReasons} onSaved={onRowSaved} />
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-slate-500">
                 Página {detailData.page} de {detailData.totalPages}

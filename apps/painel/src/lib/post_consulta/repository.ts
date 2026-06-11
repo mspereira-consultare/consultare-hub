@@ -1,5 +1,10 @@
 import { createHash } from 'crypto';
 import { getDbConnection, type DbInterface } from '@/lib/db';
+import {
+  POST_CONSULT_EXECUTED_PROPOSAL_STATUSES,
+  POST_CONSULT_NON_CLOSURE_REASONS,
+  type PostConsultNonClosureReason,
+} from '@/lib/post_consulta/constants';
 
 type SqlDialect = 'mysql' | 'sqlite';
 
@@ -33,6 +38,7 @@ export type PostConsultOptions = {
   availableUnits: string[];
   availableStatuses: string[];
   availableResponsibles: string[];
+  nonClosureReasons: Array<{ value: PostConsultNonClosureReason; label: string }>;
   heartbeat: {
     status: string;
     last_run: string | null;
@@ -65,6 +71,13 @@ export type PostConsultRow = {
   proposalStatusSummary: string;
   proposalStatuses: string[];
   proposals: PostConsultProposalItem[];
+  nonClosureReason: PostConsultNonClosureReason | null;
+  nonClosureReasonLabel: string | null;
+  autoClosedByExecution: boolean;
+  effectiveClosed: boolean;
+  executedProposalCount: number;
+  executedProposalValue: number;
+  totalProposalValue: number;
   firstContactClosed: boolean | null;
   firstContactAt: string | null;
   secondContactClosed: boolean | null;
@@ -82,6 +95,37 @@ export type PostConsultSummary = {
   conversionRate: number;
   pendingPatients: number;
   afterSecondNoClosePatients: number;
+  executedProposalValue: number;
+};
+
+export type PostConsultRankingFilters = {
+  startDate: string;
+  endDate: string;
+  unit: string;
+};
+
+export type PostConsultRankingRow = {
+  attendantResponsible: string;
+  totalEvents: number;
+  totalClosedEvents: number;
+  conversionRate: number;
+  pendingPatients: number;
+  afterSecondNoClosePatients: number;
+  totalProposals: number;
+  executedProposalValue: number;
+};
+
+export type PostConsultRankingSummary = {
+  totalAttendants: number;
+  totalEvents: number;
+  totalClosedEvents: number;
+  conversionRate: number;
+  executedProposalValue: number;
+};
+
+export type PostConsultRankingResult = {
+  summary: PostConsultRankingSummary;
+  rows: PostConsultRankingRow[];
 };
 
 export type PostConsultDetailResult = {
@@ -108,6 +152,7 @@ export type PostConsultFollowupUpdateInput = {
   firstContactAt: string | null;
   secondContactClosed: boolean | null;
   secondContactAt: string | null;
+  nonClosureReason: PostConsultNonClosureReason | null;
   observation: string | null;
   updatedByUserId: string;
   updatedByUserName: string;
@@ -151,6 +196,7 @@ type FollowupControlRow = {
   first_contact_at?: string | null;
   second_contact_closed?: number | string | boolean | null;
   second_contact_at?: string | null;
+  non_closure_reason?: string | null;
   observation?: string | null;
   updated_by_user_name?: string | null;
   updated_at?: string | null;
@@ -164,6 +210,9 @@ const normalizeNumber = (value: unknown) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
+const nonClosureReasonMap = new Map(POST_CONSULT_NON_CLOSURE_REASONS.map((item) => [item.value, item.label]));
+const allowedNonClosureReasons = new Set(POST_CONSULT_NON_CLOSURE_REASONS.map((item) => item.value));
+const executedProposalStatuses = new Set(POST_CONSULT_EXECUTED_PROPOSAL_STATUSES);
 
 const normalizeComparableText = (value: unknown) =>
   normalizeString(value)
@@ -206,6 +255,16 @@ const normalizeBooleanInput = (value: unknown): boolean | null => {
   return null;
 };
 
+const normalizePostConsultNonClosureReason = (value: unknown): PostConsultNonClosureReason | null => {
+  const normalized = normalizeString(value).toUpperCase();
+  if (!normalized) return null;
+  return allowedNonClosureReasons.has(normalized as PostConsultNonClosureReason)
+    ? (normalized as PostConsultNonClosureReason)
+    : null;
+};
+
+const isExecutedProposalStatus = (value: unknown) => executedProposalStatuses.has(normalizeComparableText(value) as (typeof POST_CONSULT_EXECUTED_PROPOSAL_STATUSES)[number]);
+
 const normalizeObservation = (value: unknown) => normalizeString(value).slice(0, 2000);
 const createHttpError = (message: string, status: number) => {
   const error = new Error(message) as Error & { status: number };
@@ -238,6 +297,7 @@ export const ensurePostConsultSupportTable = async (db: DbInterface = getDbConne
       first_contact_at TEXT NULL,
       second_contact_closed INTEGER NULL,
       second_contact_at TEXT NULL,
+      non_closure_reason VARCHAR(64) NULL,
       observation TEXT NULL,
       updated_by_user_id VARCHAR(64) NULL,
       updated_by_user_name TEXT NULL,
@@ -255,6 +315,7 @@ export const ensurePostConsultSupportTable = async (db: DbInterface = getDbConne
   await ensureColumn(db, 'post_consulta_followup_control', 'first_contact_at', 'TEXT NULL');
   await ensureColumn(db, 'post_consulta_followup_control', 'second_contact_closed', 'INTEGER NULL');
   await ensureColumn(db, 'post_consulta_followup_control', 'second_contact_at', 'TEXT NULL');
+  await ensureColumn(db, 'post_consulta_followup_control', 'non_closure_reason', 'VARCHAR(64) NULL');
   await ensureColumn(db, 'post_consulta_followup_control', 'observation', 'TEXT NULL');
   await ensureColumn(db, 'post_consulta_followup_control', 'updated_by_user_id', 'VARCHAR(64) NULL');
   await ensureColumn(db, 'post_consulta_followup_control', 'updated_by_user_name', 'TEXT NULL');
@@ -299,6 +360,17 @@ export const normalizePostConsultFilters = (params: URLSearchParams | Record<str
     closed: normalizeString(getParam(params, 'closed')) || 'all',
     page: clamp(normalizeNumber(getParam(params, 'page')) || 1, 1, 999999),
     pageSize: clamp(normalizeNumber(getParam(params, 'pageSize')) || 25, 10, 200),
+  };
+};
+
+export const normalizePostConsultRankingFilters = (
+  params: URLSearchParams | Record<string, unknown>,
+): PostConsultRankingFilters => {
+  const base = normalizePostConsultFilters(params);
+  return {
+    startDate: base.startDate,
+    endDate: base.endDate,
+    unit: base.unit,
   };
 };
 
@@ -365,6 +437,7 @@ const readFollowupControlRows = async (db: DbInterface, eventKeys: string[]) => 
           first_contact_at,
           second_contact_closed,
           second_contact_at,
+          non_closure_reason,
           observation,
           updated_by_user_name,
           updated_at
@@ -386,8 +459,20 @@ const readFollowupControlRows = async (db: DbInterface, eventKeys: string[]) => 
 const hasSecondAttempt = (row: PostConsultRow) =>
   Boolean(row.secondContactAt) || row.secondContactClosed === true || row.secondContactClosed === false;
 
-const buildRowClosedState = (row: Pick<PostConsultRow, 'firstContactClosed' | 'secondContactClosed'>) =>
-  row.firstContactClosed === true || row.secondContactClosed === true;
+const buildAutoClosedByExecution = (proposals: PostConsultProposalItem[]) =>
+  proposals.length > 0 && proposals.every((proposal) => isExecutedProposalStatus(proposal.status));
+
+const buildExecutedProposalCount = (proposals: PostConsultProposalItem[]) =>
+  proposals.filter((proposal) => isExecutedProposalStatus(proposal.status)).length;
+
+const buildExecutedProposalValue = (proposals: PostConsultProposalItem[]) =>
+  proposals.reduce((total, proposal) => (isExecutedProposalStatus(proposal.status) ? total + normalizeNumber(proposal.totalValue) : total), 0);
+
+const buildTotalProposalValue = (proposals: PostConsultProposalItem[]) =>
+  proposals.reduce((total, proposal) => total + normalizeNumber(proposal.totalValue), 0);
+
+const buildRowClosedState = (row: Pick<PostConsultRow, 'autoClosedByExecution' | 'firstContactClosed' | 'secondContactClosed'>) =>
+  row.autoClosedByExecution || row.firstContactClosed === true || row.secondContactClosed === true;
 
 const sortRows = (rows: PostConsultRow[]) =>
   [...rows].sort((left, right) => {
@@ -429,13 +514,21 @@ const mapFollowupControlToRow = (row: PostConsultRow, control: FollowupControlRo
     firstContactAt: normalizeDateTimeInput(control?.first_contact_at) || null,
     secondContactClosed: normalizeBooleanInput(control?.second_contact_closed),
     secondContactAt: normalizeDateTimeInput(control?.second_contact_at) || null,
+    nonClosureReason: normalizePostConsultNonClosureReason(control?.non_closure_reason),
+    nonClosureReasonLabel: null,
     observation: normalizeString(control?.observation) || null,
     updatedByUserName: normalizeString(control?.updated_by_user_name) || null,
     updatedAt: normalizeString(control?.updated_at) || null,
+    effectiveClosed: false,
     closed: false,
   };
 
-  nextRow.closed = buildRowClosedState(nextRow);
+  nextRow.effectiveClosed = buildRowClosedState(nextRow);
+  nextRow.closed = nextRow.effectiveClosed;
+  if (nextRow.effectiveClosed) {
+    nextRow.nonClosureReason = null;
+  }
+  nextRow.nonClosureReasonLabel = nextRow.nonClosureReason ? nonClosureReasonMap.get(nextRow.nonClosureReason) || null : null;
   return nextRow;
 };
 
@@ -444,14 +537,16 @@ const buildSummary = (rows: PostConsultRow[]): PostConsultSummary => {
   const afterSecondNoClosePatients = new Set<string>();
   let totalProposals = 0;
   let totalClosedEvents = 0;
+  let executedProposalValue = 0;
 
   for (const row of rows) {
     totalProposals += row.proposalCount;
-    if (row.closed) totalClosedEvents += 1;
-    if (!row.firstContactAt && !row.secondContactAt && row.firstContactClosed !== true && row.secondContactClosed !== true) {
+    executedProposalValue += row.executedProposalValue;
+    if (row.effectiveClosed) totalClosedEvents += 1;
+    if (!row.effectiveClosed && !row.firstContactAt && !row.secondContactAt && row.firstContactClosed !== true && row.secondContactClosed !== true) {
       pendingPatients.add(row.patientKey);
     }
-    if (!row.closed && hasSecondAttempt(row)) {
+    if (!row.effectiveClosed && hasSecondAttempt(row)) {
       afterSecondNoClosePatients.add(row.patientKey);
     }
   }
@@ -463,6 +558,7 @@ const buildSummary = (rows: PostConsultRow[]): PostConsultSummary => {
     conversionRate: rows.length > 0 ? (totalClosedEvents * 100) / rows.length : 0,
     pendingPatients: pendingPatients.size,
     afterSecondNoClosePatients: afterSecondNoClosePatients.size,
+    executedProposalValue,
   };
 };
 
@@ -651,6 +747,10 @@ const buildLinkedRows = async (filters: PostConsultFilters, db: DbInterface) => 
     };
     const eventKey = buildEventKeyFromSnapshot(snapshot);
     const statusSummary = buildProposalStatusSummary(proposals.map((proposal) => proposal.status));
+    const autoClosedByExecution = buildAutoClosedByExecution(proposals);
+    const executedProposalCount = buildExecutedProposalCount(proposals);
+    const executedProposalValue = buildExecutedProposalValue(proposals);
+    const totalProposalValue = buildTotalProposalValue(proposals);
 
     const row: PostConsultRow = {
       eventKey,
@@ -668,6 +768,13 @@ const buildLinkedRows = async (filters: PostConsultFilters, db: DbInterface) => 
       proposalStatusSummary: statusSummary.summary,
       proposalStatuses: statusSummary.statuses,
       proposals,
+      nonClosureReason: null,
+      nonClosureReasonLabel: null,
+      autoClosedByExecution,
+      effectiveClosed: autoClosedByExecution,
+      executedProposalCount,
+      executedProposalValue,
+      totalProposalValue,
       firstContactClosed: null,
       firstContactAt: null,
       secondContactClosed: null,
@@ -675,7 +782,7 @@ const buildLinkedRows = async (filters: PostConsultFilters, db: DbInterface) => 
       observation: null,
       updatedByUserName: null,
       updatedAt: null,
-      closed: false,
+      closed: autoClosedByExecution,
     };
 
     rows.push(row);
@@ -763,6 +870,7 @@ export const listPostConsultOptions = async (
     availableUnits: Array.from(new Set(rows.map((row) => row.consultUnit))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     availableStatuses: Array.from(new Set(rows.flatMap((row) => row.proposalStatuses))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
     availableResponsibles: Array.from(new Set(rows.map((row) => row.attendantResponsible))).sort((a, b) => a.localeCompare(b, 'pt-BR')),
+    nonClosureReasons: [...POST_CONSULT_NON_CLOSURE_REASONS],
     heartbeat,
   };
 };
@@ -797,6 +905,130 @@ export const listPostConsultDetails = async (
   };
 };
 
+const createPostConsultFiltersFromRanking = (filters: PostConsultRankingFilters): PostConsultFilters => ({
+  startDate: filters.startDate,
+  endDate: filters.endDate,
+  unit: filters.unit,
+  status: 'all',
+  responsible: 'all',
+  closed: 'all',
+  page: 1,
+  pageSize: 200,
+});
+
+export const listPostConsultRanking = async (
+  filters: PostConsultRankingFilters,
+  db: DbInterface = getDbConnection(),
+): Promise<PostConsultRankingResult> => {
+  const baseFilters = createPostConsultFiltersFromRanking(filters);
+  const rows = sortRows(applyFilters(await buildLinkedRows(baseFilters, db), baseFilters));
+  const grouped = new Map<string, PostConsultRankingRow>();
+
+  for (const row of rows) {
+    const key = normalizeString(row.attendantResponsible) || 'Não informado';
+    const current = grouped.get(key) || {
+      attendantResponsible: key,
+      totalEvents: 0,
+      totalClosedEvents: 0,
+      conversionRate: 0,
+      pendingPatients: 0,
+      afterSecondNoClosePatients: 0,
+      totalProposals: 0,
+      executedProposalValue: 0,
+    };
+
+    current.totalEvents += 1;
+    current.totalProposals += row.proposalCount;
+    current.executedProposalValue += row.executedProposalValue;
+    if (row.effectiveClosed) current.totalClosedEvents += 1;
+    if (!row.effectiveClosed && !row.firstContactAt && !row.secondContactAt && row.firstContactClosed !== true && row.secondContactClosed !== true) {
+      current.pendingPatients += 1;
+    }
+    if (!row.effectiveClosed && hasSecondAttempt(row)) {
+      current.afterSecondNoClosePatients += 1;
+    }
+
+    grouped.set(key, current);
+  }
+
+  const rankingRows = Array.from(grouped.values())
+    .map((row) => ({
+      ...row,
+      conversionRate: row.totalEvents > 0 ? (row.totalClosedEvents * 100) / row.totalEvents : 0,
+    }))
+    .sort((left, right) => {
+      if (right.conversionRate !== left.conversionRate) return right.conversionRate - left.conversionRate;
+      if (right.totalClosedEvents !== left.totalClosedEvents) return right.totalClosedEvents - left.totalClosedEvents;
+      if (right.executedProposalValue !== left.executedProposalValue) return right.executedProposalValue - left.executedProposalValue;
+      return left.attendantResponsible.localeCompare(right.attendantResponsible, 'pt-BR');
+    });
+
+  const summary: PostConsultRankingSummary = {
+    totalAttendants: rankingRows.length,
+    totalEvents: rankingRows.reduce((total, row) => total + row.totalEvents, 0),
+    totalClosedEvents: rankingRows.reduce((total, row) => total + row.totalClosedEvents, 0),
+    conversionRate: 0,
+    executedProposalValue: rankingRows.reduce((total, row) => total + row.executedProposalValue, 0),
+  };
+  summary.conversionRate = summary.totalEvents > 0 ? (summary.totalClosedEvents * 100) / summary.totalEvents : 0;
+
+  return {
+    summary,
+    rows: rankingRows,
+  };
+};
+
+const resolveLinkedProposalsForSnapshot = async (
+  snapshot: PostConsultFollowupSourceSnapshot,
+  db: DbInterface,
+): Promise<PostConsultProposalItem[]> => {
+  const proposalColumns = await listColumnNames(db, 'feegow_proposals');
+  const hasProposalPatientName = proposalColumns.has('patient_name');
+  const proposalPatientNameSelect = hasProposalPatientName
+    ? `TRIM(COALESCE(patient_name, '')) AS proposal_patient_name`
+    : `'' AS proposal_patient_name`;
+  const proposalRows = (await db.query(
+    `
+      SELECT
+        proposal_id,
+        date AS proposal_date,
+        status,
+        unit_name,
+        professional_name,
+        total_value,
+        patient_id,
+        ${proposalPatientNameSelect}
+      FROM feegow_proposals
+      WHERE date = ?
+    `,
+    [snapshot.consultDate],
+  )) as ProposalSourceRow[];
+
+  let linked = proposalRows.filter((proposal) => normalizeNumber(proposal.patient_id) > 0 && normalizeNumber(proposal.patient_id) === normalizeNumber(snapshot.patientId));
+  if (!linked.length) {
+    const patientName = normalizeComparableText(snapshot.patientName);
+    if (patientName) {
+      linked = proposalRows.filter((proposal) => normalizeComparableText(proposal.proposal_patient_name) === patientName);
+    }
+  }
+
+  return Array.from(
+    new Map(
+      linked.map((proposal) => {
+        const item: PostConsultProposalItem = {
+          proposalId: Math.trunc(normalizeNumber(proposal.proposal_id)),
+          proposalDate: normalizeIsoDate(proposal.proposal_date) || snapshot.consultDate,
+          status: normalizeString(proposal.status) || 'Sem status',
+          unitName: normalizeString(proposal.unit_name) || 'Sem unidade',
+          professionalName: normalizeString(proposal.professional_name) || 'Não informado',
+          totalValue: normalizeNumber(proposal.total_value),
+        };
+        return [item.proposalId, item] as const;
+      }),
+    ).values(),
+  );
+};
+
 export const upsertPostConsultFollowup = async (
   input: PostConsultFollowupUpdateInput,
   db: DbInterface = getDbConnection(),
@@ -826,6 +1058,21 @@ export const upsertPostConsultFollowup = async (
   const secondContactClosed = normalizeBooleanInput(input.secondContactClosed);
   const firstContactAt = formatDateTimeForStorage(input.firstContactAt);
   const secondContactAt = formatDateTimeForStorage(input.secondContactAt);
+  const linkedProposals = await resolveLinkedProposalsForSnapshot(snapshot, db);
+  const autoClosedByExecution = buildAutoClosedByExecution(linkedProposals);
+  const effectiveClosed = buildRowClosedState({
+    autoClosedByExecution,
+    firstContactClosed,
+    secondContactClosed,
+  });
+  const hasManualNo = firstContactClosed === false || secondContactClosed === false;
+  let nonClosureReason = normalizePostConsultNonClosureReason(input.nonClosureReason);
+  if (effectiveClosed || !hasManualNo) {
+    nonClosureReason = null;
+  }
+  if (hasManualNo && !effectiveClosed && !nonClosureReason) {
+    throw createHttpError('Informe o motivo do não fechamento para salvar o pós-consulta.', 400);
+  }
   const observation = normalizeObservation(input.observation) || null;
   const updatedAt = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
@@ -843,11 +1090,12 @@ export const upsertPostConsultFollowup = async (
         first_contact_at,
         second_contact_closed,
         second_contact_at,
+        non_closure_reason,
         observation,
         updated_by_user_id,
         updated_by_user_name,
         updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(event_key) DO UPDATE SET
         patient_id = excluded.patient_id,
         patient_name = excluded.patient_name,
@@ -859,6 +1107,7 @@ export const upsertPostConsultFollowup = async (
         first_contact_at = excluded.first_contact_at,
         second_contact_closed = excluded.second_contact_closed,
         second_contact_at = excluded.second_contact_at,
+        non_closure_reason = excluded.non_closure_reason,
         observation = excluded.observation,
         updated_by_user_id = excluded.updated_by_user_id,
         updated_by_user_name = excluded.updated_by_user_name,
@@ -876,6 +1125,7 @@ export const upsertPostConsultFollowup = async (
       firstContactAt,
       secondContactClosed === null ? null : secondContactClosed ? 1 : 0,
       secondContactAt,
+      nonClosureReason,
       observation,
       normalizeString(input.updatedByUserId) || null,
       normalizeString(input.updatedByUserName) || 'Usuário',

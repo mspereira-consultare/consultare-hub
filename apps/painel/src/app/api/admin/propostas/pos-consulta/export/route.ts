@@ -50,27 +50,33 @@ const buildXlsx = async (args: {
     { header: 'Status resumo', key: 'proposalStatusSummary', width: 24 },
     { header: 'Detalhe das propostas', key: 'proposalDetail', width: 72 },
     { header: 'Fechou?', key: 'closed', width: 12 },
+    { header: 'Fechamento automático', key: 'autoClosedByExecution', width: 18 },
     { header: '1º contato fechou?', key: 'firstContactClosed', width: 18 },
     { header: 'Data/hora do contato', key: 'firstContactAt', width: 22 },
     { header: '2º contato fechou?', key: 'secondContactClosed', width: 18 },
     { header: 'Data/hora da ligação', key: 'secondContactAt', width: 22 },
+    { header: 'Motivo do não fechamento', key: 'nonClosureReasonLabel', width: 26 },
+    { header: 'Qtd. executadas', key: 'executedProposalCount', width: 14 },
+    { header: 'Valor executado', key: 'executedProposalValue', width: 18 },
+    { header: 'Valor total propostas', key: 'totalProposalValue', width: 18 },
     { header: 'Observações', key: 'observation', width: 36 },
     { header: 'Última edição por', key: 'updatedByUserName', width: 22 },
     { header: 'Última edição em', key: 'updatedAt', width: 22 },
   ];
 
-  worksheet.mergeCells('A1:U1');
+  worksheet.mergeCells('A1:Y1');
   worksheet.getCell('A1').value = 'Propostas - base operacional de pós-consulta';
   worksheet.getCell('A1').font = { bold: true, size: 14, color: { argb: 'FFFFFFFF' } };
   worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17407E' } };
 
-  worksheet.mergeCells('A2:U2');
+  worksheet.mergeCells('A2:Y2');
   worksheet.getCell('A2').value =
     `Período: ${args.filters.startDate} até ${args.filters.endDate} | Unidade: ${args.filters.unit === 'all' ? 'Todas as unidades' : args.filters.unit} | Status: ${args.filters.status === 'all' ? 'Todos' : args.filters.status} | Atendente: ${args.filters.responsible === 'all' ? 'Todos' : args.filters.responsible} | Fechou: ${args.filters.closed === 'all' ? 'Todos' : args.filters.closed}`;
   worksheet.getCell('A2').font = { size: 10 };
 
-  worksheet.mergeCells('A3:U3');
-  worksheet.getCell('A3').value = `Gerado em: ${args.generatedAt}`;
+  worksheet.mergeCells('A3:Y3');
+  const executedProposalValue = args.rows.reduce((total, row) => total + row.executedProposalValue, 0);
+  worksheet.getCell('A3').value = `Gerado em: ${args.generatedAt} | Valor executado no recorte: ${formatCurrency(executedProposalValue)}`;
   worksheet.getCell('A3').font = { size: 10 };
 
   const headerRow = worksheet.getRow(5);
@@ -102,11 +108,16 @@ const buildXlsx = async (args: {
       row.proposals.map((proposal) => `#${proposal.proposalId}`).join(', '),
       row.proposalStatusSummary,
       proposalDetail || '-',
-      row.closed ? 'Sim' : 'Não',
+      row.effectiveClosed ? 'Sim' : 'Não',
+      row.autoClosedByExecution ? 'Sim' : 'Não',
       row.firstContactClosed === null ? 'Não definido' : row.firstContactClosed ? 'Sim' : 'Não',
       formatDateTime(row.firstContactAt),
       row.secondContactClosed === null ? 'Não definido' : row.secondContactClosed ? 'Sim' : 'Não',
       formatDateTime(row.secondContactAt),
+      row.nonClosureReasonLabel || '-',
+      row.executedProposalCount,
+      formatCurrency(row.executedProposalValue),
+      formatCurrency(row.totalProposalValue),
       row.observation || '-',
       row.updatedByUserName || '-',
       formatDateTime(row.updatedAt),
@@ -174,7 +185,15 @@ const buildPdf = async (args: {
         font: regular,
         color: rgb(0.2, 0.2, 0.2),
       });
-      return height - 124;
+      const executedProposalValue = args.rows.reduce((total, row) => total + row.executedProposalValue, 0);
+      target.drawText(`Valor executado no recorte: ${formatCurrency(executedProposalValue)}`, {
+        x: margin,
+        y: height - 106,
+        size: 9,
+        font: regular,
+        color: rgb(0.2, 0.2, 0.2),
+      });
+      return height - 138;
     }
     return height - 42;
   };
@@ -206,8 +225,8 @@ const buildPdf = async (args: {
       row.consultUnit.slice(0, 18),
       row.attendantResponsible.slice(0, 18),
       row.proposals.map((proposal) => `#${proposal.proposalId}`).join(', ').slice(0, 24),
-      row.proposalStatusSummary.slice(0, 18),
-      row.closed ? 'Sim' : 'Não',
+      row.autoClosedByExecution ? 'Auto' : row.proposalStatusSummary.slice(0, 18),
+      row.effectiveClosed ? 'Sim' : 'Não',
       formatDateTime(row.firstContactAt).slice(0, 16),
       formatDateTime(row.secondContactAt).slice(0, 16),
     ];

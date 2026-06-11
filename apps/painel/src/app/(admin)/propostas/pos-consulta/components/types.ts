@@ -23,6 +23,13 @@ export type PostConsultRow = {
   proposalStatusSummary: string;
   proposalStatuses: string[];
   proposals: PostConsultProposalItem[];
+  nonClosureReason: string | null;
+  nonClosureReasonLabel: string | null;
+  autoClosedByExecution: boolean;
+  effectiveClosed: boolean;
+  executedProposalCount: number;
+  executedProposalValue: number;
+  totalProposalValue: number;
   firstContactClosed: boolean | null;
   firstContactAt: string | null;
   secondContactClosed: boolean | null;
@@ -40,6 +47,7 @@ export type PostConsultSummary = {
   conversionRate: number;
   pendingPatients: number;
   afterSecondNoClosePatients: number;
+  executedProposalValue: number;
 };
 
 export type PostConsultDetailResponse = {
@@ -57,9 +65,34 @@ export type PostConsultOptions = {
   availableUnits: string[];
   availableStatuses: string[];
   availableResponsibles: string[];
+  nonClosureReasons: Array<{ value: string; label: string }>;
   heartbeat: {
     status?: string;
     last_run?: string | null;
     details?: string | null;
   } | null;
+};
+
+export type PostConsultRankingRow = {
+  attendantResponsible: string;
+  totalEvents: number;
+  totalClosedEvents: number;
+  conversionRate: number;
+  pendingPatients: number;
+  afterSecondNoClosePatients: number;
+  totalProposals: number;
+  executedProposalValue: number;
+};
+
+export type PostConsultRankingSummary = {
+  totalAttendants: number;
+  totalEvents: number;
+  totalClosedEvents: number;
+  conversionRate: number;
+  executedProposalValue: number;
+};
+
+export type PostConsultRankingResponse = {
+  summary: PostConsultRankingSummary;
+  rows: PostConsultRankingRow[];
 };

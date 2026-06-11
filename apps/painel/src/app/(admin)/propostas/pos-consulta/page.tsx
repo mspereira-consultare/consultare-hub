@@ -24,6 +24,7 @@ const EMPTY_DETAIL_DATA: PostConsultDetailResponse = {
     conversionRate: 0,
     pendingPatients: 0,
     afterSecondNoClosePatients: 0,
+    executedProposalValue: 0,
   },
   rows: [],
   page: 1,
@@ -38,6 +39,7 @@ const EMPTY_OPTIONS: PostConsultOptions = {
   availableUnits: [],
   availableStatuses: [],
   availableResponsibles: [],
+  nonClosureReasons: [],
   heartbeat: null,
 };
 
@@ -431,6 +433,7 @@ function PostConsultPageContent() {
         detailData={detailData}
         loading={detailLoading}
         canEdit={options.canEdit}
+        nonClosureReasons={options.nonClosureReasons}
         onChangePage={setDetailPage}
         onRowSaved={handleRowSaved}
       />
