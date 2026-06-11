@@ -14,6 +14,8 @@
     "db:bootstrap:mysql-schema:dry": "node scripts/bootstrap-mysql-schema.cjs --dry-run",
     "db:backfill:intranet-basic-access": "node scripts/backfill-intranet-basic-access.cjs",
     "db:backfill:feegow-appointments": "node scripts/backfill-feegow-appointments.cjs",
+    "db:reconcile:faturamento:csv": "node scripts/reconcile-faturamento-from-csv.cjs",
+    "db:validate:post-consulta:csv": "node scripts/validate-post-consulta-source-from-csv.cjs",
     "db:migrate:turso-to-mysql": "node scripts/migrate-turso-to-mysql.cjs",
     "db:migrate:turso-to-mysql:dry": "node scripts/migrate-turso-to-mysql.cjs --dry-run",
     "db:migrate:weekly-goals-35-50": "node scripts/migrate-weekly-goals-35-50.cjs",
