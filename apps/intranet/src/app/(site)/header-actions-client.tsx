@@ -3,8 +3,12 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
-import { Bell, Loader2, MessageCircle } from 'lucide-react';
+import { Bell, Loader2, MessageCircle, X } from 'lucide-react';
 import type { IntranetNotification, IntranetNotificationSummary } from '@consultare/core/intranet/notifications';
+
+type NotificationToast = IntranetNotification & {
+  toastKey: string;
+};
 
 const normalizeError = async (response: Response) => {
   try {
@@ -81,9 +85,12 @@ export function HeaderActionsClient({
   const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [chatPulse, setChatPulse] = useState(false);
   const [bellPulse, setBellPulse] = useState(false);
+  const [toasts, setToasts] = useState<NotificationToast[]>([]);
   const dropdownRef = useRef<HTMLDivElement | null>(null);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const toastTimersRef = useRef(new Map<string, number>());
+  const seenUnreadIdsRef = useRef(new Set((initialSummary.items || []).filter((item) => !item.isRead).map((item) => item.id)));
   const seenUnreadChatIdsRef = useRef(
     new Set((initialSummary.items || []).filter((item) => item.channel === 'chat' && !item.isRead).map((item) => item.id))
   );
@@ -106,6 +113,15 @@ export function HeaderActionsClient({
     return (Array.isArray(payload.data) ? payload.data : []) as IntranetNotification[];
   };
 
+  const dismissToast = (toastKey: string) => {
+    const timerId = toastTimersRef.current.get(toastKey);
+    if (timerId) {
+      window.clearTimeout(timerId);
+      toastTimersRef.current.delete(toastKey);
+    }
+    setToasts((current) => current.filter((toast) => toast.toastKey !== toastKey));
+  };
+
   useEffect(() => {
     const unlock = () => {
       setAudioUnlocked(true);
@@ -122,6 +138,15 @@ export function HeaderActionsClient({
     return () => {
       window.removeEventListener('pointerdown', unlock);
       window.removeEventListener('keydown', unlock);
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const timerId of toastTimersRef.current.values()) {
+        window.clearTimeout(timerId);
+      }
+      toastTimersRef.current.clear();
     };
   }, []);
 
@@ -161,10 +186,25 @@ export function HeaderActionsClient({
         const next = await loadSummary();
         if (cancelled) return;
 
+        const unseenUnread = next.items.filter((item) => !item.isRead && !seenUnreadIdsRef.current.has(item.id));
         const unreadChatItems = next.items.filter((item) => item.channel === 'chat' && !item.isRead);
         const unseenUnreadChat = unreadChatItems.filter((item) => !seenUnreadChatIdsRef.current.has(item.id));
         const nextUnreadChatCount = next.unreadByChannel?.chat || 0;
         const hasNewChatActivity = unseenUnreadChat.length > 0 || nextUnreadChatCount > lastUnreadChatCountRef.current;
+
+        if (unseenUnread.length > 0) {
+          const nextToasts = unseenUnread.slice(0, 3).map((item) => ({
+            ...item,
+            toastKey: `${item.id}:${Date.now()}`,
+          }));
+          setToasts((current) => [...nextToasts, ...current].slice(0, 4));
+          for (const toast of nextToasts) {
+            const timeoutId = window.setTimeout(() => {
+              dismissToast(toast.toastKey);
+            }, 7000);
+            toastTimersRef.current.set(toast.toastKey, timeoutId);
+          }
+        }
 
         if (hasNewChatActivity) {
           setChatPulse(true);
@@ -175,6 +215,7 @@ export function HeaderActionsClient({
           }
         }
 
+        seenUnreadIdsRef.current = new Set(next.items.filter((item) => !item.isRead).map((item) => item.id));
         seenUnreadChatIdsRef.current = new Set(unreadChatItems.map((item) => item.id));
         lastUnreadChatCountRef.current = nextUnreadChatCount;
 
@@ -244,6 +285,7 @@ export function HeaderActionsClient({
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao abrir notificação.');
     } finally {
+      setToasts((current) => current.filter((toast) => toast.id !== item.id));
       setOpen(false);
       const currentUrl = `${window.location.pathname}${window.location.search}`;
       if (item.href !== currentUrl) {
@@ -264,6 +306,11 @@ export function HeaderActionsClient({
         unreadCount: 0,
         unreadByChannel: { chat: 0, task: 0 },
       }));
+      setToasts([]);
+      for (const timerId of toastTimersRef.current.values()) {
+        window.clearTimeout(timerId);
+      }
+      toastTimersRef.current.clear();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao marcar todas como lidas.');
     }
@@ -271,6 +318,48 @@ export function HeaderActionsClient({
 
   return (
     <div className="relative flex items-center gap-2">
+      {toasts.length ? (
+        <div className="pointer-events-none fixed right-5 top-20 z-[70] flex w-[min(360px,calc(100vw-2rem))] flex-col gap-3">
+          {toasts.map((toast) => (
+            <div
+              key={toast.toastKey}
+              className="pointer-events-auto animate-[fade-in_180ms_ease-out] overflow-hidden rounded-2xl border border-slate-200 bg-white/95 shadow-2xl backdrop-blur"
+            >
+              <div className="flex items-start gap-3 p-4">
+                <button
+                  type="button"
+                  onClick={() => void navigateToNotification(toast)}
+                  className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                >
+                  <span
+                    className={`mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                      toast.channel === 'chat' ? 'bg-blue-100 text-[#17407E]' : 'bg-emerald-100 text-emerald-700'
+                    }`}
+                  >
+                    {toast.channel === 'chat' ? <MessageCircle size={18} /> : <Bell size={18} />}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="truncate text-sm font-semibold text-slate-900">{toast.title}</span>
+                      <span className="shrink-0 text-[11px] text-slate-500">{formatRelativeTime(toast.createdAt)}</span>
+                    </span>
+                    <span className="mt-1 block text-xs leading-5 text-slate-600">{toast.body}</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => dismissToast(toast.toastKey)}
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                  aria-label="Fechar notificação"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <button
         ref={buttonRef}
         type="button"
