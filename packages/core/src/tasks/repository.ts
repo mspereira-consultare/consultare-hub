@@ -314,13 +314,18 @@ const notifyTaskUsers = async (
 ) => {
   const ids = Array.from(new Set(recipientUserIds.map(clean).filter((userId) => userId && userId !== actorUserId)));
   if (!ids.length) return [];
-  return createIntranetNotifications(
-    db,
-    ids.map((userId) => ({
-      userId,
-      ...build(userId),
-    }))
-  );
+  try {
+    return await createIntranetNotifications(
+      db,
+      ids.map((userId) => ({
+        userId,
+        ...build(userId),
+      }))
+    );
+  } catch (error) {
+    console.error(`Erro ao criar notificações da tarefa ${task.id}:`, error);
+    return [];
+  }
 };
 
 const mapSummaryRow = (

@@ -614,23 +614,27 @@ export const sendChatMessage = async (db: DbInterface, user: ChatUserContext, co
       ? members.find((member) => member.userId !== user.id)?.name || 'Conversa privada'
       : clean(conversationRow?.name) || 'Conversa';
 
-  await createIntranetNotifications(
-    db,
-    members
-      .filter((member) => member.userId !== user.id)
-      .map((member) => ({
-        userId: member.userId,
-        channel: 'chat',
-        eventType: 'chat_message_received',
-        title: `Nova mensagem em ${conversationName}`,
-        body: clean(input.body) || 'Nova mensagem com anexo.',
-        href: `/chat?conversation=${encodeURIComponent(conversationId)}`,
-        entityType: 'chat_conversation',
-        entityId: conversationId,
-        sourceUserId: user.id,
-        dedupeKey: `chat-message:${id}:${member.userId}`,
-      }))
-  );
+  try {
+    await createIntranetNotifications(
+      db,
+      members
+        .filter((member) => member.userId !== user.id)
+        .map((member) => ({
+          userId: member.userId,
+          channel: 'chat',
+          eventType: 'chat_message_received',
+          title: `Nova mensagem em ${conversationName}`,
+          body: clean(input.body) || 'Nova mensagem com anexo.',
+          href: `/chat?conversation=${encodeURIComponent(conversationId)}`,
+          entityType: 'chat_conversation',
+          entityId: conversationId,
+          sourceUserId: user.id,
+          dedupeKey: `chat-message:${id}:${member.userId}`,
+        }))
+    );
+  } catch (error) {
+    console.error('Erro ao criar notificações do chat:', error);
+  }
   await markConversationRead(db, user, conversationId, id);
   return (await listChatMessages(db, user, conversationId, { after: '', limit: 1 })).find((message) => message.id === id) || null;
 };
@@ -650,7 +654,11 @@ export const markConversationRead = async (db: DbInterface, user: ChatUserContex
     `UPDATE intranet_chat_conversation_members SET last_read_message_id = ?, last_read_at = ? WHERE ${chatCollate('conversation_id')} = ? AND ${chatCollate('user_id')} = ?`,
     [messageId || null, nowIso(), conversationId, user.id]
   );
-  await markIntranetNotificationsReadByEntity(db, user.id, 'chat', 'chat_conversation', conversationId);
+  try {
+    await markIntranetNotificationsReadByEntity(db, user.id, 'chat', 'chat_conversation', conversationId);
+  } catch (error) {
+    console.error('Erro ao marcar notificações do chat como lidas:', error);
+  }
   return { conversationId, messageId: messageId || null };
 };
 

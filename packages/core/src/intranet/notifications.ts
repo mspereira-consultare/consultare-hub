@@ -63,7 +63,12 @@ type NotificationListOptions = {
 const clean = (value: unknown) => String(value ?? '').trim();
 const nullable = (value: unknown) => clean(value) || null;
 const nowIso = () => new Date().toISOString();
-const isMysql = () => process.env.DB_PROVIDER === 'mysql';
+const isMysql = () => {
+  const provider = clean(process.env.DB_PROVIDER).toLowerCase();
+  if (provider === 'mysql') return true;
+  if (provider === 'turso') return false;
+  return Boolean(process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL);
+};
 const MAX_LIMIT = 50;
 
 const safeAddColumn = async (db: DbInterface, sql: string) => {
