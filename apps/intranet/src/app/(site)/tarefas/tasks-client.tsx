@@ -393,6 +393,18 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const dragClickGuardRef = useRef<string | null>(null);
   const requestedTaskId = searchParams.get('task') || '';
 
+  const replaceTaskParamInUrl = (taskId?: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (taskId) {
+      params.set('task', taskId);
+    } else {
+      params.delete('task');
+    }
+    const nextQuery = params.toString();
+    const nextUrl = nextQuery ? `/tarefas?${nextQuery}` : '/tarefas';
+    window.history.replaceState(window.history.state, '', nextUrl);
+  };
+
   const loadTasks = async (focusTaskId?: string) => {
     setBoardLoading(true);
     setError(null);
@@ -482,6 +494,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
 
   const openTaskDetail = async (taskId: string) => {
     setSelectedTaskId(taskId);
+    replaceTaskParamInUrl(taskId);
     await loadTaskDetail(taskId, true);
   };
 
@@ -567,6 +580,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
 
   const closeDetail = () => {
     setDetailOpen(false);
+    replaceTaskParamInUrl(null);
     setDetailTaskFiles([]);
     setCommentFiles([]);
     setCommentBody('');
