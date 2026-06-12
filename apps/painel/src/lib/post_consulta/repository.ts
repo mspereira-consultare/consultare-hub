@@ -1,5 +1,6 @@
 import { createHash } from 'crypto';
 import { getDbConnection, type DbInterface } from '@/lib/db';
+import { pickEffectiveSystemStatus } from '@/lib/system_status_health';
 import {
   POST_CONSULT_EXECUTED_PROPOSAL_STATUSES,
   POST_CONSULT_NON_CLOSURE_REASONS,
@@ -849,12 +850,30 @@ const getPostConsultHeartbeat = async (db: DbInterface) => {
     ['faturamento', 'comercial', 'worker_faturamento_scraping', 'propostas'],
   )) as Array<{ service_name?: unknown; status?: unknown; last_run?: unknown; details?: unknown }>;
 
-  const normalizedRows = rows.map((row) => ({
-    serviceName: heartbeatAliases[normalizeString(row?.service_name).toLowerCase()] || normalizeString(row?.service_name).toLowerCase(),
-    status: normalizeString(row?.status || 'UNKNOWN').toUpperCase() || 'UNKNOWN',
-    lastRun: normalizeString(row?.last_run) || null,
-    details: normalizeString(row?.details) || null,
-  }));
+  const grouped = new Map<string, Array<{ serviceName: string; status: string; lastRun: string | null; details: string | null }>>();
+  for (const row of rows) {
+    const serviceName = heartbeatAliases[normalizeString(row?.service_name).toLowerCase()] || normalizeString(row?.service_name).toLowerCase();
+    if (!serviceName) continue;
+    const current = grouped.get(serviceName) || [];
+    current.push({
+      serviceName,
+      status: normalizeString(row?.status || 'UNKNOWN').toUpperCase() || 'UNKNOWN',
+      lastRun: normalizeString(row?.last_run) || null,
+      details: normalizeString(row?.details) || null,
+    });
+    grouped.set(serviceName, current);
+  }
+
+  const normalizedRows = Array.from(grouped.entries()).map(([serviceName, serviceRows]) =>
+    pickEffectiveSystemStatus(
+      serviceRows.map((row) => ({
+        serviceName,
+        status: row.status,
+        lastRun: row.lastRun,
+        details: row.details,
+      })),
+    ),
+  );
 
   const pickStatus = () => {
     if (normalizedRows.some((row) => row.status === 'RUNNING')) return 'RUNNING';

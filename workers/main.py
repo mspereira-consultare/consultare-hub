@@ -1036,7 +1036,7 @@ WATCHDOG_STALE_BUSINESS_SEC = max(60, int(os.getenv("WATCHDOG_STALE_BUSINESS_SEC
 WATCHDOG_STALE_OFFHOURS_SEC = max(120, int(os.getenv("WATCHDOG_STALE_OFFHOURS_SEC", "900")))
 WATCHDOG_SERVICES = [
     s.strip()
-    for s in str(os.getenv("WATCHDOG_SERVICES", "monitor_medico")).split(",")
+    for s in str(os.getenv("WATCHDOG_SERVICES", "monitor_medico,faturamento,comercial")).split(",")
     if s.strip()
 ]
 

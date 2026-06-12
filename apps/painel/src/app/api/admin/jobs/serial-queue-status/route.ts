@@ -5,6 +5,8 @@ import { getDbConnection } from '@/lib/db';
 import { hasPermission, type PageKey } from '@/lib/permissions';
 import { loadUserPermissionMatrix } from '@/lib/permissions_server';
 import { withCache, buildCacheKey } from '@/lib/api_cache';
+import { pickEffectiveSystemStatus } from '@/lib/system_status_health';
+import { parseSystemStatusTimestamp } from '@/lib/system_status_time';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -41,6 +43,10 @@ const SERVICE_PAGE_MAP: Record<SerialServiceName, PageKey[]> = {
   repasse_consolidacao: ['repasses'],
   comercial: ['propostas', 'propostas_pos_consulta'],
 };
+const SERVICE_ALIASES: Partial<Record<SerialServiceName, string[]>> = {
+  faturamento: ['worker_faturamento_scraping'],
+  comercial: ['propostas'],
+};
 
 const normalizeServices = (raw: string | null): SerialServiceName[] => {
   const input = String(raw || '')
@@ -55,13 +61,6 @@ const normalizeServices = (raw: string | null): SerialServiceName[] => {
 };
 
 const isQueueActiveStatus = (status: string) => ['RUNNING', 'QUEUED', 'PENDING'].includes(status);
-
-const normalizeDbDate = (raw: string | null): number => {
-  if (!raw) return 0;
-  const iso = String(raw).replace(' ', 'T');
-  const ms = new Date(iso).getTime();
-  return Number.isFinite(ms) ? ms : 0;
-};
 
 export async function GET(request: Request) {
   try {
@@ -92,24 +91,50 @@ export async function GET(request: Request) {
     );
 
     const data = await withCache(key, CACHE_TTL_MS, async () => {
-      const placeholders = visibleServices.map(() => '?').join(', ');
+      const queryServices = Array.from(
+        new Set(visibleServices.flatMap((service) => [service, ...(SERVICE_ALIASES[service] || [])])),
+      );
+      const placeholders = queryServices.map(() => '?').join(', ');
       const rows = await db.query(
         `
         SELECT service_name, status, last_run, details
         FROM system_status
         WHERE service_name IN (${placeholders})
         `,
-        visibleServices
+        queryServices
       );
 
-      const byService = new Map<string, { status: string; lastRun: string | null; details: string }>();
+      const aliasToCanonical = new Map<string, SerialServiceName>();
+      for (const service of visibleServices) {
+        aliasToCanonical.set(service, service);
+        for (const alias of SERVICE_ALIASES[service] || []) {
+          aliasToCanonical.set(alias, service);
+        }
+      }
+
+      const grouped = new Map<SerialServiceName, Array<{ serviceName: string; status: string; lastRun: string | null; details: string }>>();
       for (const row of rows as SystemStatusRow[]) {
-        const serviceName = String(row.service_name || '').trim().toLowerCase();
+        const rawServiceName = String(row.service_name || '').trim().toLowerCase();
+        const serviceName = aliasToCanonical.get(rawServiceName);
         if (!serviceName) continue;
-        byService.set(serviceName, {
+        const current = grouped.get(serviceName) || [];
+        current.push({
+          serviceName,
           status: String(row.status || 'UNKNOWN').trim().toUpperCase(),
           lastRun: String(row.last_run || '').trim() || null,
           details: String(row.details || '').trim(),
+        });
+        grouped.set(serviceName, current);
+      }
+
+      const byService = new Map<string, { status: string; lastRun: string | null; details: string; isActive: boolean }>();
+      for (const serviceName of visibleServices) {
+        const effective = pickEffectiveSystemStatus(grouped.get(serviceName) || [{ serviceName, status: 'UNKNOWN', lastRun: null, details: '' }]);
+        byService.set(serviceName, {
+          status: effective.status,
+          lastRun: effective.lastRun,
+          details: effective.details,
+          isActive: effective.isActive,
         });
       }
 
@@ -119,18 +144,19 @@ export async function GET(request: Request) {
             status: 'UNKNOWN',
             lastRun: null,
             details: '',
+            isActive: false,
           };
           return {
             serviceName,
             ...record,
           };
         })
-        .filter((item) => isQueueActiveStatus(item.status))
+        .filter((item) => item.isActive && isQueueActiveStatus(item.status))
         .sort((a, b) => {
           const aRunning = a.status === 'RUNNING' ? 0 : 1;
           const bRunning = b.status === 'RUNNING' ? 0 : 1;
           if (aRunning !== bRunning) return aRunning - bRunning;
-          return normalizeDbDate(a.lastRun) - normalizeDbDate(b.lastRun);
+          return (parseSystemStatusTimestamp(a.lastRun)?.getTime() || 0) - (parseSystemStatusTimestamp(b.lastRun)?.getTime() || 0);
         });
 
       const queueSize = queueCandidates.length;
@@ -142,11 +168,12 @@ export async function GET(request: Request) {
           status: 'UNKNOWN',
           lastRun: null,
           details: '',
+          isActive: false,
         };
         const status = record.status;
         const position = positionMap.get(serviceName) ?? null;
-        const isRunning = status === 'RUNNING';
-        const isQueued = status === 'QUEUED' || status === 'PENDING';
+        const isRunning = record.isActive && status === 'RUNNING';
+        const isQueued = record.isActive && (status === 'QUEUED' || status === 'PENDING');
         return {
           serviceName,
           status,

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requirePropostasPosConsultaPermission } from '@/lib/proposals/auth';
 import type { DbInterface } from '@/lib/db';
+import { isSystemStatusStale } from '@/lib/system_status_health';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -34,7 +35,7 @@ const requestStatusRow = async (db: DbInterface, serviceName: string, details: s
 const requestServiceRefresh = async (db: DbInterface, serviceName: string, details: string) => {
   const currentRows = await db.query(
     `
-      SELECT status
+      SELECT status, last_run
       FROM system_status
       WHERE service_name = ?
       LIMIT 1
@@ -45,8 +46,9 @@ const requestServiceRefresh = async (db: DbInterface, serviceName: string, detai
   const currentStatus = String((currentRows[0] as { status?: unknown } | undefined)?.status || '')
     .trim()
     .toUpperCase();
+  const currentLastRun = String((currentRows[0] as { last_run?: unknown } | undefined)?.last_run || '').trim() || null;
 
-  if (ACTIVE_STATUSES.has(currentStatus)) {
+  if (ACTIVE_STATUSES.has(currentStatus) && !isSystemStatusStale(currentStatus, currentLastRun)) {
     const rerunAlias = RERUN_ALIAS_BY_SERVICE[serviceName];
     if (!rerunAlias) {
       return { serviceName, requested: false, active: true, queuedAfterCurrentRun: false };
@@ -54,7 +56,7 @@ const requestServiceRefresh = async (db: DbInterface, serviceName: string, detai
 
     const aliasRows = await db.query(
       `
-        SELECT status
+        SELECT status, last_run
         FROM system_status
         WHERE service_name = ?
         LIMIT 1
@@ -64,8 +66,9 @@ const requestServiceRefresh = async (db: DbInterface, serviceName: string, detai
     const aliasStatus = String((aliasRows[0] as { status?: unknown } | undefined)?.status || '')
       .trim()
       .toUpperCase();
+    const aliasLastRun = String((aliasRows[0] as { last_run?: unknown } | undefined)?.last_run || '').trim() || null;
 
-    if (ACTIVE_STATUSES.has(aliasStatus)) {
+    if (ACTIVE_STATUSES.has(aliasStatus) && !isSystemStatusStale(aliasStatus, aliasLastRun)) {
       return { serviceName, requested: false, active: true, queuedAfterCurrentRun: true };
     }
 
