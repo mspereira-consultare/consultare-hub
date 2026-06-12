@@ -1,6 +1,7 @@
 'use client';
 
-import { Loader2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import type { PostConsultRankingResponse } from '@/app/(admin)/propostas/pos-consulta/components/types';
 
 type Props = {
@@ -14,6 +15,18 @@ type Props = {
   onChangeUnit: (value: string) => void;
 };
 
+type SortKey =
+  | 'attendantResponsible'
+  | 'totalEvents'
+  | 'totalClosedEvents'
+  | 'conversionRate'
+  | 'pendingPatients'
+  | 'afterSecondNoClosePatients'
+  | 'totalProposals'
+  | 'executedProposalValue';
+
+type SortDirection = 'asc' | 'desc';
+
 const formatPercent = (value: number) =>
   `${Number(value || 0).toLocaleString('pt-BR', {
     maximumFractionDigits: 1,
@@ -26,6 +39,9 @@ const formatCurrency = (value: number) =>
     currency: 'BRL',
   });
 
+const DEFAULT_SORT_KEY: SortKey = 'executedProposalValue';
+const DEFAULT_SORT_DIRECTION: SortDirection = 'desc';
+
 export function PostConsultRankingPanel({
   data,
   loading,
@@ -36,22 +52,75 @@ export function PostConsultRankingPanel({
   onChangeDateRange,
   onChangeUnit,
 }: Props) {
-  const sortedRows = [...data.rows].sort((a, b) => {
-    const byExecutedValue =
-      Number(b.executedProposalValue || 0) - Number(a.executedProposalValue || 0);
+  const [sortKey, setSortKey] = useState<SortKey>(DEFAULT_SORT_KEY);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(DEFAULT_SORT_DIRECTION);
 
+  const baseComparator = (a: PostConsultRankingResponse['rows'][number], b: PostConsultRankingResponse['rows'][number]) => {
+    const byExecutedValue = Number(b.executedProposalValue || 0) - Number(a.executedProposalValue || 0);
     if (byExecutedValue !== 0) return byExecutedValue;
 
-    const byClosedEvents =
-      Number(b.totalClosedEvents || 0) - Number(a.totalClosedEvents || 0);
-
+    const byClosedEvents = Number(b.totalClosedEvents || 0) - Number(a.totalClosedEvents || 0);
     if (byClosedEvents !== 0) return byClosedEvents;
 
-    return String(a.attendantResponsible || '').localeCompare(
-      String(b.attendantResponsible || ''),
-      'pt-BR'
-    );
-  });
+    return String(a.attendantResponsible || '').localeCompare(String(b.attendantResponsible || ''), 'pt-BR');
+  };
+
+  const sortedRows = useMemo(() => {
+    const directionFactor = sortDirection === 'asc' ? 1 : -1;
+
+    return [...data.rows].sort((a, b) => {
+      if (sortKey === 'attendantResponsible') {
+        const result = String(a.attendantResponsible || '').localeCompare(
+          String(b.attendantResponsible || ''),
+          'pt-BR',
+        );
+        return result !== 0 ? result * directionFactor : baseComparator(a, b);
+      }
+
+      const result = (Number(a[sortKey] || 0) - Number(b[sortKey] || 0)) * directionFactor;
+      return result !== 0 ? result : baseComparator(a, b);
+    });
+  }, [data.rows, sortDirection, sortKey]);
+
+  const handleSort = (nextKey: SortKey) => {
+    if (nextKey === sortKey) {
+      setSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+
+    setSortKey(nextKey);
+    setSortDirection(nextKey === 'attendantResponsible' ? 'asc' : 'desc');
+  };
+
+  const sortIcon = (key: SortKey) => {
+    if (sortKey !== key) return <ArrowUpDown size={14} className="text-slate-400" />;
+    return sortDirection === 'asc'
+      ? <ArrowUp size={14} className="text-blue-600" />
+      : <ArrowDown size={14} className="text-blue-600" />;
+  };
+
+  const SortableHeader = ({
+    label,
+    columnKey,
+    align = 'left',
+  }: {
+    label: string;
+    columnKey: SortKey;
+    align?: 'left' | 'right';
+  }) => (
+    <th className={`px-4 py-3 ${align === 'right' ? 'text-right' : ''}`}>
+      <button
+        type="button"
+        onClick={() => handleSort(columnKey)}
+        className={`inline-flex items-center gap-1 transition hover:text-slate-700 ${
+          align === 'right' ? 'ml-auto' : ''
+        }`}
+      >
+        <span>{label}</span>
+        {sortIcon(columnKey)}
+      </button>
+    </th>
+  );
 
   return (
     <section className="space-y-4">
@@ -179,8 +248,8 @@ export function PostConsultRankingPanel({
                 Ranking por valor executado
               </h3>
               <p className="text-xs text-slate-500">
-                Ordenado do maior para o menor valor executado, com desempate por fechamentos e
-                nome.
+                Clique no cabeçalho para ordenar. A ordem inicial prioriza valor executado,
+                fechamentos e nome.
               </p>
             </div>
             <div className="text-xs text-slate-500">{sortedRows.length} atendente(s)</div>
@@ -201,14 +270,14 @@ export function PostConsultRankingPanel({
             <table className="min-w-full text-left text-sm">
               <thead className="bg-slate-50 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
                 <tr>
-                  <th className="px-4 py-3">Atendente</th>
-                  <th className="px-4 py-3 text-right">Atend.</th>
-                  <th className="px-4 py-3 text-right">Fech.</th>
-                  <th className="px-4 py-3 text-right">Conversão</th>
-                  <th className="px-4 py-3 text-right">Pendentes</th>
-                  <th className="px-4 py-3 text-right">Sem fechar após 2º</th>
-                  <th className="px-4 py-3 text-right">Propostas</th>
-                  <th className="px-4 py-3 text-right">Valor executado</th>
+                  <SortableHeader label="Atendente" columnKey="attendantResponsible" />
+                  <SortableHeader label="Atend." columnKey="totalEvents" align="right" />
+                  <SortableHeader label="Fech." columnKey="totalClosedEvents" align="right" />
+                  <SortableHeader label="Conversão" columnKey="conversionRate" align="right" />
+                  <SortableHeader label="Pendentes" columnKey="pendingPatients" align="right" />
+                  <SortableHeader label="Sem fechar após 2º" columnKey="afterSecondNoClosePatients" align="right" />
+                  <SortableHeader label="Propostas" columnKey="totalProposals" align="right" />
+                  <SortableHeader label="Valor executado" columnKey="executedProposalValue" align="right" />
                 </tr>
               </thead>
 

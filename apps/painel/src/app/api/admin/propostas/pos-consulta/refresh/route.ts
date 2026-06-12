@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { requirePropostasPosConsultaPermission } from '@/lib/proposals/auth';
 import type { DbInterface } from '@/lib/db';
 import { isSystemStatusStale } from '@/lib/system_status_health';
+import { getCurrentSystemStatusTimestamp } from '@/lib/system_status_time';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -19,16 +20,17 @@ const RERUN_ALIAS_BY_SERVICE: Record<string, string> = {
 };
 
 const requestStatusRow = async (db: DbInterface, serviceName: string, details: string) => {
+  const lastRun = getCurrentSystemStatusTimestamp();
   await db.execute(
     `
       INSERT INTO system_status (service_name, status, last_run, details)
-      VALUES (?, 'PENDING', datetime('now'), ?)
+      VALUES (?, 'PENDING', ?, ?)
       ON CONFLICT(service_name) DO UPDATE SET
         status = 'PENDING',
         details = excluded.details,
         last_run = excluded.last_run
     `,
-    [serviceName, details],
+    [serviceName, lastRun, details],
   );
 };
 
