@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { invalidateCache } from '@/lib/api_cache';
 import { requireMarketingFunilPermission } from '@/lib/marketing_funil/auth';
+import { upsertSystemStatus } from '@/lib/system_status_repository';
 import {
   createMarketingFunnelJob,
   MarketingFunilValidationError,
@@ -38,17 +39,11 @@ export async function POST(request: Request) {
       auth.userId
     );
 
-    await auth.db.execute(
-      `
-      INSERT INTO system_status (service_name, status, last_run, details)
-      VALUES ('marketing_funnel', 'PENDING', datetime('now'), ?)
-      ON CONFLICT(service_name) DO UPDATE SET
-        status = excluded.status,
-        last_run = excluded.last_run,
-        details = excluded.details
-      `,
-      [`Job ${job.id} enfileirado via API marketing/funil`] 
-    );
+    await upsertSystemStatus(auth.db, {
+      serviceName: 'marketing_funnel',
+      status: 'PENDING',
+      details: `Job ${job.id} enfileirado via API marketing/funil`,
+    });
 
     invalidateCache('admin:');
 

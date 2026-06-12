@@ -4,6 +4,7 @@ import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 import { ensureProposalsSupportTables } from '@/lib/proposals/repository';
 import { AWAITING_CLIENT_APPROVAL_STATUS } from '@/lib/proposals/constants';
 import { requirePropostasGerencialPermission, requirePropostasPermission } from '@/lib/proposals/auth';
+import { upsertSystemStatus } from '@/lib/system_status_repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -188,18 +189,14 @@ export async function POST() {
     }
 
     const db = auth.db ?? getDbConnection();
-    await db.execute(`
-      INSERT INTO system_status (service_name, status, last_run, details)
-      VALUES ('comercial', 'PENDING', datetime('now'), 'Solicitado via painel')
-      ON CONFLICT(service_name) DO UPDATE SET
-        status = 'PENDING',
-        details = 'Solicitado via painel',
-        last_run = datetime('now')
-    `);
+    await upsertSystemStatus(db, {
+      serviceName: 'comercial',
+      status: 'PENDING',
+      details: 'Solicitado via painel',
+    });
     invalidateCache('admin:');
     return NextResponse.json({ success: true, message: 'Atualização solicitada' });
   } catch (error: any) {
     return NextResponse.json({ error: error?.message || 'Erro ao solicitar atualização.' }, { status: error?.status || 500 });
   }
 }
-

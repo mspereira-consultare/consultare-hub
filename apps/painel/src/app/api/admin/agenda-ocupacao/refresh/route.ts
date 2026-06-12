@@ -3,6 +3,7 @@ import { invalidateCache } from '@/lib/api_cache';
 import { requireAgendaOcupacaoPermission } from '@/lib/agenda_ocupacao/auth';
 import { getAgendaOcupacaoDefaultRange } from '@/lib/agenda_ocupacao/date_range';
 import { AgendaOcupacaoValidationError, createAgendaOcupacaoJob } from '@/lib/agenda_ocupacao/repository';
+import { upsertSystemStatus } from '@/lib/system_status_repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,17 +38,11 @@ export async function POST(request: Request) {
       auth.userId
     );
 
-    await auth.db.execute(
-      `
-      INSERT INTO system_status (service_name, status, last_run, details)
-      VALUES ('agenda_occupancy', 'PENDING', datetime('now'), ?)
-      ON CONFLICT(service_name) DO UPDATE SET
-        status = excluded.status,
-        last_run = excluded.last_run,
-        details = excluded.details
-      `,
-      [`Job ${job.id} enfileirado`] 
-    );
+    await upsertSystemStatus(auth.db, {
+      serviceName: 'agenda_occupancy',
+      status: 'PENDING',
+      details: `Job ${job.id} enfileirado`,
+    });
 
     invalidateCache('admin:agenda-ocupacao');
     invalidateCache('admin:');

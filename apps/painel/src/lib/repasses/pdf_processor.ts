@@ -1,5 +1,6 @@
 ﻿import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import type { DbInterface } from '@/lib/db';
+import { upsertSystemStatus } from '@/lib/system_status_repository';
 import {
   deleteRepassePdfArtifactsByIds,
   createRepassePdfArtifact,
@@ -423,17 +424,11 @@ const updateRepassePdfServiceStatus = async (
   status: 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PARTIAL',
   details: string
 ) => {
-  await db.execute(
-    `
-    INSERT INTO system_status (service_name, status, last_run, details)
-    VALUES ('repasse_pdf', ?, datetime('now'), ?)
-    ON CONFLICT(service_name) DO UPDATE SET
-      status = excluded.status,
-      last_run = excluded.last_run,
-      details = excluded.details
-    `,
-    [status, details]
-  );
+  await upsertSystemStatus(db, {
+    serviceName: 'repasse_pdf',
+    status,
+    details,
+  });
 };
 
 export type RepassePdfProcessSummary = {

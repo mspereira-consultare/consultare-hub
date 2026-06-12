@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
+import { upsertSystemStatus } from '@/lib/system_status_repository';
 import type {
   QmsDocumentDetail,
   QmsDocumentFile,
@@ -789,17 +790,11 @@ export const refreshQmsDocumentStatuses = async (
   }
 
   const details = `refresh docs=${docs.length} updated=${updated}`;
-  await db.execute(
-    `
-    INSERT INTO system_status (service_name, status, last_run, details)
-    VALUES ('qms_documentos', 'COMPLETED', datetime('now'), ?)
-    ON CONFLICT(service_name) DO UPDATE SET
-      status = excluded.status,
-      last_run = excluded.last_run,
-      details = excluded.details
-    `,
-    [details]
-  );
+  await upsertSystemStatus(db, {
+    serviceName: 'qms_documentos',
+    status: 'COMPLETED',
+    details,
+  });
 
   return {
     total: docs.length,

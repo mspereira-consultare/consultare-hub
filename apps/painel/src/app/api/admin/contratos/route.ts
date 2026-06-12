@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
+import { upsertSystemStatus } from '@/lib/system_status_repository';
 
 export const dynamic = 'force-dynamic';
 const CACHE_TTL_MS = 30 * 60 * 1000;
@@ -146,14 +147,11 @@ export async function GET(request: Request) {
 export async function POST() {
     try {
         const db = getDbConnection();
-        await db.execute(`
-            INSERT INTO system_status (service_name, status, last_run, details)
-            VALUES ('contratos', 'PENDING', datetime('now'), 'Solicitado via Painel')
-            ON CONFLICT(service_name) DO UPDATE SET
-                status = 'PENDING',
-                details = 'Solicitado via Painel',
-                last_run = datetime('now')
-        `);
+        await upsertSystemStatus(db, {
+            serviceName: 'contratos',
+            status: 'PENDING',
+            details: 'Solicitado via Painel',
+        });
         invalidateCache('admin:');
         return NextResponse.json({ success: true, message: "Atualização solicitada" });
     } catch (error: any) {

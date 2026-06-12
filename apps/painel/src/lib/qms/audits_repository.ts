@@ -1,5 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
+import { upsertSystemStatus } from '@/lib/system_status_repository';
 import { ensureQmsTables, QmsValidationError } from '@/lib/qms/repository';
 import type {
   QmsAudit,
@@ -872,17 +873,11 @@ export const refreshQmsAuditStatuses = async (
   const actions = Number(actionsCountRows?.[0]?.total || 0);
 
   const details = `refresh audits=${audits} actions=${actions} overdue=${overdueActionsUpdated}`;
-  await db.execute(
-    `
-    INSERT INTO system_status (service_name, status, last_run, details)
-    VALUES ('qms_auditorias', 'COMPLETED', datetime('now'), ?)
-    ON CONFLICT(service_name) DO UPDATE SET
-      status = excluded.status,
-      last_run = excluded.last_run,
-      details = excluded.details
-    `,
-    [details]
-  );
+  await upsertSystemStatus(db, {
+    serviceName: 'qms_auditorias',
+    status: 'COMPLETED',
+    details,
+  });
 
   return { audits, actions, overdueActionsUpdated };
 };

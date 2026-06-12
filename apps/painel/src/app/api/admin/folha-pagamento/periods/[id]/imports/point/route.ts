@@ -3,6 +3,7 @@ import { requirePayrollPermission } from '@/lib/payroll/auth';
 import { enqueuePayrollPointImport } from '@/lib/payroll/repository';
 import { sanitizeStoragePart } from '@/lib/payroll/parsers';
 import { getStorageProvider } from '@/lib/storage';
+import { upsertSystemStatus } from '@/lib/system_status_repository';
 
 type ParamsContext = { params: Promise<{ id: string }> };
 
@@ -45,17 +46,11 @@ export async function POST(request: Request, context: ParamsContext) {
       uploadedBy: auth.userId,
     });
 
-    await auth.db.execute(
-      `
-      INSERT INTO system_status (service_name, status, last_run, details)
-      VALUES ('payroll_point_import', 'PENDING', datetime('now'), ?)
-      ON CONFLICT(service_name) DO UPDATE SET
-        status = excluded.status,
-        last_run = excluded.last_run,
-        details = excluded.details
-      `,
-      [`Job ${data.job.id} enfileirado para a competência ${periodId}`],
-    );
+    await upsertSystemStatus(auth.db, {
+      serviceName: 'payroll_point_import',
+      status: 'PENDING',
+      details: `Job ${data.job.id} enfileirado para a competência ${periodId}`,
+    });
 
     return NextResponse.json(
       {
