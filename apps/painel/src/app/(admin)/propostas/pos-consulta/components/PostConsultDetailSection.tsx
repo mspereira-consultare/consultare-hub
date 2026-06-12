@@ -3,7 +3,7 @@
 import { Loader2 } from 'lucide-react';
 import { formatCurrency, formatPercent } from './formatters';
 import { PostConsultDetailTable } from './PostConsultDetailTable';
-import type { PostConsultDetailResponse } from './types';
+import type { PostConsultDetailResponse, PostConsultFollowupSaveResult } from './types';
 
 type Props = {
   detailData: PostConsultDetailResponse;
@@ -11,7 +11,7 @@ type Props = {
   canEdit: boolean;
   nonClosureReasons: Array<{ value: string; label: string }>;
   onChangePage: (page: number) => void;
-  onRowSaved: () => void;
+  onRowSaved: (result: PostConsultFollowupSaveResult) => void;
 };
 
 export function PostConsultDetailSection({ detailData, loading, canEdit, nonClosureReasons, onChangePage, onRowSaved }: Props) {

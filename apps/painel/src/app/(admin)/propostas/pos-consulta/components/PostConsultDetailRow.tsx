@@ -3,13 +3,13 @@
 import { AlertCircle, Check, ChevronDown, ChevronUp, Copy, Loader2, MessageCircle } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCurrency, formatDateOnly, formatDateTime, formatLastUpdate, normalizePhoneForWhatsApp } from './formatters';
-import type { PostConsultRow } from './types';
+import type { PostConsultFollowupSaveResult, PostConsultRow } from './types';
 
 type Props = {
   row: PostConsultRow;
   canEdit: boolean;
   nonClosureReasons: Array<{ value: string; label: string }>;
-  onSaved: () => void;
+  onSaved: (result: PostConsultFollowupSaveResult) => void;
 };
 
 const AUTOSAVE_DELAY_MS = 800;
@@ -49,6 +49,15 @@ const buildDraftFromRow = (row: PostConsultRow) => ({
   secondContactAt: row.secondContactAt || '',
   nonClosureReason: row.nonClosureReason || '',
   observation: row.observation || '',
+});
+
+const buildDraftFromSaveResult = (result: PostConsultFollowupSaveResult) => ({
+  firstContactClosed: boolToDraft(result.firstContactClosed),
+  firstContactAt: result.firstContactAt || '',
+  secondContactClosed: boolToDraft(result.secondContactClosed),
+  secondContactAt: result.secondContactAt || '',
+  nonClosureReason: result.nonClosureReason || '',
+  observation: result.observation || '',
 });
 
 type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -181,9 +190,26 @@ export function PostConsultDetailRow({ row, canEdit, nonClosureReasons, onSaved 
         throw new Error(String(payload?.error || 'Falha ao salvar pós-consulta.'));
       }
       if (requestId !== requestIdRef.current) return;
-      lastSavedSnapshotRef.current = currentSnapshot;
+      const savedResult = {
+        eventKey: row.eventKey,
+        firstContactClosed: draftFirstContactClosed,
+        firstContactAt: draft.firstContactAt || null,
+        secondContactClosed: draftSecondContactClosed,
+        secondContactAt: draft.secondContactAt || null,
+        nonClosureReason: draft.nonClosureReason || null,
+        nonClosureReasonLabel: null,
+        observation: draft.observation || null,
+        updatedByUserName: row.updatedByUserName,
+        updatedAt: row.updatedAt,
+        effectiveClosed: draftEffectiveClosed,
+        closed: draftEffectiveClosed,
+        ...(payload?.data || {}),
+      } satisfies PostConsultFollowupSaveResult;
+      const nextDraft = buildDraftFromSaveResult(savedResult);
+      setDraft(nextDraft);
+      lastSavedSnapshotRef.current = JSON.stringify(nextDraft);
       triggerSavedIndicator();
-      onSaved();
+      onSaved(savedResult);
     } catch (error: unknown) {
       if (requestId !== requestIdRef.current) return;
       setSaveError(error instanceof Error ? error.message : 'Erro ao salvar.');

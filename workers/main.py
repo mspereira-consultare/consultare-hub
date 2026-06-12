@@ -460,16 +460,16 @@ def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
                 pass
             if not lock.acquire(blocking=False):
                 db = DatabaseManager()
+                # Preserva aliases manuais em PENDING para que o listener reprocese
+                # a solicitacao assim que o ciclo atual terminar.
                 db.update_heartbeat(action, "RUNNING", "Serviço já em execução.")
-                if raw_key and raw_key != action:
-                    db.update_heartbeat(raw_key, "RUNNING", "Serviço já em execução.")
                 print(f"⏭️ Serviço já em execução: {display_name} — pulando execução.")
                 return
 
         db = DatabaseManager()
+        # Preserva aliases manuais em PENDING para que o listener reprocese
+        # a solicitacao assim que o ciclo atual terminar.
         db.update_heartbeat(action, "RUNNING", "Serviço já em execução.")
-        if raw_key and raw_key != action:
-            db.update_heartbeat(raw_key, "RUNNING", "Serviço já em execução.")
         print(f"⏭️ Serviço já em execução: {display_name} — pulando execução.")
         return
 

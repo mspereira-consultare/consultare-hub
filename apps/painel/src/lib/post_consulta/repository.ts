@@ -159,6 +159,21 @@ export type PostConsultFollowupUpdateInput = {
   sourceSnapshot: PostConsultFollowupSourceSnapshot;
 };
 
+export type PostConsultFollowupSaveResult = {
+  eventKey: string;
+  firstContactClosed: boolean | null;
+  firstContactAt: string | null;
+  secondContactClosed: boolean | null;
+  secondContactAt: string | null;
+  nonClosureReason: PostConsultNonClosureReason | null;
+  nonClosureReasonLabel: string | null;
+  observation: string | null;
+  updatedByUserName: string | null;
+  updatedAt: string | null;
+  effectiveClosed: boolean;
+  closed: boolean;
+};
+
 type ContactCacheRow = {
   patient_id?: number | string | null;
   patient_name?: string | null;
@@ -821,17 +836,21 @@ const applyFilters = (rows: PostConsultRow[], filters: PostConsultFilters) =>
   });
 
 const getPostConsultHeartbeat = async (db: DbInterface) => {
+  const heartbeatAliases: Record<string, string> = {
+    worker_faturamento_scraping: 'faturamento',
+    propostas: 'comercial',
+  };
   const rows = (await db.query(
     `
       SELECT service_name, status, last_run, details
       FROM system_status
-      WHERE service_name IN (?, ?)
+      WHERE service_name IN (?, ?, ?, ?)
     `,
-    ['faturamento', 'comercial'],
+    ['faturamento', 'comercial', 'worker_faturamento_scraping', 'propostas'],
   )) as Array<{ service_name?: unknown; status?: unknown; last_run?: unknown; details?: unknown }>;
 
   const normalizedRows = rows.map((row) => ({
-    serviceName: normalizeString(row?.service_name).toLowerCase(),
+    serviceName: heartbeatAliases[normalizeString(row?.service_name).toLowerCase()] || normalizeString(row?.service_name).toLowerCase(),
     status: normalizeString(row?.status || 'UNKNOWN').toUpperCase() || 'UNKNOWN',
     lastRun: normalizeString(row?.last_run) || null,
     details: normalizeString(row?.details) || null,
@@ -1032,7 +1051,7 @@ const resolveLinkedProposalsForSnapshot = async (
 export const upsertPostConsultFollowup = async (
   input: PostConsultFollowupUpdateInput,
   db: DbInterface = getDbConnection(),
-) => {
+): Promise<PostConsultFollowupSaveResult> => {
   await ensurePostConsultSupportTable(db);
 
   const snapshot: PostConsultFollowupSourceSnapshot = {
@@ -1133,5 +1152,18 @@ export const upsertPostConsultFollowup = async (
     ],
   );
 
-  return { eventKey };
+  return {
+    eventKey,
+    firstContactClosed,
+    firstContactAt,
+    secondContactClosed,
+    secondContactAt,
+    nonClosureReason,
+    nonClosureReasonLabel: nonClosureReason ? nonClosureReasonMap.get(nonClosureReason) || null : null,
+    observation,
+    updatedByUserName: normalizeString(input.updatedByUserName) || 'Usuário',
+    updatedAt,
+    effectiveClosed,
+    closed: effectiveClosed,
+  };
 };

@@ -73,6 +73,21 @@ export type PostConsultOptions = {
   } | null;
 };
 
+export type PostConsultFollowupSaveResult = {
+  eventKey: string;
+  firstContactClosed: boolean | null;
+  firstContactAt: string | null;
+  secondContactClosed: boolean | null;
+  secondContactAt: string | null;
+  nonClosureReason: string | null;
+  nonClosureReasonLabel: string | null;
+  observation: string | null;
+  updatedByUserName: string | null;
+  updatedAt: string | null;
+  effectiveClosed: boolean;
+  closed: boolean;
+};
+
 export type PostConsultRankingRow = {
   attendantResponsible: string;
   totalEvents: number;

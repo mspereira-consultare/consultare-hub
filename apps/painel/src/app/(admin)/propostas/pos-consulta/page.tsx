@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Download, HelpCircle, Loader2, RefreshCw } from 'lucide-react';
@@ -9,7 +9,7 @@ import { hasPermission } from '@/lib/permissions';
 import { ProposalsFiltersPanel } from '../components/ProposalsFiltersPanel';
 import { PostConsultDetailSection } from './components/PostConsultDetailSection';
 import { PostConsultHelpModal } from './components/PostConsultHelpModal';
-import type { PostConsultDetailResponse, PostConsultOptions } from './components/types';
+import type { PostConsultDetailResponse, PostConsultFollowupSaveResult, PostConsultOptions } from './components/types';
 
 type SessionUserShape = {
   role?: string | null;
@@ -43,11 +43,25 @@ const EMPTY_OPTIONS: PostConsultOptions = {
   heartbeat: null,
 };
 
+const getSaoPauloToday = () =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+
+const getSaoPauloMonthStart = () =>
+  new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+  }).format(new Date()).concat('-01');
+
 const getDefaultDateRange = () => {
-  const today = new Date();
   return {
-    start: new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0],
-    end: today.toISOString().split('T')[0],
+    start: getSaoPauloMonthStart(),
+    end: getSaoPauloToday(),
   };
 };
 
@@ -63,6 +77,8 @@ const normalizeFetchError = (error: unknown, fallback: string) => {
   }
   return message;
 };
+
+const ROW_SAVE_BACKGROUND_SYNC_DELAY_MS = 6000;
 
 function PostConsultPageContent() {
   const { data: session } = useSession();
@@ -104,6 +120,7 @@ function PostConsultPageContent() {
   const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
   const [notice, setNotice] = useState('');
   const [options, setOptions] = useState<PostConsultOptions>(EMPTY_OPTIONS);
+  const rowSaveSyncTimeoutRef = useRef<number | null>(null);
   const heartbeat = options.heartbeat;
   const canRefresh = options.canRefresh;
   const isUpdating = refreshing || ['PENDING', 'RUNNING'].includes(String(heartbeat?.status || '').toUpperCase());
@@ -130,13 +147,16 @@ function PostConsultPageContent() {
     effectiveResponsible !== 'all' ||
     selectedClosed !== 'all';
 
-  const loadOptions = useCallback(async () => {
+  const loadOptions = useCallback(async (force = false) => {
     if (!canView) return;
     try {
       const params = new URLSearchParams({
         startDate: dateRange.start,
         endDate: dateRange.end,
       });
+      if (force) {
+        params.set('refresh', String(Date.now()));
+      }
       const response = await fetch(`/api/admin/propostas/pos-consulta/options?${params.toString()}`, { cache: 'no-store' });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -150,10 +170,12 @@ function PostConsultPageContent() {
     }
   }, [canView, dateRange.end, dateRange.start]);
 
-  const fetchDetailData = useCallback(async () => {
+  const fetchDetailData = useCallback(async (options?: { silent?: boolean; force?: boolean }) => {
     if (!canView) return;
-    setDetailLoading(true);
-    setError('');
+    if (!options?.silent) {
+      setDetailLoading(true);
+      setError('');
+    }
 
     try {
       const params = new URLSearchParams({
@@ -166,6 +188,9 @@ function PostConsultPageContent() {
         page: String(detailPage),
         pageSize: String(EMPTY_DETAIL_DATA.pageSize),
       });
+      if (options?.force) {
+        params.set('refresh', String(Date.now()));
+      }
 
       const response = await fetch(`/api/admin/propostas/pos-consulta/details?${params.toString()}`, { cache: 'no-store' });
       const payload = await response.json().catch(() => ({}));
@@ -177,10 +202,14 @@ function PostConsultPageContent() {
       setDetailPage(Number(payload?.data?.page) || 1);
     } catch (fetchError) {
       console.error('Erro ao carregar base de pós-consulta:', fetchError);
-      setError(normalizeFetchError(fetchError, 'Erro ao carregar a base de pós-consulta.'));
-      setDetailData(EMPTY_DETAIL_DATA);
+      if (!options?.silent) {
+        setError(normalizeFetchError(fetchError, 'Erro ao carregar a base de pós-consulta.'));
+        setDetailData(EMPTY_DETAIL_DATA);
+      }
     } finally {
-      setDetailLoading(false);
+      if (!options?.silent) {
+        setDetailLoading(false);
+      }
     }
   }, [canView, dateRange.end, dateRange.start, detailPage, effectiveResponsible, effectiveStatus, effectiveUnit, selectedClosed]);
 
@@ -203,8 +232,8 @@ function PostConsultPageContent() {
     if (!['PENDING', 'RUNNING'].includes(heartbeatStatus)) return;
 
     const timeoutId = window.setTimeout(() => {
-      void loadOptions();
-      void fetchDetailData();
+      void loadOptions(true);
+      void fetchDetailData({ silent: true, force: true });
     }, 3000);
 
     return () => window.clearTimeout(timeoutId);
@@ -223,9 +252,47 @@ function PostConsultPageContent() {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [dateRange.end, dateRange.start, effectiveResponsible, effectiveStatus, effectiveUnit, pathname, router, selectedClosed]);
 
-  const handleRowSaved = () => {
-    void fetchDetailData();
-  };
+  useEffect(() => {
+    return () => {
+      if (rowSaveSyncTimeoutRef.current) {
+        window.clearTimeout(rowSaveSyncTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleRowSaved = useCallback(
+    (savedResult: PostConsultFollowupSaveResult) => {
+      setDetailData((current) => ({
+        ...current,
+        rows: current.rows.map((row) =>
+          row.eventKey === savedResult.eventKey
+            ? {
+                ...row,
+                firstContactClosed: savedResult.firstContactClosed,
+                firstContactAt: savedResult.firstContactAt,
+                secondContactClosed: savedResult.secondContactClosed,
+                secondContactAt: savedResult.secondContactAt,
+                nonClosureReason: savedResult.nonClosureReason,
+                nonClosureReasonLabel: savedResult.nonClosureReasonLabel,
+                observation: savedResult.observation,
+                updatedByUserName: savedResult.updatedByUserName,
+                updatedAt: savedResult.updatedAt,
+                effectiveClosed: savedResult.effectiveClosed,
+                closed: savedResult.closed,
+              }
+            : row,
+        ),
+      }));
+
+      if (rowSaveSyncTimeoutRef.current) {
+        window.clearTimeout(rowSaveSyncTimeoutRef.current);
+      }
+      rowSaveSyncTimeoutRef.current = window.setTimeout(() => {
+        void fetchDetailData({ silent: true, force: true });
+      }, ROW_SAVE_BACKGROUND_SYNC_DELAY_MS);
+    },
+    [fetchDetailData],
+  );
 
   const handleManualUpdate = async () => {
     if (!canRefresh) return;
@@ -240,10 +307,8 @@ function PostConsultPageContent() {
       }
 
       setNotice('Atualização solicitada. Vamos acompanhar a fila e recarregar os dados automaticamente.');
-      window.setTimeout(() => {
-        void loadOptions();
-        void fetchDetailData();
-      }, 1000);
+      void loadOptions(true);
+      void fetchDetailData({ silent: true, force: true });
     } catch (updateError) {
       console.error('Erro ao solicitar atualização do pós-consulta:', updateError);
       setError(normalizeFetchError(updateError, 'Erro ao solicitar atualização do pós-consulta.'));

@@ -1,13 +1,13 @@
 'use client';
 
 import { PostConsultDetailRow } from './PostConsultDetailRow';
-import type { PostConsultRow } from './types';
+import type { PostConsultFollowupSaveResult, PostConsultRow } from './types';
 
 type Props = {
   rows: PostConsultRow[];
   canEdit: boolean;
   nonClosureReasons: Array<{ value: string; label: string }>;
-  onSaved: () => void;
+  onSaved: (result: PostConsultFollowupSaveResult) => void;
 };
 
 export function PostConsultDetailTable({ rows, canEdit, nonClosureReasons, onSaved }: Props) {
@@ -36,16 +36,7 @@ export function PostConsultDetailTable({ rows, canEdit, nonClosureReasons, onSav
         <tbody className="divide-y divide-slate-100 text-sm">
           {rows.map((row) => (
             <PostConsultDetailRow
-              key={[
-                row.eventKey,
-                row.firstContactClosed ?? '',
-                row.firstContactAt ?? '',
-                row.secondContactClosed ?? '',
-                row.secondContactAt ?? '',
-                row.nonClosureReason ?? '',
-                row.observation ?? '',
-                row.updatedAt ?? '',
-              ].join(':')}
+              key={row.eventKey}
               row={row}
               canEdit={canEdit}
               nonClosureReasons={nonClosureReasons}
