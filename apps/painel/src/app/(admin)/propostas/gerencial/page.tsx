@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { hasPermission } from '@/lib/permissions';
@@ -81,6 +81,7 @@ function PropostasGerencialPageContent() {
   const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
   const [heartbeat, setHeartbeat] = useState<any>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const pollingTimeoutRef = useRef<number | null>(null);
 
   const processUnitData = (rows: UnitRow[]) => {
     const grouped = new Map<string, GroupedUnit>();
@@ -97,10 +98,12 @@ function PropostasGerencialPageContent() {
   };
 
   const fetchData = useCallback(
-    async (forceFresh = false) => {
+    async (options?: { forceFresh?: boolean; silent?: boolean }) => {
       if (!canView) return;
-      if (!heartbeat) setLoading(true);
-      setError('');
+      if (!options?.silent) {
+        setLoading(true);
+        setError('');
+      }
 
       try {
         const params = new URLSearchParams({
@@ -109,7 +112,7 @@ function PropostasGerencialPageContent() {
           unit: selectedUnit,
           status: selectedStatus,
         });
-        if (forceFresh) params.set('refresh', Date.now().toString());
+        if (options?.forceFresh) params.set('refresh', Date.now().toString());
 
         const response = await fetch(`/api/admin/propostas?${params.toString()}`, { cache: 'no-store' });
         const payload = await response.json().catch(() => ({}));
@@ -138,22 +141,22 @@ function PropostasGerencialPageContent() {
 
         if (payload.heartbeat) {
           setHeartbeat(payload.heartbeat);
-          if (payload.heartbeat.status === 'RUNNING' || payload.heartbeat.status === 'PENDING') {
-            window.setTimeout(() => fetchData(true), 3000);
-            setIsUpdating(true);
-          } else {
-            setIsUpdating(false);
-          }
+          const heartbeatStatus = String(payload.heartbeat.status || '').toUpperCase();
+          setIsUpdating(heartbeatStatus === 'RUNNING' || heartbeatStatus === 'PENDING');
         }
       } catch (fetchError) {
         console.error('Erro ao buscar dados gerenciais de propostas:', fetchError);
-        setError(normalizeFetchError(fetchError, 'Erro ao carregar propostas gerenciais.'));
-        setIsUpdating(false);
+        if (!options?.silent) {
+          setError(normalizeFetchError(fetchError, 'Erro ao carregar propostas gerenciais.'));
+          setIsUpdating(false);
+        }
       } finally {
-        setLoading(false);
+        if (!options?.silent) {
+          setLoading(false);
+        }
       }
     },
-    [canView, dateRange.end, dateRange.start, heartbeat, selectedStatus, selectedUnit],
+    [canView, dateRange.end, dateRange.start, selectedStatus, selectedUnit],
   );
 
   const fetchOptions = useCallback(async () => {
@@ -194,6 +197,41 @@ function PropostasGerencialPageContent() {
   useEffect(() => {
     void fetchOptions();
   }, [fetchOptions]);
+
+  useEffect(() => {
+    return () => {
+      if (pollingTimeoutRef.current) {
+        window.clearTimeout(pollingTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    const heartbeatStatus = String(heartbeat?.status || '').toUpperCase();
+    if (heartbeatStatus !== 'RUNNING' && heartbeatStatus !== 'PENDING') {
+      setIsUpdating(false);
+      if (pollingTimeoutRef.current) {
+        window.clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
+      return;
+    }
+
+    setIsUpdating(true);
+    if (pollingTimeoutRef.current) {
+      window.clearTimeout(pollingTimeoutRef.current);
+    }
+    pollingTimeoutRef.current = window.setTimeout(() => {
+      void fetchData({ forceFresh: true, silent: true });
+    }, 3000);
+
+    return () => {
+      if (pollingTimeoutRef.current) {
+        window.clearTimeout(pollingTimeoutRef.current);
+        pollingTimeoutRef.current = null;
+      }
+    };
+  }, [fetchData, heartbeat?.status]);
 
   useEffect(() => {
     if (selectedUnit !== 'all' && availableUnits.length > 0 && !availableUnits.includes(selectedUnit)) {
@@ -273,7 +311,7 @@ function PropostasGerencialPageContent() {
       if (!response.ok) {
         throw new Error(String(payload?.error || 'Erro ao solicitar atualização.'));
       }
-      window.setTimeout(() => fetchData(true), 1000);
+      window.setTimeout(() => void fetchData({ forceFresh: true, silent: true }), 1000);
     } catch (updateError) {
       console.error('Erro ao solicitar atualização de propostas:', updateError);
       setError(normalizeFetchError(updateError, 'Erro ao solicitar atualização.'));
