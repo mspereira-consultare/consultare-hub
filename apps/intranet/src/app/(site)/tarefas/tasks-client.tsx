@@ -2,7 +2,7 @@
 
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
   Calendar,
@@ -358,6 +358,8 @@ const compareTasks = (left: TaskSummary, right: TaskSummary) => {
 };
 
 export function TasksClient({ currentUser }: TasksClientProps) {
+  const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [viewMode, setViewMode] = useState<ViewMode>('KANBAN');
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
@@ -391,6 +393,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const detailFileRef = useRef<HTMLInputElement | null>(null);
   const commentFileRef = useRef<HTMLInputElement | null>(null);
   const dragClickGuardRef = useRef<string | null>(null);
+  const dismissedTaskRequestRef = useRef<string | null>(null);
   const requestedTaskId = searchParams.get('task') || '';
 
   const replaceTaskParamInUrl = (taskId?: string | null) => {
@@ -401,8 +404,8 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       params.delete('task');
     }
     const nextQuery = params.toString();
-    const nextUrl = nextQuery ? `/tarefas?${nextQuery}` : '/tarefas';
-    window.history.replaceState(window.history.state, '', nextUrl);
+    const nextUrl = nextQuery ? `${pathname}?${nextQuery}` : pathname;
+    router.replace(nextUrl, { scroll: false });
   };
 
   const loadTasks = async (focusTaskId?: string) => {
@@ -493,6 +496,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   };
 
   const openTaskDetail = async (taskId: string) => {
+    dismissedTaskRequestRef.current = null;
     setSelectedTaskId(taskId);
     replaceTaskParamInUrl(taskId);
     await loadTaskDetail(taskId, true);
@@ -519,7 +523,18 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   }, [successMessage]);
 
   useEffect(() => {
+    if (!requestedTaskId) {
+      dismissedTaskRequestRef.current = null;
+      return;
+    }
+    if (dismissedTaskRequestRef.current && dismissedTaskRequestRef.current !== requestedTaskId) {
+      dismissedTaskRequestRef.current = null;
+    }
+  }, [requestedTaskId]);
+
+  useEffect(() => {
     if (!requestedTaskId || detailOpen || taskLoading) return;
+    if (dismissedTaskRequestRef.current === requestedTaskId) return;
     if (!tasks.some((task) => task.id === requestedTaskId)) return;
     setSelectedTaskId(requestedTaskId);
     void loadTaskDetail(requestedTaskId, true);
@@ -579,6 +594,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   };
 
   const closeDetail = () => {
+    dismissedTaskRequestRef.current = requestedTaskId || selectedTaskId || null;
     setDetailOpen(false);
     replaceTaskParamInUrl(null);
     setDetailTaskFiles([]);
