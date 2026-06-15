@@ -15,12 +15,19 @@ except ImportError:  # pragma: no cover - fallback para ambientes sem fcntl
 
 
 _PROCESS_LOCK = threading.Lock()
+_SESSION_LOCK = threading.Lock()
+PLAYWRIGHT_MAX_CONCURRENT_SESSIONS = max(1, int(os.getenv("PLAYWRIGHT_MAX_CONCURRENT_SESSIONS", "1")))
+PLAYWRIGHT_SESSION_WAIT_LOG_SEC = max(0.0, float(os.getenv("PLAYWRIGHT_SESSION_WAIT_LOG_SEC", "3.0")))
+_SESSION_SEMAPHORE = threading.BoundedSemaphore(PLAYWRIGHT_MAX_CONCURRENT_SESSIONS)
+_ACTIVE_SESSION_COUNT = 0
 
 
 def _merge_launch_args(custom_args):
     base_args = [
         "--no-sandbox",
         "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-software-rasterizer",
     ]
     merged = list(base_args)
     for arg in custom_args or []:
@@ -58,6 +65,32 @@ def _is_resource_temp_error(exc: Exception) -> bool:
     return err_no == errno.EAGAIN
 
 
+@contextlib.contextmanager
+def _session_slot(startup_label: str):
+    global _ACTIVE_SESSION_COUNT
+    wait_started_at = time.time()
+    _SESSION_SEMAPHORE.acquire()
+    waited_sec = time.time() - wait_started_at
+
+    with _SESSION_LOCK:
+        _ACTIVE_SESSION_COUNT += 1
+        active_count = _ACTIVE_SESSION_COUNT
+
+    if waited_sec >= PLAYWRIGHT_SESSION_WAIT_LOG_SEC:
+        print(
+            "⏳ Playwright aguardou slot disponível | "
+            f"label={startup_label} wait={waited_sec:.1f}s "
+            f"active={active_count}/{PLAYWRIGHT_MAX_CONCURRENT_SESSIONS}"
+        )
+
+    try:
+        yield
+    finally:
+        with _SESSION_LOCK:
+            _ACTIVE_SESSION_COUNT = max(0, _ACTIVE_SESSION_COUNT - 1)
+        _SESSION_SEMAPHORE.release()
+
+
 def _start_browser_with_retry(*, headless: bool, launch_args=None, startup_label: str = "playwright_startup"):
     attempts = max(1, int(os.getenv("PLAYWRIGHT_STARTUP_MAX_ATTEMPTS", "4")))
     base_delay = max(0.5, float(os.getenv("PLAYWRIGHT_STARTUP_RETRY_BASE_SEC", "2.0")))
@@ -90,16 +123,17 @@ def _start_browser_with_retry(*, headless: bool, launch_args=None, startup_label
 
 @contextlib.contextmanager
 def chromium_session(*, headless: bool = True, launch_args=None, startup_label: str = "playwright_startup"):
-    stack, browser = _start_browser_with_retry(
-        headless=headless,
-        launch_args=launch_args,
-        startup_label=startup_label,
-    )
-    try:
-        yield browser
-    finally:
+    with _session_slot(startup_label):
+        stack, browser = _start_browser_with_retry(
+            headless=headless,
+            launch_args=launch_args,
+            startup_label=startup_label,
+        )
         try:
-            browser.close()
-        except Exception:
-            pass
-        stack.close()
+            yield browser
+        finally:
+            try:
+                browser.close()
+            except Exception:
+                pass
+            stack.close()

@@ -10,7 +10,10 @@ import schedule
 import builtins
 import re
 import unicodedata
+import traceback
+import faulthandler
 from collections import deque
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # --- TIMEZONE (Railway normalmente roda em UTC) ---
 WORK_TZ_NAME = os.getenv("WORK_TZ", "America/Sao_Paulo")
@@ -37,6 +40,11 @@ if hasattr(time, "tzset"):
 sys.stdout.reconfigure(line_buffering=True, encoding='utf-8')
 sys.stderr.reconfigure(line_buffering=True, encoding='utf-8')
 
+try:
+    faulthandler.enable(all_threads=True)
+except Exception as e:
+    print(f"⚠️ Falha ao habilitar faulthandler: {e}")
+
 # --- PADRÃO DE LOGS COM PREFIXO (THREAD + HORÁRIO) ---
 _original_print = builtins.print
 
@@ -50,6 +58,36 @@ def _prefixed_print(*args, **kwargs):
         _original_print(prefix, **kwargs)
 
 builtins.print = _prefixed_print
+
+PROCESS_STARTED_AT = time.time()
+ORCHESTRATOR_READY = False
+
+
+def _emit_bootstrap_context():
+    railway_runtime = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"))
+    port = str(os.getenv("PORT") or "").strip() or "<none>"
+    print(
+        "🧰 Bootstrap contexto | "
+        f"python={sys.version.split()[0]} "
+        f"pid={os.getpid()} "
+        f"cwd={os.getcwd()} "
+        f"tz={WORK_TZ_NAME} "
+        f"railway={railway_runtime} "
+        f"port={port}"
+    )
+
+
+def _threading_excepthook(args):
+    thread_name = getattr(args.thread, "name", "<unknown>")
+    exc_type = getattr(args, "exc_type", Exception)
+    exc_value = getattr(args, "exc_value", None)
+    exc_traceback = getattr(args, "exc_traceback", None)
+    print(f"💥 Exceção não tratada em thread '{thread_name}': {exc_type.__name__}: {exc_value}")
+    traceback.print_exception(exc_type, exc_value, exc_traceback)
+
+
+if hasattr(threading, "excepthook"):
+    threading.excepthook = _threading_excepthook
 
 # Adiciona diretório atual ao path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -86,8 +124,10 @@ try:
     # Worker Clinia (Ciclo único que precisa de loop externo)
     from worker_clinia import process_and_save as clinia_cycle
     
-except ImportError as e:
-    print(f"❌ Erro de Importação no Main: {e}")
+except Exception as e:
+    print(f"❌ Falha no bootstrap do worker: {type(e).__name__}: {e}")
+    _emit_bootstrap_context()
+    traceback.print_exc()
     sys.exit(1)
 
 def _parse_hhmm(raw_value: str, default_h: int, default_m: int):
@@ -1042,6 +1082,92 @@ WATCHDOG_SERVICES = [
     if s.strip()
 ]
 
+WORKER_HEALTHCHECK_MODE = str(os.getenv("WORKER_HEALTHCHECK_ENABLED", "auto")).strip().lower()
+WORKER_HEALTHCHECK_HOST = str(os.getenv("WORKER_HEALTHCHECK_HOST", "0.0.0.0")).strip() or "0.0.0.0"
+_raw_health_port = str(os.getenv("WORKER_HEALTHCHECK_PORT") or os.getenv("PORT") or "").strip()
+try:
+    WORKER_HEALTHCHECK_PORT = int(_raw_health_port) if _raw_health_port else 8080
+except Exception:
+    WORKER_HEALTHCHECK_PORT = 8080
+
+
+def _is_worker_healthcheck_enabled():
+    if WORKER_HEALTHCHECK_MODE in {"0", "false", "no", "off", "disabled"}:
+        return False
+    if WORKER_HEALTHCHECK_MODE in {"1", "true", "yes", "on", "enabled"}:
+        return True
+    return bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID") or os.getenv("PORT"))
+
+
+def _build_worker_health_payload():
+    alive_threads = sorted(
+        thread.name
+        for thread in threading.enumerate()
+        if thread.is_alive()
+    )
+    return {
+        "ok": True,
+        "ready": ORCHESTRATOR_READY,
+        "pid": os.getpid(),
+        "uptimeSec": int(max(0, time.time() - PROCESS_STARTED_AT)),
+        "timezone": WORK_TZ_NAME,
+        "railway": bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID")),
+        "watchdogServices": [service for service in WATCHDOG_SERVICES if service in WATCHDOG_SUPPORTED_SERVICES],
+        "threads": alive_threads,
+    }
+
+
+class _WorkerHealthcheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        path = str(self.path or "/").split("?", 1)[0]
+        if path not in {"/", "/healthz", "/readyz"}:
+            self.send_response(404)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(b'{"ok":false,"error":"not_found"}')
+            return
+
+        payload = _build_worker_health_payload()
+        status_code = 200 if (path != "/readyz" or payload["ready"]) else 503
+        body = json.dumps(payload, ensure_ascii=True).encode("utf-8")
+        self.send_response(status_code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):
+        return
+
+
+class _WorkerHealthcheckServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
+def start_worker_healthcheck_server():
+    if not _is_worker_healthcheck_enabled():
+        print("🫀 Healthcheck HTTP do worker desativado.")
+        return
+
+    def _serve():
+        try:
+            server = _WorkerHealthcheckServer((WORKER_HEALTHCHECK_HOST, WORKER_HEALTHCHECK_PORT), _WorkerHealthcheckHandler)
+            print(
+                "🫀 Healthcheck HTTP do worker ativo | "
+                f"host={WORKER_HEALTHCHECK_HOST} port={WORKER_HEALTHCHECK_PORT} "
+                "paths=/healthz,/readyz"
+            )
+            server.serve_forever()
+        except Exception as e:
+            print(
+                "⚠️ Falha ao iniciar healthcheck HTTP do worker: "
+                f"{type(e).__name__}: {e}"
+            )
+            traceback.print_exc()
+
+    threading.Thread(target=_serve, name="HealthHTTP", daemon=True).start()
+
 def run_watchdog():
     if not WATCHDOG_ENABLED:
         print("🛡️ Watchdog desativado.")
@@ -1145,12 +1271,15 @@ def run_watchdog():
             continue
 
 def start_orchestrator():
+    global ORCHESTRATOR_READY
     # Os emojis abaixo causavam erro no Windows sem o encoding='utf-8'
     print("\n🎹 ORQUESTRADOR HÍBRIDO INICIADO 🎹")
     print(f"🌍 Ambiente: {'RAILWAY/PROD' if os.getenv('RAILWAY_ENVIRONMENT') else 'LOCAL'}")
+    _emit_bootstrap_context()
 
     # Normaliza nomes duplicados na system_status antes de iniciar threads
     normalize_system_status_rows()
+    start_worker_healthcheck_server()
     
     threads = [
         threading.Thread(target=run_on_demand_listener, name="Listener", daemon=True),
@@ -1166,6 +1295,7 @@ def start_orchestrator():
     ]
 
     for t in threads: t.start()
+    ORCHESTRATOR_READY = True
 
     try:
         while True: time.sleep(10)
