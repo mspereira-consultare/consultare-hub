@@ -181,6 +181,20 @@ const normalizeText = (value: unknown) =>
     .toLowerCase()
     .trim();
 
+const normalizeProjectStructureError = (message: string) => {
+  const normalized = normalizeText(message);
+  if (normalized.includes('ciclo invalido')) return 'Essa dependência criaria um ciclo inválido no cronograma do projeto.';
+  if (normalized.includes('mesmo projeto')) return 'As duas tarefas precisam estar no mesmo projeto para criar a dependência.';
+  if (normalized.includes('depender dela mesma')) return 'Uma tarefa não pode ser predecessora dela mesma.';
+  if (normalized.includes('data de inicio e prazo') || normalized.includes('inicio e prazo definidos')) {
+    return 'Defina início e prazo nas tarefas envolvidas antes de configurar o cronograma.';
+  }
+  if (normalized.includes('nao pode editar este cronograma')) {
+    return 'A estrutura do cronograma só pode ser alterada pela governança autorizada.';
+  }
+  return message;
+};
+
 const isRetiredTaskStatus = (status: TaskStatus) => RETIRED_TASK_STATUSES.includes(status);
 
 const formatDate = (value: string | null) => {
@@ -717,7 +731,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       await syncProjectViews(nextProject, { reloadSelectedTask: true });
       setSuccessMessage('Membro adicionado ao projeto.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao adicionar membro.');
+      setError(err instanceof Error ? normalizeProjectStructureError(err.message) : 'Erro ao adicionar membro.');
     } finally {
       setSaving(false);
     }
@@ -738,7 +752,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       await syncProjectViews(nextProject, { reloadSelectedTask: true });
       setSuccessMessage('Membro removido do projeto.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao remover membro.');
+      setError(err instanceof Error ? normalizeProjectStructureError(err.message) : 'Erro ao remover membro.');
     } finally {
       setSaving(false);
     }
@@ -763,7 +777,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       await syncProjectViews(nextProject, { reloadSelectedTask: true });
       setSuccessMessage('Predecessora adicionada com sucesso.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao adicionar predecessora.');
+      setError(err instanceof Error ? normalizeProjectStructureError(err.message) : 'Erro ao adicionar predecessora.');
     } finally {
       setSaving(false);
     }
@@ -785,7 +799,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       await syncProjectViews(nextProject, { reloadSelectedTask: true });
       setSuccessMessage('Predecessora removida com sucesso.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao remover predecessora.');
+      setError(err instanceof Error ? normalizeProjectStructureError(err.message) : 'Erro ao remover predecessora.');
     } finally {
       setSaving(false);
     }
@@ -816,7 +830,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       await syncProjectViews(nextProject, { reloadSelectedTask: true });
       setSuccessMessage('Ordem do cronograma atualizada.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao reordenar cronograma.');
+      setError(err instanceof Error ? normalizeProjectStructureError(err.message) : 'Erro ao reordenar cronograma.');
     } finally {
       setSaving(false);
     }
@@ -1516,6 +1530,11 @@ function ExecutiveProjectDetailModal({
               </div>
             ) : project ? (
               <div className="space-y-5">
+                {!canEdit ? (
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-[#17407E]">
+                    Este projeto está em modo leitura para o seu perfil atual de governança.
+                  </div>
+                ) : null}
                 <TaskSectionCard
                   title="Metadados do projeto"
                   description="Edite o nome e a descrição do projeto sem sair da governança."
@@ -1545,19 +1564,16 @@ function ExecutiveProjectDetailModal({
                   {canEdit ? (
                     <div className="flex flex-col gap-3 md:flex-row md:items-end">
                       <div className="min-w-0 flex-1">
-                        <label className="mb-1 block text-sm font-medium text-slate-700">Adicionar membro</label>
-                        <select
+                        <SearchableOptionSelect
+                          label="Adicionar membro"
                           value={memberUserId}
-                          onChange={(event) => onMemberUserIdChange(event.target.value)}
-                          className={inputClassName}
-                        >
-                          <option value="">Selecione um colaborador</option>
-                          {memberOptions.map((user) => (
-                            <option key={user.id} value={user.id}>
-                              {user.name} · {user.department || user.email}
-                            </option>
-                          ))}
-                        </select>
+                          onChange={onMemberUserIdChange}
+                          allLabel="Nenhum colaborador elegível encontrado"
+                          options={memberOptions.map((user) => ({
+                            value: user.id,
+                            label: `${user.name} · ${user.department || user.email}`,
+                          }))}
+                        />
                       </div>
                       <button
                         type="button"
@@ -1579,7 +1595,7 @@ function ExecutiveProjectDetailModal({
                             <div className="truncate text-sm font-semibold text-slate-900">{user?.name || member.userId}</div>
                             <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
                               <span>{user?.department || user?.email || 'Sem setor'}</span>
-                              <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{isOwner ? 'Owner' : 'Membro'}</span>
+                              <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{isOwner ? 'Criador' : 'Membro'}</span>
                             </div>
                           </div>
                           {canEdit && !isOwner ? (

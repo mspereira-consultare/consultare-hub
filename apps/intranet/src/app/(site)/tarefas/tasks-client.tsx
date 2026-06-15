@@ -196,6 +196,20 @@ const normalizeText = (value: unknown) =>
     .toLowerCase()
     .trim();
 
+const normalizeProjectStructureError = (message: string) => {
+  const normalized = normalizeText(message);
+  if (normalized.includes('ciclo invalido')) return 'Essa dependência criaria um ciclo inválido no cronograma do projeto.';
+  if (normalized.includes('mesmo projeto')) return 'As duas tarefas precisam estar no mesmo projeto para criar a dependência.';
+  if (normalized.includes('depender dela mesma')) return 'Uma tarefa não pode ser predecessora dela mesma.';
+  if (normalized.includes('data de inicio e prazo') || normalized.includes('inicio e prazo definidos')) {
+    return 'Defina início e prazo nas tarefas envolvidas antes de configurar o cronograma.';
+  }
+  if (normalized.includes('apenas o criador do projeto') || normalized.includes('nao pode editar este cronograma')) {
+    return 'Somente o criador do projeto pode alterar a estrutura do cronograma.';
+  }
+  return message;
+};
+
 const isRetiredTaskStatus = (status: TaskStatus) => RETIRED_TASK_STATUSES.includes(status);
 const isRetiredFilter = (filter: FilterKey) => filter === 'ARCHIVED_BY_ME' || filter === 'CANCELED_BY_ME';
 
@@ -993,7 +1007,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       await syncProjectViews(nextProject, { reloadSelectedTask: true });
       setSuccessMessage('Membro adicionado ao projeto.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao adicionar membro ao projeto.');
+      setError(err instanceof Error ? normalizeProjectStructureError(err.message) : 'Erro ao adicionar membro ao projeto.');
     } finally {
       setSaving(false);
     }
@@ -1014,7 +1028,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       await syncProjectViews(nextProject, { reloadSelectedTask: true });
       setSuccessMessage('Membro removido do projeto.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao remover membro do projeto.');
+      setError(err instanceof Error ? normalizeProjectStructureError(err.message) : 'Erro ao remover membro do projeto.');
     } finally {
       setSaving(false);
     }
@@ -1039,7 +1053,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       await syncProjectViews(nextProject, { reloadSelectedTask: true });
       setSuccessMessage('Predecessora adicionada com sucesso.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao adicionar predecessora.');
+      setError(err instanceof Error ? normalizeProjectStructureError(err.message) : 'Erro ao adicionar predecessora.');
     } finally {
       setSaving(false);
     }
@@ -1061,7 +1075,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       await syncProjectViews(nextProject, { reloadSelectedTask: true });
       setSuccessMessage('Predecessora removida com sucesso.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao remover predecessora.');
+      setError(err instanceof Error ? normalizeProjectStructureError(err.message) : 'Erro ao remover predecessora.');
     } finally {
       setSaving(false);
     }
@@ -1092,7 +1106,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       await syncProjectViews(nextProject, { reloadSelectedTask: true });
       setSuccessMessage('Ordem do cronograma atualizada.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao reordenar cronograma do projeto.');
+      setError(err instanceof Error ? normalizeProjectStructureError(err.message) : 'Erro ao reordenar cronograma do projeto.');
     } finally {
       setSaving(false);
     }
@@ -3976,6 +3990,11 @@ function ProjectDetailModal({
               </div>
             ) : project ? (
               <div className="space-y-5">
+                {!canEditProject ? (
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-[#17407E]">
+                    Você está vendo este projeto como membro. A estrutura do cronograma fica editável apenas para o criador do projeto.
+                  </div>
+                ) : null}
                 <TaskSectionCard
                   title="Metadados do projeto"
                   description="Ajuste nome, descrição e o estado do projeto sem sair da visão operacional."
@@ -4043,7 +4062,7 @@ function ProjectDetailModal({
                             <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
                               <span>{user?.department || user?.email || 'Sem setor'}</span>
                               <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">
-                                {isOwner ? 'Owner' : 'Membro'}
+                                {isOwner ? 'Criador' : 'Membro'}
                               </span>
                             </div>
                           </div>
