@@ -1395,6 +1395,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       .map((task) => ({
         value: task.id,
         label: `${task.protocolId} · ${task.title}`,
+        hasSchedule: Boolean(task.startDate && task.dueDate),
       }));
   }, [selectedTask, selectedTaskProjectContext]);
   const dependencyTaskMap = useMemo(
@@ -2590,6 +2591,146 @@ function TaskModal({
   );
 }
 
+function SearchableOptionSelect({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  emptyLabel,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder: string;
+  emptyLabel: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; minWidth: number } | null>(null);
+
+  const selectedOption = options.find((option) => option.value === value) || null;
+  const visibleOptions = useMemo(() => {
+    if (!searchTerm.trim()) return options;
+    const normalized = normalizeText(searchTerm);
+    return options.filter((option) => normalizeText(option.label).includes(normalized));
+  }, [options, searchTerm]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setDropdownStyle({
+        top: rect.bottom + 8,
+        left: rect.left,
+        minWidth: rect.width,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!containerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => {
+          setOpen((current) => !current);
+          setSearchTerm('');
+        }}
+        className={`${inputClassName} flex items-center justify-between gap-3 text-left`}
+      >
+        <span className="truncate">{selectedOption?.label || placeholder}</span>
+        <span className="text-xs text-slate-400">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && dropdownStyle
+        ? createPortal(
+            <div
+              ref={dropdownRef}
+              className="fixed z-[80] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              style={{ top: dropdownStyle.top, left: dropdownStyle.left, minWidth: dropdownStyle.minWidth }}
+            >
+              <div className="border-b border-slate-200 p-3">
+                <div className="relative">
+                  <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    autoFocus
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder={placeholder}
+                    className={`${inputClassName} pl-9`}
+                  />
+                </div>
+              </div>
+              <div className="max-h-72 overflow-y-auto p-2">
+                {visibleOptions.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-sm text-slate-500">{emptyLabel}</div>
+                ) : (
+                  visibleOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        onChange(option.value);
+                        setOpen(false);
+                        setSearchTerm('');
+                      }}
+                      className={`flex w-full items-center rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                        value === option.value ? 'bg-blue-50 font-semibold text-[#17407E]' : 'text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <span className="truncate">{option.label}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </div>
+  );
+}
+
 function TaskDetailModal({
   task,
   currentUserId,
@@ -2673,7 +2814,7 @@ function TaskDetailModal({
   canManageLifecycle: boolean;
   projectLabel: string;
   projectContext: TaskProjectDetail | null;
-  dependencyOptions: Array<{ value: string; label: string }>;
+  dependencyOptions: Array<{ value: string; label: string; hasSchedule: boolean }>;
   currentDependencies: Array<{ id: string; label: string }>;
   canManageProjectStructure: boolean;
   onArchive: () => void;
@@ -2691,6 +2832,11 @@ function TaskDetailModal({
   const orderedComments = [...task.comments].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const orderedActivity = [...task.activity].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const approvalStateLabel = task.latestApproval ? approvalLabelMap[task.latestApproval.decisionStatus] : 'Sem ciclo aberto';
+  const hasCurrentTaskSchedule = Boolean(form.startDate && form.dueDate);
+  const selectedDependencyOption = dependencyOptions.find((option) => option.value === selectedDependencyId) || null;
+  const canCreateDependency = Boolean(
+    canManageProjectStructure && selectedDependencyId && hasCurrentTaskSchedule && selectedDependencyOption?.hasSchedule
+  );
 
   useEffect(() => {
     setSelectedDependencyId('');
@@ -2815,32 +2961,43 @@ function TaskDetailModal({
                       {projectContext ? (
                         <div className="mt-4 space-y-3">
                           {canManageProjectStructure ? (
-                            <div className="flex flex-col gap-2 sm:flex-row">
-                              <select
+                            <div className="space-y-3">
+                              <SearchableOptionSelect
+                                label="Selecionar predecessora"
                                 value={selectedDependencyId}
-                                onChange={(event) => setSelectedDependencyId(event.target.value)}
-                                className={inputClassName}
-                              >
-                                <option value="">Selecionar predecessora</option>
-                                {dependencyOptions.map((option) => (
-                                  <option key={option.value} value={option.value}>
-                                    {option.label}
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (selectedDependencyId) {
-                                    onDependencyCreate(selectedDependencyId);
-                                    setSelectedDependencyId('');
-                                  }
-                                }}
-                                disabled={saving || !selectedDependencyId}
-                                className="inline-flex items-center justify-center rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
-                              >
-                                Adicionar
-                              </button>
+                                onChange={setSelectedDependencyId}
+                                placeholder="Buscar tarefa predecessora"
+                                emptyLabel="Nenhuma tarefa elegível encontrada"
+                                options={dependencyOptions.map((option) => ({
+                                  value: option.value,
+                                  label: option.hasSchedule ? option.label : `${option.label} · sem datas`,
+                                }))}
+                              />
+                              {!hasCurrentTaskSchedule ? (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                  Defina início e prazo desta tarefa antes de configurar predecessoras.
+                                </div>
+                              ) : null}
+                              {selectedDependencyOption && !selectedDependencyOption.hasSchedule ? (
+                                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                                  A tarefa predecessora escolhida ainda não possui início e prazo definidos.
+                                </div>
+                              ) : null}
+                              <div className="flex flex-col gap-2 sm:flex-row">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (canCreateDependency) {
+                                      onDependencyCreate(selectedDependencyId);
+                                      setSelectedDependencyId('');
+                                    }
+                                  }}
+                                  disabled={saving || !canCreateDependency}
+                                  className="inline-flex items-center justify-center rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
+                                >
+                                  Adicionar predecessora
+                                </button>
+                              </div>
                             </div>
                           ) : null}
 
