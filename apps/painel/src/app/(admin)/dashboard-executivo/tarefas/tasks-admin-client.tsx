@@ -25,7 +25,11 @@ import type {
   TaskApprovalDecisionStatus,
   TaskDashboardSummary,
   TaskDetail,
+  TaskPortfolioGantt,
+  TaskPortfolioGanttSection,
   TaskPriority,
+  TaskProjectDetail,
+  TaskProjectSummary,
   TaskStatus,
   TaskSummary,
 } from '@consultare/core/tasks/types';
@@ -44,7 +48,7 @@ type ExecutiveTasksClientProps = {
   canEdit: boolean;
 };
 
-type ViewMode = 'KANBAN' | 'LIST';
+type ViewMode = 'KANBAN' | 'LIST' | 'GANTT';
 
 type TaskFormState = {
   title: string;
@@ -54,6 +58,7 @@ type TaskFormState = {
   status: TaskStatus;
   dueDate: string;
   startDate: string;
+  projectId: string;
   primaryAssigneeUserId: string;
   assigneeUserIds: string[];
   approverUserId: string;
@@ -62,6 +67,7 @@ type TaskFormState = {
 type FiltersState = {
   search: string;
   department: string;
+  projectId: string;
   createdBy: string;
   assigneeUserId: string;
   approverUserId: string;
@@ -121,6 +127,7 @@ const panelClassName = 'rounded-2xl border border-slate-200 bg-white shadow-sm';
 const defaultFilters: FiltersState = {
   search: '',
   department: 'all',
+  projectId: 'all',
   createdBy: 'all',
   assigneeUserId: 'all',
   approverUserId: 'all',
@@ -137,6 +144,7 @@ const defaultForm = (): TaskFormState => ({
   status: 'BACKLOG',
   dueDate: '',
   startDate: '',
+  projectId: '',
   primaryAssigneeUserId: '',
   assigneeUserIds: [],
   approverUserId: '',
@@ -150,6 +158,7 @@ const taskToForm = (task: TaskDetail): TaskFormState => ({
   status: task.status,
   dueDate: task.dueDate || '',
   startDate: task.startDate || '',
+  projectId: task.projectId || '',
   primaryAssigneeUserId: task.primaryAssigneeUserId || '',
   assigneeUserIds: task.assignees.filter((item) => item.roleType !== 'PRIMARY').map((item) => item.userId),
   approverUserId: task.approverUserId || '',
@@ -299,11 +308,28 @@ const compareTasks = (left: TaskSummary, right: TaskSummary) => {
   return right.updatedAt.localeCompare(left.updatedAt);
 };
 
+const parseLocalDate = (value: string | null) => {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+};
+
+const diffCalendarDays = (start: Date, end: Date) => {
+  const dayMs = 1000 * 60 * 60 * 24;
+  const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+  return Math.round((endUtc - startUtc) / dayMs);
+};
+
+const taskProjectLabel = (task: Pick<TaskSummary, 'projectName'>) => task.projectName || 'Tarefa avulsa';
+
 const buildQueryString = (filters: FiltersState) => {
   const params = new URLSearchParams();
   params.set('includeCanceled', '1');
   if (filters.search.trim()) params.set('search', filters.search.trim());
   if (filters.department !== 'all') params.set('department', filters.department);
+  if (filters.projectId !== 'all') params.set('projectId', filters.projectId);
   if (filters.createdBy !== 'all') params.set('createdBy', filters.createdBy);
   if (filters.assigneeUserId !== 'all') params.set('assigneeUserId', filters.assigneeUserId);
   if (filters.approverUserId !== 'all') params.set('approverUserId', filters.approverUserId);
@@ -325,10 +351,14 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const [filters, setFilters] = useState<FiltersState>(defaultFilters);
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
+  const [projects, setProjects] = useState<TaskProjectSummary[]>([]);
+  const [projectDetail, setProjectDetail] = useState<TaskProjectDetail | null>(null);
+  const [portfolioGantt, setPortfolioGantt] = useState<TaskPortfolioGantt | null>(null);
   const [summary, setSummary] = useState<TaskDashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshingBoard, setRefreshingBoard] = useState(false);
   const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
+  const [ganttLoading, setGanttLoading] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -343,6 +373,14 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const dragClickGuardRef = useRef<string | null>(null);
 
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
+  const projectOptions = useMemo(
+    () => projects.map((project) => ({ value: project.id, label: project.name })),
+    [projects]
+  );
+  const selectedProjectSummary = useMemo(
+    () => projects.find((project) => project.id === filters.projectId) || null,
+    [filters.projectId, projects]
+  );
   const deferredSearch = useDeferredValue(filters.search);
   const appliedFilters = useMemo(
     () => ({
@@ -388,6 +426,42 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
     }
   };
 
+  const loadProjects = async () => {
+    try {
+      const response = await fetch('/api/admin/task-projects', { cache: 'no-store' });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const payload = await response.json();
+      setProjects(Array.isArray(payload.data) ? (payload.data as TaskProjectSummary[]) : []);
+    } catch (err) {
+      console.error('Erro ao carregar projetos da governança:', err);
+      setProjects([]);
+    }
+  };
+
+  const loadGantt = async () => {
+    setGanttLoading(true);
+    setError(null);
+    try {
+      if (filters.projectId !== 'all') {
+        const response = await fetch(`/api/admin/task-projects/${encodeURIComponent(filters.projectId)}/gantt`, { cache: 'no-store' });
+        if (!response.ok) throw new Error(await normalizeError(response));
+        const payload = await response.json();
+        setProjectDetail(payload.data as TaskProjectDetail);
+        setPortfolioGantt(null);
+      } else {
+        const response = await fetch('/api/admin/tasks/portfolio-gantt', { cache: 'no-store' });
+        if (!response.ok) throw new Error(await normalizeError(response));
+        const payload = await response.json();
+        setPortfolioGantt(payload.data as TaskPortfolioGantt);
+        setProjectDetail(null);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar o cronograma global.');
+    } finally {
+      setGanttLoading(false);
+    }
+  };
+
   const loadTaskDetail = async (taskId: string, openPanel = true) => {
     if (!taskId) return;
     setLoadingDetail(true);
@@ -415,9 +489,20 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   };
 
   useEffect(() => {
+    void loadProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     void loadBoard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryString]);
+
+  useEffect(() => {
+    if (viewMode !== 'GANTT') return;
+    void loadGantt();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, filters.projectId]);
 
   useEffect(() => {
     if (!successMessage) return undefined;
@@ -463,6 +548,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
           status: form.status,
           dueDate: form.dueDate || null,
           startDate: form.startDate || null,
+          projectId: form.projectId || null,
           primaryAssigneeUserId: form.primaryAssigneeUserId || null,
           assigneeUserIds: form.assigneeUserIds,
           approverUserId: form.approverUserId || null,
@@ -679,6 +765,18 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
               <Table2 size={16} />
               Lista
             </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('GANTT')}
+              className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition ${
+                viewMode === 'GANTT'
+                  ? 'border-blue-200 bg-blue-50 text-[#17407E]'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <Calendar size={16} />
+              Gantt
+            </button>
           </div>
         </div>
       </section>
@@ -744,6 +842,12 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
                 <option value="all">Todos os setores</option>
                 {departments.map((department) => (
                   <option key={department} value={department}>{department}</option>
+                ))}
+              </select>
+              <select value={filters.projectId} onChange={(event) => setFilters((current) => ({ ...current, projectId: event.target.value }))} className={inputClassName}>
+                <option value="all">Todos os projetos</option>
+                {projects.map((project) => (
+                  <option key={project.id} value={project.id}>{project.name}</option>
                 ))}
               </select>
               <SearchableFilterSelect
@@ -905,6 +1009,23 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
                 ))}
               </div>
             </div>
+          ) : viewMode === 'GANTT' ? (
+            ganttLoading ? (
+              <div className="flex min-h-[320px] items-center justify-center text-slate-500">
+                <Loader2 size={18} className="mr-2 animate-spin" />
+                Montando cronograma global...
+              </div>
+            ) : (
+              <ExecutiveProjectGanttBoard
+                project={projectDetail}
+                portfolio={portfolioGantt}
+                selectedProjectName={selectedProjectSummary?.name || null}
+                onOpenTask={(taskId) => {
+                  void openTaskDetail(taskId);
+                }}
+                canEdit={canEdit}
+              />
+            )
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -965,6 +1086,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
           task={selectedTask}
           users={users}
           departments={departments}
+          projectOptions={projectOptions}
           usersById={usersById}
           canEdit={canEdit}
           loading={loadingDetail}
@@ -975,6 +1097,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
           onSave={() => void handleSave()}
           lifecycleReason={lifecycleReason}
           onLifecycleReasonChange={setLifecycleReason}
+          projectLabel={taskProjectLabel(selectedTask)}
           onArchive={() => void changeTaskLifecycle('ARQUIVADA')}
           onCancelTask={() => void changeTaskLifecycle('CANCELADA')}
           onRestore={() => void changeTaskLifecycle('BACKLOG')}
@@ -1017,6 +1140,196 @@ function ExecutiveMetricCard({
           <p className="mt-2 text-xs opacity-80">{helper}</p>
         </div>
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 ring-1 ring-black/5">{icon}</div>
+      </div>
+    </div>
+  );
+}
+
+function ExecutiveProjectGanttBoard({
+  project,
+  portfolio,
+  selectedProjectName,
+  onOpenTask,
+  canEdit,
+}: {
+  project: TaskProjectDetail | null;
+  portfolio: TaskPortfolioGantt | null;
+  selectedProjectName: string | null;
+  onOpenTask: (taskId: string) => void;
+  canEdit: boolean;
+}) {
+  const sections = project
+    ? [{ project, tasks: project.tasks, dependencies: project.dependencies } satisfies TaskPortfolioGanttSection]
+    : portfolio?.sections || [];
+
+  if (!sections.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-12 text-center text-sm text-slate-500">
+        Nenhum cronograma disponível para este recorte.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {sections.map((section) => {
+        const scheduledTasks = section.tasks.filter((task) => task.startDate && task.dueDate && !isRetiredTaskStatus(task.status));
+        const sectionTitle = section.project?.name || 'Tarefas avulsas';
+
+        if (section.project && scheduledTasks.length < 2) {
+          return (
+            <div key={section.project.id} className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10">
+              <div className="text-lg font-semibold text-slate-900">{sectionTitle}</div>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                Este projeto ainda não tem massa crítica para Gantt. São necessárias pelo menos duas tarefas com início e prazo definidos.
+              </p>
+            </div>
+          );
+        }
+
+        return (
+          <div key={section.project?.id || 'standalone'} className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">{sectionTitle}</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  {section.project
+                    ? `${section.tasks.length} tarefa(s), ${scheduledTasks.length} agendada(s) e ${section.dependencies.length} dependência(s) mapeadas.`
+                    : 'Portfólio consolidado das tarefas avulsas visíveis na governança.'}
+                </p>
+              </div>
+              {section.project ? (
+                <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                  <a
+                    href={`/api/admin/task-projects/${encodeURIComponent(section.project.id)}/export.xlsx`}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Exportar XLSX
+                  </a>
+                  <a
+                    href={`/api/admin/task-projects/${encodeURIComponent(section.project.id)}/export.pdf`}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Exportar PDF
+                  </a>
+                  <span className="rounded-full bg-slate-50 px-3 py-1.5 ring-1 ring-slate-200">
+                    {canEdit ? 'Cronograma editável pela governança.' : 'Cronograma em modo leitura.'}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+            <ExecutiveGanttTimeline rows={scheduledTasks} onOpenTask={onOpenTask} projectName={selectedProjectName || sectionTitle} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ExecutiveGanttTimeline({
+  rows,
+  onOpenTask,
+  projectName,
+}: {
+  rows: TaskSummary[];
+  onOpenTask: (taskId: string) => void;
+  projectName: string;
+}) {
+  const datedRows = rows
+    .map((task) => ({
+      task,
+      start: parseLocalDate(task.startDate),
+      end: parseLocalDate(task.dueDate),
+    }))
+    .filter((row): row is { task: TaskSummary; start: Date; end: Date } => Boolean(row.start && row.end))
+    .sort((left, right) => {
+      const startGap = left.start.getTime() - right.start.getTime();
+      if (startGap !== 0) return startGap;
+      const sortGap = (left.task.projectSortOrder ?? Number.MAX_SAFE_INTEGER) - (right.task.projectSortOrder ?? Number.MAX_SAFE_INTEGER);
+      if (sortGap !== 0) return sortGap;
+      return compareTasks(left.task, right.task);
+    });
+
+  if (!datedRows.length) {
+    return <div className="px-5 py-10 text-sm text-slate-500">Nenhuma tarefa agendada neste recorte.</div>;
+  }
+
+  const timelineStart = datedRows.reduce((min, row) => (row.start < min ? row.start : min), datedRows[0].start);
+  const timelineEnd = datedRows.reduce((max, row) => (row.end > max ? row.end : max), datedRows[0].end);
+  const totalDays = Math.max(diffCalendarDays(timelineStart, timelineEnd) + 1, 1);
+  const tickStep = Math.max(Math.floor(totalDays / 6), 1);
+  const ticks = Array.from({ length: Math.max(Math.ceil(totalDays / tickStep), 2) }, (_, index) => {
+    const offset = Math.min(index * tickStep, totalDays - 1);
+    const date = new Date(timelineStart);
+    date.setDate(date.getDate() + offset);
+    return {
+      key: `${projectName}-${offset}`,
+      offset,
+      label: date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+    };
+  });
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[980px]">
+        <div className="grid grid-cols-[320px_minmax(0,1fr)] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tarefa</div>
+          <div className="relative h-6">
+            {ticks.map((tick) => (
+              <span
+                key={tick.key}
+                className="absolute -translate-x-1/2 text-[11px] font-semibold text-slate-500"
+                style={{ left: `${(tick.offset / totalDays) * 100}%` }}
+              >
+                {tick.label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="divide-y divide-slate-100">
+          {datedRows.map(({ task, start, end }) => {
+            const startOffset = diffCalendarDays(timelineStart, start);
+            const spanDays = Math.max(diffCalendarDays(start, end) + 1, 1);
+            const left = (startOffset / totalDays) * 100;
+            const width = Math.max((spanDays / totalDays) * 100, 2.5);
+
+            return (
+              <div key={task.id} className="grid grid-cols-[320px_minmax(0,1fr)] gap-4 px-5 py-4">
+                <button type="button" onClick={() => onOpenTask(task.id)} className="min-w-0 text-left">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[#17407E]">{task.protocolId}</div>
+                  <div className="mt-1 truncate font-semibold text-slate-900">{task.title}</div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                    <span>{task.department}</span>
+                    <span>{statusLabelMap[task.status]}</span>
+                    {task.projectName ? <span>{task.projectName}</span> : null}
+                  </div>
+                </button>
+                <div className="relative h-14 rounded-xl bg-[linear-gradient(to_right,rgba(226,232,240,0.9)_1px,transparent_1px)] bg-[length:28px_100%] bg-left">
+                  <div
+                    className={`absolute top-3 flex h-8 items-center rounded-full px-3 text-xs font-semibold text-white shadow-sm ${
+                      task.status === 'CONCLUIDA'
+                        ? 'bg-emerald-500'
+                        : isOverdue(task.dueDate, task.status)
+                          ? 'bg-rose-500'
+                          : 'bg-[#17407E]'
+                    }`}
+                    style={{ left: `${left}%`, width: `${width}%` }}
+                  >
+                    <span className="truncate">
+                      {formatDate(task.startDate)} - {formatDate(task.dueDate)}
+                    </span>
+                  </div>
+                  {task.checklistTotalItems > 0 ? (
+                    <div className="absolute bottom-1 left-0 right-0 text-right text-[11px] text-slate-500">
+                      Progresso {task.checklistProgressPercent}%
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
@@ -1184,6 +1497,7 @@ function TaskDetailPanel({
   task,
   users,
   departments,
+  projectOptions,
   usersById,
   canEdit,
   loading,
@@ -1194,6 +1508,7 @@ function TaskDetailPanel({
   onSave,
   lifecycleReason,
   onLifecycleReasonChange,
+  projectLabel,
   onArchive,
   onCancelTask,
   onRestore,
@@ -1204,6 +1519,7 @@ function TaskDetailPanel({
   task: TaskDetail;
   users: UserOption[];
   departments: string[];
+  projectOptions: Array<{ value: string; label: string }>;
   usersById: Map<string, UserOption>;
   canEdit: boolean;
   loading: boolean;
@@ -1214,6 +1530,7 @@ function TaskDetailPanel({
   onSave: () => void;
   lifecycleReason: string;
   onLifecycleReasonChange: (value: string) => void;
+  projectLabel: string;
   onArchive: () => void;
   onCancelTask: () => void;
   onRestore: () => void;
@@ -1222,6 +1539,7 @@ function TaskDetailPanel({
   onChecklistDelete: (itemId: string) => void;
 }) {
   const taskIsRetired = isRetiredTaskStatus(task.status);
+  const requiresProjectSchedule = Boolean(form.projectId);
   const orderedComments = [...task.comments].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const orderedActivity = [...task.activity].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const approvalStateLabel = task.latestApproval ? approvalLabelMap[task.latestApproval.decisionStatus] : 'Sem ciclo aberto';
@@ -1252,10 +1570,7 @@ function TaskDetailPanel({
             <QuickMetaCard label="Criador" value={usersById.get(task.createdBy)?.name || 'Usuário'} />
             <QuickMetaCard label="Responsável" value={usersById.get(form.primaryAssigneeUserId)?.name || 'Não definido'} />
             <QuickMetaCard label="Prazo" value={form.dueDate ? formatDate(form.dueDate) : 'Sem prazo'} />
-            <QuickMetaCard
-              label="Checklist"
-              value={task.checklistTotalItems ? `${task.checklistCompletedItems}/${task.checklistTotalItems} concluídos` : 'Sem itens'}
-            />
+            <QuickMetaCard label="Projeto" value={projectLabel} />
           </div>
         </div>
 
@@ -1295,6 +1610,13 @@ function TaskDetailPanel({
                     ]}
                   />
                   <FieldSelect
+                    label="Projeto"
+                    value={form.projectId}
+                    onChange={(value) => onFormChange({ ...form, projectId: value })}
+                    disabled={!canEdit}
+                    options={[{ value: '', label: 'Tarefa avulsa' }, ...projectOptions]}
+                  />
+                  <FieldSelect
                     label="Status"
                     value={form.status}
                     onChange={(value) => onFormChange({ ...form, status: value as TaskStatus })}
@@ -1306,6 +1628,11 @@ function TaskDetailPanel({
                   <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} disabled={!canEdit} />
                   <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} disabled={!canEdit} />
                 </div>
+                {requiresProjectSchedule ? (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-[#17407E]">
+                    Tarefas de projeto precisam manter início e prazo válidos para compor o Gantt global.
+                  </div>
+                ) : null}
                 </TaskSectionCard>
 
                 <TaskSectionCard
@@ -1542,7 +1869,7 @@ function TaskDetailPanel({
             <button
               type="button"
               onClick={onSave}
-              disabled={saving || !form.title.trim() || !form.department.trim()}
+              disabled={saving || !form.title.trim() || !form.department.trim() || (requiresProjectSchedule && (!form.startDate || !form.dueDate))}
               className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
             >
               {saving ? <Loader2 size={16} className="animate-spin" /> : <Columns3 size={16} />}

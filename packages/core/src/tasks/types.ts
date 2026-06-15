@@ -9,6 +9,7 @@ export type TaskStatus =
   | 'CANCELADA';
 export type TaskAssigneeRoleType = 'PRIMARY' | 'COLLABORATOR';
 export type TaskApprovalDecisionStatus = 'PENDENTE' | 'APROVADA' | 'REPROVADA' | 'DEVOLVIDA' | 'CANCELADA';
+export type TaskProjectMemberRoleType = 'OWNER' | 'MEMBER';
 
 export type TaskViewerContext = {
   userId: string;
@@ -101,6 +102,74 @@ export type TaskChecklistSummary = {
   progressPercent: number;
 };
 
+export type TaskProjectMember = {
+  id: string;
+  projectId: string;
+  userId: string;
+  roleType: TaskProjectMemberRoleType;
+  createdAt: string;
+};
+
+export type TaskDependency = {
+  id: string;
+  projectId: string;
+  predecessorTaskId: string;
+  successorTaskId: string;
+  createdBy: string;
+  createdAt: string;
+};
+
+export type TaskProjectSummary = {
+  id: string;
+  name: string;
+  description: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  archivedAt: string | null;
+  memberCount: number;
+  taskCount: number;
+  scheduledTaskCount: number;
+  isOwner: boolean;
+};
+
+export type TaskProjectDetail = TaskProjectSummary & {
+  members: TaskProjectMember[];
+  tasks: TaskSummary[];
+  dependencies: TaskDependency[];
+};
+
+export type TaskPortfolioGanttRow = {
+  projectId: string | null;
+  projectName: string;
+  taskId: string;
+  protocolId: string;
+  title: string;
+  department: string;
+  priority: TaskPriority;
+  status: TaskStatus;
+  startDate: string | null;
+  dueDate: string | null;
+  durationDays: number;
+  primaryAssigneeUserId: string | null;
+  checklistProgressPercent: number;
+  predecessorTaskIds: string[];
+  projectSortOrder: number | null;
+  isStandalone: boolean;
+  isOverdue: boolean;
+};
+
+export type TaskPortfolioGanttSection = {
+  project: TaskProjectSummary | null;
+  tasks: TaskSummary[];
+  dependencies: TaskDependency[];
+};
+
+export type TaskPortfolioGantt = {
+  rows: TaskPortfolioGanttRow[];
+  sections: TaskPortfolioGanttSection[];
+};
+
 export type TaskSummary = {
   id: string;
   protocolNumber: number;
@@ -115,6 +184,10 @@ export type TaskSummary = {
   createdBy: string;
   primaryAssigneeUserId: string | null;
   approverUserId: string | null;
+  projectId: string | null;
+  projectName: string | null;
+  projectSortOrder: number | null;
+  predecessorTaskIds: string[];
   completedAt: string | null;
   canceledAt: string | null;
   cancellationReason: string | null;
@@ -149,6 +222,7 @@ export type TaskCreateInput = {
   primaryAssigneeUserId?: string | null;
   assigneeUserIds?: string[];
   approverUserId?: string | null;
+  projectId?: string | null;
 };
 
 export type TaskUpdateInput = {
@@ -163,6 +237,7 @@ export type TaskUpdateInput = {
   assigneeUserIds?: string[];
   approverUserId?: string | null;
   cancellationReason?: string | null;
+  projectId?: string | null;
 };
 
 export type TaskAttachmentInput = {
@@ -196,6 +271,9 @@ export type TaskListFilters = {
   assigneeUserId?: string;
   approverUserId?: string;
   department?: string;
+  projectId?: string;
+  includeStandalone?: boolean;
+  scheduledOnly?: boolean;
   includeCanceled?: boolean;
   dueBucket?: 'OVERDUE' | 'DUE_SOON' | 'NONE';
 };
@@ -219,4 +297,25 @@ export type TaskChecklistItemUpdateInput = {
   title?: string | null;
   isCompleted?: boolean | null;
   sortOrder?: number | null;
+};
+
+export type TaskProjectCreateInput = {
+  name: string;
+  description?: string | null;
+  memberUserIds?: string[];
+};
+
+export type TaskProjectUpdateInput = {
+  name?: string | null;
+  description?: string | null;
+  archivedAt?: string | null;
+};
+
+export type TaskProjectMemberAddInput = {
+  userId: string;
+};
+
+export type TaskDependencyCreateInput = {
+  predecessorTaskId: string;
+  successorTaskId: string;
 };

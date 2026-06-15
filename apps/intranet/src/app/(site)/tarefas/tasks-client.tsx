@@ -29,7 +29,11 @@ import {
 import type {
   TaskApprovalDecisionStatus,
   TaskDetail,
+  TaskPortfolioGantt,
+  TaskPortfolioGanttSection,
   TaskPriority,
+  TaskProjectDetail,
+  TaskProjectSummary,
   TaskStatus,
   TaskSummary,
 } from '@consultare/core/tasks/types';
@@ -55,11 +59,19 @@ type DraftChecklistItem = {
   isCompleted: boolean;
 };
 
+type TaskProjectFilter = 'ALL' | 'STANDALONE' | string;
+
+type TaskProjectFormState = {
+  name: string;
+  description: string;
+  memberUserIds: string[];
+};
+
 type TasksClientProps = {
   currentUser: CurrentUser;
 };
 
-type ViewMode = 'KANBAN' | 'LIST';
+type ViewMode = 'KANBAN' | 'LIST' | 'GANTT';
 
 type FilterKey =
   | 'ALL'
@@ -79,6 +91,7 @@ type TaskFormState = {
   status: TaskStatus;
   dueDate: string;
   startDate: string;
+  projectId: string;
   primaryAssigneeUserId: string;
   assigneeUserIds: string[];
   approverUserId: string;
@@ -193,6 +206,7 @@ const defaultForm = (currentUser: CurrentUser): TaskFormState => ({
   status: 'BACKLOG',
   dueDate: '',
   startDate: '',
+  projectId: '',
   primaryAssigneeUserId: currentUser.id,
   assigneeUserIds: [],
   approverUserId: '',
@@ -206,11 +220,18 @@ const taskToForm = (task: TaskDetail): TaskFormState => ({
   status: task.status,
   dueDate: task.dueDate || '',
   startDate: task.startDate || '',
+  projectId: task.projectId || '',
   primaryAssigneeUserId: task.primaryAssigneeUserId || '',
   assigneeUserIds: task.assignees
     .filter((assignee) => assignee.roleType !== 'PRIMARY')
     .map((assignee) => assignee.userId),
   approverUserId: task.approverUserId || '',
+});
+
+const defaultProjectForm = (): TaskProjectFormState => ({
+  name: '',
+  description: '',
+  memberUserIds: [],
 });
 
 const formatDate = (value: string | null) => {
@@ -357,6 +378,22 @@ const compareTasks = (left: TaskSummary, right: TaskSummary) => {
   return right.updatedAt.localeCompare(left.updatedAt);
 };
 
+const parseLocalDate = (value: string | null) => {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+};
+
+const diffCalendarDays = (start: Date, end: Date) => {
+  const dayMs = 1000 * 60 * 60 * 24;
+  const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+  const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+  return Math.round((endUtc - startUtc) / dayMs);
+};
+
+const taskProjectLabel = (task: Pick<TaskSummary, 'projectName'>) => task.projectName || 'Tarefa avulsa';
+
 export function TasksClient({ currentUser }: TasksClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -364,9 +401,14 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const [viewMode, setViewMode] = useState<ViewMode>('KANBAN');
   const [tasks, setTasks] = useState<TaskSummary[]>([]);
   const [users, setUsers] = useState<TaskUserOption[]>([]);
+  const [projects, setProjects] = useState<TaskProjectSummary[]>([]);
+  const [projectFilter, setProjectFilter] = useState<TaskProjectFilter>('ALL');
+  const [projectDetail, setProjectDetail] = useState<TaskProjectDetail | null>(null);
+  const [portfolioGantt, setPortfolioGantt] = useState<TaskPortfolioGantt | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState('');
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
   const [boardLoading, setBoardLoading] = useState(true);
+  const [ganttLoading, setGanttLoading] = useState(false);
   const [taskLoading, setTaskLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -376,8 +418,10 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
+  const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [createForm, setCreateForm] = useState<TaskFormState>(defaultForm(currentUser));
+  const [projectForm, setProjectForm] = useState<TaskProjectFormState>(defaultProjectForm());
   const [createChecklistItems, setCreateChecklistItems] = useState<DraftChecklistItem[]>([]);
   const [editForm, setEditForm] = useState<TaskFormState>(defaultForm(currentUser));
   const [newTaskFiles, setNewTaskFiles] = useState<File[]>([]);
@@ -425,6 +469,9 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       if (departmentFilter) {
         params.set('department', departmentFilter);
       }
+      if (projectFilter && projectFilter !== 'ALL' && projectFilter !== 'STANDALONE') {
+        params.set('projectId', projectFilter);
+      }
       const response = await fetch(`/api/tasks${params.size ? `?${params.toString()}` : ''}`, { cache: 'no-store' });
       if (!response.ok) throw new Error(await normalizeError(response));
       const json = await response.json();
@@ -439,6 +486,47 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar tarefas.');
     } finally {
       setBoardLoading(false);
+    }
+  };
+
+  const loadProjects = async () => {
+    try {
+      const response = await fetch('/api/task-projects', { cache: 'no-store' });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const json = await response.json();
+      setProjects(Array.isArray(json.data) ? (json.data as TaskProjectSummary[]) : []);
+    } catch (err) {
+      console.error('Erro ao carregar projetos das tarefas:', err);
+      setProjects([]);
+    }
+  };
+
+  const loadGanttData = async () => {
+    setGanttLoading(true);
+    setError(null);
+    try {
+      if (projectFilter !== 'ALL' && projectFilter !== 'STANDALONE') {
+        const response = await fetch(`/api/task-projects/${encodeURIComponent(projectFilter)}/gantt`, { cache: 'no-store' });
+        if (!response.ok) throw new Error(await normalizeError(response));
+        const json = await response.json();
+        setProjectDetail(json.data as TaskProjectDetail);
+        setPortfolioGantt(null);
+        return;
+      }
+
+      const params = new URLSearchParams();
+      if (projectFilter === 'STANDALONE') {
+        params.set('includeStandalone', '1');
+      }
+      const response = await fetch(`/api/tasks/portfolio-gantt${params.size ? `?${params.toString()}` : ''}`, { cache: 'no-store' });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const json = await response.json();
+      setPortfolioGantt(json.data as TaskPortfolioGantt);
+      setProjectDetail(null);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar o cronograma Gantt.');
+    } finally {
+      setGanttLoading(false);
     }
   };
 
@@ -504,13 +592,20 @@ export function TasksClient({ currentUser }: TasksClientProps) {
 
   useEffect(() => {
     void loadUsers();
+    void loadProjects();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     void loadTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter, assigneeFilter, departmentFilter]);
+  }, [activeFilter, assigneeFilter, departmentFilter, projectFilter]);
+
+  useEffect(() => {
+    if (isRetiredFilter(activeFilter) || viewMode !== 'GANTT') return;
+    void loadGanttData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, projectFilter]);
 
   useEffect(() => {
     if (!successMessage) return undefined;
@@ -544,8 +639,9 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const visibleTasks = useMemo(() => {
     const term = normalizeText(search);
     return tasks.filter((task) => {
+      if (projectFilter === 'STANDALONE' && task.projectId) return false;
       if (term) {
-        const searchable = normalizeText(`${task.protocolId} ${task.title} ${task.description} ${task.department}`);
+        const searchable = normalizeText(`${task.protocolId} ${task.title} ${task.description} ${task.department} ${task.projectName || ''}`);
         if (!searchable.includes(term)) return false;
       }
 
@@ -563,7 +659,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       if (activeFilter === 'CANCELED_BY_ME' && !(task.createdBy === currentUser.id && task.status === 'CANCELADA')) return false;
       return true;
     });
-  }, [activeFilter, currentUser.id, search, tasks]);
+  }, [activeFilter, currentUser.id, projectFilter, search, tasks]);
 
   const boardByColumn = useMemo(() => {
     return KANBAN_COLUMNS.map((column) => ({
@@ -587,10 +683,20 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     setCreateOpen(true);
   };
 
+  const openProjectModal = () => {
+    setProjectForm(defaultProjectForm());
+    setProjectModalOpen(true);
+  };
+
   const closeCreate = () => {
     setCreateOpen(false);
     setCreateChecklistItems([]);
     setNewTaskFiles([]);
+  };
+
+  const closeProjectModal = () => {
+    setProjectModalOpen(false);
+    setProjectForm(defaultProjectForm());
   };
 
   const closeDetail = () => {
@@ -621,6 +727,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           status: createForm.status,
           dueDate: createForm.dueDate || null,
           startDate: createForm.startDate || null,
+          projectId: createForm.projectId || null,
           primaryAssigneeUserId: createForm.primaryAssigneeUserId || currentUser.id,
           assigneeUserIds: createForm.assigneeUserIds,
           approverUserId: createForm.approverUserId || null,
@@ -698,6 +805,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           status: editForm.status,
           dueDate: editForm.dueDate || null,
           startDate: editForm.startDate || null,
+          projectId: editForm.projectId || null,
           primaryAssigneeUserId: editForm.primaryAssigneeUserId || null,
           assigneeUserIds: editForm.assigneeUserIds,
           approverUserId: editForm.approverUserId || null,
@@ -721,6 +829,35 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       setSuccessMessage('Tarefa atualizada com sucesso.');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao atualizar tarefa.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const createProject = async () => {
+    if (!projectForm.name.trim() || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/task-projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: projectForm.name,
+          description: projectForm.description || null,
+          memberUserIds: projectForm.memberUserIds,
+        }),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const json = await response.json();
+      const project = json.data as TaskProjectSummary;
+      await loadProjects();
+      setProjectFilter(project.id);
+      setViewMode('GANTT');
+      closeProjectModal();
+      setSuccessMessage(`Projeto ${project.name} criado com sucesso.`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao criar projeto.');
     } finally {
       setSaving(false);
     }
@@ -997,6 +1134,15 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     () => buildDepartmentOptions(officialDepartments, tasks.map((task) => task.department), formOrTaskDepartment(selectedTask, editForm)),
     [officialDepartments, tasks, selectedTask, editForm]
   );
+  const projectOptions = useMemo(
+    () => projects.map((project) => ({ value: project.id, label: project.name })),
+    [projects]
+  );
+  const selectedProjectSummary = useMemo(
+    () => projects.find((project) => project.id === projectFilter) || null,
+    [projectFilter, projects]
+  );
+  const canManageSelectedProject = Boolean(projectDetail?.isOwner);
 
   const canCurrentUserApprove =
     selectedTask?.status === 'AGUARDANDO_APROVACAO' &&
@@ -1016,14 +1162,24 @@ export function TasksClient({ currentUser }: TasksClientProps) {
               Acompanhe suas entregas, compartilhe contexto com comentários e envie itens para aprovação sem sair da intranet.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={openCreate}
-            className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-[#17407E] transition hover:bg-blue-50"
-          >
-            <Plus size={16} />
-            Nova tarefa
-          </button>
+          <div className="flex flex-wrap gap-2 xl:justify-end">
+            <button
+              type="button"
+              onClick={openProjectModal}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/30 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              <Users size={16} />
+              Novo projeto
+            </button>
+            <button
+              type="button"
+              onClick={openCreate}
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-[#17407E] transition hover:bg-blue-50"
+            >
+              <Plus size={16} />
+              Nova tarefa
+            </button>
+          </div>
         </div>
       </section>
 
@@ -1072,6 +1228,16 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                     <Table2 size={16} />
                     Lista
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewMode('GANTT')}
+                    className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                      viewMode === 'GANTT' ? 'bg-white text-[#17407E] shadow-sm' : 'text-slate-600 hover:text-slate-800'
+                    }`}
+                  >
+                    <Calendar size={16} />
+                    Gantt
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -1102,7 +1268,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_320px_240px]">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_320px_260px_240px]">
               <SearchableUserSelect
                 label="Responsável"
                 value={assigneeFilter}
@@ -1111,6 +1277,18 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                 emptyLabel="Todos os responsáveis"
                 placeholder="Filtrar por responsável"
               />
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Projeto</label>
+                <select value={projectFilter} onChange={(event) => setProjectFilter(event.target.value)} className={inputClassName}>
+                  <option value="ALL">Todos os projetos e tarefas</option>
+                  <option value="STANDALONE">Somente tarefas avulsas</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Setor</label>
                 <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} className={inputClassName}>
@@ -1126,12 +1304,13 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                 <span className="rounded-full bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
                   {visibleTasks.length} tarefa(s) no recorte
                 </span>
-                {(assigneeFilter || departmentFilter) ? (
+                {(assigneeFilter || departmentFilter || projectFilter !== 'ALL') ? (
                   <button
                     type="button"
                     onClick={() => {
                       setAssigneeFilter('');
                       setDepartmentFilter('');
+                      setProjectFilter('ALL');
                     }}
                     className="rounded-full border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-600 transition hover:bg-slate-50"
                   >
@@ -1218,6 +1397,24 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                   </button>
                 ))}
               </div>
+            )
+          ) : viewMode === 'GANTT' ? (
+            ganttLoading ? (
+              <div className="flex min-h-[320px] items-center justify-center text-slate-500">
+                <Loader2 size={18} className="mr-2 animate-spin" />
+                Montando cronograma...
+              </div>
+            ) : (
+              <ProjectGanttBoard
+                project={projectDetail}
+                portfolio={portfolioGantt}
+                projectFilter={projectFilter}
+                selectedProjectName={selectedProjectSummary?.name || null}
+                onOpenTask={(taskId) => {
+                  void openTaskDetail(taskId);
+                }}
+                canManageProject={canManageSelectedProject}
+              />
             )
           ) : viewMode === 'LIST' ? (
             visibleTasks.length === 0 ? (
@@ -1418,6 +1615,18 @@ export function TasksClient({ currentUser }: TasksClientProps) {
         </div>
       </section>
 
+      {projectModalOpen ? (
+        <ProjectCreateModal
+          saving={saving}
+          currentUserId={currentUser.id}
+          users={selectableUsers}
+          form={projectForm}
+          onChange={setProjectForm}
+          onClose={closeProjectModal}
+          onSubmit={() => void createProject()}
+        />
+      ) : null}
+
       {createOpen ? (
         <TaskModal
           title="Nova tarefa"
@@ -1425,6 +1634,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           saving={saving}
           users={selectableUsers}
           departmentOptions={createDepartmentOptions}
+          projectOptions={projectOptions}
           checklistItems={createChecklistItems}
           onChecklistChange={setCreateChecklistItems}
           form={createForm}
@@ -1446,6 +1656,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           loading={taskLoading}
           users={selectableUsers}
           departmentOptions={editDepartmentOptions}
+          projectOptions={projectOptions}
           usersById={usersById}
           form={editForm}
           onFormChange={setEditForm}
@@ -1472,6 +1683,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           lifecycleReason={lifecycleReason}
           onLifecycleReasonChange={setLifecycleReason}
           canManageLifecycle={Boolean(canManageLifecycle)}
+          projectLabel={taskProjectLabel(selectedTask)}
           onArchive={() => void changeTaskLifecycle('ARQUIVADA')}
           onCancelTask={() => void changeTaskLifecycle('CANCELADA')}
           onRestore={() => void changeTaskLifecycle('BACKLOG')}
@@ -1876,6 +2088,7 @@ function TaskModal({
   saving,
   users,
   departmentOptions,
+  projectOptions,
   checklistItems,
   onChecklistChange,
   form,
@@ -1892,6 +2105,7 @@ function TaskModal({
   saving: boolean;
   users: Array<TaskUserOption & { label: string }>;
   departmentOptions: string[];
+  projectOptions: Array<{ value: string; label: string }>;
   checklistItems: DraftChecklistItem[];
   onChecklistChange: (items: DraftChecklistItem[]) => void;
   form: TaskFormState;
@@ -1903,6 +2117,8 @@ function TaskModal({
   onSubmit: () => void;
   submitLabel: string;
 }) {
+  const requiresProjectSchedule = Boolean(form.projectId);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
       <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
@@ -1926,7 +2142,7 @@ function TaskModal({
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <QuickMetaCard label="Responsável inicial" value={users.find((user) => user.id === form.primaryAssigneeUserId)?.name || 'Defina no formulário'} />
             <QuickMetaCard label="Setor" value={form.department || 'Preencha o setor'} />
-            <QuickMetaCard label="Prazo" value={form.dueDate ? formatDate(form.dueDate) : 'Sem prazo definido'} />
+            <QuickMetaCard label="Projeto" value={projectOptions.find((project) => project.value === form.projectId)?.label || 'Tarefa avulsa'} />
           </div>
         </div>
         <div className="flex-1 overflow-y-auto px-6 py-5">
@@ -1953,9 +2169,20 @@ function TaskModal({
                     onChange={(value) => onChange({ ...form, status: value as TaskStatus })}
                     options={STATUS_OPTIONS.filter((item) => item.value !== 'CANCELADA' && item.value !== 'ARQUIVADA')}
                   />
+                  <FieldSelect
+                    label="Projeto"
+                    value={form.projectId}
+                    onChange={(value) => onChange({ ...form, projectId: value })}
+                    options={[{ value: '', label: 'Tarefa avulsa' }, ...projectOptions]}
+                  />
                   <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onChange({ ...form, dueDate: value })} />
                   <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onChange({ ...form, startDate: value })} />
                 </div>
+                {requiresProjectSchedule ? (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-[#17407E]">
+                    Tarefas vinculadas a projeto precisam ter início e prazo definidos para aparecer no Gantt.
+                  </div>
+                ) : null}
                 <div>
                   <label className="mb-1 block text-sm font-medium text-slate-700">Descrição</label>
                   <textarea
@@ -2048,7 +2275,7 @@ function TaskModal({
           <button
             type="button"
             onClick={onSubmit}
-            disabled={saving || !form.title.trim() || !form.department.trim()}
+            disabled={saving || !form.title.trim() || !form.department.trim() || (requiresProjectSchedule && (!form.startDate || !form.dueDate))}
             className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
@@ -2067,6 +2294,7 @@ function TaskDetailModal({
   loading,
   users,
   departmentOptions,
+  projectOptions,
   form,
   onFormChange,
   files,
@@ -2093,6 +2321,7 @@ function TaskDetailModal({
   lifecycleReason,
   onLifecycleReasonChange,
   canManageLifecycle,
+  projectLabel,
   onArchive,
   onCancelTask,
   onRestore,
@@ -2106,6 +2335,7 @@ function TaskDetailModal({
   loading: boolean;
   users: Array<TaskUserOption & { label: string }>;
   departmentOptions: string[];
+  projectOptions: Array<{ value: string; label: string }>;
   form: TaskFormState;
   onFormChange: (next: TaskFormState) => void;
   files: File[];
@@ -2132,6 +2362,7 @@ function TaskDetailModal({
   lifecycleReason: string;
   onLifecycleReasonChange: (value: string) => void;
   canManageLifecycle: boolean;
+  projectLabel: string;
   onArchive: () => void;
   onCancelTask: () => void;
   onRestore: () => void;
@@ -2140,6 +2371,7 @@ function TaskDetailModal({
   onChecklistDelete: (itemId: string) => void;
 }) {
   const taskIsRetired = isRetiredTaskStatus(task.status);
+  const requiresProjectSchedule = Boolean(form.projectId);
   const orderedComments = [...task.comments].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const orderedActivity = [...task.activity].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const approvalStateLabel = task.latestApproval ? approvalLabelMap[task.latestApproval.decisionStatus] : 'Sem ciclo aberto';
@@ -2169,14 +2401,7 @@ function TaskDetailModal({
             <QuickMetaCard label="Prazo" value={form.dueDate ? formatDate(form.dueDate) : 'Sem prazo'} />
             <QuickMetaCard label="Responsável" value={usersById.get(form.primaryAssigneeUserId)?.name || 'Não definido'} />
             <QuickMetaCard label="Aprovação" value={approvalStateLabel} />
-            <QuickMetaCard
-              label="Checklist"
-              value={
-                task.checklistTotalItems
-                  ? `${task.checklistCompletedItems}/${task.checklistTotalItems} concluídos`
-                  : 'Sem itens'
-              }
-            />
+            <QuickMetaCard label="Projeto" value={projectLabel} />
           </div>
         </div>
 
@@ -2204,6 +2429,12 @@ function TaskDetailModal({
                   />
                   <FieldSelect label="Prioridade" value={form.priority} onChange={(value) => onFormChange({ ...form, priority: value as TaskPriority })} options={PRIORITY_OPTIONS} />
                   <FieldSelect
+                    label="Projeto"
+                    value={form.projectId}
+                    onChange={(value) => onFormChange({ ...form, projectId: value })}
+                    options={[{ value: '', label: 'Tarefa avulsa' }, ...projectOptions]}
+                  />
+                  <FieldSelect
                     label="Status"
                     value={form.status}
                     onChange={(value) => onFormChange({ ...form, status: value as TaskStatus })}
@@ -2212,6 +2443,11 @@ function TaskDetailModal({
                   <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} />
                   <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} />
                 </div>
+                {requiresProjectSchedule ? (
+                  <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-[#17407E]">
+                    Esta tarefa integra um projeto. O cronograma Gantt depende de início e prazo válidos.
+                  </div>
+                ) : null}
                 </TaskSectionCard>
 
                 <TaskSectionCard
@@ -2575,7 +2811,7 @@ function TaskDetailModal({
           <button
             type="button"
             onClick={onSave}
-            disabled={saving || !form.title.trim() || !form.department.trim()}
+            disabled={saving || !form.title.trim() || !form.department.trim() || (requiresProjectSchedule && (!form.startDate || !form.dueDate))}
             className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
@@ -3000,6 +3236,287 @@ function TaskActivityTimeline({
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function ProjectCreateModal({
+  saving,
+  currentUserId,
+  users,
+  form,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  saving: boolean;
+  currentUserId: string;
+  users: Array<TaskUserOption & { label: string }>;
+  form: TaskProjectFormState;
+  onChange: (value: TaskProjectFormState) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
+      <div className="flex max-h-[calc(100vh-2rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="border-b border-slate-200 px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#17407E]">Projetos</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-900">Novo projeto</h2>
+              <p className="mt-2 max-w-2xl text-sm text-slate-500">
+                Crie um projeto para agrupar tarefas, compartilhar visibilidade entre membros e habilitar o cronograma Gantt.
+              </p>
+            </div>
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
+              <X size={18} />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          <div className="space-y-5">
+            <TaskSectionCard
+              title="Identidade do projeto"
+              description="Defina um nome claro e o contexto que conectará as tarefas do cronograma."
+            >
+              <FieldInput label="Nome do projeto" value={form.name} onChange={(value) => onChange({ ...form, name: value })} placeholder="Ex.: Implantação da nova recepção" />
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Descrição</label>
+                <textarea
+                  value={form.description}
+                  onChange={(event) => onChange({ ...form, description: event.target.value })}
+                  className={textAreaClassName}
+                  placeholder="Objetivo, escopo, entregas esperadas e contexto geral do projeto"
+                />
+              </div>
+            </TaskSectionCard>
+
+            <TaskSectionCard
+              title="Membros do projeto"
+              description="Todos os membros enxergam as tarefas do projeto, mesmo sem atribuição individual."
+            >
+              <SearchableUserMultiSelect
+                label="Equipe do projeto"
+                currentUserId={currentUserId}
+                users={users}
+                selectedIds={form.memberUserIds}
+                onChange={(memberUserIds) => onChange({ ...form, memberUserIds })}
+              />
+            </TaskSectionCard>
+          </div>
+        </div>
+        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur">
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            Fechar
+          </button>
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={saving || !form.name.trim()}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+            Criar projeto
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ProjectGanttBoard({
+  project,
+  portfolio,
+  projectFilter,
+  selectedProjectName,
+  onOpenTask,
+  canManageProject,
+}: {
+  project: TaskProjectDetail | null;
+  portfolio: TaskPortfolioGantt | null;
+  projectFilter: TaskProjectFilter;
+  selectedProjectName: string | null;
+  onOpenTask: (taskId: string) => void;
+  canManageProject: boolean;
+}) {
+  const sections = project
+    ? [{ project, tasks: project.tasks, dependencies: project.dependencies } satisfies TaskPortfolioGanttSection]
+    : (portfolio?.sections || []).filter((section) => (projectFilter === 'STANDALONE' ? section.project === null : true));
+
+  if (!sections.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-12 text-center text-sm text-slate-500">
+        Nenhum cronograma disponível para este recorte ainda.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {sections.map((section) => {
+        const scheduledTasks = section.tasks.filter((task) => task.startDate && task.dueDate && !isRetiredTaskStatus(task.status));
+        const sectionTitle = section.project?.name || 'Tarefas avulsas';
+
+        if (section.project && scheduledTasks.length < 2) {
+          return (
+            <div key={section.project.id} className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10">
+              <div className="text-lg font-semibold text-slate-900">{sectionTitle}</div>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                O Gantt precisa de ao menos duas tarefas com início e prazo definidos. Vincule mais tarefas ao projeto e preencha o cronograma para habilitar a visão completa.
+              </p>
+            </div>
+          );
+        }
+
+        return (
+          <div key={section.project?.id || 'standalone'} className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">{sectionTitle}</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  {section.project
+                    ? `${section.tasks.length} tarefa(s), ${scheduledTasks.length} agendada(s) e ${section.dependencies.length} dependência(s) registradas.`
+                    : 'Tarefas individuais fora de projetos, agrupadas para visão consolidada.'}
+                </p>
+              </div>
+              {section.project ? (
+                <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                  <a
+                    href={`/api/task-projects/${encodeURIComponent(section.project.id)}/export.xlsx`}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Exportar XLSX
+                  </a>
+                  <a
+                    href={`/api/task-projects/${encodeURIComponent(section.project.id)}/export.pdf`}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Exportar PDF
+                  </a>
+                  <span className="rounded-full bg-slate-50 px-3 py-1.5 ring-1 ring-slate-200">
+                    {canManageProject ? 'Você pode estruturar este cronograma.' : 'Você acompanha este cronograma como membro.'}
+                  </span>
+                </div>
+              ) : null}
+            </div>
+            <GanttTimeline rows={scheduledTasks} onOpenTask={onOpenTask} projectName={selectedProjectName || sectionTitle} />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function GanttTimeline({
+  rows,
+  onOpenTask,
+  projectName,
+}: {
+  rows: TaskSummary[];
+  onOpenTask: (taskId: string) => void;
+  projectName: string;
+}) {
+  const datedRows = rows
+    .map((task) => ({
+      task,
+      start: parseLocalDate(task.startDate),
+      end: parseLocalDate(task.dueDate),
+    }))
+    .filter((row): row is { task: TaskSummary; start: Date; end: Date } => Boolean(row.start && row.end))
+    .sort((left, right) => {
+      const startGap = left.start.getTime() - right.start.getTime();
+      if (startGap !== 0) return startGap;
+      const sortGap = (left.task.projectSortOrder ?? Number.MAX_SAFE_INTEGER) - (right.task.projectSortOrder ?? Number.MAX_SAFE_INTEGER);
+      if (sortGap !== 0) return sortGap;
+      return compareTasks(left.task, right.task);
+    });
+
+  if (!datedRows.length) {
+    return (
+      <div className="px-5 py-10 text-sm text-slate-500">
+        Nenhuma tarefa com datas válidas disponível para este cronograma.
+      </div>
+    );
+  }
+
+  const timelineStart = datedRows.reduce((min, row) => (row.start < min ? row.start : min), datedRows[0].start);
+  const timelineEnd = datedRows.reduce((max, row) => (row.end > max ? row.end : max), datedRows[0].end);
+  const totalDays = Math.max(diffCalendarDays(timelineStart, timelineEnd) + 1, 1);
+  const tickStep = Math.max(Math.floor(totalDays / 6), 1);
+  const ticks = Array.from({ length: Math.max(Math.ceil(totalDays / tickStep), 2) }, (_, index) => {
+    const offset = Math.min(index * tickStep, totalDays - 1);
+    const date = new Date(timelineStart);
+    date.setDate(date.getDate() + offset);
+    return {
+      key: `${projectName}-${offset}`,
+      offset,
+      label: date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+    };
+  });
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[980px]">
+        <div className="grid grid-cols-[320px_minmax(0,1fr)] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tarefa</div>
+          <div className="relative h-6">
+            {ticks.map((tick) => (
+              <span
+                key={tick.key}
+                className="absolute -translate-x-1/2 text-[11px] font-semibold text-slate-500"
+                style={{ left: `${(tick.offset / totalDays) * 100}%` }}
+              >
+                {tick.label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="divide-y divide-slate-100">
+          {datedRows.map(({ task, start, end }) => {
+            const startOffset = diffCalendarDays(timelineStart, start);
+            const spanDays = Math.max(diffCalendarDays(start, end) + 1, 1);
+            const left = (startOffset / totalDays) * 100;
+            const width = Math.max((spanDays / totalDays) * 100, 2.5);
+
+            return (
+              <div key={task.id} className="grid grid-cols-[320px_minmax(0,1fr)] gap-4 px-5 py-4">
+                <button type="button" onClick={() => onOpenTask(task.id)} className="min-w-0 text-left">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[#17407E]">{task.protocolId}</div>
+                  <div className="mt-1 truncate font-semibold text-slate-900">{task.title}</div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                    <span>{task.department}</span>
+                    <span>{statusLabelMap[task.status]}</span>
+                    {task.projectName ? <span>{task.projectName}</span> : null}
+                  </div>
+                </button>
+                <div className="relative h-14 rounded-xl bg-[linear-gradient(to_right,rgba(226,232,240,0.9)_1px,transparent_1px)] bg-[length:28px_100%] bg-left">
+                  <div
+                    className={`absolute top-3 flex h-8 items-center rounded-full px-3 text-xs font-semibold text-white shadow-sm ${
+                      task.status === 'CONCLUIDA'
+                        ? 'bg-emerald-500'
+                        : isOverdue(task.dueDate, task.status)
+                          ? 'bg-rose-500'
+                          : 'bg-[#17407E]'
+                    }`}
+                    style={{ left: `${left}%`, width: `${width}%` }}
+                  >
+                    <span className="truncate">
+                      {formatDate(task.startDate)} - {formatDate(task.dueDate)}
+                    </span>
+                  </div>
+                  {task.checklistTotalItems > 0 ? (
+                    <div className="absolute bottom-1 left-0 right-0 text-right text-[11px] text-slate-500">
+                      Progresso {task.checklistProgressPercent}%
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

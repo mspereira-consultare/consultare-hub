@@ -22,6 +22,9 @@ const filtersFromRequest = (request: Request): TaskListFilters => {
     assigneeUserId: String(searchParams.get('assigneeUserId') || '').trim() || undefined,
     approverUserId: String(searchParams.get('approverUserId') || '').trim() || undefined,
     department: String(searchParams.get('department') || '').trim() || undefined,
+    projectId: String(searchParams.get('projectId') || '').trim() || undefined,
+    includeStandalone: String(searchParams.get('includeStandalone') || '').trim() === '0' ? false : undefined,
+    scheduledOnly: String(searchParams.get('scheduledOnly') || '').trim() === '1',
     includeCanceled: String(searchParams.get('includeCanceled') || '').trim() === '1',
     dueBucket: (String(searchParams.get('dueBucket') || '').trim().toUpperCase() || undefined) as TaskListFilters['dueBucket'],
   };

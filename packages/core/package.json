@@ -13,6 +13,7 @@
     "./permissions": "./src/permissions.ts",
     "./permissions-server": "./src/permissions_server.ts",
     "./tasks/types": "./src/tasks/types.ts",
+    "./tasks/export": "./src/tasks/export.ts",
     "./tasks/repository": "./src/tasks/repository.ts",
     "./user-accounts": "./src/user_accounts.ts",
     "./storage": "./src/storage/index.ts",

@@ -17,10 +17,21 @@ import type {
   TaskCommentAttachment,
   TaskCommentInput,
   TaskCreateInput,
+  TaskDependency,
+  TaskDependencyCreateInput,
   TaskDashboardSummary,
   TaskDetail,
   TaskListFilters,
   TaskPriority,
+  TaskProjectCreateInput,
+  TaskProjectDetail,
+  TaskProjectMember,
+  TaskProjectMemberAddInput,
+  TaskProjectSummary,
+  TaskProjectUpdateInput,
+  TaskPortfolioGantt,
+  TaskPortfolioGanttRow,
+  TaskPortfolioGanttSection,
   TaskStatus,
   TaskSummary,
   TaskUpdateInput,
@@ -129,6 +140,28 @@ const taskStatusLabel = (status: TaskStatus) =>
     CANCELADA: 'Cancelada',
   })[status];
 
+const parseDateObject = (value: string | null) => {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const diffDaysInclusive = (startDate: string | null, dueDate: string | null) => {
+  const start = parseDateObject(startDate);
+  const end = parseDateObject(dueDate);
+  if (!start || !end) return 0;
+  return Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86400000) + 1);
+};
+
+const isTaskOverdueForGantt = (task: Pick<TaskSummary, 'dueDate' | 'status'>) => {
+  if (!task.dueDate || task.status === 'CONCLUIDA' || isRetiredStatus(task.status)) return false;
+  const due = parseDateObject(task.dueDate);
+  if (!due) return false;
+  const today = new Date();
+  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  return due < start;
+};
+
 const parseDate = (value: unknown): string | null => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value.toISOString().slice(0, 10);
@@ -170,6 +203,97 @@ const ensureUserIsActive = async (db: DbInterface, userId: string) => {
   }
 };
 
+const ensureProjectExists = async (db: DbInterface, projectId: string) => {
+  const rows = await db.query(`SELECT * FROM task_projects WHERE id = ? LIMIT 1`, [projectId]);
+  const row = rows[0] as Row | undefined;
+  if (!row) throw new TaskValidationError('Projeto não encontrado.', 404);
+  return row;
+};
+
+const canViewerAccessProject = async (db: DbInterface, projectId: string, viewer: TaskViewerContext) => {
+  if (viewer.canViewAll) return true;
+  const rows = await db.query(
+    `
+    SELECT 1
+    FROM task_project_members
+    WHERE project_id = ? AND ${userIdEqualsSql('user_id')}
+    LIMIT 1
+    `,
+    [projectId, viewer.userId]
+  );
+  return Boolean(rows[0]);
+};
+
+const ensureViewerCanAccessProject = async (db: DbInterface, projectId: string, viewer: TaskViewerContext) => {
+  if (!(await canViewerAccessProject(db, projectId, viewer))) {
+    throw new TaskValidationError('Você não possui acesso a este projeto.', 403);
+  }
+};
+
+const canManageProject = async (db: DbInterface, projectId: string, actorUserId: string, viewer: TaskViewerContext) => {
+  if (viewer.canViewAll) return true;
+  const project = await ensureProjectExists(db, projectId);
+  return clean(project.created_by) === actorUserId;
+};
+
+const ensureCanManageProject = async (db: DbInterface, projectId: string, actorUserId: string, viewer: TaskViewerContext) => {
+  if (!(await canManageProject(db, projectId, actorUserId, viewer))) {
+    throw new TaskValidationError('Apenas o criador do projeto ou a gerência podem editar este cronograma.', 403);
+  }
+};
+
+const validateProjectTaskDates = (startDate: string | null, dueDate: string | null) => {
+  if (!startDate || !dueDate) {
+    throw new TaskValidationError('Tarefas de projeto precisam de data de início e prazo definidos.');
+  }
+  if (dueDate < startDate) {
+    throw new TaskValidationError('O prazo da tarefa não pode ser menor que a data de início.');
+  }
+};
+
+const nextProjectSortOrder = async (db: DbInterface, projectId: string) => {
+  const rows = await db.query(`SELECT COALESCE(MAX(project_sort_order), -1) AS max_sort FROM tasks WHERE project_id = ?`, [projectId]);
+  return parseIntSafe((rows[0] as Row | undefined)?.max_sort, -1) + 1;
+};
+
+const removeTaskDependencies = async (db: DbInterface, taskId: string) => {
+  await db.execute(`DELETE FROM task_dependencies WHERE predecessor_task_id = ? OR successor_task_id = ?`, [taskId, taskId]);
+};
+
+const ensureDependencyGraphHasNoCycle = async (
+  db: DbInterface,
+  projectId: string,
+  predecessorTaskId: string,
+  successorTaskId: string
+) => {
+  const rows = await db.query(`SELECT predecessor_task_id, successor_task_id FROM task_dependencies WHERE project_id = ?`, [projectId]);
+  const graph = new Map<string, string[]>();
+  for (const row of rows as Row[]) {
+    const predecessor = clean(row.predecessor_task_id);
+    const successor = clean(row.successor_task_id);
+    graph.set(predecessor, [...(graph.get(predecessor) || []), successor]);
+  }
+  graph.set(predecessorTaskId, [...(graph.get(predecessorTaskId) || []), successorTaskId]);
+
+  const visited = new Set<string>();
+  const stack = new Set<string>();
+  const visit = (node: string): boolean => {
+    if (stack.has(node)) return true;
+    if (visited.has(node)) return false;
+    visited.add(node);
+    stack.add(node);
+    for (const next of graph.get(node) || []) {
+      if (visit(next)) return true;
+    }
+    stack.delete(node);
+    return false;
+  };
+
+  if (visit(predecessorTaskId)) {
+    throw new TaskValidationError('A dependência cria um ciclo inválido no cronograma.', 409);
+  }
+};
+
 const ensureTaskExists = async (db: DbInterface, taskId: string) => {
   const rows = await db.query(`SELECT * FROM tasks WHERE id = ? LIMIT 1`, [taskId]);
   const row = rows[0] as Row | undefined;
@@ -197,10 +321,18 @@ const ensureViewerCanAccessTask = async (db: DbInterface, taskId: string, viewer
         OR ${userIdEqualsSql('t.primary_assignee_user_id')}
         OR ${userIdEqualsSql('t.approver_user_id')}
         OR ${userIdEqualsSql('a.user_id')}
+        OR (
+          t.project_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM task_project_members pm
+            WHERE pm.project_id = t.project_id AND ${userIdEqualsSql('pm.user_id')}
+          )
+        )
       )
     LIMIT 1
     `,
-    [taskId, viewer.userId, viewer.userId, viewer.userId, viewer.userId]
+    [taskId, viewer.userId, viewer.userId, viewer.userId, viewer.userId, viewer.userId]
   );
   if (!rows[0]) {
     throw new TaskValidationError('Você não possui acesso a esta tarefa.', 403);
@@ -272,6 +404,23 @@ const mapApprovalRequest = (row: Row): TaskApprovalRequest => ({
   isActive: parseBool(row.is_active),
 });
 
+const mapProjectMember = (row: Row): TaskProjectMember => ({
+  id: clean(row.id),
+  projectId: clean(row.project_id),
+  userId: clean(row.user_id),
+  roleType: upper(row.role_type || 'MEMBER') as TaskProjectMember['roleType'],
+  createdAt: clean(row.created_at),
+});
+
+const mapDependency = (row: Row): TaskDependency => ({
+  id: clean(row.id),
+  projectId: clean(row.project_id),
+  predecessorTaskId: clean(row.predecessor_task_id),
+  successorTaskId: clean(row.successor_task_id),
+  createdBy: clean(row.created_by),
+  createdAt: clean(row.created_at),
+});
+
 const mapActivity = (row: Row): TaskActivityLog => ({
   id: clean(row.id),
   taskId: clean(row.task_id),
@@ -334,7 +483,8 @@ const mapSummaryRow = (
   latestApproval: TaskApprovalRequest | null,
   commentCount: number,
   attachmentCount: number,
-  checklistSummary: { totalItems: number; completedItems: number; progressPercent: number }
+  checklistSummary: { totalItems: number; completedItems: number; progressPercent: number },
+  predecessorTaskIds: string[] = []
 ): TaskSummary => ({
   id: clean(row.id),
   protocolNumber: parseIntSafe(row.protocol_number),
@@ -349,6 +499,10 @@ const mapSummaryRow = (
   createdBy: clean(row.created_by),
   primaryAssigneeUserId: nullable(row.primary_assignee_user_id),
   approverUserId: nullable(row.approver_user_id),
+  projectId: nullable(row.project_id),
+  projectName: nullable(row.project_name),
+  projectSortOrder: row.project_sort_order == null ? null : parseIntSafe(row.project_sort_order),
+  predecessorTaskIds,
   completedAt: nullable(row.completed_at),
   canceledAt: nullable(row.canceled_at),
   cancellationReason: nullable(row.cancellation_reason),
@@ -377,11 +531,13 @@ const loadTaskCollections = async (db: DbInterface, taskIds: string[]) => {
       commentCountByTask: new Map<string, number>(),
       attachmentCountByTask: new Map<string, number>(),
       checklistSummaryByTask: new Map<string, { totalItems: number; completedItems: number; progressPercent: number }>(),
+      predecessorIdsByTask: new Map<string, string[]>(),
+      dependenciesByProject: new Map<string, TaskDependency[]>(),
     };
   }
 
   const placeholders = taskIds.map(() => '?').join(', ');
-  const [assigneeRows, attachmentRows, commentRows, commentAttachmentRows, checklistRows, approvalRows, activityRows] = await Promise.all([
+  const [assigneeRows, attachmentRows, commentRows, commentAttachmentRows, checklistRows, approvalRows, activityRows, dependencyRows] = await Promise.all([
     db.query(`SELECT * FROM task_assignees WHERE task_id IN (${placeholders}) ORDER BY created_at ASC`, taskIds),
     db.query(`SELECT * FROM task_attachments WHERE task_id IN (${placeholders}) ORDER BY created_at ASC`, taskIds),
     db.query(`SELECT * FROM task_comments WHERE task_id IN (${placeholders}) ORDER BY created_at ASC`, taskIds),
@@ -398,6 +554,10 @@ const loadTaskCollections = async (db: DbInterface, taskIds: string[]) => {
     db.query(`SELECT * FROM task_checklist_items WHERE task_id IN (${placeholders}) ORDER BY sort_order ASC, created_at ASC`, taskIds),
     db.query(`SELECT * FROM task_approval_requests WHERE task_id IN (${placeholders}) ORDER BY cycle_number DESC, requested_at DESC`, taskIds),
     db.query(`SELECT * FROM task_activity_log WHERE task_id IN (${placeholders}) ORDER BY created_at DESC`, taskIds),
+    db.query(
+      `SELECT * FROM task_dependencies WHERE predecessor_task_id IN (${placeholders}) OR successor_task_id IN (${placeholders}) ORDER BY created_at ASC`,
+      [...taskIds, ...taskIds]
+    ),
   ]);
 
   const assigneesByTask = new Map<string, TaskAssignee[]>();
@@ -454,6 +614,14 @@ const loadTaskCollections = async (db: DbInterface, taskIds: string[]) => {
     activityByTask.set(item.taskId, [...(activityByTask.get(item.taskId) || []), item]);
   }
 
+  const predecessorIdsByTask = new Map<string, string[]>();
+  const dependenciesByProject = new Map<string, TaskDependency[]>();
+  for (const raw of dependencyRows as Row[]) {
+    const item = mapDependency(raw);
+    predecessorIdsByTask.set(item.successorTaskId, [...(predecessorIdsByTask.get(item.successorTaskId) || []), item.predecessorTaskId]);
+    dependenciesByProject.set(item.projectId, [...(dependenciesByProject.get(item.projectId) || []), item]);
+  }
+
   const commentCountByTask = new Map<string, number>();
   for (const taskId of taskIds) {
     commentCountByTask.set(taskId, (commentsByTask.get(taskId) || []).length);
@@ -487,6 +655,8 @@ const loadTaskCollections = async (db: DbInterface, taskIds: string[]) => {
     commentCountByTask,
     attachmentCountByTask,
     checklistSummaryByTask,
+    predecessorIdsByTask,
+    dependenciesByProject,
   };
 };
 
@@ -533,9 +703,17 @@ const buildListScopeClause = (viewer: TaskViewerContext) => {
           FROM task_assignees a
           WHERE a.task_id = t.id AND ${userIdEqualsSql('a.user_id')}
         )
+        OR (
+          t.project_id IS NOT NULL
+          AND EXISTS (
+            SELECT 1
+            FROM task_project_members pm
+            WHERE pm.project_id = t.project_id AND ${userIdEqualsSql('pm.user_id')}
+          )
+        )
       )
     `,
-    params: [viewer.userId, viewer.userId, viewer.userId, viewer.userId],
+    params: [viewer.userId, viewer.userId, viewer.userId, viewer.userId, viewer.userId],
   };
 };
 
@@ -589,6 +767,17 @@ const buildFilterClause = (filters: TaskListFilters) => {
   if (filters.department) {
     where.push(`UPPER(COALESCE(t.department, '')) = ?`);
     params.push(upper(filters.department));
+  }
+
+  if (filters.projectId) {
+    where.push(`t.project_id = ?`);
+    params.push(clean(filters.projectId));
+  } else if (filters.includeStandalone === false) {
+    where.push(`t.project_id IS NOT NULL`);
+  }
+
+  if (filters.scheduledOnly) {
+    where.push(`t.start_date IS NOT NULL AND t.due_date IS NOT NULL`);
   }
 
   if (filters.dueBucket === 'OVERDUE') {
@@ -673,8 +862,43 @@ export const ensureTaskTables = async (db: DbInterface) => {
       canceled_at TEXT NULL,
       cancellation_reason TEXT NULL,
       previous_operational_status VARCHAR(30) NULL,
+      project_id VARCHAR(64) NULL,
+      project_sort_order INTEGER NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS task_projects (
+      id VARCHAR(64) PRIMARY KEY,
+      name VARCHAR(220) NOT NULL,
+      description LONGTEXT NOT NULL,
+      created_by VARCHAR(64) NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      archived_at TEXT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS task_project_members (
+      id VARCHAR(64) PRIMARY KEY,
+      project_id VARCHAR(64) NOT NULL,
+      user_id VARCHAR(64) NOT NULL,
+      role_type VARCHAR(20) NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS task_dependencies (
+      id VARCHAR(64) PRIMARY KEY,
+      project_id VARCHAR(64) NOT NULL,
+      predecessor_task_id VARCHAR(64) NOT NULL,
+      successor_task_id VARCHAR(64) NOT NULL,
+      created_by VARCHAR(64) NOT NULL,
+      created_at TEXT NOT NULL
     )
   `);
 
@@ -776,6 +1000,8 @@ export const ensureTaskTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN canceled_at TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN cancellation_reason TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN previous_operational_status VARCHAR(30) NULL`);
+  await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN project_id VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN project_sort_order INTEGER NULL`);
 
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_tasks_protocol_number ON tasks (protocol_number)`);
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_tasks_protocol_id ON tasks (protocol_id)`);
@@ -786,6 +1012,16 @@ export const ensureTaskTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_tasks_primary_assignee ON tasks (primary_assignee_user_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_tasks_approver ON tasks (approver_user_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_tasks_department ON tasks (department)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_tasks_project ON tasks (project_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_tasks_project_sort ON tasks (project_id, project_sort_order)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_task_projects_created_by ON task_projects (created_by)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_task_projects_archived ON task_projects (archived_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_task_project_members_project ON task_project_members (project_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_task_project_members_user ON task_project_members (user_id)`);
+  await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_task_project_members_project_user ON task_project_members (project_id, user_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_task_dependencies_project ON task_dependencies (project_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_task_dependencies_successor ON task_dependencies (successor_task_id)`);
+  await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_task_dependencies_pair ON task_dependencies (project_id, predecessor_task_id, successor_task_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_assignees_task ON task_assignees (task_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_assignees_user ON task_assignees (user_id)`);
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_task_assignees_task_user ON task_assignees (task_id, user_id)`);
@@ -813,8 +1049,9 @@ export const listTasks = async (db: DbInterface, viewer: TaskViewerContext, filt
   const where = [scope.clause, ...builtFilters.where];
   const rows = await db.query(
     `
-    SELECT t.*
+    SELECT t.*, p.name AS project_name
     FROM tasks t
+    LEFT JOIN task_projects p ON p.id = t.project_id
     WHERE ${where.join(' AND ')}
     ORDER BY
       CASE t.priority
@@ -841,7 +1078,8 @@ export const listTasks = async (db: DbInterface, viewer: TaskViewerContext, filt
       collections.latestApprovalByTask.get(taskId) || null,
       collections.commentCountByTask.get(taskId) || 0,
       collections.attachmentCountByTask.get(taskId) || 0,
-      collections.checklistSummaryByTask.get(taskId) || { totalItems: 0, completedItems: 0, progressPercent: 0 }
+      collections.checklistSummaryByTask.get(taskId) || { totalItems: 0, completedItems: 0, progressPercent: 0 },
+      collections.predecessorIdsByTask.get(taskId) || []
     );
   });
 };
@@ -851,7 +1089,18 @@ export const getTaskById = async (db: DbInterface, taskId: string, viewer: TaskV
   const cleanTaskId = clean(taskId);
   if (!cleanTaskId) throw new TaskValidationError('taskId obrigatório.');
   await ensureViewerCanAccessTask(db, cleanTaskId, viewer);
-  const row = await ensureTaskExists(db, cleanTaskId);
+  const rows = await db.query(
+    `
+    SELECT t.*, p.name AS project_name
+    FROM tasks t
+    LEFT JOIN task_projects p ON p.id = t.project_id
+    WHERE t.id = ?
+    LIMIT 1
+    `,
+    [cleanTaskId]
+  );
+  const row = rows[0] as Row | undefined;
+  if (!row) throw new TaskValidationError('Tarefa não encontrada.', 404);
   const collections = await loadTaskCollections(db, [cleanTaskId]);
   const summary = mapSummaryRow(
     row,
@@ -859,7 +1108,8 @@ export const getTaskById = async (db: DbInterface, taskId: string, viewer: TaskV
     collections.latestApprovalByTask.get(cleanTaskId) || null,
     collections.commentCountByTask.get(cleanTaskId) || 0,
     collections.attachmentCountByTask.get(cleanTaskId) || 0,
-    collections.checklistSummaryByTask.get(cleanTaskId) || { totalItems: 0, completedItems: 0, progressPercent: 0 }
+    collections.checklistSummaryByTask.get(cleanTaskId) || { totalItems: 0, completedItems: 0, progressPercent: 0 },
+    collections.predecessorIdsByTask.get(cleanTaskId) || []
   );
 
   return {
@@ -887,6 +1137,7 @@ export const createTask = async (db: DbInterface, input: TaskCreateInput, actorU
   }
   const dueDate = parseDate(input.dueDate);
   const startDate = parseDate(input.startDate);
+  const projectId = nullable(input.projectId);
   const approverUserId = nullable(input.approverUserId);
   const primaryAssigneeUserId = nullable(input.primaryAssigneeUserId) || actorUserId;
   const assigneeIds = computeAssigneeIds(primaryAssigneeUserId, input.assigneeUserIds || []);
@@ -894,6 +1145,14 @@ export const createTask = async (db: DbInterface, input: TaskCreateInput, actorU
   await ensureUserIsActive(db, actorUserId);
   for (const userId of assigneeIds) await ensureUserIsActive(db, userId);
   if (approverUserId) await ensureUserIsActive(db, approverUserId);
+  if (projectId) {
+    validateProjectTaskDates(startDate, dueDate);
+    await ensureViewerCanAccessProject(db, projectId, { userId: actorUserId, canViewAll: false });
+    const canManage = await canManageProject(db, projectId, actorUserId, { userId: actorUserId, canViewAll: false });
+    if (!canManage) {
+      throw new TaskValidationError('Apenas o criador do projeto pode vincular novas tarefas a ele.', 403);
+    }
+  }
   if (status === 'AGUARDANDO_APROVACAO' && !approverUserId) {
     throw new TaskValidationError('Defina um aprovador antes de enviar para aprovação.');
   }
@@ -909,8 +1168,8 @@ export const createTask = async (db: DbInterface, input: TaskCreateInput, actorU
       INSERT INTO tasks (
         id, protocol_number, protocol_id, title, description, department, priority, status,
         due_date, start_date, primary_assignee_user_id, approver_user_id, created_by,
-        completed_at, canceled_at, cancellation_reason, previous_operational_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        completed_at, canceled_at, cancellation_reason, previous_operational_status, project_id, project_sort_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         taskId,
@@ -930,6 +1189,8 @@ export const createTask = async (db: DbInterface, input: TaskCreateInput, actorU
         status === 'CANCELADA' ? now : null,
         null,
         null,
+        projectId,
+        projectId ? await nextProjectSortOrder(txDb, projectId) : null,
         now,
         now,
       ]
@@ -1028,6 +1289,10 @@ export const updateTask = async (
     const nextPrimaryAssigneeUserId = Object.prototype.hasOwnProperty.call(input, 'primaryAssigneeUserId')
       ? nullable(input.primaryAssigneeUserId)
       : nullable(current.primary_assignee_user_id);
+    const currentProjectId = nullable(current.project_id);
+    const nextProjectId = Object.prototype.hasOwnProperty.call(input, 'projectId')
+      ? nullable(input.projectId)
+      : currentProjectId;
     const requestedAssigneeIds = Object.prototype.hasOwnProperty.call(input, 'assigneeUserIds')
       ? (input.assigneeUserIds || [])
       : [];
@@ -1061,6 +1326,24 @@ export const updateTask = async (
     if (!nextTitle) throw new TaskValidationError('Título obrigatório.');
     if (!nextDepartment) throw new TaskValidationError('Setor obrigatório.');
 
+    const projectStructureTouched =
+      currentProjectId !== nextProjectId ||
+      parseDate(current.start_date) !== nextStartDate ||
+      parseDate(current.due_date) !== nextDueDate;
+
+    if (projectStructureTouched && (currentProjectId || nextProjectId)) {
+      const targetProjectId = nextProjectId || currentProjectId;
+      if (targetProjectId) {
+        await ensureViewerCanAccessProject(txDb, targetProjectId, viewer);
+        await ensureCanManageProject(txDb, targetProjectId, actorUserId, viewer);
+      }
+    }
+
+    if (nextProjectId) {
+      await ensureViewerCanAccessProject(txDb, nextProjectId, viewer);
+      validateProjectTaskDates(nextStartDate, nextDueDate);
+    }
+
     const currentPreviousOperationalStatus = nullable(current.previous_operational_status) as TaskSummary['previousOperationalStatus'];
     const nextPreviousOperationalStatus = isClosureTransition
       ? (currentIsRetired ? currentPreviousOperationalStatus : currentStatus as TaskSummary['previousOperationalStatus'])
@@ -1085,7 +1368,7 @@ export const updateTask = async (
       UPDATE tasks
       SET title = ?, description = ?, department = ?, priority = ?, status = ?, due_date = ?, start_date = ?,
           primary_assignee_user_id = ?, approver_user_id = ?, completed_at = ?, canceled_at = ?,
-          cancellation_reason = ?, previous_operational_status = ?, updated_at = ?
+          cancellation_reason = ?, previous_operational_status = ?, project_id = ?, project_sort_order = ?, updated_at = ?
       WHERE id = ?
       `,
       [
@@ -1102,10 +1385,24 @@ export const updateTask = async (
         nextCanceledAt,
         finalCancellationReason,
         nextPreviousOperationalStatus,
+        nextProjectId,
+        nextProjectId
+          ? currentProjectId === nextProjectId
+            ? (current.project_sort_order == null ? await nextProjectSortOrder(txDb, nextProjectId) : parseIntSafe(current.project_sort_order))
+            : await nextProjectSortOrder(txDb, nextProjectId)
+          : null,
         updatedAt,
         cleanTaskId,
       ]
     );
+
+    if (currentProjectId && currentProjectId !== nextProjectId) {
+      await removeTaskDependencies(txDb, cleanTaskId);
+    }
+
+    if (!nextProjectId) {
+      await removeTaskDependencies(txDb, cleanTaskId);
+    }
 
     if (shouldReplaceAssignees) {
       await replaceAssignees(txDb, cleanTaskId, nextPrimaryAssigneeUserId, requestedAssigneeIds);
@@ -1128,6 +1425,7 @@ export const updateTask = async (
       primaryAssigneeUserId: nextPrimaryAssigneeUserId,
       cancellationReason: finalCancellationReason,
       previousOperationalStatus: nextPreviousOperationalStatus,
+      projectId: nextProjectId,
     });
     const task = await getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
     const previousAssigneeIds = new Set((previousAssigneeRows as Row[]).map((row) => clean(row.user_id)).filter(Boolean));
@@ -1709,6 +2007,349 @@ export const decideTaskApproval = async (
 
     return task;
   });
+};
+
+const mapProjectSummaryRow = (
+  row: Row,
+  memberCount: number,
+  taskCount: number,
+  scheduledTaskCount: number,
+  isOwner: boolean
+): TaskProjectSummary => ({
+  id: clean(row.id),
+  name: clean(row.name),
+  description: clean(row.description),
+  createdBy: clean(row.created_by),
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+  archivedAt: nullable(row.archived_at),
+  memberCount,
+  taskCount,
+  scheduledTaskCount,
+  isOwner,
+});
+
+const getProjectMembersMap = async (db: DbInterface, projectIds: string[]) => {
+  if (!projectIds.length) return new Map<string, TaskProjectMember[]>();
+  const placeholders = projectIds.map(() => '?').join(', ');
+  const rows = await db.query(
+    `SELECT * FROM task_project_members WHERE project_id IN (${placeholders}) ORDER BY created_at ASC`,
+    projectIds
+  );
+  const byProject = new Map<string, TaskProjectMember[]>();
+  for (const row of rows as Row[]) {
+    const item = mapProjectMember(row);
+    byProject.set(item.projectId, [...(byProject.get(item.projectId) || []), item]);
+  }
+  return byProject;
+};
+
+const listProjectTasksInternal = async (db: DbInterface, viewer: TaskViewerContext, projectId: string) => {
+  return listTasks(db, viewer, {
+    includeCanceled: true,
+    projectId,
+  });
+};
+
+export const listTaskProjects = async (db: DbInterface, viewer: TaskViewerContext): Promise<TaskProjectSummary[]> => {
+  await ensureTaskTables(db);
+  const rows = await db.query(
+    viewer.canViewAll
+      ? `SELECT * FROM task_projects WHERE archived_at IS NULL ORDER BY updated_at DESC, name ASC`
+      : `
+        SELECT p.*
+        FROM task_projects p
+        INNER JOIN task_project_members pm ON pm.project_id = p.id
+        WHERE p.archived_at IS NULL AND ${userIdEqualsSql('pm.user_id')}
+        ORDER BY p.updated_at DESC, p.name ASC
+      `,
+    viewer.canViewAll ? [] : [viewer.userId]
+  );
+
+  const projectIds = (rows as Row[]).map((row) => clean(row.id)).filter(Boolean);
+  const membersByProject = await getProjectMembersMap(db, projectIds);
+  const tasks = await listTasks(db, viewer, { includeCanceled: true, includeStandalone: false });
+  const tasksByProject = new Map<string, TaskSummary[]>();
+  for (const task of tasks) {
+    if (!task.projectId) continue;
+    tasksByProject.set(task.projectId, [...(tasksByProject.get(task.projectId) || []), task]);
+  }
+
+  return (rows as Row[]).map((row) => {
+    const projectId = clean(row.id);
+    const projectTasks = tasksByProject.get(projectId) || [];
+    const members = membersByProject.get(projectId) || [];
+    return mapProjectSummaryRow(
+      row,
+      members.length,
+      projectTasks.length,
+      projectTasks.filter((task) => task.startDate && task.dueDate).length,
+      clean(row.created_by) === viewer.userId
+    );
+  });
+};
+
+export const createTaskProject = async (
+  db: DbInterface,
+  input: TaskProjectCreateInput,
+  actorUserId: string
+): Promise<TaskProjectDetail> => {
+  await ensureTaskTables(db);
+  const name = clean(input.name);
+  if (!name) throw new TaskValidationError('Nome do projeto obrigatório.');
+  await ensureUserIsActive(db, actorUserId);
+  const memberUserIds = Array.from(new Set((input.memberUserIds || []).map(clean).filter(Boolean).concat(actorUserId)));
+  for (const userId of memberUserIds) await ensureUserIsActive(db, userId);
+
+  return runInTransaction(db, async (txDb) => {
+    const projectId = randomUUID();
+    const now = NOW();
+    await txDb.execute(
+      `
+      INSERT INTO task_projects (id, name, description, created_by, created_at, updated_at, archived_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      `,
+      [projectId, name, clean(input.description), actorUserId, now, now, null]
+    );
+
+    for (const userId of memberUserIds) {
+      await txDb.execute(
+        `
+        INSERT INTO task_project_members (id, project_id, user_id, role_type, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        `,
+        [randomUUID(), projectId, userId, userId === actorUserId ? 'OWNER' : 'MEMBER', now]
+      );
+    }
+
+    return getTaskProjectById(txDb, projectId, { userId: actorUserId, canViewAll: true });
+  });
+};
+
+export const getTaskProjectById = async (
+  db: DbInterface,
+  projectId: string,
+  viewer: TaskViewerContext
+): Promise<TaskProjectDetail> => {
+  await ensureTaskTables(db);
+  const cleanProjectId = clean(projectId);
+  await ensureViewerCanAccessProject(db, cleanProjectId, viewer);
+  const project = await ensureProjectExists(db, cleanProjectId);
+  const [membersByProject, tasks] = await Promise.all([
+    getProjectMembersMap(db, [cleanProjectId]),
+    listProjectTasksInternal(db, { ...viewer, canViewAll: true }, cleanProjectId),
+  ]);
+  const dependenciesRows = await db.query(`SELECT * FROM task_dependencies WHERE project_id = ? ORDER BY created_at ASC`, [cleanProjectId]);
+  const members = membersByProject.get(cleanProjectId) || [];
+  const dependencies = (dependenciesRows as Row[]).map(mapDependency);
+
+  return {
+    ...mapProjectSummaryRow(
+      project,
+      members.length,
+      tasks.length,
+      tasks.filter((task) => task.startDate && task.dueDate).length,
+      clean(project.created_by) === viewer.userId
+    ),
+    members,
+    tasks,
+    dependencies,
+  };
+};
+
+export const updateTaskProject = async (
+  db: DbInterface,
+  projectId: string,
+  input: TaskProjectUpdateInput,
+  actorUserId: string,
+  viewer: TaskViewerContext
+): Promise<TaskProjectDetail> => {
+  await ensureTaskTables(db);
+  const cleanProjectId = clean(projectId);
+  await ensureCanManageProject(db, cleanProjectId, actorUserId, viewer);
+  const current = await ensureProjectExists(db, cleanProjectId);
+  const nextName = Object.prototype.hasOwnProperty.call(input, 'name') ? clean(input.name) : clean(current.name);
+  const nextDescription = Object.prototype.hasOwnProperty.call(input, 'description') ? clean(input.description) : clean(current.description);
+  const nextArchivedAt = Object.prototype.hasOwnProperty.call(input, 'archivedAt') ? nullable(input.archivedAt) : nullable(current.archived_at);
+  if (!nextName) throw new TaskValidationError('Nome do projeto obrigatório.');
+  await db.execute(
+    `UPDATE task_projects SET name = ?, description = ?, archived_at = ?, updated_at = ? WHERE id = ?`,
+    [nextName, nextDescription, nextArchivedAt, NOW(), cleanProjectId]
+  );
+  return getTaskProjectById(db, cleanProjectId, { userId: actorUserId, canViewAll: true });
+};
+
+export const addTaskProjectMember = async (
+  db: DbInterface,
+  projectId: string,
+  input: TaskProjectMemberAddInput,
+  actorUserId: string,
+  viewer: TaskViewerContext
+): Promise<TaskProjectDetail> => {
+  await ensureTaskTables(db);
+  const cleanProjectId = clean(projectId);
+  await ensureCanManageProject(db, cleanProjectId, actorUserId, viewer);
+  const userId = clean(input.userId);
+  await ensureUserIsActive(db, userId);
+  await db.execute(
+    `
+    INSERT ${isMysqlProvider() ? 'IGNORE' : 'OR IGNORE'} INTO task_project_members (id, project_id, user_id, role_type, created_at)
+    VALUES (?, ?, ?, ?, ?)
+    `,
+    [randomUUID(), cleanProjectId, userId, 'MEMBER', NOW()]
+  );
+  return getTaskProjectById(db, cleanProjectId, { userId: actorUserId, canViewAll: true });
+};
+
+export const removeTaskProjectMember = async (
+  db: DbInterface,
+  projectId: string,
+  memberId: string,
+  actorUserId: string,
+  viewer: TaskViewerContext
+): Promise<TaskProjectDetail> => {
+  await ensureTaskTables(db);
+  const cleanProjectId = clean(projectId);
+  await ensureCanManageProject(db, cleanProjectId, actorUserId, viewer);
+  const rows = await db.query(`SELECT * FROM task_project_members WHERE id = ? AND project_id = ? LIMIT 1`, [clean(memberId), cleanProjectId]);
+  const member = rows[0] as Row | undefined;
+  if (!member) throw new TaskValidationError('Membro do projeto não encontrado.', 404);
+  if (upper(member.role_type) === 'OWNER') {
+    throw new TaskValidationError('O criador do projeto não pode ser removido.', 409);
+  }
+  await db.execute(`DELETE FROM task_project_members WHERE id = ? AND project_id = ?`, [clean(memberId), cleanProjectId]);
+  return getTaskProjectById(db, cleanProjectId, { userId: actorUserId, canViewAll: true });
+};
+
+export const createTaskDependency = async (
+  db: DbInterface,
+  projectId: string,
+  input: TaskDependencyCreateInput,
+  actorUserId: string,
+  viewer: TaskViewerContext
+): Promise<TaskProjectDetail> => {
+  await ensureTaskTables(db);
+  const cleanProjectId = clean(projectId);
+  await ensureCanManageProject(db, cleanProjectId, actorUserId, viewer);
+  const predecessorTaskId = clean(input.predecessorTaskId);
+  const successorTaskId = clean(input.successorTaskId);
+  if (!predecessorTaskId || !successorTaskId) throw new TaskValidationError('Defina predecessora e sucessora.');
+  if (predecessorTaskId === successorTaskId) throw new TaskValidationError('Uma tarefa não pode depender dela mesma.');
+  const taskRows = await db.query(
+    `SELECT id, project_id FROM tasks WHERE id IN (?, ?)`,
+    [predecessorTaskId, successorTaskId]
+  );
+  const taskMap = new Map((taskRows as Row[]).map((row) => [clean(row.id), clean(row.project_id)]));
+  if (taskMap.get(predecessorTaskId) !== cleanProjectId || taskMap.get(successorTaskId) !== cleanProjectId) {
+    throw new TaskValidationError('As duas tarefas precisam pertencer ao mesmo projeto.', 409);
+  }
+  await ensureDependencyGraphHasNoCycle(db, cleanProjectId, predecessorTaskId, successorTaskId);
+  await db.execute(
+    `
+    INSERT ${isMysqlProvider() ? 'IGNORE' : 'OR IGNORE'} INTO task_dependencies (
+      id, project_id, predecessor_task_id, successor_task_id, created_by, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?)
+    `,
+    [randomUUID(), cleanProjectId, predecessorTaskId, successorTaskId, actorUserId, NOW()]
+  );
+  return getTaskProjectById(db, cleanProjectId, { userId: actorUserId, canViewAll: true });
+};
+
+export const deleteTaskDependency = async (
+  db: DbInterface,
+  projectId: string,
+  dependencyId: string,
+  actorUserId: string,
+  viewer: TaskViewerContext
+): Promise<TaskProjectDetail> => {
+  await ensureTaskTables(db);
+  const cleanProjectId = clean(projectId);
+  await ensureCanManageProject(db, cleanProjectId, actorUserId, viewer);
+  await db.execute(`DELETE FROM task_dependencies WHERE id = ? AND project_id = ?`, [clean(dependencyId), cleanProjectId]);
+  return getTaskProjectById(db, cleanProjectId, { userId: actorUserId, canViewAll: true });
+};
+
+const sortGanttTasks = (tasks: TaskSummary[]) =>
+  [...tasks].sort((left, right) => {
+    const leftSort = left.projectSortOrder ?? Number.MAX_SAFE_INTEGER;
+    const rightSort = right.projectSortOrder ?? Number.MAX_SAFE_INTEGER;
+    if (leftSort !== rightSort) return leftSort - rightSort;
+    if (left.startDate && right.startDate) {
+      const gap = left.startDate.localeCompare(right.startDate);
+      if (gap !== 0) return gap;
+    }
+    return left.title.localeCompare(right.title, 'pt-BR');
+  });
+
+const mapGanttRow = (task: TaskSummary): TaskPortfolioGanttRow => ({
+  projectId: task.projectId,
+  projectName: task.projectName || 'Tarefas avulsas',
+  taskId: task.id,
+  protocolId: task.protocolId,
+  title: task.title,
+  department: task.department,
+  priority: task.priority,
+  status: task.status,
+  startDate: task.startDate,
+  dueDate: task.dueDate,
+  durationDays: diffDaysInclusive(task.startDate, task.dueDate),
+  primaryAssigneeUserId: task.primaryAssigneeUserId,
+  checklistProgressPercent: task.checklistProgressPercent,
+  predecessorTaskIds: task.predecessorTaskIds,
+  projectSortOrder: task.projectSortOrder,
+  isStandalone: !task.projectId,
+  isOverdue: isTaskOverdueForGantt(task),
+});
+
+export const getTaskProjectGantt = async (
+  db: DbInterface,
+  projectId: string,
+  viewer: TaskViewerContext
+): Promise<TaskProjectDetail> => {
+  const project = await getTaskProjectById(db, projectId, viewer);
+  return {
+    ...project,
+    tasks: sortGanttTasks(
+      project.tasks.filter((task) => !isRetiredStatus(task.status) && Boolean(task.startDate && task.dueDate))
+    ),
+  };
+};
+
+export const getTaskPortfolioGantt = async (
+  db: DbInterface,
+  viewer: TaskViewerContext
+): Promise<TaskPortfolioGantt> => {
+  await ensureTaskTables(db);
+  const [projects, tasks] = await Promise.all([
+    listTaskProjects(db, viewer),
+    listTasks(db, viewer, { includeCanceled: true, scheduledOnly: true }),
+  ]);
+
+  const projectIds = projects.map((project) => project.id);
+  const projectDetails = await Promise.all(projectIds.map((projectId) => getTaskProjectById(db, projectId, viewer)));
+  const sections: TaskPortfolioGanttSection[] = projectDetails
+    .map((project) => ({
+      project,
+      tasks: sortGanttTasks(project.tasks.filter((task) => !isRetiredStatus(task.status) && Boolean(task.startDate && task.dueDate))),
+      dependencies: project.dependencies,
+    }))
+    .filter((section) => section.tasks.length > 0);
+
+  const standaloneTasks = sortGanttTasks(
+    tasks.filter((task) => !task.projectId && !isRetiredStatus(task.status) && Boolean(task.startDate && task.dueDate))
+  );
+  if (standaloneTasks.length) {
+    sections.push({
+      project: null,
+      tasks: standaloneTasks,
+      dependencies: [],
+    });
+  }
+
+  return {
+    sections,
+    rows: sections.flatMap((section) => section.tasks.map(mapGanttRow)),
+  };
 };
 
 export const getTaskDashboardSummary = async (
