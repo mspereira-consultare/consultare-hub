@@ -8,6 +8,13 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const buildInClause = (size: number) => Array.from({ length: size }, () => '?').join(', ');
+const slugify = (value: string) =>
+  String(value || 'portfolio')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 
 const resolveUserNames = async (db: DbInterface, userIds: string[]) => {
   const uniqueIds = Array.from(new Set(userIds.filter(Boolean)));
@@ -33,7 +40,7 @@ export async function GET() {
     workbook.creator = 'Hub Consultare';
     workbook.created = new Date();
 
-    const worksheet = workbook.addWorksheet('Portfolio');
+    const worksheet = workbook.addWorksheet('Portfolio consolidado');
     worksheet.columns = [
       { header: 'Projeto', key: 'project', width: 28 },
       { header: 'Protocolo', key: 'protocolId', width: 16 },
@@ -60,40 +67,63 @@ export async function GET() {
     worksheet.getCell('A2').value = 'Exportação consolidada dos projetos visíveis ao usuário e das tarefas avulsas agendadas.';
     worksheet.getCell('A2').font = { size: 10 };
 
-    const headerRow = worksheet.getRow(4);
+    worksheet.mergeCells('A3:N3');
+    worksheet.getCell('A3').value = `Gerado em ${new Date().toLocaleString('pt-BR')}`;
+    worksheet.getCell('A3').font = { size: 10, italic: true };
+
+    const headerRow = worksheet.getRow(5);
     headerRow.values = worksheet.columns.map((column) => column.header as string);
     headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
     headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17407E' } };
+    worksheet.views = [{ state: 'frozen', ySplit: 5 }];
 
-    let rowIndex = 5;
-    for (const row of rows) {
-      worksheet.getRow(rowIndex).values = [
-        row.project,
-        row.protocolId,
-        row.title,
-        row.status,
-        row.priority,
-        row.department,
-        row.primaryAssigneeUserId ? userMap.get(row.primaryAssigneeUserId) || row.primaryAssigneeUserId : '-',
-        row.assigneeUserIds.length ? row.assigneeUserIds.map((userId: string) => userMap.get(userId) || userId).join(', ') : '-',
-        row.approverUserId ? userMap.get(row.approverUserId) || row.approverUserId : '-',
-        row.startDate || '-',
-        row.dueDate || '-',
-        row.durationDays ?? '-',
-        `${row.checklistProgressPercent}%`,
-        row.predecessors || '-',
-      ];
+    const rowByProtocol = new Map(rows.map((row) => [row.protocolId, row]));
+    let rowIndex = 6;
+    for (const section of portfolio.sections) {
+      const sectionRows = section.tasks
+        .filter((task) => task.startDate && task.dueDate)
+        .map((task) => rowByProtocol.get(task.protocolId))
+        .filter(Boolean);
+      if (!sectionRows.length) continue;
+
+      worksheet.mergeCells(`A${rowIndex}:N${rowIndex}`);
+      worksheet.getCell(`A${rowIndex}`).value = section.project?.name || 'Tarefas avulsas';
+      worksheet.getCell(`A${rowIndex}`).font = { bold: true, color: { argb: 'FF17407E' } };
+      worksheet.getCell(`A${rowIndex}`).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+      rowIndex += 1;
+
+      for (const row of sectionRows) {
+        worksheet.getRow(rowIndex).values = [
+          row!.project,
+          row!.protocolId,
+          row!.title,
+          row!.status,
+          row!.priority,
+          row!.department,
+          row!.primaryAssigneeUserId ? userMap.get(row!.primaryAssigneeUserId) || row!.primaryAssigneeUserId : '-',
+          row!.assigneeUserIds.length ? row!.assigneeUserIds.map((userId: string) => userMap.get(userId) || userId).join(', ') : '-',
+          row!.approverUserId ? userMap.get(row!.approverUserId) || row!.approverUserId : '-',
+          row!.startDate || '-',
+          row!.dueDate || '-',
+          row!.durationDays ?? '-',
+          `${row!.checklistProgressPercent}%`,
+          row!.predecessors || '-',
+        ];
+        rowIndex += 1;
+      }
+
       rowIndex += 1;
     }
 
     const buffer = await workbook.xlsx.writeBuffer();
     const output = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as ArrayBuffer);
+    const filename = `portfolio-consolidado-intranet-${slugify(new Date().toISOString().slice(0, 10))}.xlsx`;
 
     return new NextResponse(output, {
       status: 200,
       headers: {
         'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': 'attachment; filename="portfolio-gantt-intranet.xlsx"',
+        'Content-Disposition': `attachment; filename="${filename}"`,
       },
     });
   } catch (error: any) {

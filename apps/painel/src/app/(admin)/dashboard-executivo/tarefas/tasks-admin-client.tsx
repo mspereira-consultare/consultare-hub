@@ -1761,13 +1761,13 @@ function ExecutiveProjectGanttBoard({
             href="/api/admin/tasks/portfolio-gantt/export.xlsx"
             className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
           >
-            Exportar portfólio em XLSX
+            Exportar visão Todos em XLSX
           </a>
           <a
             href="/api/admin/tasks/portfolio-gantt/export.pdf"
             className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
           >
-            Exportar portfólio em PDF
+            Exportar visão Todos em PDF
           </a>
         </div>
       ) : null}

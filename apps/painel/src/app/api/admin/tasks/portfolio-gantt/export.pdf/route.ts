@@ -16,6 +16,12 @@ export async function GET() {
     const font = await pdf.embedFont(StandardFonts.Helvetica);
     const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
     const page = pdf.addPage([842, 595]);
+    const scheduledSections = portfolio.sections
+      .map((section) => ({
+        ...section,
+        scheduledTasks: section.tasks.filter((task) => task.startDate && task.dueDate),
+      }))
+      .filter((section) => section.scheduledTasks.length > 0);
 
     page.drawRectangle({ x: 32, y: 535, width: 778, height: 40, color: rgb(0.09, 0.25, 0.49) });
     page.drawText('Portfólio consolidado global de tarefas', { x: 42, y: 550, size: 18, font: fontBold, color: rgb(1, 1, 1) });
@@ -26,18 +32,28 @@ export async function GET() {
       font,
       color: rgb(0.34, 0.42, 0.56),
     });
+    page.drawText(`Projetos e blocos: ${scheduledSections.length} | Gerado em ${new Date().toLocaleString('pt-BR')}`, {
+      x: 42,
+      y: 512,
+      size: 8,
+      font,
+      color: rgb(0.34, 0.42, 0.56),
+    });
 
-    let cursorY = 500;
-    for (const section of portfolio.sections.slice(0, 10)) {
+    let cursorY = 490;
+    for (const section of scheduledSections.slice(0, 10)) {
       page.drawText(section.project?.name || 'Tarefas avulsas', { x: 42, y: cursorY, size: 11, font: fontBold, color: rgb(0.09, 0.25, 0.49) });
       cursorY -= 14;
       page.drawText(
-        `${section.tasks.length} tarefa(s) | ${section.tasks.filter((task) => task.startDate && task.dueDate).length} agendada(s) | ${section.dependencies.length} dependência(s)`,
+        `${section.tasks.length} tarefa(s) | ${section.scheduledTasks.length} agendada(s) | ${section.dependencies.length} dependência(s)`,
         { x: 42, y: cursorY, size: 8, font }
       );
       cursorY -= 18;
-      for (const task of section.tasks.slice(0, 3)) {
-        page.drawText(`${task.protocolId} · ${task.title.slice(0, 48)} · ${task.dueDate || 'Sem prazo'}`, { x: 52, y: cursorY, size: 8, font });
+      for (const task of section.scheduledTasks.slice(0, 4)) {
+        page.drawText(
+          `${task.protocolId} · ${task.title.slice(0, 42)} · ${task.startDate || '-'} → ${task.dueDate || '-'} · ${task.checklistProgressPercent}%`,
+          { x: 52, y: cursorY, size: 8, font }
+        );
         cursorY -= 12;
       }
       cursorY -= 8;
@@ -57,7 +73,7 @@ export async function GET() {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': 'attachment; filename="portfolio-gantt-painel.pdf"',
+        'Content-Disposition': `attachment; filename="portfolio-consolidado-governanca-${new Date().toISOString().slice(0, 10)}.pdf"`,
       },
     });
   } catch (error: any) {
