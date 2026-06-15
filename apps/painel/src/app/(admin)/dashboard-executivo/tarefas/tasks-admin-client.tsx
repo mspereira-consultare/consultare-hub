@@ -34,7 +34,7 @@ import type {
   TaskStatus,
   TaskSummary,
 } from '@consultare/core/tasks/types';
-import { buildTaskGanttPresentation } from '@consultare/core/tasks/gantt';
+import { buildTaskGanttPresentation, type TaskGanttPresentationRow } from '@consultare/core/tasks/gantt';
 
 type UserOption = {
   id: string;
@@ -118,6 +118,14 @@ const priorityLabelMap: Record<TaskPriority, string> = {
   MEDIA: 'Média',
   ALTA: 'Alta',
   URGENTE: 'Urgente',
+};
+const buildGanttCompactDescription = (task: TaskSummary) => {
+  const description = String(task.description || '').trim().replace(/\s+/g, ' ');
+  if (description) return description;
+  const fallback = [task.department || '', task.startDate ? `Início ${formatDate(task.startDate)}` : '', task.dueDate ? `Prazo ${formatDate(task.dueDate)}` : '']
+    .filter(Boolean)
+    .join(' • ');
+  return fallback || 'Sem contexto adicional informado.';
 };
 
 const RETIRED_TASK_STATUSES: TaskStatus[] = ['ARQUIVADA', 'CANCELADA'];
@@ -1865,6 +1873,12 @@ function ExecutiveGanttTimeline({
   onOpenTask: (taskId: string) => void;
   projectName: string;
 }) {
+  const [previewState, setPreviewState] = useState<{
+    row: TaskGanttPresentationRow;
+    anchorElement: HTMLDivElement;
+    position: { top: number; left: number };
+  } | null>(null);
+  const previewCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const presentation = useMemo(
     () =>
       buildTaskGanttPresentation(rows, dependencies, {
@@ -1873,6 +1887,76 @@ function ExecutiveGanttTimeline({
         keyPrefix: projectName,
       }),
     [dependencies, projectName, rows]
+  );
+
+  const clearPreviewCloseTimeout = () => {
+    if (previewCloseTimeoutRef.current) {
+      clearTimeout(previewCloseTimeoutRef.current);
+      previewCloseTimeoutRef.current = null;
+    }
+  };
+
+  const schedulePreviewClose = () => {
+    clearPreviewCloseTimeout();
+    previewCloseTimeoutRef.current = setTimeout(() => {
+      setPreviewState(null);
+    }, 120);
+  };
+
+  const resolvePreviewPosition = (anchorElement: HTMLDivElement) => {
+    const rect = anchorElement.getBoundingClientRect();
+    const previewWidth = 360;
+    const previewHeight = 214;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const top = rect.bottom + previewHeight + 12 <= viewportHeight
+      ? rect.bottom + 10
+      : Math.max(rect.top - previewHeight - 10, 16);
+    const left = Math.min(Math.max(rect.left, 16), viewportWidth - previewWidth - 16);
+    return { top, left };
+  };
+
+  const openPreview = (row: TaskGanttPresentationRow, anchorElement: HTMLDivElement) => {
+    clearPreviewCloseTimeout();
+    setPreviewState({
+      row,
+      anchorElement,
+      position: resolvePreviewPosition(anchorElement),
+    });
+  };
+
+  useEffect(() => {
+    if (!previewState) return undefined;
+
+    const updatePosition = () => {
+      setPreviewState((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          position: resolvePreviewPosition(current.anchorElement),
+        };
+      });
+    };
+
+    const handleWindowChange = () => {
+      clearPreviewCloseTimeout();
+      updatePosition();
+    };
+
+    window.addEventListener('resize', handleWindowChange);
+    window.addEventListener('scroll', handleWindowChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleWindowChange);
+      window.removeEventListener('scroll', handleWindowChange, true);
+    };
+  }, [previewState]);
+
+  useEffect(
+    () => () => {
+      clearPreviewCloseTimeout();
+    },
+    []
   );
 
   if (!presentation) {
@@ -1945,6 +2029,7 @@ function ExecutiveGanttTimeline({
             const task = row.task;
             const left = (row.startOffsetDays / presentation.totalDays) * 100;
             const width = Math.max((row.spanDays / presentation.totalDays) * 100, 2.3);
+            const compactDescription = buildGanttCompactDescription(task);
             const barTone =
               task.status === 'CONCLUIDA'
                 ? 'bg-emerald-500'
@@ -1958,18 +2043,18 @@ function ExecutiveGanttTimeline({
                         ? 'bg-amber-500'
                         : 'bg-slate-500';
             const orderLabel = `#${task.projectSortOrder ?? index + 1}`;
-            const compactMeta = [
-              statusLabelMap[task.status],
-              `${row.spanDays} dia(s)`,
-              task.checklistTotalItems > 0 ? `Checklist ${task.checklistProgressPercent}%` : 'Sem checklist',
-            ];
 
             return (
-              <div key={task.id} className="grid grid-cols-[280px_minmax(0,1fr)] gap-3 px-4 py-1.5">
+              <div
+                key={task.id}
+                className="grid grid-cols-[280px_minmax(0,1fr)] gap-0 px-4"
+                onMouseEnter={(event) => openPreview(row, event.currentTarget as HTMLDivElement)}
+                onMouseLeave={schedulePreviewClose}
+              >
                 <button
                   type="button"
                   onClick={() => onOpenTask(task.id)}
-                  className="group relative min-w-0 rounded-xl border border-transparent px-2 py-2 text-left transition hover:border-slate-200 hover:bg-slate-50 focus-visible:border-[#17407E] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-100"
+                  className="min-w-0 border-r border-slate-100 px-2 py-2 text-left transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#17407E]">{task.protocolId}</span>
@@ -1982,51 +2067,14 @@ function ExecutiveGanttTimeline({
                       </span>
                     ) : null}
                   </div>
-                  <div className="mt-1 truncate text-sm font-semibold text-slate-900">{task.title}</div>
-                  <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-slate-500">
-                    {compactMeta.map((item) => (
-                      <span key={`${task.id}-${item}`} className="rounded-full border border-slate-200 bg-white px-1.5 py-0.5">
-                        {item}
-                      </span>
-                    ))}
-                    {row.predecessorProtocols.length ? (
-                      <span className="rounded-full border border-slate-200 bg-white px-1.5 py-0.5">
-                        {row.predecessorProtocols.length} dependência(s)
-                      </span>
-                    ) : null}
-                  </div>
-
-                  <div className="pointer-events-none absolute left-0 top-full z-20 hidden w-80 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-xl group-hover:block group-focus-visible:block">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#17407E]">{task.protocolId}</div>
-                        <div className="mt-1 text-sm font-semibold text-slate-900">{task.title}</div>
-                      </div>
-                      {row.hasScheduleConflict ? (
-                        <AlertCircle className="mt-0.5 text-rose-500" size={16} />
-                      ) : (
-                        <CheckCircle2 className="mt-0.5 text-emerald-500" size={16} />
-                      )}
-                    </div>
-                    <div className="mt-3 grid gap-2 text-xs text-slate-600">
-                      <div><span className="font-semibold text-slate-700">Janela:</span> {formatDate(task.startDate)} até {formatDate(task.dueDate)}</div>
-                      <div><span className="font-semibold text-slate-700">Status:</span> {statusLabelMap[task.status]}</div>
-                      <div><span className="font-semibold text-slate-700">Setor:</span> {task.department || 'Sem setor'}</div>
-                      <div><span className="font-semibold text-slate-700">Projeto:</span> {task.projectName || 'Tarefa avulsa'}</div>
-                      <div><span className="font-semibold text-slate-700">Checklist:</span> {task.checklistTotalItems > 0 ? `${task.checklistCompletedItems}/${task.checklistTotalItems} concluído(s)` : 'Sem checklist'}</div>
-                      <div>
-                        <span className="font-semibold text-slate-700">Predecessoras:</span>{' '}
-                        {row.predecessorProtocols.length ? row.predecessorProtocols.join(', ') : 'Nenhuma'}
-                      </div>
-                      {row.scheduleConflictReason ? (
-                        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
-                          {row.scheduleConflictReason}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
+                  <div className="mt-1 truncate text-[13px] font-semibold leading-5 text-slate-900">{task.title}</div>
+                  <div className="mt-0.5 truncate text-[11px] leading-4 text-slate-500">{compactDescription}</div>
                 </button>
-                <div className="relative h-11 rounded-xl bg-[linear-gradient(to_right,rgba(226,232,240,0.7)_1px,transparent_1px)] bg-[length:18px_100%] bg-left">
+                <button
+                  type="button"
+                  onClick={() => onOpenTask(task.id)}
+                  className="relative h-9 bg-[linear-gradient(to_right,rgba(226,232,240,0.75)_1px,transparent_1px)] bg-[length:18px_100%] bg-left text-left focus-visible:outline-none"
+                >
                   {presentation.hasTodayMarker ? (
                     <span
                       className="absolute inset-y-0 z-[1] w-px bg-rose-300"
@@ -2035,20 +2083,20 @@ function ExecutiveGanttTimeline({
                   ) : null}
                   {row.predecessorProtocols.length ? (
                     <div
-                      className={`absolute top-[22px] h-px border-t border-dashed ${row.hasScheduleConflict ? 'border-rose-300' : 'border-slate-300'}`}
+                      className={`absolute top-1/2 h-px -translate-y-1/2 border-t border-dashed ${row.hasScheduleConflict ? 'border-rose-300' : 'border-slate-300'}`}
                       style={{ left: 0, width: `${left}%` }}
                     />
                   ) : null}
                   {row.predecessorProtocols.length ? (
                     <span
-                      className={`absolute top-[18px] z-[2] h-2.5 w-2.5 rounded-full bg-white ${
+                      className={`absolute top-1/2 z-[2] h-2 w-2 -translate-y-1/2 rounded-full bg-white ${
                         row.hasScheduleConflict ? 'border border-rose-300' : 'border border-slate-300'
                       }`}
-                      style={{ left: `calc(${left}% - 5px)` }}
+                      style={{ left: `calc(${left}% - 4px)` }}
                     />
                   ) : null}
                   <div
-                    className={`absolute top-2 z-[2] flex h-5 items-center rounded-md px-2 text-[10px] font-semibold text-white shadow-sm ${barTone} ${
+                    className={`absolute top-1/2 z-[2] flex h-4 -translate-y-1/2 items-center rounded-sm px-1.5 text-[10px] font-semibold text-white shadow-sm ${barTone} ${
                       row.hasScheduleConflict ? 'ring-2 ring-rose-100' : ''
                     }`}
                     style={{ left: `${left}%`, width: `${width}%` }}
@@ -2058,24 +2106,71 @@ function ExecutiveGanttTimeline({
                   </div>
                   {task.checklistTotalItems > 0 ? (
                     <div
-                      className="absolute top-[30px] z-[2] h-1 rounded-full bg-emerald-400/95"
+                      className="absolute top-[22px] z-[2] h-[2px] rounded-full bg-emerald-400/95"
                       style={{
                         left: `${left}%`,
-                        width: `${Math.max((width * task.checklistProgressPercent) / 100, task.checklistProgressPercent ? 0.7 : 0)}%`,
+                        width: `${Math.max((width * task.checklistProgressPercent) / 100, task.checklistProgressPercent ? 0.6 : 0)}%`,
                       }}
                     />
                   ) : null}
                   {row.hasScheduleConflict ? (
-                    <div className="absolute right-1 top-1 rounded-full border border-rose-200 bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
-                      precedência em conflito
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full border border-rose-200 bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                      conflito
                     </div>
                   ) : null}
-                </div>
+                </button>
               </div>
             );
           })}
         </div>
       </div>
+      {previewState
+        ? createPortal(
+            <div
+              className="fixed z-[90] w-[360px] rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-2xl"
+              style={{ top: previewState.position.top, left: previewState.position.left }}
+              onMouseEnter={clearPreviewCloseTimeout}
+              onMouseLeave={schedulePreviewClose}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#17407E]">
+                    {previewState.row.task.protocolId}
+                  </div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">{previewState.row.task.title}</div>
+                </div>
+                {previewState.row.hasScheduleConflict ? (
+                  <AlertCircle className="mt-0.5 text-rose-500" size={16} />
+                ) : (
+                  <CheckCircle2 className="mt-0.5 text-emerald-500" size={16} />
+                )}
+              </div>
+              <div className="mt-3 grid gap-2 text-xs text-slate-600">
+                <div><span className="font-semibold text-slate-700">Descrição:</span> {buildGanttCompactDescription(previewState.row.task)}</div>
+                <div><span className="font-semibold text-slate-700">Janela:</span> {formatDate(previewState.row.task.startDate)} até {formatDate(previewState.row.task.dueDate)}</div>
+                <div><span className="font-semibold text-slate-700">Status:</span> {statusLabelMap[previewState.row.task.status]}</div>
+                <div><span className="font-semibold text-slate-700">Setor:</span> {previewState.row.task.department || 'Sem setor'}</div>
+                <div><span className="font-semibold text-slate-700">Projeto:</span> {previewState.row.task.projectName || 'Tarefa avulsa'}</div>
+                <div>
+                  <span className="font-semibold text-slate-700">Checklist:</span>{' '}
+                  {previewState.row.task.checklistTotalItems > 0
+                    ? `${previewState.row.task.checklistCompletedItems}/${previewState.row.task.checklistTotalItems} concluído(s)`
+                    : 'Sem checklist'}
+                </div>
+                <div>
+                  <span className="font-semibold text-slate-700">Predecessoras:</span>{' '}
+                  {previewState.row.predecessorProtocols.length ? previewState.row.predecessorProtocols.join(', ') : 'Nenhuma'}
+                </div>
+                {previewState.row.scheduleConflictReason ? (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
+                    {previewState.row.scheduleConflictReason}
+                  </div>
+                ) : null}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }
