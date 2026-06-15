@@ -1871,6 +1871,10 @@ function ExecutiveGanttTimeline({
   const timelineEnd = datedRows.reduce((max, row) => (row.end > max ? row.end : max), datedRows[0].end);
   const totalDays = Math.max(diffCalendarDays(timelineStart, timelineEnd) + 1, 1);
   const tickStep = Math.max(Math.floor(totalDays / 6), 1);
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  const todayOffset = diffCalendarDays(timelineStart, todayStart);
+  const hasTodayMarker = todayOffset >= 0 && todayOffset <= totalDays - 1;
   const ticks = Array.from({ length: Math.max(Math.ceil(totalDays / tickStep), 2) }, (_, index) => {
     const offset = Math.min(index * tickStep, totalDays - 1);
     const date = new Date(timelineStart);
@@ -1881,6 +1885,17 @@ function ExecutiveGanttTimeline({
       label: date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
     };
   });
+  const monthTicks: Array<{ key: string; offset: number; label: string }> = [];
+  const monthCursor = new Date(timelineStart.getFullYear(), timelineStart.getMonth(), 1);
+  while (monthCursor <= timelineEnd) {
+    const offset = Math.max(0, diffCalendarDays(timelineStart, monthCursor));
+    monthTicks.push({
+      key: `${projectName}-${monthCursor.getFullYear()}-${monthCursor.getMonth()}`,
+      offset,
+      label: monthCursor.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }),
+    });
+    monthCursor.setMonth(monthCursor.getMonth() + 1);
+  }
   const protocolByTaskId = new Map(datedRows.map(({ task }) => [task.id, task.protocolId]));
   const predecessorMap = new Map<string, string[]>();
   for (const dependency of dependencies) {
@@ -1891,10 +1906,47 @@ function ExecutiveGanttTimeline({
 
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[980px]">
-        <div className="grid grid-cols-[320px_minmax(0,1fr)] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3">
+      <div className="min-w-[1120px]">
+        <div className="border-b border-slate-200 bg-slate-50/90 px-5 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Período do cronograma</div>
+              <div className="mt-1 text-sm font-semibold text-slate-900">
+                {formatDate(timelineStart.toISOString().slice(0, 10))} até {formatDate(timelineEnd.toISOString().slice(0, 10))}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">{totalDays} dia(s) de janela executiva neste recorte.</div>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[11px]">
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200">Backlog/A fazer</span>
+              <span className="rounded-full bg-blue-100 px-2.5 py-1 font-semibold text-blue-700 ring-1 ring-blue-200">Em andamento</span>
+              <span className="rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-700 ring-1 ring-violet-200">Aguardando aprovação</span>
+              <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-700 ring-1 ring-emerald-200">Concluída</span>
+              <span className="rounded-full bg-rose-100 px-2.5 py-1 font-semibold text-rose-700 ring-1 ring-rose-200">Atrasada</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-[340px_minmax(0,1fr)] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3">
           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tarefa</div>
-          <div className="relative h-6">
+          <div className="space-y-2">
+            <div className="relative h-4">
+              {monthTicks.map((tick) => (
+                <span
+                  key={tick.key}
+                  className="absolute text-[10px] font-semibold uppercase tracking-wide text-slate-400"
+                  style={{ left: `${(tick.offset / totalDays) * 100}%` }}
+                >
+                  {tick.label}
+                </span>
+              ))}
+            </div>
+            <div className="relative h-6">
+              {hasTodayMarker ? (
+                <span
+                  className="absolute inset-y-0 z-[1] w-px bg-rose-300"
+                  style={{ left: `${(todayOffset / totalDays) * 100}%` }}
+                />
+              ) : null}
             {ticks.map((tick) => (
               <span
                 key={tick.key}
@@ -1906,6 +1958,7 @@ function ExecutiveGanttTimeline({
             ))}
           </div>
         </div>
+        </div>
 
         <div className="divide-y divide-slate-100">
           {datedRows.map(({ task, start, end }) => {
@@ -1914,13 +1967,27 @@ function ExecutiveGanttTimeline({
             const left = (startOffset / totalDays) * 100;
             const width = Math.max((spanDays / totalDays) * 100, 2.5);
             const predecessors = predecessorMap.get(task.id) || [];
+            const barTone =
+              task.status === 'CONCLUIDA'
+                ? 'bg-emerald-500'
+                : task.status === 'AGUARDANDO_APROVACAO'
+                  ? 'bg-violet-500'
+                  : task.status === 'EM_ANDAMENTO'
+                    ? 'bg-blue-600'
+                    : isOverdue(task.dueDate, task.status)
+                      ? 'bg-rose-500'
+                      : task.status === 'A_FAZER'
+                        ? 'bg-amber-500'
+                        : 'bg-slate-500';
 
             return (
-              <div key={task.id} className="grid grid-cols-[320px_minmax(0,1fr)] gap-4 px-5 py-4">
-                <button type="button" onClick={() => onOpenTask(task.id)} className="min-w-0 text-left">
+              <div key={task.id} className="grid grid-cols-[340px_minmax(0,1fr)] gap-4 px-5 py-4">
+                <button type="button" onClick={() => onOpenTask(task.id)} className="min-w-0 rounded-xl border border-transparent p-2 text-left transition hover:border-slate-200 hover:bg-slate-50">
                   <div className="text-[11px] font-semibold uppercase tracking-wide text-[#17407E]">{task.protocolId}</div>
                   <div className="mt-1 truncate font-semibold text-slate-900">{task.title}</div>
                   <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                    <span className="rounded-full bg-slate-100 px-2 py-1 ring-1 ring-slate-200">#{(task.projectSortOrder ?? datedRows.findIndex((row) => row.task.id === task.id) + 1)}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 ring-1 ring-slate-200">{spanDays} dia(s)</span>
                     <span>{task.department}</span>
                     <span>{statusLabelMap[task.status]}</span>
                     {task.projectName ? <span>{task.projectName}</span> : null}
@@ -1936,32 +2003,43 @@ function ExecutiveGanttTimeline({
                     </div>
                   ) : null}
                 </button>
-                <div className="relative h-14 rounded-xl bg-[linear-gradient(to_right,rgba(226,232,240,0.9)_1px,transparent_1px)] bg-[length:28px_100%] bg-left">
+                <div className="relative h-16 rounded-2xl bg-[linear-gradient(to_right,rgba(226,232,240,0.85)_1px,transparent_1px)] bg-[length:28px_100%] bg-left">
+                  {hasTodayMarker ? (
+                    <span
+                      className="absolute inset-y-0 z-[1] w-px bg-rose-300"
+                      style={{ left: `${(todayOffset / totalDays) * 100}%` }}
+                    />
+                  ) : null}
                   {predecessors.length ? (
                     <div
-                      className="absolute top-7 h-px border-t border-dashed border-slate-300"
+                      className="absolute top-8 h-px border-t border-dashed border-slate-300"
                       style={{ left: 0, width: `${left}%` }}
                     />
                   ) : null}
+                  {predecessors.length ? (
+                    <span
+                      className="absolute top-[29px] z-[2] h-2.5 w-2.5 rounded-full border border-slate-300 bg-white"
+                      style={{ left: `calc(${left}% - 4px)` }}
+                    />
+                  ) : null}
                   <div
-                    className={`absolute top-3 flex h-8 items-center rounded-full px-3 text-xs font-semibold text-white shadow-sm ${
-                      task.status === 'CONCLUIDA'
-                        ? 'bg-emerald-500'
-                        : isOverdue(task.dueDate, task.status)
-                          ? 'bg-rose-500'
-                          : 'bg-[#17407E]'
-                    }`}
+                    className={`absolute top-3 z-[2] flex h-9 items-center rounded-full px-3 text-xs font-semibold text-white shadow-sm ${barTone}`}
                     style={{ left: `${left}%`, width: `${width}%` }}
                   >
-                    <span className="truncate">
-                      {formatDate(task.startDate)} - {formatDate(task.dueDate)}
-                    </span>
+                    <div className="min-w-0">
+                      <div className="truncate">{formatDate(task.startDate)} - {formatDate(task.dueDate)}</div>
+                    </div>
                   </div>
                   {task.checklistTotalItems > 0 ? (
-                    <div className="absolute bottom-1 left-0 right-0 text-right text-[11px] text-slate-500">
-                      Progresso {task.checklistProgressPercent}%
-                    </div>
+                    <div
+                      className="absolute top-[42px] z-[2] h-1.5 rounded-full bg-emerald-300/90"
+                      style={{ left: `${left}%`, width: `${Math.max((width * task.checklistProgressPercent) / 100, task.checklistProgressPercent ? 1 : 0)}%` }}
+                    />
                   ) : null}
+                  <div className="absolute bottom-1 left-0 right-0 flex items-center justify-between px-1 text-[11px] text-slate-500">
+                    <span>{spanDays} dia(s)</span>
+                    <span>{task.checklistTotalItems > 0 ? `Checklist ${task.checklistProgressPercent}%` : 'Sem checklist'}</span>
+                  </div>
                 </div>
               </div>
             );
