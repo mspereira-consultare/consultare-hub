@@ -1034,9 +1034,11 @@ WATCHDOG_BUSINESS_START = os.getenv("WATCHDOG_BUSINESS_START", "08:00")
 WATCHDOG_BUSINESS_END = os.getenv("WATCHDOG_BUSINESS_END", "19:00")
 WATCHDOG_STALE_BUSINESS_SEC = max(60, int(os.getenv("WATCHDOG_STALE_BUSINESS_SEC", "180")))
 WATCHDOG_STALE_OFFHOURS_SEC = max(120, int(os.getenv("WATCHDOG_STALE_OFFHOURS_SEC", "900")))
+WATCHDOG_ACTIVE_STATUSES = {"RUNNING", "WARNING"}
+WATCHDOG_SUPPORTED_SERVICES = {"monitor_medico"}
 WATCHDOG_SERVICES = [
     s.strip()
-    for s in str(os.getenv("WATCHDOG_SERVICES", "monitor_medico,faturamento,comercial")).split(",")
+    for s in str(os.getenv("WATCHDOG_SERVICES", "monitor_medico")).split(",")
     if s.strip()
 ]
 
@@ -1045,8 +1047,21 @@ def run_watchdog():
         print("🛡️ Watchdog desativado.")
         return
 
+    effective_services = [service for service in WATCHDOG_SERVICES if service in WATCHDOG_SUPPORTED_SERVICES]
+    unsupported_services = [service for service in WATCHDOG_SERVICES if service not in WATCHDOG_SUPPORTED_SERVICES]
+
+    if unsupported_services:
+        print(
+            "⚠️ Watchdog ignorando serviços sem heartbeat contínuo: "
+            + ",".join(unsupported_services)
+        )
+
+    if not effective_services:
+        print("🛡️ Watchdog sem serviços compatíveis para monitorar.")
+        return
+
     print(
-        f"🛡️ Watchdog ativo: services={','.join(WATCHDOG_SERVICES)} "
+        f"🛡️ Watchdog ativo: services={','.join(effective_services)} "
         f"stale_default={WATCHDOG_STALE_SEC}s "
         f"stale_business={WATCHDOG_STALE_BUSINESS_SEC}s "
         f"stale_offhours={WATCHDOG_STALE_OFFHOURS_SEC}s "
@@ -1064,27 +1079,30 @@ def run_watchdog():
             if WATCHDOG_GRACE_SEC and (now - started_at).total_seconds() < WATCHDOG_GRACE_SEC:
                 continue
 
-            if not WATCHDOG_SERVICES:
+            if not effective_services:
                 continue
 
-            placeholders = ",".join(["?"] * len(WATCHDOG_SERVICES))
+            placeholders = ",".join(["?"] * len(effective_services))
             rows = db.execute_query(
                 f"""
                 SELECT service_name, status, last_run, details
                 FROM system_status
                 WHERE service_name IN ({placeholders})
                 """,
-                tuple(WATCHDOG_SERVICES),
+                tuple(effective_services),
             ) or []
 
             by_name = {r[0]: r for r in rows if isinstance(r, (tuple, list)) and len(r) >= 4}
 
-            for service_name in WATCHDOG_SERVICES:
+            for service_name in effective_services:
                 row = by_name.get(service_name)
                 if not row:
                     continue
 
                 _, status, last_run, details = row
+                status = str(status or "").strip().upper()
+                if status not in WATCHDOG_ACTIVE_STATUSES:
+                    continue
                 last_dt = _parse_db_datetime(last_run)
                 if last_dt is None:
                     continue
