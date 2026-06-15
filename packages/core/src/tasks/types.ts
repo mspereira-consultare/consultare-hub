@@ -319,3 +319,7 @@ export type TaskDependencyCreateInput = {
   predecessorTaskId: string;
   successorTaskId: string;
 };
+
+export type TaskProjectTaskReorderInput = {
+  orderedTaskIds: string[];
+};

@@ -28,6 +28,7 @@ import type {
   TaskProjectMember,
   TaskProjectMemberAddInput,
   TaskProjectSummary,
+  TaskProjectTaskReorderInput,
   TaskProjectUpdateInput,
   TaskPortfolioGantt,
   TaskPortfolioGanttRow,
@@ -2279,6 +2280,45 @@ export const deleteTaskDependency = async (
   const cleanProjectId = clean(projectId);
   await ensureCanManageProject(db, cleanProjectId, actorUserId, viewer);
   await db.execute(`DELETE FROM task_dependencies WHERE id = ? AND project_id = ?`, [clean(dependencyId), cleanProjectId]);
+  return getTaskProjectById(db, cleanProjectId, { userId: actorUserId, canViewAll: true });
+};
+
+export const reorderTaskProjectTasks = async (
+  db: DbInterface,
+  projectId: string,
+  input: TaskProjectTaskReorderInput,
+  actorUserId: string,
+  viewer: TaskViewerContext
+): Promise<TaskProjectDetail> => {
+  await ensureTaskTables(db);
+  const cleanProjectId = clean(projectId);
+  await ensureCanManageProject(db, cleanProjectId, actorUserId, viewer);
+  const orderedTaskIds = Array.from(new Set((input.orderedTaskIds || []).map(clean).filter(Boolean)));
+  if (!orderedTaskIds.length) {
+    throw new TaskValidationError('Informe a nova ordem das tarefas do projeto.');
+  }
+
+  const taskRows = await db.query(`SELECT id FROM tasks WHERE project_id = ?`, [cleanProjectId]);
+  const projectTaskIds = (taskRows as Row[]).map((row) => clean(row.id)).filter(Boolean);
+  const missing = orderedTaskIds.filter((taskId) => !projectTaskIds.includes(taskId));
+  if (missing.length) {
+    throw new TaskValidationError('A ordenação contém tarefas que não pertencem a este projeto.', 409);
+  }
+
+  const remainingTaskIds = projectTaskIds.filter((taskId) => !orderedTaskIds.includes(taskId));
+  const finalOrder = [...orderedTaskIds, ...remainingTaskIds];
+
+  await runInTransaction(db, async (txDb) => {
+    for (let index = 0; index < finalOrder.length; index += 1) {
+      await txDb.execute(`UPDATE tasks SET project_sort_order = ?, updated_at = ? WHERE id = ? AND project_id = ?`, [
+        index,
+        NOW(),
+        finalOrder[index],
+        cleanProjectId,
+      ]);
+    }
+  });
+
   return getTaskProjectById(db, cleanProjectId, { userId: actorUserId, canViewAll: true });
 };
 

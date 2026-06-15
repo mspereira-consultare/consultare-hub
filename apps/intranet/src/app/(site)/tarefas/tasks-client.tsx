@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import type {
   TaskApprovalDecisionStatus,
+  TaskDependency,
   TaskDetail,
   TaskPortfolioGantt,
   TaskPortfolioGanttSection,
@@ -393,6 +394,12 @@ const diffCalendarDays = (start: Date, end: Date) => {
 };
 
 const taskProjectLabel = (task: Pick<TaskSummary, 'projectName'>) => task.projectName || 'Tarefa avulsa';
+const sortProjectTasks = (items: TaskSummary[]) =>
+  [...items].sort((left, right) => {
+    const sortGap = (left.projectSortOrder ?? Number.MAX_SAFE_INTEGER) - (right.projectSortOrder ?? Number.MAX_SAFE_INTEGER);
+    if (sortGap !== 0) return sortGap;
+    return compareTasks(left, right);
+  });
 
 export function TasksClient({ currentUser }: TasksClientProps) {
   const router = useRouter();
@@ -405,11 +412,13 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const [projectFilter, setProjectFilter] = useState<TaskProjectFilter>('ALL');
   const [projectDetail, setProjectDetail] = useState<TaskProjectDetail | null>(null);
   const [portfolioGantt, setPortfolioGantt] = useState<TaskPortfolioGantt | null>(null);
+  const [managedProjectDetail, setManagedProjectDetail] = useState<TaskProjectDetail | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState('');
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
   const [boardLoading, setBoardLoading] = useState(true);
   const [ganttLoading, setGanttLoading] = useState(false);
   const [taskLoading, setTaskLoading] = useState(false);
+  const [projectDetailLoading, setProjectDetailLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -419,9 +428,11 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const [departmentFilter, setDepartmentFilter] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
+  const [projectDetailModalOpen, setProjectDetailModalOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [createForm, setCreateForm] = useState<TaskFormState>(defaultForm(currentUser));
   const [projectForm, setProjectForm] = useState<TaskProjectFormState>(defaultProjectForm());
+  const [projectDetailForm, setProjectDetailForm] = useState<TaskProjectFormState>(defaultProjectForm());
   const [createChecklistItems, setCreateChecklistItems] = useState<DraftChecklistItem[]>([]);
   const [editForm, setEditForm] = useState<TaskFormState>(defaultForm(currentUser));
   const [newTaskFiles, setNewTaskFiles] = useState<File[]>([]);
@@ -431,6 +442,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const [approvalNotes, setApprovalNotes] = useState('');
   const [decisionNotes, setDecisionNotes] = useState('');
   const [lifecycleReason, setLifecycleReason] = useState('');
+  const [projectMemberUserId, setProjectMemberUserId] = useState('');
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const createFileRef = useRef<HTMLInputElement | null>(null);
@@ -562,6 +574,63 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     }
   };
 
+  const fetchProjectDetail = async (projectId: string) => {
+    const response = await fetch(`/api/task-projects/${encodeURIComponent(projectId)}`, { cache: 'no-store' });
+    if (!response.ok) throw new Error(await normalizeError(response));
+    const json = await response.json();
+    return json.data as TaskProjectDetail;
+  };
+
+  const syncProjectViews = async (nextProject: TaskProjectDetail, options?: { reloadSelectedTask?: boolean }) => {
+    setManagedProjectDetail(nextProject);
+    setProjectDetailForm({
+      name: nextProject.name,
+      description: nextProject.description,
+      memberUserIds: nextProject.members.map((member) => member.userId),
+    });
+    if (projectDetail?.id === nextProject.id || projectFilter === nextProject.id) {
+      setProjectDetail(nextProject);
+    }
+
+    await loadProjects();
+    await loadTasks(selectedTaskId || undefined);
+
+    if (viewMode === 'GANTT') {
+      if (projectFilter === nextProject.id) {
+        setProjectDetail(nextProject);
+      } else {
+        await loadGanttData();
+      }
+    }
+
+    if (options?.reloadSelectedTask && selectedTaskId) {
+      await loadTaskDetail(selectedTaskId, false);
+    }
+  };
+
+  const loadManagedProjectDetail = async (projectId: string, openModal = false) => {
+    if (!projectId) return;
+    setProjectDetailLoading(true);
+    setError(null);
+    try {
+      const data = await fetchProjectDetail(projectId);
+      setManagedProjectDetail(data);
+      setProjectDetailForm({
+        name: data.name,
+        description: data.description,
+        memberUserIds: data.members.map((member) => member.userId),
+      });
+      setProjectMemberUserId('');
+      if (openModal) {
+        setProjectDetailModalOpen(true);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar detalhes do projeto.');
+    } finally {
+      setProjectDetailLoading(false);
+    }
+  };
+
   const loadTaskDetail = async (taskId: string, openModal = true) => {
     if (!taskId) return;
     setTaskLoading(true);
@@ -573,6 +642,15 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       setSelectedTask(task);
       setEditForm(taskToForm(task));
       setLifecycleReason(task.cancellationReason || '');
+      if (task.projectId) {
+        if (projectDetail?.id === task.projectId) {
+          setManagedProjectDetail(projectDetail);
+        } else {
+          void loadManagedProjectDetail(task.projectId, false);
+        }
+      } else {
+        setManagedProjectDetail(null);
+      }
       if (openModal) {
         setDetailOpen(true);
       }
@@ -697,6 +775,11 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const closeProjectModal = () => {
     setProjectModalOpen(false);
     setProjectForm(defaultProjectForm());
+  };
+
+  const closeProjectDetailModal = () => {
+    setProjectDetailModalOpen(false);
+    setProjectMemberUserId('');
   };
 
   const closeDetail = () => {
@@ -858,6 +941,158 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       setSuccessMessage(`Projeto ${project.name} criado com sucesso.`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao criar projeto.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveProjectDetail = async (archivedAt?: string | null) => {
+    if (!managedProjectDetail || saving) return;
+    if (!projectDetailForm.name.trim()) {
+      setError('Informe um nome para o projeto.');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/task-projects/${encodeURIComponent(managedProjectDetail.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: projectDetailForm.name,
+          description: projectDetailForm.description || null,
+          ...(typeof archivedAt !== 'undefined' ? { archivedAt } : {}),
+        }),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const json = await response.json();
+      const nextProject = json.data as TaskProjectDetail;
+      await syncProjectViews(nextProject, { reloadSelectedTask: true });
+      setSuccessMessage(`Projeto ${nextProject.name} atualizado com sucesso.`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar projeto.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addProjectMember = async () => {
+    if (!managedProjectDetail || !projectMemberUserId || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/task-projects/${encodeURIComponent(managedProjectDetail.id)}/members`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: projectMemberUserId }),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const json = await response.json();
+      const nextProject = json.data as TaskProjectDetail;
+      setProjectMemberUserId('');
+      await syncProjectViews(nextProject, { reloadSelectedTask: true });
+      setSuccessMessage('Membro adicionado ao projeto.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao adicionar membro ao projeto.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeProjectMember = async (memberId: string) => {
+    if (!managedProjectDetail || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/task-projects/${encodeURIComponent(managedProjectDetail.id)}/members/${encodeURIComponent(memberId)}`,
+        { method: 'DELETE' }
+      );
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const json = await response.json();
+      const nextProject = json.data as TaskProjectDetail;
+      await syncProjectViews(nextProject, { reloadSelectedTask: true });
+      setSuccessMessage('Membro removido do projeto.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao remover membro do projeto.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addTaskDependency = async (predecessorTaskId: string) => {
+    if (!selectedTask?.projectId || !selectedTask.id || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/task-projects/${encodeURIComponent(selectedTask.projectId)}/dependencies`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          predecessorTaskId,
+          successorTaskId: selectedTask.id,
+        }),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const json = await response.json();
+      const nextProject = json.data as TaskProjectDetail;
+      await syncProjectViews(nextProject, { reloadSelectedTask: true });
+      setSuccessMessage('Predecessora adicionada com sucesso.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao adicionar predecessora.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeTaskDependency = async (dependencyId: string, projectId?: string | null) => {
+    const targetProjectId = projectId || selectedTask?.projectId || managedProjectDetail?.id || '';
+    if (!targetProjectId || saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/task-projects/${encodeURIComponent(targetProjectId)}/dependencies/${encodeURIComponent(dependencyId)}`,
+        { method: 'DELETE' }
+      );
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const json = await response.json();
+      const nextProject = json.data as TaskProjectDetail;
+      await syncProjectViews(nextProject, { reloadSelectedTask: true });
+      setSuccessMessage('Predecessora removida com sucesso.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao remover predecessora.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const reorderManagedProjectTasks = async (taskId: string, direction: 'up' | 'down') => {
+    if (!managedProjectDetail || saving) return;
+    const ordered = sortProjectTasks(managedProjectDetail.tasks);
+    const index = ordered.findIndex((task) => task.id === taskId);
+    if (index < 0) return;
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= ordered.length) return;
+    const nextOrder = [...ordered];
+    const [moved] = nextOrder.splice(index, 1);
+    nextOrder.splice(targetIndex, 0, moved);
+
+    setSaving(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/task-projects/${encodeURIComponent(managedProjectDetail.id)}/order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderedTaskIds: nextOrder.map((task) => task.id) }),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const json = await response.json();
+      const nextProject = json.data as TaskProjectDetail;
+      await syncProjectViews(nextProject, { reloadSelectedTask: true });
+      setSuccessMessage('Ordem do cronograma atualizada.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao reordenar cronograma do projeto.');
     } finally {
       setSaving(false);
     }
@@ -1143,6 +1378,40 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     [projectFilter, projects]
   );
   const canManageSelectedProject = Boolean(projectDetail?.isOwner);
+  const selectedTaskProjectContext = useMemo(() => {
+    if (!selectedTask?.projectId) return null;
+    if (managedProjectDetail?.id === selectedTask.projectId) return managedProjectDetail;
+    if (projectDetail?.id === selectedTask.projectId) return projectDetail;
+    return null;
+  }, [managedProjectDetail, projectDetail, selectedTask?.projectId]);
+  const selectedTaskDependencies = useMemo(() => {
+    if (!selectedTaskProjectContext || !selectedTask) return [];
+    return selectedTaskProjectContext.dependencies.filter((dependency) => dependency.successorTaskId === selectedTask.id);
+  }, [selectedTask, selectedTaskProjectContext]);
+  const taskDependencyOptions = useMemo(() => {
+    if (!selectedTaskProjectContext || !selectedTask) return [];
+    return sortProjectTasks(selectedTaskProjectContext.tasks)
+      .filter((task) => task.id !== selectedTask.id && !isRetiredTaskStatus(task.status))
+      .map((task) => ({
+        value: task.id,
+        label: `${task.protocolId} · ${task.title}`,
+      }));
+  }, [selectedTask, selectedTaskProjectContext]);
+  const dependencyTaskMap = useMemo(
+    () => new Map((selectedTaskProjectContext?.tasks || []).map((task) => [task.id, task])),
+    [selectedTaskProjectContext]
+  );
+  const selectedTaskDependencyItems = useMemo(
+    () =>
+      selectedTaskDependencies.map((dependency) => {
+        const predecessor = dependencyTaskMap.get(dependency.predecessorTaskId);
+        return {
+          id: dependency.id,
+          label: predecessor ? `${predecessor.protocolId} · ${predecessor.title}` : dependency.predecessorTaskId,
+        };
+      }),
+    [dependencyTaskMap, selectedTaskDependencies]
+  );
 
   const canCurrentUserApprove =
     selectedTask?.status === 'AGUARDANDO_APROVACAO' &&
@@ -1410,10 +1679,13 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                 portfolio={portfolioGantt}
                 projectFilter={projectFilter}
                 selectedProjectName={selectedProjectSummary?.name || null}
+                canManageProject={canManageSelectedProject}
                 onOpenTask={(taskId) => {
                   void openTaskDetail(taskId);
                 }}
-                canManageProject={canManageSelectedProject}
+                onOpenProject={(projectId) => {
+                  void loadManagedProjectDetail(projectId, true);
+                }}
               />
             )
           ) : viewMode === 'LIST' ? (
@@ -1627,6 +1899,31 @@ export function TasksClient({ currentUser }: TasksClientProps) {
         />
       ) : null}
 
+      {projectDetailModalOpen ? (
+        <ProjectDetailModal
+          project={managedProjectDetail}
+          saving={saving}
+          loading={projectDetailLoading}
+          users={selectableUsers}
+          usersById={usersById}
+          memberUserId={projectMemberUserId}
+          onMemberUserIdChange={setProjectMemberUserId}
+          form={projectDetailForm}
+          onFormChange={setProjectDetailForm}
+          onClose={closeProjectDetailModal}
+          onSave={() => void saveProjectDetail()}
+          onArchive={() => void saveProjectDetail(managedProjectDetail?.archivedAt ? null : new Date().toISOString())}
+          onAddMember={() => void addProjectMember()}
+          onRemoveMember={(memberId) => void removeProjectMember(memberId)}
+          onMoveTask={(taskId, direction) => void reorderManagedProjectTasks(taskId, direction)}
+          onOpenTask={(taskId) => {
+            setProjectDetailModalOpen(false);
+            void openTaskDetail(taskId);
+          }}
+          onRemoveDependency={(dependencyId) => void removeTaskDependency(dependencyId, managedProjectDetail?.id)}
+        />
+      ) : null}
+
       {createOpen ? (
         <TaskModal
           title="Nova tarefa"
@@ -1684,9 +1981,15 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           onLifecycleReasonChange={setLifecycleReason}
           canManageLifecycle={Boolean(canManageLifecycle)}
           projectLabel={taskProjectLabel(selectedTask)}
+          projectContext={selectedTaskProjectContext}
+          dependencyOptions={taskDependencyOptions}
+          currentDependencies={selectedTaskDependencyItems}
+          canManageProjectStructure={Boolean(selectedTaskProjectContext?.isOwner)}
           onArchive={() => void changeTaskLifecycle('ARQUIVADA')}
           onCancelTask={() => void changeTaskLifecycle('CANCELADA')}
           onRestore={() => void changeTaskLifecycle('BACKLOG')}
+          onDependencyCreate={(predecessorTaskId) => void addTaskDependency(predecessorTaskId)}
+          onDependencyDelete={(dependencyId) => void removeTaskDependency(dependencyId)}
           onChecklistCreate={(title) => void addChecklistItem(title)}
           onChecklistUpdate={(itemId, input) => void updateChecklistItem(itemId, input)}
           onChecklistDelete={(itemId) => void deleteChecklistItem(itemId)}
@@ -2322,9 +2625,15 @@ function TaskDetailModal({
   onLifecycleReasonChange,
   canManageLifecycle,
   projectLabel,
+  projectContext,
+  dependencyOptions,
+  currentDependencies,
+  canManageProjectStructure,
   onArchive,
   onCancelTask,
   onRestore,
+  onDependencyCreate,
+  onDependencyDelete,
   onChecklistCreate,
   onChecklistUpdate,
   onChecklistDelete,
@@ -2363,18 +2672,30 @@ function TaskDetailModal({
   onLifecycleReasonChange: (value: string) => void;
   canManageLifecycle: boolean;
   projectLabel: string;
+  projectContext: TaskProjectDetail | null;
+  dependencyOptions: Array<{ value: string; label: string }>;
+  currentDependencies: Array<{ id: string; label: string }>;
+  canManageProjectStructure: boolean;
   onArchive: () => void;
   onCancelTask: () => void;
   onRestore: () => void;
+  onDependencyCreate: (predecessorTaskId: string) => void;
+  onDependencyDelete: (dependencyId: string) => void;
   onChecklistCreate: (title: string) => void;
   onChecklistUpdate: (itemId: string, input: { title?: string; isCompleted?: boolean }) => void;
   onChecklistDelete: (itemId: string) => void;
 }) {
   const taskIsRetired = isRetiredTaskStatus(task.status);
   const requiresProjectSchedule = Boolean(form.projectId);
+  const [selectedDependencyId, setSelectedDependencyId] = useState('');
   const orderedComments = [...task.comments].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const orderedActivity = [...task.activity].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
   const approvalStateLabel = task.latestApproval ? approvalLabelMap[task.latestApproval.decisionStatus] : 'Sem ciclo aberto';
+
+  useEffect(() => {
+    setSelectedDependencyId('');
+  }, [task.id]);
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-4">
       <div className="mx-auto flex max-h-[calc(100vh-2rem)] w-full max-w-7xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
@@ -2461,6 +2782,99 @@ function TaskDetailModal({
                     className={textAreaClassName}
                     placeholder="Detalhe a entrega, os passos e o contexto esperado"
                   />
+                </TaskSectionCard>
+
+                <TaskSectionCard
+                  title="Projeto e predecessoras"
+                  description="Organize a tarefa no cronograma do projeto e mantenha a sequência de execução visível."
+                >
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="text-sm font-semibold text-slate-900">Projeto atual</div>
+                      <p className="mt-1 text-sm text-slate-600">{projectLabel}</p>
+                      {projectContext ? (
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
+                          <span className="rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200">
+                            {projectContext.members.length} membro(s)
+                          </span>
+                          <span className="rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200">
+                            {projectContext.tasks.length} tarefa(s)
+                          </span>
+                          <span className="rounded-full bg-white px-2.5 py-1 ring-1 ring-slate-200">
+                            {projectContext.dependencies.length} dependência(s)
+                          </span>
+                        </div>
+                      ) : (
+                        <p className="mt-3 text-xs text-slate-500">Tarefas avulsas não entram no cronograma de projeto.</p>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4">
+                      <div className="text-sm font-semibold text-slate-900">Predecessoras</div>
+                      <p className="mt-1 text-sm text-slate-500">Use esta lista para indicar o que precisa ser concluído antes desta entrega.</p>
+                      {projectContext ? (
+                        <div className="mt-4 space-y-3">
+                          {canManageProjectStructure ? (
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <select
+                                value={selectedDependencyId}
+                                onChange={(event) => setSelectedDependencyId(event.target.value)}
+                                className={inputClassName}
+                              >
+                                <option value="">Selecionar predecessora</option>
+                                {dependencyOptions.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (selectedDependencyId) {
+                                    onDependencyCreate(selectedDependencyId);
+                                    setSelectedDependencyId('');
+                                  }
+                                }}
+                                disabled={saving || !selectedDependencyId}
+                                className="inline-flex items-center justify-center rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
+                              >
+                                Adicionar
+                              </button>
+                            </div>
+                          ) : null}
+
+                          {currentDependencies.length === 0 ? (
+                            <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
+                              Nenhuma predecessora definida para esta tarefa.
+                            </div>
+                          ) : (
+                            <div className="space-y-2">
+                              {currentDependencies.map((dependency) => (
+                                <div key={dependency.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm">
+                                  <span className="min-w-0 truncate text-slate-700">{dependency.label}</span>
+                                  {canManageProjectStructure ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => onDependencyDelete(dependency.id)}
+                                      disabled={saving}
+                                      className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                                    >
+                                      Remover
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="mt-4 rounded-xl border border-dashed border-slate-300 bg-white px-4 py-6 text-sm text-slate-500">
+                          Vincule esta tarefa a um projeto para habilitar predecessoras e cronograma Gantt.
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </TaskSectionCard>
 
                 <TaskSectionCard
@@ -3325,6 +3739,307 @@ function ProjectCreateModal({
   );
 }
 
+function ProjectDetailModal({
+  project,
+  saving,
+  loading,
+  users,
+  usersById,
+  memberUserId,
+  onMemberUserIdChange,
+  form,
+  onFormChange,
+  onClose,
+  onSave,
+  onArchive,
+  onAddMember,
+  onRemoveMember,
+  onMoveTask,
+  onOpenTask,
+  onRemoveDependency,
+}: {
+  project: TaskProjectDetail | null;
+  saving: boolean;
+  loading: boolean;
+  users: Array<TaskUserOption & { label: string }>;
+  usersById: Map<string, TaskUserOption>;
+  memberUserId: string;
+  onMemberUserIdChange: (value: string) => void;
+  form: TaskProjectFormState;
+  onFormChange: (value: TaskProjectFormState) => void;
+  onClose: () => void;
+  onSave: () => void;
+  onArchive: () => void;
+  onAddMember: () => void;
+  onRemoveMember: (memberId: string) => void;
+  onMoveTask: (taskId: string, direction: 'up' | 'down') => void;
+  onOpenTask: (taskId: string) => void;
+  onRemoveDependency: (dependencyId: string) => void;
+}) {
+  const orderedTasks = useMemo(() => sortProjectTasks(project?.tasks || []), [project?.tasks]);
+  const canEditProject = Boolean(project?.isOwner);
+  const memberOptions = useMemo(
+    () =>
+      users.filter((user) => !project?.members.some((member) => member.userId === user.id)),
+    [project?.members, users]
+  );
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-4">
+      <div className="mx-auto flex max-h-[calc(100vh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="border-b border-slate-200 px-6 py-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[#17407E]">Cronograma do projeto</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-900">{project?.name || 'Projeto'}</h2>
+              <p className="mt-2 max-w-3xl text-sm text-slate-500">
+                Gerencie membros, metadados, ordenação do cronograma e dependências sem sair do board.
+              </p>
+            </div>
+            <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50">
+              <X size={18} />
+            </button>
+          </div>
+          {project ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <QuickMetaCard label="Membros" value={String(project.members.length)} />
+              <QuickMetaCard label="Tarefas" value={String(project.tasks.length)} />
+              <QuickMetaCard label="Agendadas" value={String(project.scheduledTaskCount)} />
+              <QuickMetaCard label="Dependências" value={String(project.dependencies.length)} />
+            </div>
+          ) : null}
+        </div>
+
+        <div className="grid min-h-0 flex-1 gap-0 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <div className="min-h-0 overflow-y-auto p-6">
+            {loading && !project ? (
+              <div className="flex min-h-[240px] items-center justify-center text-slate-500">
+                <Loader2 size={18} className="mr-2 animate-spin" />
+                Carregando projeto...
+              </div>
+            ) : project ? (
+              <div className="space-y-5">
+                <TaskSectionCard
+                  title="Metadados do projeto"
+                  description="Ajuste nome, descrição e o estado do projeto sem sair da visão operacional."
+                >
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <FieldInput
+                      label="Nome do projeto"
+                      value={form.name}
+                      onChange={(value) => onFormChange({ ...form, name: value })}
+                      disabled={!canEditProject}
+                    />
+                    <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Estado</div>
+                      <div className="mt-1 text-sm font-medium text-slate-800">
+                        {project.archivedAt ? 'Arquivado' : 'Ativo'}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Descrição</label>
+                    <textarea
+                      value={form.description}
+                      onChange={(event) => onFormChange({ ...form, description: event.target.value })}
+                      disabled={!canEditProject}
+                      className={`${textAreaClassName} disabled:bg-slate-50`}
+                      placeholder="Objetivo, escopo e contexto deste projeto"
+                    />
+                  </div>
+                </TaskSectionCard>
+
+                <TaskSectionCard
+                  title="Equipe do projeto"
+                  description="Todos os membros enxergam as tarefas do projeto, mesmo sem atribuição individual."
+                >
+                  {canEditProject ? (
+                    <div className="flex flex-col gap-3 md:flex-row md:items-end">
+                      <div className="min-w-0 flex-1">
+                        <SearchableUserSelect
+                          label="Adicionar membro"
+                          value={memberUserId}
+                          onChange={onMemberUserIdChange}
+                          users={memberOptions}
+                          placeholder="Buscar colaborador para adicionar"
+                          emptyLabel="Selecione um colaborador"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={onAddMember}
+                        disabled={saving || !memberUserId}
+                        className="inline-flex items-center justify-center rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
+                      >
+                        Adicionar membro
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="mt-4 space-y-2">
+                    {project.members.map((member) => {
+                      const user = usersById.get(member.userId);
+                      const isOwner = member.roleType === 'OWNER';
+                      return (
+                        <div key={member.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-slate-900">{user?.name || member.userId}</div>
+                            <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                              <span>{user?.department || user?.email || 'Sem setor'}</span>
+                              <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">
+                                {isOwner ? 'Owner' : 'Membro'}
+                              </span>
+                            </div>
+                          </div>
+                          {canEditProject && !isOwner ? (
+                            <button
+                              type="button"
+                              onClick={() => onRemoveMember(member.id)}
+                              disabled={saving}
+                              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                            >
+                              Remover
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </TaskSectionCard>
+
+                <TaskSectionCard
+                  title="Estrutura do cronograma"
+                  description="Reordene a sequência do projeto e abra rapidamente qualquer tarefa para editar datas e predecessoras."
+                >
+                  <div className="space-y-2">
+                    {orderedTasks.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                        Nenhuma tarefa vinculada a este projeto ainda.
+                      </div>
+                    ) : (
+                      orderedTasks.map((task, index) => (
+                        <div key={task.id} className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3">
+                          <button
+                            type="button"
+                            onClick={() => onOpenTask(task.id)}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <div className="text-[11px] font-semibold uppercase tracking-wide text-[#17407E]">{task.protocolId}</div>
+                            <div className="mt-1 truncate text-sm font-semibold text-slate-900">{task.title}</div>
+                            <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
+                              <span>{statusLabelMap[task.status]}</span>
+                              <span>{task.startDate ? formatDate(task.startDate) : 'Sem início'}</span>
+                              <span>{task.dueDate ? formatDate(task.dueDate) : 'Sem prazo'}</span>
+                            </div>
+                          </button>
+                          {canEditProject ? (
+                            <div className="flex gap-2">
+                              <button
+                                type="button"
+                                onClick={() => onMoveTask(task.id, 'up')}
+                                disabled={saving || index === 0}
+                                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                              >
+                                Subir
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => onMoveTask(task.id, 'down')}
+                                disabled={saving || index === orderedTasks.length - 1}
+                                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+                              >
+                                Descer
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </TaskSectionCard>
+              </div>
+            ) : null}
+          </div>
+
+          <aside className="min-h-0 overflow-y-auto border-l border-slate-200 bg-slate-50/60 p-6">
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <h3 className="font-semibold text-slate-900">Dependências do projeto</h3>
+                <div className="mt-4 space-y-2">
+                  {!project?.dependencies.length ? (
+                    <p className="text-sm text-slate-500">Nenhuma dependência registrada ainda.</p>
+                  ) : (
+                    project.dependencies.map((dependency) => {
+                      const predecessor = project.tasks.find((task) => task.id === dependency.predecessorTaskId);
+                      const successor = project.tasks.find((task) => task.id === dependency.successorTaskId);
+                      return (
+                        <div key={dependency.id} className="rounded-xl border border-slate-200 bg-slate-50/70 px-3 py-3">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Fim para início</div>
+                          <div className="mt-1 text-sm font-semibold text-slate-900">
+                            {predecessor?.protocolId || dependency.predecessorTaskId} → {successor?.protocolId || dependency.successorTaskId}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {(predecessor?.title || 'Predecessora')} antecede {(successor?.title || 'Sucessora')}.
+                          </div>
+                          {canEditProject ? (
+                            <button
+                              type="button"
+                              onClick={() => onRemoveDependency(dependency.id)}
+                              disabled={saving}
+                              className="mt-3 rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white disabled:opacity-50"
+                            >
+                              Remover dependência
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <h3 className="font-semibold text-slate-900">Governança</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  {project?.archivedAt
+                    ? 'Projeto arquivado: membros e histórico permanecem preservados.'
+                    : 'Projeto ativo: o cronograma segue disponível no board operacional.'}
+                </p>
+                {canEditProject ? (
+                  <button
+                    type="button"
+                    onClick={onArchive}
+                    disabled={saving || !project}
+                    className="mt-4 inline-flex w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  >
+                    {project?.archivedAt ? 'Reativar projeto' : 'Arquivar projeto'}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </aside>
+        </div>
+
+        <div className="sticky bottom-0 flex justify-end gap-2 border-t border-slate-200 bg-white/95 px-6 py-4 backdrop-blur">
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+            Fechar
+          </button>
+          {canEditProject ? (
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving || !form.name.trim()}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
+            >
+              {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+              Salvar projeto
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ProjectGanttBoard({
   project,
   portfolio,
@@ -3332,6 +4047,7 @@ function ProjectGanttBoard({
   selectedProjectName,
   onOpenTask,
   canManageProject,
+  onOpenProject,
 }: {
   project: TaskProjectDetail | null;
   portfolio: TaskPortfolioGantt | null;
@@ -3339,6 +4055,7 @@ function ProjectGanttBoard({
   selectedProjectName: string | null;
   onOpenTask: (taskId: string) => void;
   canManageProject: boolean;
+  onOpenProject: (projectId: string) => void;
 }) {
   const sections = project
     ? [{ project, tasks: project.tasks, dependencies: project.dependencies } satisfies TaskPortfolioGanttSection]
@@ -3354,6 +4071,22 @@ function ProjectGanttBoard({
 
   return (
     <div className="space-y-5">
+      {!project && portfolio ? (
+        <div className="flex flex-wrap justify-end gap-2">
+          <a
+            href="/api/tasks/portfolio-gantt/export.xlsx"
+            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Exportar portfólio em XLSX
+          </a>
+          <a
+            href="/api/tasks/portfolio-gantt/export.pdf"
+            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Exportar portfólio em PDF
+          </a>
+        </div>
+      ) : null}
       {sections.map((section) => {
         const scheduledTasks = section.tasks.filter((task) => task.startDate && task.dueDate && !isRetiredTaskStatus(task.status));
         const sectionTitle = section.project?.name || 'Tarefas avulsas';
@@ -3382,6 +4115,13 @@ function ProjectGanttBoard({
               </div>
               {section.project ? (
                 <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                  <button
+                    type="button"
+                    onClick={() => onOpenProject(section.project!.id)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Detalhes do projeto
+                  </button>
                   <a
                     href={`/api/task-projects/${encodeURIComponent(section.project.id)}/export.xlsx`}
                     className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50"
@@ -3400,7 +4140,12 @@ function ProjectGanttBoard({
                 </div>
               ) : null}
             </div>
-            <GanttTimeline rows={scheduledTasks} onOpenTask={onOpenTask} projectName={selectedProjectName || sectionTitle} />
+            <GanttTimeline
+              rows={scheduledTasks}
+              dependencies={section.dependencies}
+              onOpenTask={onOpenTask}
+              projectName={selectedProjectName || sectionTitle}
+            />
           </div>
         );
       })}
@@ -3410,10 +4155,12 @@ function ProjectGanttBoard({
 
 function GanttTimeline({
   rows,
+  dependencies,
   onOpenTask,
   projectName,
 }: {
   rows: TaskSummary[];
+  dependencies: TaskDependency[];
   onOpenTask: (taskId: string) => void;
   projectName: string;
 }) {
@@ -3454,6 +4201,13 @@ function GanttTimeline({
       label: date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
     };
   });
+  const protocolByTaskId = new Map(datedRows.map(({ task }) => [task.id, task.protocolId]));
+  const predecessorMap = new Map<string, string[]>();
+  for (const dependency of dependencies) {
+    const list = predecessorMap.get(dependency.successorTaskId) || [];
+    list.push(protocolByTaskId.get(dependency.predecessorTaskId) || dependency.predecessorTaskId);
+    predecessorMap.set(dependency.successorTaskId, list);
+  }
 
   return (
     <div className="overflow-x-auto">
@@ -3479,6 +4233,7 @@ function GanttTimeline({
             const spanDays = Math.max(diffCalendarDays(start, end) + 1, 1);
             const left = (startOffset / totalDays) * 100;
             const width = Math.max((spanDays / totalDays) * 100, 2.5);
+            const predecessors = predecessorMap.get(task.id) || [];
 
             return (
               <div key={task.id} className="grid grid-cols-[320px_minmax(0,1fr)] gap-4 px-5 py-4">
@@ -3490,8 +4245,24 @@ function GanttTimeline({
                     <span>{statusLabelMap[task.status]}</span>
                     {task.projectName ? <span>{task.projectName}</span> : null}
                   </div>
+                  {predecessors.length ? (
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                      <span className="font-semibold text-slate-600">Depende de:</span>
+                      {predecessors.map((protocol) => (
+                        <span key={`${task.id}-${protocol}`} className="rounded-full bg-slate-100 px-2 py-1 ring-1 ring-slate-200">
+                          {protocol}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </button>
                 <div className="relative h-14 rounded-xl bg-[linear-gradient(to_right,rgba(226,232,240,0.9)_1px,transparent_1px)] bg-[length:28px_100%] bg-left">
+                  {predecessors.length ? (
+                    <div
+                      className="absolute top-7 h-px border-t border-dashed border-slate-300"
+                      style={{ left: 0, width: `${left}%` }}
+                    />
+                  ) : null}
                   <div
                     className={`absolute top-3 flex h-8 items-center rounded-full px-3 text-xs font-semibold text-white shadow-sm ${
                       task.status === 'CONCLUIDA'
@@ -3527,17 +4298,26 @@ function FieldInput({
   onChange,
   type = 'text',
   placeholder,
+  disabled = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
   placeholder?: string;
+  disabled?: boolean;
 }) {
   return (
     <div>
       <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
-      <input type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} className={inputClassName} />
+      <input
+        type={type}
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={`${inputClassName} disabled:bg-slate-50`}
+      />
     </div>
   );
 }
