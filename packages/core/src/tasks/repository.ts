@@ -115,6 +115,16 @@ const safeAddColumn = async (db: DbInterface, sql: string) => {
   }
 };
 
+const safeModifyColumn = async (db: DbInterface, sql: string) => {
+  try {
+    await db.execute(sql);
+  } catch (error: any) {
+    const msg = String(error?.message || '');
+    if (/near "MODIFY"/i.test(msg) || /syntax error/i.test(msg)) return;
+    throw error;
+  }
+};
+
 const normalizePriority = (value: unknown, fallback: TaskPriority = 'MEDIA'): TaskPriority => {
   const raw = upper(value);
   if (PRIORITIES.includes(raw as TaskPriority)) return raw as TaskPriority;
@@ -877,7 +887,7 @@ export const ensureTaskTables = async (db: DbInterface) => {
       created_by VARCHAR(64) NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
-      archived_at TEXT NULL
+      archived_at VARCHAR(32) NULL
     )
   `);
 
@@ -1002,6 +1012,9 @@ export const ensureTaskTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN previous_operational_status VARCHAR(30) NULL`);
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN project_id VARCHAR(64) NULL`);
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN project_sort_order INTEGER NULL`);
+  if (isMysqlProvider()) {
+    await safeModifyColumn(db, `ALTER TABLE task_projects MODIFY COLUMN archived_at VARCHAR(32) NULL`);
+  }
 
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_tasks_protocol_number ON tasks (protocol_number)`);
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_tasks_protocol_id ON tasks (protocol_id)`);
