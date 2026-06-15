@@ -34,6 +34,7 @@ import type {
   TaskStatus,
   TaskSummary,
 } from '@consultare/core/tasks/types';
+import { buildTaskGanttPresentation } from '@consultare/core/tasks/gantt';
 
 type UserOption = {
   id: string;
@@ -1864,125 +1865,86 @@ function ExecutiveGanttTimeline({
   onOpenTask: (taskId: string) => void;
   projectName: string;
 }) {
-  const datedRows = rows
-    .map((task) => ({
-      task,
-      start: parseLocalDate(task.startDate),
-      end: parseLocalDate(task.dueDate),
-    }))
-    .filter((row): row is { task: TaskSummary; start: Date; end: Date } => Boolean(row.start && row.end))
-    .sort((left, right) => {
-      const startGap = left.start.getTime() - right.start.getTime();
-      if (startGap !== 0) return startGap;
-      const sortGap = (left.task.projectSortOrder ?? Number.MAX_SAFE_INTEGER) - (right.task.projectSortOrder ?? Number.MAX_SAFE_INTEGER);
-      if (sortGap !== 0) return sortGap;
-      return compareTasks(left.task, right.task);
-    });
+  const presentation = useMemo(
+    () =>
+      buildTaskGanttPresentation(rows, dependencies, {
+        compareTasks,
+        locale: 'pt-BR',
+        keyPrefix: projectName,
+      }),
+    [dependencies, projectName, rows]
+  );
 
-  if (!datedRows.length) {
+  if (!presentation) {
     return <div className="px-5 py-10 text-sm text-slate-500">Nenhuma tarefa agendada neste recorte.</div>;
-  }
-
-  const timelineStart = datedRows.reduce((min, row) => (row.start < min ? row.start : min), datedRows[0].start);
-  const timelineEnd = datedRows.reduce((max, row) => (row.end > max ? row.end : max), datedRows[0].end);
-  const totalDays = Math.max(diffCalendarDays(timelineStart, timelineEnd) + 1, 1);
-  const tickStep = Math.max(Math.floor(totalDays / 6), 1);
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const todayOffset = diffCalendarDays(timelineStart, todayStart);
-  const hasTodayMarker = todayOffset >= 0 && todayOffset <= totalDays - 1;
-  const ticks = Array.from({ length: Math.max(Math.ceil(totalDays / tickStep), 2) }, (_, index) => {
-    const offset = Math.min(index * tickStep, totalDays - 1);
-    const date = new Date(timelineStart);
-    date.setDate(date.getDate() + offset);
-    return {
-      key: `${projectName}-${offset}`,
-      offset,
-      label: date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
-    };
-  });
-  const monthTicks: Array<{ key: string; offset: number; label: string }> = [];
-  const monthCursor = new Date(timelineStart.getFullYear(), timelineStart.getMonth(), 1);
-  while (monthCursor <= timelineEnd) {
-    const offset = Math.max(0, diffCalendarDays(timelineStart, monthCursor));
-    monthTicks.push({
-      key: `${projectName}-${monthCursor.getFullYear()}-${monthCursor.getMonth()}`,
-      offset,
-      label: monthCursor.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' }),
-    });
-    monthCursor.setMonth(monthCursor.getMonth() + 1);
-  }
-  const protocolByTaskId = new Map(datedRows.map(({ task }) => [task.id, task.protocolId]));
-  const predecessorMap = new Map<string, string[]>();
-  for (const dependency of dependencies) {
-    const list = predecessorMap.get(dependency.successorTaskId) || [];
-    list.push(protocolByTaskId.get(dependency.predecessorTaskId) || dependency.predecessorTaskId);
-    predecessorMap.set(dependency.successorTaskId, list);
   }
 
   return (
     <div className="overflow-x-auto">
-      <div className="min-w-[1120px]">
-        <div className="border-b border-slate-200 bg-slate-50/90 px-5 py-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="min-w-[980px]">
+        <div className="border-b border-slate-200 bg-slate-50/80 px-4 py-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Período do cronograma</div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Período do cronograma</div>
               <div className="mt-1 text-sm font-semibold text-slate-900">
-                {formatDate(timelineStart.toISOString().slice(0, 10))} até {formatDate(timelineEnd.toISOString().slice(0, 10))}
+                {formatDate(presentation.timelineStart.toISOString().slice(0, 10))} até {formatDate(
+                  presentation.timelineEnd.toISOString().slice(0, 10)
+                )}
               </div>
-              <div className="mt-1 text-xs text-slate-500">{totalDays} dia(s) de janela executiva neste recorte.</div>
+              <div className="mt-1 text-[11px] text-slate-500">
+                {presentation.totalDays} dia(s) corridos neste recorte, com densidade preparada para cronogramas extensos.
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2 text-[11px]">
-              <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200">Backlog/A fazer</span>
-              <span className="rounded-full bg-blue-100 px-2.5 py-1 font-semibold text-blue-700 ring-1 ring-blue-200">Em andamento</span>
-              <span className="rounded-full bg-violet-100 px-2.5 py-1 font-semibold text-violet-700 ring-1 ring-violet-200">Aguardando aprovação</span>
-              <span className="rounded-full bg-emerald-100 px-2.5 py-1 font-semibold text-emerald-700 ring-1 ring-emerald-200">Concluída</span>
-              <span className="rounded-full bg-rose-100 px-2.5 py-1 font-semibold text-rose-700 ring-1 ring-rose-200">Atrasada</span>
+            <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
+              <span className="rounded-full border border-slate-200 bg-white px-2 py-1 font-semibold text-slate-600">Backlog/A fazer</span>
+              <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 font-semibold text-blue-700">Em andamento</span>
+              <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-1 font-semibold text-violet-700">Aguardando aprovação</span>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">Concluída</span>
+              <span className="rounded-full border border-rose-200 bg-rose-50 px-2 py-1 font-semibold text-rose-700">Atrasada</span>
+              <span className="rounded-full border border-rose-200 bg-white px-2 py-1 font-semibold text-rose-700">Conflito</span>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-[340px_minmax(0,1fr)] gap-4 border-b border-slate-200 bg-slate-50 px-5 py-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Tarefa</div>
-          <div className="space-y-2">
-            <div className="relative h-4">
-              {monthTicks.map((tick) => (
+        <div className="grid grid-cols-[280px_minmax(0,1fr)] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Tarefa</div>
+          <div className="space-y-1.5">
+            <div className="relative h-3.5">
+              {presentation.monthTicks.map((tick) => (
                 <span
                   key={tick.key}
-                  className="absolute text-[10px] font-semibold uppercase tracking-wide text-slate-400"
-                  style={{ left: `${(tick.offset / totalDays) * 100}%` }}
+                  className="absolute text-[9px] font-semibold uppercase tracking-[0.18em] text-slate-400"
+                  style={{ left: `${(tick.offset / presentation.totalDays) * 100}%` }}
                 >
                   {tick.label}
                 </span>
               ))}
             </div>
-            <div className="relative h-6">
-              {hasTodayMarker ? (
+            <div className="relative h-5">
+              {presentation.hasTodayMarker ? (
                 <span
                   className="absolute inset-y-0 z-[1] w-px bg-rose-300"
-                  style={{ left: `${(todayOffset / totalDays) * 100}%` }}
+                  style={{ left: `${(presentation.todayOffset / presentation.totalDays) * 100}%` }}
                 />
               ) : null}
-            {ticks.map((tick) => (
-              <span
-                key={tick.key}
-                className="absolute -translate-x-1/2 text-[11px] font-semibold text-slate-500"
-                style={{ left: `${(tick.offset / totalDays) * 100}%` }}
-              >
-                {tick.label}
-              </span>
-            ))}
+              {presentation.ticks.map((tick) => (
+                <span
+                  key={tick.key}
+                  className="absolute -translate-x-1/2 text-[10px] font-semibold text-slate-500"
+                  style={{ left: `${(tick.offset / presentation.totalDays) * 100}%` }}
+                >
+                  {tick.label}
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
         </div>
 
         <div className="divide-y divide-slate-100">
-          {datedRows.map(({ task, start, end }) => {
-            const startOffset = diffCalendarDays(timelineStart, start);
-            const spanDays = Math.max(diffCalendarDays(start, end) + 1, 1);
-            const left = (startOffset / totalDays) * 100;
-            const width = Math.max((spanDays / totalDays) * 100, 2.5);
-            const predecessors = predecessorMap.get(task.id) || [];
+          {presentation.rows.map((row, index) => {
+            const task = row.task;
+            const left = (row.startOffsetDays / presentation.totalDays) * 100;
+            const width = Math.max((row.spanDays / presentation.totalDays) * 100, 2.3);
             const barTone =
               task.status === 'CONCLUIDA'
                 ? 'bg-emerald-500'
@@ -1992,70 +1954,122 @@ function ExecutiveGanttTimeline({
                     ? 'bg-blue-600'
                     : isOverdue(task.dueDate, task.status)
                       ? 'bg-rose-500'
-                      : task.status === 'A_FAZER'
+                  : task.status === 'A_FAZER'
                         ? 'bg-amber-500'
                         : 'bg-slate-500';
+            const orderLabel = `#${task.projectSortOrder ?? index + 1}`;
+            const compactMeta = [
+              statusLabelMap[task.status],
+              `${row.spanDays} dia(s)`,
+              task.checklistTotalItems > 0 ? `Checklist ${task.checklistProgressPercent}%` : 'Sem checklist',
+            ];
 
             return (
-              <div key={task.id} className="grid grid-cols-[340px_minmax(0,1fr)] gap-4 px-5 py-4">
-                <button type="button" onClick={() => onOpenTask(task.id)} className="min-w-0 rounded-xl border border-transparent p-2 text-left transition hover:border-slate-200 hover:bg-slate-50">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-[#17407E]">{task.protocolId}</div>
-                  <div className="mt-1 truncate font-semibold text-slate-900">{task.title}</div>
-                  <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-                    <span className="rounded-full bg-slate-100 px-2 py-1 ring-1 ring-slate-200">#{(task.projectSortOrder ?? datedRows.findIndex((row) => row.task.id === task.id) + 1)}</span>
-                    <span className="rounded-full bg-slate-100 px-2 py-1 ring-1 ring-slate-200">{spanDays} dia(s)</span>
-                    <span>{task.department}</span>
-                    <span>{statusLabelMap[task.status]}</span>
-                    {task.projectName ? <span>{task.projectName}</span> : null}
+              <div key={task.id} className="grid grid-cols-[280px_minmax(0,1fr)] gap-3 px-4 py-1.5">
+                <button
+                  type="button"
+                  onClick={() => onOpenTask(task.id)}
+                  className="group relative min-w-0 rounded-xl border border-transparent px-2 py-2 text-left transition hover:border-slate-200 hover:bg-slate-50 focus-visible:border-[#17407E] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-100"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#17407E]">{task.protocolId}</span>
+                    <span className="rounded-full border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500">
+                      {orderLabel}
+                    </span>
+                    {row.hasScheduleConflict ? (
+                      <span className="rounded-full border border-rose-200 bg-rose-50 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                        Conflito
+                      </span>
+                    ) : null}
                   </div>
-                  {predecessors.length ? (
-                    <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
-                      <span className="font-semibold text-slate-600">Depende de:</span>
-                      {predecessors.map((protocol) => (
-                        <span key={`${task.id}-${protocol}`} className="rounded-full bg-slate-100 px-2 py-1 ring-1 ring-slate-200">
-                          {protocol}
-                        </span>
-                      ))}
+                  <div className="mt-1 truncate text-sm font-semibold text-slate-900">{task.title}</div>
+                  <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-slate-500">
+                    {compactMeta.map((item) => (
+                      <span key={`${task.id}-${item}`} className="rounded-full border border-slate-200 bg-white px-1.5 py-0.5">
+                        {item}
+                      </span>
+                    ))}
+                    {row.predecessorProtocols.length ? (
+                      <span className="rounded-full border border-slate-200 bg-white px-1.5 py-0.5">
+                        {row.predecessorProtocols.length} dependência(s)
+                      </span>
+                    ) : null}
+                  </div>
+
+                  <div className="pointer-events-none absolute left-0 top-full z-20 hidden w-80 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-xl group-hover:block group-focus-visible:block">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#17407E]">{task.protocolId}</div>
+                        <div className="mt-1 text-sm font-semibold text-slate-900">{task.title}</div>
+                      </div>
+                      {row.hasScheduleConflict ? (
+                        <AlertCircle className="mt-0.5 text-rose-500" size={16} />
+                      ) : (
+                        <CheckCircle2 className="mt-0.5 text-emerald-500" size={16} />
+                      )}
                     </div>
-                  ) : null}
+                    <div className="mt-3 grid gap-2 text-xs text-slate-600">
+                      <div><span className="font-semibold text-slate-700">Janela:</span> {formatDate(task.startDate)} até {formatDate(task.dueDate)}</div>
+                      <div><span className="font-semibold text-slate-700">Status:</span> {statusLabelMap[task.status]}</div>
+                      <div><span className="font-semibold text-slate-700">Setor:</span> {task.department || 'Sem setor'}</div>
+                      <div><span className="font-semibold text-slate-700">Projeto:</span> {task.projectName || 'Tarefa avulsa'}</div>
+                      <div><span className="font-semibold text-slate-700">Checklist:</span> {task.checklistTotalItems > 0 ? `${task.checklistCompletedItems}/${task.checklistTotalItems} concluído(s)` : 'Sem checklist'}</div>
+                      <div>
+                        <span className="font-semibold text-slate-700">Predecessoras:</span>{' '}
+                        {row.predecessorProtocols.length ? row.predecessorProtocols.join(', ') : 'Nenhuma'}
+                      </div>
+                      {row.scheduleConflictReason ? (
+                        <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700">
+                          {row.scheduleConflictReason}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                 </button>
-                <div className="relative h-16 rounded-2xl bg-[linear-gradient(to_right,rgba(226,232,240,0.85)_1px,transparent_1px)] bg-[length:28px_100%] bg-left">
-                  {hasTodayMarker ? (
+                <div className="relative h-11 rounded-xl bg-[linear-gradient(to_right,rgba(226,232,240,0.7)_1px,transparent_1px)] bg-[length:18px_100%] bg-left">
+                  {presentation.hasTodayMarker ? (
                     <span
                       className="absolute inset-y-0 z-[1] w-px bg-rose-300"
-                      style={{ left: `${(todayOffset / totalDays) * 100}%` }}
+                      style={{ left: `${(presentation.todayOffset / presentation.totalDays) * 100}%` }}
                     />
                   ) : null}
-                  {predecessors.length ? (
+                  {row.predecessorProtocols.length ? (
                     <div
-                      className="absolute top-8 h-px border-t border-dashed border-slate-300"
+                      className={`absolute top-[22px] h-px border-t border-dashed ${row.hasScheduleConflict ? 'border-rose-300' : 'border-slate-300'}`}
                       style={{ left: 0, width: `${left}%` }}
                     />
                   ) : null}
-                  {predecessors.length ? (
+                  {row.predecessorProtocols.length ? (
                     <span
-                      className="absolute top-[29px] z-[2] h-2.5 w-2.5 rounded-full border border-slate-300 bg-white"
-                      style={{ left: `calc(${left}% - 4px)` }}
+                      className={`absolute top-[18px] z-[2] h-2.5 w-2.5 rounded-full bg-white ${
+                        row.hasScheduleConflict ? 'border border-rose-300' : 'border border-slate-300'
+                      }`}
+                      style={{ left: `calc(${left}% - 5px)` }}
                     />
                   ) : null}
                   <div
-                    className={`absolute top-3 z-[2] flex h-9 items-center rounded-full px-3 text-xs font-semibold text-white shadow-sm ${barTone}`}
+                    className={`absolute top-2 z-[2] flex h-5 items-center rounded-md px-2 text-[10px] font-semibold text-white shadow-sm ${barTone} ${
+                      row.hasScheduleConflict ? 'ring-2 ring-rose-100' : ''
+                    }`}
                     style={{ left: `${left}%`, width: `${width}%` }}
+                    title={row.scheduleConflictReason || `${formatDate(task.startDate)} até ${formatDate(task.dueDate)}`}
                   >
-                    <div className="min-w-0">
-                      <div className="truncate">{formatDate(task.startDate)} - {formatDate(task.dueDate)}</div>
-                    </div>
+                    <div className="truncate">{formatDate(task.startDate)} - {formatDate(task.dueDate)}</div>
                   </div>
                   {task.checklistTotalItems > 0 ? (
                     <div
-                      className="absolute top-[42px] z-[2] h-1.5 rounded-full bg-emerald-300/90"
-                      style={{ left: `${left}%`, width: `${Math.max((width * task.checklistProgressPercent) / 100, task.checklistProgressPercent ? 1 : 0)}%` }}
+                      className="absolute top-[30px] z-[2] h-1 rounded-full bg-emerald-400/95"
+                      style={{
+                        left: `${left}%`,
+                        width: `${Math.max((width * task.checklistProgressPercent) / 100, task.checklistProgressPercent ? 0.7 : 0)}%`,
+                      }}
                     />
                   ) : null}
-                  <div className="absolute bottom-1 left-0 right-0 flex items-center justify-between px-1 text-[11px] text-slate-500">
-                    <span>{spanDays} dia(s)</span>
-                    <span>{task.checklistTotalItems > 0 ? `Checklist ${task.checklistProgressPercent}%` : 'Sem checklist'}</span>
-                  </div>
+                  {row.hasScheduleConflict ? (
+                    <div className="absolute right-1 top-1 rounded-full border border-rose-200 bg-white/90 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700">
+                      precedência em conflito
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );

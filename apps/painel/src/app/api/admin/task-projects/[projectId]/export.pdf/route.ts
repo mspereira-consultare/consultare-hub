@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import type { DbInterface } from '@consultare/core/db';
 import { getTaskProjectById } from '@consultare/core/tasks/repository';
-import { buildProjectTaskExportRows } from '@consultare/core/tasks/export';
+import { buildTaskProjectGanttPdf } from '@consultare/core/tasks/gantt-pdf';
 import { requireTaskGovernanceAccess } from '@/lib/tasks/auth';
 
 export const dynamic = 'force-dynamic';
@@ -28,65 +27,22 @@ export async function GET(_: Request, context: ParamsContext) {
 
     const { projectId } = await context.params;
     const project = await getTaskProjectById(auth.db, String(projectId || ''), auth.viewer);
-    const rows = buildProjectTaskExportRows(project);
     const userMap = await resolveUserNames(
       auth.db,
-      rows.flatMap((row) => [row.primaryAssigneeUserId || '', row.approverUserId || '', ...row.assigneeUserIds])
+      project.tasks.flatMap((task) => [
+        task.primaryAssigneeUserId || '',
+        task.approverUserId || '',
+        ...task.assignees.map((assignee) => assignee.userId),
+      ])
     );
-
-    const pdf = await PDFDocument.create();
-    const font = await pdf.embedFont(StandardFonts.Helvetica);
-    const fontBold = await pdf.embedFont(StandardFonts.HelveticaBold);
-    const page = pdf.addPage([842, 595]);
-
-    page.drawRectangle({ x: 32, y: 535, width: 778, height: 40, color: rgb(0.09, 0.25, 0.49) });
-    page.drawText(project.name, { x: 42, y: 550, size: 18, font: fontBold, color: rgb(1, 1, 1) });
-    page.drawText(project.description || 'Cronograma exportado da governança de tarefas.', {
-      x: 42,
-      y: 525,
-      size: 9,
-      font,
-      color: rgb(0.34, 0.42, 0.56),
+    const output = await buildTaskProjectGanttPdf({
+      project,
+      title: project.name,
+      subtitle: project.description || 'Cronograma exportado da governança de tarefas.',
+      summaryTitle: 'Resumo executivo',
+      summaryNote: 'Este PDF combina o resumo gerencial com o diagrama Gantt do projeto para leitura cronológica.',
+      assigneeMap: userMap,
     });
-
-    let cursorY = 500;
-    page.drawText('Protocolo', { x: 42, y: cursorY, size: 9, font: fontBold });
-    page.drawText('Título', { x: 120, y: cursorY, size: 9, font: fontBold });
-    page.drawText('Responsável', { x: 360, y: cursorY, size: 9, font: fontBold });
-    page.drawText('Início', { x: 535, y: cursorY, size: 9, font: fontBold });
-    page.drawText('Prazo', { x: 610, y: cursorY, size: 9, font: fontBold });
-    page.drawText('Status', { x: 685, y: cursorY, size: 9, font: fontBold });
-    cursorY -= 14;
-
-    rows.slice(0, 20).forEach((row) => {
-      page.drawText(row.protocolId, { x: 42, y: cursorY, size: 8, font });
-      page.drawText(row.title.slice(0, 42), { x: 120, y: cursorY, size: 8, font });
-      page.drawText((row.primaryAssigneeUserId ? userMap.get(row.primaryAssigneeUserId) || row.primaryAssigneeUserId : '-').slice(0, 24), {
-        x: 360,
-        y: cursorY,
-        size: 8,
-        font,
-      });
-      page.drawText(row.startDate || '-', { x: 535, y: cursorY, size: 8, font });
-      page.drawText(row.dueDate || '-', { x: 610, y: cursorY, size: 8, font });
-      page.drawText(row.status.slice(0, 16), { x: 685, y: cursorY, size: 8, font });
-      cursorY -= 16;
-    });
-
-    page.drawText('Resumo executivo', { x: 42, y: 135, size: 11, font: fontBold, color: rgb(0.09, 0.25, 0.49) });
-    page.drawText(
-      `Total de tarefas: ${project.tasks.length} | Agendadas: ${project.tasks.filter((task) => task.startDate && task.dueDate).length} | Dependências: ${project.dependencies.length}`,
-      { x: 42, y: 118, size: 9, font }
-    );
-    page.drawText('Este PDF entrega uma leitura resumida do cronograma. Use a planilha XLSX para manipulação detalhada.', {
-      x: 42,
-      y: 102,
-      size: 8,
-      font,
-      color: rgb(0.34, 0.42, 0.56),
-    });
-
-    const output = await pdf.save();
     return new NextResponse(Buffer.from(output), {
       status: 200,
       headers: {

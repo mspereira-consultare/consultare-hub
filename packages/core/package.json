@@ -12,6 +12,8 @@
     "./intranet/repository": "./src/intranet/repository.ts",
     "./permissions": "./src/permissions.ts",
     "./permissions-server": "./src/permissions_server.ts",
+    "./tasks/gantt": "./src/tasks/gantt.ts",
+    "./tasks/gantt-pdf": "./src/tasks/gantt_pdf.ts",
     "./tasks/types": "./src/tasks/types.ts",
     "./tasks/export": "./src/tasks/export.ts",
     "./tasks/repository": "./src/tasks/repository.ts",
