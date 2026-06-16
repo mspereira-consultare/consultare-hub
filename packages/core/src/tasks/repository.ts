@@ -2522,7 +2522,7 @@ export const getTaskPortfolioGantt = async (
   await ensureTaskTables(db);
   const [projects, tasks] = await Promise.all([
     listTaskProjects(db, viewer),
-    listTasks(db, viewer, { includeCanceled: true, scheduledOnly: true }),
+    listTasks(db, viewer, { includeCanceled: true }),
   ]);
 
   const projectIds = projects.map((project) => project.id);
@@ -2538,6 +2538,9 @@ export const getTaskPortfolioGantt = async (
   const standaloneTasks = sortGanttTasks(
     tasks.filter((task) => !task.projectId && !isRetiredStatus(task.status) && Boolean(task.startDate && task.dueDate))
   );
+  const unscheduledStandaloneTasks = sortGanttTasks(
+    tasks.filter((task) => !task.projectId && !isRetiredStatus(task.status) && !(task.startDate && task.dueDate))
+  );
   if (standaloneTasks.length) {
     sections.push({
       project: null,
@@ -2549,6 +2552,7 @@ export const getTaskPortfolioGantt = async (
   return {
     sections,
     rows: sections.flatMap((section) => section.tasks.map(mapGanttRow)),
+    unscheduledStandaloneTasks,
   };
 };
 

@@ -171,6 +171,7 @@ export type TaskPortfolioGanttSection = {
 export type TaskPortfolioGantt = {
   rows: TaskPortfolioGanttRow[];
   sections: TaskPortfolioGanttSection[];
+  unscheduledStandaloneTasks: TaskSummary[];
 };
 
 export type TaskSummary = {

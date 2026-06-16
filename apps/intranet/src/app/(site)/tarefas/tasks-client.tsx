@@ -5,7 +5,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
+  Building2,
   Calendar,
+  CalendarClock,
   Check,
   CheckCircle2,
   CircleHelp,
@@ -1754,6 +1756,8 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                 projectFilter={projectFilter}
                 selectedProjectName={selectedProjectSummary?.name || null}
                 canManageProject={canManageSelectedProject}
+                currentUserId={currentUser.id}
+                usersById={usersById}
                 onOpenTask={(taskId) => {
                   void openTaskDetail(taskId);
                 }}
@@ -4346,6 +4350,8 @@ function ProjectGanttBoard({
   onOpenTask,
   canManageProject,
   onOpenProject,
+  currentUserId,
+  usersById,
 }: {
   project: TaskProjectDetail | null;
   portfolio: TaskPortfolioGantt | null;
@@ -4354,12 +4360,18 @@ function ProjectGanttBoard({
   onOpenTask: (taskId: string) => void;
   canManageProject: boolean;
   onOpenProject: (projectId: string) => void;
+  currentUserId: string;
+  usersById: Map<string, TaskUserOption>;
 }) {
   const sections = project
     ? [{ project, tasks: project.tasks, dependencies: project.dependencies } satisfies TaskPortfolioGanttSection]
     : (portfolio?.sections || []).filter((section) => (projectFilter === 'STANDALONE' ? section.project === null : true));
+  const unscheduledStandaloneTasks =
+    !project && portfolio && (projectFilter === 'ALL' || projectFilter === 'STANDALONE')
+      ? portfolio.unscheduledStandaloneTasks
+      : [];
 
-  if (!sections.length) {
+  if (!sections.length && !unscheduledStandaloneTasks.length) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-12 text-center text-sm text-slate-500">
         Nenhum cronograma disponível para este recorte ainda.
@@ -4368,7 +4380,7 @@ function ProjectGanttBoard({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="max-h-[calc(100vh-16rem)] space-y-5 overflow-y-auto pr-1 overscroll-contain">
       {!project && portfolio ? (
         <div className="flex flex-wrap justify-end gap-2">
           <a
@@ -4447,6 +4459,73 @@ function ProjectGanttBoard({
           </div>
         );
       })}
+      {unscheduledStandaloneTasks.length ? (
+        <div className="rounded-2xl border border-slate-200 bg-slate-50/65 shadow-sm">
+          <div className="border-b border-slate-200 px-5 py-4">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Tarefas avulsas sem agendamento</h3>
+                <p className="mt-1 text-sm text-slate-500">
+                  {unscheduledStandaloneTasks.length} tarefa(s) visível(is) fora da linha do tempo por ainda não terem início e prazo definidos.
+                </p>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
+                Fora do cronograma, mas dentro da sua visão operacional
+              </span>
+            </div>
+          </div>
+          <div className="px-5 py-4">
+            <div className="mb-4 rounded-xl border border-dashed border-slate-300 bg-white/80 px-4 py-3 text-sm text-slate-500">
+              Essas tarefas não aparecem como barras no Gantt porque ainda não têm uma janela de execução confiável.
+            </div>
+            <div className="grid gap-3 lg:grid-cols-2">
+              {unscheduledStandaloneTasks.map((task) => {
+                const primaryAssigneeName = task.primaryAssigneeUserId
+                  ? task.primaryAssigneeUserId === currentUserId
+                    ? 'Você'
+                    : usersById.get(task.primaryAssigneeUserId)?.name || 'Responsável atribuído'
+                  : 'Não definido';
+
+                return (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => onOpenTask(task.id)}
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-slate-300 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#17407E]">{task.protocolId}</div>
+                        <div className="mt-1 truncate text-sm font-semibold text-slate-900">{task.title}</div>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+                        {statusLabelMap[task.status]}
+                      </span>
+                    </div>
+                    <div className="mt-2 line-clamp-2 text-sm leading-5 text-slate-500">
+                      {task.description?.trim() || 'Sem descrição complementar cadastrada.'}
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1">
+                        <UserCheck size={12} />
+                        {primaryAssigneeName}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1">
+                        <Building2 size={12} />
+                        {task.department || 'Sem setor'}
+                      </span>
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-amber-700">
+                        <CalendarClock size={12} />
+                        Sem datas definidas
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
