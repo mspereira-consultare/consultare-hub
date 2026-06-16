@@ -27,6 +27,7 @@ import type {
   TaskProjectDetail,
   TaskProjectMember,
   TaskProjectMemberAddInput,
+  TaskProjectStatus,
   TaskProjectSummary,
   TaskProjectTaskReorderInput,
   TaskProjectUpdateInput,
@@ -40,6 +41,8 @@ import type {
 } from './types';
 
 type Row = Record<string, unknown>;
+
+const PROJECT_STATUS_VALUES: TaskProjectStatus[] = ['ATIVO', 'CONCLUIDO', 'ARQUIVADO'];
 
 export class TaskValidationError extends Error {
   status: number;
@@ -68,6 +71,14 @@ const parseBool = (value: unknown) =>
 const nullable = (value: unknown) => {
   const text = clean(value);
   return text || null;
+};
+
+const normalizeProjectStatus = (value: unknown, archivedAt?: unknown): TaskProjectStatus => {
+  const normalized = clean(value).toUpperCase();
+  if (PROJECT_STATUS_VALUES.includes(normalized as TaskProjectStatus)) {
+    return normalized as TaskProjectStatus;
+  }
+  return nullable(archivedAt) ? 'ARQUIVADO' : 'ATIVO';
 };
 
 const PRIORITIES: TaskPriority[] = ['BAIXA', 'MEDIA', 'ALTA', 'URGENTE'];
@@ -888,6 +899,7 @@ export const ensureTaskTables = async (db: DbInterface) => {
       created_by VARCHAR(64) NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      status VARCHAR(20) NOT NULL DEFAULT 'ATIVO',
       archived_at VARCHAR(32) NULL
     )
   `);
@@ -1013,9 +1025,19 @@ export const ensureTaskTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN previous_operational_status VARCHAR(30) NULL`);
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN project_id VARCHAR(64) NULL`);
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN project_sort_order INTEGER NULL`);
+  await safeAddColumn(db, `ALTER TABLE task_projects ADD COLUMN status VARCHAR(20) NULL`);
   if (isMysqlProvider()) {
+    await safeModifyColumn(db, `ALTER TABLE task_projects MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'ATIVO'`);
     await safeModifyColumn(db, `ALTER TABLE task_projects MODIFY COLUMN archived_at VARCHAR(32) NULL`);
   }
+  await db.execute(`
+    UPDATE task_projects
+    SET status = CASE
+      WHEN archived_at IS NOT NULL THEN 'ARQUIVADO'
+      WHEN status IS NULL OR status = '' THEN 'ATIVO'
+      ELSE status
+    END
+  `);
 
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_tasks_protocol_number ON tasks (protocol_number)`);
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_tasks_protocol_id ON tasks (protocol_id)`);
@@ -1029,6 +1051,7 @@ export const ensureTaskTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_tasks_project ON tasks (project_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_tasks_project_sort ON tasks (project_id, project_sort_order)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_projects_created_by ON task_projects (created_by)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_task_projects_status ON task_projects (status)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_projects_archived ON task_projects (archived_at)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_project_members_project ON task_project_members (project_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_task_project_members_user ON task_project_members (user_id)`);
@@ -2036,6 +2059,7 @@ const mapProjectSummaryRow = (
   createdBy: clean(row.created_by),
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
+  status: normalizeProjectStatus(row.status, row.archived_at),
   archivedAt: nullable(row.archived_at),
   memberCount,
   taskCount,
@@ -2067,14 +2091,15 @@ const listProjectTasksInternal = async (db: DbInterface, viewer: TaskViewerConte
 
 export const listTaskProjects = async (db: DbInterface, viewer: TaskViewerContext): Promise<TaskProjectSummary[]> => {
   await ensureTaskTables(db);
+  const visibleProjectsWhereSql = `COALESCE(status, CASE WHEN archived_at IS NULL THEN 'ATIVO' ELSE 'ARQUIVADO' END) <> 'ARQUIVADO'`;
   const rows = await db.query(
     viewer.canViewAll
-      ? `SELECT * FROM task_projects WHERE archived_at IS NULL ORDER BY updated_at DESC, name ASC`
+      ? `SELECT * FROM task_projects WHERE ${visibleProjectsWhereSql} ORDER BY updated_at DESC, name ASC`
       : `
         SELECT p.*
         FROM task_projects p
         INNER JOIN task_project_members pm ON pm.project_id = p.id
-        WHERE p.archived_at IS NULL AND ${userIdEqualsSql('pm.user_id')}
+        WHERE ${visibleProjectsWhereSql.replaceAll('status', 'p.status').replaceAll('archived_at', 'p.archived_at')} AND ${userIdEqualsSql('pm.user_id')}
         ORDER BY p.updated_at DESC, p.name ASC
       `,
     viewer.canViewAll ? [] : [viewer.userId]
@@ -2120,10 +2145,10 @@ export const createTaskProject = async (
     const now = NOW();
     await txDb.execute(
       `
-      INSERT INTO task_projects (id, name, description, created_by, created_at, updated_at, archived_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO task_projects (id, name, description, created_by, created_at, updated_at, status, archived_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `,
-      [projectId, name, clean(input.description), actorUserId, now, now, null]
+      [projectId, name, clean(input.description), actorUserId, now, now, 'ATIVO', null]
     );
 
     for (const userId of memberUserIds) {
@@ -2184,11 +2209,28 @@ export const updateTaskProject = async (
   const current = await ensureProjectExists(db, cleanProjectId);
   const nextName = Object.prototype.hasOwnProperty.call(input, 'name') ? clean(input.name) : clean(current.name);
   const nextDescription = Object.prototype.hasOwnProperty.call(input, 'description') ? clean(input.description) : clean(current.description);
-  const nextArchivedAt = Object.prototype.hasOwnProperty.call(input, 'archivedAt') ? nullable(input.archivedAt) : nullable(current.archived_at);
+  const currentStatus = normalizeProjectStatus(current.status, current.archived_at);
+  const nextStatusCandidate = Object.prototype.hasOwnProperty.call(input, 'status')
+    ? clean(input.status).toUpperCase()
+    : Object.prototype.hasOwnProperty.call(input, 'archivedAt')
+      ? nullable(input.archivedAt)
+        ? 'ARQUIVADO'
+        : 'ATIVO'
+      : currentStatus;
+  if (!PROJECT_STATUS_VALUES.includes(nextStatusCandidate as TaskProjectStatus)) {
+    throw new TaskValidationError('Status do projeto inválido.');
+  }
+  const nextStatus = nextStatusCandidate as TaskProjectStatus;
+  const nextArchivedAt =
+    nextStatus === 'ARQUIVADO'
+      ? Object.prototype.hasOwnProperty.call(input, 'archivedAt')
+        ? nullable(input.archivedAt) || NOW()
+        : nullable(current.archived_at) || NOW()
+      : null;
   if (!nextName) throw new TaskValidationError('Nome do projeto obrigatório.');
   await db.execute(
-    `UPDATE task_projects SET name = ?, description = ?, archived_at = ?, updated_at = ? WHERE id = ?`,
-    [nextName, nextDescription, nextArchivedAt, NOW(), cleanProjectId]
+    `UPDATE task_projects SET name = ?, description = ?, status = ?, archived_at = ?, updated_at = ? WHERE id = ?`,
+    [nextName, nextDescription, nextStatus, nextArchivedAt, NOW(), cleanProjectId]
   );
   return getTaskProjectById(db, cleanProjectId, { userId: actorUserId, canViewAll: true });
 };

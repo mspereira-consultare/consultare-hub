@@ -119,6 +119,8 @@ export type TaskDependency = {
   createdAt: string;
 };
 
+export type TaskProjectStatus = 'ATIVO' | 'CONCLUIDO' | 'ARQUIVADO';
+
 export type TaskProjectSummary = {
   id: string;
   name: string;
@@ -126,6 +128,7 @@ export type TaskProjectSummary = {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  status: TaskProjectStatus;
   archivedAt: string | null;
   memberCount: number;
   taskCount: number;
@@ -308,6 +311,7 @@ export type TaskProjectCreateInput = {
 export type TaskProjectUpdateInput = {
   name?: string | null;
   description?: string | null;
+  status?: TaskProjectStatus | null;
   archivedAt?: string | null;
 };
 

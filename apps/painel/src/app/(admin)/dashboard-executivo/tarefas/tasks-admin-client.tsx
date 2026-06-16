@@ -30,6 +30,7 @@ import type {
   TaskPortfolioGanttSection,
   TaskPriority,
   TaskProjectDetail,
+  TaskProjectStatus,
   TaskProjectSummary,
   TaskStatus,
   TaskSummary,
@@ -118,6 +119,16 @@ const priorityLabelMap: Record<TaskPriority, string> = {
   MEDIA: 'Média',
   ALTA: 'Alta',
   URGENTE: 'Urgente',
+};
+const projectStatusLabelMap: Record<TaskProjectStatus, string> = {
+  ATIVO: 'Ativo',
+  CONCLUIDO: 'Concluído',
+  ARQUIVADO: 'Arquivado',
+};
+const projectStatusToneMap: Record<TaskProjectStatus, string> = {
+  ATIVO: 'border-blue-200 bg-blue-50 text-[#17407E]',
+  CONCLUIDO: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  ARQUIVADO: 'border-slate-200 bg-slate-100 text-slate-600',
 };
 const buildGanttCompactDescription = (task: TaskSummary) => {
   const description = String(task.description || '').trim().replace(/\s+/g, ' ');
@@ -409,7 +420,11 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
 
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
   const projectOptions = useMemo(
-    () => projects.map((project) => ({ value: project.id, label: project.name })),
+    () =>
+      projects.map((project) => ({
+        value: project.id,
+        label: project.status === 'CONCLUIDO' ? `${project.name} · Concluído` : project.name,
+      })),
     [projects]
   );
   const selectedProjectSummary = useMemo(
@@ -693,7 +708,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
     }
   };
 
-  const saveProjectDetail = async (archivedAt?: string | null) => {
+  const saveProjectDetail = async (status?: TaskProjectStatus) => {
     if (!managedProjectDetail || !canEdit || saving) return;
     if (!projectForm.name.trim()) {
       setError('Informe um nome para o projeto.');
@@ -708,7 +723,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
         body: JSON.stringify({
           name: projectForm.name,
           description: projectForm.description || null,
-          ...(typeof archivedAt !== 'undefined' ? { archivedAt } : {}),
+          ...(typeof status !== 'undefined' ? { status } : {}),
         }),
       });
       if (!response.ok) throw new Error(await normalizeError(response));
@@ -1127,7 +1142,9 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
               <select value={filters.projectId} onChange={(event) => setFilters((current) => ({ ...current, projectId: event.target.value }))} className={inputClassName}>
                 <option value="all">Todos os projetos</option>
                 {projects.map((project) => (
-                  <option key={project.id} value={project.id}>{project.name}</option>
+                  <option key={project.id} value={project.id}>
+                    {project.status === 'CONCLUIDO' ? `${project.name} · Concluído` : project.name}
+                  </option>
                 ))}
               </select>
               <SearchableFilterSelect
@@ -1408,7 +1425,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
           onFormChange={setProjectForm}
           onClose={() => setProjectDetailOpen(false)}
           onSave={() => void saveProjectDetail()}
-          onArchive={() => void saveProjectDetail(managedProjectDetail?.archivedAt ? null : new Date().toISOString())}
+          onChangeStatus={(status) => void saveProjectDetail(status)}
           onAddMember={() => void addProjectMember()}
           onRemoveMember={(memberId) => void removeProjectMember(memberId)}
           onMoveTask={(taskId, direction) => void reorderManagedProjectTasks(taskId, direction)}
@@ -1471,7 +1488,7 @@ function ExecutiveProjectDetailModal({
   onFormChange,
   onClose,
   onSave,
-  onArchive,
+  onChangeStatus,
   onAddMember,
   onRemoveMember,
   onMoveTask,
@@ -1490,7 +1507,7 @@ function ExecutiveProjectDetailModal({
   onFormChange: (value: { name: string; description: string }) => void;
   onClose: () => void;
   onSave: () => void;
-  onArchive: () => void;
+  onChangeStatus: (status: TaskProjectStatus) => void;
   onAddMember: () => void;
   onRemoveMember: (memberId: string) => void;
   onMoveTask: (taskId: string, direction: 'up' | 'down') => void;
@@ -1499,6 +1516,8 @@ function ExecutiveProjectDetailModal({
   canEdit: boolean;
 }) {
   const orderedTasks = useMemo(() => sortProjectTasks(project?.tasks || []), [project?.tasks]);
+  const isConcluded = project?.status === 'CONCLUIDO';
+  const isArchived = project?.status === 'ARQUIVADO';
   const memberOptions = useMemo(
     () => users.filter((user) => !project?.members.some((member) => member.userId === user.id)),
     [project?.members, users]
@@ -1552,7 +1571,11 @@ function ExecutiveProjectDetailModal({
                     <FieldInput label="Nome do projeto" value={form.name} onChange={(value) => onFormChange({ ...form, name: value })} disabled={!canEdit} />
                     <div className="rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Estado</div>
-                      <div className="mt-1 text-sm font-medium text-slate-800">{project.archivedAt ? 'Arquivado' : 'Ativo'}</div>
+                      <div className="mt-2">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-sm font-semibold ${projectStatusToneMap[project.status]}`}>
+                          {projectStatusLabelMap[project.status]}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <div>
@@ -1714,16 +1737,53 @@ function ExecutiveProjectDetailModal({
                 <div className="rounded-2xl border border-slate-200 bg-white p-4">
                   <h3 className="font-semibold text-slate-900">Governança</h3>
                   <p className="mt-1 text-sm text-slate-500">
-                    {project?.archivedAt ? 'Projeto arquivado, preservado apenas para histórico.' : 'Projeto ativo e disponível no cronograma.'}
+                    {isArchived
+                      ? 'Projeto arquivado: preservado apenas para histórico e fora da visão operacional padrão.'
+                      : isConcluded
+                        ? 'Projeto concluído: encerrado com sucesso e ainda disponível para consulta.'
+                        : 'Projeto ativo e disponível no cronograma.'}
                   </p>
-                  <button
-                    type="button"
-                    onClick={onArchive}
-                    disabled={saving || !project}
-                    className="mt-4 inline-flex w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                  >
-                    {project?.archivedAt ? 'Reativar projeto' : 'Arquivar projeto'}
-                  </button>
+                  <div className="mt-4 space-y-2">
+                    {!isConcluded && !isArchived ? (
+                      <button
+                        type="button"
+                        onClick={() => onChangeStatus('CONCLUIDO')}
+                        disabled={saving || !project}
+                        className="inline-flex w-full items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+                      >
+                        Concluir projeto
+                      </button>
+                    ) : null}
+                    {isConcluded ? (
+                      <button
+                        type="button"
+                        onClick={() => onChangeStatus('ATIVO')}
+                        disabled={saving || !project}
+                        className="inline-flex w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Reabrir projeto
+                      </button>
+                    ) : null}
+                    {isArchived ? (
+                      <button
+                        type="button"
+                        onClick={() => onChangeStatus('ATIVO')}
+                        disabled={saving || !project}
+                        className="inline-flex w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Reativar projeto
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onChangeStatus('ARQUIVADO')}
+                        disabled={saving || !project}
+                        className="inline-flex w-full items-center justify-center rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                      >
+                        Arquivar projeto
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : null}
             </div>
