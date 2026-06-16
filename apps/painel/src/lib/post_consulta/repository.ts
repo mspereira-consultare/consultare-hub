@@ -675,6 +675,88 @@ const buildAttendantPerformanceSummary = (rows: PostConsultRankingRow[]): PostCo
   return summary;
 };
 
+const tokenizeComparableText = (value: unknown) => normalizeComparableText(value).split(' ').filter(Boolean);
+
+const computeLevenshteinDistance = (left: string, right: string) => {
+  const rows = left.length + 1;
+  const cols = right.length + 1;
+  const matrix = Array.from({ length: rows }, () => Array<number>(cols).fill(0));
+
+  for (let row = 0; row < rows; row += 1) matrix[row][0] = row;
+  for (let col = 0; col < cols; col += 1) matrix[0][col] = col;
+
+  for (let row = 1; row < rows; row += 1) {
+    for (let col = 1; col < cols; col += 1) {
+      const substitutionCost = left[row - 1] === right[col - 1] ? 0 : 1;
+      matrix[row][col] = Math.min(
+        matrix[row - 1][col] + 1,
+        matrix[row][col - 1] + 1,
+        matrix[row - 1][col - 1] + substitutionCost,
+      );
+    }
+  }
+
+  return matrix[rows - 1][cols - 1];
+};
+
+const scoreOperationalNameMatch = (viewerUserName: string, attendantResponsible: string) => {
+  const viewerTokens = tokenizeComparableText(viewerUserName);
+  const attendantTokens = tokenizeComparableText(attendantResponsible);
+
+  if (!viewerTokens.length || viewerTokens.length !== attendantTokens.length) return null;
+  if (viewerTokens[0] !== attendantTokens[0]) return null;
+
+  let exactMatches = 0;
+  let nearMatches = 0;
+
+  for (let index = 0; index < viewerTokens.length; index += 1) {
+    const viewerToken = viewerTokens[index];
+    const attendantToken = attendantTokens[index];
+
+    if (viewerToken === attendantToken) {
+      exactMatches += 1;
+      continue;
+    }
+
+    const maxLength = Math.max(viewerToken.length, attendantToken.length);
+    if (maxLength < 5) return null;
+    if (computeLevenshteinDistance(viewerToken, attendantToken) > 1) return null;
+
+    nearMatches += 1;
+  }
+
+  if (nearMatches > 1) return null;
+  if (exactMatches < Math.max(1, viewerTokens.length - 1)) return null;
+
+  return exactMatches * 10 - nearMatches;
+};
+
+const resolveViewerOperationalMatch = (
+  performanceRows: PostConsultRankingRow[],
+  viewerUserName: string,
+) => {
+  const normalizedViewerName = normalizeComparableText(viewerUserName);
+  if (!normalizedViewerName) return null;
+
+  const exactMatch = performanceRows.find(
+    (row) => normalizeComparableText(row.attendantResponsible) === normalizedViewerName,
+  );
+  if (exactMatch) return exactMatch;
+
+  const scoredMatches = performanceRows
+    .map((row) => ({
+      row,
+      score: scoreOperationalNameMatch(viewerUserName, row.attendantResponsible),
+    }))
+    .filter((candidate): candidate is { row: PostConsultRankingRow; score: number } => candidate.score !== null)
+    .sort((left, right) => right.score - left.score);
+
+  if (!scoredMatches.length) return null;
+  if (scoredMatches.length > 1 && scoredMatches[0].score === scoredMatches[1].score) return null;
+
+  return scoredMatches[0].row;
+};
+
 const buildViewerPerformance = (
   rows: PostConsultRow[],
   viewerUserName?: string | null,
@@ -683,9 +765,7 @@ const buildViewerPerformance = (
   if (!normalizedViewerName) return createEmptyViewerPerformance();
 
   const performanceRows = buildAttendantPerformanceRows(rows);
-  const matched = performanceRows.find(
-    (row) => normalizeComparableText(row.attendantResponsible) === normalizedViewerName,
-  );
+  const matched = resolveViewerOperationalMatch(performanceRows, viewerUserName || '');
   if (!matched) return createEmptyViewerPerformance();
 
   return {
