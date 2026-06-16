@@ -8,6 +8,7 @@ import {
   Calendar,
   Check,
   CheckCircle2,
+  CircleHelp,
   ChevronRight,
   Clock3,
   FileText,
@@ -105,6 +106,8 @@ type TaskProjectOption = {
   label: string;
   isOwner: boolean;
 };
+
+type TasksHelpTab = 'TASKS' | 'PROJECTS';
 
 const KANBAN_COLUMNS: Array<{ key: TaskStatus; label: string; description: string }> = [
   { key: 'BACKLOG', label: 'Backlog', description: 'Entradas e ideias pendentes de triagem.' },
@@ -482,6 +485,8 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [projectDetailModalOpen, setProjectDetailModalOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpTab, setHelpTab] = useState<TasksHelpTab>('TASKS');
   const [createForm, setCreateForm] = useState<TaskFormState>(defaultForm(currentUser));
   const [projectForm, setProjectForm] = useState<TaskProjectFormState>(defaultProjectForm());
   const [projectDetailForm, setProjectDetailForm] = useState<TaskProjectFormState>(defaultProjectForm());
@@ -1492,6 +1497,17 @@ export function TasksClient({ currentUser }: TasksClientProps) {
           <div className="flex flex-wrap gap-2 xl:justify-end">
             <button
               type="button"
+              onClick={() => {
+                setHelpTab('TASKS');
+                setHelpOpen(true);
+              }}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/30 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+            >
+              <CircleHelp size={16} />
+              Como funciona
+            </button>
+            <button
+              type="button"
               onClick={openProjectModal}
               className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/30 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
             >
@@ -1979,6 +1995,14 @@ export function TasksClient({ currentUser }: TasksClientProps) {
             void openTaskDetail(taskId);
           }}
           onRemoveDependency={(dependencyId) => void removeTaskDependency(dependencyId, managedProjectDetail?.id)}
+        />
+      ) : null}
+
+      {helpOpen ? (
+        <TasksHelpModal
+          activeTab={helpTab}
+          onChangeTab={setHelpTab}
+          onClose={() => setHelpOpen(false)}
         />
       ) : null}
 
@@ -4832,6 +4856,160 @@ function FileList({
           </button>
         </div>
       ))}
+    </div>
+  );
+}
+
+function TasksHelpModal({
+  activeTab,
+  onChangeTab,
+  onClose,
+}: {
+  activeTab: TasksHelpTab;
+  onChangeTab: (tab: TasksHelpTab) => void;
+  onClose: () => void;
+}) {
+  const tabContent: Record<
+    TasksHelpTab,
+    {
+      title: string;
+      description: string;
+      sections: Array<{ title: string; text: string }>;
+      footer: string;
+    }
+  > = {
+    TASKS: {
+      title: 'Como funcionam as tarefas',
+      description: 'Entenda o fluxo operacional do board, os responsáveis, aprovações e o papel do checklist no dia a dia.',
+      sections: [
+        {
+          title: 'O que é uma tarefa',
+          text: 'Cada tarefa recebe protocolo interno, prioridade, status, prazo, responsáveis, comentários, anexos e checklist para acompanhar a entrega.',
+        },
+        {
+          title: 'Quem vê cada tarefa',
+          text: 'Você vê tarefas criadas por você, atribuídas a você, onde atua como colaborador ou aprovador, além das tarefas dos projetos em que participa.',
+        },
+        {
+          title: 'Fluxo operacional',
+          text: 'As tarefas avançam entre backlog, a fazer, em andamento, aguardando aprovação e concluída. Canceladas e arquivadas saem da visão operacional padrão.',
+        },
+        {
+          title: 'Aprovação',
+          text: 'Quando houver aprovador definido, a tarefa pode seguir para revisão formal sem perder histórico, comentários e anexos.',
+        },
+        {
+          title: 'Checklist e andamento',
+          text: 'O checklist mostra o progresso da entrega em subtarefas menores, mas não altera automaticamente o status principal da tarefa.',
+        },
+      ],
+      footer: 'Use tarefas avulsas para demandas rápidas do dia a dia e concentre o contexto completo no protocolo para reduzir retrabalho da equipe.',
+    },
+    PROJECTS: {
+      title: 'Como funcionam os projetos',
+      description: 'Projetos agrupam tarefas relacionadas, compartilham visibilidade entre membros e habilitam o cronograma Gantt.',
+      sections: [
+        {
+          title: 'O que é um projeto',
+          text: 'Projeto é o agrupador de tarefas com membros, cronograma, dependências e visão Gantt para acompanhar entregas com várias etapas.',
+        },
+        {
+          title: 'Quando usar projeto',
+          text: 'Use projeto quando a entrega tiver várias tarefas conectadas, prazos definidos e uma sequência de execução que precise ser acompanhada.',
+        },
+        {
+          title: 'Relação entre tarefa e projeto',
+          text: 'Tarefas avulsas continuam existindo. Ao vincular uma tarefa ao projeto, ela passa a compor o cronograma, e cada tarefa pertence a no máximo um projeto.',
+        },
+        {
+          title: 'Visibilidade e autonomia',
+          text: 'Todos os membros enxergam as tarefas do projeto, mesmo sem atribuição individual. Membros podem criar tarefas já no projeto e vincular ou remover tarefas criadas por eles.',
+        },
+        {
+          title: 'Governança do cronograma',
+          text: 'Owner do projeto e gerência/ADM continuam responsáveis pela estrutura do cronograma, como dependências, ordenação, membros e ciclo de vida do projeto.',
+        },
+        {
+          title: 'Gantt',
+          text: 'O Gantt depende de tarefas com início e prazo definidos. Projetos com poucas tarefas agendadas podem não gerar um cronograma útil ainda.',
+        },
+      ],
+      footer: 'Pense em projeto como a camada de coordenação do trabalho: as tarefas executam a operação, e o projeto organiza a sequência e a visibilidade do conjunto.',
+    },
+  };
+
+  const content = tabContent[activeTab];
+  const tabs: Array<{ key: TasksHelpTab; label: string }> = [
+    { key: 'TASKS', label: 'Tarefas' },
+    { key: 'PROJECTS', label: 'Projetos' },
+  ];
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-hidden rounded-xl bg-white shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-slate-200 p-5">
+          <div>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-[#17407E]">
+              <CircleHelp size={14} />
+              Como funciona
+            </div>
+            <h2 className="text-xl font-semibold text-slate-900">Ajuda do módulo de tarefas</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">{content.description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-slate-200 p-2 text-slate-500 transition hover:bg-slate-50"
+            aria-label="Fechar ajuda"
+          >
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="border-b border-slate-200 px-5 pt-4">
+          <div className="flex flex-wrap gap-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                onClick={() => onChangeTab(tab.key)}
+                className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                  activeTab === tab.key
+                    ? 'border-[#17407E] bg-blue-50 text-[#17407E]'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <div className="pb-4 pt-4">
+            <h3 className="text-lg font-semibold text-slate-900">{content.title}</h3>
+          </div>
+        </div>
+
+        <div className="max-h-[56vh] overflow-y-auto p-5">
+          <div className="grid gap-3 md:grid-cols-2">
+            {content.sections.map((section) => (
+              <div key={section.title} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <h4 className="font-semibold text-slate-900">{section.title}</h4>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{section.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <footer className="flex flex-col gap-4 border-t border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <p className="max-w-3xl text-sm leading-6 text-slate-600">{content.footer}</p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex items-center justify-center rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#123463]"
+          >
+            Entendi
+          </button>
+        </footer>
+      </div>
     </div>
   );
 }
