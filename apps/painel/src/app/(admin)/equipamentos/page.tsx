@@ -252,11 +252,11 @@ export default function EquipamentosPage() {
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 xl:justify-end">
+            <div className="flex flex-nowrap gap-2 overflow-x-auto xl:justify-end">
               <button
                 type="button"
                 onClick={() => window.location.assign('/equipamentos/os')}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-medium text-[#17407E] transition hover:bg-blue-50"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-medium text-[#17407E] transition hover:bg-blue-50"
               >
                 <ClipboardList size={16} />
                 Gerenciar OS
@@ -265,7 +265,7 @@ export default function EquipamentosPage() {
                 type="button"
                 onClick={() => loadItems(true)}
                 disabled={!canRefresh || refreshing}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
                 {refreshing ? 'Recarregando' : 'Recarregar'}
@@ -274,7 +274,7 @@ export default function EquipamentosPage() {
                 type="button"
                 onClick={onExport}
                 disabled={loading}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Download size={16} />
                 Exportar XLSX
@@ -283,7 +283,7 @@ export default function EquipamentosPage() {
                 type="button"
                 onClick={openCreate}
                 disabled={!canEdit}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#143768] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#143768] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Plus size={16} />
                 Novo equipamento

@@ -3,7 +3,7 @@ import { createTask, updateTask } from '@consultare/core/tasks/repository';
 import type { TaskViewerContext } from '@consultare/core/tasks/types';
 import { getDbConnection, runInTransaction, type DbInterface } from '@/lib/db';
 import { EXECUTIVE_PROFILE_DEFINITIONS } from '@/lib/dashboard_executive/catalog';
-import { getExecutiveScope, listExecutiveProfilePreview } from '@/lib/dashboard_executive/repository';
+import { getExecutiveScope } from '@/lib/dashboard_executive/repository';
 import { getTodayInSaoPauloIso } from '@/lib/equipamentos/status';
 import type {
   EquipmentOperationalStatus,
@@ -427,23 +427,42 @@ export const listEquipmentWorkOrderResponsibleOptions = async (
   db: DbInterface,
 ): Promise<EquipmentWorkOrderResponsibleOption[]> => {
   await ensureEquipmentWorkOrderTables(db);
-  const previewRows = await listExecutiveProfilePreview(db);
-  return previewRows
-    .filter(
-      (item) =>
-        upper(item.status || 'INATIVO') === 'ATIVO' &&
-        ALLOWED_EXECUTIVE_PROFILES.includes(clean(item.profileKey) as EquipmentWorkOrderPermissionProfile),
-    )
-    .map((item) => ({
-      userId: item.userId,
-      userName: item.userName,
-      email: '',
-      department: item.department,
-      profileKey: clean(item.profileKey) as EquipmentWorkOrderPermissionProfile,
-      profileLabel: item.profileLabel,
-      groupKey: item.executiveGroupKey,
-      groupLabel: item.executiveGroupLabel,
-    }))
+  const rows = await db.query(
+    `
+    SELECT
+      u.id AS user_id,
+      u.name AS user_name,
+      u.email AS user_email,
+      u.department AS user_department,
+      e.department AS employee_department,
+      g.group_key,
+      g.label AS group_label,
+      g.default_profile_key
+    FROM users u
+    LEFT JOIN employees e ON ${userEmployeeJoinClause()}
+    LEFT JOIN employee_job_titles jt ON ${collatedEquality('jt.id', 'e.job_title_catalog_id')}
+    LEFT JOIN dashboard_executive_groups g ON ${collatedEquality('g.id', 'jt.executive_group_id')} AND g.is_active = 1
+    WHERE UPPER(TRIM(COALESCE(u.status, ''))) = 'ATIVO'
+      AND g.default_profile_key IN (${ALLOWED_EXECUTIVE_PROFILES.map(() => '?').join(',')})
+    `,
+    ALLOWED_EXECUTIVE_PROFILES,
+  );
+
+  return (rows as Record<string, unknown>[])
+    .map((row) => {
+      const profileKey = clean(row.default_profile_key) as EquipmentWorkOrderPermissionProfile;
+      return {
+        userId: clean(row.user_id),
+        userName: clean(row.user_name),
+        email: clean(row.user_email),
+        department: nullable(row.employee_department) || nullable(row.user_department),
+        profileKey,
+        profileLabel: profileLabels.get(profileKey) || profileKey,
+        groupKey: nullable(row.group_key),
+        groupLabel: nullable(row.group_label),
+      };
+    })
+    .filter((item) => item.userId && ALLOWED_EXECUTIVE_PROFILES.includes(item.profileKey))
     .sort((left, right) => left.userName.localeCompare(right.userName, 'pt-BR'));
 };
 

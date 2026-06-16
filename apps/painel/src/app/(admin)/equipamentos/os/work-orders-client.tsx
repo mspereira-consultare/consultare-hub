@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -11,13 +12,17 @@ import {
   FileText,
   Loader2,
   Plus,
-  ShieldCheck,
   RefreshCw,
+  Search,
+  ShieldCheck,
   X,
 } from 'lucide-react';
 import type {
   EquipmentOperationalStatus,
+  EquipmentType,
+  EquipmentUnit,
 } from '@/lib/equipamentos/constants';
+import { EQUIPMENT_TYPES, EQUIPMENT_UNIT_LABELS } from '@/lib/equipamentos/constants';
 import type {
   EquipmentEvent,
   EquipmentWorkOrderDetail,
@@ -32,7 +37,13 @@ type EquipmentOption = {
   id: string;
   description: string;
   identificationNumber: string;
-  unitName: string;
+  unitName: EquipmentUnit;
+  equipmentType: EquipmentType;
+  category: string | null;
+  manufacturer: string | null;
+  model: string | null;
+  serialNumber: string | null;
+  locationDetail: string | null;
   operationalStatus: string;
   activeWorkOrderId: string | null;
 };
@@ -109,6 +120,7 @@ const statusToneMap: Record<EquipmentWorkOrderStatus, string> = {
   CONCLUIDA: 'border-emerald-200 bg-emerald-50 text-emerald-700',
   CANCELADA: 'border-slate-200 bg-slate-100 text-slate-600',
 };
+const equipmentTypeLabelMap = Object.fromEntries(EQUIPMENT_TYPES.map((item) => [item.value, item.label])) as Record<string, string>;
 
 const formatDate = (value: string | null) => {
   if (!value) return '—';
@@ -473,44 +485,42 @@ export function EquipmentWorkOrdersClient() {
         </div>
       </section>
 
-      <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center">
-            <input
-              className={inputClassName}
-              placeholder="Buscar por equipamento, identificação, problema, responsável ou tarefa"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <select className={`${inputClassName} md:max-w-[220px]`} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | EquipmentWorkOrderStatus)}>
-              <option value="all">Todos os status</option>
-              {Object.entries(statusLabelMap).map(([value, label]) => (
-                <option key={value} value={value}>{label}</option>
+      <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
+        <div className="flex items-start gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 text-[#17407E]" />
+          <div>
+            <h2 className="text-sm font-semibold text-[#17407E]">Quem pode criar e gerir OS</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-700">
+              A gestão usa os perfis resolvidos pelo dashboard executivo atual. Perfis habilitados:
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {options.allowedProfiles.map((profile) => (
+                <span key={profile.key} className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-[#17407E]">
+                  {profile.label}
+                </span>
               ))}
-            </select>
+            </div>
+            <p className="mt-3 text-xs leading-5 text-slate-500">
+              Responsáveis elegíveis são filtrados por esses perfis, mesmo quando o usuário atua pela intranet.
+            </p>
           </div>
         </div>
+      </section>
 
-        <div className="self-start rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
-          <div className="flex items-start gap-3">
-            <ShieldCheck className="mt-0.5 h-5 w-5 text-[#17407E]" />
-            <div>
-              <h2 className="text-sm font-semibold text-[#17407E]">Quem pode criar e gerir OS</h2>
-              <p className="mt-1 text-sm leading-6 text-slate-700">
-                A gestão usa os perfis resolvidos pelo dashboard executivo atual. Perfis habilitados:
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {options.allowedProfiles.map((profile) => (
-                  <span key={profile.key} className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-[#17407E]">
-                    {profile.label}
-                  </span>
-                ))}
-              </div>
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                Responsáveis elegíveis são filtrados por esses perfis, mesmo quando o usuário atua pela intranet.
-              </p>
-            </div>
-          </div>
+      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <input
+            className={inputClassName}
+            placeholder="Buscar por equipamento, identificação, problema, responsável ou tarefa"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+          <select className={`${inputClassName} md:max-w-[220px]`} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | EquipmentWorkOrderStatus)}>
+            <option value="all">Todos os status</option>
+            {Object.entries(statusLabelMap).map(([value, label]) => (
+              <option key={value} value={value}>{label}</option>
+            ))}
+          </select>
         </div>
       </section>
 
@@ -620,22 +630,16 @@ export function EquipmentWorkOrdersClient() {
                   <section className="rounded-2xl border border-slate-200 bg-white p-5">
                     <h3 className="text-base font-semibold text-slate-900">Dados principais</h3>
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
-                      <label className="block">
-                        <span className="mb-1 block text-sm font-medium text-slate-700">Equipamento</span>
-                        <select
-                          className={inputClassName}
+                      <div className="block">
+                        <SearchableEquipmentSelect
+                          label="Equipamento"
                           value={form.equipmentId}
+                          options={equipmentOptions}
                           disabled={modalMode === 'edit'}
-                          onChange={(event) => setForm((current) => ({ ...current, equipmentId: event.target.value }))}
-                        >
-                          <option value="">Selecione</option>
-                          {equipmentOptions.map((item) => (
-                            <option key={item.id} value={item.id} disabled={Boolean(item.activeWorkOrderId && item.activeWorkOrderId !== selectedItem?.id)}>
-                              {item.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                          currentWorkOrderId={selectedItem?.id || null}
+                          onChange={(value) => setForm((current) => ({ ...current, equipmentId: value }))}
+                        />
+                      </div>
 
                       <label className="block">
                         <span className="mb-1 block text-sm font-medium text-slate-700">Data de abertura</span>
@@ -864,6 +868,189 @@ export function EquipmentWorkOrdersClient() {
           </div>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function SearchableEquipmentSelect({
+  label,
+  value,
+  options,
+  disabled,
+  currentWorkOrderId,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: EquipmentOption[];
+  disabled?: boolean;
+  currentWorkOrderId?: string | null;
+  onChange: (value: string) => void;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; minWidth: number } | null>(null);
+
+  const selectedOption = options.find((item) => item.id === value) || null;
+  const filteredOptions = useMemo(() => {
+    const normalized = query
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .trim();
+
+    const visible = options.filter((item) => {
+      const haystack = [
+        item.identificationNumber,
+        item.description,
+        EQUIPMENT_UNIT_LABELS[item.unitName] || item.unitName,
+        equipmentTypeLabelMap[item.equipmentType] || item.equipmentType,
+        item.category,
+        item.manufacturer,
+        item.model,
+        item.serialNumber,
+        item.locationDetail,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+      return !normalized || haystack.includes(normalized);
+    });
+
+    return visible.slice(0, 24);
+  }, [options, query]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const updatePosition = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setDropdownStyle({
+        top: rect.bottom + 8,
+        left: rect.left,
+        minWidth: rect.width,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!containerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+      <button
+        ref={buttonRef}
+        type="button"
+        disabled={disabled}
+        onClick={() => {
+          setOpen((current) => !current);
+          setQuery('');
+        }}
+        className={`${inputClassName} flex items-center justify-between gap-3 text-left disabled:bg-slate-50`}
+      >
+        <span className="truncate">
+          {selectedOption ? `${selectedOption.identificationNumber} · ${selectedOption.description}` : 'Buscar e selecionar equipamento'}
+        </span>
+        <span className="text-xs text-slate-400">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {open && dropdownStyle
+        ? createPortal(
+            <div
+              ref={dropdownRef}
+              className="fixed z-[80] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              style={{ top: dropdownStyle.top, left: dropdownStyle.left, minWidth: dropdownStyle.minWidth, maxWidth: Math.max(dropdownStyle.minWidth, 560) }}
+            >
+              <div className="border-b border-slate-200 p-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    autoFocus
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    placeholder="Buscar por identificação, nome, unidade, categoria, série ou localização"
+                    className={`${inputClassName} pl-9`}
+                  />
+                </div>
+              </div>
+
+              <div className="max-h-80 overflow-y-auto p-2">
+                {filteredOptions.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-sm text-slate-500">Nenhum equipamento encontrado com esse filtro.</div>
+                ) : (
+                  filteredOptions.map((item) => {
+                    const disabledOption = Boolean(item.activeWorkOrderId && item.activeWorkOrderId !== currentWorkOrderId);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        disabled={disabledOption}
+                        onClick={() => {
+                          onChange(item.id);
+                          setOpen(false);
+                          setQuery('');
+                        }}
+                        className={`flex w-full flex-col rounded-xl px-3 py-3 text-left transition ${
+                          value === item.id ? 'bg-blue-50 text-[#17407E]' : 'text-slate-700 hover:bg-slate-50'
+                        } ${disabledOption ? 'cursor-not-allowed opacity-50' : ''}`}
+                      >
+                        <span className="text-sm font-semibold">{item.identificationNumber} · {item.description}</span>
+                        <span className="mt-1 text-xs text-slate-500">
+                          {(EQUIPMENT_UNIT_LABELS[item.unitName] || item.unitName)} · {equipmentTypeLabelMap[item.equipmentType] || item.equipmentType}
+                          {item.category ? ` · ${item.category}` : ''}
+                        </span>
+                        <span className="mt-1 text-xs text-slate-500">
+                          {[item.locationDetail, item.serialNumber ? `Série ${item.serialNumber}` : null, item.model, item.manufacturer]
+                            .filter(Boolean)
+                            .join(' · ') || 'Sem detalhes adicionais no cadastro'}
+                        </span>
+                        {disabledOption ? (
+                          <span className="mt-1 text-xs font-medium text-amber-700">Equipamento com outra OS ativa.</span>
+                        ) : null}
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
