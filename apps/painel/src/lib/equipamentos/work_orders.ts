@@ -52,15 +52,18 @@ const nullable = (value: unknown) => {
 };
 const errorMessage = (error: unknown) => String((error as { message?: string } | null)?.message || '');
 const errorCode = (error: unknown) => String((error as { code?: string } | null)?.code || '');
+const isMysqlDb =
+  String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' ||
+  !!process.env.MYSQL_URL ||
+  !!process.env.MYSQL_PUBLIC_URL;
+
+const collatedEquality = (left: string, right: string) =>
+  isMysqlDb
+    ? `${left} COLLATE utf8mb4_unicode_ci = ${right} COLLATE utf8mb4_unicode_ci`
+    : `${left} = ${right}`;
 
 const userEmployeeJoinClause = () => {
-  const isMysql =
-    String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' ||
-    !!process.env.MYSQL_URL ||
-    !!process.env.MYSQL_PUBLIC_URL;
-  return isMysql
-    ? 'u.employee_id COLLATE utf8mb4_unicode_ci = e.id COLLATE utf8mb4_unicode_ci'
-    : 'u.employee_id = e.id';
+  return collatedEquality('u.employee_id', 'e.id');
 };
 
 const parseDate = (value: unknown): string | null => {
@@ -177,9 +180,9 @@ const buildEquipmentWorkOrderDetail = async (
       u.department AS responsible_department,
       t.protocol_id AS task_protocol_id
     FROM clinic_equipment_work_orders wo
-    INNER JOIN clinic_equipment e ON e.id = wo.equipment_id
-    LEFT JOIN users u ON u.id = wo.responsible_user_id
-    LEFT JOIN tasks t ON t.id = wo.linked_task_id
+    INNER JOIN clinic_equipment e ON ${collatedEquality('e.id', 'wo.equipment_id')}
+    LEFT JOIN users u ON ${collatedEquality('u.id', 'wo.responsible_user_id')}
+    LEFT JOIN tasks t ON ${collatedEquality('t.id', 'wo.linked_task_id')}
     WHERE wo.id = ?
     LIMIT 1
     `,
@@ -487,9 +490,9 @@ export const listEquipmentWorkOrders = async (
       u.department AS responsible_department,
       t.protocol_id AS task_protocol_id
     FROM clinic_equipment_work_orders wo
-    INNER JOIN clinic_equipment e ON e.id = wo.equipment_id
-    LEFT JOIN users u ON u.id = wo.responsible_user_id
-    LEFT JOIN tasks t ON t.id = wo.linked_task_id
+    INNER JOIN clinic_equipment e ON ${collatedEquality('e.id', 'wo.equipment_id')}
+    LEFT JOIN users u ON ${collatedEquality('u.id', 'wo.responsible_user_id')}
+    LEFT JOIN tasks t ON ${collatedEquality('t.id', 'wo.linked_task_id')}
     ORDER BY wo.created_at DESC
     `,
   );
@@ -571,9 +574,9 @@ export const listEquipmentWorkOrdersByEquipmentId = async (db: DbInterface, equi
       u.department AS responsible_department,
       t.protocol_id AS task_protocol_id
     FROM clinic_equipment_work_orders wo
-    INNER JOIN clinic_equipment e ON e.id = wo.equipment_id
-    LEFT JOIN users u ON u.id = wo.responsible_user_id
-    LEFT JOIN tasks t ON t.id = wo.linked_task_id
+    INNER JOIN clinic_equipment e ON ${collatedEquality('e.id', 'wo.equipment_id')}
+    LEFT JOIN users u ON ${collatedEquality('u.id', 'wo.responsible_user_id')}
+    LEFT JOIN tasks t ON ${collatedEquality('t.id', 'wo.linked_task_id')}
     WHERE wo.equipment_id = ?
     ORDER BY wo.created_at DESC
     `,

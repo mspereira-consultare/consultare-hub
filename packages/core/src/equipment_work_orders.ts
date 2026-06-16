@@ -11,6 +11,14 @@ export type TaskLinkedEquipmentWorkOrderRef = {
 };
 
 const clean = (value: unknown) => String(value ?? '').trim();
+const isMysqlDb =
+  String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' ||
+  !!process.env.MYSQL_URL ||
+  !!process.env.MYSQL_PUBLIC_URL;
+const collatedEquality = (left: string, right: string) =>
+  isMysqlDb
+    ? `${left} COLLATE utf8mb4_unicode_ci = ${right} COLLATE utf8mb4_unicode_ci`
+    : `${left} = ${right}`;
 
 const safeQuery = async (db: DbInterface, sql: string, params: unknown[] = []) => {
   try {
@@ -42,7 +50,7 @@ export const getEquipmentWorkOrderLinkByTaskId = async (
       e.description,
       e.identification_number
     FROM clinic_equipment_work_orders wo
-    LEFT JOIN clinic_equipment e ON e.id = wo.equipment_id
+    LEFT JOIN clinic_equipment e ON ${collatedEquality('e.id', 'wo.equipment_id')}
     WHERE wo.linked_task_id = ?
     ORDER BY wo.created_at DESC
     LIMIT 1

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
+  ArrowLeft,
   ClipboardList,
   ExternalLink,
   FileText,
@@ -440,6 +441,13 @@ export function EquipmentWorkOrdersClient() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
+            <Link
+              href="/equipamentos"
+              className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Voltar para equipamentos
+            </Link>
             <button
               type="button"
               onClick={() => loadList(true)}
