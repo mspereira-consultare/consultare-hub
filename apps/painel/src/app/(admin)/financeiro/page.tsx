@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   DollarSign,
   FilterX,
@@ -33,6 +33,18 @@ type GroupPoint = { procedure_group: string; total: number; qtd: number };
 type Totals = { total: number; qtd: number; newPatients: number; totalPatients: number };
 type Heartbeat = { status: string; last_run: string | null; details: string };
 type ComparisonMode = 'previous' | 'yoy' | 'custom';
+type GroupOption = SelectOption & { procedure_group?: string };
+type FinancialResponse = {
+  error?: string;
+  daily?: Array<{ d: string; total: number; qtd: number }>;
+  monthly?: Array<{ m: string; total: number; qtd: number }>;
+  groupStats?: GroupPoint[];
+  groups?: GroupOption[];
+  procedures?: SelectOption[];
+  units?: SelectOption[];
+  totals?: Totals;
+  heartbeat?: Heartbeat;
+};
 type ComparisonRow = {
   key: string;
   label: string;
@@ -257,8 +269,8 @@ export default function FinancialPage() {
 
   const [heartbeat, setHeartbeat] = useState<Heartbeat | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
-  const [manualRefreshActive, setManualRefreshActive] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const pollingTimeoutRef = useRef<number | null>(null);
 
   const comparisonRange = useMemo<DateRange>(() => {
     const duration = daysBetweenInclusive(dateRange.start, dateRange.end);
@@ -302,7 +314,14 @@ export default function FinancialPage() {
       sortKey: row.m || '',
     }));
 
-  const fetchFinancial = async (range: DateRange, forceFresh = false) => {
+  const clearPollingTimeout = useCallback(() => {
+    if (pollingTimeoutRef.current) {
+      window.clearTimeout(pollingTimeoutRef.current);
+      pollingTimeoutRef.current = null;
+    }
+  }, []);
+
+  const fetchFinancial = useCallback(async (range: DateRange, forceFresh = false): Promise<FinancialResponse> => {
     const params = new URLSearchParams({
       unit: selectedUnit,
       group: selectedGroup,
@@ -312,17 +331,20 @@ export default function FinancialPage() {
     });
     if (forceFresh) params.set('refresh', Date.now().toString());
 
-    const res = await fetch(`/api/admin/financial/history?${params.toString()}`);
+    const res = await fetch(`/api/admin/financial/history?${params.toString()}`, { cache: 'no-store' });
     return res.json();
-  };
+  }, [selectedGroup, selectedProcedure, selectedUnit]);
 
-  const fetchData = async (forceFresh = false) => {
-    if (!heartbeat) setLoading(true);
+  const fetchData = useCallback(async (options?: { forceFresh?: boolean; silent?: boolean }) => {
+    if (!options?.silent) {
+      setLoading(true);
+    }
 
     try {
-      const requests: [Promise<any>, Promise<any> | null] = [
-        fetchFinancial(dateRange, forceFresh),
-        comparisonEnabled ? fetchFinancial(comparisonRange, forceFresh) : null,
+      let nextHeartbeatStatus: string | null = null;
+      const requests: [Promise<FinancialResponse>, Promise<FinancialResponse> | null] = [
+        fetchFinancial(dateRange, options?.forceFresh),
+        comparisonEnabled ? fetchFinancial(comparisonRange, options?.forceFresh) : null,
       ];
 
       const [baseData, compareData] = await Promise.all([
@@ -344,7 +366,7 @@ export default function FinancialPage() {
         }
         if (selectedGroup === 'all') {
           setGroups(
-            (baseData.groups || []).map((item: any) => ({
+            (baseData.groups || []).map((item) => ({
               ...item,
               label: item.procedure_group || item.label || item.name || 'Desconhecido',
             }))
@@ -354,30 +376,20 @@ export default function FinancialPage() {
           setProcedures(baseData.procedures || []);
         }
 
-        setGroupStats(baseData.groupStats || baseData.groups || []);
+        setGroupStats(baseData.groupStats || []);
         setTotals(baseData.totals || { total: 0, qtd: 0, newPatients: 0, totalPatients: 0 });
 
         if (baseData.heartbeat) {
           setHeartbeat(baseData.heartbeat);
-          const heartbeatStatus = String(baseData.heartbeat.status || '').toUpperCase();
-          if (manualRefreshActive && (heartbeatStatus === 'RUNNING' || heartbeatStatus === 'PENDING')) {
-            setIsUpdating(true);
-            window.setTimeout(() => {
-              void fetchData(true);
-            }, 3000);
-          } else {
-            setIsUpdating(false);
-            if (manualRefreshActive) {
-              setManualRefreshActive(false);
-            }
-          }
+          nextHeartbeatStatus = String(baseData.heartbeat.status || '').toUpperCase();
+          setIsUpdating(nextHeartbeatStatus === 'RUNNING' || nextHeartbeatStatus === 'PENDING');
         }
       }
 
       if (comparisonEnabled && compareData && !compareData.error) {
         setCompareDaily(normalizeDaily(compareData.daily || []));
         setCompareMonthly(normalizeMonthly(compareData.monthly || []));
-        setCompareGroupStats(compareData.groupStats || compareData.groups || []);
+        setCompareGroupStats(compareData.groupStats || []);
         setCompareTotals(compareData.totals || { total: 0, qtd: 0, newPatients: 0, totalPatients: 0 });
       } else {
         setCompareDaily([]);
@@ -385,51 +397,89 @@ export default function FinancialPage() {
         setCompareGroupStats([]);
         setCompareTotals({ total: 0, qtd: 0, newPatients: 0, totalPatients: 0 });
       }
+
+      return nextHeartbeatStatus;
     } catch (error) {
       console.error('Erro Financeiro:', error);
-      if (manualRefreshActive) {
-        setManualRefreshActive(false);
+      if (!options?.silent) {
         setIsUpdating(false);
       }
+      return null;
     } finally {
-      setLoading(false);
+      if (!options?.silent) {
+        setLoading(false);
+      }
     }
-  };
+  }, [
+    comparisonEnabled,
+    comparisonRange,
+    dateRange,
+    fetchFinancial,
+    selectedGroup,
+    selectedProcedure,
+    selectedUnit,
+  ]);
+
+  const scheduleSilentRefresh = useCallback((delayMs = 3000) => {
+    clearPollingTimeout();
+    const pollOnce = async () => {
+      const heartbeatStatus = await fetchData({ forceFresh: true, silent: true });
+      if (heartbeatStatus === 'RUNNING' || heartbeatStatus === 'PENDING') {
+        pollingTimeoutRef.current = window.setTimeout(pollOnce, delayMs);
+      } else {
+        clearPollingTimeout();
+      }
+    };
+    pollingTimeoutRef.current = window.setTimeout(pollOnce, delayMs);
+  }, [clearPollingTimeout, fetchData]);
 
   const handleManualUpdate = async () => {
     setIsUpdating(true);
-    setManualRefreshActive(true);
     try {
       const response = await fetch('/api/admin/financial/history', { method: 'POST' });
       if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(String(payload?.error || 'Falha ao solicitar atualização do financeiro.'));
       }
-      window.setTimeout(() => {
-        void fetchData(true);
-      }, 1000);
+      scheduleSilentRefresh(1000);
     } catch (error) {
       console.error(error);
-      setManualRefreshActive(false);
       setIsUpdating(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    clearPollingTimeout();
+    const timeoutId = window.setTimeout(() => {
+      void fetchData();
+    }, 0);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
   }, [
-    selectedUnit,
-    selectedGroup,
-    selectedProcedure,
-    dateRange.start,
-    dateRange.end,
-    comparisonEnabled,
-    comparisonMode,
-    comparisonCustomRange.start,
-    comparisonCustomRange.end,
-    lockDuration,
+    clearPollingTimeout,
+    fetchData,
   ]);
+
+  useEffect(() => {
+    return () => {
+      clearPollingTimeout();
+    };
+  }, [clearPollingTimeout]);
+
+  useEffect(() => {
+    const heartbeatStatus = String(heartbeat?.status || '').toUpperCase();
+    if (heartbeatStatus !== 'RUNNING' && heartbeatStatus !== 'PENDING') {
+      clearPollingTimeout();
+      return;
+    }
+
+    scheduleSilentRefresh(3000);
+
+    return () => {
+      clearPollingTimeout();
+    };
+  }, [clearPollingTimeout, heartbeat?.status, scheduleSilentRefresh]);
 
   const monthlyComparisonRows = useMemo<ComparisonRow[]>(
     () => alignSeriesByPosition(monthly, compareMonthly, 'monthly'),
