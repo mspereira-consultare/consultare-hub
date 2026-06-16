@@ -4470,7 +4470,7 @@ function GanttTimeline({
           </div>
         </div>
 
-        <div className="grid grid-cols-[280px_minmax(0,1fr)] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-2.5">
+        <div className="grid grid-cols-[264px_minmax(0,1fr)] gap-0 border-b border-slate-200 bg-slate-50 px-4 py-2">
           <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Tarefa</div>
           <div className="space-y-1.5">
             <div className="relative h-3.5">
@@ -4504,7 +4504,17 @@ function GanttTimeline({
           </div>
         </div>
 
-        <div className="divide-y divide-slate-100">
+        <div className="relative">
+          <div aria-hidden="true" className="absolute bottom-0 right-4 top-0" style={{ left: 'calc(16px + 264px)' }}>
+            <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(226,232,240,0.78)_1px,transparent_1px)] bg-[length:18px_100%] bg-left" />
+            {presentation.hasTodayMarker ? (
+              <span
+                className="absolute bottom-0 top-0 z-[1] w-px bg-rose-300"
+                style={{ left: `${(presentation.todayOffset / presentation.totalDays) * 100}%` }}
+              />
+            ) : null}
+          </div>
+          <div className="divide-y divide-slate-100/70">
           {presentation.rows.map((row, index) => {
             const task = row.task;
             const left = (row.startOffsetDays / presentation.totalDays) * 100;
@@ -4527,14 +4537,14 @@ function GanttTimeline({
             return (
               <div
                 key={task.id}
-                className="grid grid-cols-[280px_minmax(0,1fr)] gap-0 px-4"
+                className="grid grid-cols-[264px_minmax(0,1fr)] gap-0 px-4"
                 onMouseEnter={(event) => openPreview(row, event.currentTarget as HTMLDivElement)}
                 onMouseLeave={schedulePreviewClose}
               >
                 <button
                   type="button"
                   onClick={() => onOpenTask(task.id)}
-                  className="min-w-0 border-r border-slate-100 px-2 py-2 text-left transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
+                  className="min-w-0 border-r border-slate-100/80 px-2 py-1.5 text-left transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none"
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#17407E]">{task.protocolId}</span>
@@ -4547,20 +4557,14 @@ function GanttTimeline({
                       </span>
                     ) : null}
                   </div>
-                  <div className="mt-1 truncate text-[13px] font-semibold leading-5 text-slate-900">{task.title}</div>
-                  <div className="mt-0.5 truncate text-[11px] leading-4 text-slate-500">{compactDescription}</div>
+                  <div className="mt-0.5 truncate text-[13px] font-semibold leading-4 text-slate-900">{task.title}</div>
+                  <div className="truncate text-[11px] leading-4 text-slate-500">{compactDescription}</div>
                 </button>
                 <button
                   type="button"
                   onClick={() => onOpenTask(task.id)}
-                  className="relative h-9 bg-[linear-gradient(to_right,rgba(226,232,240,0.75)_1px,transparent_1px)] bg-[length:18px_100%] bg-left text-left focus-visible:outline-none"
+                  className="relative h-[42px] bg-transparent text-left focus-visible:outline-none"
                 >
-                  {presentation.hasTodayMarker ? (
-                    <span
-                      className="absolute inset-y-0 z-[1] w-px bg-rose-300"
-                      style={{ left: `${(presentation.todayOffset / presentation.totalDays) * 100}%` }}
-                    />
-                  ) : null}
                   {row.predecessorProtocols.length ? (
                     <div
                       className={`absolute top-1/2 h-px -translate-y-1/2 border-t border-dashed ${row.hasScheduleConflict ? 'border-rose-300' : 'border-slate-300'}`}
@@ -4576,7 +4580,7 @@ function GanttTimeline({
                     />
                   ) : null}
                   <div
-                    className={`absolute top-1/2 z-[2] flex h-4 -translate-y-1/2 items-center rounded-sm px-1.5 text-[10px] font-semibold text-white shadow-sm ${barTone} ${
+                    className={`absolute top-1/2 z-[2] flex h-[14px] -translate-y-1/2 items-center rounded-[3px] px-1.5 text-[10px] font-semibold text-white shadow-sm ${barTone} ${
                       row.hasScheduleConflict ? 'ring-2 ring-rose-100' : ''
                     }`}
                     style={{ left: `${left}%`, width: `${width}%` }}
@@ -4586,7 +4590,7 @@ function GanttTimeline({
                   </div>
                   {task.checklistTotalItems > 0 ? (
                     <div
-                      className="absolute top-[22px] z-[2] h-[2px] rounded-full bg-emerald-400/95"
+                      className="absolute top-[24px] z-[2] h-[2px] rounded-full bg-emerald-400/95"
                       style={{
                         left: `${left}%`,
                         width: `${Math.max((width * task.checklistProgressPercent) / 100, task.checklistProgressPercent ? 0.6 : 0)}%`,
@@ -4602,6 +4606,7 @@ function GanttTimeline({
               </div>
             );
           })}
+          </div>
         </div>
       </div>
       {previewState
