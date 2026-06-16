@@ -77,6 +77,7 @@ type FiltersState = {
   priority: string;
   status: string;
   dueBucket: string;
+  scheduleState: 'all' | 'SCHEDULED' | 'UNSCHEDULED';
 };
 
 const KANBAN_COLUMNS: Array<{ key: TaskStatus; label: string; description: string }> = [
@@ -155,6 +156,7 @@ const defaultFilters: FiltersState = {
   priority: 'all',
   status: 'all',
   dueBucket: 'all',
+  scheduleState: 'all',
 };
 
 const defaultForm = (): TaskFormState => ({
@@ -377,6 +379,7 @@ const buildQueryString = (filters: FiltersState) => {
   if (filters.priority !== 'all') params.set('priorities', filters.priority);
   if (filters.status !== 'all') params.set('statuses', filters.status);
   if (filters.dueBucket !== 'all') params.set('dueBucket', filters.dueBucket);
+  if (filters.scheduleState !== 'all') params.set('scheduleState', filters.scheduleState);
   return params.toString();
 };
 
@@ -706,6 +709,15 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
     } finally {
       setSaving(false);
     }
+  };
+
+  const openUnscheduledTasksList = () => {
+    setViewMode('LIST');
+    setFilters((current) => ({
+      ...current,
+      scheduleState: 'UNSCHEDULED',
+    }));
+    setFiltersOpen(true);
   };
 
   const saveProjectDetail = async (status?: TaskProjectStatus) => {
@@ -1123,6 +1135,11 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
               {activeFilterCount} filtro(s) ativo(s)
             </span>
             <span className="rounded-full bg-slate-50 px-3 py-1.5 ring-1 ring-slate-200">{tasks.length} tarefa(s) retornada(s)</span>
+            {filters.scheduleState === 'UNSCHEDULED' ? (
+              <span className="rounded-full bg-amber-50 px-3 py-1.5 font-semibold text-amber-700 ring-1 ring-amber-200">
+                Fora do cronograma
+              </span>
+            ) : null}
           </div>
 
           {filtersOpen ? (
@@ -1324,6 +1341,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
                 onOpenProject={(projectId) => {
                   void loadManagedProjectDetail(projectId, true);
                 }}
+                onOpenUnscheduledList={openUnscheduledTasksList}
               />
             )
           ) : (
@@ -1818,6 +1836,7 @@ function ExecutiveProjectGanttBoard({
   onOpenTask,
   canEdit,
   onOpenProject,
+  onOpenUnscheduledList,
 }: {
   project: TaskProjectDetail | null;
   portfolio: TaskPortfolioGantt | null;
@@ -1825,12 +1844,14 @@ function ExecutiveProjectGanttBoard({
   onOpenTask: (taskId: string) => void;
   canEdit: boolean;
   onOpenProject: (projectId: string) => void;
+  onOpenUnscheduledList: () => void;
 }) {
   const sections = project
     ? [{ project, tasks: project.tasks, dependencies: project.dependencies } satisfies TaskPortfolioGanttSection]
     : portfolio?.sections || [];
+  const unscheduledCount = !project ? portfolio?.unscheduledStandaloneTasks.length || 0 : 0;
 
-  if (!sections.length) {
+  if (!sections.length && !unscheduledCount) {
     return (
       <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-12 text-center text-sm text-slate-500">
         Nenhum cronograma disponível para este recorte.
@@ -1839,21 +1860,42 @@ function ExecutiveProjectGanttBoard({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="max-h-[calc(100vh-14rem)] space-y-5 overflow-y-auto pr-1 overscroll-contain">
       {!project && portfolio ? (
-        <div className="flex flex-wrap justify-end gap-2">
-          <a
-            href="/api/admin/tasks/portfolio-gantt/export.xlsx"
-            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            Exportar visão Todos em XLSX
-          </a>
-          <a
-            href="/api/admin/tasks/portfolio-gantt/export.pdf"
-            className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            Exportar visão Todos em PDF
-          </a>
+        <div className="space-y-3">
+          <div className="flex flex-wrap justify-end gap-2">
+            <a
+              href="/api/admin/tasks/portfolio-gantt/export.xlsx"
+              className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Exportar visão Todos em XLSX
+            </a>
+            <a
+              href="/api/admin/tasks/portfolio-gantt/export.pdf"
+              className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              Exportar visão Todos em PDF
+            </a>
+          </div>
+          {unscheduledCount ? (
+            <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <span className="font-semibold">{unscheduledCount} tarefa(s)</span> estão fora do cronograma por não terem início e prazo definidos.
+              </div>
+              <button
+                type="button"
+                onClick={onOpenUnscheduledList}
+                className="inline-flex items-center justify-center rounded-full border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100"
+              >
+                Ver na lista
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {!sections.length && unscheduledCount ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-12 text-center text-sm text-slate-500">
+          Não há tarefas com datas válidas para montar a timeline neste recorte.
         </div>
       ) : null}
       {sections.map((section) => {

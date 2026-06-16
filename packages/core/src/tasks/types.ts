@@ -278,6 +278,7 @@ export type TaskListFilters = {
   projectId?: string;
   includeStandalone?: boolean;
   scheduledOnly?: boolean;
+  scheduleState?: 'SCHEDULED' | 'UNSCHEDULED';
   includeCanceled?: boolean;
   dueBucket?: 'OVERDUE' | 'DUE_SOON' | 'NONE';
 };

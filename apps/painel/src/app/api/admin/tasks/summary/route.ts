@@ -25,6 +25,7 @@ const filtersFromRequest = (request: Request): TaskListFilters => {
     projectId: String(searchParams.get('projectId') || '').trim() || undefined,
     includeStandalone: String(searchParams.get('includeStandalone') || '').trim() === '0' ? false : undefined,
     scheduledOnly: String(searchParams.get('scheduledOnly') || '').trim() === '1',
+    scheduleState: (String(searchParams.get('scheduleState') || '').trim().toUpperCase() || undefined) as TaskListFilters['scheduleState'],
     includeCanceled: String(searchParams.get('includeCanceled') || '').trim() === '1',
     dueBucket: (String(searchParams.get('dueBucket') || '').trim().toUpperCase() || undefined) as TaskListFilters['dueBucket'],
   };

@@ -857,6 +857,12 @@ const buildFilterClause = (filters: TaskListFilters) => {
     where.push(`t.start_date IS NOT NULL AND t.due_date IS NOT NULL`);
   }
 
+  if (filters.scheduleState === 'SCHEDULED') {
+    where.push(`t.start_date IS NOT NULL AND t.due_date IS NOT NULL`);
+  } else if (filters.scheduleState === 'UNSCHEDULED') {
+    where.push(`(t.start_date IS NULL OR t.due_date IS NULL)`);
+  }
+
   if (filters.dueBucket === 'OVERDUE') {
     where.push(
       isMysqlProvider()
