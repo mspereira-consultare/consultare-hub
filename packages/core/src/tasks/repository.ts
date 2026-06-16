@@ -1081,10 +1081,6 @@ export const ensureTaskTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN project_id VARCHAR(64) NULL`);
   await safeAddColumn(db, `ALTER TABLE tasks ADD COLUMN project_sort_order INTEGER NULL`);
   await safeAddColumn(db, `ALTER TABLE task_projects ADD COLUMN status VARCHAR(20) NULL`);
-  if (isMysqlProvider()) {
-    await safeModifyColumn(db, `ALTER TABLE task_projects MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'ATIVO'`);
-    await safeModifyColumn(db, `ALTER TABLE task_projects MODIFY COLUMN archived_at VARCHAR(32) NULL`);
-  }
   await db.execute(`
     UPDATE task_projects
     SET status = CASE
@@ -1093,6 +1089,10 @@ export const ensureTaskTables = async (db: DbInterface) => {
       ELSE status
     END
   `);
+  if (isMysqlProvider()) {
+    await safeModifyColumn(db, `ALTER TABLE task_projects MODIFY COLUMN status VARCHAR(20) NOT NULL DEFAULT 'ATIVO'`);
+    await safeModifyColumn(db, `ALTER TABLE task_projects MODIFY COLUMN archived_at VARCHAR(32) NULL`);
+  }
 
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_tasks_protocol_number ON tasks (protocol_number)`);
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_tasks_protocol_id ON tasks (protocol_id)`);
