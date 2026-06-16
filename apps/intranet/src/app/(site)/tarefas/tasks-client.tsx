@@ -4981,6 +4981,10 @@ function TasksHelpModal({
           title: 'Checklist e andamento',
           text: 'O checklist mostra o progresso da entrega em subtarefas menores, mas não altera automaticamente o status principal da tarefa.',
         },
+        {
+          title: 'Tarefas sem agendamento no Gantt',
+          text: 'Na visão Gantt em “Todos”, tarefas avulsas com início e prazo aparecem na linha do tempo. Se ainda não tiverem datas, elas continuam visíveis em um bloco separado de tarefas sem agendamento.',
+        },
       ],
       footer: 'Use tarefas avulsas para demandas rápidas do dia a dia e concentre o contexto completo no protocolo para reduzir retrabalho da equipe.',
     },
@@ -5010,7 +5014,7 @@ function TasksHelpModal({
         },
         {
           title: 'Gantt',
-          text: 'O Gantt depende de tarefas com início e prazo definidos. Projetos com poucas tarefas agendadas podem não gerar um cronograma útil ainda.',
+          text: 'O Gantt depende de tarefas com início e prazo definidos. Na visão consolidada, tarefas avulsas sem datas ficam fora da linha do tempo e aparecem em um bloco próprio até serem agendadas.',
         },
       ],
       footer: 'Pense em projeto como a camada de coordenação do trabalho: as tarefas executam a operação, e o projeto organiza a sequência e a visibilidade do conjunto.',
