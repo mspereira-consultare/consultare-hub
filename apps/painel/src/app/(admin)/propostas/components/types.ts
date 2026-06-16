@@ -80,6 +80,15 @@ export type ProposalDetailResponse = {
   totalRows: number;
   totalPages: number;
   detailStatusApplied: string;
+  summary: {
+    filteredRows: number;
+    dueNow: number;
+    overdue: number;
+    withoutResponsible: number;
+    inContact: number;
+    converted: number;
+    openBudgetValue: number;
+  };
 };
 
 export type ProposalFollowupOptions = {

@@ -1,5 +1,7 @@
 export const AWAITING_CLIENT_APPROVAL_STATUS = 'Aguardando aprova\u00e7\u00e3o do cliente';
 
+export const PROPOSAL_WON_STATUSES = ['executada', 'aprovada pelo cliente', 'ganho', 'realizado', 'concluido', 'pago'] as const;
+
 export const PROPOSAL_CONVERSION_STATUSES = [
   { value: 'PENDENTE', label: 'Pendente' },
   { value: 'EM_CONTATO', label: 'Em contato' },

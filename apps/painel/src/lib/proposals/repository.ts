@@ -3,6 +3,7 @@ import {
   AWAITING_CLIENT_APPROVAL_STATUS,
   PROPOSAL_CONVERSION_REASONS_BY_STATUS,
   PROPOSAL_CONVERSION_STATUSES,
+  PROPOSAL_WON_STATUSES,
   type ProposalConversionReason,
   type ProposalConversionStatus,
 } from '@/lib/proposals/constants';
@@ -98,6 +99,17 @@ export type ProposalDetailResult = {
   totalRows: number;
   totalPages: number;
   detailStatusApplied: string;
+  summary: ProposalDetailSummary;
+};
+
+export type ProposalDetailSummary = {
+  filteredRows: number;
+  dueNow: number;
+  overdue: number;
+  withoutResponsible: number;
+  inContact: number;
+  converted: number;
+  openBudgetValue: number;
 };
 
 type CachedContactRow = {
@@ -348,6 +360,8 @@ const buildSearchClause = (search: string) => {
     params: [pattern, pattern, pattern, pattern, pattern, pattern, pattern, pattern],
   };
 };
+
+const buildWonStatusNotInClause = () => PROPOSAL_WON_STATUSES.map(() => '?').join(',');
 
 export const listProposalFilterOptions = async (
   filters: ProposalFilters,
@@ -835,6 +849,34 @@ export const listProposalDetails = async (filters: ProposalDetailFilters, db: Db
     whereParams,
   );
   const totalRows = normalizeNumber((totalRowsResult[0] as any)?.total);
+  const wonStatusNotInClause = buildWonStatusNotInClause();
+  const summaryRows = await db.query(
+    `
+      SELECT
+        COUNT(*) AS filtered_rows,
+        COALESCE(SUM(CASE WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN 1 ELSE 0 END), 0) AS due_now,
+        COALESCE(SUM(CASE WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) < ? THEN 1 ELSE 0 END), 0) AS overdue,
+        COALESCE(SUM(CASE WHEN TRIM(COALESCE(f.responsible_user_id, '')) = '' THEN 1 ELSE 0 END), 0) AS without_responsible,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(NULLIF(f.conversion_status, ''), 'PENDENTE'))) = 'EM_CONTATO' THEN 1 ELSE 0 END), 0) AS in_contact,
+        COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(NULLIF(f.conversion_status, ''), 'PENDENTE'))) = 'CONVERTIDO' THEN 1 ELSE 0 END), 0) AS converted,
+        COALESCE(
+          SUM(
+            CASE
+              WHEN TRIM(COALESCE(p.status, '')) = '' OR LOWER(TRIM(COALESCE(p.status, ''))) NOT IN (${wonStatusNotInClause})
+                THEN COALESCE(p.total_value, 0)
+              ELSE 0
+            END
+          ),
+          0
+        ) AS open_budget_value
+      FROM feegow_proposals p
+      LEFT JOIN feegow_patient_contacts_cache c ON c.patient_id = p.patient_id
+      LEFT JOIN proposal_followup_control f ON f.proposal_id = p.proposal_id
+      ${whereSql}
+    `,
+    [todayRef, todayRef, ...PROPOSAL_WON_STATUSES, ...whereParams],
+  );
+  const rawSummary = (summaryRows[0] || {}) as Record<string, unknown>;
   const totalPages = Math.max(1, Math.ceil(totalRows / filters.pageSize));
   const safePage = clamp(filters.page, 1, totalPages);
   const offset = (safePage - 1) * filters.pageSize;
@@ -907,6 +949,15 @@ export const listProposalDetails = async (filters: ProposalDetailFilters, db: Db
     totalRows,
     totalPages,
     detailStatusApplied,
+    summary: {
+      filteredRows: normalizeNumber(rawSummary.filtered_rows),
+      dueNow: normalizeNumber(rawSummary.due_now),
+      overdue: normalizeNumber(rawSummary.overdue),
+      withoutResponsible: normalizeNumber(rawSummary.without_responsible),
+      inContact: normalizeNumber(rawSummary.in_contact),
+      converted: normalizeNumber(rawSummary.converted),
+      openBudgetValue: normalizeNumber(rawSummary.open_budget_value),
+    },
   };
 };
 
@@ -983,4 +1034,3 @@ export const listProposalExportRows = async (filters: ProposalDetailFilters, db:
     detailStatusApplied,
   };
 };
-

@@ -4,6 +4,7 @@ import { Download, FilterX, Loader2, Search } from 'lucide-react';
 import { useMemo } from 'react';
 import { AWAITING_CLIENT_APPROVAL_STATUS } from '@/lib/proposals/constants';
 import { ProposalsDetailTable } from './ProposalsDetailTable';
+import { formatCurrency } from './formatters';
 import type { ProposalDetailResponse, ProposalDetailRow, ProposalFollowupOptions } from './types';
 
 type Props = {
@@ -49,26 +50,7 @@ export function ProposalsDetailSection({
   const hasActiveLocalFilters = Boolean(detailSearch) || (!globalStatusLocked && detailStatus !== AWAITING_CLIENT_APPROVAL_STATUS);
   const fromRow = detailData.totalRows === 0 ? 0 : (detailData.page - 1) * detailData.pageSize + 1;
   const toRow = Math.min(detailData.totalRows, detailData.page * detailData.pageSize);
-  const todayIso = new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
-  const rowSummary = useMemo(() => {
-    let dueNow = 0;
-    let overdue = 0;
-    let withoutResponsible = 0;
-    let inContact = 0;
-    let converted = 0;
-
-    for (const row of detailData.rows) {
-      if (!row.responsibleUserId) withoutResponsible += 1;
-      if (row.conversionStatus === 'EM_CONTATO') inContact += 1;
-      if (row.conversionStatus === 'CONVERTIDO') converted += 1;
-      if (row.nextContactAt) {
-        if (row.nextContactAt < todayIso) overdue += 1;
-        if (row.nextContactAt <= todayIso) dueNow += 1;
-      }
-    }
-
-    return { dueNow, overdue, withoutResponsible, inContact, converted };
-  }, [detailData.rows, todayIso]);
+  const detailSummary = useMemo(() => detailData.summary, [detailData.summary]);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm" id="base-detalhada-propostas">
@@ -153,30 +135,34 @@ export function ProposalsDetailSection({
       </div>
 
       <div className="p-5">
-        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Visíveis na página</p>
-            <p className="mt-1 text-2xl font-bold text-slate-800">{detailData.rows.length}</p>
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Registros no filtro</p>
+            <p className="mt-1 text-2xl font-bold text-slate-800">{detailSummary.filteredRows}</p>
           </div>
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
             <p className="text-[11px] font-bold uppercase tracking-wider text-amber-700">Retorno até hoje</p>
-            <p className="mt-1 text-2xl font-bold text-amber-800">{rowSummary.dueNow}</p>
+            <p className="mt-1 text-2xl font-bold text-amber-800">{detailSummary.dueNow}</p>
           </div>
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3">
             <p className="text-[11px] font-bold uppercase tracking-wider text-rose-700">Atrasadas</p>
-            <p className="mt-1 text-2xl font-bold text-rose-800">{rowSummary.overdue}</p>
+            <p className="mt-1 text-2xl font-bold text-rose-800">{detailSummary.overdue}</p>
           </div>
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Sem responsável</p>
-            <p className="mt-1 text-2xl font-bold text-slate-800">{rowSummary.withoutResponsible}</p>
+            <p className="mt-1 text-2xl font-bold text-slate-800">{detailSummary.withoutResponsible}</p>
           </div>
           <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
             <p className="text-[11px] font-bold uppercase tracking-wider text-blue-700">Em contato / convertidas</p>
             <p className="mt-1 text-2xl font-bold text-blue-800">
-              {rowSummary.inContact}
+              {detailSummary.inContact}
               <span className="mx-2 text-slate-300">/</span>
-              {rowSummary.converted}
+              {detailSummary.converted}
             </p>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-emerald-700">Valor em aberto</p>
+            <p className="mt-1 text-2xl font-bold text-emerald-800">{formatCurrency(detailSummary.openBudgetValue)}</p>
           </div>
         </div>
 

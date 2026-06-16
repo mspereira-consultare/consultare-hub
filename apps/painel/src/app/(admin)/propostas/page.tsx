@@ -20,6 +20,15 @@ const EMPTY_DETAIL_DATA: ProposalDetailResponse = {
   totalRows: 0,
   totalPages: 1,
   detailStatusApplied: AWAITING_CLIENT_APPROVAL_STATUS,
+  summary: {
+    filteredRows: 0,
+    dueNow: 0,
+    overdue: 0,
+    withoutResponsible: 0,
+    inContact: 0,
+    converted: 0,
+    openBudgetValue: 0,
+  },
 };
 
 const EMPTY_FOLLOWUP_OPTIONS: ProposalFollowupOptions = {
