@@ -1,4 +1,4 @@
-import { Edit3, FileText, Trash2, Wrench } from 'lucide-react';
+import { ClipboardList, Edit3, FileText, Trash2, Wrench } from 'lucide-react';
 import { EQUIPMENT_TYPES, EQUIPMENT_UNIT_LABELS } from '@/lib/equipamentos/constants';
 import type { EquipmentListItem } from '@/lib/equipamentos/types';
 
@@ -41,9 +41,10 @@ type EquipmentTableProps = {
   canEdit: boolean;
   onEdit: (item: EquipmentListItem) => void;
   onDelete: (item: EquipmentListItem) => void;
+  onOpenWorkOrders: (item: EquipmentListItem) => void;
 };
 
-export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete }: EquipmentTableProps) {
+export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete, onOpenWorkOrders }: EquipmentTableProps) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
       <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
@@ -120,9 +121,23 @@ export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete }: Eq
                       <Wrench size={14} />
                       <span>{item.openEventsCount} evento(s) abertos</span>
                     </div>
+                    {item.activeWorkOrderId ? (
+                      <div className="mt-2 inline-flex items-center gap-2 text-[#17407E]">
+                        <ClipboardList size={14} />
+                        <span>OS ativa: {item.activeWorkOrderStatus === 'EM_ANDAMENTO' ? 'em andamento' : 'aberta'}</span>
+                      </div>
+                    ) : null}
                   </td>
                   <td className="px-4 py-4 text-right">
                     <div className="inline-flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onOpenWorkOrders(item)}
+                        className="inline-flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-sm font-medium text-[#17407E] transition hover:bg-blue-50"
+                      >
+                        <ClipboardList size={14} />
+                        {item.activeWorkOrderId ? 'Ver OS' : 'Abrir OS'}
+                      </button>
                       <button
                         type="button"
                         onClick={() => onEdit(item)}

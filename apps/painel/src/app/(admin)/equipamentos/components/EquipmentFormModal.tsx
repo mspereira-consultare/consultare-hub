@@ -2,14 +2,16 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ClipboardList,
   CalendarClock,
+  ExternalLink,
   FileUp,
   Loader2,
   ShieldCheck,
   Wrench,
   X,
 } from 'lucide-react';
-import type { EquipmentEvent, EquipmentFile, EquipmentListItem } from '@/lib/equipamentos/types';
+import type { EquipmentEvent, EquipmentFile, EquipmentListItem, EquipmentWorkOrderListItem } from '@/lib/equipamentos/types';
 import { EquipmentEventsSection } from './EquipmentEventsSection';
 import { EquipmentFilesSection } from './EquipmentFilesSection';
 
@@ -71,7 +73,7 @@ type EquipmentFormModalProps = {
   onSaved: (item: EquipmentListItem) => void;
 };
 
-type ModalTab = 'cadastro' | 'calibracao' | 'manutencao' | 'arquivos';
+type ModalTab = 'cadastro' | 'calibracao' | 'manutencao' | 'arquivos' | 'os';
 
 const inputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-200';
@@ -151,6 +153,7 @@ export function EquipmentFormModal({
   const [form, setForm] = useState<EquipmentFormState>(() => emptyForm(options));
   const [events, setEvents] = useState<EquipmentEvent[]>([]);
   const [files, setFiles] = useState<EquipmentFile[]>([]);
+  const [workOrders, setWorkOrders] = useState<EquipmentWorkOrderListItem[]>([]);
   const [eventForm, setEventForm] = useState<EventFormState>(() => emptyEventForm(options));
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [currentItem, setCurrentItem] = useState<EquipmentListItem | null>(equipment);
@@ -170,6 +173,7 @@ export function EquipmentFormModal({
     { key: 'calibracao', label: 'Calibração', icon: CalendarClock },
     { key: 'manutencao', label: 'Manutenção', icon: Wrench, requiresPersisted: true },
     { key: 'arquivos', label: 'Arquivos', icon: FileUp, requiresPersisted: true },
+    { key: 'os', label: 'OS', icon: ClipboardList, requiresPersisted: true },
   ];
 
   useEffect(() => {
@@ -189,22 +193,27 @@ export function EquipmentFormModal({
     if (!open || !equipmentId) {
       setEvents([]);
       setFiles([]);
+      setWorkOrders([]);
       return;
     }
 
     const loadExtras = async () => {
       try {
         setLoadingExtras(true);
-        const [eventsRes, filesRes] = await Promise.all([
+        const [eventsRes, filesRes, workOrdersRes] = await Promise.all([
           fetch(`/api/admin/equipamentos/${encodeURIComponent(equipmentId)}/eventos?refresh=${Date.now()}`, { cache: 'no-store' }),
           fetch(`/api/admin/equipamentos/${encodeURIComponent(equipmentId)}/arquivos?refresh=${Date.now()}`, { cache: 'no-store' }),
+          fetch(`/api/admin/equipamentos/${encodeURIComponent(equipmentId)}/os?refresh=${Date.now()}`, { cache: 'no-store' }),
         ]);
         if (!eventsRes.ok) throw new Error(await normalizeError(eventsRes));
         if (!filesRes.ok) throw new Error(await normalizeError(filesRes));
+        if (!workOrdersRes.ok) throw new Error(await normalizeError(workOrdersRes));
         const eventsJson = await eventsRes.json();
         const filesJson = await filesRes.json();
+        const workOrdersJson = await workOrdersRes.json();
         setEvents(Array.isArray(eventsJson?.data) ? eventsJson.data : []);
         setFiles(Array.isArray(filesJson?.data) ? filesJson.data : []);
+        setWorkOrders(Array.isArray(workOrdersJson?.data) ? workOrdersJson.data : []);
       } catch (err: any) {
         setError(String(err?.message || err));
       } finally {
@@ -448,9 +457,9 @@ export function EquipmentFormModal({
           {successMessage ? (
             <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div>
           ) : null}
-          {!hasPersistedRecord && (activeTab === 'manutencao' || activeTab === 'arquivos') ? (
+          {!hasPersistedRecord && (activeTab === 'manutencao' || activeTab === 'arquivos' || activeTab === 'os') ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              Salve o cadastro principal para liberar manutenção e arquivos.
+              Salve o cadastro principal para liberar manutenção, arquivos e OS.
             </div>
           ) : null}
 
@@ -662,6 +671,69 @@ export function EquipmentFormModal({
                 onFilesSelected={handleFilesSelected}
                 onDownload={downloadFile}
               />
+            )
+          ) : null}
+
+          {activeTab === 'os' && hasPersistedRecord ? (
+            loadingExtras ? (
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">
+                <Loader2 size={16} className="animate-spin" />
+                Carregando ordens de serviço do equipamento...
+              </div>
+            ) : (
+              <section className="space-y-4">
+                <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-5 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold text-slate-900">Ordens de serviço do equipamento</h2>
+                    <p className="mt-1 text-sm text-slate-500">
+                      A gestão principal da OS fica na tela dedicada, mas o histórico do equipamento aparece aqui para contexto rápido.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => window.location.assign(`/equipamentos/os?${new URLSearchParams({ equipmentId: equipmentId! }).toString()}`)}
+                    className="inline-flex items-center gap-2 rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-medium text-[#17407E] transition hover:bg-blue-50"
+                  >
+                    <ClipboardList size={16} />
+                    Abrir gestão de OS
+                    <ExternalLink size={14} />
+                  </button>
+                </div>
+
+                {workOrders.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                    Nenhuma OS cadastrada para este equipamento até o momento.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {workOrders.map((item) => (
+                      <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                          <div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#17407E]">
+                              {item.taskProtocolId || item.id.slice(0, 8)}
+                            </div>
+                            <div className="mt-1 text-sm font-semibold text-slate-900">{item.responsibleUserName || 'Responsável não informado'}</div>
+                            <div className="mt-1 text-sm text-slate-600">{item.problemDescription}</div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                              {item.status.replace(/_/g, ' ')}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => window.location.assign(`/equipamentos/os?${new URLSearchParams({ osId: item.id }).toString()}`)}
+                              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+                            >
+                              Ver OS
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
             )
           ) : null}
 

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -11,6 +12,7 @@ import {
   CircleHelp,
   ChevronRight,
   Clock3,
+  ExternalLink,
   FileText,
   Filter,
   LayoutGrid,
@@ -3026,6 +3028,44 @@ function TaskDetailModal({
                     placeholder="Detalhe a entrega, os passos e o contexto esperado"
                   />
                 </TaskSectionCard>
+
+                {task.linkedEquipmentWorkOrder ? (
+                  <TaskSectionCard
+                    title="OS vinculada"
+                    description="Esta tarefa foi criada a partir de uma OS de equipamento e segue o ciclo de vida controlado no painel."
+                  >
+                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#17407E]">
+                            OS {task.linkedEquipmentWorkOrder.workOrderId.slice(0, 8)}
+                          </div>
+                          <div className="mt-1 text-sm font-semibold text-slate-900">
+                            {task.linkedEquipmentWorkOrder.equipmentDescription || 'Equipamento vinculado'}
+                          </div>
+                          <div className="mt-1 text-sm text-slate-600">
+                            Identificação: {task.linkedEquipmentWorkOrder.equipmentIdentificationNumber || 'não informada'} · Status da OS: {task.linkedEquipmentWorkOrder.status.replace(/_/g, ' ')}
+                          </div>
+                        </div>
+                        {task.linkedEquipmentWorkOrder.panelPath ? (
+                          <Link
+                            href={task.linkedEquipmentWorkOrder.panelPath}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#123463]"
+                          >
+                            Abrir OS no painel
+                            <ExternalLink size={15} />
+                          </Link>
+                        ) : (
+                          <div className="text-sm text-slate-500">
+                            Configure `PAINEL_PUBLIC_URL` para habilitar o atalho direto ao painel.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </TaskSectionCard>
+                ) : null}
 
                 <TaskSectionCard
                   title="Projeto e predecessoras"

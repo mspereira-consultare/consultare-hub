@@ -1,3 +1,5 @@
+import type { TaskLinkedEquipmentWorkOrderRef } from '../equipment_work_orders';
+
 export type TaskPriority = 'BAIXA' | 'MEDIA' | 'ALTA' | 'URGENTE';
 export type TaskStatus =
   | 'BACKLOG'
@@ -205,6 +207,7 @@ export type TaskSummary = {
   checklistTotalItems: number;
   checklistCompletedItems: number;
   checklistProgressPercent: number;
+  linkedEquipmentWorkOrder?: TaskLinkedEquipmentWorkOrderRef | null;
 };
 
 export type TaskDetail = TaskSummary & {

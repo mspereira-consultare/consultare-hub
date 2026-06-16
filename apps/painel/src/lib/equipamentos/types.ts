@@ -60,11 +60,103 @@ export type EquipmentEvent = {
   updatedAt: string;
 };
 
+export type EquipmentWorkOrderStatus = 'ABERTA' | 'EM_ANDAMENTO' | 'CONCLUIDA' | 'CANCELADA';
+
+export type EquipmentWorkOrderPermissionProfile =
+  | 'diretoria_gerencia_adm'
+  | 'gerencia_operacional'
+  | 'lider_unidades'
+  | 'lider_operacional';
+
+export type EquipmentWorkOrderResponsibleOption = {
+  userId: string;
+  userName: string;
+  email: string;
+  department: string | null;
+  profileKey: EquipmentWorkOrderPermissionProfile;
+  profileLabel: string | null;
+  groupKey: string | null;
+  groupLabel: string | null;
+};
+
+export type EquipmentWorkOrder = {
+  id: string;
+  equipmentId: string;
+  linkedTaskId: string;
+  openedAt: string;
+  openedByUserId: string;
+  openedByProfileKey: string | null;
+  openedByGroupKey: string | null;
+  openedByResolutionSource: string | null;
+  responsibleUserId: string;
+  responsibleEmployeeId: string | null;
+  responsibleProfileKey: string | null;
+  problemDescription: string;
+  lastMaintenanceSnapshotDate: string | null;
+  previousOperationalStatus: EquipmentOperationalStatus | null;
+  status: EquipmentWorkOrderStatus;
+  startedAt: string | null;
+  resolvedAt: string | null;
+  closedAt: string | null;
+  solutionNotes: string | null;
+  closingOperationalStatus: EquipmentOperationalStatus | null;
+  cancellationReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EquipmentWorkOrderFile = {
+  id: string;
+  workOrderId: string;
+  storageProvider: string;
+  storageBucket: string | null;
+  storageKey: string;
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  notes: string | null;
+  uploadedBy: string;
+  createdAt: string;
+};
+
+export type EquipmentWorkOrderListItem = EquipmentWorkOrder & {
+  equipmentDescription: string;
+  equipmentIdentificationNumber: string;
+  equipmentUnitName: EquipmentUnit;
+  equipmentOperationalStatus: EquipmentOperationalStatus;
+  responsibleUserName: string | null;
+  responsibleDepartment: string | null;
+  taskProtocolId: string | null;
+  fileCount: number;
+};
+
+export type EquipmentWorkOrderDetail = EquipmentWorkOrderListItem & {
+  files: EquipmentWorkOrderFile[];
+};
+
+export type EquipmentWorkOrderCreateInput = {
+  openedAt?: string | null;
+  responsibleUserId: string;
+  problemDescription: string;
+};
+
+export type EquipmentWorkOrderUpdateInput = {
+  status?: EquipmentWorkOrderStatus | null;
+  startedAt?: string | null;
+  resolvedAt?: string | null;
+  closedAt?: string | null;
+  solutionNotes?: string | null;
+  closingOperationalStatus?: EquipmentOperationalStatus | null;
+  cancellationReason?: string | null;
+};
+
 export type EquipmentListItem = Equipment & {
   calibrationStatus: EquipmentCalibrationStatus;
   calibrationStatusLabel: string;
   fileCount: number;
   openEventsCount: number;
+  activeWorkOrderId: string | null;
+  activeWorkOrderStatus: EquipmentWorkOrderStatus | null;
 };
 
 export type EquipmentInput = {
@@ -109,6 +201,17 @@ export type EquipmentFileUploadInput = {
   uploadedBy: string;
 };
 
+export type EquipmentWorkOrderFileUploadInput = {
+  originalName: string;
+  mimeType: string;
+  sizeBytes: number;
+  notes: string | null;
+  storageProvider: string;
+  storageBucket: string | null;
+  storageKey: string;
+  uploadedBy: string;
+};
+
 export type EquipmentFilters = {
   search: string;
   unit: string;
@@ -135,4 +238,21 @@ export type EquipmentListResult = {
   pageSize: number;
   totalPages: number;
   summary: EquipmentListSummary;
+};
+
+export type EquipmentWorkOrderListFilters = {
+  search: string;
+  status: 'all' | EquipmentWorkOrderStatus;
+  unit: string;
+  responsibleUserId: string;
+  page: number;
+  pageSize: number;
+};
+
+export type EquipmentWorkOrderListResult = {
+  items: EquipmentWorkOrderListItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
 };

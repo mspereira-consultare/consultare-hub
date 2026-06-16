@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -8,6 +9,7 @@ import {
   CheckCircle2,
   Clock3,
   Columns3,
+  ExternalLink,
   FileText,
   Filter,
   LayoutGrid,
@@ -2770,6 +2772,36 @@ function TaskDetailPanel({
                     className={`${inputClassName} min-h-[120px] resize-y disabled:bg-slate-50`}
                   />
                 </TaskSectionCard>
+
+                {task.linkedEquipmentWorkOrder ? (
+                  <TaskSectionCard
+                    title="OS vinculada"
+                    description="Essa tarefa está amarrada à ordem de serviço do equipamento no painel."
+                  >
+                    <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                        <div>
+                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[#17407E]">
+                            OS {task.linkedEquipmentWorkOrder.workOrderId.slice(0, 8)}
+                          </div>
+                          <div className="mt-2 text-sm font-semibold text-slate-900">
+                            {task.linkedEquipmentWorkOrder.equipmentDescription || 'Equipamento vinculado'}
+                          </div>
+                          <div className="mt-1 text-sm text-slate-600">
+                            Identificação: {task.linkedEquipmentWorkOrder.equipmentIdentificationNumber || 'não informada'} · Status da OS: {task.linkedEquipmentWorkOrder.status.replace(/_/g, ' ')}
+                          </div>
+                        </div>
+                        <Link
+                          href={task.linkedEquipmentWorkOrder.panelPath}
+                          className="inline-flex items-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2.5 text-sm font-semibold text-[#17407E] hover:bg-blue-100"
+                        >
+                          Abrir OS
+                          <ExternalLink size={16} />
+                        </Link>
+                      </div>
+                    </div>
+                  </TaskSectionCard>
+                ) : null}
 
                 <TaskSectionCard
                   title="Projeto e predecessoras"

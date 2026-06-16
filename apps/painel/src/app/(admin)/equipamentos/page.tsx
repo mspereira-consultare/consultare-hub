@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { Download, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
+import { ClipboardList, Download, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
 import type { EquipmentListItem, EquipmentListSummary } from '@/lib/equipamentos/types';
 import { EquipmentFiltersBar } from './components/EquipmentFiltersBar';
@@ -255,6 +255,14 @@ export default function EquipamentosPage() {
             <div className="flex flex-wrap gap-2 xl:justify-end">
               <button
                 type="button"
+                onClick={() => window.location.assign('/equipamentos/os')}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-medium text-[#17407E] transition hover:bg-blue-50"
+              >
+                <ClipboardList size={16} />
+                Gerenciar OS
+              </button>
+              <button
+                type="button"
                 onClick={() => loadItems(true)}
                 disabled={!canRefresh || refreshing}
                 className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
@@ -309,7 +317,16 @@ export default function EquipamentosPage() {
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>
       ) : null}
 
-      <EquipmentTable items={items} loading={loading} canEdit={canEdit} onEdit={openEdit} onDelete={handleDelete} />
+      <EquipmentTable
+        items={items}
+        loading={loading}
+        canEdit={canEdit}
+        onEdit={openEdit}
+        onDelete={handleDelete}
+        onOpenWorkOrders={(item) =>
+          window.location.assign(`/equipamentos/os?${new URLSearchParams({ equipmentId: item.id }).toString()}`)
+        }
+      />
 
       <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <p className="text-sm text-slate-500">{paginationLabel}</p>

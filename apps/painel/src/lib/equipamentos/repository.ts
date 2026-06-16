@@ -20,11 +20,13 @@ import {
   type EquipmentUnit,
 } from '@/lib/equipamentos/constants';
 import { computeCalibrationStatus, getCalibrationStatusLabel } from '@/lib/equipamentos/status';
+import { listActiveEquipmentWorkOrdersMap } from '@/lib/equipamentos/work_orders';
 import type {
   Equipment,
   EquipmentEvent,
   EquipmentEventInput,
   EquipmentFile,
+  EquipmentWorkOrderStatus,
   EquipmentFileUploadInput,
   EquipmentFilters,
   EquipmentInput,
@@ -325,14 +327,18 @@ const enrichEquipment = (
   item: Equipment,
   fileCountMap: Map<string, number>,
   openEventCountMap: Map<string, number>,
+  activeWorkOrderMap: Map<string, { id: string; status: EquipmentWorkOrderStatus }>,
 ): EquipmentListItem => {
   const calibrationStatus = computeCalibrationStatus(item.calibrationRequired, item.nextCalibrationDate);
+  const activeWorkOrder = activeWorkOrderMap.get(item.id) || null;
   return {
     ...item,
     calibrationStatus,
     calibrationStatusLabel: getCalibrationStatusLabel(calibrationStatus),
     fileCount: fileCountMap.get(item.id) || 0,
     openEventsCount: openEventCountMap.get(item.id) || 0,
+    activeWorkOrderId: activeWorkOrder?.id || null,
+    activeWorkOrderStatus: activeWorkOrder?.status || null,
   };
 };
 
@@ -477,8 +483,9 @@ export const listEquipment = async (
   const equipments = rows.map(mapEquipment);
   const fileCountMap = await loadFileCountMap(db, equipments.map((item) => item.id));
   const openEventCountMap = await loadOpenEventCountMap(db, equipments.map((item) => item.id));
+  const activeWorkOrderMap = await listActiveEquipmentWorkOrdersMap(db, equipments.map((item) => item.id));
 
-  let list = equipments.map((item) => enrichEquipment(item, fileCountMap, openEventCountMap));
+  let list = equipments.map((item) => enrichEquipment(item, fileCountMap, openEventCountMap, activeWorkOrderMap));
 
   if (filters.search) {
     const query = normalizeSearch(filters.search);
@@ -561,7 +568,8 @@ export const getEquipmentById = async (db: DbInterface, equipmentId: string): Pr
   const equipment = mapEquipment(row);
   const fileCountMap = await loadFileCountMap(db, [equipment.id]);
   const openEventCountMap = await loadOpenEventCountMap(db, [equipment.id]);
-  return enrichEquipment(equipment, fileCountMap, openEventCountMap);
+  const activeWorkOrderMap = await listActiveEquipmentWorkOrdersMap(db, [equipment.id]);
+  return enrichEquipment(equipment, fileCountMap, openEventCountMap, activeWorkOrderMap);
 };
 
 export const createEquipment = async (db: DbInterface, payload: any): Promise<EquipmentListItem> => {
