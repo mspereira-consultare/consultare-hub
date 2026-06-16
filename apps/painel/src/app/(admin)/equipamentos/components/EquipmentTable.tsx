@@ -56,6 +56,19 @@ export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete, onOp
 
       <div className="max-h-[68vh] overflow-auto">
         <table className="min-w-full text-left text-sm">
+          <colgroup>
+            <col className="w-[140px]" />
+            <col className="w-[120px]" />
+            <col className="w-[300px]" />
+            <col className="w-[190px]" />
+            <col className="w-[190px]" />
+            <col className="w-[170px]" />
+            <col className="w-[170px]" />
+            <col className="w-[160px]" />
+            <col className="w-[170px]" />
+            <col className="w-[240px]" />
+            <col className="w-[260px]" />
+          </colgroup>
           <thead className="sticky top-0 z-10 bg-white">
             <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
               <th className="px-4 py-3">Unidade</th>
@@ -110,30 +123,30 @@ export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete, onOp
                       {item.calibrationStatusLabel}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-slate-700">{item.nextCalibrationDate || '-'}</td>
+                  <td className="px-4 py-4 whitespace-nowrap text-slate-700">{item.nextCalibrationDate || '-'}</td>
                   <td className="px-4 py-4 text-slate-600">{item.calibrationResponsible || '-'}</td>
                   <td className="px-4 py-4">
-                    <div className="inline-flex items-center gap-2 text-slate-500">
+                    <div className="inline-flex items-center gap-2 whitespace-nowrap text-slate-500">
                       <FileText size={14} />
                       <span>{item.fileCount}</span>
                     </div>
-                    <div className="mt-2 inline-flex items-center gap-2 text-slate-500">
+                    <div className="mt-2 inline-flex items-center gap-2 whitespace-nowrap text-slate-500">
                       <Wrench size={14} />
                       <span>{item.openEventsCount} evento(s) abertos</span>
                     </div>
                     {item.activeWorkOrderId ? (
-                      <div className="mt-2 inline-flex items-center gap-2 text-[#17407E]">
+                      <div className="mt-2 inline-flex items-center gap-2 whitespace-nowrap text-[#17407E]">
                         <ClipboardList size={14} />
                         <span>OS ativa: {item.activeWorkOrderStatus === 'EM_ANDAMENTO' ? 'em andamento' : 'aberta'}</span>
                       </div>
                     ) : null}
                   </td>
                   <td className="px-4 py-4 text-right">
-                    <div className="inline-flex items-center gap-2">
+                    <div className="inline-flex items-center gap-2 whitespace-nowrap">
                       <button
                         type="button"
                         onClick={() => onOpenWorkOrders(item)}
-                        className="inline-flex items-center gap-2 rounded-lg border border-blue-200 px-3 py-2 text-sm font-medium text-[#17407E] transition hover:bg-blue-50"
+                        className="inline-flex min-w-[104px] items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-blue-200 px-3 py-2 text-sm font-medium text-[#17407E] transition hover:bg-blue-50"
                       >
                         <ClipboardList size={14} />
                         {item.activeWorkOrderId ? 'Ver OS' : 'Abrir OS'}
@@ -142,7 +155,7 @@ export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete, onOp
                         type="button"
                         onClick={() => onEdit(item)}
                         disabled={!canEdit}
-                        className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                        className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-white disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <Edit3 size={14} />
                         Editar
@@ -151,7 +164,7 @@ export function EquipmentTable({ items, loading, canEdit, onEdit, onDelete, onOp
                         <button
                           type="button"
                           onClick={() => onDelete(item)}
-                          className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50"
+                          className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50"
                         >
                           <Trash2 size={14} />
                           Excluir

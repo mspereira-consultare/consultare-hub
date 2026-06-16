@@ -11,9 +11,8 @@ import {
   FileText,
   Loader2,
   Plus,
-  RefreshCw,
   ShieldCheck,
-  Wrench,
+  RefreshCw,
   X,
 } from 'lucide-react';
 import type {
@@ -428,49 +427,53 @@ export function EquipmentWorkOrdersClient() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-2xl bg-[linear-gradient(135deg,#083A66_0%,#17407E_58%,#2E6B93_100%)] p-6 text-white shadow-sm">
-        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div className="max-w-4xl">
-            <div className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-emerald-200">
-              <Wrench className="h-4 w-4" />
-              Ordens de serviço de equipamentos
+      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="p-6">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="shrink-0 rounded-xl bg-blue-900 p-3 text-white shadow-md">
+                <ClipboardList size={20} />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-xl font-bold text-slate-800">Ordens de serviço</h1>
+                <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-500">
+                  Acompanhe as OS do patrimônio com rastreabilidade da tarefa vinculada, histórico de manutenção e evidências do atendimento.
+                </p>
+              </div>
             </div>
-            <h1 className="mt-3 text-3xl font-semibold">Gestão centralizada das OS do patrimônio</h1>
-            <p className="mt-3 text-sm leading-6 text-blue-50">
-              Abra, acompanhe e encerre OS vinculadas aos equipamentos com rastreabilidade da tarefa, histórico de manutenção e evidências.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Link
-              href="/equipamentos"
-              className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/20"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Voltar para equipamentos
-            </Link>
-            <button
-              type="button"
-              onClick={() => loadList(true)}
-              disabled={refreshing}
-              className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/20 disabled:opacity-60"
-            >
-              {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-              Atualizar
-            </button>
-            <button
-              type="button"
-              onClick={() => openCreate()}
-              disabled={!canManage}
-              className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-[#17407E] transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Plus className="h-4 w-4" />
-              Nova OS
-            </button>
+
+            <div className="flex flex-wrap gap-2 xl:justify-end">
+              <Link
+                href="/equipamentos"
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Voltar para equipamentos
+              </Link>
+              <button
+                type="button"
+                onClick={() => loadList(true)}
+                disabled={refreshing}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+              >
+                {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                Atualizar
+              </button>
+              <button
+                type="button"
+                onClick={() => openCreate()}
+                disabled={!canManage}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#123463] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <Plus className="h-4 w-4" />
+                Nova OS
+              </button>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_360px]">
+      <section className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-3 md:flex-row md:items-center">
             <input
@@ -488,13 +491,13 @@ export function EquipmentWorkOrdersClient() {
           </div>
         </div>
 
-        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-5 shadow-sm">
+        <div className="self-start rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
           <div className="flex items-start gap-3">
             <ShieldCheck className="mt-0.5 h-5 w-5 text-[#17407E]" />
             <div>
               <h2 className="text-sm font-semibold text-[#17407E]">Quem pode criar e gerir OS</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-700">
-                A gestão da OS usa os perfis resolvidos pelo dashboard executivo atual. Hoje os perfis habilitados são:
+              <p className="mt-1 text-sm leading-6 text-slate-700">
+                A gestão usa os perfis resolvidos pelo dashboard executivo atual. Perfis habilitados:
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {options.allowedProfiles.map((profile) => (
@@ -503,6 +506,9 @@ export function EquipmentWorkOrdersClient() {
                   </span>
                 ))}
               </div>
+              <p className="mt-3 text-xs leading-5 text-slate-500">
+                Responsáveis elegíveis são filtrados por esses perfis, mesmo quando o usuário atua pela intranet.
+              </p>
             </div>
           </div>
         </div>

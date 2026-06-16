@@ -432,7 +432,6 @@ export const listEquipmentWorkOrderResponsibleOptions = async (
     .filter(
       (item) =>
         upper(item.status || 'INATIVO') === 'ATIVO' &&
-        item.hasDashboardAccess &&
         ALLOWED_EXECUTIVE_PROFILES.includes(clean(item.profileKey) as EquipmentWorkOrderPermissionProfile),
     )
     .map((item) => ({
