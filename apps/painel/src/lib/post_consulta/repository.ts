@@ -99,6 +99,18 @@ export type PostConsultSummary = {
   executedProposalValue: number;
 };
 
+export type PostConsultViewerPerformance = {
+  hasOperationalMatch: boolean;
+  attendantResponsible: string | null;
+  totalEvents: number;
+  totalClosedEvents: number;
+  conversionRate: number;
+  pendingPatients: number;
+  afterSecondNoClosePatients: number;
+  totalProposals: number;
+  executedProposalValue: number;
+};
+
 export type PostConsultRankingFilters = {
   startDate: string;
   endDate: string;
@@ -131,6 +143,7 @@ export type PostConsultRankingResult = {
 
 export type PostConsultDetailResult = {
   summary: PostConsultSummary;
+  viewerPerformance: PostConsultViewerPerformance;
   rows: PostConsultRow[];
   page: number;
   pageSize: number;
@@ -475,6 +488,15 @@ const readFollowupControlRows = async (db: DbInterface, eventKeys: string[]) => 
 const hasSecondAttempt = (row: PostConsultRow) =>
   Boolean(row.secondContactAt) || row.secondContactClosed === true || row.secondContactClosed === false;
 
+const isPendingContactRow = (row: PostConsultRow) =>
+  !row.effectiveClosed &&
+  !row.firstContactAt &&
+  !row.secondContactAt &&
+  row.firstContactClosed !== true &&
+  row.secondContactClosed !== true;
+
+const isAfterSecondNoCloseRow = (row: PostConsultRow) => !row.effectiveClosed && hasSecondAttempt(row);
+
 const buildAutoClosedByExecution = (proposals: PostConsultProposalItem[]) =>
   proposals.length > 0 && proposals.every((proposal) => isExecutedProposalStatus(proposal.status));
 
@@ -559,10 +581,10 @@ const buildSummary = (rows: PostConsultRow[]): PostConsultSummary => {
     totalProposals += row.proposalCount;
     executedProposalValue += row.executedProposalValue;
     if (row.effectiveClosed) totalClosedEvents += 1;
-    if (!row.effectiveClosed && !row.firstContactAt && !row.secondContactAt && row.firstContactClosed !== true && row.secondContactClosed !== true) {
+    if (isPendingContactRow(row)) {
       pendingPatients.add(row.patientKey);
     }
-    if (!row.effectiveClosed && hasSecondAttempt(row)) {
+    if (isAfterSecondNoCloseRow(row)) {
       afterSecondNoClosePatients.add(row.patientKey);
     }
   }
@@ -575,6 +597,107 @@ const buildSummary = (rows: PostConsultRow[]): PostConsultSummary => {
     pendingPatients: pendingPatients.size,
     afterSecondNoClosePatients: afterSecondNoClosePatients.size,
     executedProposalValue,
+  };
+};
+
+const createEmptyViewerPerformance = (): PostConsultViewerPerformance => ({
+  hasOperationalMatch: false,
+  attendantResponsible: null,
+  totalEvents: 0,
+  totalClosedEvents: 0,
+  conversionRate: 0,
+  pendingPatients: 0,
+  afterSecondNoClosePatients: 0,
+  totalProposals: 0,
+  executedProposalValue: 0,
+});
+
+const buildAttendantPerformanceRows = (rows: PostConsultRow[]): PostConsultRankingRow[] => {
+  const grouped = new Map<
+    string,
+    PostConsultRankingRow & {
+      normalizedKey: string;
+    }
+  >();
+
+  for (const row of rows) {
+    const normalizedKey = normalizeComparableText(row.attendantResponsible) || 'nao informado';
+    const displayName = normalizeString(row.attendantResponsible) || 'Não informado';
+    const current = grouped.get(normalizedKey) || {
+      normalizedKey,
+      attendantResponsible: displayName,
+      totalEvents: 0,
+      totalClosedEvents: 0,
+      conversionRate: 0,
+      pendingPatients: 0,
+      afterSecondNoClosePatients: 0,
+      totalProposals: 0,
+      executedProposalValue: 0,
+    };
+
+    current.totalEvents += 1;
+    current.totalProposals += row.proposalCount;
+    current.executedProposalValue += row.executedProposalValue;
+    if (row.effectiveClosed) current.totalClosedEvents += 1;
+    if (isPendingContactRow(row)) current.pendingPatients += 1;
+    if (isAfterSecondNoCloseRow(row)) current.afterSecondNoClosePatients += 1;
+
+    if (!current.attendantResponsible || current.attendantResponsible === 'Não informado') {
+      current.attendantResponsible = displayName;
+    }
+
+    grouped.set(normalizedKey, current);
+  }
+
+  return Array.from(grouped.values()).map(({ normalizedKey: _normalizedKey, ...row }) => ({
+    ...row,
+    conversionRate: row.totalEvents > 0 ? (row.totalClosedEvents * 100) / row.totalEvents : 0,
+  }));
+};
+
+const sortAttendantPerformanceRows = (rows: PostConsultRankingRow[]) =>
+  [...rows].sort((left, right) => {
+    if (right.conversionRate !== left.conversionRate) return right.conversionRate - left.conversionRate;
+    if (right.totalClosedEvents !== left.totalClosedEvents) return right.totalClosedEvents - left.totalClosedEvents;
+    if (right.executedProposalValue !== left.executedProposalValue) return right.executedProposalValue - left.executedProposalValue;
+    return left.attendantResponsible.localeCompare(right.attendantResponsible, 'pt-BR');
+  });
+
+const buildAttendantPerformanceSummary = (rows: PostConsultRankingRow[]): PostConsultRankingSummary => {
+  const summary: PostConsultRankingSummary = {
+    totalAttendants: rows.length,
+    totalEvents: rows.reduce((total, row) => total + row.totalEvents, 0),
+    totalClosedEvents: rows.reduce((total, row) => total + row.totalClosedEvents, 0),
+    conversionRate: 0,
+    executedProposalValue: rows.reduce((total, row) => total + row.executedProposalValue, 0),
+  };
+  summary.conversionRate = summary.totalEvents > 0 ? (summary.totalClosedEvents * 100) / summary.totalEvents : 0;
+  return summary;
+};
+
+const buildViewerPerformance = (
+  rows: PostConsultRow[],
+  viewerUserName?: string | null,
+): PostConsultViewerPerformance => {
+  const normalizedViewerName = normalizeComparableText(viewerUserName);
+  if (!normalizedViewerName) return createEmptyViewerPerformance();
+
+  const performanceRows = buildAttendantPerformanceRows(rows);
+  const matched = performanceRows.find(
+    (row) => normalizeComparableText(row.attendantResponsible) === normalizedViewerName,
+  );
+  if (!matched) return createEmptyViewerPerformance();
+
+  return {
+    hasOperationalMatch: true,
+    attendantResponsible: matched.attendantResponsible,
+    totalEvents: matched.totalEvents,
+    totalClosedEvents: matched.totalClosedEvents,
+    conversionRate: matched.conversionRate,
+    pendingPatients: matched.pendingPatients,
+    afterSecondNoClosePatients: matched.afterSecondNoClosePatients,
+    totalProposals: matched.totalProposals,
+    executedProposalValue: matched.executedProposalValue,
   };
 };
 
@@ -924,10 +1047,18 @@ export const listPostConsultExportRows = async (
 export const listPostConsultDetails = async (
   filters: PostConsultFilters,
   db: DbInterface = getDbConnection(),
+  viewerUserName?: string | null,
 ): Promise<PostConsultDetailResult> => {
   const baseRows = await buildLinkedRows(filters, db);
+  const viewerRows = sortRows(
+    applyFilters(baseRows, {
+      ...filters,
+      responsible: 'all',
+    }),
+  );
   const filteredRows = sortRows(applyFilters(baseRows, filters));
   const summary = buildSummary(filteredRows);
+  const viewerPerformance = buildViewerPerformance(viewerRows, viewerUserName);
   const totalRows = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(totalRows / filters.pageSize));
   const safePage = clamp(filters.page, 1, totalPages);
@@ -935,6 +1066,7 @@ export const listPostConsultDetails = async (
 
   return {
     summary,
+    viewerPerformance,
     rows: filteredRows.slice(offset, offset + filters.pageSize),
     page: safePage,
     pageSize: filters.pageSize,
@@ -960,55 +1092,8 @@ export const listPostConsultRanking = async (
 ): Promise<PostConsultRankingResult> => {
   const baseFilters = createPostConsultFiltersFromRanking(filters);
   const rows = sortRows(applyFilters(await buildLinkedRows(baseFilters, db), baseFilters));
-  const grouped = new Map<string, PostConsultRankingRow>();
-
-  for (const row of rows) {
-    const key = normalizeString(row.attendantResponsible) || 'Não informado';
-    const current = grouped.get(key) || {
-      attendantResponsible: key,
-      totalEvents: 0,
-      totalClosedEvents: 0,
-      conversionRate: 0,
-      pendingPatients: 0,
-      afterSecondNoClosePatients: 0,
-      totalProposals: 0,
-      executedProposalValue: 0,
-    };
-
-    current.totalEvents += 1;
-    current.totalProposals += row.proposalCount;
-    current.executedProposalValue += row.executedProposalValue;
-    if (row.effectiveClosed) current.totalClosedEvents += 1;
-    if (!row.effectiveClosed && !row.firstContactAt && !row.secondContactAt && row.firstContactClosed !== true && row.secondContactClosed !== true) {
-      current.pendingPatients += 1;
-    }
-    if (!row.effectiveClosed && hasSecondAttempt(row)) {
-      current.afterSecondNoClosePatients += 1;
-    }
-
-    grouped.set(key, current);
-  }
-
-  const rankingRows = Array.from(grouped.values())
-    .map((row) => ({
-      ...row,
-      conversionRate: row.totalEvents > 0 ? (row.totalClosedEvents * 100) / row.totalEvents : 0,
-    }))
-    .sort((left, right) => {
-      if (right.conversionRate !== left.conversionRate) return right.conversionRate - left.conversionRate;
-      if (right.totalClosedEvents !== left.totalClosedEvents) return right.totalClosedEvents - left.totalClosedEvents;
-      if (right.executedProposalValue !== left.executedProposalValue) return right.executedProposalValue - left.executedProposalValue;
-      return left.attendantResponsible.localeCompare(right.attendantResponsible, 'pt-BR');
-    });
-
-  const summary: PostConsultRankingSummary = {
-    totalAttendants: rankingRows.length,
-    totalEvents: rankingRows.reduce((total, row) => total + row.totalEvents, 0),
-    totalClosedEvents: rankingRows.reduce((total, row) => total + row.totalClosedEvents, 0),
-    conversionRate: 0,
-    executedProposalValue: rankingRows.reduce((total, row) => total + row.executedProposalValue, 0),
-  };
-  summary.conversionRate = summary.totalEvents > 0 ? (summary.totalClosedEvents * 100) / summary.totalEvents : 0;
+  const rankingRows = sortAttendantPerformanceRows(buildAttendantPerformanceRows(rows));
+  const summary = buildAttendantPerformanceSummary(rankingRows);
 
   return {
     summary,

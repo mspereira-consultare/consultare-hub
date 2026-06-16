@@ -26,6 +26,17 @@ const EMPTY_DETAIL_DATA: PostConsultDetailResponse = {
     afterSecondNoClosePatients: 0,
     executedProposalValue: 0,
   },
+  viewerPerformance: {
+    hasOperationalMatch: false,
+    attendantResponsible: null,
+    totalEvents: 0,
+    totalClosedEvents: 0,
+    conversionRate: 0,
+    pendingPatients: 0,
+    afterSecondNoClosePatients: 0,
+    totalProposals: 0,
+    executedProposalValue: 0,
+  },
   rows: [],
   page: 1,
   pageSize: 25,
@@ -51,16 +62,28 @@ const getSaoPauloToday = () =>
     day: '2-digit',
   }).format(new Date());
 
-const getSaoPauloMonthStart = () =>
-  new Intl.DateTimeFormat('en-CA', {
+const getSaoPauloWeekStart = () => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'America/Sao_Paulo',
     year: 'numeric',
     month: '2-digit',
-  }).format(new Date()).concat('-01');
+    day: '2-digit',
+  });
+  const now = new Date();
+  const parts = formatter.formatToParts(now);
+  const year = Number(parts.find((part) => part.type === 'year')?.value || 0);
+  const month = Number(parts.find((part) => part.type === 'month')?.value || 1);
+  const day = Number(parts.find((part) => part.type === 'day')?.value || 1);
+  const localMidday = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const dayOfWeek = localMidday.getUTCDay();
+  const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  localMidday.setUTCDate(localMidday.getUTCDate() + diffToMonday);
+  return formatter.format(localMidday);
+};
 
 const getDefaultDateRange = () => {
   return {
-    start: getSaoPauloMonthStart(),
+    start: getSaoPauloWeekStart(),
     end: getSaoPauloToday(),
   };
 };

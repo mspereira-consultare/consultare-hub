@@ -50,8 +50,21 @@ export type PostConsultSummary = {
   executedProposalValue: number;
 };
 
+export type PostConsultViewerPerformance = {
+  hasOperationalMatch: boolean;
+  attendantResponsible: string | null;
+  totalEvents: number;
+  totalClosedEvents: number;
+  conversionRate: number;
+  pendingPatients: number;
+  afterSecondNoClosePatients: number;
+  totalProposals: number;
+  executedProposalValue: number;
+};
+
 export type PostConsultDetailResponse = {
   summary: PostConsultSummary;
+  viewerPerformance: PostConsultViewerPerformance;
   rows: PostConsultRow[];
   page: number;
   pageSize: number;

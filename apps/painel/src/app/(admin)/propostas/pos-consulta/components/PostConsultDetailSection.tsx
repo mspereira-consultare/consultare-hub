@@ -17,6 +17,7 @@ type Props = {
 export function PostConsultDetailSection({ detailData, loading, canEdit, nonClosureReasons, onChangePage, onRowSaved }: Props) {
   const fromRow = detailData.totalRows === 0 ? 0 : (detailData.page - 1) * detailData.pageSize + 1;
   const toRow = Math.min(detailData.totalRows, detailData.page * detailData.pageSize);
+  const viewerPerformance = detailData.viewerPerformance;
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -34,6 +35,56 @@ export function PostConsultDetailSection({ detailData, loading, canEdit, nonClos
       </div>
 
       <div className="p-5">
+        <div className="mb-4">
+          {viewerPerformance.hasOperationalMatch ? (
+            <div className="rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 via-white to-cyan-50 px-5 py-4 shadow-sm">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-blue-700">
+                    Meu desempenho no pós-consulta
+                  </p>
+                  <h3 className="mt-2 text-3xl font-bold text-slate-900">
+                    {formatPercent(viewerPerformance.conversionRate)}
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {viewerPerformance.totalClosedEvents} fechamento(s) em {viewerPerformance.totalEvents} atendimento(s) no recorte atual.
+                  </p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Atendente operacional vinculado: {viewerPerformance.attendantResponsible}
+                  </p>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-blue-100 bg-white/80 px-4 py-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Pendentes</p>
+                    <p className="mt-1 text-xl font-bold text-slate-800">{viewerPerformance.pendingPatients}</p>
+                  </div>
+                  <div className="rounded-xl border border-blue-100 bg-white/80 px-4 py-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Sem fechamento após 2º contato</p>
+                    <p className="mt-1 text-xl font-bold text-slate-800">{viewerPerformance.afterSecondNoClosePatients}</p>
+                  </div>
+                  <div className="rounded-xl border border-blue-100 bg-white/80 px-4 py-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Valor executado</p>
+                    <p className="mt-1 text-xl font-bold text-slate-800">{formatCurrency(viewerPerformance.executedProposalValue)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+                Meu desempenho no pós-consulta
+              </p>
+              <p className="mt-2 text-sm font-medium text-slate-700">
+                Ainda não encontramos um vínculo operacional do seu usuário com o atendente responsável neste recorte.
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                O indicador é calculado pela mesma base do ranking, comparando seu nome de usuário com o `usuario_da_conta` do faturamento.
+              </p>
+            </div>
+          )}
+        </div>
+
         <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-6">
           <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Total de propostas</p>

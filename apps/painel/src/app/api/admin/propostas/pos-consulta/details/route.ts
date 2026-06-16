@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url);
     const filters = normalizePostConsultFilters(searchParams);
-    const details = await listPostConsultDetails(filters, auth.db);
+    const details = await listPostConsultDetails(filters, auth.db, auth.userName);
 
     return NextResponse.json({
       status: 'success',
