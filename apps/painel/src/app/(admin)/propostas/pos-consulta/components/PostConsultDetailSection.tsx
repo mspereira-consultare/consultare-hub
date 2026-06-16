@@ -76,10 +76,10 @@ export function PostConsultDetailSection({ detailData, loading, canEdit, nonClos
                 Meu desempenho no pós-consulta
               </p>
               <p className="mt-2 text-sm font-medium text-slate-700">
-                Ainda não encontramos um vínculo operacional do seu usuário com o atendente responsável neste recorte.
+                Você ainda não possui atendimentos vinculados ao seu nome neste período.
               </p>
               <p className="mt-1 text-xs text-slate-500">
-                O indicador é calculado pela mesma base do ranking, comparando seu nome de usuário com o `usuario_da_conta` do faturamento.
+                Assim que houver registros no pós-consulta, seu desempenho aparecerá aqui.
               </p>
             </div>
           )}
