@@ -100,6 +100,12 @@ type TaskFormState = {
   approverUserId: string;
 };
 
+type TaskProjectOption = {
+  value: string;
+  label: string;
+  isOwner: boolean;
+};
+
 const KANBAN_COLUMNS: Array<{ key: TaskStatus; label: string; description: string }> = [
   { key: 'BACKLOG', label: 'Backlog', description: 'Entradas e ideias pendentes de triagem.' },
   { key: 'A_FAZER', label: 'A fazer', description: 'Itens priorizados e prontos para iniciar.' },
@@ -215,6 +221,18 @@ const normalizeProjectStructureError = (message: string) => {
   if (normalized.includes('depender dela mesma')) return 'Uma tarefa não pode ser predecessora dela mesma.';
   if (normalized.includes('data de inicio e prazo') || normalized.includes('inicio e prazo definidos')) {
     return 'Defina início e prazo nas tarefas envolvidas antes de configurar o cronograma.';
+  }
+  if (normalized.includes('voce so pode vincular ao projeto tarefas criadas por voce')) {
+    return 'Você só pode vincular ao projeto tarefas criadas por você.';
+  }
+  if (normalized.includes('voce so pode remover do projeto tarefas criadas por voce')) {
+    return 'Você só pode remover do projeto tarefas criadas por você.';
+  }
+  if (normalized.includes('voce nao participa deste projeto')) {
+    return 'Você não participa deste projeto.';
+  }
+  if (normalized.includes('voce so pode ajustar o cronograma de projeto em tarefas criadas por voce')) {
+    return 'Somente o owner do projeto, a gerência ou o criador da tarefa podem ajustar este cronograma.';
   }
   if (normalized.includes('apenas o criador do projeto') || normalized.includes('nao pode editar este cronograma')) {
     return 'Somente o criador do projeto pode alterar a estrutura do cronograma.';
@@ -1408,6 +1426,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       projects.map((project) => ({
         value: project.id,
         label: project.status === 'CONCLUIDO' ? `${project.name} · Concluído` : project.name,
+        isOwner: project.isOwner,
       })),
     [projects]
   );
@@ -2447,7 +2466,7 @@ function TaskModal({
   saving: boolean;
   users: Array<TaskUserOption & { label: string }>;
   departmentOptions: string[];
-  projectOptions: Array<{ value: string; label: string }>;
+  projectOptions: TaskProjectOption[];
   checklistItems: DraftChecklistItem[];
   onChecklistChange: (items: DraftChecklistItem[]) => void;
   form: TaskFormState;
@@ -2823,7 +2842,7 @@ function TaskDetailModal({
   loading: boolean;
   users: Array<TaskUserOption & { label: string }>;
   departmentOptions: string[];
-  projectOptions: Array<{ value: string; label: string }>;
+  projectOptions: TaskProjectOption[];
   form: TaskFormState;
   onFormChange: (next: TaskFormState) => void;
   files: File[];
@@ -2875,6 +2894,16 @@ function TaskDetailModal({
   const canCreateDependency = Boolean(
     canManageProjectStructure && selectedDependencyId && hasCurrentTaskSchedule && selectedDependencyOption?.hasSchedule
   );
+  const hasOwnedProjectOption = projectOptions.some((project) => project.isOwner);
+  const canMutateProjectLinkOrSchedule =
+    task.createdBy === currentUserId
+    || Boolean(projectContext?.isOwner)
+    || (!task.projectId && hasOwnedProjectOption);
+  const projectFieldDisabled = !canMutateProjectLinkOrSchedule;
+  const projectScheduleDisabled = Boolean(task.projectId || form.projectId) && !canMutateProjectLinkOrSchedule;
+  const showProjectVisibilityNotice = requiresProjectSchedule && canMutateProjectLinkOrSchedule;
+  const showProjectPermissionHint =
+    !canMutateProjectLinkOrSchedule && (Boolean(task.projectId) || !hasOwnedProjectOption);
 
   useEffect(() => {
     setSelectedDependencyId('');
@@ -2937,6 +2966,7 @@ function TaskDetailModal({
                     label="Projeto"
                     value={form.projectId}
                     onChange={(value) => onFormChange({ ...form, projectId: value })}
+                    disabled={projectFieldDisabled}
                     options={[{ value: '', label: 'Tarefa avulsa' }, ...projectOptions]}
                   />
                   <FieldSelect
@@ -2945,12 +2975,17 @@ function TaskDetailModal({
                     onChange={(value) => onFormChange({ ...form, status: value as TaskStatus })}
                     options={STATUS_OPTIONS.filter((item) => item.value !== 'ARQUIVADA' && item.value !== 'CANCELADA')}
                   />
-                  <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} />
-                  <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} />
+                  <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} disabled={projectScheduleDisabled} />
+                  <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} disabled={projectScheduleDisabled} />
                 </div>
-                {requiresProjectSchedule ? (
+                {showProjectVisibilityNotice ? (
                   <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-[#17407E]">
-                    Esta tarefa integra um projeto. O cronograma Gantt depende de início e prazo válidos.
+                    Esta tarefa ficará visível para todos os membros do projeto. O cronograma Gantt depende de início e prazo válidos.
+                  </div>
+                ) : null}
+                {showProjectPermissionHint ? (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Apenas o owner do projeto, a gerência ou o criador da tarefa podem reorganizar o vínculo desta entrega com o cronograma.
                   </div>
                 ) : null}
                 </TaskSectionCard>
@@ -4748,17 +4783,24 @@ function FieldSelect({
   label,
   value,
   onChange,
+  disabled,
   options,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  disabled?: boolean;
   options: Array<{ value: string; label: string }>;
 }) {
   return (
     <div>
       <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
-      <select value={value} onChange={(event) => onChange(event.target.value)} className={inputClassName}>
+      <select
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        disabled={disabled}
+        className={`${inputClassName} disabled:bg-slate-50 disabled:text-slate-400`}
+      >
         {options.map((option) => (
           <option key={option.value || option.label} value={option.value}>
             {option.label}

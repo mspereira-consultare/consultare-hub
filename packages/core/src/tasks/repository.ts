@@ -264,6 +264,61 @@ const ensureCanManageProject = async (db: DbInterface, projectId: string, actorU
   }
 };
 
+type TaskProjectLinkPermissionScope = 'ADMIN' | 'OWNER' | 'MEMBER_SELF';
+
+const resolveTaskProjectLinkPermissionScope = async (
+  db: DbInterface,
+  projectId: string,
+  taskCreatedBy: string,
+  actorUserId: string,
+  viewer: TaskViewerContext
+): Promise<TaskProjectLinkPermissionScope | null> => {
+  if (viewer.canViewAll) return 'ADMIN';
+  if (!(await canViewerAccessProject(db, projectId, viewer))) {
+    return null;
+  }
+  if (await canManageProject(db, projectId, actorUserId, viewer)) {
+    return 'OWNER';
+  }
+  if (clean(taskCreatedBy) === actorUserId) {
+    return 'MEMBER_SELF';
+  }
+  return null;
+};
+
+const ensureCanMutateTaskProjectLink = async (
+  db: DbInterface,
+  {
+    projectId,
+    taskCreatedBy,
+    actorUserId,
+    viewer,
+    action,
+  }: {
+    projectId: string;
+    taskCreatedBy: string;
+    actorUserId: string;
+    viewer: TaskViewerContext;
+    action: 'link' | 'unlink' | 'schedule';
+  }
+): Promise<TaskProjectLinkPermissionScope> => {
+  const scope = await resolveTaskProjectLinkPermissionScope(db, projectId, taskCreatedBy, actorUserId, viewer);
+  if (scope) return scope;
+  if (!(await canViewerAccessProject(db, projectId, viewer))) {
+    throw new TaskValidationError('Você não participa deste projeto.', 403);
+  }
+  if (action === 'link') {
+    throw new TaskValidationError('Você só pode vincular ao projeto tarefas criadas por você.', 403);
+  }
+  if (action === 'unlink') {
+    throw new TaskValidationError('Você só pode remover do projeto tarefas criadas por você.', 403);
+  }
+  throw new TaskValidationError(
+    'Você só pode ajustar o cronograma de projeto em tarefas criadas por você.',
+    403
+  );
+};
+
 const validateProjectTaskDates = (startDate: string | null, dueDate: string | null) => {
   if (!startDate || !dueDate) {
     throw new TaskValidationError('Tarefas de projeto precisam de data de início e prazo definidos.');
@@ -1182,13 +1237,16 @@ export const createTask = async (db: DbInterface, input: TaskCreateInput, actorU
   await ensureUserIsActive(db, actorUserId);
   for (const userId of assigneeIds) await ensureUserIsActive(db, userId);
   if (approverUserId) await ensureUserIsActive(db, approverUserId);
+  let projectLinkPermissionScope: TaskProjectLinkPermissionScope | null = null;
   if (projectId) {
     validateProjectTaskDates(startDate, dueDate);
-    await ensureViewerCanAccessProject(db, projectId, { userId: actorUserId, canViewAll: false });
-    const canManage = await canManageProject(db, projectId, actorUserId, { userId: actorUserId, canViewAll: false });
-    if (!canManage) {
-      throw new TaskValidationError('Apenas o criador do projeto pode vincular novas tarefas a ele.', 403);
-    }
+    projectLinkPermissionScope = await ensureCanMutateTaskProjectLink(db, {
+      projectId,
+      taskCreatedBy: actorUserId,
+      actorUserId,
+      viewer: { userId: actorUserId, canViewAll: false },
+      action: 'link',
+    });
   }
   if (status === 'AGUARDANDO_APROVACAO' && !approverUserId) {
     throw new TaskValidationError('Defina um aprovador antes de enviar para aprovação.');
@@ -1241,6 +1299,14 @@ export const createTask = async (db: DbInterface, input: TaskCreateInput, actorU
       primaryAssigneeUserId,
       approverUserId,
     });
+    if (projectId) {
+      await insertActivity(txDb, taskId, 'TASK_PROJECT_LINKED', actorUserId, {
+        previousProjectId: null,
+        nextProjectId: projectId,
+        actorUserId,
+        actorPermissionScope: projectLinkPermissionScope,
+      });
+    }
     const task = await getTaskById(txDb, taskId, { userId: actorUserId, canViewAll: true });
     const collaboratorRecipients = task.assignees
       .filter((assignee) => assignee.roleType === 'COLLABORATOR')
@@ -1363,17 +1429,42 @@ export const updateTask = async (
     if (!nextTitle) throw new TaskValidationError('Título obrigatório.');
     if (!nextDepartment) throw new TaskValidationError('Setor obrigatório.');
 
-    const projectStructureTouched =
-      currentProjectId !== nextProjectId ||
+    const projectLinkChanged = currentProjectId !== nextProjectId;
+    const projectScheduleChanged =
       parseDate(current.start_date) !== nextStartDate ||
       parseDate(current.due_date) !== nextDueDate;
+    let projectLinkPermissionScope: TaskProjectLinkPermissionScope | null = null;
 
-    if (projectStructureTouched && (currentProjectId || nextProjectId)) {
-      const targetProjectId = nextProjectId || currentProjectId;
-      if (targetProjectId) {
-        await ensureViewerCanAccessProject(txDb, targetProjectId, viewer);
-        await ensureCanManageProject(txDb, targetProjectId, actorUserId, viewer);
-      }
+    if (projectLinkChanged && currentProjectId && nextProjectId) {
+      await ensureViewerCanAccessProject(txDb, currentProjectId, viewer);
+      await ensureViewerCanAccessProject(txDb, nextProjectId, viewer);
+      await ensureCanManageProject(txDb, currentProjectId, actorUserId, viewer);
+      await ensureCanManageProject(txDb, nextProjectId, actorUserId, viewer);
+      projectLinkPermissionScope = viewer.canViewAll ? 'ADMIN' : 'OWNER';
+    } else if (projectLinkChanged && nextProjectId) {
+      projectLinkPermissionScope = await ensureCanMutateTaskProjectLink(txDb, {
+        projectId: nextProjectId,
+        taskCreatedBy: clean(current.created_by),
+        actorUserId,
+        viewer,
+        action: 'link',
+      });
+    } else if (projectLinkChanged && currentProjectId) {
+      projectLinkPermissionScope = await ensureCanMutateTaskProjectLink(txDb, {
+        projectId: currentProjectId,
+        taskCreatedBy: clean(current.created_by),
+        actorUserId,
+        viewer,
+        action: 'unlink',
+      });
+    } else if (projectScheduleChanged && currentProjectId) {
+      projectLinkPermissionScope = await ensureCanMutateTaskProjectLink(txDb, {
+        projectId: currentProjectId,
+        taskCreatedBy: clean(current.created_by),
+        actorUserId,
+        viewer,
+        action: 'schedule',
+      });
     }
 
     if (nextProjectId) {
@@ -1464,6 +1555,20 @@ export const updateTask = async (
       previousOperationalStatus: nextPreviousOperationalStatus,
       projectId: nextProjectId,
     });
+    if (projectLinkChanged) {
+      const projectLinkAction =
+        currentProjectId && nextProjectId
+          ? 'TASK_PROJECT_TRANSFERRED'
+          : nextProjectId
+            ? 'TASK_PROJECT_LINKED'
+            : 'TASK_PROJECT_UNLINKED';
+      await insertActivity(txDb, cleanTaskId, projectLinkAction, actorUserId, {
+        previousProjectId: currentProjectId,
+        nextProjectId,
+        actorUserId,
+        actorPermissionScope: projectLinkPermissionScope,
+      });
+    }
     const task = await getTaskById(txDb, cleanTaskId, { userId: actorUserId, canViewAll: true });
     const previousAssigneeIds = new Set((previousAssigneeRows as Row[]).map((row) => clean(row.user_id)).filter(Boolean));
     const previousPrimaryAssigneeUserId = nullable(current.primary_assignee_user_id);
