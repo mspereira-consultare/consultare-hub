@@ -9,6 +9,7 @@ import { EquipmentFiltersBar } from './components/EquipmentFiltersBar';
 import { EquipmentFormModal } from './components/EquipmentFormModal';
 import { EquipmentSummaryCards } from './components/EquipmentSummaryCards';
 import { EquipmentTable } from './components/EquipmentTable';
+import { EquipmentWorkOrdersClient } from './os/work-orders-client';
 
 type SelectOption = { value: string; label: string };
 
@@ -69,6 +70,21 @@ const normalizeError = async (res: Response) => {
     return `Falha HTTP ${res.status}`;
   }
 };
+const EQUIPMENT_WORK_ORDERS_SECTION_ID = 'ordens-servico';
+
+const buildWorkOrdersPath = ({
+  osId,
+  equipmentId,
+}: {
+  osId?: string | null;
+  equipmentId?: string | null;
+}) => {
+  const params = new URLSearchParams();
+  if (osId) params.set('osId', osId);
+  if (equipmentId) params.set('equipmentId', equipmentId);
+  const query = params.toString();
+  return `/equipamentos${query ? `?${query}` : ''}#${EQUIPMENT_WORK_ORDERS_SECTION_ID}`;
+};
 
 export default function EquipamentosPage() {
   const { data: session } = useSession();
@@ -99,6 +115,13 @@ export default function EquipamentosPage() {
   const canView = hasPermission(permissions, 'equipamentos', 'view', role);
   const canEdit = hasPermission(permissions, 'equipamentos', 'edit', role);
   const canRefresh = hasPermission(permissions, 'equipamentos', 'refresh', role);
+
+  const scrollToWorkOrders = useCallback(() => {
+    const section = document.getElementById(EQUIPMENT_WORK_ORDERS_SECTION_ID);
+    if (!section) return;
+    window.history.replaceState({}, '', `#${EQUIPMENT_WORK_ORDERS_SECTION_ID}`);
+    section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
 
   const loadOptions = useCallback(async () => {
     try {
@@ -162,6 +185,21 @@ export default function EquipamentosPage() {
       setPage(totalPages);
     }
   }, [page, totalPages]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const search = new URLSearchParams(window.location.search);
+    const shouldScroll =
+      window.location.hash === `#${EQUIPMENT_WORK_ORDERS_SECTION_ID}` || !!search.get('osId') || !!search.get('equipmentId');
+    if (!shouldScroll) return;
+
+    const timeoutId = window.setTimeout(() => {
+      const section = document.getElementById(EQUIPMENT_WORK_ORDERS_SECTION_ID);
+      section?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+
+    return () => window.clearTimeout(timeoutId);
+  }, []);
 
   const openCreate = () => {
     setModalMode('create');
@@ -255,7 +293,7 @@ export default function EquipamentosPage() {
             <div className="flex flex-nowrap gap-2 overflow-x-auto xl:justify-end">
               <button
                 type="button"
-                onClick={() => window.location.assign('/equipamentos/os')}
+                onClick={scrollToWorkOrders}
                 className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-medium text-[#17407E] transition hover:bg-blue-50"
               >
                 <ClipboardList size={16} />
@@ -324,7 +362,11 @@ export default function EquipamentosPage() {
         onEdit={openEdit}
         onDelete={handleDelete}
         onOpenWorkOrders={(item) =>
-          window.location.assign(`/equipamentos/os?${new URLSearchParams({ equipmentId: item.id }).toString()}`)
+          window.location.assign(
+            item.activeWorkOrderId
+              ? buildWorkOrdersPath({ osId: item.activeWorkOrderId })
+              : buildWorkOrdersPath({ equipmentId: item.id }),
+          )
         }
       />
 
@@ -350,6 +392,8 @@ export default function EquipamentosPage() {
           </button>
         </div>
       </div>
+
+      <EquipmentWorkOrdersClient embedded sectionId={EQUIPMENT_WORK_ORDERS_SECTION_ID} />
 
       <EquipmentFormModal
         open={modalOpen}

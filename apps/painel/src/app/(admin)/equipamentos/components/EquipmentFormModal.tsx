@@ -78,6 +78,21 @@ type ModalTab = 'cadastro' | 'calibracao' | 'manutencao' | 'arquivos' | 'os';
 const inputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-slate-300 focus:ring-2 focus:ring-slate-200';
 const labelClassName = 'mb-1 block text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500';
+const EQUIPMENT_WORK_ORDERS_SECTION_ID = 'ordens-servico';
+
+const buildWorkOrdersPath = ({
+  osId,
+  equipmentId,
+}: {
+  osId?: string | null;
+  equipmentId?: string | null;
+}) => {
+  const params = new URLSearchParams();
+  if (osId) params.set('osId', osId);
+  if (equipmentId) params.set('equipmentId', equipmentId);
+  const query = params.toString();
+  return `/equipamentos${query ? `?${query}` : ''}#${EQUIPMENT_WORK_ORDERS_SECTION_ID}`;
+};
 const sectionClassName = 'rounded-xl border border-slate-200 bg-slate-50/70 p-4';
 
 const emptyForm = (options: EquipmentOptionsPayload): EquipmentFormState => ({
@@ -686,16 +701,16 @@ export function EquipmentFormModal({
                   <div>
                     <h2 className="text-lg font-semibold text-slate-900">Ordens de serviço do equipamento</h2>
                     <p className="mt-1 text-sm text-slate-500">
-                      A gestão principal da OS fica na tela dedicada, mas o histórico do equipamento aparece aqui para contexto rápido.
+                      A gestão principal da OS agora fica na própria página de equipamentos, e este histórico ajuda na conferência rápida.
                     </p>
                   </div>
                   <button
                     type="button"
-                    onClick={() => window.location.assign(`/equipamentos/os?${new URLSearchParams({ equipmentId: equipmentId! }).toString()}`)}
+                    onClick={() => window.location.assign(buildWorkOrdersPath({ equipmentId: equipmentId! }))}
                     className="inline-flex items-center gap-2 rounded-xl border border-blue-200 px-4 py-2.5 text-sm font-medium text-[#17407E] transition hover:bg-blue-50"
                   >
                     <ClipboardList size={16} />
-                    Abrir gestão de OS
+                    Ir para a seção de OS
                     <ExternalLink size={14} />
                   </button>
                 </div>
@@ -722,7 +737,7 @@ export function EquipmentFormModal({
                             </span>
                             <button
                               type="button"
-                              onClick={() => window.location.assign(`/equipamentos/os?${new URLSearchParams({ osId: item.id }).toString()}`)}
+                              onClick={() => window.location.assign(buildWorkOrdersPath({ osId: item.id }))}
                               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
                             >
                               Ver OS

@@ -3,10 +3,9 @@
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
-  ArrowLeft,
   ClipboardList,
   ExternalLink,
   FileText,
@@ -77,6 +76,7 @@ type WorkOrderFormState = {
 
 const inputClassName =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100';
+const EQUIPMENT_WORK_ORDERS_SECTION_ID = 'ordens-servico';
 
 const emptyForm = (): WorkOrderFormState => ({
   equipmentId: '',
@@ -153,9 +153,15 @@ const workOrderToForm = (item: EquipmentWorkOrderDetail): WorkOrderFormState => 
   closingOperationalStatus: item.closingOperationalStatus || 'ATIVO',
 });
 
-export function EquipmentWorkOrdersClient() {
-  const router = useRouter();
+export function EquipmentWorkOrdersClient({
+  embedded = false,
+  sectionId = EQUIPMENT_WORK_ORDERS_SECTION_ID,
+}: {
+  embedded?: boolean;
+  sectionId?: string;
+}) {
   const searchParams = useSearchParams();
+  const sectionRef = useRef<HTMLElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const hasBootstrappedRef = useRef(false);
   const initialEquipmentId = searchParams.get('equipmentId') || '';
@@ -196,6 +202,15 @@ export function EquipmentWorkOrdersClient() {
   );
 
   const selectedEquipment = equipmentOptions.find((item) => item.id === form.equipmentId) || null;
+
+  const clearDeepLinkParams = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    url.searchParams.delete('equipmentId');
+    url.searchParams.delete('osId');
+    url.hash = `#${sectionId}`;
+    window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [sectionId]);
 
   const loadList = useCallback(async (force = false) => {
     try {
@@ -283,6 +298,18 @@ export function EquipmentWorkOrdersClient() {
   }, [initialEquipmentId, loadWorkOrderDetail, loading, queryHandled, requestedWorkOrderId]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!sectionRef.current) return;
+    if (!(requestedWorkOrderId || initialEquipmentId || window.location.hash === `#${sectionId}`)) return;
+
+    const timeoutId = window.setTimeout(() => {
+      sectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 80);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [initialEquipmentId, requestedWorkOrderId, sectionId]);
+
+  useEffect(() => {
     if (!hasBootstrappedRef.current) return;
     const timeoutId = window.setTimeout(() => {
       void loadList(true);
@@ -359,7 +386,7 @@ export function EquipmentWorkOrdersClient() {
     setForm(emptyForm());
     setUploadNotes('');
     if (searchParams.get('equipmentId') || searchParams.get('osId')) {
-      router.replace('/equipamentos/os');
+      clearDeepLinkParams();
     }
   };
 
@@ -438,35 +465,28 @@ export function EquipmentWorkOrdersClient() {
   };
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="p-6">
-          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+    <section ref={sectionRef} id={sectionId} className="space-y-6 scroll-mt-24">
+      {embedded ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <div className="shrink-0 rounded-xl bg-blue-900 p-3 text-white shadow-md">
                 <ClipboardList size={20} />
               </div>
               <div className="min-w-0">
-                <h1 className="text-xl font-bold text-slate-800">Ordens de serviço</h1>
-                <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-500">
-                  Acompanhe as OS do patrimônio com rastreabilidade da tarefa vinculada, histórico de manutenção e evidências do atendimento.
+                <h2 className="text-xl font-bold text-slate-800">Ordens de serviço</h2>
+                <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-500">
+                  Gestão embutida das OS do patrimônio, com rastreabilidade da tarefa vinculada, histórico de manutenção e evidências do atendimento.
                 </p>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2 xl:justify-end">
-              <Link
-                href="/equipamentos"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Voltar para equipamentos
-              </Link>
+            <div className="flex flex-nowrap gap-2 overflow-x-auto lg:justify-end">
               <button
                 type="button"
                 onClick={() => loadList(true)}
                 disabled={refreshing}
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
               >
                 {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                 Atualizar
@@ -475,7 +495,7 @@ export function EquipmentWorkOrdersClient() {
                 type="button"
                 onClick={() => openCreate()}
                 disabled={!canManage}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#123463] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#123463] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <Plus className="h-4 w-4" />
                 Nova OS
@@ -483,7 +503,46 @@ export function EquipmentWorkOrdersClient() {
             </div>
           </div>
         </div>
-      </section>
+      ) : (
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="p-6">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="shrink-0 rounded-xl bg-blue-900 p-3 text-white shadow-md">
+                  <ClipboardList size={20} />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="text-xl font-bold text-slate-800">Ordens de serviço</h1>
+                  <p className="mt-1 max-w-4xl text-xs leading-5 text-slate-500">
+                    Acompanhe as OS do patrimônio com rastreabilidade da tarefa vinculada, histórico de manutenção e evidências do atendimento.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 xl:justify-end">
+                <button
+                  type="button"
+                  onClick={() => loadList(true)}
+                  disabled={refreshing}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:opacity-60"
+                >
+                  {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+                  Atualizar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openCreate()}
+                  disabled={!canManage}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#123463] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <Plus className="h-4 w-4" />
+                  Nova OS
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
         <div className="flex items-start gap-3">
@@ -533,9 +592,6 @@ export function EquipmentWorkOrdersClient() {
             <h2 className="text-base font-semibold text-slate-900">Ordens de serviço cadastradas</h2>
             <p className="mt-1 text-sm text-slate-500">{list.total} OS encontrada(s)</p>
           </div>
-          <Link href="/equipamentos" className="text-sm font-medium text-[#17407E] hover:underline">
-            Voltar para equipamentos
-          </Link>
         </div>
 
         <div className="overflow-auto">
@@ -868,7 +924,7 @@ export function EquipmentWorkOrdersClient() {
           </div>
         </div>
       ) : null}
-    </div>
+    </section>
   );
 }
 

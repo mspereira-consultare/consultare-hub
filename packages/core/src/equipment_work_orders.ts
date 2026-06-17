@@ -11,6 +11,7 @@ export type TaskLinkedEquipmentWorkOrderRef = {
 };
 
 const clean = (value: unknown) => String(value ?? '').trim();
+export const EQUIPMENT_WORK_ORDERS_SECTION_ID = 'ordens-servico';
 const isMysqlDb =
   String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' ||
   !!process.env.MYSQL_URL ||
@@ -31,7 +32,7 @@ const safeQuery = async (db: DbInterface, sql: string, params: unknown[] = []) =
 };
 
 export const buildEquipmentWorkOrderPanelPath = (workOrderId: string) =>
-  `/equipamentos/os?osId=${encodeURIComponent(clean(workOrderId))}`;
+  `/equipamentos?osId=${encodeURIComponent(clean(workOrderId))}#${EQUIPMENT_WORK_ORDERS_SECTION_ID}`;
 
 export const getEquipmentWorkOrderLinkByTaskId = async (
   db: DbInterface,
