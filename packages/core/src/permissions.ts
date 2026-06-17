@@ -1,5 +1,18 @@
 export type UserRole = 'ADMIN' | 'GESTOR' | 'OPERADOR' | 'INTRANET';
 export type PermissionAction = 'view' | 'edit' | 'refresh';
+export type PermissionSurface = 'painel' | 'intranet' | 'compartilhado';
+export type PermissionCriticality = 'standard' | 'sensitive' | 'critical';
+
+export type PermissionModuleKey =
+  | 'principal'
+  | 'operacoes'
+  | 'pessoas'
+  | 'qualidade'
+  | 'financeiro'
+  | 'inteligencia'
+  | 'marketing'
+  | 'intranet'
+  | 'sistema';
 
 export type PageKey =
   | 'intranet_portal'
@@ -54,55 +67,94 @@ export type PagePermission = {
 };
 
 export type PermissionMatrix = Record<PageKey, PagePermission>;
+export type PermissionModuleDefinition = {
+  key: PermissionModuleKey;
+  label: string;
+  description: string;
+  sortOrder: number;
+};
 
-export const PAGE_DEFS: Array<{ key: PageKey; label: string; path: string }> = [
-  { key: 'intranet_portal', label: 'Abrir Intranet', path: '/intranet' },
-  { key: 'dashboard', label: 'Visão Geral', path: '/dashboard' },
-  { key: 'monitor', label: 'Monitor', path: '/monitor' },
-  { key: 'financeiro', label: 'Financeiro', path: '/financeiro' },
-  { key: 'contratos', label: 'ResolveSaúde', path: '/contratos' },
-  { key: 'propostas', label: 'Propostas - Base de trabalho', path: '/propostas' },
-  { key: 'propostas_pos_consulta', label: 'Propostas - Pós-consulta', path: '/propostas/pos-consulta' },
-  { key: 'propostas_gerencial', label: 'Propostas - Visão gerencial', path: '/propostas/gerencial' },
-  { key: 'repasses', label: 'Fechamento de Repasses', path: '/repasses' },
-  { key: 'marketing_controle', label: 'Marketing - Controle', path: '/marketing/controle' },
-  { key: 'marketing_funil', label: 'Marketing - Funil', path: '/marketing/funil' },
-  { key: 'colaboradores', label: 'Colaboradores', path: '/colaboradores' },
-  { key: 'folha_pagamento', label: 'Folha de Pagamento', path: '/folha-pagamento' },
-  { key: 'recrutamento', label: 'Recrutamento', path: '/recrutamento' },
-  { key: 'equipamentos', label: 'Equipamentos', path: '/equipamentos' },
-  { key: 'agenda_ocupacao', label: 'Ocupação de Agenda', path: '/agenda-ocupacao' },
-  { key: 'metas_dashboard', label: 'Painel de Metas', path: '/metas/dashboard' },
-  { key: 'metas', label: 'Gestão de Metas', path: '/metas' },
-  { key: 'produtividade', label: 'Produtividade', path: '/produtividade' },
-  { key: 'agendamentos', label: 'Agendamentos', path: '/agendamentos' },
-  { key: 'profissionais', label: 'Profissionais', path: '/profissionais' },
-  { key: 'profissionais_mapas', label: 'Mapas de Profissionais', path: '/profissionais/mapas' },
-  { key: 'qualidade_documentos', label: 'Qualidade - POPs e Manuais', path: '/qualidade/documentos' },
-  { key: 'vigilancia_sanitaria', label: 'Qualidade - Vigilância Sanitária', path: '/qualidade/vigilancia-sanitaria' },
-  { key: 'qualidade_treinamentos', label: 'Qualidade - Treinamentos', path: '/qualidade/treinamentos' },
-  { key: 'qualidade_auditorias', label: 'Qualidade - Auditorias', path: '/qualidade/auditorias' },
-  { key: 'checklist_crc', label: 'Checklist CRC', path: '/checklist-crc' },
-  { key: 'checklist_recepcao', label: 'Checklist Recepção', path: '/checklist-recepcao' },
-  { key: 'intranet_dashboard', label: 'Intranet - Dashboard', path: '/gestao' },
-  { key: 'intranet_tarefas', label: 'Intranet - Tarefas', path: '/tarefas' },
-  { key: 'intranet_navegacao', label: 'Intranet - Navegação', path: '/gestao/navegacao' },
-  { key: 'intranet_paginas', label: 'Intranet - Páginas', path: '/gestao/paginas' },
-  { key: 'intranet_noticias', label: 'Intranet - Notícias e Avisos', path: '/gestao/noticias' },
-  { key: 'intranet_faq', label: 'Intranet - FAQ', path: '/gestao/faq' },
-  { key: 'intranet_catalogo', label: 'Intranet - Catálogo', path: '/gestao/catalogo' },
-  { key: 'intranet_audiencias', label: 'Intranet - Audiências', path: '/gestao/audiencias' },
-  { key: 'intranet_escopos', label: 'Intranet - Escopos Editoriais', path: '/gestao/escopos' },
-  { key: 'intranet_chat', label: 'Intranet - Chat Interno', path: '/gestao/chat' },
-  { key: 'intranet_chatbot', label: 'Intranet - Chatbot e Conhecimento', path: '/gestao/chatbot' },
-  { key: 'ajuda', label: 'Ajuda', path: '/ajuda' },
-  { key: 'users', label: 'Usuários', path: '/users' },
-  { key: 'dashboard_executive_governance', label: 'Dashboard Executivo - Governança', path: '/dashboard-executivo' },
-  { key: 'contract_templates', label: 'Modelos de Contrato', path: '/modelos-contrato' },
-  { key: 'settings', label: 'Configurações', path: '/settings' },
+export type PermissionCatalogEntry = {
+  key: PageKey;
+  label: string;
+  path: string;
+  moduleKey: PermissionModuleKey;
+  surface: PermissionSurface;
+  criticality: PermissionCriticality;
+};
+
+export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
+  { key: 'principal', label: 'Principal', description: 'Entrada, visão geral e navegação inicial do painel.', sortOrder: 10 },
+  { key: 'operacoes', label: 'Operações', description: 'Rotinas de atendimento, agenda, profissionais e checklists.', sortOrder: 20 },
+  { key: 'pessoas', label: 'Gestão de Pessoas', description: 'Colaboradores, folha, recrutamento e vínculo usuário-colaborador.', sortOrder: 30 },
+  { key: 'qualidade', label: 'Qualidade', description: 'Equipamentos, documentos, vigilância, treinamentos e auditorias.', sortOrder: 40 },
+  { key: 'financeiro', label: 'Financeiro', description: 'Financeiro, contratos, propostas e repasses.', sortOrder: 50 },
+  { key: 'inteligencia', label: 'Inteligência', description: 'Metas, produtividade, ocupação de agenda e governança executiva.', sortOrder: 60 },
+  { key: 'marketing', label: 'Marketing', description: 'Controle e funil de marketing.', sortOrder: 70 },
+  { key: 'intranet', label: 'Intranet', description: 'Portal, tarefas e administração editorial da intranet.', sortOrder: 80 },
+  { key: 'sistema', label: 'Sistema', description: 'Usuários, configurações, ajuda e modelos administrativos.', sortOrder: 90 },
+];
+
+export const PAGE_DEFS: PermissionCatalogEntry[] = [
+  { key: 'intranet_portal', label: 'Abrir Intranet', path: '/intranet', moduleKey: 'intranet', surface: 'compartilhado', criticality: 'standard' },
+  { key: 'dashboard', label: 'Visão Geral', path: '/dashboard', moduleKey: 'principal', surface: 'painel', criticality: 'standard' },
+  { key: 'monitor', label: 'Monitor', path: '/monitor', moduleKey: 'operacoes', surface: 'painel', criticality: 'standard' },
+  { key: 'financeiro', label: 'Financeiro', path: '/financeiro', moduleKey: 'financeiro', surface: 'painel', criticality: 'sensitive' },
+  { key: 'contratos', label: 'ResolveSaúde', path: '/contratos', moduleKey: 'financeiro', surface: 'painel', criticality: 'sensitive' },
+  { key: 'propostas', label: 'Propostas - Base de trabalho', path: '/propostas', moduleKey: 'financeiro', surface: 'compartilhado', criticality: 'standard' },
+  { key: 'propostas_pos_consulta', label: 'Propostas - Pós-consulta', path: '/propostas/pos-consulta', moduleKey: 'operacoes', surface: 'compartilhado', criticality: 'standard' },
+  { key: 'propostas_gerencial', label: 'Propostas - Visão gerencial', path: '/propostas/gerencial', moduleKey: 'financeiro', surface: 'painel', criticality: 'sensitive' },
+  { key: 'repasses', label: 'Fechamento de Repasses', path: '/repasses', moduleKey: 'financeiro', surface: 'painel', criticality: 'sensitive' },
+  { key: 'marketing_controle', label: 'Marketing - Controle', path: '/marketing/controle', moduleKey: 'marketing', surface: 'painel', criticality: 'standard' },
+  { key: 'marketing_funil', label: 'Marketing - Funil', path: '/marketing/funil', moduleKey: 'marketing', surface: 'painel', criticality: 'standard' },
+  { key: 'colaboradores', label: 'Colaboradores', path: '/colaboradores', moduleKey: 'pessoas', surface: 'painel', criticality: 'sensitive' },
+  { key: 'folha_pagamento', label: 'Folha de Pagamento', path: '/folha-pagamento', moduleKey: 'pessoas', surface: 'painel', criticality: 'critical' },
+  { key: 'recrutamento', label: 'Recrutamento', path: '/recrutamento', moduleKey: 'pessoas', surface: 'painel', criticality: 'sensitive' },
+  { key: 'equipamentos', label: 'Equipamentos', path: '/equipamentos', moduleKey: 'qualidade', surface: 'painel', criticality: 'standard' },
+  { key: 'agenda_ocupacao', label: 'Ocupação de Agenda', path: '/agenda-ocupacao', moduleKey: 'inteligencia', surface: 'painel', criticality: 'standard' },
+  { key: 'metas_dashboard', label: 'Painel de Metas', path: '/metas/dashboard', moduleKey: 'inteligencia', surface: 'compartilhado', criticality: 'standard' },
+  { key: 'metas', label: 'Gestão de Metas', path: '/metas', moduleKey: 'inteligencia', surface: 'painel', criticality: 'sensitive' },
+  { key: 'produtividade', label: 'Produtividade', path: '/produtividade', moduleKey: 'operacoes', surface: 'painel', criticality: 'standard' },
+  { key: 'agendamentos', label: 'Agendamentos', path: '/agendamentos', moduleKey: 'operacoes', surface: 'painel', criticality: 'standard' },
+  { key: 'profissionais', label: 'Profissionais', path: '/profissionais', moduleKey: 'operacoes', surface: 'painel', criticality: 'standard' },
+  { key: 'profissionais_mapas', label: 'Mapas de Profissionais', path: '/profissionais/mapas', moduleKey: 'operacoes', surface: 'painel', criticality: 'standard' },
+  { key: 'qualidade_documentos', label: 'Qualidade - POPs e Manuais', path: '/qualidade/documentos', moduleKey: 'qualidade', surface: 'painel', criticality: 'standard' },
+  { key: 'vigilancia_sanitaria', label: 'Qualidade - Vigilância Sanitária', path: '/qualidade/vigilancia-sanitaria', moduleKey: 'qualidade', surface: 'painel', criticality: 'sensitive' },
+  { key: 'qualidade_treinamentos', label: 'Qualidade - Treinamentos', path: '/qualidade/treinamentos', moduleKey: 'qualidade', surface: 'painel', criticality: 'standard' },
+  { key: 'qualidade_auditorias', label: 'Qualidade - Auditorias', path: '/qualidade/auditorias', moduleKey: 'qualidade', surface: 'painel', criticality: 'sensitive' },
+  { key: 'checklist_crc', label: 'Checklist CRC', path: '/checklist-crc', moduleKey: 'operacoes', surface: 'painel', criticality: 'standard' },
+  { key: 'checklist_recepcao', label: 'Checklist Recepção', path: '/checklist-recepcao', moduleKey: 'operacoes', surface: 'painel', criticality: 'standard' },
+  { key: 'intranet_dashboard', label: 'Intranet - Dashboard', path: '/gestao', moduleKey: 'intranet', surface: 'intranet', criticality: 'sensitive' },
+  { key: 'intranet_tarefas', label: 'Intranet - Tarefas', path: '/tarefas', moduleKey: 'intranet', surface: 'compartilhado', criticality: 'standard' },
+  { key: 'intranet_navegacao', label: 'Intranet - Navegação', path: '/gestao/navegacao', moduleKey: 'intranet', surface: 'intranet', criticality: 'sensitive' },
+  { key: 'intranet_paginas', label: 'Intranet - Páginas', path: '/gestao/paginas', moduleKey: 'intranet', surface: 'intranet', criticality: 'sensitive' },
+  { key: 'intranet_noticias', label: 'Intranet - Notícias e Avisos', path: '/gestao/noticias', moduleKey: 'intranet', surface: 'intranet', criticality: 'standard' },
+  { key: 'intranet_faq', label: 'Intranet - FAQ', path: '/gestao/faq', moduleKey: 'intranet', surface: 'intranet', criticality: 'standard' },
+  { key: 'intranet_catalogo', label: 'Intranet - Catálogo', path: '/gestao/catalogo', moduleKey: 'intranet', surface: 'intranet', criticality: 'standard' },
+  { key: 'intranet_audiencias', label: 'Intranet - Audiências', path: '/gestao/audiencias', moduleKey: 'intranet', surface: 'intranet', criticality: 'sensitive' },
+  { key: 'intranet_escopos', label: 'Intranet - Escopos Editoriais', path: '/gestao/escopos', moduleKey: 'intranet', surface: 'intranet', criticality: 'critical' },
+  { key: 'intranet_chat', label: 'Intranet - Chat Interno', path: '/gestao/chat', moduleKey: 'intranet', surface: 'intranet', criticality: 'sensitive' },
+  { key: 'intranet_chatbot', label: 'Intranet - Chatbot e Conhecimento', path: '/gestao/chatbot', moduleKey: 'intranet', surface: 'intranet', criticality: 'sensitive' },
+  { key: 'ajuda', label: 'Ajuda', path: '/ajuda', moduleKey: 'sistema', surface: 'painel', criticality: 'standard' },
+  { key: 'users', label: 'Usuários', path: '/users', moduleKey: 'sistema', surface: 'painel', criticality: 'critical' },
+  { key: 'dashboard_executive_governance', label: 'Dashboard Executivo - Governança', path: '/dashboard-executivo', moduleKey: 'inteligencia', surface: 'painel', criticality: 'critical' },
+  { key: 'contract_templates', label: 'Modelos de Contrato', path: '/modelos-contrato', moduleKey: 'sistema', surface: 'painel', criticality: 'sensitive' },
+  { key: 'settings', label: 'Configurações', path: '/settings', moduleKey: 'sistema', surface: 'painel', criticality: 'critical' },
 ];
 
 export const PAGE_KEYS: PageKey[] = PAGE_DEFS.map((p) => p.key);
+export const PERMISSION_MODULE_KEYS: PermissionModuleKey[] = PERMISSION_MODULES.map((module) => module.key);
+
+export const getPermissionCatalog = () => PAGE_DEFS;
+
+export const getPageDefinition = (key: PageKey) =>
+  PAGE_DEFS.find((page) => page.key === key) || null;
+
+export const getPermissionModuleDefinition = (key: PermissionModuleKey) =>
+  PERMISSION_MODULES.find((module) => module.key === key) || null;
+
+export const getPagesByModule = (moduleKey: PermissionModuleKey) =>
+  PAGE_DEFS.filter((page) => page.moduleKey === moduleKey);
 
 const emptyPermission = (): PagePermission => ({ view: false, edit: false, refresh: false });
 

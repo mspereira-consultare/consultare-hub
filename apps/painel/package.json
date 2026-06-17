@@ -13,6 +13,7 @@
     "db:bootstrap:mysql-schema": "node scripts/bootstrap-mysql-schema.cjs",
     "db:bootstrap:mysql-schema:dry": "node scripts/bootstrap-mysql-schema.cjs --dry-run",
     "db:backfill:intranet-basic-access": "node scripts/backfill-intranet-basic-access.cjs",
+    "db:permissions:compare-profiles:dry": "node scripts/compare-access-profiles-dry-run.cjs",
     "db:backfill:feegow-appointments": "node scripts/backfill-feegow-appointments.cjs",
     "db:reconcile:faturamento:csv": "node scripts/reconcile-faturamento-from-csv.cjs",
     "db:validate:post-consulta:csv": "node scripts/validate-post-consulta-source-from-csv.cjs",

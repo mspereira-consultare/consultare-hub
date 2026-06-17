@@ -6,7 +6,18 @@ import {
   Trash2, Edit, X, CheckCircle, Loader2, Lock, Shield, ShieldCheck,
   ChevronDown, ChevronRight, RotateCcw, Eye, Pencil, RefreshCw
 } from 'lucide-react';
-import { PAGE_DEFS, type PageKey, type PagePermission, type PermissionAction, type PermissionMatrix, type UserRole, getDefaultMatrixByRole, sanitizeMatrix } from '@/lib/permissions';
+import {
+  PAGE_DEFS,
+  PERMISSION_MODULES,
+  type PageKey,
+  type PagePermission,
+  type PermissionAction,
+  type PermissionMatrix,
+  type PermissionModuleKey,
+  type UserRole,
+  getDefaultMatrixByRole,
+  sanitizeMatrix,
+} from '@/lib/permissions';
 
 // Tipos atualizados para Turso (ID string)
 type UserStatus = 'ATIVO' | 'INATIVO';
@@ -22,6 +33,10 @@ interface User {
   last_access: string | null;
   employee_id?: string | null;
   employee_name?: string | null;
+  access_profile_key?: string | null;
+  access_profile_assigned_key?: string | null;
+  access_profile_label?: string | null;
+  permission_override_count?: number;
   executive_group_label?: string | null;
   executive_profile_label?: string | null;
   executive_issue?: string | null;
@@ -36,81 +51,68 @@ type EmployeeOption = {
   linkedUserId: string | null;
 };
 
-type PermissionGroupId =
-  | 'principal'
-  | 'operacoes'
-  | 'pessoas'
-  | 'qualidade'
-  | 'financeiro'
-  | 'inteligencia'
-  | 'marketing'
-  | 'intranet'
-  | 'sistema';
+type AccessProfileOption = {
+  profileKey: string;
+  label: string;
+  description: string | null;
+  isSystem: boolean;
+  isActive: boolean;
+  sortOrder: number;
+  permissions: PermissionMatrix;
+};
 
+type PermissionGroupId = PermissionModuleKey;
 type PermissionFilterKey = 'all' | 'with_access' | 'without_access' | 'with_edit' | 'with_refresh' | 'changed';
 type PermissionBulkMode = 'none' | 'view' | 'edit' | 'full';
 type PageDefinition = (typeof PAGE_DEFS)[number];
 
 const cn = (...classes: (string | undefined | null | false)[]) => classes.filter(Boolean).join(' ');
 
-const PERMISSION_GROUPS: Array<{ id: PermissionGroupId; label: string; description: string }> = [
-  { id: 'principal', label: 'Principal', description: 'Entrada e visão geral do painel.' },
-  { id: 'operacoes', label: 'Operações', description: 'Rotinas de atendimento, agenda e profissionais.' },
-  { id: 'pessoas', label: 'Gestão de Pessoas', description: 'Colaboradores, folha e recrutamento.' },
-  { id: 'qualidade', label: 'Qualidade', description: 'Equipamentos, documentos, vigilância e treinamentos.' },
-  { id: 'financeiro', label: 'Financeiro', description: 'Financeiro, propostas, contratos e repasses.' },
-  { id: 'inteligencia', label: 'Inteligência', description: 'Metas, produtividade e ocupação.' },
-  { id: 'marketing', label: 'Marketing', description: 'Controle e funil de marketing.' },
-  { id: 'intranet', label: 'Intranet', description: 'Gestão editorial e administrativa da intranet.' },
-  { id: 'sistema', label: 'Sistema', description: 'Usuários, configurações, ajuda e modelos.' },
-];
-
-const PAGE_PERMISSION_GROUP: Record<PageKey, PermissionGroupId> = {
-  intranet_portal: 'intranet',
-  dashboard: 'principal',
-  monitor: 'operacoes',
-  checklist_crc: 'operacoes',
-  checklist_recepcao: 'operacoes',
-  produtividade: 'operacoes',
-  agendamentos: 'operacoes',
-  profissionais: 'operacoes',
-  profissionais_mapas: 'operacoes',
-  colaboradores: 'pessoas',
-  folha_pagamento: 'pessoas',
-  recrutamento: 'pessoas',
-  equipamentos: 'qualidade',
-  qualidade_documentos: 'qualidade',
-  vigilancia_sanitaria: 'qualidade',
-  qualidade_treinamentos: 'qualidade',
-  qualidade_auditorias: 'qualidade',
-  financeiro: 'financeiro',
-  contratos: 'financeiro',
-  propostas: 'financeiro',
-  propostas_pos_consulta: 'operacoes',
-  propostas_gerencial: 'financeiro',
-  repasses: 'financeiro',
-  metas_dashboard: 'inteligencia',
-  metas: 'inteligencia',
-  agenda_ocupacao: 'inteligencia',
-  marketing_controle: 'marketing',
-  marketing_funil: 'marketing',
-  intranet_dashboard: 'intranet',
-  intranet_tarefas: 'intranet',
-  intranet_navegacao: 'intranet',
-  intranet_paginas: 'intranet',
-  intranet_noticias: 'intranet',
-  intranet_faq: 'intranet',
-  intranet_catalogo: 'intranet',
-  intranet_audiencias: 'intranet',
-  intranet_escopos: 'intranet',
-  intranet_chat: 'intranet',
-  intranet_chatbot: 'intranet',
-  ajuda: 'sistema',
-  users: 'sistema',
-  dashboard_executive_governance: 'sistema',
-  contract_templates: 'sistema',
-  settings: 'sistema',
+const DEFAULT_ACCESS_PROFILE_BY_ROLE: Record<UserRole, string> = {
+  ADMIN: 'ADMIN',
+  GESTOR: 'GESTOR',
+  OPERADOR: 'OPERADOR',
+  INTRANET: 'INTRANET',
 };
+
+const ACCESS_PROFILE_FALLBACK_META: Record<UserRole, { label: string; description: string; sortOrder: number }> = {
+  ADMIN: {
+    label: 'Administrador',
+    description: 'Perfil de sistema com acesso completo ao painel, Intranet e administracao.',
+    sortOrder: 10,
+  },
+  GESTOR: {
+    label: 'Gestor',
+    description: 'Perfil de sistema para liderancas com acesso gerencial amplo.',
+    sortOrder: 20,
+  },
+  OPERADOR: {
+    label: 'Operador',
+    description: 'Perfil de sistema para operacao diaria com acessos restritos.',
+    sortOrder: 30,
+  },
+  INTRANET: {
+    label: 'Colaborador Intranet',
+    description: 'Perfil de sistema para colaboradores com portal, tarefas e pacote operacional minimo.',
+    sortOrder: 40,
+  },
+};
+
+const SYSTEM_ACCESS_PROFILE_OPTIONS: AccessProfileOption[] = (['ADMIN', 'GESTOR', 'OPERADOR', 'INTRANET'] as UserRole[]).map((role) => ({
+  profileKey: role,
+  label: ACCESS_PROFILE_FALLBACK_META[role].label,
+  description: ACCESS_PROFILE_FALLBACK_META[role].description,
+  isSystem: true,
+  isActive: true,
+  sortOrder: ACCESS_PROFILE_FALLBACK_META[role].sortOrder,
+  permissions: getDefaultMatrixByRole(role),
+}));
+
+const PERMISSION_GROUPS = PERMISSION_MODULES.map((module) => ({
+  id: module.key,
+  label: module.label,
+  description: module.description,
+}));
 
 const PERMISSION_FILTERS: Array<{ key: PermissionFilterKey; label: string }> = [
   { key: 'all', label: 'Todas' },
@@ -134,6 +136,33 @@ const normalizeText = (value: unknown) =>
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
+
+const isObjectRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const normalizeAccessProfiles = (value: unknown): AccessProfileOption[] => {
+  const byKey = new Map(SYSTEM_ACCESS_PROFILE_OPTIONS.map((profile) => [profile.profileKey, profile]));
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (!isObjectRecord(item)) continue;
+      const profileKey = String(item.profileKey || '').trim();
+      if (!profileKey) continue;
+
+      const fallbackRole = (profileKey in DEFAULT_ACCESS_PROFILE_BY_ROLE ? profileKey : 'OPERADOR') as UserRole;
+      byKey.set(profileKey, {
+        profileKey,
+        label: String(item.label || profileKey),
+        description: item.description ? String(item.description) : null,
+        isSystem: Boolean(item.isSystem),
+        isActive: item.isActive !== false,
+        sortOrder: Number(item.sortOrder || 100),
+        permissions: sanitizeMatrix(item.permissions, fallbackRole),
+      });
+    }
+  }
+
+  return Array.from(byKey.values()).sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label, 'pt-BR'));
+};
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
@@ -180,6 +209,7 @@ export default function UsersPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [employeeOptions, setEmployeeOptions] = useState<EmployeeOption[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
+  const [accessProfiles, setAccessProfiles] = useState<AccessProfileOption[]>(SYSTEM_ACCESS_PROFILE_OPTIONS);
   
   // Modal e Formulário
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -195,6 +225,7 @@ export default function UsersPage() {
     role: UserRole;
     department: string;
     employeeId: string;
+    accessProfileKey: string;
     status: UserStatus;
   }>({
     name: '',
@@ -204,12 +235,14 @@ export default function UsersPage() {
     role: 'OPERADOR',
     department: 'Atendimento',
     employeeId: '',
+    accessProfileKey: 'OPERADOR',
     status: 'ATIVO'
   });
 
   // Modal de permissões
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
   const [permissionsUser, setPermissionsUser] = useState<User | null>(null);
+  const [permissionsProfileKey, setPermissionsProfileKey] = useState('OPERADOR');
   const [permissionsMatrix, setPermissionsMatrix] = useState<PermissionMatrix>(getDefaultMatrixByRole('OPERADOR'));
   const [permissionsBaseline, setPermissionsBaseline] = useState<PermissionMatrix>(getDefaultMatrixByRole('OPERADOR'));
   const [permissionsLoading, setPermissionsLoading] = useState(false);
@@ -239,6 +272,7 @@ export default function UsersPage() {
       if (res.ok && data?.status === 'success') {
         setEmployeeOptions(Array.isArray(data.data?.employees) ? data.data.employees : []);
         setDepartmentOptions(Array.isArray(data.data?.departments) ? data.data.departments : []);
+        setAccessProfiles(normalizeAccessProfiles(data.data?.accessProfiles));
       }
     } catch (error) {
       console.error('Erro ao carregar opções de usuários:', error);
@@ -264,8 +298,9 @@ export default function UsersPage() {
       username: user.username || '',
       password: '', // Senha vazia na edição (só preenche se quiser trocar)
       role: user.role,
-      department: user.department,
+      department: user.department || 'Atendimento',
       employeeId: user.employee_id || '',
+      accessProfileKey: user.access_profile_key || DEFAULT_ACCESS_PROFILE_BY_ROLE[user.role],
       status: user.status
     });
     setIsModalOpen(true);
@@ -300,9 +335,15 @@ export default function UsersPage() {
       if (!res.ok || data?.status !== 'success') {
         throw new Error(data?.error || 'Falha ao carregar permissoes');
       }
+      if (Array.isArray(data.accessProfiles)) {
+        setAccessProfiles(normalizeAccessProfiles(data.accessProfiles));
+      }
+      const nextProfileKey = String(data.effectiveProfileKey || data.assignedProfileKey || user.access_profile_key || DEFAULT_ACCESS_PROFILE_BY_ROLE[user.role]);
       const matrix = sanitizeMatrix(data.permissions, user.role);
+      const inheritedMatrix = sanitizeMatrix(data.inheritedPermissions, user.role);
+      setPermissionsProfileKey(nextProfileKey);
       setPermissionsMatrix(matrix);
-      setPermissionsBaseline(matrix);
+      setPermissionsBaseline(inheritedMatrix);
     } catch (error: unknown) {
       alert(getErrorMessage(error, 'Falha ao carregar permissoes'));
       setIsPermissionsModalOpen(false);
@@ -315,6 +356,7 @@ export default function UsersPage() {
   const closePermissionsModal = () => {
     setIsPermissionsModalOpen(false);
     setPermissionsUser(null);
+    setPermissionsProfileKey('OPERADOR');
     setPermissionSearchTerm('');
     setPermissionFilter('all');
   };
@@ -338,8 +380,25 @@ export default function UsersPage() {
   };
 
   const restoreDefaultPermissions = () => {
-    if (!permissionsUser) return;
-    setPermissionsMatrix(getDefaultMatrixByRole(permissionsUser.role));
+    setPermissionsMatrix(permissionsBaseline);
+  };
+
+  const restoreInheritedForPages = (pages: PageDefinition[]) => {
+    setPermissionsMatrix((prev) => {
+      const next = { ...prev };
+      for (const page of pages) {
+        next[page.key] = { ...permissionsBaseline[page.key] };
+      }
+      return next;
+    });
+  };
+
+  const handlePermissionsProfileChange = (profileKey: string) => {
+    const profile = accessProfiles.find((item) => item.profileKey === profileKey);
+    if (!profile) return;
+    setPermissionsProfileKey(profile.profileKey);
+    setPermissionsBaseline(profile.permissions);
+    setPermissionsMatrix(profile.permissions);
   };
 
   const togglePermissionGroup = (groupId: PermissionGroupId) => {
@@ -358,6 +417,7 @@ export default function UsersPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userId: permissionsUser.id,
+          profileKey: permissionsProfileKey,
           permissions: permissionsMatrix,
         }),
       });
@@ -411,17 +471,19 @@ export default function UsersPage() {
       role: 'OPERADOR',
       department: 'Atendimento',
       employeeId: '',
+      accessProfileKey: 'OPERADOR',
       status: 'ATIVO'
     });
   };
 
   // --- FILTROS ---
-  const filteredUsers = users.filter(user => 
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+  const filteredUsers = users.filter(user =>
+    (user.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.username || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    user.department.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.department || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.employee_name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (user.access_profile_label || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.executive_group_label || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.executive_profile_label || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -435,7 +497,7 @@ export default function UsersPage() {
     return PAGE_DEFS.filter((page) => {
       const permission = permissionsMatrix[page.key];
       const changed = !permissionsEqual(permission, permissionsBaseline[page.key]);
-      const searchable = normalizeText(`${page.label} ${page.path} ${page.key} ${PERMISSION_GROUPS.find((group) => group.id === PAGE_PERMISSION_GROUP[page.key])?.label}`);
+      const searchable = normalizeText(`${page.label} ${page.path} ${page.key} ${PERMISSION_GROUPS.find((group) => group.id === page.moduleKey)?.label}`);
       const matchesSearch = !search || searchable.includes(search);
 
       if (!matchesSearch) return false;
@@ -451,7 +513,7 @@ export default function UsersPage() {
   const permissionGroupSections = useMemo(() => {
     const visibleKeys = new Set(filteredPermissionPages.map((page) => page.key));
     return PERMISSION_GROUPS.map((group) => {
-      const pages = PAGE_DEFS.filter((page) => PAGE_PERMISSION_GROUP[page.key] === group.id);
+      const pages = PAGE_DEFS.filter((page) => page.moduleKey === group.id);
       const visiblePages = pages.filter((page) => visibleKeys.has(page.key));
       const accessCount = pages.filter((page) => hasAnyPermission(permissionsMatrix[page.key])).length;
       const editCount = pages.filter((page) => permissionsMatrix[page.key]?.edit).length;
@@ -544,7 +606,7 @@ export default function UsersPage() {
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Usuário</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Departamento</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Colaborador vinculado</th>
-                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Função</th>
+                <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Função / perfil</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Dashboard executivo</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
                 <th className="px-6 py-4 text-xs font-semibold text-slate-500 uppercase tracking-wider">Último Acesso</th>
@@ -604,6 +666,14 @@ export default function UsersPage() {
                             {user.role === 'ADMIN' && <Shield size={14} className="text-amber-500" />}
                             {user.role}
                         </div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {user.access_profile_label || user.access_profile_key || DEFAULT_ACCESS_PROFILE_BY_ROLE[user.role]}
+                        </div>
+                        {Number(user.permission_override_count || 0) > 0 ? (
+                          <div className="mt-1 text-[11px] font-medium text-amber-700">
+                            {user.permission_override_count} override(s)
+                          </div>
+                        ) : null}
                     </td>
                     <td className="px-6 py-4 text-sm">
                         {user.executive_profile_label ? (
@@ -772,13 +842,43 @@ export default function UsersPage() {
                     <select 
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#17407E]/20 focus:border-[#17407E] outline-none bg-white"
                       value={formData.role}
-                      onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})}
+                      onChange={(e) => {
+                        const nextRole = e.target.value as UserRole;
+                        setFormData({
+                          ...formData,
+                          role: nextRole,
+                          accessProfileKey: DEFAULT_ACCESS_PROFILE_BY_ROLE[nextRole],
+                        });
+                      }}
                     >
                       <option value="OPERADOR">Operador</option>
                       <option value="INTRANET">Intranet</option>
                       <option value="GESTOR">Gestor</option>
                       <option value="ADMIN">Administrador</option>
                     </select>
+                 </div>
+
+                 <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1">Perfil de acesso</label>
+                    <select
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-[#17407E]/20 focus:border-[#17407E] outline-none bg-white"
+                      value={formData.accessProfileKey}
+                      onChange={(e) => setFormData({ ...formData, accessProfileKey: e.target.value })}
+                    >
+                      {accessProfiles.length === 0 ? (
+                        <option value={DEFAULT_ACCESS_PROFILE_BY_ROLE[formData.role]}>
+                          {DEFAULT_ACCESS_PROFILE_BY_ROLE[formData.role]}
+                        </option>
+                      ) : null}
+                      {accessProfiles.map((profile) => (
+                        <option key={profile.profileKey} value={profile.profileKey}>
+                          {profile.label}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-slate-500">
+                      O perfil define a herança principal; ajustes individuais ficam como overrides.
+                    </p>
                  </div>
               </div>
 
@@ -848,6 +948,8 @@ export default function UsersPage() {
                   </span>
                   <span>{permissionsUser.department || 'Geral'}</span>
                   <span>•</span>
+                  <span>{accessProfiles.find((profile) => profile.profileKey === permissionsProfileKey)?.label || permissionsProfileKey}</span>
+                  <span>•</span>
                   <span>{permissionSummary.pagesWithAccess}/{permissionSummary.total} páginas com acesso</span>
                 </div>
               </div>
@@ -868,7 +970,20 @@ export default function UsersPage() {
                 </div>
               ) : (
                 <div className="space-y-5">
-                  <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+                  <div className="grid gap-3 lg:grid-cols-[220px_minmax(0,1fr)_auto]">
+                    <div>
+                      <select
+                        value={permissionsProfileKey}
+                        onChange={(event) => handlePermissionsProfileChange(event.target.value)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none transition-all focus:border-[#17407E] focus:ring-2 focus:ring-[#17407E]/20"
+                      >
+                        {accessProfiles.map((profile) => (
+                          <option key={profile.profileKey} value={profile.profileKey}>
+                            {profile.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                       <input
@@ -884,7 +999,7 @@ export default function UsersPage() {
                       className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
                     >
                       <RotateCcw size={16} />
-                      Restaurar padrão do cargo
+                      Restaurar herança do perfil
                     </button>
                   </div>
 
@@ -923,6 +1038,13 @@ export default function UsersPage() {
                           {action.label}
                         </button>
                       ))}
+                      <button
+                        onClick={() => restoreInheritedForPages(filteredPermissionPages)}
+                        disabled={filteredPermissionPages.length === 0}
+                        className="rounded-md border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Restaurar herança
+                      </button>
                     </div>
                   </div>
 
@@ -982,6 +1104,12 @@ export default function UsersPage() {
                                     {action.label}
                                   </button>
                                 ))}
+                                <button
+                                  onClick={() => restoreInheritedForPages(group.pages)}
+                                  className="rounded-md border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-50"
+                                >
+                                  Restaurar herança
+                                </button>
                               </div>
 
                               <div className="overflow-x-auto">
@@ -1012,6 +1140,16 @@ export default function UsersPage() {
                                           <div className="flex items-center gap-2">
                                             <p className="truncate text-sm font-semibold text-slate-800">{page.label}</p>
                                             {changed ? <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" title="Permissão alterada" /> : null}
+                                            {changed ? (
+                                              <button
+                                                onClick={() => restoreInheritedForPages([page])}
+                                                className="rounded p-1 text-amber-600 hover:bg-amber-50"
+                                                title="Restaurar herança desta página"
+                                                aria-label={`Restaurar herança de ${page.label}`}
+                                              >
+                                                <RotateCcw size={13} />
+                                              </button>
+                                            ) : null}
                                           </div>
                                           <p className="mt-0.5 truncate text-xs text-slate-500">{page.path}</p>
                                         </div>

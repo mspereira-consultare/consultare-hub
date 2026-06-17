@@ -1,32 +1,17 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-import { getDbConnection } from '@/lib/db';
-import { hasPermission } from '@/lib/permissions';
+import { requireAnyPagePermission } from '@/lib/authz';
 import { getExecutiveScope } from '@/lib/dashboard_executive/repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-
-const ensureAuthorized = async (action: 'view' | 'edit') => {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
-    return { ok: false as const, response: NextResponse.json({ error: 'Nao autenticado' }, { status: 401 }) };
-  }
-  const role = String((session.user as any).role || 'OPERADOR');
-  const permissions = (session.user as any).permissions;
-  const allowed =
-    hasPermission(permissions, 'dashboard_executive_governance', action, role) ||
-    hasPermission(permissions, 'users', action, role);
-  if (!allowed) {
-    return { ok: false as const, response: NextResponse.json({ error: 'Sem permissao' }, { status: 403 }) };
-  }
-  return { ok: true as const, session };
-};
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Erro interno';
 
 export async function GET(request: Request) {
   try {
-    const auth = await ensureAuthorized('view');
+    const auth = await requireAnyPagePermission([
+      { pageKey: 'dashboard_executive_governance', action: 'view' },
+      { pageKey: 'users', action: 'view' },
+    ]);
     if (!auth.ok) return auth.response;
 
     const { searchParams } = new URL(request.url);
@@ -35,18 +20,20 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'userId obrigatorio' }, { status: 400 });
     }
 
-    const db = getDbConnection();
-    const scope = await getExecutiveScope(db, userId);
+    const scope = await getExecutiveScope(auth.db, userId);
     return NextResponse.json({ status: 'success', data: scope });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro GET executive scope:', error);
-    return NextResponse.json({ error: error?.message || 'Erro interno' }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
 
 export async function PATCH(request: Request) {
   try {
-    const auth = await ensureAuthorized('edit');
+    const auth = await requireAnyPagePermission([
+      { pageKey: 'dashboard_executive_governance', action: 'edit' },
+      { pageKey: 'users', action: 'edit' },
+    ]);
     if (!auth.ok) return auth.response;
 
     await request.text();
@@ -57,9 +44,9 @@ export async function PATCH(request: Request) {
       },
       { status: 410 }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro PATCH executive scope:', error);
-    return NextResponse.json({ error: error?.message || 'Erro interno' }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
 

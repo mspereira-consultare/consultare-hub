@@ -11,6 +11,36 @@ import {
   normalizeAuthUrl,
 } from "@consultare/core/auth";
 
+function ensureAuthEnv() {
+  if (process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET) return;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const dotenv = require('dotenv') as typeof import('dotenv');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const fs = require('fs') as typeof import('fs');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const path = require('path') as typeof import('path');
+
+    const candidates = [
+      path.resolve(process.cwd(), '.env'),
+      path.resolve(process.cwd(), '../.env'),
+      path.resolve(process.cwd(), '../../.env'),
+    ];
+
+    for (const candidate of candidates) {
+      if (!fs.existsSync(candidate)) continue;
+      dotenv.config({ path: candidate, override: false });
+      if (process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET) break;
+    }
+  } catch {
+    // Em produção as variáveis vêm do runtime. Se o fallback local falhar,
+    // o NextAuth ainda emitirá o erro de configuração padrão.
+  }
+}
+
+ensureAuthEnv();
+
 const normalizedAuthUrl = normalizeAuthUrl(process.env.NEXTAUTH_URL || process.env.AUTH_URL);
 if (normalizedAuthUrl) {
   process.env.NEXTAUTH_URL = normalizedAuthUrl;
@@ -32,7 +62,7 @@ export const authOptions: NextAuthOptions = {
   // Debug apenas em desenvolvimento
   debug: process.env.NODE_ENV === 'development',
   
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || process.env.AUTH_SECRET,
 
   pages: {
     signIn: PANEL_SIGN_IN_PATH,

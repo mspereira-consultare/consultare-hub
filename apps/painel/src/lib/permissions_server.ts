@@ -2,16 +2,36 @@ import { getDbConnection } from '@/lib/db';
 import type { UserRole } from '@/lib/permissions';
 import {
   ensurePermissionTable,
+  ensureAccessProfileTables,
   loadUserPermissionMatrix,
+  loadUserPermissionResolution,
   saveUserPermissionMatrix,
+  saveUserPermissionResolution,
   seedPermissionDefaults,
+  listAccessProfiles,
+  getAccessProfile,
+  assignUserAccessProfile,
+  areAccessProfileTablesAvailable,
+  countUserPermissionOverrides,
+  deleteUserAccessProfileAssignmentIfPresent,
+  getDefaultAccessProfileKeyForRole,
 } from '@consultare/core/permissions-server';
 
 export {
   ensurePermissionTable,
+  ensureAccessProfileTables,
   loadUserPermissionMatrix,
+  loadUserPermissionResolution,
   saveUserPermissionMatrix,
+  saveUserPermissionResolution,
   seedPermissionDefaults,
+  listAccessProfiles,
+  getAccessProfile,
+  assignUserAccessProfile,
+  areAccessProfileTablesAvailable,
+  countUserPermissionOverrides,
+  deleteUserAccessProfileAssignmentIfPresent,
+  getDefaultAccessProfileKeyForRole,
 };
 
 export const getPermissionDb = () => getDbConnection();

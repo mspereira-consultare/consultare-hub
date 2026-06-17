@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server';
-import { getDbConnection } from '@/lib/db';
 import { ensureUserAccountColumns } from '@consultare/core/user-accounts';
+import { requirePagePermission } from '@/lib/authz';
+import { listAccessProfiles } from '@/lib/permissions_server';
 
 export const dynamic = 'force-dynamic';
 
 const clean = (value: unknown) => String(value ?? '').trim();
+type DbRow = Record<string, unknown>;
+const errorMessage = (error: unknown) => error instanceof Error ? error.message : 'Erro interno';
 const isMysql =
   String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL || !!process.env.MYSQL_PUBLIC_URL;
 const userEmployeeJoinClause = isMysql
@@ -34,10 +37,13 @@ const departmentUnionSql = isMysql
 
 export async function GET() {
   try {
-    const db = getDbConnection();
+    const auth = await requirePagePermission('users', 'view');
+    if (!auth.ok) return auth.response;
+
+    const db = auth.db;
     await ensureUserAccountColumns(db);
 
-    const [employeeRows, userRows] = await Promise.all([
+    const [employeeRows, userRows, accessProfiles] = await Promise.all([
       db.query(
         `
         SELECT
@@ -55,9 +61,10 @@ export async function GET() {
       db.query(
         departmentUnionSql
       ),
+      listAccessProfiles(db),
     ]);
 
-    const employees = employeeRows.map((row: any) => ({
+    const employees = employeeRows.map((row: DbRow) => ({
       id: clean(row.id),
       fullName: clean(row.full_name),
       department: clean(row.department) || null,
@@ -69,7 +76,7 @@ export async function GET() {
     const departments = Array.from(
       new Set(
         userRows
-          .map((row: any) => clean(row.value))
+          .map((row: DbRow) => clean(row.value))
           .filter(Boolean)
       )
     ).sort((a, b) => a.localeCompare(b, 'pt-BR'));
@@ -79,10 +86,19 @@ export async function GET() {
       data: {
         employees,
         departments,
+        accessProfiles: accessProfiles.map((profile) => ({
+          profileKey: profile.profileKey,
+          label: profile.label,
+          description: profile.description,
+          isSystem: profile.isSystem,
+          isActive: profile.isActive,
+          sortOrder: profile.sortOrder,
+          permissions: profile.permissions,
+        })),
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro GET user options:', error);
-    return NextResponse.json({ error: error?.message || 'Erro interno' }, { status: 500 });
+    return NextResponse.json({ error: errorMessage(error) }, { status: 500 });
   }
 }
