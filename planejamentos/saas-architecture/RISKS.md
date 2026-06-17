@@ -26,6 +26,15 @@ Este documento consolida os principais riscos tecnicos, arquiteturais e operacio
 - **Mitigacao arquitetural:** contratos versionados, escopo por dominio, revisao periodica e staging nao canonico.
 - **ADR relacionada:** ADR-010.
 
+### Risco: Feegow Bridge virar core do produto
+
+- **Descricao:** o `Feegow Bridge` deixar de ser conector por tenant e passar a condicionar modulos centrais do Magic IA.
+- **Causa provavel:** acelerar paridade usando dados do Feegow como fonte canonica em vez de modelar o Magic Core.
+- **Impacto:** alto.
+- **Probabilidade:** media.
+- **Mitigacao arquitetural:** tratar `feegow_bridge.*` como capability separada, exigir `SecretRef`, `JobEnvelope`, `TenantContext`, staging por tenant e plano de internalizacao por dominio.
+- **ADR relacionada:** ADR-003, ADR-004, ADR-010, ADR-014.
+
 ---
 
 ## IAM compartilhado
@@ -48,6 +57,15 @@ Este documento consolida os principais riscos tecnicos, arquiteturais e operacio
 - **Mitigacao arquitetural:** membership version, TTL curto e estrategia explicita de revogacao.
 - **ADR relacionada:** ADR-001.
 
+### Risco: copiar o contrato single-tenant do legado para o Magic IA
+
+- **Descricao:** `users`, role global, cookie compartilhado e `user_page_permissions` do `consultare-hub` serem usados como IAM final do Magic IA.
+- **Causa provavel:** reaproveitamento direto do legado para acelerar o primeiro release.
+- **Impacto:** alto.
+- **Probabilidade:** media.
+- **Mitigacao arquitetural:** usar o legado apenas como referencia funcional; implementar membership por tenant, perfis no contexto do tenant, entitlements e escopo de dados desde a foundation.
+- **ADR relacionada:** ADR-001, ADR-002, ADR-014.
+
 ---
 
 ## Multi-tenancy
@@ -60,6 +78,15 @@ Este documento consolida os principais riscos tecnicos, arquiteturais e operacio
 - **Probabilidade:** media.
 - **Mitigacao arquitetural:** tenant_id obrigatorio, testes negativos, dedupe/concurrency key e revisao de query.
 - **ADR relacionada:** ADR-002, ADR-004, ADR-007.
+
+### Risco: misturar entitlement, permissao e escopo de dados
+
+- **Descricao:** um unico grant liberar ao mesmo tempo modulo contratado, acao funcional e visibilidade de dados.
+- **Causa provavel:** tentar simplificar autorizacao tratando tudo como permissao de tela.
+- **Impacto:** alto.
+- **Probabilidade:** media.
+- **Mitigacao arquitetural:** aplicar a ordem `Tenant -> EntitlementGrant -> Perfil/Grupo -> Permissao -> DataAccessContext` e validar cada decisao no backend.
+- **ADR relacionada:** ADR-001, ADR-002, ADR-014.
 
 ---
 
@@ -184,3 +211,5 @@ Este documento consolida os principais riscos tecnicos, arquiteturais e operacio
 - Criar scripts fora da ACL acessando o legado diretamente.
 - Validar feature flags apenas na UI, sem enforcement server-side.
 - Permitir que workers leiam secrets por SQL direto.
+- Tratar `Feegow Bridge` como dependencia obrigatoria de modulo Magic Core.
+- Usar role global como substituto de membership, perfil e escopo por tenant.

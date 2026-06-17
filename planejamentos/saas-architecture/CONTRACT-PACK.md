@@ -20,6 +20,45 @@ Os contratos abaixo sao obrigatorios para o novo SaaS e devem ser tratados como 
 
 ---
 
+## Magic IA product boundary
+
+### Proposito
+
+Fixar os contratos minimos de produto que a foundation deve reconhecer antes dos modulos de negocio.
+
+### Invariantes obrigatorias
+
+- O produto alvo se chama `Magic IA`.
+- `Magic Core` e o conjunto de entidades e fluxos nativos do produto.
+- `Feegow Bridge` e capability opcional por tenant, nao dependencia estrutural do core.
+- A hierarquia de acesso deve seguir: plataforma -> tenant -> modulos contratados -> unidades/organizacoes -> usuarios -> perfis/grupos -> permissoes -> escopo de dados -> acesso final.
+- Entitlement comercial, permissao funcional e escopo de dados sao decisoes separadas.
+
+### Modulos iniciais canonicos
+
+- `platform_admin`
+- `magic_core`
+- `feegow_bridge`
+- `bi_gestao`
+- `comercial_atendimento`
+- `financeiro`
+- `marketing`
+- `pessoas_rh`
+- `operacao_clinica`
+- `qualidade_regulatorio`
+- `intranet`
+- `tarefas_projetos`
+
+### Regras de compatibilidade
+
+- Capability de modulo deve ser resolvida por `EntitlementGrant`.
+- Permissao de usuario nao libera modulo nao contratado.
+- Modulo contratado nao concede acesso sem permissao funcional.
+- Permissao funcional nao amplia escopo de dados.
+- `Feegow Bridge` deve depender de `SecretRef`, `JobEnvelope`, `TenantContext` e `DataAccessContext`.
+
+---
+
 ## TenantContext
 
 ### Proposito
@@ -1357,7 +1396,7 @@ Nao depende diretamente do IAM; depende de `MachineIdentity` do consumer quando 
 
 ### Proposito
 
-Representar a liberacao tecnica canonica de uma capability por tenant.
+Representar a liberacao tecnica canonica de uma capability por tenant, incluindo modulos contratados do Magic IA, conectores externos e recursos premium.
 
 ### Owner
 
@@ -1379,8 +1418,10 @@ Grant persistido e consultavel no backend, separado de flag operacional e do pro
 ### Invariantes obrigatorias
 
 - Capability comercial ou tecnica nao pode ser liberada apenas por UI.
+- Capability de modulo contratado deve existir antes da validacao de permissao funcional do usuario.
 - `state` deve distinguir ativo, suspenso, expirado ou revogado.
 - `source` deve distinguir plano, override administrativo ou migracao controlada.
+- `feegow_bridge.*` deve ser independente de `magic_core.*`.
 
 ### Propagacao
 
@@ -1426,6 +1467,8 @@ Provisionado no onboarding, alterado por admin autorizado, consultado em runtime
 
 - Liberar capability comercial apenas por `FeatureFlag`.
 - Fallback permissivo na ausencia de grant.
+- Usar permissao funcional de usuario como substituto de modulo contratado.
+- Fazer `Feegow Bridge` liberar implicitamente capacidades nativas do Magic Core.
 
 ### Exemplo valido
 
@@ -1433,7 +1476,7 @@ Provisionado no onboarding, alterado por admin autorizado, consultado em runtime
 {
   "entitlement_grant_id": "ent_001",
   "tenant_id": "ten_123",
-  "capability_key": "dashboard.advanced",
+  "capability_key": "feegow_bridge.appointments.read",
   "state": "active",
   "source": "plan",
   "effective_from": "2027-01-01T00:00:00Z"
@@ -1466,3 +1509,7 @@ Uso analitico de capability deve respeitar o grant vigente, nao apenas a UI.
 ### Compatibilidade com IAM
 
 Complementa IAM: IAM governa identidade e grants de acesso; `EntitlementGrant` governa capability comercial/tecnica do tenant.
+
+### Compatibilidade com Magic IA
+
+Representa a camada "Modulos contratados" da hierarquia do Magic IA. Deve ser validado antes de perfis, grupos, permissoes e data scope.

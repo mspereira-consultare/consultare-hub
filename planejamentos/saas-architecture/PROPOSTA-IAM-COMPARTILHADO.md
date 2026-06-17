@@ -4,12 +4,14 @@
 
 Este documento apresenta uma proposta de abordagem para identidade e controle de acessos compartilhados entre:
 
-- o novo SaaS multi-tenant da Consultare; e
+- o Magic IA, novo SaaS multi-tenant da Consultare; e
 - o outro sistema que será desenvolvido em paralelo.
 
 A ideia é avaliar se faz sentido os dois produtos consumirem uma mesma camada centralizada de identidade e acessos, em vez de cada sistema manter seu próprio cadastro de usuários, tenants e permissões.
 
 O objetivo aqui não é impor uma solução fechada, mas propor uma base de alinhamento para avaliarmos juntos.
+
+Neste pacote de arquitetura, quando este documento fala em "novo SaaS", o produto de referencia e o Magic IA. O IAM compartilhado nao substitui os contratos internos do produto: modulos contratados continuam sendo resolvidos por `EntitlementGrant`, permissoes funcionais por perfis/grupos e escopo operacional por `DataAccessContext`.
 
 ---
 
@@ -154,6 +156,7 @@ De forma simples, a proposta inicial seria:
 - cada sistema recebe esse contexto e valida o acesso ao próprio produto;
 - o IAM informa quem é o usuário, a quais tenants ele pertence, quais papéis ele possui e para quais sistemas ele tem acesso;
 - cada produto decide o que fazer dentro do seu próprio domínio com base nesse contexto.
+- no Magic IA, o produto ainda deve validar se o tenant contratou o modulo, se o usuario tem permissao funcional e qual escopo de dados pode acessar.
 
 Exemplo prático:
 
@@ -193,6 +196,7 @@ Temas dessa conversa:
 - modelo de memberships;
 - modelo de papéis e permissões;
 - formato básico dos tokens;
+- relacao entre IAM, `EntitlementGrant`, permissoes do produto e `DataAccessContext`;
 - responsabilidades do IAM;
 - responsabilidades de cada sistema;
 - limites do IAM para não virar um sistema inchado.

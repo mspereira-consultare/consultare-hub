@@ -8,6 +8,8 @@
 
 O novo SaaS precisa controlar capacidade por tenant, liberar modulos por plano e preparar o terreno para cobranca recorrente futura. Sem um contrato tecnico claro, feature flags e regras comerciais tendem a se misturar de forma fragil na UI e em scripts operacionais.
 
+No Magic IA, isso tambem cobre os modulos contratados do produto, incluindo capacidades como `Magic Core`, `Feegow Bridge`, Intranet, Tarefas, Marketing, Financeiro, Pessoas/RH, Qualidade e BI/Gestao.
+
 ## Problema
 
 Sem separar plano comercial, entitlement tecnico e flag operacional:
@@ -46,6 +48,14 @@ A decisao inclui:
 - enforcement sempre server-side, com UI apenas refletindo a decisao do backend;
 - gateway de pagamento futuro tratado por adapter boundary, sem virar fonte direta de autorizacao.
 
+Para o Magic IA, uma capability pode representar:
+
+- modulo contratado;
+- recurso premium dentro de modulo;
+- conector externo, como `Feegow Bridge`;
+- limite operacional ou analitico;
+- rollout tecnico temporario.
+
 ## Justificativa
 
 O produto precisa separar desde cedo o que e politica comercial, o que e liberacao tecnica e o que e rollout operacional. Essa separacao evita que o core de autorizacao seja reescrito quando o billing automatizado entrar.
@@ -73,6 +83,21 @@ O produto precisa separar desde cedo o que e politica comercial, o que e liberac
 - `UsageMeter`: contrato de medicao de uso ou ledger append-only para limites consumiveis.
 - `FeatureFlag`: flag operacional de rollout ou comportamento, distinta de entitlement comercial.
 
+Namespaces iniciais recomendados para capabilities do Magic IA:
+
+- `platform_admin.*`
+- `magic_core.*`
+- `feegow_bridge.*`
+- `bi_gestao.*`
+- `comercial_atendimento.*`
+- `financeiro.*`
+- `marketing.*`
+- `pessoas_rh.*`
+- `operacao_clinica.*`
+- `qualidade_regulatorio.*`
+- `intranet.*`
+- `tarefas_projetos.*`
+
 ## Riscos
 
 - Flags operacionais serem usadas para contornar entitlements.
@@ -94,3 +119,4 @@ O gateway pode mudar, os planos podem evoluir e o pricing pode ser revisto. O qu
 - Ajustes manuais de subscription ou entitlement geram auditoria.
 - Capacidades com limite medido possuem `UsageMeter` ou ledger equivalente.
 - A entrada futura de gateway nao exige redesenhar o contrato tecnico de capabilities.
+- Feegow Bridge pode ser habilitado ou desabilitado por tenant sem afetar o acesso a modulos Magic Core contratados.

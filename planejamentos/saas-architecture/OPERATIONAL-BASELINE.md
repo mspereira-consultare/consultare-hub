@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Este documento define a baseline operacional minima obrigatoria antes do primeiro commit do novo SaaS.
+Este documento define a baseline operacional minima obrigatoria antes do primeiro commit do Magic IA.
 
 O objetivo nao e operacao enterprise completa. O objetivo e garantir uma base coerente com a arquitetura aprovada em Railway, MySQL e Valkey, sem deixar observabilidade, recovery e runtime behavior implicitos.
 
@@ -11,6 +11,7 @@ O objetivo nao e operacao enterprise completa. O objetivo e garantir uma base co
 ## Principios
 
 - A baseline vale para `IAM`, `saas-api`, `worker-runtime`, `secret-service`, `analytics-serving` e `legacy-bridge`.
+- `Feegow Bridge`, quando habilitado, e integracao tenant-aware do Magic IA e deve seguir a mesma baseline de workers, secrets, idempotencia, health e auditoria.
 - Seguranca entre servicos nao depende apenas de rede privada.
 - Logs tecnicos, metricas, tracing, backup, restore e runbooks minimos sao gates de foundation.
 - `Valkey` nao e fonte autoritativa de negocio.
@@ -44,6 +45,10 @@ Do orcamento aplicacional de `80%`:
 - `analytics extraction/materialization`: `10%`
 - `legacy-bridge`: `5%`
 - `migrations/support tooling`: `5%`
+
+Observacao:
+
+- `Feegow Bridge` deve consumir orcamento de `workers` ou de deployable proprio de integracao quando for separado; em qualquer caso, nao pode usar pool global sem budget tenant-aware.
 
 ### IAM DB
 
@@ -279,7 +284,8 @@ Worker degradado nao deve continuar consumindo fila.
 - Falha do `Valkey` nao invalida `OLTP`; recovery vem de replay e reconciliacao.
 - Falha de `analytics-serving` nao bloqueia `OLTP`.
 - Falha do `secret-service` pode bloquear integracoes dependentes, mas nao deve corromper dados transacionais ja persistidos.
-- Falha da `legacy-bridge` nao pode bloquear o core runtime do novo SaaS.
+- Falha da `legacy-bridge` nao pode bloquear o core runtime do Magic IA.
+- Falha do `Feegow Bridge` nao pode bloquear modulos Magic Core contratados; deve degradar apenas fluxos dependentes daquela integracao e daquele tenant.
 
 ---
 
@@ -289,6 +295,7 @@ Worker degradado nao deve continuar consumindo fila.
 - replay de `DLQ`
 - recovery de scheduler
 - rotacao de `KEK` e de credencial de bootstrap
+- indisponibilidade de conector tenant-scoped, incluindo `Feegow Bridge`
 - incidente de stale grants no IAM
 - atraso de analytics freshness
 

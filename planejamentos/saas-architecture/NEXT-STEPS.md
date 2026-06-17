@@ -2,16 +2,16 @@
 
 ## Objetivo deste documento
 
-Este documento define a sequencia segura para sair do congelamento arquitetural e iniciar a fundacao do novo SaaS sem quebrar as ADRs aprovadas.
+Este documento define a sequencia segura para sair do congelamento arquitetural e iniciar a fundacao do Magic IA sem quebrar as ADRs aprovadas.
 
 ---
 
 ## Fase 1 - Ratificar o pacote final
 
 - **Objetivo:** transformar o pacote documental completo em baseline formal da foundation.
-- **Dependencias:** ADR-000 ate ADR-015, `CONTRACT-PACK.md`, `OPERATIONAL-BASELINE.md` e `FOUNDATION-GATES.md` coerentes entre si.
+- **Dependencias:** ADR-000 ate ADR-015, `CONTRACT-PACK.md`, `OPERATIONAL-BASELINE.md`, `FOUNDATION-GATES.md` e `planejamentos/magic-ia/` coerentes entre si.
 - **Artefatos esperados:** aceite formal do pacote final como fonte oficial.
-- **Criterio de saida:** nenhuma decisao fundacional critica permanece implicita.
+- **Criterio de saida:** nenhuma decisao fundacional critica permanece implicita e o blueprint Magic IA fica reconhecido como referencia funcional, nao como arquitetura a copiar do legado.
 
 ## Fase 2 - Aprovar FOUNDATION-GATES
 
@@ -22,7 +22,7 @@ Este documento define a sequencia segura para sair do congelamento arquitetural 
 
 ## Fase 3 - Criar o novo repositorio
 
-- **Objetivo:** iniciar a infraestrutura de trabalho do novo SaaS somente apos o foundation freeze estar formalmente aprovado.
+- **Objetivo:** iniciar a infraestrutura de trabalho do Magic IA somente apos o foundation freeze estar formalmente aprovado.
 - **Dependencias:** gates aprovados.
 - **Artefatos esperados:** repositorio novo, provisionamento minimo de ambientes e bootstrap coerente com ADR-000.
 - **Criterio de saida:** o novo ecossistema nasce sem compartilhar repo, project, banco, pipeline ou credencial com o legado.
@@ -33,3 +33,10 @@ Este documento define a sequencia segura para sair do congelamento arquitetural 
 - **Dependencias:** fases 1 a 3 concluidas.
 - **Artefatos esperados:** primeiro ciclo de Goal Mode orientado apenas a bootstrap de foundation, sem features de negocio.
 - **Criterio de saida:** o time pode iniciar desenvolvimento com guardrails claros e sem reabrir as ADRs basicas.
+
+## Guardrails para os proximos ciclos
+
+- Nao iniciar implementacao ampla de modulos antes da foundation multi-tenant.
+- Nao criar Feegow Bridge antes de `TenantContext`, `SecretRef`, `JobEnvelope`, `EntitlementGrant` e `DataAccessContext`.
+- Nao usar o contrato atual de auth do `consultare-hub` como IAM alvo do Magic IA.
+- Usar `planejamentos/magic-ia/ROADMAP-DE-PARIDADE-E-MIGRACAO.md` para ordenar paridade funcional depois da foundation.

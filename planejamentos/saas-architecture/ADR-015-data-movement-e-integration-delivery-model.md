@@ -8,6 +8,8 @@
 
 O novo SaaS precisara mover dados e intencoes entre OLTP, workers, analytics, integracoes externas e a bridge read-only do legado. Sem um modelo dominante, cada dominio tendera a escolher sua propria combinacao de chamadas sincronas, jobs ad hoc e ETLs oportunistas.
 
+No Magic IA, isso inclui tambem o `Feegow Bridge` como integracao externa por tenant. Ele nao e a mesma coisa que a bridge read-only do legado e nao deve virar caminho sincrono obrigatorio para o Magic Core.
+
 ## Problema
 
 Sem uma politica formal de data movement:
@@ -43,6 +45,7 @@ Essa decisao inclui:
 - `IntegrationCommand` como envelope de intencao para side effects externos relevantes;
 - `Batch ETL` restrito a bootstrap, backfill, refresh analitico e reconciliacao;
 - proibicao de usar a bridge legada como dependencia operacional sincrona do core runtime;
+- proibicao de usar `Feegow Bridge` como dependencia sincrona obrigatoria de modulos Magic Core;
 - efeitos colaterais externos fora da transacao principal como padrao, salvo excecoes muito restritas e explicitamente documentadas.
 
 ## Justificativa
@@ -62,6 +65,7 @@ O modelo hibrido preserva consistencia e auditabilidade sem transformar todo o e
 - Todo consumidor de evento ou webhook deve ter estrategia de idempotencia e replay.
 - Batch nao deve substituir outbox em fluxos operacionais criticos.
 - A bridge do legado pode participar de bootstrap e reconciliacao, nunca de dependencia sincrona do runtime principal.
+- `Feegow Bridge` deve usar `IntegrationCommand`, `JobEnvelope`, idempotencia, freshness e reconciliacao por tenant.
 - Freshness de cada fluxo deve ser classificada para evitar misturar dado near-real-time com batch sem sinalizacao.
 
 ## Contratos envolvidos
@@ -79,6 +83,7 @@ O modelo hibrido preserva consistencia e auditabilidade sem transformar todo o e
 - Outbox virar dumping ground sem contrato de schema e ownership.
 - Reconciliacao ser tratada como operacao manual eterna.
 - Bridge read-only virar feed operacional mascarado.
+- Feegow Bridge virar requisito sincrono para telas e fluxos que deveriam pertencer ao Magic Core.
 
 ## Reversibilidade
 
@@ -92,4 +97,5 @@ Implementacoes especificas podem evoluir, mas escolher cedo entre chamadas diret
 - Consumidores possuem estrategia de `InboxEvent` ou idempotencia equivalente.
 - Nenhum fluxo operacional critico depende de batch como unico meio de propagacao.
 - A bridge legada nao participa de fluxo sincrono de negocio do novo SaaS.
+- Feegow Bridge nao participa de fluxo sincrono obrigatorio de negocio do Magic Core.
 - Existe classificacao minima de freshness para pipelines operacionais e analiticos.

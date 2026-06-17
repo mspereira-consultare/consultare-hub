@@ -6,6 +6,13 @@ Este documento resume como o `consultare-hub` funciona hoje em autenticacao, ses
 
 O foco aqui e o estado atual implementado no projeto, nao um desenho ideal futuro. Onde houver limitacoes para o cenario multi-tenant, elas estao destacadas.
 
+Atualizacao para o Magic IA:
+
+- este guia documenta o contrato atual do `consultare-hub`;
+- ele serve como referencia de compatibilidade e aprendizado, nao como contrato alvo de IAM do Magic IA;
+- o alvo multi-tenant deve seguir `CONTRACT-PACK.md`, `MAGIC-IA-MULTITENANT-TARGET.md` e as ADRs congeladas;
+- no Magic IA, autenticacao, tenant membership, modulos contratados, perfis/permissoes e escopo de dados devem ser decisoes separadas.
+
 ---
 
 ## Resumo executivo
@@ -580,6 +587,9 @@ O que ainda nao existe neste modelo:
 - role por tenant;
 - isolamento de acesso por cliente;
 - catalogo de produtos por tenant.
+- `EntitlementGrant` para liberar modulos contratados;
+- `DataAccessContext` para limitar escopo de dados;
+- separacao formal entre permissao funcional, entitlement comercial e escopo operacional.
 
 Entao, para o outro dev, e importante entender:
 
@@ -595,17 +605,16 @@ Em outras palavras:
 
 ## Evolucao natural para multi-tenant
 
-Sem mudar a base conceitual, a evolucao natural seria:
+Para um produto como o Magic IA, a evolucao natural nao deve ser apenas adicionar `tenant_id` nas tabelas atuais. O modelo precisa separar identidade, contrato comercial, permissao funcional e escopo de dados:
 
-1. manter `users` como diretorio central;
-2. criar tabela de memberships por tenant;
-3. mover role para o contexto de membership, nao do usuario global;
-4. tornar `user_page_permissions` tenant-aware;
-5. incluir `tenant_id` e `memberships` na sessao/token;
-6. permitir que cada sistema valide:
-   - quem e o usuario
-   - em qual tenant ele esta
-   - quais modulos daquele tenant ele pode acessar
+1. manter usuario global como identidade, sem role global de negocio;
+2. criar memberships por tenant e por unidade/organizacao;
+3. mover role/perfil para o contexto de membership;
+4. validar modulos contratados por `EntitlementGrant` antes de qualquer permissao funcional;
+5. resolver perfis/grupos/permissoes dentro do tenant e do modulo liberado;
+6. resolver `DataAccessContext` para limitar unidade, equipe, carteira, profissional, campanha ou outro recorte operacional;
+7. emitir sessao/token com contexto explicito de usuario, tenant, memberships, capabilities e versoes de autorizacao;
+8. garantir que o `Feegow Bridge`, quando habilitado, consuma os mesmos contratos de tenant, secrets, jobs e auditoria do Magic IA.
 
 Mas isso ja e um passo acima do que esta implementado hoje.
 
@@ -651,6 +660,9 @@ Mas isso ja e um passo acima do que esta implementado hoje.
 - `apps/painel/docs/02-matriz-de-permissoes.md`
 - `apps/painel/docs/database/03-dicionario-de-dados-mysql.md`
 - `planejamentos/saas-architecture/PROPOSTA-IAM-COMPARTILHADO.md`
+- `planejamentos/saas-architecture/CONTRACT-PACK.md`
+- `planejamentos/magic-ia/MAGIC-IA-MULTITENANT-TARGET.md`
+- `planejamentos/magic-ia/MATRIZ-FEEGOW-BRIDGE-VS-MAGIC-CORE.md`
 
 ---
 
@@ -673,5 +685,7 @@ Se o outro sistema nao usar Next.js/NextAuth:
 
 Se o objetivo ja for nascer pronto para produto multi-tenant:
 
-- vale manter esse padrao como base;
-- mas ja projetando membership por tenant, role por tenant e permissoes por tenant, porque isso ainda nao esta resolvido no modelo atual.
+- use este documento como leitura do legado, nao como desenho alvo;
+- nao compartilhe `users`, `user_page_permissions`, cookie ou role global como fundacao final do Magic IA;
+- implemente IAM, memberships, entitlements, perfis, permissoes e escopo de dados seguindo os contratos congelados em `planejamentos/saas-architecture`;
+- preserve a semantica util do legado, mas substitua o contrato single-tenant por decisoes tenant-aware desde a foundation.

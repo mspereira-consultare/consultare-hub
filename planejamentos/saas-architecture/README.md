@@ -1,18 +1,20 @@
-# ADR Freeze - Arquitetura Congelada do Novo SaaS
+# ADR Freeze - Arquitetura Congelada do Magic IA
 
 ## Objetivo deste pacote
 
-Este diretorio consolida as decisoes arquiteturais fundamentais do novo SaaS multi-tenant da Consultare.
+Este diretorio consolida as decisoes arquiteturais fundamentais do novo SaaS multi-tenant da Consultare, agora nomeado **Magic IA**.
 
 O objetivo deste pacote e:
 
 - registrar a fundacao arquitetural aprovada;
 - reduzir ambiguidades antes do inicio da implementacao;
-- impedir que o novo SaaS herde acoplamentos estruturais do legado;
+- impedir que o Magic IA herde acoplamentos estruturais do legado;
 - transformar decisoes de direcao em contratos operacionais;
 - orientar a futura fase de foundation com base em ADRs formais.
 
 Este pacote e exclusivamente documental. Nao descreve implementacao, scaffolding, telas nem estrutura inicial de codigo.
+
+O blueprint funcional e de paridade do produto fica em `planejamentos/magic-ia/`. Este pacote de arquitetura continua sendo a fonte de verdade para a foundation tecnica.
 
 ---
 
@@ -20,11 +22,12 @@ Este pacote e exclusivamente documental. Nao descreve implementacao, scaffolding
 
 As decisoes abaixo devem ser tratadas como congeladas nesta fase:
 
-- o novo SaaS sera construido fora do repositorio do legado;
-- o novo SaaS tera Railway project separado, banco separado, pipelines separados e CI/CD separado;
+- o novo SaaS se chama Magic IA;
+- o Magic IA sera construido fora do repositorio do legado;
+- o Magic IA tera Railway project separado, banco separado, pipelines separados e CI/CD separado;
 - o legado sera usado apenas como referencia funcional e operacional;
 - qualquer ponte com o legado sera obrigatoriamente mediada por ACL read-only;
-- o runtime do novo SaaS nao podera acessar diretamente o banco legado;
+- o runtime do Magic IA nao podera acessar diretamente o banco legado;
 - o IAM compartilhado sera um servico de plataforma separado;
 - a estrategia padrao de tenancy sera row-level no banco novo;
 - tenant enforcement exigira contexto de tenant, camada de acesso aprovada e trilha formal para acessos globais;
@@ -40,6 +43,14 @@ As decisoes abaixo devem ser tratadas como congeladas nesta fase:
 - entitlements e feature gating serao resolvidos no backend;
 - data movement seguira modelo hibrido com outbox como padrao dominante.
 
+Premissas complementares do produto Magic IA:
+
+- `Magic Core` e o produto principal e deve nascer com entidades canonicas proprias;
+- `Feegow Bridge` e um modulo/conector opcional por tenant para clientes que ainda usam Feegow;
+- bridge read-only do legado e `Feegow Bridge` nao sao a mesma coisa;
+- nenhum modulo do Magic IA deve depender estruturalmente do Feegow para existir;
+- modulos contratados devem ser resolvidos por entitlements server-side antes de permissao funcional e escopo de dados.
+
 ---
 
 ## Papel do legado
@@ -53,7 +64,9 @@ Neste contexto, o legado serve apenas como:
 - insumo para paridade futura;
 - origem eventual de leitura controlada via bridge read-only.
 
-O legado nao e fonte arquitetural do novo SaaS.
+O legado nao e fonte arquitetural do Magic IA.
+
+O Feegow tambem nao e fonte arquitetural do Magic IA. Quando um cliente usar Feegow, a integracao deve entrar como `Feegow Bridge`, com credenciais, jobs, health, idempotencia e mapeamento de ids por tenant.
 
 ---
 
@@ -61,7 +74,7 @@ O legado nao e fonte arquitetural do novo SaaS.
 
 | ADR | Titulo | Prioridade | Status | Decisao central |
 | --- | --- | --- | --- | --- |
-| ADR-000 | Separacao fisica entre legado e novo SaaS | P0 | Aprovada | Novo SaaS fora do legado em repo, Railway project, banco e pipelines proprios |
+| ADR-000 | Separacao fisica entre legado e novo SaaS | P0 | Aprovada | Magic IA fora do legado em repo, Railway project, banco e pipelines proprios |
 | ADR-001 | IAM compartilhado | P0 | Aprovada | IAM como servico de plataforma separado e neutro entre sistemas |
 | ADR-002 | Multi-tenancy row-level | P0 | Aprovada | Shared MySQL novo com isolamento logico por tenant_id |
 | ADR-003 | Secrets por tenant | P0 | Aprovada | Secret service proprio com envelope encryption e acesso por SecretRef |
@@ -153,7 +166,7 @@ A ordem recomendada de leitura e:
 21. NEXT-STEPS.md
 22. FOUNDATION-GATES.md
 
-As ADRs P0 definem a fundacao minima para que o novo SaaS nasca sem repetir os erros estruturais do legado. `CONTRACT-PACK.md` fecha a camada de enforcement e contratos fundacionais. `OPERATIONAL-BASELINE.md` fecha a readiness operacional minima. `FOUNDATION-GATES.md` deve ser usado como criterio final antes da abertura do novo repositorio.
+As ADRs P0 definem a fundacao minima para que o Magic IA nasca sem repetir os erros estruturais do legado. `CONTRACT-PACK.md` fecha a camada de enforcement e contratos fundacionais. `OPERATIONAL-BASELINE.md` fecha a readiness operacional minima. `FOUNDATION-GATES.md` deve ser usado como criterio final antes da abertura do novo repositorio.
 
 ---
 
@@ -167,6 +180,7 @@ Os itens abaixo nao fazem parte deste pacote:
 - migracao tecnica do legado;
 - scaffolding, boilerplate ou definicao de framework interno;
 - definicao detalhada de roadmap de features.
+- especificacao completa de paridade funcional por modulo, coberta em `planejamentos/magic-ia/`.
 
 ---
 

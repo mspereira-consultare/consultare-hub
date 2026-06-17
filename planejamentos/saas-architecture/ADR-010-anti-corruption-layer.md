@@ -44,6 +44,15 @@ Essa decisao inclui:
 - proibicao de join runtime do produto novo com o banco legado;
 - proibicao de escrita cruzada entre novo SaaS e legado.
 
+### Atualizacao de nomenclatura - Magic IA
+
+Com o blueprint do Magic IA, ha duas pontes diferentes que nao devem ser confundidas:
+
+- `anti-corruption layer do legado`: ponte read-only para consultar o `consultare-hub` como referencia historica, bootstrap ou validacao de paridade;
+- `Feegow Bridge`: modulo/conector opcional por tenant para clientes que usam Feegow como sistema operacional externo.
+
+O `Feegow Bridge` nao autoriza o runtime do Magic IA a acessar o banco legado e nao transforma Feegow em core arquitetural. Ele deve obedecer aos contratos de tenant, SecretRef, JobEnvelope, idempotencia, health e data access policy.
+
 ## Justificativa
 
 Esta decisao permite que o legado seja usado como referencia controlada sem se tornar parte estrutural do novo SaaS. Ela tambem reduz o risco de transportar para o novo dominio as semanticas, enums e fragilidades do banco atual.
@@ -82,3 +91,4 @@ O objetivo e exatamente permitir que esta ponte seja removivel no futuro. O que 
 - Nenhuma bridge executa escrita cruzada.
 - Contracts de leitura do legado sao explicitados por dominio e versionados.
 - Staging legado no ambiente novo nao e tratado como fonte canonica de negocio.
+- Feegow Bridge, quando existir, e tratado como conector tenant-scoped e nao como dependencia estrutural do Magic Core.

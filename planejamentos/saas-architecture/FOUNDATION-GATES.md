@@ -2,7 +2,7 @@
 
 ## Objetivo
 
-Este documento responde se a foundation esta pronta para abrir o novo repositorio e iniciar a engineering bootstrap.
+Este documento responde se a foundation esta pronta para abrir o novo repositorio do Magic IA e iniciar a engineering bootstrap.
 
 Os gates abaixo sao objetivos. Cada item deve estar em estado `PASS` ou `FAIL`.
 
@@ -57,6 +57,12 @@ Os gates abaixo sao objetivos. Cada item deve estar em estado `PASS` ou `FAIL`.
 - **Status:** `PASS`
 - **Criterio:** Railway/MySQL/Valkey continuam compativeis com a baseline minima aprovada para foundation.
 
+### Gate 10 - Blueprint Magic IA alinhado
+
+- **Status:** `PASS`
+- **Criterio:** `planejamentos/magic-ia/` existe e separa claramente legado, Magic Core, Feegow Bridge, modulos comercializaveis e roadmap de paridade.
+- **Cobertura minima obrigatoria:** o blueprint nao reabre ADRs; ele complementa a foundation com contexto funcional e produto.
+
 ---
 
 ## O que pode esperar a fase 2
@@ -67,16 +73,19 @@ Os gates abaixo sao objetivos. Cada item deve estar em estado `PASS` ou `FAIL`.
 - impersonation operacional
 - tenants premium com isolamento fisico
 - warehouse externo ou stack analitico mais sofisticado
+- paridade completa de modulos de negocio
+- migracao tecnica de dados do legado
 
 ---
 
 ## Decisao atual
 
-- `Podemos criar o novo repo agora? Sim`
+- `Podemos criar o novo repo do Magic IA agora? Sim`
 - `Podemos iniciar Goal Mode de foundation agora? Sim`
 - `Podemos iniciar implementacao ampla agora? Nao`
 
 Justificativa:
 
 - A foundation documental agora esta fechada para bootstrap de engineering.
+- O blueprint funcional do Magic IA esta disponivel como referencia de produto e paridade.
 - O que continua fora do gate e implementacao ampla do produto, integracoes completas e capacidades de fase 2.
