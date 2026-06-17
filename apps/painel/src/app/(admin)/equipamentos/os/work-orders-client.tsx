@@ -475,7 +475,7 @@ export function EquipmentWorkOrdersClient({
     <section ref={sectionRef} id={sectionId} className="space-y-6 scroll-mt-24">
       {embedded ? (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <div className="shrink-0 rounded-xl bg-blue-900 p-3 text-white shadow-md">
                 <ClipboardList size={20} />
@@ -488,7 +488,7 @@ export function EquipmentWorkOrdersClient({
               </div>
             </div>
 
-            <div className="flex flex-nowrap gap-2 overflow-x-auto lg:justify-end">
+            <div className="flex flex-nowrap gap-2 overflow-x-auto xl:justify-end">
               <button
                 type="button"
                 onClick={() => loadList(true)}
@@ -507,6 +507,51 @@ export function EquipmentWorkOrdersClient({
                 <Plus className="h-4 w-4" />
                 Nova OS
               </button>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 text-sm font-semibold text-[#17407E]">
+                  <ShieldCheck className="h-4 w-4" />
+                  Perfis habilitados para criar e gerir OS
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {options.allowedProfiles.map((profile) => (
+                    <span key={profile.key} className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-[#17407E]">
+                      {profile.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <p className="max-w-xl text-xs leading-5 text-slate-500">
+                Responsáveis elegíveis são filtrados por esses perfis, mesmo quando o usuário atua pela intranet.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center">
+            <div className="flex-1">
+              <input
+                className={inputClassName}
+                placeholder="Buscar por equipamento, identificação, problema, responsável ou tarefa"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+              />
+            </div>
+            <select
+              className={`${inputClassName} xl:w-[220px] xl:flex-none`}
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as 'all' | EquipmentWorkOrderStatus)}
+            >
+              <option value="all">Todos os status</option>
+              {Object.entries(statusLabelMap).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+            <div className="shrink-0 text-sm text-slate-500 xl:min-w-[150px] xl:text-right">
+              {loading ? 'Carregando...' : `${list.total} OS encontrada(s)`}
             </div>
           </div>
         </div>
@@ -547,48 +592,54 @@ export function EquipmentWorkOrdersClient({
                 </button>
               </div>
             </div>
+
+            <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-[#17407E]">
+                    <ShieldCheck className="h-4 w-4" />
+                    Perfis habilitados para criar e gerir OS
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {options.allowedProfiles.map((profile) => (
+                      <span key={profile.key} className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-[#17407E]">
+                        {profile.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <p className="max-w-xl text-xs leading-5 text-slate-500">
+                  Responsáveis elegíveis são filtrados por esses perfis, mesmo quando o usuário atua pela intranet.
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 xl:flex-row xl:items-center">
+              <div className="flex-1">
+                <input
+                  className={inputClassName}
+                  placeholder="Buscar por equipamento, identificação, problema, responsável ou tarefa"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
+              <select
+                className={`${inputClassName} xl:w-[220px] xl:flex-none`}
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as 'all' | EquipmentWorkOrderStatus)}
+              >
+                <option value="all">Todos os status</option>
+                {Object.entries(statusLabelMap).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </select>
+              <div className="shrink-0 text-sm text-slate-500 xl:min-w-[150px] xl:text-right">
+                {loading ? 'Carregando...' : `${list.total} OS encontrada(s)`}
+              </div>
+            </div>
           </div>
         </section>
       )}
-
-      <section className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
-        <div className="flex items-start gap-3">
-          <ShieldCheck className="mt-0.5 h-5 w-5 text-[#17407E]" />
-          <div>
-            <h2 className="text-sm font-semibold text-[#17407E]">Quem pode criar e gerir OS</h2>
-            <p className="mt-1 text-sm leading-6 text-slate-700">
-              A gestão usa os perfis resolvidos pelo dashboard executivo atual. Perfis habilitados:
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {options.allowedProfiles.map((profile) => (
-                <span key={profile.key} className="rounded-full border border-blue-200 bg-white px-3 py-1 text-xs font-semibold text-[#17407E]">
-                  {profile.label}
-                </span>
-              ))}
-            </div>
-            <p className="mt-3 text-xs leading-5 text-slate-500">
-              Responsáveis elegíveis são filtrados por esses perfis, mesmo quando o usuário atua pela intranet.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <input
-            className={inputClassName}
-            placeholder="Buscar por equipamento, identificação, problema, responsável ou tarefa"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-          <select className={`${inputClassName} md:max-w-[220px]`} value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | EquipmentWorkOrderStatus)}>
-            <option value="all">Todos os status</option>
-            {Object.entries(statusLabelMap).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </div>
-      </section>
 
       {error ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
       {notice ? <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
