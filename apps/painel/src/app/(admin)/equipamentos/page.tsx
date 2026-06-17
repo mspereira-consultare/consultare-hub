@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { ClipboardList, Download, Plus, RefreshCw, ShieldCheck } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
@@ -85,6 +85,26 @@ const buildWorkOrdersPath = ({
   const query = params.toString();
   return `/equipamentos${query ? `?${query}` : ''}#${EQUIPMENT_WORK_ORDERS_SECTION_ID}`;
 };
+
+function EquipmentWorkOrdersSectionFallback() {
+  return (
+    <section id={EQUIPMENT_WORK_ORDERS_SECTION_ID} className="space-y-6 scroll-mt-24">
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="shrink-0 rounded-xl bg-blue-900 p-3 text-white shadow-md">
+            <ClipboardList size={20} />
+          </div>
+          <div>
+            <h2 className="text-xl font-bold text-slate-800">Ordens de serviço</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-500">
+              Carregando a gestão de OS do patrimônio...
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 export default function EquipamentosPage() {
   const { data: session } = useSession();
@@ -393,7 +413,9 @@ export default function EquipamentosPage() {
         </div>
       </div>
 
-      <EquipmentWorkOrdersClient embedded sectionId={EQUIPMENT_WORK_ORDERS_SECTION_ID} />
+      <Suspense fallback={<EquipmentWorkOrdersSectionFallback />}>
+        <EquipmentWorkOrdersClient embedded sectionId={EQUIPMENT_WORK_ORDERS_SECTION_ID} />
+      </Suspense>
 
       <EquipmentFormModal
         open={modalOpen}

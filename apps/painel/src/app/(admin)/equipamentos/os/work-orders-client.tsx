@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import {
   AlertCircle,
   ClipboardList,
@@ -160,12 +159,9 @@ export function EquipmentWorkOrdersClient({
   embedded?: boolean;
   sectionId?: string;
 }) {
-  const searchParams = useSearchParams();
   const sectionRef = useRef<HTMLElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const hasBootstrappedRef = useRef(false);
-  const initialEquipmentId = searchParams.get('equipmentId') || '';
-  const requestedWorkOrderId = searchParams.get('osId') || '';
 
   const [options, setOptions] = useState<OptionsPayload>({
     responsibleUsers: [],
@@ -188,6 +184,8 @@ export function EquipmentWorkOrdersClient({
   const [form, setForm] = useState<WorkOrderFormState>(emptyForm);
   const [uploadNotes, setUploadNotes] = useState('');
   const [queryHandled, setQueryHandled] = useState(false);
+  const [initialEquipmentId, setInitialEquipmentId] = useState('');
+  const [requestedWorkOrderId, setRequestedWorkOrderId] = useState('');
   const [lastMaintenanceSuggestion, setLastMaintenanceSuggestion] = useState<EquipmentEvent | null>(null);
   const visibleLastMaintenanceSuggestion =
     modalMode === 'create' && form.equipmentId ? lastMaintenanceSuggestion : null;
@@ -260,6 +258,13 @@ export function EquipmentWorkOrdersClient({
     }, 0);
     return () => window.clearTimeout(timeoutId);
   }, [loadList, loadOptions]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    setInitialEquipmentId(params.get('equipmentId') || '');
+    setRequestedWorkOrderId(params.get('osId') || '');
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -385,8 +390,10 @@ export function EquipmentWorkOrdersClient({
     setSelectedItem(null);
     setForm(emptyForm());
     setUploadNotes('');
-    if (searchParams.get('equipmentId') || searchParams.get('osId')) {
+    if (initialEquipmentId || requestedWorkOrderId) {
       clearDeepLinkParams();
+      setInitialEquipmentId('');
+      setRequestedWorkOrderId('');
     }
   };
 
