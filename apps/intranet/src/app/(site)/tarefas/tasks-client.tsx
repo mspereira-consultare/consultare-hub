@@ -5115,7 +5115,6 @@ const canMoveForward = (task: TaskSummary) => {
 
 const canDropTaskToStatus = (task: TaskSummary, status: TaskStatus) => {
   if (task.status === status || isRetiredTaskStatus(task.status) || isRetiredTaskStatus(status)) return false;
-  if (canMoveBackward(task.status) && previousStatus(task.status) === status) return true;
-  if (canMoveForward(task) && nextStatus(task.status) === status) return true;
-  return false;
+  if (status === 'AGUARDANDO_APROVACAO' && !task.approverUserId) return false;
+  return true;
 };
