@@ -843,23 +843,6 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await ensureMysqlColumnDefinition(db, 'payroll_lines', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_reference_rows', 'created_at', 'VARCHAR(32) NOT NULL');
 
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_periods_month_ref ON payroll_periods (month_ref)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_import_files_period ON payroll_import_files (period_id, created_at)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_status ON payroll_point_import_jobs (status, created_at)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_period ON payroll_point_import_jobs (period_id, created_at)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_import_file ON payroll_point_import_jobs (import_file_id)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_jobs_status ON payroll_point_sync_jobs (status, created_at)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_jobs_period ON payroll_point_sync_jobs (period_id, created_at)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_runs_period ON payroll_point_sync_runs (period_id, created_at)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_period ON payroll_point_daily (period_id, point_date)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_employee ON payroll_point_daily (period_id, employee_id)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_solides_employee ON payroll_point_daily (period_id, solides_employee_id)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_occurrences_period ON payroll_occurrences (period_id, employee_id, date_start)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_reference_rows_period ON payroll_reference_rows (period_id, comparison_key)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_lines_period ON payroll_lines (period_id, employee_name)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_hours_balance_period ON payroll_hours_balance_monthly (period_id, employee_id)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_signature_period ON payroll_signature_monthly (period_id, employee_id)`);
-
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN transport_voucher_mode VARCHAR(20) NOT NULL DEFAULT 'PER_DAY'`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN transport_voucher_monthly_fixed DECIMAL(12,2) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN totalpass_discount_fixed DECIMAL(12,2) NULL`);
@@ -876,6 +859,23 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN break_overrun_minutes INTEGER NOT NULL DEFAULT 0`);
   await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN source_payload_json LONGTEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN sync_run_id VARCHAR(64) NULL`);
+
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_periods_month_ref ON payroll_periods (month_ref)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_import_files_period ON payroll_import_files (period_id, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_status ON payroll_point_import_jobs (status, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_period ON payroll_point_import_jobs (period_id, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_import_file ON payroll_point_import_jobs (import_file_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_jobs_status ON payroll_point_sync_jobs (status, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_jobs_period ON payroll_point_sync_jobs (period_id, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_runs_period ON payroll_point_sync_runs (period_id, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_period ON payroll_point_daily (period_id, point_date)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_employee ON payroll_point_daily (period_id, employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_solides_employee ON payroll_point_daily (period_id, solides_employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_occurrences_period ON payroll_occurrences (period_id, employee_id, date_start)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_reference_rows_period ON payroll_reference_rows (period_id, comparison_key)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_lines_period ON payroll_lines (period_id, employee_name)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_hours_balance_period ON payroll_hours_balance_monthly (period_id, employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_signature_period ON payroll_signature_monthly (period_id, employee_id)`);
 
   tablesEnsured = true;
 };
