@@ -8,25 +8,32 @@ import { DEFAULT_PAYROLL_LINE_FILTERS } from '@/lib/payroll/filters';
 import type {
   PayrollBenefitRow,
   PayrollBenefitsSummary,
-  PayrollImportFile,
+  PayrollDailyControlRow,
+  PayrollHoursBalanceMonthly,
   PayrollLine,
   PayrollLineDetail,
   PayrollLineFilters,
   PayrollOptions,
   PayrollPeriodDetail,
   PayrollPreviewRow,
+  PayrollSignatureMonthly,
+  PayrollVacationRow,
 } from '@/lib/payroll/types';
 import { PayrollBenefitsPanel } from './components/PayrollBenefitsPanel';
 import { PayrollClosingTable } from './components/PayrollClosingTable';
+import { PayrollDailyPanel } from './components/PayrollDailyPanel';
 import { formatDateBr, formatMoney, statusLabelMap } from './components/formatters';
 import { PayrollHelpModal } from './components/PayrollHelpModal';
-import { PayrollImportsPanel } from './components/PayrollImportsPanel';
+import { PayrollHoursBalancePanel } from './components/PayrollHoursBalancePanel';
 import { PayrollLineDrawer } from './components/PayrollLineDrawer';
 import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
 import { PayrollPreviewTable } from './components/PayrollPreviewTable';
 import { PayrollReadinessPanel } from './components/PayrollReadinessPanel';
+import { PayrollSignaturesPanel } from './components/PayrollSignaturesPanel';
 import { PayrollSummaryCards } from './components/PayrollSummaryCards';
+import { PayrollSyncPanel } from './components/PayrollSyncPanel';
 import { PayrollTabNav, type PayrollTabKey } from './components/PayrollTabNav';
+import { PayrollVacationsPanel } from './components/PayrollVacationsPanel';
 
 const emptyOptions: PayrollOptions = {
   periods: [],
@@ -75,9 +82,13 @@ export default function FolhaPagamentoPage() {
   const [benefitRows, setBenefitRows] = useState<PayrollBenefitRow[]>([]);
   const [benefitsSummary, setBenefitsSummary] = useState<PayrollBenefitsSummary | null>(null);
   const [previewRows, setPreviewRows] = useState<PayrollPreviewRow[]>([]);
+  const [dailyRows, setDailyRows] = useState<PayrollDailyControlRow[]>([]);
+  const [hoursBalanceRows, setHoursBalanceRows] = useState<PayrollHoursBalanceMonthly[]>([]);
+  const [vacationRows, setVacationRows] = useState<PayrollVacationRow[]>([]);
+  const [signatureRows, setSignatureRows] = useState<PayrollSignatureMonthly[]>([]);
   const [filters, setFilters] = useState<PayrollLineFilters>(DEFAULT_PAYROLL_LINE_FILTERS);
   const [filterOptions, setFilterOptions] = useState({ centersCost: [] as string[], units: [] as string[], contracts: [] as string[] });
-  const [activeTab, setActiveTab] = useState<PayrollTabKey>('fechamento');
+  const [activeTab, setActiveTab] = useState<PayrollTabKey>('sincronizacao');
   const [loading, setLoading] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState('');
@@ -86,7 +97,7 @@ export default function FolhaPagamentoPage() {
   const [newPeriodOpen, setNewPeriodOpen] = useState(false);
   const [creatingPeriod, setCreatingPeriod] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
-  const [uploadingPoint, setUploadingPoint] = useState(false);
+  const [syncingPoint, setSyncingPoint] = useState(false);
   const [selectedLine, setSelectedLine] = useState<PayrollLine | null>(null);
   const [lineDetail, setLineDetail] = useState<PayrollLineDetail | null>(null);
   const [lineDetailOpen, setLineDetailOpen] = useState(false);
@@ -104,10 +115,15 @@ export default function FolhaPagamentoPage() {
       ),
     [detail?.imports],
   );
+  const hasPointSyncInProgress = useMemo(
+    () => (detail?.syncRuns || []).some((item) => ['PENDING', 'RUNNING'].includes(item.status)),
+    [detail?.syncRuns],
+  );
+  const hasPointPipelineInProgress = hasPointImportInProgress || hasPointSyncInProgress;
   const readiness = detail?.readiness || null;
   const generationBlockedByReadiness = readiness?.status === 'BLOCKED';
-  const generateActionTitle = hasPointImportInProgress
-    ? 'Aguarde a conclusão da importação do ponto para gerar a folha.'
+  const generateActionTitle = hasPointPipelineInProgress
+    ? 'Aguarde a conclusão da sincronização/importação do ponto para gerar a folha.'
     : generationBlockedByReadiness
       ? readiness?.guidance || 'Resolva os bloqueios críticos da competência antes de gerar a folha.'
       : 'Gerar folha';
@@ -135,7 +151,7 @@ export default function FolhaPagamentoPage() {
     setPreviewLoading(true);
     setError('');
     try {
-      const [benefitsPayload, detailPayload, linesPayload, previewPayload] = await Promise.all([
+      const [benefitsPayload, detailPayload, linesPayload, previewPayload, dailyPayload, hoursBalancePayload, vacationsPayload, signaturesPayload] = await Promise.all([
         fetchJson<{ status: string; data: { items: PayrollBenefitRow[]; summary: PayrollBenefitsSummary } }>(
           `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/benefits?${buildFilterQuery()}`,
         ),
@@ -146,6 +162,18 @@ export default function FolhaPagamentoPage() {
         fetchJson<{ status: string; data: { items: PayrollPreviewRow[] } }>(
           `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/preview?${buildFilterQuery()}`,
         ),
+        fetchJson<{ status: string; data: { items: PayrollDailyControlRow[] } }>(
+          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/daily?${buildFilterQuery()}`,
+        ),
+        fetchJson<{ status: string; data: { items: PayrollHoursBalanceMonthly[] } }>(
+          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/hours-balance?${buildFilterQuery()}`,
+        ),
+        fetchJson<{ status: string; data: { items: PayrollVacationRow[] } }>(
+          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/vacations?${buildFilterQuery()}`,
+        ),
+        fetchJson<{ status: string; data: { items: PayrollSignatureMonthly[] } }>(
+          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/signatures?${buildFilterQuery()}`,
+        ),
       ]);
 
       setBenefitRows(benefitsPayload.data?.items || []);
@@ -153,6 +181,10 @@ export default function FolhaPagamentoPage() {
       setDetail(detailPayload.data || emptyDetail);
       setLines(linesPayload.data?.items || []);
       setPreviewRows(previewPayload.data?.items || []);
+      setDailyRows(dailyPayload.data?.items || []);
+      setHoursBalanceRows(hoursBalancePayload.data?.items || []);
+      setVacationRows(vacationsPayload.data?.items || []);
+      setSignatureRows(signaturesPayload.data?.items || []);
       setFilterOptions({
         centersCost: linesPayload.data?.availableCentersCost || [],
         units: linesPayload.data?.availableUnits || [],
@@ -221,24 +253,21 @@ export default function FolhaPagamentoPage() {
     }
   };
 
-  const handlePointUpload = async (file: File) => {
+  const handlePointSync = async () => {
     if (!selectedPeriodId) return;
-    const formData = new FormData();
-    formData.set('file', file);
-    setUploadingPoint(true);
+    setSyncingPoint(true);
     setError('');
     setSuccessMessage('');
     try {
-      await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/imports/point`, {
+      await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/sync-point`, {
         method: 'POST',
-        body: formData,
       });
       await reloadAll();
-      setSuccessMessage('Arquivo enviado com sucesso e enfileirado para processamento.');
+      setSuccessMessage('Sincronização enfileirada com sucesso.');
     } catch (fetchError: any) {
       setError(String(fetchError?.message || fetchError));
     } finally {
-      setUploadingPoint(false);
+      setSyncingPoint(false);
     }
   };
 
@@ -279,12 +308,12 @@ export default function FolhaPagamentoPage() {
   };
 
   useEffect(() => {
-    if (!selectedPeriodId || !hasPointImportInProgress) return;
+    if (!selectedPeriodId || !hasPointPipelineInProgress) return;
     const intervalId = window.setInterval(() => {
       loadPeriod().catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
     }, 8000);
     return () => window.clearInterval(intervalId);
-  }, [hasPointImportInProgress, loadPeriod, selectedPeriodId]);
+  }, [hasPointPipelineInProgress, loadPeriod, selectedPeriodId]);
 
   if (!canView) {
     return <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">Você não possui permissão para acessar a folha de pagamento.</div>;
@@ -299,9 +328,9 @@ export default function FolhaPagamentoPage() {
               <Calculator size={20} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-800">Folha de pagamento</h1>
+              <h1 className="text-xl font-bold text-slate-800">Ponto e fechamento</h1>
               <p className="mt-1 text-xs text-slate-500">
-                Fechamento mensal recorrente por competência, com base no cadastro do colaborador, relatório de ponto e planilha operacional padrão do RH.
+                Hub operacional da competência com sincronização Sólides/Tangerino, fechamento mensal, benefícios e prévia de exportação.
               </p>
             </div>
           </div>
@@ -367,9 +396,9 @@ export default function FolhaPagamentoPage() {
 
       <PayrollSummaryCards summary={detail?.summary || null} />
 
-      {hasPointImportInProgress ? (
+      {hasPointPipelineInProgress ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Há um relatório de ponto em processamento nesta competência. A tela está atualizando automaticamente e a geração da folha ficará disponível após a conclusão.
+          Há uma sincronização/importação de ponto em andamento nesta competência. A tela está atualizando automaticamente e a geração da folha ficará disponível após a conclusão.
         </div>
       ) : null}
 
@@ -431,9 +460,9 @@ export default function FolhaPagamentoPage() {
               <button
                 type="button"
                 onClick={() => runPeriodAction('generate')}
-                disabled={hasPointImportInProgress || generationBlockedByReadiness || actionLoading === 'generate'}
+                disabled={hasPointPipelineInProgress || generationBlockedByReadiness || actionLoading === 'generate'}
                 className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${
-                  hasPointImportInProgress || generationBlockedByReadiness
+                  hasPointPipelineInProgress || generationBlockedByReadiness
                     ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
                     : 'border-slate-200 bg-white text-slate-700'
                 }`}
@@ -457,12 +486,23 @@ export default function FolhaPagamentoPage() {
 
       <PayrollTabNav activeTab={activeTab} onChange={setActiveTab} />
 
+      {activeTab === 'sincronizacao' ? (
+        <PayrollSyncPanel
+          imports={detail?.imports || []}
+          syncRuns={detail?.syncRuns || []}
+          syncingPoint={syncingPoint}
+          onSyncPoint={handlePointSync}
+        />
+      ) : null}
+      {activeTab === 'controle_diario' ? <PayrollDailyPanel rows={dailyRows} loading={loading || previewLoading} /> : null}
+      {activeTab === 'banco_horas' ? <PayrollHoursBalancePanel rows={hoursBalanceRows} loading={loading || previewLoading} /> : null}
+      {activeTab === 'ferias' ? <PayrollVacationsPanel rows={vacationRows} loading={loading || previewLoading} /> : null}
+      {activeTab === 'assinaturas' ? <PayrollSignaturesPanel rows={signatureRows} loading={loading || previewLoading} /> : null}
       {activeTab === 'fechamento' ? <PayrollClosingTable rows={lines} loading={loading} onOpenDetail={openLineDetail} /> : null}
       {activeTab === 'beneficios' ? (
         <PayrollBenefitsPanel rows={benefitRows} summary={benefitsSummary} loading={loading || previewLoading} onOpenLine={openPreviewLine} />
       ) : null}
       {activeTab === 'previa' ? <PayrollPreviewTable rows={previewRows} loading={loading || previewLoading} onOpenLine={openPreviewLine} /> : null}
-      {activeTab === 'importacoes' ? <PayrollImportsPanel imports={detail?.imports || ([] as PayrollImportFile[])} uploadingPoint={uploadingPoint} onUploadPoint={handlePointUpload} /> : null}
 
       <PayrollNewPeriodModal open={newPeriodOpen} saving={creatingPeriod} onClose={() => setNewPeriodOpen(false)} onSubmit={handleCreatePeriod} />
       <PayrollHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />

@@ -1,8 +1,18 @@
 export type PayrollPeriodStatus = 'ABERTA' | 'EM_REVISAO' | 'APROVADA' | 'ENVIADA';
-export type PayrollImportFileType = 'POINT_PDF';
+export type PayrollImportFileType = 'POINT_PDF' | 'SYNC_TIMESHEET';
 export type PayrollImportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 export type PayrollLineStatus = 'RASCUNHO' | 'EM_REVISAO' | 'APROVADO';
 export type PayrollTransportVoucherMode = 'PER_DAY' | 'MONTHLY_FIXED' | 'NONE';
+export type PayrollSyncJobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
+export type PayrollSignatureStatus =
+  | 'SEM_PENDENCIA'
+  | 'PENDENTE'
+  | 'ASSINADO'
+  | 'CONTESTADO'
+  | 'PROCESSANDO'
+  | 'VIGENCIA_INVALIDA'
+  | 'ERRO'
+  | 'CANCELADO';
 export type PayrollOccurrenceType =
   | 'ATESTADO'
   | 'DECLARACAO'
@@ -20,6 +30,7 @@ export const PAYROLL_PERIOD_STATUSES: Array<{ value: PayrollPeriodStatus; label:
 
 export const PAYROLL_IMPORT_FILE_TYPES: Array<{ value: PayrollImportFileType; label: string }> = [
   { value: 'POINT_PDF', label: 'Relatório de ponto (PDF)' },
+  { value: 'SYNC_TIMESHEET', label: 'Espelho sincronizado da Sólides/Tangerino' },
 ];
 
 export const PAYROLL_IMPORT_STATUSES: Array<{ value: PayrollImportStatus; label: string }> = [
@@ -48,6 +59,24 @@ export const PAYROLL_TRANSPORT_VOUCHER_MODES: Array<{ value: PayrollTransportVou
   { value: 'PER_DAY', label: 'Por dia trabalhado' },
   { value: 'MONTHLY_FIXED', label: 'Valor mensal fixo' },
   { value: 'NONE', label: 'Não se aplica' },
+];
+
+export const PAYROLL_SYNC_JOB_STATUSES: Array<{ value: PayrollSyncJobStatus; label: string }> = [
+  { value: 'PENDING', label: 'Pendente' },
+  { value: 'RUNNING', label: 'Executando' },
+  { value: 'COMPLETED', label: 'Concluído' },
+  { value: 'FAILED', label: 'Falhou' },
+];
+
+export const PAYROLL_SIGNATURE_STATUSES: Array<{ value: PayrollSignatureStatus; label: string }> = [
+  { value: 'SEM_PENDENCIA', label: 'Sem pendência' },
+  { value: 'PENDENTE', label: 'Pendente' },
+  { value: 'ASSINADO', label: 'Assinado' },
+  { value: 'CONTESTADO', label: 'Contestado' },
+  { value: 'PROCESSANDO', label: 'Processando' },
+  { value: 'VIGENCIA_INVALIDA', label: 'Vigência inválida' },
+  { value: 'ERRO', label: 'Erro' },
+  { value: 'CANCELADO', label: 'Cancelado' },
 ];
 
 export const DEFAULT_PAYROLL_RULES = {

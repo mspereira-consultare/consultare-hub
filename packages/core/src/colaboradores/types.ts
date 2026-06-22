@@ -18,6 +18,8 @@ export type Employee = {
   fullName: string;
   employmentRegime: EmploymentRegime;
   status: EmployeeStatus;
+  solidesEmployeeId: string | null;
+  solidesExternalId: string | null;
   rg: string | null;
   cpf: string | null;
   email: string | null;
@@ -119,6 +121,7 @@ export type EmployeeLockerAssignment = {
 export type EmployeeRecessPeriod = {
   id: string;
   employeeId: string;
+  source: 'LOCAL' | 'SOLIDES';
   acquisitionStartDate: string | null;
   acquisitionEndDate: string | null;
   daysDue: number;
@@ -149,6 +152,8 @@ export type EmployeeInput = {
   fullName: string;
   employmentRegime: EmploymentRegime;
   status: EmployeeStatus;
+  solidesEmployeeId?: string | null;
+  solidesExternalId?: string | null;
   rg?: string | null;
   cpf?: string | null;
   email?: string | null;

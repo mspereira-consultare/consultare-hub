@@ -4,6 +4,8 @@ import type {
   PayrollLineStatus,
   PayrollOccurrenceType,
   PayrollPeriodStatus,
+  PayrollSignatureStatus,
+  PayrollSyncJobStatus,
   PayrollTransportVoucherMode,
 } from '@/lib/payroll/constants';
 
@@ -51,10 +53,39 @@ export type PayrollImportFile = {
   processedAt: string | null;
 };
 
+export type PayrollPointSyncJob = {
+  id: string;
+  periodId: string;
+  status: PayrollSyncJobStatus;
+  requestedBy: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+};
+
+export type PayrollPointSyncRun = {
+  id: string;
+  periodId: string;
+  jobId: string | null;
+  status: PayrollSyncJobStatus;
+  sourceLabel: string;
+  synchronizedEmployees: number;
+  synchronizedDays: number;
+  unmatchedEmployees: number;
+  pendingAdjustments: number;
+  pendingSignatures: number;
+  details: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+};
+
 export type PayrollPointDaily = {
   id: string;
   periodId: string;
   employeeId: string | null;
+  solidesEmployeeId: string | null;
   employeeCode: string | null;
   employeeName: string;
   employeeCpf: string | null;
@@ -65,12 +96,19 @@ export type PayrollPointDaily = {
   scheduleEnd: string | null;
   marks: string[];
   rawDayText: string | null;
+  plannedMinutes: number;
   workedMinutes: number;
   lateMinutes: number;
+  dayBalanceMinutes: number;
+  breakMinutes: number;
+  expectedBreakMinutes: number;
+  breakOverrunMinutes: number;
   absenceFlag: boolean;
   inconsistencyFlag: boolean;
   justificationText: string | null;
   sourceFileId: string | null;
+  sourcePayloadJson: string | null;
+  syncRunId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -148,6 +186,71 @@ export type PayrollPreviewRow = {
   otherDiscounts: number | null;
   totalpassDiscount: number | null;
   observation: string | null;
+};
+
+export type PayrollDailyControlStatus = 'OK' | 'ATENCAO' | 'PENDENTE';
+
+export type PayrollDailyControlRow = {
+  key: string;
+  employeeId: string | null;
+  employeeName: string;
+  employeeCpf: string | null;
+  centerCost: string | null;
+  contractType: string | null;
+  workedDays: number;
+  absenceDays: number;
+  lateMinutes: number;
+  plannedMinutes: number;
+  workedMinutes: number;
+  dayBalanceMinutes: number;
+  breakOverrunMinutes: number;
+  pendingAdjustments: number;
+  status: PayrollDailyControlStatus;
+};
+
+export type PayrollHoursBalanceMonthly = {
+  id: string;
+  periodId: string;
+  employeeId: string | null;
+  solidesEmployeeId: string | null;
+  employeeName: string;
+  employeeCpf: string | null;
+  balanceMinutes: number;
+  referenceStart: string | null;
+  referenceEnd: string | null;
+  sourcePayloadJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PayrollSignatureMonthly = {
+  id: string;
+  periodId: string;
+  employeeId: string | null;
+  solidesEmployeeId: string | null;
+  employeeName: string;
+  employeeCpf: string | null;
+  status: PayrollSignatureStatus;
+  documentType: string | null;
+  documentDate: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  signedAt: string | null;
+  message: string | null;
+  sourcePayloadJson: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PayrollVacationRow = {
+  id: string;
+  employeeId: string | null;
+  employeeName: string;
+  employeeCpf: string | null;
+  dateStart: string;
+  dateEnd: string;
+  notes: string | null;
+  source: 'SOLIDES' | 'LEGADO';
 };
 
 export type PayrollBenefitStatus = 'OK' | 'ATENCAO' | 'PENDENTE_CADASTRO';
@@ -241,15 +344,23 @@ export type PayrollPeriodSummary = {
   totalDiscounts: number;
   totalProvents: number;
   importsCompleted: number;
+  syncCompleted: number;
 };
 
 export type PayrollReadinessStatus = 'READY' | 'ATTENTION' | 'BLOCKED';
 export type PayrollReadinessSeverity = 'BLOCKING' | 'WARNING';
 export type PayrollReadinessIssueCode =
   | 'NO_COMPLETED_POINT_IMPORT'
+  | 'NO_COMPLETED_POINT_SYNC'
   | 'POINT_ROWS_UNMATCHED'
+  | 'EMPLOYEE_MISSING_SOLIDES_LINK'
+  | 'SOLIDES_EMPLOYEE_UNMATCHED'
   | 'EMPLOYEE_MISSING_SALARY'
   | 'EMPLOYEE_WITHOUT_POINT_ROWS'
+  | 'PENDING_POINT_ADJUSTMENTS'
+  | 'PENDING_SIGNATURES'
+  | 'BREAK_OVERRUN'
+  | 'HOURS_BALANCE_ALERT'
   | 'POINT_INCONSISTENCY'
   | 'MISSING_COST_CENTER'
   | 'FALLBACK_SCHEDULE_DIVISOR'
@@ -292,12 +403,15 @@ export type PayrollLineDetail = {
   pointDays: PayrollPointDaily[];
   occurrences: PayrollOccurrence[];
   previewRow: PayrollPreviewRow | null;
+  hoursBalance: PayrollHoursBalanceMonthly | null;
+  signature: PayrollSignatureMonthly | null;
 };
 
 export type PayrollPeriodDetail = {
   period: PayrollPeriod;
   summary: PayrollPeriodSummary;
   imports: PayrollImportFile[];
+  syncRuns: PayrollPointSyncRun[];
   readiness: PayrollPeriodReadiness;
 };
 

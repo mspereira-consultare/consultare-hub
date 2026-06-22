@@ -261,6 +261,8 @@ const mapEmployee = (row: any): Employee => ({
   fullName: clean(row.full_name),
   employmentRegime: upper(row.employment_regime) as EmploymentRegime,
   status: upper(row.status) as EmployeeStatus,
+  solidesEmployeeId: clean(row.solides_employee_id) || null,
+  solidesExternalId: clean(row.solides_external_id) || null,
   rg: clean(row.rg) || null,
   cpf: clean(row.cpf) || null,
   email: clean(row.email) || null,

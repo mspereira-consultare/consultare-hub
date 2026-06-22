@@ -1,14 +1,26 @@
 'use client';
 
-import { FileSpreadsheet, LayoutTemplate, Ticket, UploadCloud } from 'lucide-react';
+import { CalendarRange, FileSpreadsheet, LayoutTemplate, RefreshCw, Ticket, TimerReset, UserCheck } from 'lucide-react';
 
-export type PayrollTabKey = 'fechamento' | 'beneficios' | 'previa' | 'importacoes';
+export type PayrollTabKey =
+  | 'sincronizacao'
+  | 'controle_diario'
+  | 'banco_horas'
+  | 'ferias'
+  | 'assinaturas'
+  | 'fechamento'
+  | 'beneficios'
+  | 'previa';
 
 const tabs: Array<{ key: PayrollTabKey; label: string; helper: string; icon: typeof FileSpreadsheet }> = [
+  { key: 'sincronizacao', label: 'Sincronização', helper: 'Worker, histórico e base oficial da API.', icon: RefreshCw },
+  { key: 'controle_diario', label: 'Controle diário', helper: 'Atrasos, faltas e pausas da competência.', icon: TimerReset },
+  { key: 'banco_horas', label: 'Banco de horas', helper: 'Saldo mensal retornado pela integração.', icon: CalendarRange },
+  { key: 'ferias', label: 'Férias', helper: 'Ausências justificadas sincronizadas.', icon: CalendarRange },
+  { key: 'assinaturas', label: 'Assinaturas', helper: 'Pendências mensais de folha.', icon: UserCheck },
   { key: 'fechamento', label: 'Fechamento', helper: 'Folha operacional por colaborador.', icon: FileSpreadsheet },
   { key: 'beneficios', label: 'Benefícios', helper: 'VR, VT e descontos da competência.', icon: Ticket },
   { key: 'previa', label: 'Prévia da planilha', helper: 'Estrutura final do XLSX mensal do RH.', icon: LayoutTemplate },
-  { key: 'importacoes', label: 'Importações', helper: 'Arquivos, parsing e histórico do período.', icon: UploadCloud },
 ];
 
 export function PayrollTabNav({
@@ -20,7 +32,7 @@ export function PayrollTabNav({
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
-      <div className="grid gap-2 md:grid-cols-4">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         {tabs.map((tab) => {
           const active = activeTab === tab.key;
           const Icon = tab.icon;

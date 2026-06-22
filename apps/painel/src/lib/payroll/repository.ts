@@ -6,12 +6,16 @@ import {
   PAYROLL_LINE_STATUSES,
   PAYROLL_OCCURRENCE_TYPES,
   PAYROLL_PERIOD_STATUSES,
+  PAYROLL_SIGNATURE_STATUSES,
+  PAYROLL_SYNC_JOB_STATUSES,
   PAYROLL_TRANSPORT_VOUCHER_MODES,
   type PayrollImportFileType,
   type PayrollImportStatus,
   type PayrollLineStatus,
   type PayrollOccurrenceType,
   type PayrollPeriodStatus,
+  type PayrollSignatureStatus,
+  type PayrollSyncJobStatus,
   type PayrollTransportVoucherMode,
 } from '@/lib/payroll/constants';
 import type {
@@ -20,6 +24,8 @@ import type {
   PayrollBenefitRow,
   PayrollBenefitsSummary,
   PayrollCreatePeriodInput,
+  PayrollDailyControlRow,
+  PayrollHoursBalanceMonthly,
   PayrollImportFile,
   PayrollLine,
   PayrollLineDetail,
@@ -33,6 +39,8 @@ import type {
   PayrollPeriodReadiness,
   PayrollPeriodSummary,
   PayrollPointDaily,
+  PayrollPointSyncJob,
+  PayrollPointSyncRun,
   PayrollPreviewRow,
   PayrollReadinessEmployeeSample,
   PayrollReadinessIssue,
@@ -40,6 +48,8 @@ import type {
   PayrollReadinessSeverity,
   PayrollReadinessStatus,
   PayrollRule,
+  PayrollSignatureMonthly,
+  PayrollVacationRow,
 } from '@/lib/payroll/types';
 
 export class PayrollValidationError extends Error {
@@ -52,7 +62,6 @@ export class PayrollValidationError extends Error {
 }
 
 let tablesEnsured = false;
-type PayrollPointImportJobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
 const JUSTIFIED_OCCURRENCE_TYPES = new Set<PayrollOccurrenceType>(['ATESTADO', 'DECLARACAO', 'AJUSTE_BATIDA', 'AUSENCIA_AUTORIZADA', 'FERIAS']);
 
 const NOW = () => new Date().toISOString();
@@ -283,6 +292,7 @@ const mapPointDaily = (row: any): PayrollPointDaily => ({
   id: clean(row.id),
   periodId: clean(row.period_id),
   employeeId: clean(row.employee_id) || null,
+  solidesEmployeeId: clean(row.solides_employee_id) || null,
   employeeCode: clean(row.employee_code) || null,
   employeeName: clean(row.employee_name),
   employeeCpf: normalizeCpf(row.employee_cpf),
@@ -293,12 +303,81 @@ const mapPointDaily = (row: any): PayrollPointDaily => ({
   scheduleEnd: clean(row.schedule_end) || null,
   marks: parseJsonList(row.marks_json),
   rawDayText: clean(row.raw_day_text) || null,
+  plannedMinutes: Number(row.planned_minutes || 0),
   workedMinutes: Number(row.worked_minutes || 0),
   lateMinutes: Number(row.late_minutes || 0),
+  dayBalanceMinutes: Number(row.day_balance_minutes || 0),
+  breakMinutes: Number(row.break_minutes || 0),
+  expectedBreakMinutes: Number(row.expected_break_minutes || 0),
+  breakOverrunMinutes: Number(row.break_overrun_minutes || 0),
   absenceFlag: bool(row.absence_flag),
   inconsistencyFlag: bool(row.inconsistency_flag),
   justificationText: clean(row.justification_text) || null,
   sourceFileId: clean(row.source_file_id) || null,
+  sourcePayloadJson: clean(row.source_payload_json) || null,
+  syncRunId: clean(row.sync_run_id) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const mapPointSyncJob = (row: any): PayrollPointSyncJob => ({
+  id: clean(row.id),
+  periodId: clean(row.period_id),
+  status: upper(row.status) as PayrollSyncJobStatus,
+  requestedBy: clean(row.requested_by) || null,
+  errorMessage: clean(row.error_message) || null,
+  createdAt: clean(row.created_at),
+  startedAt: clean(row.started_at) || null,
+  finishedAt: clean(row.finished_at) || null,
+});
+
+const mapPointSyncRun = (row: any): PayrollPointSyncRun => ({
+  id: clean(row.id),
+  periodId: clean(row.period_id),
+  jobId: clean(row.job_id) || null,
+  status: upper(row.status) as PayrollSyncJobStatus,
+  sourceLabel: clean(row.source_label) || 'API Sólides/Tangerino',
+  synchronizedEmployees: Number(row.synchronized_employees || 0),
+  synchronizedDays: Number(row.synchronized_days || 0),
+  unmatchedEmployees: Number(row.unmatched_employees || 0),
+  pendingAdjustments: Number(row.pending_adjustments || 0),
+  pendingSignatures: Number(row.pending_signatures || 0),
+  details: clean(row.details) || null,
+  startedAt: clean(row.started_at) || null,
+  finishedAt: clean(row.finished_at) || null,
+  createdAt: clean(row.created_at),
+});
+
+const mapHoursBalanceMonthly = (row: any): PayrollHoursBalanceMonthly => ({
+  id: clean(row.id),
+  periodId: clean(row.period_id),
+  employeeId: clean(row.employee_id) || null,
+  solidesEmployeeId: clean(row.solides_employee_id) || null,
+  employeeName: clean(row.employee_name),
+  employeeCpf: normalizeCpf(row.employee_cpf),
+  balanceMinutes: Number(row.balance_minutes || 0),
+  referenceStart: parseDate(row.reference_start),
+  referenceEnd: parseDate(row.reference_end),
+  sourcePayloadJson: clean(row.source_payload_json) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const mapSignatureMonthly = (row: any): PayrollSignatureMonthly => ({
+  id: clean(row.id),
+  periodId: clean(row.period_id),
+  employeeId: clean(row.employee_id) || null,
+  solidesEmployeeId: clean(row.solides_employee_id) || null,
+  employeeName: clean(row.employee_name),
+  employeeCpf: normalizeCpf(row.employee_cpf),
+  status: upper(row.status || 'SEM_PENDENCIA') as PayrollSignatureStatus,
+  documentType: clean(row.document_type) || null,
+  documentDate: parseDate(row.document_date),
+  startDate: parseDate(row.start_date),
+  endDate: parseDate(row.end_date),
+  signedAt: clean(row.signed_at) || null,
+  message: clean(row.message) || null,
+  sourcePayloadJson: clean(row.source_payload_json) || null,
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
@@ -361,6 +440,8 @@ const mapLine = (row: any): PayrollLine => ({
 
 type EmployeePayrollSource = {
   id: string;
+  solidesEmployeeId: string | null;
+  solidesExternalId: string | null;
   fullName: string;
   email: string | null;
   cpf: string | null;
@@ -390,6 +471,8 @@ type EmployeeLookupMaps = {
 
 const mapEmployeePayrollSource = (row: any): EmployeePayrollSource => ({
   id: clean(row.id),
+  solidesEmployeeId: clean(row.solides_employee_id) || null,
+  solidesExternalId: clean(row.solides_external_id) || null,
   fullName: clean(row.full_name),
   email: clean(row.email) || null,
   cpf: normalizeCpf(row.cpf),
@@ -444,6 +527,7 @@ const buildSummaryFromLines = (lines: PayrollLine[], imports: PayrollImportFile[
   totalDiscounts: roundMoney(lines.reduce((sum, line) => sum + line.totalDiscounts, 0)),
   totalProvents: roundMoney(lines.reduce((sum, line) => sum + line.totalProvents, 0)),
   importsCompleted: imports.filter((item) => item.processingStatus === 'COMPLETED').length,
+  syncCompleted: 0,
 });
 
 const parseScheduleMinutes = (scheduleStart: string | null, scheduleEnd: string | null, fallbackText: string | null) => {
@@ -540,10 +624,43 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS payroll_point_sync_jobs (
+      id VARCHAR(64) PRIMARY KEY,
+      period_id VARCHAR(64) NOT NULL,
+      status VARCHAR(20) NOT NULL,
+      requested_by VARCHAR(64) NULL,
+      error_message LONGTEXT NULL,
+      created_at VARCHAR(32) NOT NULL,
+      started_at VARCHAR(32) NULL,
+      finished_at VARCHAR(32) NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS payroll_point_sync_runs (
+      id VARCHAR(64) PRIMARY KEY,
+      period_id VARCHAR(64) NOT NULL,
+      job_id VARCHAR(64) NULL,
+      status VARCHAR(20) NOT NULL,
+      source_label VARCHAR(120) NOT NULL,
+      synchronized_employees INTEGER NOT NULL DEFAULT 0,
+      synchronized_days INTEGER NOT NULL DEFAULT 0,
+      unmatched_employees INTEGER NOT NULL DEFAULT 0,
+      pending_adjustments INTEGER NOT NULL DEFAULT 0,
+      pending_signatures INTEGER NOT NULL DEFAULT 0,
+      details LONGTEXT NULL,
+      started_at VARCHAR(32) NULL,
+      finished_at VARCHAR(32) NULL,
+      created_at VARCHAR(32) NOT NULL
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS payroll_point_daily (
       id VARCHAR(64) PRIMARY KEY,
       period_id VARCHAR(64) NOT NULL,
       employee_id VARCHAR(64) NULL,
+      solides_employee_id VARCHAR(80) NULL,
       employee_code VARCHAR(60) NULL,
       employee_name VARCHAR(180) NOT NULL,
       employee_cpf VARCHAR(14) NULL,
@@ -554,12 +671,57 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       schedule_end VARCHAR(10) NULL,
       marks_json LONGTEXT NULL,
       raw_day_text LONGTEXT NULL,
+      planned_minutes INTEGER NOT NULL DEFAULT 0,
       worked_minutes INTEGER NOT NULL DEFAULT 0,
       late_minutes INTEGER NOT NULL DEFAULT 0,
+      day_balance_minutes INTEGER NOT NULL DEFAULT 0,
+      break_minutes INTEGER NOT NULL DEFAULT 0,
+      expected_break_minutes INTEGER NOT NULL DEFAULT 0,
+      break_overrun_minutes INTEGER NOT NULL DEFAULT 0,
       absence_flag INTEGER NOT NULL DEFAULT 0,
       inconsistency_flag INTEGER NOT NULL DEFAULT 0,
       justification_text LONGTEXT NULL,
       source_file_id VARCHAR(64) NULL,
+      source_payload_json LONGTEXT NULL,
+      sync_run_id VARCHAR(64) NULL,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS payroll_hours_balance_monthly (
+      id VARCHAR(64) PRIMARY KEY,
+      period_id VARCHAR(64) NOT NULL,
+      employee_id VARCHAR(64) NULL,
+      solides_employee_id VARCHAR(80) NULL,
+      employee_name VARCHAR(180) NOT NULL,
+      employee_cpf VARCHAR(14) NULL,
+      balance_minutes INTEGER NOT NULL DEFAULT 0,
+      reference_start DATE NULL,
+      reference_end DATE NULL,
+      source_payload_json LONGTEXT NULL,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS payroll_signature_monthly (
+      id VARCHAR(64) PRIMARY KEY,
+      period_id VARCHAR(64) NOT NULL,
+      employee_id VARCHAR(64) NULL,
+      solides_employee_id VARCHAR(80) NULL,
+      employee_name VARCHAR(180) NOT NULL,
+      employee_cpf VARCHAR(14) NULL,
+      status VARCHAR(30) NOT NULL DEFAULT 'SEM_PENDENCIA',
+      document_type VARCHAR(60) NULL,
+      document_date DATE NULL,
+      start_date DATE NULL,
+      end_date DATE NULL,
+      signed_at VARCHAR(32) NULL,
+      message LONGTEXT NULL,
+      source_payload_json LONGTEXT NULL,
       created_at VARCHAR(32) NOT NULL,
       updated_at VARCHAR(32) NOT NULL
     )
@@ -663,8 +825,18 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await ensureMysqlColumnDefinition(db, 'payroll_point_import_jobs', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_import_jobs', 'started_at', 'VARCHAR(32) NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_import_jobs', 'finished_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_sync_jobs', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_sync_jobs', 'started_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_sync_jobs', 'finished_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_sync_runs', 'started_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_sync_runs', 'finished_at', 'VARCHAR(32) NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_sync_runs', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_daily', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_daily', 'updated_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_hours_balance_monthly', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_hours_balance_monthly', 'updated_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_signature_monthly', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_signature_monthly', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_occurrences', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_occurrences', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_lines', 'created_at', 'VARCHAR(32) NOT NULL');
@@ -676,11 +848,17 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_status ON payroll_point_import_jobs (status, created_at)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_period ON payroll_point_import_jobs (period_id, created_at)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_import_file ON payroll_point_import_jobs (import_file_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_jobs_status ON payroll_point_sync_jobs (status, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_jobs_period ON payroll_point_sync_jobs (period_id, created_at)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_runs_period ON payroll_point_sync_runs (period_id, created_at)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_period ON payroll_point_daily (period_id, point_date)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_employee ON payroll_point_daily (period_id, employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_solides_employee ON payroll_point_daily (period_id, solides_employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_occurrences_period ON payroll_occurrences (period_id, employee_id, date_start)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_reference_rows_period ON payroll_reference_rows (period_id, comparison_key)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_lines_period ON payroll_lines (period_id, employee_name)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_hours_balance_period ON payroll_hours_balance_monthly (period_id, employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_signature_period ON payroll_signature_monthly (period_id, employee_id)`);
 
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN transport_voucher_mode VARCHAR(20) NOT NULL DEFAULT 'PER_DAY'`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN transport_voucher_monthly_fixed DECIMAL(12,2) NULL`);
@@ -688,6 +866,16 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN other_fixed_discount_amount DECIMAL(12,2) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN other_fixed_discount_description TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN payroll_notes TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN solides_employee_id VARCHAR(80) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN solides_external_id VARCHAR(120) NULL`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN solides_employee_id VARCHAR(80) NULL`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN planned_minutes INTEGER NOT NULL DEFAULT 0`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN day_balance_minutes INTEGER NOT NULL DEFAULT 0`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN break_minutes INTEGER NOT NULL DEFAULT 0`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN expected_break_minutes INTEGER NOT NULL DEFAULT 0`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN break_overrun_minutes INTEGER NOT NULL DEFAULT 0`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN source_payload_json LONGTEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN sync_run_id VARCHAR(64) NULL`);
 
   tablesEnsured = true;
 };
@@ -725,6 +913,11 @@ const listImportsByPeriod = async (db: DbInterface, periodId: string) => {
   return rows.map(mapImportFile);
 };
 
+const listPointSyncRunsByPeriod = async (db: DbInterface, periodId: string) => {
+  const rows = await db.query(`SELECT * FROM payroll_point_sync_runs WHERE period_id = ? ORDER BY created_at DESC`, [periodId]);
+  return rows.map(mapPointSyncRun);
+};
+
 const listLinesRaw = async (db: DbInterface, periodId: string) => {
   const rows = await db.query(`SELECT * FROM payroll_lines WHERE period_id = ? ORDER BY employee_name ASC`, [periodId]);
   return rows.map(mapLine);
@@ -745,6 +938,22 @@ const listPointRowsRaw = async (db: DbInterface, periodId: string, employeeId?: 
     employeeId ? [periodId, employeeId] : [periodId],
   );
   return rows.map(mapPointDaily);
+};
+
+const listHoursBalanceRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
+  const rows = await db.query(
+    `SELECT * FROM payroll_hours_balance_monthly WHERE period_id = ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY employee_name ASC`,
+    employeeId ? [periodId, employeeId] : [periodId],
+  );
+  return rows.map(mapHoursBalanceMonthly);
+};
+
+const listSignaturesRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
+  const rows = await db.query(
+    `SELECT * FROM payroll_signature_monthly WHERE period_id = ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY employee_name ASC`,
+    employeeId ? [periodId, employeeId] : [periodId],
+  );
+  return rows.map(mapSignatureMonthly);
 };
 
 const getLatestRuleSeed = async (db: DbInterface) => {
@@ -958,17 +1167,23 @@ const hasFullPeriodCoverageWithoutPoint = (
 const evaluatePayrollPeriodReadiness = (
   period: PayrollPeriod,
   imports: PayrollImportFile[],
+  syncRuns: PayrollPointSyncRun[],
   employees: EmployeePayrollSource[],
   pointRows: PayrollPointDaily[],
   occurrences: PayrollOccurrence[],
   recessRows: any[],
+  hoursBalances: PayrollHoursBalanceMonthly[],
+  signatures: PayrollSignatureMonthly[],
 ): PayrollPeriodReadiness => {
   const issues: PayrollReadinessIssue[] = [];
   const pointImports = imports.filter((item) => item.fileType === 'POINT_PDF');
   const activeImport = pointImports.find((item) => item.processingStatus === 'COMPLETED') || null;
   const latestAttempt = pointImports[0] || null;
   const hasCompletedPointImport = Boolean(activeImport);
-  const hasPointBase = hasCompletedPointImport || pointRows.length > 0;
+  const latestCompletedSync = syncRuns.find((item) => item.status === 'COMPLETED') || null;
+  const hasCompletedPointSync = Boolean(latestCompletedSync);
+  const hasPointBase = hasCompletedPointSync || hasCompletedPointImport || pointRows.length > 0;
+  const expectedSyncedEmployees = employees.filter((employee) => employee.employmentRegime !== 'PJ' || Boolean(employee.solidesEmployeeId));
 
   const pointRowsByEmployee = new Map<string, PayrollPointDaily[]>();
   for (const row of pointRows) {
@@ -994,16 +1209,32 @@ const evaluatePayrollPeriodReadiness = (
     recessMap.set(key, list);
   }
 
-  if (!hasCompletedPointImport) {
+  if (!hasCompletedPointSync && !hasCompletedPointImport) {
     issues.push(
       createReadinessIssue({
-        code: 'NO_COMPLETED_POINT_IMPORT',
+        code: 'NO_COMPLETED_POINT_SYNC',
         severity: 'BLOCKING',
-        title: 'Sem base de ponto concluída',
-        description: 'Nenhum relatório de ponto concluído está disponível como base ativa para esta competência.',
+        title: 'Sem sincronização concluída de ponto',
+        description: 'Nenhuma sincronização concluída da Sólides/Tangerino está disponível como base ativa para esta competência.',
         count: 1,
       }),
     );
+  }
+
+  if (hasCompletedPointSync) {
+    const missingSolidesLink = expectedSyncedEmployees.filter((employee) => !employee.solidesEmployeeId);
+    if (missingSolidesLink.length > 0) {
+      issues.push(
+        createReadinessIssue({
+          code: 'EMPLOYEE_MISSING_SOLIDES_LINK',
+          severity: 'BLOCKING',
+          title: 'Cadastro sem vínculo Sólides/Tangerino',
+          description: `${missingSolidesLink.length} colaborador(es) exigem vínculo com a Sólides/Tangerino para sincronizar ponto nesta competência.`,
+          count: missingSolidesLink.length,
+          sampleEmployees: missingSolidesLink.map(employeeToReadinessSample),
+        }),
+      );
+    }
   }
 
   const unmatchedPointRows = pointRows.filter((row) => !row.employeeId);
@@ -1011,12 +1242,26 @@ const evaluatePayrollPeriodReadiness = (
     const unmatchedSamples = uniqueEmployeeSamples(unmatchedPointRows.map(pointRowToReadinessSample));
     issues.push(
       createReadinessIssue({
-        code: 'POINT_ROWS_UNMATCHED',
+        code: hasCompletedPointSync ? 'SOLIDES_EMPLOYEE_UNMATCHED' : 'POINT_ROWS_UNMATCHED',
         severity: 'BLOCKING',
-        title: 'Ponto sem vínculo com cadastro',
-        description: `${unmatchedSamples.length} colaborador(es) do relatório de ponto não foram vinculados ao cadastro de colaboradores.`,
+        title: hasCompletedPointSync ? 'Colaborador sincronizado sem vínculo local' : 'Ponto sem vínculo com cadastro',
+        description: hasCompletedPointSync
+          ? `${unmatchedSamples.length} colaborador(es) retornados pela Sólides/Tangerino ainda não foram vinculados ao cadastro local.`
+          : `${unmatchedSamples.length} colaborador(es) do relatório de ponto não foram vinculados ao cadastro de colaboradores.`,
         count: unmatchedSamples.length,
         sampleEmployees: unmatchedSamples,
+      }),
+    );
+  }
+
+  if (hasCompletedPointSync && latestCompletedSync?.unmatchedEmployees && unmatchedPointRows.length === 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'SOLIDES_EMPLOYEE_UNMATCHED',
+        severity: 'BLOCKING',
+        title: 'Colaborador sincronizado sem vínculo local',
+        description: `${latestCompletedSync.unmatchedEmployees} colaborador(es) retornados pela Sólides/Tangerino não puderam ser conciliados com o cadastro local nesta execução.`,
+        count: latestCompletedSync.unmatchedEmployees,
       }),
     );
   }
@@ -1036,7 +1281,8 @@ const evaluatePayrollPeriodReadiness = (
   }
 
   if (hasPointBase) {
-    const employeesWithoutPointRows = employees.filter((employee) => {
+    const employeesWithoutPointRows = (hasCompletedPointSync ? expectedSyncedEmployees : employees).filter((employee) => {
+      if (hasCompletedPointSync && !employee.solidesEmployeeId) return false;
       if ((pointRowsByEmployee.get(employee.id) || []).length > 0) return false;
       return !hasFullPeriodCoverageWithoutPoint(employee.id, period, occurrenceMap, recessMap);
     });
@@ -1113,6 +1359,68 @@ const evaluatePayrollPeriodReadiness = (
     );
   }
 
+  if (latestCompletedSync?.pendingAdjustments) {
+    issues.push(
+      createReadinessIssue({
+        code: 'PENDING_POINT_ADJUSTMENTS',
+        severity: 'WARNING',
+        title: 'Ponto com ajustes pendentes',
+        description: `${latestCompletedSync.pendingAdjustments} ajuste(s) de ponto seguem pendentes na Sólides/Tangerino para esta competência.`,
+        count: latestCompletedSync.pendingAdjustments,
+      }),
+    );
+  }
+
+  const pendingSignatures = signatures.filter((item) => ['PENDENTE', 'PROCESSANDO'].includes(item.status));
+  if (pendingSignatures.length > 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'PENDING_SIGNATURES',
+        severity: 'WARNING',
+        title: 'Folhas com assinatura pendente',
+        description: `${pendingSignatures.length} colaborador(es) possuem pendência de assinatura de folha nesta competência.`,
+        count: pendingSignatures.length,
+        sampleEmployees: pendingSignatures.map((item) => ({
+          employeeId: item.employeeId,
+          employeeName: item.employeeName,
+          employeeCpf: item.employeeCpf,
+        })),
+      }),
+    );
+  }
+
+  const breakOverrunRows = pointRows.filter((row) => row.breakOverrunMinutes > 0);
+  if (breakOverrunRows.length > 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'BREAK_OVERRUN',
+        severity: 'WARNING',
+        title: 'Excesso de pausa/almoço detectado',
+        description: `${breakOverrunRows.length} registro(s) diário(s) apresentam pausa acima da intrajornada prevista.`,
+        count: breakOverrunRows.length,
+        sampleEmployees: breakOverrunRows.map(pointRowToReadinessSample),
+      }),
+    );
+  }
+
+  const hoursBalanceAlerts = hoursBalances.filter((item) => Math.abs(item.balanceMinutes) > 0);
+  if (hoursBalanceAlerts.length > 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'HOURS_BALANCE_ALERT',
+        severity: 'WARNING',
+        title: 'Banco de horas com saldo na competência',
+        description: `${hoursBalanceAlerts.length} colaborador(es) possuem saldo de banco de horas registrado no período sincronizado.`,
+        count: hoursBalanceAlerts.length,
+        sampleEmployees: hoursBalanceAlerts.map((item) => ({
+          employeeId: item.employeeId,
+          employeeName: item.employeeName,
+          employeeCpf: item.employeeCpf,
+        })),
+      }),
+    );
+  }
+
   const blockingCount = issues.filter((issue) => issue.severity === 'BLOCKING').length;
   const warningCount = issues.filter((issue) => issue.severity === 'WARNING').length;
   const status: PayrollReadinessStatus = blockingCount > 0 ? 'BLOCKED' : warningCount > 0 ? 'ATTENTION' : 'READY';
@@ -1129,20 +1437,28 @@ const evaluatePayrollPeriodReadiness = (
 export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string): Promise<PayrollPeriodDetail> => {
   await ensurePayrollTables(db);
   const period = await getPeriodOrThrow(db, periodId);
-  const [imports, lines, employees, occurrenceRows, recessRows] = await Promise.all([
+  const [imports, syncRuns, lines, employees, occurrenceRows, recessRows] = await Promise.all([
     listImportsByPeriod(db, periodId),
+    listPointSyncRunsByPeriod(db, periodId),
     listLinesRaw(db, periodId),
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
     listOccurrencesRaw(db, periodId),
     db.query(`SELECT * FROM employee_recess_periods ORDER BY vacation_start_date ASC`),
   ]);
   await reconcilePointRowsEmployeeLinks(db, period.id, employees);
-  const pointRows = await listPointRowsRaw(db, periodId);
+  const [pointRows, hoursBalances, signatures] = await Promise.all([
+    listPointRowsRaw(db, periodId),
+    listHoursBalanceRaw(db, periodId),
+    listSignaturesRaw(db, periodId),
+  ]);
+  const summary = buildSummaryFromLines(lines, imports);
+  summary.syncCompleted = syncRuns.filter((item) => item.status === 'COMPLETED').length;
   return {
     period,
     imports,
-    summary: buildSummaryFromLines(lines, imports),
-    readiness: evaluatePayrollPeriodReadiness(period, imports, employees, pointRows, occurrenceRows, recessRows),
+    syncRuns,
+    summary,
+    readiness: evaluatePayrollPeriodReadiness(period, imports, syncRuns, employees, pointRows, occurrenceRows, recessRows, hoursBalances, signatures),
   };
 };
 
@@ -1248,7 +1564,7 @@ const createPointImportJob = async (
     periodId: string;
     importFileId: string;
     requestedBy: string;
-    initialStatus?: PayrollPointImportJobStatus;
+    initialStatus?: PayrollSyncJobStatus;
     errorMessage?: string | null;
   },
 ) => {
@@ -1273,6 +1589,67 @@ const createPointImportJob = async (
   return { id, status: initialStatus, createdAt: now };
 };
 
+const createPointSyncJob = async (
+  db: DbInterface,
+  params: {
+    periodId: string;
+    requestedBy: string;
+    initialStatus?: PayrollSyncJobStatus;
+    errorMessage?: string | null;
+  },
+) => {
+  const id = randomUUID();
+  const now = NOW();
+  const initialStatus = params.initialStatus || 'PENDING';
+  await db.execute(
+    `INSERT INTO payroll_point_sync_jobs (id, period_id, status, requested_by, error_message, created_at, started_at, finished_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id,
+      params.periodId,
+      initialStatus,
+      params.requestedBy,
+      params.errorMessage || null,
+      now,
+      initialStatus === 'RUNNING' ? now : null,
+      initialStatus === 'COMPLETED' || initialStatus === 'FAILED' ? now : null,
+    ],
+  );
+  return { id, status: initialStatus, createdAt: now };
+};
+
+const createPointSyncRun = async (
+  db: DbInterface,
+  params: {
+    periodId: string;
+    jobId: string;
+    status?: PayrollSyncJobStatus;
+    sourceLabel?: string;
+    details?: string | null;
+  },
+) => {
+  const id = randomUUID();
+  const now = NOW();
+  await db.execute(
+    `INSERT INTO payroll_point_sync_runs (
+      id, period_id, job_id, status, source_label, synchronized_employees, synchronized_days,
+      unmatched_employees, pending_adjustments, pending_signatures, details, started_at, finished_at, created_at
+    ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?)`,
+    [
+      id,
+      params.periodId,
+      params.jobId,
+      params.status || 'PENDING',
+      params.sourceLabel || 'API Sólides/Tangerino',
+      params.details || null,
+      params.status === 'RUNNING' ? now : null,
+      params.status === 'COMPLETED' || params.status === 'FAILED' ? now : null,
+      now,
+    ],
+  );
+  return id;
+};
+
 const countPointImportsInProgress = async (db: DbInterface, periodId: string) => {
   const rows = await db.query(
     `SELECT COUNT(*) AS total
@@ -1280,6 +1657,19 @@ const countPointImportsInProgress = async (db: DbInterface, periodId: string) =>
      WHERE period_id = ?
        AND file_type = 'POINT_PDF'
       AND processing_status IN ('PENDING', 'PROCESSING')`,
+    [periodId],
+  );
+  const firstRow = rows?.[0] as any;
+  if (!firstRow) return 0;
+  return Number(firstRow.total ?? firstRow.TOTAL ?? Object.values(firstRow)[0] ?? 0);
+};
+
+const countPointSyncJobsInProgress = async (db: DbInterface, periodId: string) => {
+  const rows = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM payroll_point_sync_jobs
+     WHERE period_id = ?
+       AND status IN ('PENDING', 'RUNNING')`,
     [periodId],
   );
   const firstRow = rows?.[0] as any;
@@ -1318,6 +1708,39 @@ export const enqueuePayrollPointImport = async (
   return {
     importFile: mapImportFile(rows[0]),
     job,
+  };
+};
+
+export const enqueuePayrollPointSync = async (
+  db: DbInterface,
+  params: {
+    periodId: string;
+    requestedBy: string;
+  },
+) => {
+  await ensurePayrollTables(db);
+  await getPeriodOrThrow(db, params.periodId);
+  const running = await countPointSyncJobsInProgress(db, params.periodId);
+  if (running > 0) {
+    throw new PayrollValidationError('Já existe uma sincronização de ponto em andamento para esta competência.', 409);
+  }
+
+  const job = await createPointSyncJob(db, {
+    periodId: params.periodId,
+    requestedBy: params.requestedBy,
+  });
+  const runId = await createPointSyncRun(db, {
+    periodId: params.periodId,
+    jobId: job.id,
+    status: 'PENDING',
+    details: 'Sincronização aguardando execução pelo worker.',
+  });
+
+  const runRows = await db.query(`SELECT * FROM payroll_point_sync_runs WHERE id = ? LIMIT 1`, [runId]);
+
+  return {
+    job,
+    run: mapPointSyncRun(runRows[0]),
   };
 };
 
@@ -1540,20 +1963,26 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
   if (!period.rules) throw new PayrollValidationError('Regras da competência não encontradas.', 500);
 
   const importsInProgress = await countPointImportsInProgress(db, period.id);
-  if (importsInProgress > 0) {
+  const syncJobsInProgress = await countPointSyncJobsInProgress(db, period.id);
+  if (importsInProgress > 0 || syncJobsInProgress > 0) {
     throw new PayrollValidationError('Ainda há importações de ponto pendentes ou em processamento nesta competência. Aguarde a conclusão antes de gerar a folha.', 409);
   }
 
-  const [employees, occurrenceRows, existingLines, recessRows] = await Promise.all([
+  const [employees, occurrenceRows, existingLines, recessRows, syncRuns] = await Promise.all([
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
     listOccurrencesRaw(db, period.id),
     listLinesRaw(db, period.id),
     db.query(`SELECT * FROM employee_recess_periods ORDER BY vacation_start_date ASC`),
+    listPointSyncRunsByPeriod(db, period.id),
   ]);
   const imports = await listImportsByPeriod(db, period.id);
   await reconcilePointRowsEmployeeLinks(db, period.id, employees);
-  const pointRows = await listPointRowsRaw(db, period.id);
-  const readiness = evaluatePayrollPeriodReadiness(period, imports, employees, pointRows, occurrenceRows, recessRows);
+  const [pointRows, hoursBalances, signatures] = await Promise.all([
+    listPointRowsRaw(db, period.id),
+    listHoursBalanceRaw(db, period.id),
+    listSignaturesRaw(db, period.id),
+  ]);
+  const readiness = evaluatePayrollPeriodReadiness(period, imports, syncRuns, employees, pointRows, occurrenceRows, recessRows, hoursBalances, signatures);
   if (readiness.status === 'BLOCKED') {
     throw new PayrollValidationError(buildReadinessBlockingMessage(readiness), 409);
   }
@@ -2200,15 +2629,161 @@ export const listPayrollBenefitRows = async (db: DbInterface, periodId: string, 
   };
 };
 
+export const listPayrollDailyControlRows = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
+  await ensurePayrollTables(db);
+  await getPeriodOrThrow(db, periodId);
+  const [linesResult, pointRows, syncRuns] = await Promise.all([
+    listPayrollLines(db, periodId, filters),
+    listPointRowsRaw(db, periodId),
+    listPointSyncRunsByPeriod(db, periodId),
+  ]);
+
+  const pointMap = new Map<string, PayrollPointDaily[]>();
+  for (const row of pointRows) {
+    const keys = new Set<string>();
+    if (row.employeeId) keys.add(row.employeeId);
+    const comparisonKey = buildComparisonKey(row.employeeName, row.employeeCpf);
+    if (comparisonKey) keys.add(comparisonKey);
+    for (const key of keys) {
+      const list = pointMap.get(key) || [];
+      list.push(row);
+      pointMap.set(key, list);
+    }
+  }
+
+  const latestCompletedSync = syncRuns.find((item) => item.status === 'COMPLETED') || null;
+  const items: PayrollDailyControlRow[] = linesResult.items.map((line) => {
+    const rows = pointMap.get(line.employeeId || '') || pointMap.get(buildComparisonKey(line.employeeName, line.employeeCpf)) || [];
+    const plannedMinutes = rows.reduce((sum, row) => sum + row.plannedMinutes, 0);
+    const workedMinutes = rows.reduce((sum, row) => sum + row.workedMinutes, 0);
+    const dayBalanceMinutes = rows.reduce((sum, row) => sum + row.dayBalanceMinutes, 0);
+    const lateMinutes = rows.reduce((sum, row) => sum + row.lateMinutes, 0);
+    const breakOverrunMinutes = rows.reduce((sum, row) => sum + row.breakOverrunMinutes, 0);
+    const absenceDays = rows.filter((row) => row.absenceFlag).length;
+    const pendingAdjustments = latestCompletedSync?.pendingAdjustments || 0;
+    const status =
+      pendingAdjustments > 0 || breakOverrunMinutes > 0 || rows.some((row) => row.inconsistencyFlag)
+        ? 'ATENCAO'
+        : rows.length === 0
+          ? 'PENDENTE'
+          : 'OK';
+
+    return {
+      key: line.id,
+      employeeId: line.employeeId,
+      employeeName: line.employeeName,
+      employeeCpf: line.employeeCpf,
+      centerCost: line.centerCost,
+      contractType: line.contractType,
+      workedDays: line.daysWorked,
+      absenceDays,
+      lateMinutes,
+      plannedMinutes,
+      workedMinutes,
+      dayBalanceMinutes,
+      breakOverrunMinutes,
+      pendingAdjustments,
+      status,
+    };
+  });
+
+  return { items };
+};
+
+export const listPayrollHoursBalanceRows = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
+  await ensurePayrollTables(db);
+  await getPeriodOrThrow(db, periodId);
+  const [linesResult, rows] = await Promise.all([
+    listPayrollLines(db, periodId, filters),
+    listHoursBalanceRaw(db, periodId),
+  ]);
+  const allowed = new Set(linesResult.items.map((line) => line.employeeId).filter(Boolean));
+  return {
+    items: rows.filter((row) => row.employeeId ? allowed.has(row.employeeId) : true),
+  };
+};
+
+export const listPayrollVacationRows = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
+  await ensurePayrollTables(db);
+  const period = await getPeriodOrThrow(db, periodId);
+  const [linesResult, occurrences, recessRows] = await Promise.all([
+    listPayrollLines(db, periodId, filters),
+    listOccurrencesRaw(db, periodId),
+    db.query(`SELECT * FROM employee_recess_periods ORDER BY vacation_start_date ASC`),
+  ]);
+  const allowed = new Set(linesResult.items.map((line) => line.employeeId).filter(Boolean));
+  const items: PayrollVacationRow[] = [];
+
+  for (const occurrence of occurrences.filter((item) => item.occurrenceType === 'FERIAS')) {
+    if (occurrence.employeeId && allowed.size && !allowed.has(occurrence.employeeId)) continue;
+    const line = linesResult.items.find((item) => item.employeeId === occurrence.employeeId);
+    items.push({
+      id: occurrence.id,
+      employeeId: occurrence.employeeId,
+      employeeName: line?.employeeName || occurrence.employeeId,
+      employeeCpf: line?.employeeCpf || null,
+      dateStart: occurrence.dateStart,
+      dateEnd: occurrence.dateEnd || occurrence.dateStart,
+      notes: occurrence.notes,
+      source: 'SOLIDES',
+    });
+  }
+
+  for (const row of recessRows) {
+    const employeeId = clean(row.employee_id);
+    const vacationStart = parseDate(row.vacation_start_date);
+    const duration = Number(row.vacation_duration_days || 0);
+    if (!employeeId || !vacationStart || duration <= 0) continue;
+    if (allowed.size && !allowed.has(employeeId)) continue;
+    const vacationEnd = addDays(vacationStart, duration - 1);
+    if (vacationEnd < period.periodStart || vacationStart > period.periodEnd) continue;
+    const line = linesResult.items.find((item) => item.employeeId === employeeId);
+    const duplicate = items.some((item) => item.employeeId === employeeId && item.dateStart === vacationStart && item.dateEnd === vacationEnd);
+    if (duplicate) continue;
+    items.push({
+      id: clean(row.id),
+      employeeId,
+      employeeName: line?.employeeName || employeeId,
+      employeeCpf: line?.employeeCpf || null,
+      dateStart: vacationStart,
+      dateEnd: vacationEnd,
+      notes: null,
+      source: 'LEGADO',
+    });
+  }
+
+  items.sort((left, right) => {
+    if (left.dateStart !== right.dateStart) return left.dateStart.localeCompare(right.dateStart);
+    return left.employeeName.localeCompare(right.employeeName, 'pt-BR', { sensitivity: 'base' });
+  });
+
+  return { items };
+};
+
+export const listPayrollSignatureRows = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
+  await ensurePayrollTables(db);
+  await getPeriodOrThrow(db, periodId);
+  const [linesResult, rows] = await Promise.all([
+    listPayrollLines(db, periodId, filters),
+    listSignaturesRaw(db, periodId),
+  ]);
+  const allowed = new Set(linesResult.items.map((line) => line.employeeId).filter(Boolean));
+  return {
+    items: rows.filter((row) => row.employeeId ? allowed.has(row.employeeId) : true),
+  };
+};
+
 export const getPayrollLineDetail = async (db: DbInterface, lineId: string): Promise<PayrollLineDetail> => {
   await ensurePayrollTables(db);
   const rows = await db.query(`SELECT * FROM payroll_lines WHERE id = ? LIMIT 1`, [lineId]);
   if (!rows[0]) throw new PayrollValidationError('Linha da folha não encontrada.', 404);
   const line = mapLine(rows[0]);
-  const [pointDays, occurrences, employeeMap] = await Promise.all([
+  const [pointDays, occurrences, employeeMap, hoursBalanceRows, signatureRows] = await Promise.all([
     listPointRowsRaw(db, line.periodId, line.employeeId || undefined),
     line.employeeId ? listOccurrencesRaw(db, line.periodId, line.employeeId) : Promise.resolve([]),
     line.employeeId ? loadEmployeePreviewMap(db, [line.employeeId]) : Promise.resolve(new Map<string, PayrollEmployeePreviewSource>()),
+    line.employeeId ? listHoursBalanceRaw(db, line.periodId, line.employeeId) : Promise.resolve([]),
+    line.employeeId ? listSignaturesRaw(db, line.periodId, line.employeeId) : Promise.resolve([]),
   ]);
 
   const previewRow = buildPayrollPreviewRow(
@@ -2217,7 +2792,14 @@ export const getPayrollLineDetail = async (db: DbInterface, lineId: string): Pro
     occurrences,
   );
 
-  return { line, pointDays, occurrences, previewRow };
+  return {
+    line,
+    pointDays,
+    occurrences,
+    previewRow,
+    hoursBalance: hoursBalanceRows[0] || null,
+    signature: signatureRows[0] || null,
+  };
 };
 
 export const patchPayrollLine = async (db: DbInterface, lineId: string, input: PayrollLinePatchInput) => {

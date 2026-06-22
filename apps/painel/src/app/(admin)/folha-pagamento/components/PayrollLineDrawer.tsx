@@ -128,6 +128,36 @@ export function PayrollLineDrawer({
             </Card>
           </section>
 
+          <section className="grid gap-4 md:grid-cols-2">
+            <Card title="Banco de horas">
+              {detail?.hoursBalance ? (
+                <div className="grid gap-3 text-sm sm:grid-cols-2">
+                  <Info label="Saldo do mês" value={`${detail.hoursBalance.balanceMinutes} min`} />
+                  <Info label="Referência" value={`${detail.hoursBalance.referenceStart || '-'} a ${detail.hoursBalance.referenceEnd || '-'}`} />
+                </div>
+              ) : (
+                <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Nenhum saldo sincronizado para este colaborador na competência.</div>
+              )}
+            </Card>
+
+            <Card title="Assinatura">
+              {detail?.signature ? (
+                <div className="grid gap-3 text-sm sm:grid-cols-2">
+                  <Info label="Status" value={detail.signature.status} />
+                  <Info label="Documento" value={detail.signature.documentType || '-'} />
+                  <Info label="Vigência" value={`${formatDateBr(detail.signature.startDate)} a ${formatDateBr(detail.signature.endDate)}`} />
+                  <Info label="Assinado em" value={formatDateBr(detail.signature.signedAt)} />
+                  <div className="sm:col-span-2">
+                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Mensagem</div>
+                    <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-700">{detail.signature.message || '-'}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Nenhum registro de assinatura sincronizado para este colaborador.</div>
+              )}
+            </Card>
+          </section>
+
           <Card title="Ocorrências da competência">
             {detail?.occurrences?.length ? (
               <div className="space-y-2">
@@ -153,6 +183,8 @@ export function PayrollLineDrawer({
                     <th className="px-3 py-2 text-left">Marcações</th>
                     <th className="px-3 py-2 text-center">Trabalhado</th>
                     <th className="px-3 py-2 text-center">Atraso (min)</th>
+                    <th className="px-3 py-2 text-center">Saldo do dia</th>
+                    <th className="px-3 py-2 text-center">Pausa excedida</th>
                     <th className="px-3 py-2 text-left">Observação</th>
                   </tr>
                 </thead>
@@ -163,6 +195,8 @@ export function PayrollLineDrawer({
                       <td className="px-3 py-2">{day.marks.join(' · ') || '-'}</td>
                       <td className="px-3 py-2 text-center">{day.workedMinutes} min</td>
                       <td className="px-3 py-2 text-center">{day.lateMinutes} min</td>
+                      <td className="px-3 py-2 text-center">{day.dayBalanceMinutes} min</td>
+                      <td className="px-3 py-2 text-center">{day.breakOverrunMinutes} min</td>
                       <td className="px-3 py-2 text-slate-600">{day.justificationText || (day.absenceFlag ? 'Falta apontada no relatório' : '-')}</td>
                     </tr>
                   ))}

@@ -106,6 +106,8 @@ type EmployeeFormState = {
   fullName: string;
   employmentRegime: EmploymentRegime;
   status: EmployeeStatus;
+  solidesEmployeeId: string;
+  solidesExternalId: string;
   rg: string;
   cpf: string;
   email: string;
@@ -262,6 +264,8 @@ const emptyEmployeeForm = (): EmployeeFormState => ({
   fullName: '',
   employmentRegime: 'CLT',
   status: 'ATIVO',
+  solidesEmployeeId: '',
+  solidesExternalId: '',
   rg: '',
   cpf: '',
   email: '',
@@ -393,6 +397,8 @@ const mapEmployeeToForm = (employee: EmployeeListItem): EmployeeFormState => ({
   fullName: employee.fullName || '',
   employmentRegime: employee.employmentRegime,
   status: employee.status,
+  solidesEmployeeId: employee.solidesEmployeeId || '',
+  solidesExternalId: employee.solidesExternalId || '',
   rg: employee.rg || '',
   cpf: formatCpf(employee.cpf || ''),
   email: employee.email || '',
@@ -475,6 +481,9 @@ const mapStatusBadge = (status: EmployeeStatus) =>
 
 const getEmployeeStatusLabel = (status: EmployeeStatus) =>
   status === 'ATIVO' ? 'Ativo' : status === 'PRE_ADMISSAO' ? 'Pré-admissão' : 'Desligado';
+
+const recessReadOnlyMessage =
+  'Férias e recessos agora são sincronizados pela Sólides/Tangerino. Nesta fase o painel consulta esses dados, mas não cria nem edita lançamentos por aqui.';
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { cache: 'no-store', ...init });
@@ -906,6 +915,8 @@ export default function ColaboradoresPage() {
         ...form,
         cpf: form.cpf,
         phone: form.phone,
+        solidesEmployeeId: form.solidesEmployeeId.trim(),
+        solidesExternalId: form.solidesExternalId.trim(),
         salaryAmount: parseNumericInput(form.salaryAmount),
         insalubrityPercent: parseNumericInput(form.insalubrityPercent),
         transportVoucherPerDay: parseNumericInput(form.transportVoucherPerDay),
@@ -928,7 +939,7 @@ export default function ColaboradoresPage() {
       setModalNotice(
         currentEmployeeId
           ? 'Cadastro atualizado com sucesso.'
-          : 'Colaborador criado com sucesso. Agora você pode registrar documentos, uniforme e recessos.'
+          : 'Colaborador criado com sucesso. Agora você pode registrar documentos e uniforme; férias/recessos virão da Sólides.'
       );
       setPagination((prev) => ({ ...prev, page: createdNow ? 1 : prev.page }));
       await loadList(createdNow ? 1 : pagination.page, appliedFilters);
@@ -1209,7 +1220,7 @@ export default function ColaboradoresPage() {
             <div>
               <h1 className="text-xl font-bold text-slate-800">Gestão de Colaboradores</h1>
               <p className="mt-1 text-xs text-slate-500">
-                Cadastro, indicadores, benefícios, documentos, uniforme, recesso e fluxos de admissão/desligamento do Departamento Pessoal.
+                Cadastro, indicadores, benefícios, documentos, uniforme, férias sincronizadas e fluxos de admissão/desligamento do Departamento Pessoal.
               </p>
             </div>
           </div>
@@ -1528,7 +1539,7 @@ export default function ColaboradoresPage() {
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h2 className="text-lg font-semibold text-slate-800">{currentEmployeeId ? 'Editar colaborador' : 'Novo colaborador'}</h2>
-                <p className="text-sm text-slate-500">Modal em abas para cadastro, benefícios, uniforme, recesso e documentos.</p>
+                <p className="text-sm text-slate-500">Modal em abas para cadastro, benefícios, uniforme, férias sincronizadas e documentos.</p>
               </div>
               <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
                 <X size={18} />
@@ -1540,7 +1551,7 @@ export default function ColaboradoresPage() {
                 <TabButton active={modalTab === 'cadastro'} onClick={() => setModalTab('cadastro')}>Cadastro</TabButton>
                 <TabButton active={modalTab === 'beneficios'} onClick={() => setModalTab('beneficios')}>Benefícios</TabButton>
                 <TabButton active={modalTab === 'uniforme'} disabled={!currentEmployeeId} onClick={() => setModalTab('uniforme')}>Uniforme & Armário</TabButton>
-                <TabButton active={modalTab === 'recesso'} disabled={!currentEmployeeId} onClick={() => setModalTab('recesso')}>Recesso</TabButton>
+                <TabButton active={modalTab === 'recesso'} disabled={!currentEmployeeId} onClick={() => setModalTab('recesso')}>Férias</TabButton>
                 <TabButton active={modalTab === 'documentos'} disabled={!currentEmployeeId} onClick={() => setModalTab('documentos')}>Documentos</TabButton>
                 <TabButton active={modalTab === 'portal'} disabled={!currentEmployeeId} onClick={() => setModalTab('portal')}>Portal</TabButton>
               </div>
@@ -1673,6 +1684,26 @@ export default function ColaboradoresPage() {
 
                       <SectionCard title="Vínculo contratual" description="Informações de contrato, jornada e vigência." icon={Wallet}>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
+                          <div className="md:col-span-6">
+                            <label className={fieldLabelClassName}>ID do colaborador na Sólides</label>
+                            <input
+                              disabled={currentEmployeeReadOnly}
+                              value={form.solidesEmployeeId}
+                              onChange={(event) => setForm((prev) => ({ ...prev, solidesEmployeeId: event.target.value }))}
+                              className={filterInputClassName}
+                              placeholder="Obrigatório para vínculos sincronizados"
+                            />
+                          </div>
+                          <div className="md:col-span-6">
+                            <label className={fieldLabelClassName}>External ID na Sólides</label>
+                            <input
+                              disabled={currentEmployeeReadOnly}
+                              value={form.solidesExternalId}
+                              onChange={(event) => setForm((prev) => ({ ...prev, solidesExternalId: event.target.value }))}
+                              className={filterInputClassName}
+                              placeholder="Opcional"
+                            />
+                          </div>
                           <div className="md:col-span-6">
                             <label className={fieldLabelClassName}>Data de admissão *</label>
                             <input disabled={currentEmployeeReadOnly} type="date" value={form.admissionDate} onChange={(event) => setForm((prev) => ({ ...prev, admissionDate: event.target.value }))} className={filterInputClassName} />
@@ -2144,67 +2175,18 @@ export default function ColaboradoresPage() {
 
                   {modalTab === 'recesso' ? (
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[420px,1fr]">
-                      <SectionCard title="Novo período" description="Cadastro de períodos aquisitivos e férias." icon={CalendarClock}>
+                      <SectionCard title="Férias sincronizadas" description="Consulta em modo leitura da base oficial da Sólides/Tangerino." icon={CalendarClock}>
                         <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className={fieldLabelClassName}>Período aquisitivo inicial</label>
-                              <input disabled={currentEmployeeReadOnly} type="date" value={recessForm.acquisitionStartDate} onChange={(event) => setRecessForm((prev) => ({ ...prev, acquisitionStartDate: event.target.value }))} className={filterInputClassName} />
-                            </div>
-                            <div>
-                              <label className={fieldLabelClassName}>Período aquisitivo final</label>
-                              <input disabled={currentEmployeeReadOnly} type="date" value={recessForm.acquisitionEndDate} onChange={(event) => setRecessForm((prev) => ({ ...prev, acquisitionEndDate: event.target.value }))} className={filterInputClassName} />
-                            </div>
+                          <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-[#17407E]">
+                            {recessReadOnlyMessage}
                           </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className={fieldLabelClassName}>Dias devidos</label>
-                              <input disabled={currentEmployeeReadOnly} value={recessForm.daysDue} onChange={(event) => setRecessForm((prev) => ({ ...prev, daysDue: event.target.value.replace(/\D/g, '') }))} className={filterInputClassName} />
-                            </div>
-                            <div>
-                              <label className={fieldLabelClassName}>Dias quitados</label>
-                              <input disabled={currentEmployeeReadOnly} value={recessForm.daysPaid} onChange={(event) => setRecessForm((prev) => ({ ...prev, daysPaid: event.target.value.replace(/\D/g, '') }))} className={filterInputClassName} />
-                            </div>
+                          <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+                            Se houver divergência, o ajuste precisa ser feito na Sólides. Depois basta atualizar o cadastro do colaborador ou rodar a sincronização da competência para refletir o novo estado aqui no painel.
                           </div>
-                          <div>
-                            <label className={fieldLabelClassName}>Data limite para sair</label>
-                            <input disabled={currentEmployeeReadOnly} type="date" value={recessForm.leaveDeadlineDate} onChange={(event) => setRecessForm((prev) => ({ ...prev, leaveDeadlineDate: event.target.value }))} className={filterInputClassName} />
-                          </div>
-                          <div className="grid grid-cols-2 gap-3">
-                            <div>
-                              <label className={fieldLabelClassName}>Início das férias</label>
-                              <input disabled={currentEmployeeReadOnly} type="date" value={recessForm.vacationStartDate} onChange={(event) => setRecessForm((prev) => ({ ...prev, vacationStartDate: event.target.value }))} className={filterInputClassName} />
-                            </div>
-                            <div>
-                              <label className={fieldLabelClassName}>Duração (dias)</label>
-                              <input disabled={currentEmployeeReadOnly} value={recessForm.vacationDurationDays} onChange={(event) => setRecessForm((prev) => ({ ...prev, vacationDurationDays: event.target.value.replace(/\D/g, '') }))} className={filterInputClassName} />
-                            </div>
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                              <input disabled={currentEmployeeReadOnly} type="checkbox" checked={recessForm.sellTenDays} onChange={(event) => setRecessForm((prev) => ({ ...prev, sellTenDays: event.target.checked }))} />
-                              Venda de 10 dias
-                            </label>
-                            <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                              <input disabled={currentEmployeeReadOnly} type="checkbox" checked={recessForm.thirteenthOnVacation} onChange={(event) => setRecessForm((prev) => ({ ...prev, thirteenthOnVacation: event.target.checked }))} />
-                              13º nas férias
-                            </label>
-                          </div>
-                          {canEdit ? (
-                            <div className="flex flex-wrap gap-2 pt-2">
-                              <button type="button" disabled={recessSaving} onClick={submitRecess} className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
-                                {recessSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                                {recessEditingId ? 'Atualizar período' : 'Adicionar período'}
-                              </button>
-                              <button type="button" onClick={() => { setRecessForm(emptyRecessForm()); setRecessEditingId(null); }} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">
-                                Limpar
-                              </button>
-                            </div>
-                          ) : null}
                         </div>
                       </SectionCard>
 
-                      <SectionCard title="Histórico de recessos" description="Saldos, situação e programação de férias." icon={FileText}>
+                      <SectionCard title="Histórico de férias" description="Saldos, situação e programação sincronizada." icon={FileText}>
                         <div className="overflow-x-auto">
                           <table className="min-w-[860px] w-full text-sm">
                             <thead className="bg-white text-left text-xs uppercase tracking-wide text-slate-500">
@@ -2216,12 +2198,12 @@ export default function ColaboradoresPage() {
                                 <th className="px-2 py-2">Limite</th>
                                 <th className="px-2 py-2">Férias</th>
                                 <th className="px-2 py-2">Benefícios</th>
-                                <th className="px-2 py-2">Ações</th>
+                                <th className="px-2 py-2">Origem</th>
                               </tr>
                             </thead>
                             <tbody>
                               {recessItems.length === 0 ? (
-                                <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-500">Nenhum período de recesso cadastrado.</td></tr>
+                                <tr><td colSpan={8} className="px-2 py-8 text-center text-slate-500">Nenhum período de férias sincronizado.</td></tr>
                               ) : recessItems.map((item) => (
                                 <tr key={item.id} className="border-t border-slate-100 align-top">
                                   <td className="px-2 py-2">{formatDateBr(item.acquisitionStartDate)} - {formatDateBr(item.acquisitionEndDate)}</td>
@@ -2231,16 +2213,7 @@ export default function ColaboradoresPage() {
                                   <td className="px-2 py-2">{formatDateBr(item.leaveDeadlineDate)}</td>
                                   <td className="px-2 py-2">{formatDateBr(item.vacationStartDate)}<br /><span className="text-xs text-slate-500">Até {formatDateBr(item.vacationEndDate)}</span></td>
                                   <td className="px-2 py-2 text-xs text-slate-600">Venda 10 dias: {item.sellTenDays ? 'Sim' : 'Não'}<br />13º nas férias: {item.thirteenthOnVacation ? 'Sim' : 'Não'}</td>
-                                  <td className="px-2 py-2">
-                                    <div className="flex items-center gap-2">
-                                      {canEdit ? (
-                                        <>
-                                          <button type="button" onClick={() => { setRecessEditingId(item.id); setRecessForm({ acquisitionStartDate: item.acquisitionStartDate || '', acquisitionEndDate: item.acquisitionEndDate || '', daysDue: String(item.daysDue || 0), daysPaid: String(item.daysPaid || 0), leaveDeadlineDate: item.leaveDeadlineDate || '', vacationStartDate: item.vacationStartDate || '', vacationDurationDays: String(item.vacationDurationDays || 0), sellTenDays: item.sellTenDays, thirteenthOnVacation: item.thirteenthOnVacation }); }} className="rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50">Editar</button>
-                                          <button type="button" onClick={() => deleteRecess(item.id)} className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50">Excluir</button>
-                                        </>
-                                      ) : <span className="text-xs text-slate-400">Somente leitura</span>}
-                                    </div>
-                                  </td>
+                                  <td className="px-2 py-2 text-xs text-slate-600">{item.source === 'SOLIDES' ? 'Sólides/Tangerino' : 'Legado local'}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -2468,7 +2441,7 @@ export default function ColaboradoresPage() {
 
             <div className="flex items-center justify-between border-t border-slate-200 px-5 py-4">
               <div className="text-xs text-slate-500">
-                {currentEmployeeId ? `ID do colaborador: ${currentEmployeeId}` : 'Salve o cadastro inicial para liberar uniforme, recesso e documentos.'}
+                {currentEmployeeId ? `ID do colaborador: ${currentEmployeeId}` : 'Salve o cadastro inicial para liberar uniforme, férias sincronizadas e documentos.'}
               </div>
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-600">

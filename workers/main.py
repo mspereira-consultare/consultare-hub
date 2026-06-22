@@ -110,6 +110,7 @@ try:
         process_pending_agenda_occupancy_jobs_once,
     )
     from worker_payroll_point_import import process_pending_payroll_point_jobs_once
+    from worker_payroll_point_sync import process_pending_payroll_point_sync_jobs_once
     from worker_marketing_funnel_google import process_pending_marketing_funnel_jobs_once
     from worker_clinia_ads import process_pending_clinia_ads_jobs_once
     from worker_recruitment_ai import run_recruitment_ai_loop
@@ -266,6 +267,7 @@ KNOWN_ACTIONS = {
     'monitor_recepcao', # Espera para atendimento recepção
     'agenda_occupancy', # Ocupacao da agenda por especialidade
     'payroll_point_import', # Importacao ass?ncrona do ponto da folha
+    'payroll_point_sync', # Sincronizacao ass?ncrona do ponto da folha pela API
     'marketing_funnel', # Funil de Marketing (Google Ads + GA4)
     'clinia_ads', # Estatisticas de anuncios do Clinia
     'intranet_knowledge_index', # Indexacao da base de conhecimento da intranet
@@ -341,6 +343,10 @@ ALIAS_ACTION_MAP = {
     'folha_pagamento_ponto': 'payroll_point_import',
     'folha_ponto_import': 'payroll_point_import',
     'worker_payroll_point_import': 'payroll_point_import',
+    'payroll_point_sync': 'payroll_point_sync',
+    'folha_pagamento_sync': 'payroll_point_sync',
+    'folha_ponto_sync': 'payroll_point_sync',
+    'worker_payroll_point_sync': 'payroll_point_sync',
     'marketing_funnel': 'marketing_funnel',
     'marketing_funil': 'marketing_funnel',
     'funil_marketing': 'marketing_funnel',
@@ -372,6 +378,7 @@ CANONICAL_NAME = {
     'monitor_recepcao': 'Monitor Recepção',
     'agenda_occupancy': 'Agenda Ocupacao (Feegow API)',
     'payroll_point_import': 'Folha de Pagamento - Importacao de Ponto',
+    'payroll_point_sync': 'Folha de Pagamento - Sincronizacao de Ponto',
     'marketing_funnel': 'Marketing Funil (Google API)',
     'clinia_ads': 'Clinia Ads (API nao oficial)',
     'intranet_knowledge_index': 'Base de Conhecimento (Intranet IA)',
@@ -576,6 +583,11 @@ def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
             while process_pending_payroll_point_jobs_once():
                 drained += 1
             print(f"Folha de pagamento: jobs drenados={drained}")
+        elif action == "payroll_point_sync":
+            drained = 0
+            while process_pending_payroll_point_sync_jobs_once():
+                drained += 1
+            print(f"Folha de pagamento (sync API): jobs drenados={drained}")
         elif action == "marketing_funnel":
             drained = 0
             while process_pending_marketing_funnel_jobs_once(

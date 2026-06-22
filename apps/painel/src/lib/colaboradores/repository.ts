@@ -282,6 +282,8 @@ const mapEmployee = (row: any): Employee => ({
   fullName: clean(row.full_name),
   employmentRegime: upper(row.employment_regime) as EmploymentRegime,
   status: normalizeEmployeeStatus(row.status),
+  solidesEmployeeId: clean(row.solides_employee_id) || null,
+  solidesExternalId: clean(row.solides_external_id) || null,
   rg: clean(row.rg) || null,
   cpf: clean(row.cpf) || null,
   email: clean(row.email) || null,
@@ -418,6 +420,7 @@ const mapRecessPeriod = (row: any): EmployeeRecessPeriod => {
   return {
     id: clean(row.id),
     employeeId: clean(row.employee_id),
+    source: clean(row.source).toUpperCase() === 'SOLIDES' ? 'SOLIDES' : 'LOCAL',
     acquisitionStartDate: parseDate(row.acquisition_start_date),
     acquisitionEndDate: parseDate(row.acquisition_end_date),
     daysDue,
@@ -708,6 +711,8 @@ const normalizeInput = (payload: any): EmployeeInput => {
     fullName,
     employmentRegime,
     status,
+    solidesEmployeeId: clean(payload?.solidesEmployeeId || payload?.solides_employee_id) || null,
+    solidesExternalId: clean(payload?.solidesExternalId || payload?.solides_external_id) || null,
     rg: normalizeRg(payload?.rg),
     cpf,
     email,
@@ -831,6 +836,8 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
       full_name VARCHAR(180) NOT NULL,
       employment_regime VARCHAR(20) NOT NULL,
       status VARCHAR(20) NOT NULL,
+      solides_employee_id VARCHAR(80) NULL,
+      solides_external_id VARCHAR(120) NULL,
       rg VARCHAR(40) NULL,
       cpf VARCHAR(14) NOT NULL,
       email VARCHAR(180) NULL,
@@ -1060,6 +1067,8 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN other_fixed_discount_amount DECIMAL(12,2) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN other_fixed_discount_description TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN payroll_notes TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN solides_employee_id VARCHAR(80) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN solides_external_id VARCHAR(120) NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN location_detail VARCHAR(180) NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN notes TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN returned_at DATE NULL`);
@@ -1079,6 +1088,8 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
 
   await safeCreateIndex(db, `CREATE INDEX idx_employees_full_name ON employees (full_name)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employees_status ON employees (status)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employees_solides_employee ON employees (solides_employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employees_solides_external ON employees (solides_external_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_documents_employee ON employee_documents (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_documents_inactive_employee ON employee_documents_inactive (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_uniform_items_employee ON employee_uniform_items (employee_id)`);
@@ -1627,7 +1638,7 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
     await txDb.execute(
       `
       INSERT INTO employees (
-        id, full_name, employment_regime, status, rg, cpf, email, phone, birth_date,
+        id, full_name, employment_regime, status, solides_employee_id, solides_external_id, rg, cpf, email, phone, birth_date,
         street, street_number, address_complement, district, city, state_uf, zip_code,
         education_institution, education_level, course_name, current_semester,
         work_schedule, salary_amount, contract_duration_text, admission_date, contract_end_date,
@@ -1638,13 +1649,15 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
         totalpass_discount_fixed, other_fixed_discount_amount, other_fixed_discount_description,
         payroll_notes, life_insurance_status, marital_status, has_children, children_count,
         bank_name, bank_agency, bank_account, pix_key, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
         input.fullName,
         input.employmentRegime,
         input.status,
+        input.solidesEmployeeId,
+        input.solidesExternalId,
         input.rg,
         input.cpf,
         input.email,
@@ -1737,6 +1750,8 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
         full_name = ?,
         employment_regime = ?,
         status = ?,
+        solides_employee_id = ?,
+        solides_external_id = ?,
         rg = ?,
         cpf = ?,
         email = ?,
@@ -1793,6 +1808,8 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
         input.fullName,
         input.employmentRegime,
         input.status,
+        input.solidesEmployeeId,
+        input.solidesExternalId,
         input.rg,
         input.cpf,
         input.email,
@@ -2419,16 +2436,59 @@ export const listEmployeeRecessPeriods = async (db: DbInterface, employeeId: str
   await ensureEmployeesTables(db);
   await ensureEmployeeExists(db, employeeId);
 
-  const rows = await db.query(
-    `
-    SELECT *
-    FROM employee_recess_periods
-    WHERE employee_id = ?
-    ORDER BY acquisition_start_date DESC, created_at DESC
-    `,
-    [employeeId]
-  );
-  return rows.map(mapRecessPeriod);
+  const [vacationRows, legacyRows] = await Promise.all([
+    db.query(
+      `
+      SELECT id, employee_id, date_start, date_end, notes, created_at, updated_at
+      FROM payroll_occurrences
+      WHERE employee_id = ?
+        AND occurrence_type = 'FERIAS'
+      ORDER BY date_start DESC, created_at DESC
+      `,
+      [employeeId]
+    ),
+    db.query(
+      `
+      SELECT *
+      FROM employee_recess_periods
+      WHERE employee_id = ?
+      ORDER BY acquisition_start_date DESC, created_at DESC
+      `,
+      [employeeId]
+    ),
+  ]);
+
+  if (vacationRows.length > 0) {
+    return vacationRows.map((row: any) => {
+      const vacationStartDate = parseDate(row.date_start);
+      const vacationEndDate = parseDate(row.date_end) || vacationStartDate;
+      const vacationDurationDays =
+        vacationStartDate && vacationEndDate
+          ? Math.max(1, Math.floor((new Date(`${vacationEndDate}T00:00:00Z`).getTime() - new Date(`${vacationStartDate}T00:00:00Z`).getTime()) / 86400000) + 1)
+          : 0;
+      return {
+        id: clean(row.id),
+        employeeId,
+        source: 'SOLIDES',
+        acquisitionStartDate: null,
+        acquisitionEndDate: null,
+        daysDue: vacationDurationDays,
+        daysPaid: vacationDurationDays,
+        balance: 0,
+        situation: 'QUITADAS',
+        leaveDeadlineDate: null,
+        vacationStartDate,
+        vacationDurationDays,
+        vacationEndDate,
+        sellTenDays: false,
+        thirteenthOnVacation: false,
+        createdAt: clean(row.created_at),
+        updatedAt: clean(row.updated_at),
+      } satisfies EmployeeRecessPeriod;
+    });
+  }
+
+  return legacyRows.map(mapRecessPeriod);
 };
 
 export const saveEmployeeRecessPeriod = async (
@@ -2440,71 +2500,13 @@ export const saveEmployeeRecessPeriod = async (
 ) => {
   await ensureEmployeesTables(db);
   await ensureEmployeeExists(db, employeeId);
-  const input = normalizeRecessInput(payload);
-  const now = NOW();
-
-  if (entryId) {
-    const rows = await db.query(
-      `SELECT id FROM employee_recess_periods WHERE id = ? AND employee_id = ? LIMIT 1`,
-      [entryId, employeeId]
-    );
-    if (!rows[0]) {
-      throw new EmployeeValidationError('Registro de recesso não encontrado.', 404);
-    }
-    await db.execute(
-      `
-      UPDATE employee_recess_periods
-      SET acquisition_start_date = ?, acquisition_end_date = ?, days_due = ?, days_paid = ?,
-          leave_deadline_date = ?, vacation_start_date = ?, vacation_duration_days = ?,
-          sell_ten_days = ?, thirteenth_on_vacation = ?, updated_at = ?
-      WHERE id = ? AND employee_id = ?
-      `,
-      [
-        input.acquisitionStartDate,
-        input.acquisitionEndDate,
-        input.daysDue || 0,
-        input.daysPaid || 0,
-        input.leaveDeadlineDate,
-        input.vacationStartDate,
-        input.vacationDurationDays || 0,
-        input.sellTenDays ? 1 : 0,
-        input.thirteenthOnVacation ? 1 : 0,
-        now,
-        entryId,
-        employeeId,
-      ]
-    );
-    await insertAudit(db, 'EMPLOYEE_RECESS_UPDATED', actorUserId, employeeId, { entryId });
-  } else {
-    const id = randomUUID();
-    await db.execute(
-      `
-      INSERT INTO employee_recess_periods (
-        id, employee_id, acquisition_start_date, acquisition_end_date, days_due, days_paid,
-        leave_deadline_date, vacation_start_date, vacation_duration_days, sell_ten_days,
-        thirteenth_on_vacation, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      [
-        id,
-        employeeId,
-        input.acquisitionStartDate,
-        input.acquisitionEndDate,
-        input.daysDue || 0,
-        input.daysPaid || 0,
-        input.leaveDeadlineDate,
-        input.vacationStartDate,
-        input.vacationDurationDays || 0,
-        input.sellTenDays ? 1 : 0,
-        input.thirteenthOnVacation ? 1 : 0,
-        now,
-        now,
-      ]
-    );
-    await insertAudit(db, 'EMPLOYEE_RECESS_CREATED', actorUserId, employeeId, { entryId: id });
-  }
-
-  return listEmployeeRecessPeriods(db, employeeId);
+  void payload;
+  void actorUserId;
+  void entryId;
+  throw new EmployeeValidationError(
+    'O recesso/férias agora é sincronizado pela Sólides/Tangerino e está em modo somente leitura no painel.',
+    409,
+  );
 };
 
 export const deleteEmployeeRecessPeriod = async (
@@ -2515,9 +2517,12 @@ export const deleteEmployeeRecessPeriod = async (
 ) => {
   await ensureEmployeesTables(db);
   await ensureEmployeeExists(db, employeeId);
-  await db.execute(`DELETE FROM employee_recess_periods WHERE id = ? AND employee_id = ?`, [entryId, employeeId]);
-  await insertAudit(db, 'EMPLOYEE_RECESS_DELETED', actorUserId, employeeId, { entryId });
-  return listEmployeeRecessPeriods(db, employeeId);
+  void entryId;
+  void actorUserId;
+  throw new EmployeeValidationError(
+    'O recesso/férias agora é sincronizado pela Sólides/Tangerino e está em modo somente leitura no painel.',
+    409,
+  );
 };
 
 const lifecycleCaseTypes = new Set<EmployeeLifecycleCaseType>(['ADMISSION', 'TERMINATION']);
