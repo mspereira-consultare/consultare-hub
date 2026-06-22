@@ -5,6 +5,9 @@ import type { PayrollImportFile, PayrollPointSyncRun } from '@/lib/payroll/types
 import { formatDateTimeBr, statusLabelMap } from './formatters';
 import { PayrollSourceBadge } from './PayrollSourceBadge';
 
+const normalizeFrontendSourceLabel = (value: string | null | undefined) =>
+  String(value || 'API Sólides').replace(/Sólides\/Tangerino/g, 'Sólides').replace(/Tangerino/g, 'Sólides');
+
 const syncStatusTone = (status: string) => {
   if (status === 'COMPLETED') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (status === 'FAILED') return 'border-rose-200 bg-rose-50 text-rose-700';
@@ -82,7 +85,7 @@ export function PayrollSyncPanel({
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               <InfoCard label="Início" value={formatDateTimeBr(latestRun.startedAt || latestRun.createdAt)} />
               <InfoCard label="Fim" value={formatDateTimeBr(latestRun.finishedAt)} />
-              <InfoCard label="Fonte" value={latestRun.sourceLabel || 'API Sólides/Tangerino'} />
+              <InfoCard label="Fonte" value={normalizeFrontendSourceLabel(latestRun.sourceLabel || 'API Sólides')} />
               <InfoCard label="Colaboradores" value={String(latestRun.synchronizedEmployees || 0)} />
               <InfoCard label="Registros diários" value={String(latestRun.synchronizedDays || 0)} />
               <InfoCard label="Não vinculados" value={String(latestRun.unmatchedEmployees || 0)} />

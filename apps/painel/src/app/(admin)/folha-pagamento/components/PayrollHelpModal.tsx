@@ -6,7 +6,7 @@ import { PayrollSourceBadge } from './PayrollSourceBadge';
 
 const sections = [
   {
-    title: 'O que vem da Sólides/Tangerino',
+    title: 'O que vem da Sólides',
     description:
       'A integração é a fonte oficial para ponto diário, banco de horas, férias sincronizadas e pendências de assinatura. Esses dados entram no painel por sincronização, sem depender de upload manual para competências novas.',
     sources: ['SOLIDES'] as const,

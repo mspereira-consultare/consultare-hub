@@ -17,7 +17,7 @@ export function PayrollDailyPanel({ rows, loading }: { rows: PayrollDailyControl
       description="Atrasos, faltas, saldo do dia e alertas de pausa por colaborador na competência filtrada."
       countLabel={`${rows.length} registro(s)`}
       sources={['SOLIDES', 'PAINEL']}
-      sourceNote="Métricas de ponto vêm da Sólides/Tangerino; vínculo, centro de custo e contrato continuam vindo do Painel."
+      sourceNote="Métricas de ponto vêm da Sólides; vínculo, centro de custo e contrato continuam vindo do Painel."
     >
       <div className="overflow-x-auto">
         <table className="min-w-[1180px] w-full text-sm">

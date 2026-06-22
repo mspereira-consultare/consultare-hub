@@ -13,7 +13,7 @@ export function PayrollHoursBalancePanel({ rows, loading }: { rows: PayrollHours
   return (
     <PayrollTableShell
       title="Banco de horas"
-      description="Saldo mensal retornado pela Sólides/Tangerino para a competência filtrada."
+      description="Saldo mensal retornado pela Sólides para a competência filtrada."
       countLabel={`${rows.length} registro(s)`}
       sources={['SOLIDES']}
     >

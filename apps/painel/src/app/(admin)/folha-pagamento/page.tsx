@@ -30,7 +30,6 @@ import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
 import { PayrollPreviewTable } from './components/PayrollPreviewTable';
 import { PayrollReadinessPanel } from './components/PayrollReadinessPanel';
 import { PayrollSignaturesPanel } from './components/PayrollSignaturesPanel';
-import { PayrollSourceLegend } from './components/PayrollSourceLegend';
 import { PayrollSummaryCards } from './components/PayrollSummaryCards';
 import { PayrollSyncPanel } from './components/PayrollSyncPanel';
 import { PayrollTabNav, type PayrollTabKey } from './components/PayrollTabNav';
@@ -331,7 +330,7 @@ export default function FolhaPagamentoPage() {
             <div>
               <h1 className="text-xl font-bold text-slate-800">Ponto e fechamento</h1>
               <p className="mt-1 text-xs text-slate-500">
-                Base oficial de ponto pela Sólides/Tangerino com cálculo operacional, benefícios, ajustes locais e exportação da competência no painel.
+                Base oficial de ponto pela Sólides com cálculo operacional, benefícios, ajustes locais e exportação da competência no painel.
               </p>
             </div>
           </div>
@@ -365,35 +364,87 @@ export default function FolhaPagamentoPage() {
           </div>
         </div>
 
-        <div className="grid gap-3 border-t border-slate-200 bg-slate-50/70 p-6 lg:grid-cols-4">
-          <label className="block lg:col-span-2">
-            <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Competência</span>
-            <select value={selectedPeriodId} onChange={(event) => setSelectedPeriodId(event.target.value)} className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#17407E] focus:ring-2 focus:ring-blue-100">
-              <option value="">Selecione uma competência</option>
-              {options.periods.map((period) => (
-                <option key={period.id} value={period.id}>
-                  {formatMonthRef(period.monthRef)} | {formatDateBr(period.periodStart)} a {formatDateBr(period.periodEnd)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Status</div>
-            <div className="mt-2 text-sm font-semibold text-slate-800">{currentPeriod ? statusLabelMap[currentPeriod.status] || currentPeriod.status : 'Sem competência selecionada'}</div>
-            {currentPeriod ? <div className="mt-1 text-xs text-slate-500">Período operacional: {formatDateBr(currentPeriod.periodStart)} a {formatDateBr(currentPeriod.periodEnd)}</div> : null}
+        <div className="border-t border-slate-200 bg-slate-50/70">
+          <div className="flex items-center justify-between gap-3 px-6 py-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">Filtros da competência</h2>
+              <p className="mt-1 text-xs text-slate-500">Refine o recorte do fechamento, da memória de benefícios e da prévia por colaborador, centro de custo, unidade, contrato e status.</p>
+            </div>
+            <button type="button" onClick={() => setFiltersExpanded((value) => !value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+              {filtersExpanded ? 'Recolher filtros' : 'Expandir filtros'}
+            </button>
           </div>
-          <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Regras da competência</div>
-            <div className="mt-2 text-sm font-semibold text-slate-800">{detail?.period.rules ? `${formatMoney(detail.period.rules.minWageAmount)} | atraso ${detail.period.rules.lateToleranceMinutes} min` : 'Carregue uma competência'}</div>
-            {detail?.period.rules ? <div className="mt-1 text-xs text-slate-500">Teto de VT: {detail.period.rules.vtDiscountCapPercent}% do salário básico</div> : null}
-          </div>
+          {filtersExpanded ? (
+            <>
+              <div className="grid gap-3 px-6 pb-4 lg:grid-cols-4">
+                <label className="block lg:col-span-2">
+                  <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Competência</span>
+                  <select value={selectedPeriodId} onChange={(event) => setSelectedPeriodId(event.target.value)} className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#17407E] focus:ring-2 focus:ring-blue-100">
+                    <option value="">Selecione uma competência</option>
+                    {options.periods.map((period) => (
+                      <option key={period.id} value={period.id}>
+                        {formatMonthRef(period.monthRef)} | {formatDateBr(period.periodStart)} a {formatDateBr(period.periodEnd)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Status</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-800">{currentPeriod ? statusLabelMap[currentPeriod.status] || currentPeriod.status : 'Sem competência selecionada'}</div>
+                  {currentPeriod ? <div className="mt-1 text-xs text-slate-500">Período operacional: {formatDateBr(currentPeriod.periodStart)} a {formatDateBr(currentPeriod.periodEnd)}</div> : null}
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Regras da competência</div>
+                  <div className="mt-2 text-sm font-semibold text-slate-800">{detail?.period.rules ? `${formatMoney(detail.period.rules.minWageAmount)} | atraso ${detail.period.rules.lateToleranceMinutes} min` : 'Carregue uma competência'}</div>
+                  {detail?.period.rules ? <div className="mt-1 text-xs text-slate-500">Teto de VT: {detail.period.rules.vtDiscountCapPercent}% do salário básico</div> : null}
+                </div>
+              </div>
+
+              <div className="grid gap-3 px-6 pb-6 md:grid-cols-2 xl:grid-cols-5">
+                <Field label="Buscar colaborador">
+                  <input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} className={filterInputClassName} placeholder="Nome ou CPF" />
+                </Field>
+                <Field label="Centro de custo">
+                  <select value={filters.centerCost} onChange={(event) => setFilters((current) => ({ ...current, centerCost: event.target.value }))} className={filterInputClassName}>
+                    <option value="all">Todos</option>
+                    {filterOptions.centersCost.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </Field>
+                <Field label="Unidade">
+                  <select value={filters.unit} onChange={(event) => setFilters((current) => ({ ...current, unit: event.target.value }))} className={filterInputClassName}>
+                    <option value="all">Todas</option>
+                    {filterOptions.units.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </Field>
+                <Field label="Contrato">
+                  <select value={filters.contractType} onChange={(event) => setFilters((current) => ({ ...current, contractType: event.target.value }))} className={filterInputClassName}>
+                    <option value="all">Todos</option>
+                    {filterOptions.contracts.map((item) => <option key={item} value={item}>{item}</option>)}
+                  </select>
+                </Field>
+                <Field label="Status da linha">
+                  <select value={filters.lineStatus} onChange={(event) => setFilters((current) => ({ ...current, lineStatus: event.target.value }))} className={filterInputClassName}>
+                    <option value="all">Todos</option>
+                    {options.lineStatuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-6 py-4">
+                <button type="button" onClick={() => setFilters(DEFAULT_PAYROLL_LINE_FILTERS)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+                  Limpar filtros
+                </button>
+                <button type="button" onClick={() => loadPeriod()} className="rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white">
+                  Aplicar filtros
+                </button>
+              </div>
+            </>
+          ) : null}
         </div>
       </section>
 
       {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-
-      <PayrollSourceLegend />
 
       {readiness ? <PayrollReadinessPanel readiness={readiness} /> : null}
 
@@ -404,57 +455,6 @@ export default function FolhaPagamentoPage() {
           Há uma sincronização/importação de ponto em andamento nesta competência. A tela está atualizando automaticamente e a geração da folha ficará disponível após a conclusão.
         </div>
       ) : null}
-
-      <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-6 py-4">
-          <div>
-            <h2 className="text-sm font-semibold text-slate-800">Filtros da competência</h2>
-            <p className="mt-1 text-xs text-slate-500">Refine o recorte do fechamento, da memória de benefícios e da prévia por colaborador, centro de custo, unidade, contrato e status.</p>
-          </div>
-          <button type="button" onClick={() => setFiltersExpanded((value) => !value)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
-            {filtersExpanded ? 'Recolher filtros' : 'Expandir filtros'}
-          </button>
-        </div>
-        {filtersExpanded ? (
-          <div className="grid gap-3 p-6 md:grid-cols-2 xl:grid-cols-5">
-            <Field label="Buscar colaborador">
-              <input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} className={filterInputClassName} placeholder="Nome ou CPF" />
-            </Field>
-            <Field label="Centro de custo">
-              <select value={filters.centerCost} onChange={(event) => setFilters((current) => ({ ...current, centerCost: event.target.value }))} className={filterInputClassName}>
-                <option value="all">Todos</option>
-                {filterOptions.centersCost.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </Field>
-            <Field label="Unidade">
-              <select value={filters.unit} onChange={(event) => setFilters((current) => ({ ...current, unit: event.target.value }))} className={filterInputClassName}>
-                <option value="all">Todas</option>
-                {filterOptions.units.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </Field>
-            <Field label="Contrato">
-              <select value={filters.contractType} onChange={(event) => setFilters((current) => ({ ...current, contractType: event.target.value }))} className={filterInputClassName}>
-                <option value="all">Todos</option>
-                {filterOptions.contracts.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </Field>
-            <Field label="Status da linha">
-              <select value={filters.lineStatus} onChange={(event) => setFilters((current) => ({ ...current, lineStatus: event.target.value }))} className={filterInputClassName}>
-                <option value="all">Todos</option>
-                {options.lineStatuses.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-              </select>
-            </Field>
-          </div>
-        ) : null}
-        <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-6 py-4">
-          <button type="button" onClick={() => setFilters(DEFAULT_PAYROLL_LINE_FILTERS)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
-            Limpar filtros
-          </button>
-          <button type="button" onClick={() => loadPeriod()} className="rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white">
-            Aplicar filtros
-          </button>
-        </div>
-      </section>
 
       {selectedPeriodId ? (
         <div className="flex flex-wrap gap-2">

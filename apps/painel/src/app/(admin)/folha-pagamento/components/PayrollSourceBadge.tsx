@@ -9,7 +9,7 @@ const sourceToneMap: Record<PayrollDataSource, string> = {
 };
 
 const sourceLabelMap: Record<PayrollDataSource, string> = {
-  SOLIDES: 'Sólides/Tangerino',
+  SOLIDES: 'Sólides',
   PAINEL: 'Painel',
   LEGADO: 'Legado',
 };
