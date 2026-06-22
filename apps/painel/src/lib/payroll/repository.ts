@@ -19,6 +19,7 @@ import {
   type PayrollTransportVoucherMode,
 } from '@/lib/payroll/constants';
 import type {
+  PayrollDataSource,
   PayrollBenefitIssue,
   PayrollBenefitIssueDetail,
   PayrollBenefitRow,
@@ -76,6 +77,14 @@ const isMysqlProvider = () => {
 };
 const bool = (value: unknown) =>
   value === true || value === 1 || String(value || '').trim() === '1' || String(value || '').toLowerCase() === 'true';
+
+const uniqueSources = (sources: Array<PayrollDataSource | null | undefined>): PayrollDataSource[] => {
+  const items = new Set<PayrollDataSource>();
+  for (const source of sources) {
+    if (source) items.add(source);
+  }
+  return Array.from(items);
+};
 
 const parseDate = (value: unknown): string | null => {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
@@ -288,6 +297,12 @@ const mapImportFile = (row: any): PayrollImportFile => ({
   processedAt: clean(row.processed_at) || null,
 });
 
+const resolvePointRowSource = (row: any): PayrollDataSource => {
+  if (clean(row.sync_run_id)) return 'SOLIDES';
+  if (clean(row.source_file_id)) return 'LEGADO';
+  return 'SOLIDES';
+};
+
 const mapPointDaily = (row: any): PayrollPointDaily => ({
   id: clean(row.id),
   periodId: clean(row.period_id),
@@ -316,6 +331,7 @@ const mapPointDaily = (row: any): PayrollPointDaily => ({
   sourceFileId: clean(row.source_file_id) || null,
   sourcePayloadJson: clean(row.source_payload_json) || null,
   syncRunId: clean(row.sync_run_id) || null,
+  source: resolvePointRowSource(row),
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
@@ -359,6 +375,7 @@ const mapHoursBalanceMonthly = (row: any): PayrollHoursBalanceMonthly => ({
   referenceStart: parseDate(row.reference_start),
   referenceEnd: parseDate(row.reference_end),
   sourcePayloadJson: clean(row.source_payload_json) || null,
+  source: 'SOLIDES',
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
@@ -378,6 +395,7 @@ const mapSignatureMonthly = (row: any): PayrollSignatureMonthly => ({
   signedAt: clean(row.signed_at) || null,
   message: clean(row.message) || null,
   sourcePayloadJson: clean(row.source_payload_json) || null,
+  source: 'SOLIDES',
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
@@ -399,6 +417,7 @@ const mapOccurrence = (row: any): PayrollOccurrence => ({
   sizeBytes: row.size_bytes === null || row.size_bytes === undefined ? null : Number(row.size_bytes || 0),
   createdBy: clean(row.created_by) || null,
   updatedBy: clean(row.updated_by) || null,
+  source: upper(row.occurrence_type) === 'FERIAS' ? 'SOLIDES' : 'PAINEL',
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
 });
@@ -2654,6 +2673,7 @@ export const listPayrollDailyControlRows = async (db: DbInterface, periodId: str
   const latestCompletedSync = syncRuns.find((item) => item.status === 'COMPLETED') || null;
   const items: PayrollDailyControlRow[] = linesResult.items.map((line) => {
     const rows = pointMap.get(line.employeeId || '') || pointMap.get(buildComparisonKey(line.employeeName, line.employeeCpf)) || [];
+    const pointSources = uniqueSources(rows.map((row) => row.source));
     const plannedMinutes = rows.reduce((sum, row) => sum + row.plannedMinutes, 0);
     const workedMinutes = rows.reduce((sum, row) => sum + row.workedMinutes, 0);
     const dayBalanceMinutes = rows.reduce((sum, row) => sum + row.dayBalanceMinutes, 0);
@@ -2683,6 +2703,8 @@ export const listPayrollDailyControlRows = async (db: DbInterface, periodId: str
       dayBalanceMinutes,
       breakOverrunMinutes,
       pendingAdjustments,
+      pointSource: pointSources[0] || (latestCompletedSync ? 'SOLIDES' : null),
+      employeeSource: 'PAINEL',
       status,
     };
   });
@@ -2791,6 +2813,10 @@ export const getPayrollLineDetail = async (db: DbInterface, lineId: string): Pro
     line.employeeId ? employeeMap.get(line.employeeId) || null : null,
     occurrences,
   );
+  const pointSources = uniqueSources(pointDays.map((item) => item.source));
+  const occurrenceSources = uniqueSources(occurrences.map((item) => item.source));
+  const hoursBalanceSources = uniqueSources(hoursBalanceRows.map((item) => item.source));
+  const signatureSources = uniqueSources(signatureRows.map((item) => item.source));
 
   return {
     line,
@@ -2799,6 +2825,15 @@ export const getPayrollLineDetail = async (db: DbInterface, lineId: string): Pro
     previewRow,
     hoursBalance: hoursBalanceRows[0] || null,
     signature: signatureRows[0] || null,
+    sources: {
+      adjustments: ['PAINEL'],
+      preview: ['PAINEL'],
+      hoursBalance: hoursBalanceSources.length ? hoursBalanceSources : ['SOLIDES'],
+      signature: signatureSources.length ? signatureSources : ['SOLIDES'],
+      pointDays: pointSources.length ? pointSources : ['SOLIDES'],
+      occurrences: occurrenceSources.length ? occurrenceSources : ['PAINEL'],
+      calculationMemory: ['PAINEL'],
+    },
   };
 };
 

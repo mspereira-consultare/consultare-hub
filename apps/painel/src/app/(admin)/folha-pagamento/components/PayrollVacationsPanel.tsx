@@ -2,17 +2,21 @@
 
 import type { PayrollVacationRow } from '@/lib/payroll/types';
 import { formatDateBr } from './formatters';
+import { PayrollSourceBadge } from './PayrollSourceBadge';
+import { PayrollTableShell } from './PayrollTableShell';
 
 export function PayrollVacationsPanel({ rows, loading }: { rows: PayrollVacationRow[]; loading: boolean }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-6 py-4">
-        <h2 className="text-sm font-semibold text-slate-800">Férias</h2>
-        <p className="mt-1 text-xs text-slate-500">Ausências justificadas por férias sincronizadas da Sólides e, quando necessário, legado preservado para auditoria.</p>
-      </div>
+    <PayrollTableShell
+      title="Férias"
+      description="Ausências justificadas por férias sincronizadas da Sólides e, quando necessário, legado preservado para auditoria."
+      countLabel={`${rows.length} registro(s)`}
+      sources={['SOLIDES', 'LEGADO']}
+      sourceNote="A linha mostra a origem efetiva de cada período exibido."
+    >
       <div className="overflow-x-auto">
         <table className="min-w-[900px] w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Colaborador</th>
               <th className="px-4 py-3">Período</th>
@@ -32,13 +36,13 @@ export function PayrollVacationsPanel({ rows, loading }: { rows: PayrollVacation
                   <div className="mt-1 text-xs text-slate-500">{row.employeeCpf || '-'}</div>
                 </td>
                 <td className="px-4 py-3">{formatDateBr(row.dateStart)} a {formatDateBr(row.dateEnd)}</td>
-                <td className="px-4 py-3">{row.source}</td>
+                <td className="px-4 py-3"><PayrollSourceBadge source={row.source} /></td>
                 <td className="px-4 py-3">{row.notes || '-'}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-    </section>
+    </PayrollTableShell>
   );
 }

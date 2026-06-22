@@ -2,6 +2,7 @@
 
 import type { PayrollSignatureMonthly } from '@/lib/payroll/types';
 import { formatDateBr, statusLabelMap } from './formatters';
+import { PayrollTableShell } from './PayrollTableShell';
 
 const toneMap: Record<string, string> = {
   PENDENTE: 'border-amber-200 bg-amber-50 text-amber-700',
@@ -15,14 +16,15 @@ const toneMap: Record<string, string> = {
 
 export function PayrollSignaturesPanel({ rows, loading }: { rows: PayrollSignatureMonthly[]; loading: boolean }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-6 py-4">
-        <h2 className="text-sm font-semibold text-slate-800">Assinaturas</h2>
-        <p className="mt-1 text-xs text-slate-500">Pendências e status da assinatura mensal consultados na integração, sem acionar assinaturas por API nesta fase.</p>
-      </div>
+    <PayrollTableShell
+      title="Assinaturas"
+      description="Pendências e status da assinatura mensal consultados na integração, sem acionar assinaturas por API nesta fase."
+      countLabel={`${rows.length} registro(s)`}
+      sources={['SOLIDES']}
+    >
       <div className="overflow-x-auto">
         <table className="min-w-[1100px] w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Colaborador</th>
               <th className="px-4 py-3">Status</th>
@@ -57,6 +59,6 @@ export function PayrollSignaturesPanel({ rows, loading }: { rows: PayrollSignatu
           </tbody>
         </table>
       </div>
-    </section>
+    </PayrollTableShell>
   );
 }

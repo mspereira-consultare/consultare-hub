@@ -1,6 +1,7 @@
 'use client';
 
 import type { PayrollHoursBalanceMonthly } from '@/lib/payroll/types';
+import { PayrollTableShell } from './PayrollTableShell';
 
 const formatBalance = (minutes: number) => {
   const sign = minutes < 0 ? '-' : '';
@@ -10,14 +11,15 @@ const formatBalance = (minutes: number) => {
 
 export function PayrollHoursBalancePanel({ rows, loading }: { rows: PayrollHoursBalanceMonthly[]; loading: boolean }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-6 py-4">
-        <h2 className="text-sm font-semibold text-slate-800">Banco de horas</h2>
-        <p className="mt-1 text-xs text-slate-500">Saldo mensal retornado pela Sólides/Tangerino para a competência filtrada.</p>
-      </div>
+    <PayrollTableShell
+      title="Banco de horas"
+      description="Saldo mensal retornado pela Sólides/Tangerino para a competência filtrada."
+      countLabel={`${rows.length} registro(s)`}
+      sources={['SOLIDES']}
+    >
       <div className="overflow-x-auto">
         <table className="min-w-[900px] w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Colaborador</th>
               <th className="px-4 py-3">CPF</th>
@@ -41,6 +43,6 @@ export function PayrollHoursBalancePanel({ rows, loading }: { rows: PayrollHours
           </tbody>
         </table>
       </div>
-    </section>
+    </PayrollTableShell>
   );
 }

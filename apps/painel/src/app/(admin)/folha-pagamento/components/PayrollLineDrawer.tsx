@@ -1,8 +1,9 @@
 'use client';
 
 import { Loader2, X } from 'lucide-react';
-import type { PayrollLine, PayrollLineDetail } from '@/lib/payroll/types';
+import type { PayrollDataSource, PayrollLine, PayrollLineDetail } from '@/lib/payroll/types';
 import { formatDateBr, formatMoney, formatSheetInsalubrity } from './formatters';
+import { PayrollSourceBadge } from './PayrollSourceBadge';
 
 type DraftState = {
   adjustmentsAmount: string;
@@ -38,6 +39,15 @@ export function PayrollLineDrawer({
     lineStatus: current.lineStatus,
   };
   const preview = detail?.previewRow || null;
+  const detailSources: PayrollLineDetail['sources'] = detail?.sources || {
+    adjustments: ['PAINEL'],
+    preview: ['PAINEL'],
+    hoursBalance: ['SOLIDES'],
+    signature: ['SOLIDES'],
+    pointDays: ['SOLIDES'],
+    occurrences: ['PAINEL'],
+    calculationMemory: ['PAINEL'],
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30">
@@ -45,7 +55,9 @@ export function PayrollLineDrawer({
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-5">
           <div>
             <h2 className="text-lg font-bold text-slate-900">{line.employeeName}</h2>
-            <p className="mt-1 text-sm text-slate-500">Memória de cálculo, ponto do período, ocorrências e prévia da planilha operacional.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Memória operacional da linha com insumos locais do painel, dados sincronizados do ponto e histórico preservado quando existir.
+            </p>
           </div>
           <button
             type="button"
@@ -64,7 +76,7 @@ export function PayrollLineDrawer({
           </section>
 
           <section className="grid gap-4 md:grid-cols-2">
-            <Card title="Ajustes manuais">
+            <Card title="Ajustes manuais" sources={detailSources.adjustments}>
               <div className="space-y-3">
                 <div>
                   <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Valor do ajuste</label>
@@ -106,7 +118,7 @@ export function PayrollLineDrawer({
               </div>
             </Card>
 
-            <Card title="Prévia da linha exportada">
+            <Card title="Prévia da linha exportada" sources={detailSources.preview}>
               {preview ? (
                 <div className="grid gap-3 text-sm sm:grid-cols-2">
                   <Info label="E-mail" value={preview.email || '-'} />
@@ -129,7 +141,7 @@ export function PayrollLineDrawer({
           </section>
 
           <section className="grid gap-4 md:grid-cols-2">
-            <Card title="Banco de horas">
+            <Card title="Banco de horas" sources={detailSources.hoursBalance}>
               {detail?.hoursBalance ? (
                 <div className="grid gap-3 text-sm sm:grid-cols-2">
                   <Info label="Saldo do mês" value={`${detail.hoursBalance.balanceMinutes} min`} />
@@ -140,7 +152,7 @@ export function PayrollLineDrawer({
               )}
             </Card>
 
-            <Card title="Assinatura">
+            <Card title="Assinatura" sources={detailSources.signature}>
               {detail?.signature ? (
                 <div className="grid gap-3 text-sm sm:grid-cols-2">
                   <Info label="Status" value={detail.signature.status} />
@@ -158,14 +170,20 @@ export function PayrollLineDrawer({
             </Card>
           </section>
 
-          <Card title="Ocorrências da competência">
+          <Card title="Ocorrências da competência" sources={detailSources.occurrences} sourceNote="Férias sincronizadas aparecem como integração; demais lançamentos desta fase continuam locais do painel.">
             {detail?.occurrences?.length ? (
               <div className="space-y-2">
                 {detail.occurrences.map((occurrence) => (
                   <div key={occurrence.id} className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700">
-                    <strong>{occurrence.occurrenceType}</strong> · {formatDateBr(occurrence.dateStart)}
-                    {occurrence.dateEnd && occurrence.dateEnd !== occurrence.dateStart ? ` a ${formatDateBr(occurrence.dateEnd)}` : ''}
-                    {occurrence.notes ? ` · ${occurrence.notes}` : ''}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong>{occurrence.occurrenceType}</strong>
+                      <PayrollSourceBadge source={occurrence.source} />
+                    </div>
+                    <div className="mt-2">
+                      {formatDateBr(occurrence.dateStart)}
+                      {occurrence.dateEnd && occurrence.dateEnd !== occurrence.dateStart ? ` a ${formatDateBr(occurrence.dateEnd)}` : ''}
+                      {occurrence.notes ? ` · ${occurrence.notes}` : ''}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -174,10 +192,10 @@ export function PayrollLineDrawer({
             )}
           </Card>
 
-          <Card title="Ponto do período">
+          <Card title="Ponto do período" sources={detailSources.pointDays}>
             <div className="max-h-64 overflow-auto">
               <table className="w-full text-sm">
-                <thead className="bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-500">
+                <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-500">
                   <tr>
                     <th className="px-3 py-2 text-left">Data</th>
                     <th className="px-3 py-2 text-left">Marcações</th>
@@ -205,7 +223,7 @@ export function PayrollLineDrawer({
             </div>
           </Card>
 
-          <Card title="Memória de cálculo">
+          <Card title="Memória de cálculo" sources={detailSources.calculationMemory}>
             <pre className="overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">{detail?.line?.calculationMemoryJson || current.calculationMemoryJson || '{}'}</pre>
           </Card>
         </div>
@@ -214,10 +232,32 @@ export function PayrollLineDrawer({
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({
+  title,
+  sources = [],
+  sourceNote,
+  children,
+}: {
+  title: string;
+  sources?: PayrollDataSource[];
+  sourceNote?: string;
+  children: React.ReactNode;
+}) {
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
+          {sourceNote ? <div className="mt-1 text-xs text-slate-500">{sourceNote}</div> : null}
+        </div>
+        {sources.length ? (
+          <div className="flex flex-wrap gap-2">
+            {sources.map((source, index) => (
+              <PayrollSourceBadge key={`${title}-${source}-${index}`} source={source} />
+            ))}
+          </div>
+        ) : null}
+      </div>
       <div className="mt-3">{children}</div>
     </section>
   );

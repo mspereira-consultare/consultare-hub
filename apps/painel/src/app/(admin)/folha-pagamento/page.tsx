@@ -30,6 +30,7 @@ import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
 import { PayrollPreviewTable } from './components/PayrollPreviewTable';
 import { PayrollReadinessPanel } from './components/PayrollReadinessPanel';
 import { PayrollSignaturesPanel } from './components/PayrollSignaturesPanel';
+import { PayrollSourceLegend } from './components/PayrollSourceLegend';
 import { PayrollSummaryCards } from './components/PayrollSummaryCards';
 import { PayrollSyncPanel } from './components/PayrollSyncPanel';
 import { PayrollTabNav, type PayrollTabKey } from './components/PayrollTabNav';
@@ -330,7 +331,7 @@ export default function FolhaPagamentoPage() {
             <div>
               <h1 className="text-xl font-bold text-slate-800">Ponto e fechamento</h1>
               <p className="mt-1 text-xs text-slate-500">
-                Hub operacional da competência com sincronização Sólides/Tangerino, fechamento mensal, benefícios e prévia de exportação.
+                Base oficial de ponto pela Sólides/Tangerino com cálculo operacional, benefícios, ajustes locais e exportação da competência no painel.
               </p>
             </div>
           </div>
@@ -340,7 +341,7 @@ export default function FolhaPagamentoPage() {
               onClick={() => setHelpOpen(true)}
               className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
-              <CircleHelp size={16} /> Como funciona
+              <CircleHelp size={16} /> Fontes e regras
             </button>
             {canRefresh ? (
               <button type="button" onClick={() => reloadAll()} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
@@ -391,6 +392,8 @@ export default function FolhaPagamentoPage() {
 
       {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+
+      <PayrollSourceLegend />
 
       {readiness ? <PayrollReadinessPanel readiness={readiness} /> : null}
 

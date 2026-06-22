@@ -3,6 +3,7 @@
 import { ChevronRight } from 'lucide-react';
 import type { PayrollLine } from '@/lib/payroll/types';
 import { formatMoney, statusLabelMap } from './formatters';
+import { PayrollSectionHeader } from './PayrollSectionHeader';
 
 export function PayrollClosingTable({
   rows,
@@ -15,10 +16,14 @@ export function PayrollClosingTable({
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-4 py-3">
-        <h3 className="text-sm font-semibold text-slate-800">Fechamento operacional</h3>
-        <p className="mt-1 text-xs text-slate-500">Clique na linha para abrir a memória de cálculo, o ponto do período e a prévia do XLSX.</p>
-      </div>
+      <PayrollSectionHeader
+        title="Fechamento operacional"
+        description="Clique na linha para abrir a memória de cálculo, o ponto do período e a prévia do XLSX."
+        countLabel={`${rows.length} linha(s)`}
+        sources={['PAINEL', 'SOLIDES']}
+        sourceNote="O cálculo é feito no Painel usando cadastros locais e insumos sincronizados da competência."
+        className="border-b border-slate-200 px-4 py-3"
+      />
       <div className="max-h-[560px] overflow-auto">
         <table className="min-w-[1280px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">

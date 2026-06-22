@@ -9,6 +9,8 @@ import type {
   PayrollTransportVoucherMode,
 } from '@/lib/payroll/constants';
 
+export type PayrollDataSource = 'SOLIDES' | 'PAINEL' | 'LEGADO';
+
 export type PayrollRule = {
   id: string;
   monthRef: string;
@@ -109,6 +111,7 @@ export type PayrollPointDaily = {
   sourceFileId: string | null;
   sourcePayloadJson: string | null;
   syncRunId: string | null;
+  source: PayrollDataSource;
   createdAt: string;
   updatedAt: string;
 };
@@ -130,6 +133,7 @@ export type PayrollOccurrence = {
   sizeBytes: number | null;
   createdBy: string | null;
   updatedBy: string | null;
+  source: PayrollDataSource;
   createdAt: string;
   updatedAt: string;
 };
@@ -205,6 +209,8 @@ export type PayrollDailyControlRow = {
   dayBalanceMinutes: number;
   breakOverrunMinutes: number;
   pendingAdjustments: number;
+  pointSource: PayrollDataSource | null;
+  employeeSource: Extract<PayrollDataSource, 'PAINEL'>;
   status: PayrollDailyControlStatus;
 };
 
@@ -219,6 +225,7 @@ export type PayrollHoursBalanceMonthly = {
   referenceStart: string | null;
   referenceEnd: string | null;
   sourcePayloadJson: string | null;
+  source: Extract<PayrollDataSource, 'SOLIDES'>;
   createdAt: string;
   updatedAt: string;
 };
@@ -238,6 +245,7 @@ export type PayrollSignatureMonthly = {
   signedAt: string | null;
   message: string | null;
   sourcePayloadJson: string | null;
+  source: Extract<PayrollDataSource, 'SOLIDES'>;
   createdAt: string;
   updatedAt: string;
 };
@@ -398,6 +406,16 @@ export type PayrollLineFilters = {
   lineStatus: string;
 };
 
+export type PayrollLineDetailSources = {
+  adjustments: PayrollDataSource[];
+  preview: PayrollDataSource[];
+  hoursBalance: PayrollDataSource[];
+  signature: PayrollDataSource[];
+  pointDays: PayrollDataSource[];
+  occurrences: PayrollDataSource[];
+  calculationMemory: PayrollDataSource[];
+};
+
 export type PayrollLineDetail = {
   line: PayrollLine;
   pointDays: PayrollPointDaily[];
@@ -405,6 +423,7 @@ export type PayrollLineDetail = {
   previewRow: PayrollPreviewRow | null;
   hoursBalance: PayrollHoursBalanceMonthly | null;
   signature: PayrollSignatureMonthly | null;
+  sources: PayrollLineDetailSources;
 };
 
 export type PayrollPeriodDetail = {

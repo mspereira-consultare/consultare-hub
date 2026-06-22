@@ -3,6 +3,7 @@
 import { ChevronRight } from 'lucide-react';
 import type { PayrollPreviewRow } from '@/lib/payroll/types';
 import { formatMoney, formatSheetInsalubrity } from './formatters';
+import { PayrollSectionHeader } from './PayrollSectionHeader';
 
 export function PayrollPreviewTable({
   rows,
@@ -15,10 +16,13 @@ export function PayrollPreviewTable({
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="border-b border-slate-200 px-4 py-3">
-        <h3 className="text-sm font-semibold text-slate-800">Prévia da planilha operacional</h3>
-        <p className="mt-1 text-xs text-slate-500">Visualização da mesma estrutura que será exportada no XLSX mensal do RH.</p>
-      </div>
+      <PayrollSectionHeader
+        title="Prévia da planilha operacional"
+        description="Visualização da mesma estrutura que será exportada no XLSX mensal do RH."
+        countLabel={`${rows.length} linha(s)`}
+        sources={['PAINEL']}
+        className="border-b border-slate-200 px-4 py-3"
+      />
       <div className="max-h-[560px] overflow-auto">
         <table className="min-w-[1520px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">

@@ -3,6 +3,7 @@
 import { CheckCircle2, Clock3, DownloadCloud, Loader2, RefreshCw } from 'lucide-react';
 import type { PayrollImportFile, PayrollPointSyncRun } from '@/lib/payroll/types';
 import { formatDateTimeBr, statusLabelMap } from './formatters';
+import { PayrollSourceBadge } from './PayrollSourceBadge';
 
 const syncStatusTone = (status: string) => {
   if (status === 'COMPLETED') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
@@ -35,7 +36,7 @@ export function PayrollSyncPanel({
             </div>
             <div>
               <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Fonte oficial</div>
-              <div className="mt-2 text-sm font-semibold text-slate-800">Sólides/Tangerino</div>
+              <div className="mt-2"><PayrollSourceBadge source="SOLIDES" /></div>
               <div className="mt-1 text-xs leading-5 text-slate-600">
                 A competência passa a usar a base sincronizada da API para ponto, banco de horas, férias e assinaturas. O fluxo por PDF continua visível apenas para histórico legado.
               </div>
@@ -54,7 +55,7 @@ export function PayrollSyncPanel({
 
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Artefatos legados</div>
-          <div className="mt-2 text-sm font-semibold text-slate-800">PDFs importados anteriormente</div>
+          <div className="mt-2"><PayrollSourceBadge source="LEGADO" /></div>
           <div className="mt-1 text-xs leading-5 text-slate-600">
             {latestImport
               ? `Último arquivo legado: ${latestImport.fileName}.`

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ChevronRight, CircleAlert, Landmark, TrainFront, Wallet, X } from 'lucide-react';
 import type { PayrollBenefitRow, PayrollBenefitsSummary } from '@/lib/payroll/types';
 import { formatDateBr, formatMoney } from './formatters';
+import { PayrollSectionHeader } from './PayrollSectionHeader';
 
 const transportVoucherModeLabelMap: Record<string, string> = {
   PER_DAY: 'Por dia',
@@ -92,15 +93,14 @@ export function PayrollBenefitsPanel({
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="border-b border-slate-200 px-4 py-3">
-          <h3 className="text-sm font-semibold text-slate-800">Benefícios da competência</h3>
-          <p className="mt-1 text-xs text-slate-500">
-            Visão gerencial da competência: VR a comprar, VT pago em folha e descontos lançados na folha operacional.
-          </p>
-          <p className="mt-2 text-xs text-slate-500">
-            VR representa compra/carga. VT é pago em dinheiro na folha. Totalpass permanece como desconto em folha até confirmação da regra operacional.
-          </p>
-        </div>
+        <PayrollSectionHeader
+          title="Benefícios da competência"
+          description="Visão gerencial da competência: VR a comprar, VT pago em folha e descontos lançados na folha operacional."
+          countLabel={`${rows.length} colaborador(es)`}
+          sources={['PAINEL']}
+          sourceNote="VR representa compra/carga. VT é pago em dinheiro na folha. Totalpass permanece como desconto em folha até confirmação da regra operacional."
+          className="border-b border-slate-200 px-4 py-3"
+        />
 
         <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
           {summaryCards.map((card) => {
