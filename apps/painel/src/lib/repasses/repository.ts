@@ -2270,12 +2270,6 @@ const renderRepasseEmailContent = (recipient: RepasseEmailRecipient) => {
         .value-box { background-color: #f0f9f8; border: 1px solid #229A8A; border-radius: 6px; padding: 20px; text-align: center; margin: 25px 0; }
         .value-label { display: block; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
         .value-amount { display: block; font-size: 32px; color: #229A8A; font-weight: bold; margin-top: 5px; }
-        .summary-box { background-color: #f8fafc; border: 1px solid #dbe4ee; border-radius: 6px; padding: 18px 20px; margin: 25px 0; }
-        .summary-title { display: block; font-size: 13px; color: #053F74; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #d1d9e0; padding-bottom: 6px; }
-        .summary-row { border-bottom: 1px solid #e5edf5; }
-        .summary-row-last { border-bottom: 0; }
-        .summary-label { padding: 10px 0; font-size: 14px; color: #64748b; }
-        .summary-value { padding: 10px 0; font-size: 14px; color: #25364d; font-weight: bold; text-align: right; }
         .obs-box { background-color: #f0f4f8; border: 1px solid #053F74; border-radius: 6px; padding: 20px; text-align: left; margin: 25px 0; }
         .obs-label { display: block; font-size: 13px; color: #053F74; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #d1d9e0; padding-bottom: 5px; }
         .obs-content { display: block; font-size: 14px; color: #444; line-height: 1.5; white-space: pre-line; }
@@ -2302,23 +2296,6 @@ const renderRepasseEmailContent = (recipient: RepasseEmailRecipient) => {
                     <div class="value-box">
                         <span class="value-label">Valor Total a Receber</span>
                         <span class="value-amount">${escapedAmountText}</span>
-                    </div>
-                    <div class="summary-box">
-                        <span class="summary-title">Resumo do fechamento</span>
-                        <table width="100%">
-                            <tr class="summary-row">
-                                <td class="summary-label">Competência</td>
-                                <td class="summary-value">${escapedPeriodRef}</td>
-                            </tr>
-                            <tr class="summary-row">
-                                <td class="summary-label">Valor final</td>
-                                <td class="summary-value">${escapedAmountText}</td>
-                            </tr>
-                            <tr class="summary-row-last">
-                                <td class="summary-label">Data limite para NF</td>
-                                <td class="summary-value">${escapedDueDateNf}</td>
-                            </tr>
-                        </table>
                     </div>
                     ${observationsHtml}
                     ${attachmentHtml}
