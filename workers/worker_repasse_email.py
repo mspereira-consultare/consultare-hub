@@ -399,6 +399,11 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
     subject = f"Fechamento Mensal {period_ref} - CONSULTARE"
     amount_text = _format_brl(amount_value)
     has_attachment = bool(pdf_bytes)
+    escaped_professional_name = html_lib.escape(professional_name)
+    escaped_period_ref = html_lib.escape(period_ref)
+    escaped_due_date_nf = html_lib.escape(due_date_nf)
+    escaped_amount_text = html_lib.escape(amount_text)
+    escaped_subject = html_lib.escape(subject)
     attachment_text = (
         f"Segue em anexo o fechamento mensal de repasses referente a {period_ref}."
         if has_attachment
@@ -406,10 +411,16 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
         "Nao ha PDF de fechamento vinculado para este profissional neste lote."
     )
     attachment_html = (
-        f"Segue em anexo o fechamento mensal de repasses referente a <strong>{html_lib.escape(period_ref)}</strong>."
+        f"Segue em anexo o fechamento mensal de repasses referente a <strong>{escaped_period_ref}</strong>."
         if has_attachment
-        else f"Encaminhamos as informações do fechamento mensal de repasses referente a <strong>{html_lib.escape(period_ref)}</strong>. "
+        else f"Encaminhamos as informações do fechamento mensal de repasses referente a <strong>{escaped_period_ref}</strong>. "
         "Não há PDF de fechamento vinculado para este profissional neste lote."
+    )
+    attachment_badge = "Com anexo PDF" if has_attachment else "Sem anexo PDF"
+    attachment_badge_style = (
+        "background:#ecfdf5;color:#047857;border-color:#a7f3d0;"
+        if has_attachment
+        else "background:#fffbeb;color:#92400e;border-color:#fde68a;"
     )
     text = (
         f"Ola, {professional_name}.\n\n"
@@ -418,14 +429,66 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
         f"Data limite para envio da NF: {due_date_nf}.\n\n"
         "Atenciosamente,\nFinanceiro Consultare"
     )
-    html_body = f"""
-    <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
-      <p>Olá, <strong>{html_lib.escape(professional_name)}</strong>.</p>
-      <p>{attachment_html}</p>
-      <p><strong>Valor final:</strong> {html_lib.escape(amount_text)}<br />
-      <strong>Data limite para envio da NF:</strong> {html_lib.escape(due_date_nf)}</p>
-      <p>Atenciosamente,<br />Financeiro Consultare</p>
-    </div>
+    html_body = f"""<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{escaped_subject}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;background:#f4f7fb;margin:0;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+            <tr>
+              <td style="background:#17407e;padding:24px 28px;color:#ffffff;">
+                <div style="font-size:12px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700;color:#c7d7ef;">Consultare</div>
+                <h1 style="margin:8px 0 0;font-size:22px;line-height:1.25;font-weight:700;color:#ffffff;">Fechamento mensal de repasses</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px;">
+                <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#1f2937;">Olá, <strong>{escaped_professional_name}</strong>.</p>
+                <p style="margin:0 0 22px;font-size:16px;line-height:1.6;color:#334155;">{attachment_html}</p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;margin:0 0 22px;">
+                  <tr>
+                    <td style="padding:18px 18px 8px;font-size:12px;letter-spacing:1px;text-transform:uppercase;font-weight:700;color:#64748b;">Resumo do fechamento</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:0 18px 18px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;">
+                        <tr>
+                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Competência</td>
+                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">{escaped_period_ref}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Valor final</td>
+                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">{escaped_amount_text}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Data limite para NF</td>
+                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">{escaped_due_date_nf}</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+                <span style="display:inline-block;border:1px solid;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:700;{attachment_badge_style}">{attachment_badge}</span>
+                <p style="margin:28px 0 0;font-size:15px;line-height:1.6;color:#334155;">Atenciosamente,<br /><strong>Financeiro Consultare</strong></p>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:18px 28px;font-size:12px;line-height:1.5;color:#64748b;">
+                Este e-mail foi enviado automaticamente pelo painel Consultare. Em caso de dúvidas, responda esta mensagem.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
     """.strip()
 
     payload = {

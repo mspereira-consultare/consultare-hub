@@ -2189,12 +2189,20 @@ const renderRepasseEmailContent = (recipient: RepasseEmailRecipient) => {
   const dueDateNf = recipient.dueDateNf || '-';
   const amountText = formatRepasseEmailBrl(recipient.amountValue);
   const hasAttachment = Boolean(recipient.storageKey && isAttachmentResolved(recipient.attachmentMatchStatus));
+  const escapedProfessionalName = escapeRepasseEmailHtml(professionalName);
+  const escapedPeriodRef = escapeRepasseEmailHtml(periodRef);
+  const escapedDueDateNf = escapeRepasseEmailHtml(dueDateNf);
+  const escapedAmountText = escapeRepasseEmailHtml(amountText);
   const attachmentText = hasAttachment
     ? `Segue em anexo o fechamento mensal de repasses referente a ${periodRef}.`
     : `Encaminhamos as informacoes do fechamento mensal de repasses referente a ${periodRef}. Nao ha PDF de fechamento vinculado para este profissional neste lote.`;
   const attachmentHtml = hasAttachment
-    ? `Segue em anexo o fechamento mensal de repasses referente a <strong>${escapeRepasseEmailHtml(periodRef)}</strong>.`
-    : `Encaminhamos as informações do fechamento mensal de repasses referente a <strong>${escapeRepasseEmailHtml(periodRef)}</strong>. Não há PDF de fechamento vinculado para este profissional neste lote.`;
+    ? `Segue em anexo o fechamento mensal de repasses referente a <strong>${escapedPeriodRef}</strong>.`
+    : `Encaminhamos as informações do fechamento mensal de repasses referente a <strong>${escapedPeriodRef}</strong>. Não há PDF de fechamento vinculado para este profissional neste lote.`;
+  const attachmentBadge = hasAttachment ? 'Com anexo PDF' : 'Sem anexo PDF';
+  const attachmentBadgeStyle = hasAttachment
+    ? 'background:#ecfdf5;color:#047857;border-color:#a7f3d0;'
+    : 'background:#fffbeb;color:#92400e;border-color:#fde68a;';
   const subject = `Fechamento Mensal ${periodRef} - CONSULTARE`;
   const text = (
     `Ola, ${professionalName}.\n\n` +
@@ -2203,14 +2211,66 @@ const renderRepasseEmailContent = (recipient: RepasseEmailRecipient) => {
     `Data limite para envio da NF: ${dueDateNf}.\n\n` +
     `Atenciosamente,\nFinanceiro Consultare`
   );
-  const html = `
-    <div style="font-family: Arial, sans-serif; color: #1f2937; line-height: 1.5;">
-      <p>Olá, <strong>${escapeRepasseEmailHtml(professionalName)}</strong>.</p>
-      <p>${attachmentHtml}</p>
-      <p><strong>Valor final:</strong> ${escapeRepasseEmailHtml(amountText)}<br />
-      <strong>Data limite para envio da NF:</strong> ${escapeRepasseEmailHtml(dueDateNf)}</p>
-      <p>Atenciosamente,<br />Financeiro Consultare</p>
-    </div>
+  const html = `<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeRepasseEmailHtml(subject)}</title>
+  </head>
+  <body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;background:#f4f7fb;margin:0;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+            <tr>
+              <td style="background:#17407e;padding:24px 28px;color:#ffffff;">
+                <div style="font-size:12px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700;color:#c7d7ef;">Consultare</div>
+                <h1 style="margin:8px 0 0;font-size:22px;line-height:1.25;font-weight:700;color:#ffffff;">Fechamento mensal de repasses</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:28px;">
+                <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#1f2937;">Olá, <strong>${escapedProfessionalName}</strong>.</p>
+                <p style="margin:0 0 22px;font-size:16px;line-height:1.6;color:#334155;">${attachmentHtml}</p>
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;margin:0 0 22px;">
+                  <tr>
+                    <td style="padding:18px 18px 8px;font-size:12px;letter-spacing:1px;text-transform:uppercase;font-weight:700;color:#64748b;">Resumo do fechamento</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:0 18px 18px;">
+                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;">
+                        <tr>
+                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Competência</td>
+                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">${escapedPeriodRef}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Valor final</td>
+                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">${escapedAmountText}</td>
+                        </tr>
+                        <tr>
+                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Data limite para NF</td>
+                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">${escapedDueDateNf}</td>
+                        </tr>
+                      </table>
+                    </td>
+                  </tr>
+                </table>
+                <span style="display:inline-block;border:1px solid;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:700;${attachmentBadgeStyle}">${attachmentBadge}</span>
+                <p style="margin:28px 0 0;font-size:15px;line-height:1.6;color:#334155;">Atenciosamente,<br /><strong>Financeiro Consultare</strong></p>
+              </td>
+            </tr>
+            <tr>
+              <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:18px 28px;font-size:12px;line-height:1.5;color:#64748b;">
+                Este e-mail foi enviado automaticamente pelo painel Consultare. Em caso de dúvidas, responda esta mensagem.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
   `.trim();
   return { subject, text, html, hasAttachment };
 };
