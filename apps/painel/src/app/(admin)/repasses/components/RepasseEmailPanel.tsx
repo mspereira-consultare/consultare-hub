@@ -439,15 +439,6 @@ export function RepasseEmailPanel({
                 Depois do envio, a tela acompanha automaticamente se a mensagem foi entregue ou se houve falha.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => loadEmailPanel()}
-              disabled={loading}
-              className="hidden h-8 shrink-0 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 xl:inline-flex"
-            >
-              {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-              Atualizar
-            </button>
           </div>
         </div>
 
@@ -489,7 +480,7 @@ export function RepasseEmailPanel({
             </a>
           </div>
 
-          <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(360px,1fr)_auto_auto] lg:items-end">
+          <div className="grid grid-cols-1 gap-2 lg:grid-cols-[minmax(360px,1fr)_auto] lg:items-end">
             <label className="flex min-w-0 flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
               Anexos PDF ou ZIP
               <input
@@ -501,24 +492,26 @@ export function RepasseEmailPanel({
                 className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 disabled:opacity-50"
               />
             </label>
-            <button
-              type="button"
-              onClick={() => uploadAttachments(attachmentFiles)}
-              disabled={!canRefresh || !activeBatch || uploadingAttachments || !attachmentFiles || attachmentFiles.length === 0}
-              className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-700 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
-            >
-              {uploadingAttachments ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
-              Vincular anexos
-            </button>
-            <button
-              type="button"
-              onClick={() => loadEmailPanel()}
-              disabled={loading}
-              className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 xl:hidden"
-            >
-              {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
-              Atualizar
-            </button>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:w-36 lg:grid-cols-1">
+              <button
+                type="button"
+                onClick={() => uploadAttachments(attachmentFiles)}
+                disabled={!canRefresh || !activeBatch || uploadingAttachments || !attachmentFiles || attachmentFiles.length === 0}
+                className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-700 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+              >
+                {uploadingAttachments ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
+                Vincular anexos
+              </button>
+              <button
+                type="button"
+                onClick={() => loadEmailPanel()}
+                disabled={loading}
+                className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+                Atualizar
+              </button>
+            </div>
           </div>
         </div>
       </div>
