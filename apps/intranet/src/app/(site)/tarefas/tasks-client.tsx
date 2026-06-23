@@ -309,6 +309,8 @@ const normalizeProjectStructureError = (message: string) => {
 };
 
 const isRetiredTaskStatus = (status: TaskStatus) => RETIRED_TASK_STATUSES.includes(status);
+const isOperationalTaskStatus = (status: TaskStatus) => !isRetiredTaskStatus(status);
+const isPendingOperationalTaskStatus = (status: TaskStatus) => isOperationalTaskStatus(status) && status !== 'CONCLUIDA';
 const isRetiredFilter = (filter: FilterKey) => filter === 'ARCHIVED_BY_ME' || filter === 'CANCELED_BY_ME';
 
 const defaultForm = (currentUser: CurrentUser): TaskFormState => ({
@@ -876,13 +878,26 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     }));
   }, [visibleTasks]);
 
-  const summary = useMemo(() => ({
-    total: tasks.length,
-    dueSoon: tasks.filter((task) => isDueSoon(task.dueDate, task.status)).length,
-    overdue: tasks.filter((task) => isOverdue(task.dueDate, task.status)).length,
-    awaitingApproval: tasks.filter((task) => task.status === 'AGUARDANDO_APROVACAO').length,
-    approved: tasks.filter((task) => task.latestApproval?.decisionStatus === 'APROVADA').length,
-  }), [tasks]);
+  const summary = useMemo(() => {
+    const totalOperational = visibleTasks.filter((task) => isOperationalTaskStatus(task.status)).length;
+    const pendingOperational = visibleTasks.filter((task) => isPendingOperationalTaskStatus(task.status)).length;
+
+    return {
+      totalOperational,
+      pendingOperational,
+      dueSoon: visibleTasks.filter((task) => isDueSoon(task.dueDate, task.status)).length,
+      overdue: visibleTasks.filter((task) => isOverdue(task.dueDate, task.status)).length,
+      awaitingApproval: visibleTasks.filter((task) => task.status === 'AGUARDANDO_APROVACAO').length,
+      approved: visibleTasks.filter((task) => task.latestApproval?.decisionStatus === 'APROVADA').length,
+    };
+  }, [visibleTasks]);
+
+  const totalOperationalHelper =
+    summary.totalOperational <= 0
+      ? 'Sem tarefas operacionais neste recorte'
+      : summary.pendingOperational > 0
+        ? `${summary.pendingOperational} pendentes neste recorte`
+        : 'Nenhuma pendência neste recorte';
 
   const personalEfficiencyValue = personalEfficiency?.efficiencyPercent == null ? '—' : `${personalEfficiency.efficiencyPercent}%`;
   const personalEfficiencyHelper =
@@ -1606,7 +1621,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       </section>
 
       <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
-        <SummaryCard label="Total de tarefas" value={summary.total} helper="Tudo que você pode visualizar" tone="neutral" />
+        <SummaryCard label="Total operacional" value={summary.totalOperational} helper={totalOperationalHelper} tone="neutral" />
         <SummaryCard label="A vencer" value={summary.dueSoon} helper="Prazo até 2 dias" tone="warning" />
         <SummaryCard label="Vencidas" value={summary.overdue} helper="Pendências com prazo expirado" tone="danger" />
         <SummaryCard label="Aguardando aprovação" value={summary.awaitingApproval} helper="Solicitações pendentes" tone="info" />
