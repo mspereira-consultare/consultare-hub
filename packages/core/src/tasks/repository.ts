@@ -124,6 +124,11 @@ const userIdEqualsSql = (column: string) =>
     ? `${column} COLLATE utf8mb4_unicode_ci = ? COLLATE utf8mb4_unicode_ci`
     : `${column} = ?`;
 
+const idColumnEqualsSql = (left: string, right: string) =>
+  isMysqlProvider()
+    ? `CONVERT(${left} USING utf8mb4) COLLATE utf8mb4_0900_ai_ci = CONVERT(${right} USING utf8mb4) COLLATE utf8mb4_0900_ai_ci`
+    : `${left} = ${right}`;
+
 const safeCreateIndex = async (db: DbInterface, sql: string) => {
   try {
     await db.execute(sql);
@@ -2745,6 +2750,10 @@ export const getTaskWeeklyReportEligibilitySummary = async (
   db: DbInterface
 ): Promise<TaskWeeklyReportEligibilitySummary> => {
   await ensureTaskTables(db);
+  const userEmployeeJoinSql = idColumnEqualsSql('u.employee_id', 'e.id');
+  const primaryAssigneeJoinSql = idColumnEqualsSql('t.primary_assignee_user_id', 'u.id');
+  const assigneeJoinSql = idColumnEqualsSql('ta.user_id', 'u.id');
+  const assigneeExistsSql = idColumnEqualsSql('a.user_id', 'u.id');
 
   const rows = await db.query(
     `
@@ -2757,11 +2766,11 @@ export const getTaskWeeklyReportEligibilitySummary = async (
         WHEN t.id IS NOT NULL
           AND t.status IN ('BACKLOG', 'A_FAZER', 'EM_ANDAMENTO', 'AGUARDANDO_APROVACAO')
           AND (
-            t.primary_assignee_user_id = u.id
+            ${primaryAssigneeJoinSql}
             OR EXISTS (
               SELECT 1
               FROM task_assignees ta
-              WHERE ta.task_id = t.id AND ta.user_id = u.id
+              WHERE ta.task_id = t.id AND ${assigneeJoinSql}
             )
           )
         THEN t.id
@@ -2769,16 +2778,16 @@ export const getTaskWeeklyReportEligibilitySummary = async (
       END) AS eligible_pending_task_count
     FROM employees e
     LEFT JOIN users u
-      ON u.employee_id = e.id
+      ON ${userEmployeeJoinSql}
       AND UPPER(TRIM(COALESCE(u.status, 'ATIVO'))) = 'ATIVO'
     LEFT JOIN tasks t
       ON u.id IS NOT NULL
       AND (
-        t.primary_assignee_user_id = u.id
+        ${primaryAssigneeJoinSql}
         OR EXISTS (
           SELECT 1
           FROM task_assignees a
-          WHERE a.task_id = t.id AND a.user_id = u.id
+          WHERE a.task_id = t.id AND ${assigneeExistsSql}
         )
       )
     WHERE UPPER(TRIM(COALESCE(e.status, 'ATIVO'))) = 'ATIVO'
@@ -2859,6 +2868,7 @@ export const getTaskWeeklyReportPreview = async (
   const dueSoonEndDate = shiftIsoDate(todayIso, 7);
   const intranetBaseUrl = clean(process.env.INTRANET_BASE_URL) || clean(process.env.NEXT_PUBLIC_INTRANET_URL) || '';
   const intranetTasksUrl = `${intranetBaseUrl.replace(/\/$/, '')}/tarefas`;
+  const userEmployeeJoinSql = idColumnEqualsSql('e.id', 'u.employee_id');
 
   const recipientRows = await db.query(
     `
@@ -2868,7 +2878,7 @@ export const getTaskWeeklyReportPreview = async (
       e.full_name AS employee_name,
       e.corporate_email
     FROM users u
-    INNER JOIN employees e ON e.id = u.employee_id
+    INNER JOIN employees e ON ${userEmployeeJoinSql}
     WHERE ${userIdEqualsSql('u.id')}
       AND UPPER(TRIM(COALESCE(u.status, 'ATIVO'))) = 'ATIVO'
       AND UPPER(TRIM(COALESCE(e.status, 'ATIVO'))) = 'ATIVO'

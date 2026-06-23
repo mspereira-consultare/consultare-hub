@@ -120,6 +120,12 @@ const parseIntSafe = (value: unknown, fallback = 0) => {
   const parsed = Number.parseInt(String(value ?? ''), 10);
   return Number.isFinite(parsed) ? parsed : fallback;
 };
+const isMysqlProvider = () => {
+  const provider = clean(process.env.DB_PROVIDER).toLowerCase();
+  if (provider === 'mysql') return true;
+  if (provider === 'turso') return false;
+  return Boolean(process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL);
+};
 
 const isValidEmail = (value: string | null) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -323,14 +329,24 @@ export const ensureTaskWeeklyReportTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE UNIQUE INDEX uq_task_weekly_report_events_provider_event ON task_weekly_report_events (provider, provider_event_id)`);
 
   const now = NOW();
-  await db.execute(
-    `
-    INSERT INTO task_weekly_report_settings (id, enabled, from_email, from_name, reply_to_email, updated_by, updated_at)
-    VALUES (?, 0, NULL, 'Consultare Intranet', NULL, NULL, ?)
-    ON CONFLICT(id) DO NOTHING
-    `,
-    [SETTINGS_ROW_ID, now]
-  );
+  if (isMysqlProvider()) {
+    await db.execute(
+      `
+      INSERT IGNORE INTO task_weekly_report_settings (id, enabled, from_email, from_name, reply_to_email, updated_by, updated_at)
+      VALUES (?, 0, NULL, 'Consultare Intranet', NULL, NULL, ?)
+      `,
+      [SETTINGS_ROW_ID, now]
+    );
+  } else {
+    await db.execute(
+      `
+      INSERT INTO task_weekly_report_settings (id, enabled, from_email, from_name, reply_to_email, updated_by, updated_at)
+      VALUES (?, 0, NULL, 'Consultare Intranet', NULL, NULL, ?)
+      ON CONFLICT(id) DO NOTHING
+      `,
+      [SETTINGS_ROW_ID, now]
+    );
+  }
 
   tablesEnsured = true;
 };
@@ -489,29 +505,53 @@ export const updateTaskWeeklyReportSettings = async (
   const normalized = normalizeSendPulseSettingsInput(payload);
   await validateSendPulseSender(normalized.fromEmail);
   const now = NOW();
-
-  await db.execute(
-    `
-    INSERT INTO task_weekly_report_settings (id, enabled, from_email, from_name, reply_to_email, updated_by, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(id) DO UPDATE SET
-      enabled = excluded.enabled,
-      from_email = excluded.from_email,
-      from_name = excluded.from_name,
-      reply_to_email = excluded.reply_to_email,
-      updated_by = excluded.updated_by,
-      updated_at = excluded.updated_at
-    `,
-    [
-      SETTINGS_ROW_ID,
-      normalized.enabled ? 1 : 0,
-      normalized.fromEmail,
-      normalized.fromName,
-      normalized.replyToEmail,
-      clean(actorUserId),
-      now,
-    ]
-  );
+  if (isMysqlProvider()) {
+    await db.execute(
+      `
+      INSERT INTO task_weekly_report_settings (id, enabled, from_email, from_name, reply_to_email, updated_by, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        enabled = VALUES(enabled),
+        from_email = VALUES(from_email),
+        from_name = VALUES(from_name),
+        reply_to_email = VALUES(reply_to_email),
+        updated_by = VALUES(updated_by),
+        updated_at = VALUES(updated_at)
+      `,
+      [
+        SETTINGS_ROW_ID,
+        normalized.enabled ? 1 : 0,
+        normalized.fromEmail,
+        normalized.fromName,
+        normalized.replyToEmail,
+        clean(actorUserId),
+        now,
+      ]
+    );
+  } else {
+    await db.execute(
+      `
+      INSERT INTO task_weekly_report_settings (id, enabled, from_email, from_name, reply_to_email, updated_by, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        enabled = excluded.enabled,
+        from_email = excluded.from_email,
+        from_name = excluded.from_name,
+        reply_to_email = excluded.reply_to_email,
+        updated_by = excluded.updated_by,
+        updated_at = excluded.updated_at
+      `,
+      [
+        SETTINGS_ROW_ID,
+        normalized.enabled ? 1 : 0,
+        normalized.fromEmail,
+        normalized.fromName,
+        normalized.replyToEmail,
+        clean(actorUserId),
+        now,
+      ]
+    );
+  }
 
   return getTaskWeeklyReportSettings(db);
 };
