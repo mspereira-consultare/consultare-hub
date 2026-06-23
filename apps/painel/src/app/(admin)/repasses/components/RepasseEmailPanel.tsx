@@ -33,9 +33,20 @@ const formatDateBr = (value: string | null | undefined) => {
 
 const formatDateTimeBr = (value: string | null | undefined) => {
   const raw = String(value || "").trim();
-  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
-  if (match) return `${match[3]}/${match[2]}/${match[1]} ${match[4]}:${match[5]}`;
-  return formatDateBr(raw);
+  if (!raw) return "-";
+  const normalized = /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}/.test(raw)
+    ? `${raw.replace(" ", "T")}Z`
+    : raw;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return formatDateBr(raw);
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 };
 
 const formatPeriodBr = (value: string | null | undefined) => {
@@ -412,8 +423,8 @@ export function RepasseEmailPanel({
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex flex-col gap-4 border-b border-slate-100 p-5 xl:flex-row xl:items-start xl:justify-between">
-        <div className="min-w-0">
+      <div className="grid gap-4 border-b border-slate-100 p-5 xl:grid-cols-[minmax(280px,0.58fr)_minmax(620px,1fr)] xl:items-start">
+        <div className="min-w-0 pt-1">
           <div className="flex items-center gap-2">
             <MailCheck size={18} className="text-[#17407E]" />
             <h2 className="text-base font-bold text-slate-800">Preparação do lote</h2>
@@ -427,78 +438,72 @@ export function RepasseEmailPanel({
           </p>
         </div>
 
-        <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 xl:max-w-6xl xl:grid-cols-[minmax(220px,1fr)_160px_auto_auto_auto]">
-          <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-slate-500">
+        <div className="grid w-full grid-cols-1 gap-2 lg:grid-cols-[minmax(180px,1fr)_minmax(190px,1fr)_150px_auto_auto_auto] lg:items-end">
+          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
             Planilha
             <input
               type="file"
               accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
               onChange={(event) => setSheetFile(event.target.files?.[0] || null)}
-              className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-sm text-slate-700"
+              className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700"
             />
           </label>
-          <label className="flex flex-col gap-1 text-xs font-bold uppercase tracking-wider text-slate-500">
+          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Anexos PDF ou ZIP
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.zip,application/pdf,application/zip"
+              onChange={(event) => setAttachmentFiles(event.target.files)}
+              disabled={!activeBatch}
+              className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 disabled:opacity-50"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
             Data limite NF
             <input
               type="date"
               value={dueDateNf}
               onChange={(event) => setDueDateNf(event.target.value)}
-              className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-medium text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
             />
           </label>
           <button
             type="button"
             onClick={prepareBatch}
             disabled={!canRefresh || preparing}
-            className="inline-flex h-10 items-center justify-center gap-2 self-end rounded-lg bg-[#17407E] px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-[#123263] disabled:opacity-50"
+            className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-[#17407E] px-3 text-xs font-semibold text-white shadow-sm transition hover:bg-[#123263] disabled:opacity-50"
           >
             {preparing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
             Importar planilha
           </button>
-          <a
-            href="/api/admin/repasses/email-batches/template"
-            className="inline-flex h-10 items-center justify-center gap-2 self-end rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            <Download size={14} />
-            Baixar template
-          </a>
           <button
             type="button"
-            onClick={() => loadEmailPanel()}
-            disabled={loading}
-            className="inline-flex h-10 items-center justify-center gap-2 self-end rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            onClick={() => uploadAttachments(attachmentFiles)}
+            disabled={!canRefresh || !activeBatch || uploadingAttachments || !attachmentFiles || attachmentFiles.length === 0}
+            className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-lg bg-slate-700 px-3 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
           >
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-            Atualizar
+            {uploadingAttachments ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
+            Vincular anexos
           </button>
-          {activeBatch && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 md:col-span-2 xl:col-span-5">
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(260px,1fr)_auto] md:items-end">
-                <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-slate-500">
-                  Anexos PDF ou ZIP
-                  <input
-                    type="file"
-                    multiple
-                    accept=".pdf,.zip,application/pdf,application/zip"
-                    onChange={(event) => setAttachmentFiles(event.target.files)}
-                    className="h-10 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={() => uploadAttachments(attachmentFiles)}
-                  disabled={!canRefresh || uploadingAttachments || !attachmentFiles || attachmentFiles.length === 0}
-                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-700 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
-                >
-                  {uploadingAttachments ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
-                  Vincular anexos
-                </button>
-              </div>
-              <p className="mt-2 text-xs text-slate-500">
-                O sistema tenta associar os arquivos aos profissionais pelo código, nome do arquivo ou nome do profissional. Você também pode anexar um PDF em uma linha específica.
-              </p>
-            </div>
-          )}
+          <div className="flex gap-2 lg:col-span-6 lg:justify-end">
+            <a
+              href="/api/admin/repasses/email-batches/template"
+              className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              <Download size={13} />
+              Baixar template
+            </a>
+            <button
+              type="button"
+              onClick={() => loadEmailPanel()}
+              disabled={loading}
+              className="inline-flex h-8 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              {loading ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+              Atualizar
+            </button>
+          </div>
         </div>
       </div>
 
@@ -559,10 +564,6 @@ export function RepasseEmailPanel({
             Último processamento: {statusLabel(jobs[0].status)} em {formatDateTimeBr(jobs[0].createdAt)}
           </span>
         )}
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
-          <RefreshCw size={11} />
-          Atualização automática ativa
-        </span>
       </div>
 
       <div className="border-t border-slate-100 px-5 pb-5">
