@@ -24,6 +24,20 @@ const formatCurrency = (value: number) =>
     maximumFractionDigits: 2,
   });
 
+const formatDateBr = (value: string | null | undefined) => {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  return raw || "-";
+};
+
+const formatPeriodBr = (value: string | null | undefined) => {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{4})-(\d{2})$/);
+  if (match) return `${match[2]}/${match[1]}`;
+  return raw || "-";
+};
+
 const todayInputValue = () => new Date().toISOString().slice(0, 10);
 
 const errorMessage = (error: unknown, fallback: string) =>
@@ -435,7 +449,7 @@ export function RepasseEmailPanel({
           <option value="">Nenhum lote preparado</option>
           {batches.map((batch) => (
             <option key={batch.id} value={batch.id}>
-              {batch.periodRef} | NF {batch.dueDateNf} | {batch.status} | {batch.totalRecipients} destinatários
+              {formatPeriodBr(batch.periodRef)} | NF {formatDateBr(batch.dueDateNf)} | {batch.status} | {batch.totalRecipients} destinatários
             </option>
           ))}
         </select>
@@ -515,7 +529,7 @@ export function RepasseEmailPanel({
               <th className="px-2 py-2">E-mail</th>
               <th className="px-2 py-2">Valor</th>
               <th className="px-2 py-2">Prazo NF</th>
-              <th className="px-2 py-2">Prof. match</th>
+              <th className="px-2 py-2">Vínculo prof.</th>
               <th className="px-2 py-2">Anexo</th>
               <th className="px-2 py-2">Validação</th>
               <th className="px-2 py-2">Envio</th>
@@ -560,7 +574,7 @@ export function RepasseEmailPanel({
                     <td className="px-2 py-2 font-medium text-slate-800">{recipient.professionalName}</td>
                     <td className="px-2 py-2 text-slate-600">{recipient.recipientEmail || "-"}</td>
                     <td className="px-2 py-2 font-semibold text-slate-700">{formatCurrency(recipient.amountValue)}</td>
-                    <td className="px-2 py-2 text-slate-600">{recipient.dueDateNf || "-"}</td>
+                    <td className="px-2 py-2 text-slate-600">{formatDateBr(recipient.dueDateNf)}</td>
                     <td className="px-2 py-2">
                       <div className="flex flex-col gap-1">
                         <StatusPill value={recipient.professionalMatchStatus || "-"} />
@@ -656,7 +670,7 @@ export function RepasseEmailPanel({
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Prévia do e-mail</p>
                 <h3 className="mt-1 truncate text-base font-bold text-slate-800">{preview.subject}</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  {preview.hasAttachment ? "Será enviado com anexo." : "Será enviado sem anexo."}
+                  {preview.hasAttachment ? "Anexo PDF vinculado." : "Nenhum anexo vinculado."}
                 </p>
               </div>
               <button

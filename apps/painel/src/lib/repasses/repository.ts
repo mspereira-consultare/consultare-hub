@@ -2183,6 +2183,43 @@ const formatRepasseEmailBrl = (value: number) =>
     maximumFractionDigits: 2,
   });
 
+const formatRepasseEmailDateBr = (value: string) => {
+  const raw = clean(value);
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (match) return `${match[3]}/${match[2]}/${match[1]}`;
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toLocaleDateString('pt-BR', { timeZone: 'UTC' });
+  }
+  return raw || '-';
+};
+
+const formatRepasseEmailPeriodBr = (value: string) => {
+  const raw = clean(value);
+  const match = raw.match(/^(\d{4})-(\d{2})$/);
+  if (match) return `${match[2]}/${match[1]}`;
+  return raw || '-';
+};
+
+const resolveRepasseEmailLogoUrl = () => {
+  const explicit = clean(process.env.REPASSE_EMAIL_LOGO_URL);
+  if (explicit) return explicit;
+  const base = clean(process.env.NEXTAUTH_URL || process.env.AUTH_URL);
+  if (!base) return '/logo-white.png';
+  return `${base.replace(/\/+$/g, '')}/logo-white.png`;
+};
+
+const buildRepasseEmailObservationsHtml = (observations: string | null) => {
+  const text = clean(observations);
+  if (!text) return '';
+  return `
+                    <div class="obs-box">
+                        <span class="obs-label">Observações</span>
+                        <span class="obs-content">${escapeRepasseEmailHtml(text)}</span>
+                    </div>
+  `.trim();
+};
+
 const renderRepasseEmailContent = (recipient: RepasseEmailRecipient) => {
   const professionalName = recipient.professionalName || 'profissional';
   const periodRef = recipient.periodRef || '-';
@@ -2190,86 +2227,125 @@ const renderRepasseEmailContent = (recipient: RepasseEmailRecipient) => {
   const amountText = formatRepasseEmailBrl(recipient.amountValue);
   const hasAttachment = Boolean(recipient.storageKey && isAttachmentResolved(recipient.attachmentMatchStatus));
   const escapedProfessionalName = escapeRepasseEmailHtml(professionalName);
-  const escapedPeriodRef = escapeRepasseEmailHtml(periodRef);
-  const escapedDueDateNf = escapeRepasseEmailHtml(dueDateNf);
+  const periodText = formatRepasseEmailPeriodBr(periodRef);
+  const dueDateText = formatRepasseEmailDateBr(dueDateNf);
+  const escapedPeriodRef = escapeRepasseEmailHtml(periodText);
+  const escapedDueDateNf = escapeRepasseEmailHtml(dueDateText);
   const escapedAmountText = escapeRepasseEmailHtml(amountText);
+  const logoUrl = escapeRepasseEmailHtml(resolveRepasseEmailLogoUrl());
   const attachmentText = hasAttachment
-    ? `Segue em anexo o fechamento mensal de repasses referente a ${periodRef}.`
-    : `Encaminhamos as informacoes do fechamento mensal de repasses referente a ${periodRef}. Nao ha PDF de fechamento vinculado para este profissional neste lote.`;
+    ? 'O relatório detalhado está anexado a este e-mail em formato PDF para sua conferência.'
+    : '';
   const attachmentHtml = hasAttachment
-    ? `Segue em anexo o fechamento mensal de repasses referente a <strong>${escapedPeriodRef}</strong>.`
-    : `Encaminhamos as informações do fechamento mensal de repasses referente a <strong>${escapedPeriodRef}</strong>. Não há PDF de fechamento vinculado para este profissional neste lote.`;
-  const attachmentBadge = hasAttachment ? 'Com anexo PDF' : 'Sem anexo PDF';
-  const attachmentBadgeStyle = hasAttachment
-    ? 'background:#ecfdf5;color:#047857;border-color:#a7f3d0;'
-    : 'background:#fffbeb;color:#92400e;border-color:#fde68a;';
-  const subject = `Fechamento Mensal ${periodRef} - CONSULTARE`;
+    ? '<p>O relatório detalhado está anexado a este e-mail em formato PDF para sua conferência.</p>'
+    : '';
+  const observationsHtml = buildRepasseEmailObservationsHtml(recipient.observations);
+  const subject = `Fechamento Mensal ${periodText} - CONSULTARE`;
   const text = (
     `Ola, ${professionalName}.\n\n` +
-    `${attachmentText}\n` +
+    `Esperamos que esteja bem. Segue o demonstrativo de atendimentos realizados no mes de ${periodText} na Clinica Consultare.\n` +
     `Valor final: ${amountText}.\n` +
-    `Data limite para envio da NF: ${dueDateNf}.\n\n` +
+    (recipient.observations ? `Observacoes: ${recipient.observations}.\n` : '') +
+    (attachmentText ? `${attachmentText}\n` : '') +
+    `Solicitamos o envio da NF ate o dia ${dueDateText} para processamento do pagamento no ciclo atual.\n\n` +
     `Atenciosamente,\nFinanceiro Consultare`
   );
-  const html = `<!doctype html>
-<html lang="pt-BR">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  const html = `<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeRepasseEmailHtml(subject)}</title>
-  </head>
-  <body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;background:#f4f7fb;margin:0;padding:32px 16px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+    <style>
+        body { margin: 0; padding: 0; background-color: #f4f7f9; font-family: 'Segoe UI', Tahoma, sans-serif; }
+        table { border-spacing: 0; }
+        td { padding: 0; }
+        img { border: 0; }
+        .wrapper { width: 100%; table-layout: fixed; background-color: #f4f7f9; padding: 32px 0 40px; }
+        .main { background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-spacing: 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .header { background-color: #053F74; padding: 36px 20px; text-align: center; }
+        .logo { width: 280px; max-width: 80%; height: auto; }
+        .content { padding: 40px 50px; color: #444444; line-height: 1.6; }
+        h1 { color: #053F74; font-size: 22px; margin-top: 0; }
+        .value-box { background-color: #f0f9f8; border: 1px solid #229A8A; border-radius: 6px; padding: 20px; text-align: center; margin: 25px 0; }
+        .value-label { display: block; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        .value-amount { display: block; font-size: 32px; color: #229A8A; font-weight: bold; margin-top: 5px; }
+        .summary-box { background-color: #f8fafc; border: 1px solid #dbe4ee; border-radius: 6px; padding: 18px 20px; margin: 25px 0; }
+        .summary-title { display: block; font-size: 13px; color: #053F74; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #d1d9e0; padding-bottom: 6px; }
+        .summary-row { border-bottom: 1px solid #e5edf5; }
+        .summary-row-last { border-bottom: 0; }
+        .summary-label { padding: 10px 0; font-size: 14px; color: #64748b; }
+        .summary-value { padding: 10px 0; font-size: 14px; color: #25364d; font-weight: bold; text-align: right; }
+        .obs-box { background-color: #f0f4f8; border: 1px solid #053F74; border-radius: 6px; padding: 20px; text-align: left; margin: 25px 0; }
+        .obs-label { display: block; font-size: 13px; color: #053F74; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #d1d9e0; padding-bottom: 5px; }
+        .obs-content { display: block; font-size: 14px; color: #444; line-height: 1.5; white-space: pre-line; }
+        .alert-section { border-left: 4px solid #3FBD80; background-color: #f9fdfb; padding: 15px 20px; margin-top: 25px; }
+        .alert-title { color: #259D89; font-weight: bold; display: block; margin-bottom: 5px; }
+        .footer { text-align: center; padding: 30px; font-size: 12px; color: #999999; }
+    </style>
+</head>
+<body>
+    <div style="display:none; max-height:0px; max-width:0px; opacity:0; overflow:hidden;">
+        Olá Dr(a). ${escapedProfessionalName}, o demonstrativo de atendimentos de ${escapedPeriodRef} está disponível para conferência.
+    </div>
+    <center class="wrapper">
+        <table class="main" width="100%">
             <tr>
-              <td style="background:#17407e;padding:24px 28px;color:#ffffff;">
-                <div style="font-size:12px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700;color:#c7d7ef;">Consultare</div>
-                <h1 style="margin:8px 0 0;font-size:22px;line-height:1.25;font-weight:700;color:#ffffff;">Fechamento mensal de repasses</h1>
-              </td>
+                <td class="header">
+                    <img src="${logoUrl}" alt="Consultare" class="logo">
+                </td>
             </tr>
             <tr>
-              <td style="padding:28px;">
-                <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#1f2937;">Olá, <strong>${escapedProfessionalName}</strong>.</p>
-                <p style="margin:0 0 22px;font-size:16px;line-height:1.6;color:#334155;">${attachmentHtml}</p>
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;margin:0 0 22px;">
-                  <tr>
-                    <td style="padding:18px 18px 8px;font-size:12px;letter-spacing:1px;text-transform:uppercase;font-weight:700;color:#64748b;">Resumo do fechamento</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:0 18px 18px;">
-                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;">
-                        <tr>
-                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Competência</td>
-                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">${escapedPeriodRef}</td>
-                        </tr>
-                        <tr>
-                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Valor final</td>
-                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">${escapedAmountText}</td>
-                        </tr>
-                        <tr>
-                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Data limite para NF</td>
-                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">${escapedDueDateNf}</td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-                </table>
-                <span style="display:inline-block;border:1px solid;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:700;${attachmentBadgeStyle}">${attachmentBadge}</span>
-                <p style="margin:28px 0 0;font-size:15px;line-height:1.6;color:#334155;">Atenciosamente,<br /><strong>Financeiro Consultare</strong></p>
-              </td>
+                <td class="content">
+                    <h1>Olá, Dr(a). ${escapedProfessionalName}!</h1>
+                    <p>Esperamos que esteja bem. Segue o demonstrativo de atendimentos realizados no mês de <strong>${escapedPeriodRef}</strong> na Clínica Consultare.</p>
+                    <div class="value-box">
+                        <span class="value-label">Valor Total a Receber</span>
+                        <span class="value-amount">${escapedAmountText}</span>
+                    </div>
+                    <div class="summary-box">
+                        <span class="summary-title">Resumo do fechamento</span>
+                        <table width="100%">
+                            <tr class="summary-row">
+                                <td class="summary-label">Competência</td>
+                                <td class="summary-value">${escapedPeriodRef}</td>
+                            </tr>
+                            <tr class="summary-row">
+                                <td class="summary-label">Valor final</td>
+                                <td class="summary-value">${escapedAmountText}</td>
+                            </tr>
+                            <tr class="summary-row-last">
+                                <td class="summary-label">Data limite para NF</td>
+                                <td class="summary-value">${escapedDueDateNf}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    ${observationsHtml}
+                    ${attachmentHtml}
+                    <div class="alert-section">
+                        <span class="alert-title">Prazo para Nota Fiscal</span>
+                        Solicitamos o envio da NF até o dia <strong>${escapedDueDateNf}</strong> para processamento do pagamento no ciclo atual.
+                    </div>
+                    <p style="font-size: 13px; color: #888; margin-top: 30px;">
+                        Dúvidas sobre o fechamento? Responda a este e-mail e nossa equipe financeira entrará em contato.
+                    </p>
+                </td>
             </tr>
             <tr>
-              <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:18px 28px;font-size:12px;line-height:1.5;color:#64748b;">
-                Este e-mail foi enviado automaticamente pelo painel Consultare. Em caso de dúvidas, responda esta mensagem.
-              </td>
+                <td class="footer">
+                    <strong>Clínica Consultare</strong><br>
+                    Rua Jacy Teixeira de Camargo, 940 - Campinas/SP<br>
+                    Telefone: (19) 3500-1700<br>
+                    <br>
+                    <p style="font-size: 10px; color: #bbb;">
+                        Caso não queira mais receber estes demonstrativos por e-mail, responda com o assunto "Unsubscribe".
+                    </p>
+                    &copy; 2026 Consultare - Centro Médico Acessível. Todos os direitos reservados.
+                </td>
             </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
+        </table>
+    </center>
+</body>
 </html>
   `.trim();
   return { subject, text, html, hasAttachment };

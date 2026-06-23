@@ -79,6 +79,44 @@ def _format_brl(value) -> str:
     return "R$ " + raw.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _format_date_br(value: str) -> str:
+    raw = _clean(value)
+    match = re.match(r"^(\d{4})-(\d{2})-(\d{2})", raw)
+    if match:
+        return f"{match.group(3)}/{match.group(2)}/{match.group(1)}"
+    return raw or "-"
+
+
+def _format_period_br(value: str) -> str:
+    raw = _clean(value)
+    match = re.match(r"^(\d{4})-(\d{2})$", raw)
+    if match:
+        return f"{match.group(2)}/{match.group(1)}"
+    return raw or "-"
+
+
+def _resolve_logo_url() -> str:
+    explicit = _clean(os.getenv("REPASSE_EMAIL_LOGO_URL"))
+    if explicit:
+        return explicit
+    base = _clean(os.getenv("NEXTAUTH_URL") or os.getenv("AUTH_URL"))
+    if base:
+        return base.rstrip("/") + "/logo-white.png"
+    return ""
+
+
+def _build_observations_html(observations: str) -> str:
+    text = _clean(observations)
+    if not text:
+        return ""
+    return f"""
+                    <div class="obs-box">
+                        <span class="obs-label">Observações</span>
+                        <span class="obs-content">{html_lib.escape(text)}</span>
+                    </div>
+    """.strip()
+
+
 def _stable_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
@@ -389,6 +427,7 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
     amount_value = _row_get(recipient, 6, "amount_value")
     due_date_nf = _clean(_row_get(recipient, 7, "due_date_nf"))
     file_name = _clean(_row_get(recipient, 14, "file_name")) or "repasse.pdf"
+    observations = _clean(_row_get(recipient, 21, "observations"))
     period_ref = _clean(_row_get(recipient, 2, "period_ref"))
     from_email = _clean(os.getenv("MAILERSEND_FROM_EMAIL"))
     from_name = _clean(os.getenv("MAILERSEND_FROM_NAME", "Financeiro Consultare"))
@@ -396,98 +435,133 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
     if not from_email:
         raise RuntimeError("MAILERSEND_FROM_EMAIL nao configurado.")
 
-    subject = f"Fechamento Mensal {period_ref} - CONSULTARE"
+    period_text = _format_period_br(period_ref)
+    due_date_text = _format_date_br(due_date_nf)
+    subject = f"Fechamento Mensal {period_text} - CONSULTARE"
     amount_text = _format_brl(amount_value)
     has_attachment = bool(pdf_bytes)
     escaped_professional_name = html_lib.escape(professional_name)
-    escaped_period_ref = html_lib.escape(period_ref)
-    escaped_due_date_nf = html_lib.escape(due_date_nf)
+    escaped_period_ref = html_lib.escape(period_text)
+    escaped_due_date_nf = html_lib.escape(due_date_text)
     escaped_amount_text = html_lib.escape(amount_text)
     escaped_subject = html_lib.escape(subject)
+    escaped_logo_url = html_lib.escape(_resolve_logo_url())
+    observations_html = _build_observations_html(observations)
     attachment_text = (
-        f"Segue em anexo o fechamento mensal de repasses referente a {period_ref}."
+        "O relatório detalhado está anexado a este e-mail em formato PDF para sua conferência."
         if has_attachment
-        else f"Encaminhamos as informacoes do fechamento mensal de repasses referente a {period_ref}. "
-        "Nao ha PDF de fechamento vinculado para este profissional neste lote."
+        else ""
     )
     attachment_html = (
-        f"Segue em anexo o fechamento mensal de repasses referente a <strong>{escaped_period_ref}</strong>."
+        "<p>O relatório detalhado está anexado a este e-mail em formato PDF para sua conferência.</p>"
         if has_attachment
-        else f"Encaminhamos as informações do fechamento mensal de repasses referente a <strong>{escaped_period_ref}</strong>. "
-        "Não há PDF de fechamento vinculado para este profissional neste lote."
-    )
-    attachment_badge = "Com anexo PDF" if has_attachment else "Sem anexo PDF"
-    attachment_badge_style = (
-        "background:#ecfdf5;color:#047857;border-color:#a7f3d0;"
-        if has_attachment
-        else "background:#fffbeb;color:#92400e;border-color:#fde68a;"
+        else ""
     )
     text = (
         f"Ola, {professional_name}.\n\n"
-        f"{attachment_text}\n"
+        f"Esperamos que esteja bem. Segue o demonstrativo de atendimentos realizados no mes de {period_text} na Clinica Consultare.\n"
         f"Valor final: {amount_text}.\n"
-        f"Data limite para envio da NF: {due_date_nf}.\n\n"
+        + (f"Observacoes: {observations}.\n" if observations else "")
+        + (f"{attachment_text}\n" if attachment_text else "")
+        + f"Solicitamos o envio da NF ate o dia {due_date_text} para processamento do pagamento no ciclo atual.\n\n"
         "Atenciosamente,\nFinanceiro Consultare"
     )
-    html_body = f"""<!doctype html>
-<html lang="pt-BR">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    html_body = f"""<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{escaped_subject}</title>
-  </head>
-  <body style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;background:#f4f7fb;margin:0;padding:32px 16px;">
-      <tr>
-        <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;max-width:640px;background:#ffffff;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">
+    <style>
+        body {{ margin: 0; padding: 0; background-color: #f4f7f9; font-family: 'Segoe UI', Tahoma, sans-serif; }}
+        table {{ border-spacing: 0; }}
+        td {{ padding: 0; }}
+        img {{ border: 0; }}
+        .wrapper {{ width: 100%; table-layout: fixed; background-color: #f4f7f9; padding: 32px 0 40px; }}
+        .main {{ background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-spacing: 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }}
+        .header {{ background-color: #053F74; padding: 36px 20px; text-align: center; }}
+        .logo {{ width: 280px; max-width: 80%; height: auto; }}
+        .content {{ padding: 40px 50px; color: #444444; line-height: 1.6; }}
+        h1 {{ color: #053F74; font-size: 22px; margin-top: 0; }}
+        .value-box {{ background-color: #f0f9f8; border: 1px solid #229A8A; border-radius: 6px; padding: 20px; text-align: center; margin: 25px 0; }}
+        .value-label {{ display: block; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; }}
+        .value-amount {{ display: block; font-size: 32px; color: #229A8A; font-weight: bold; margin-top: 5px; }}
+        .summary-box {{ background-color: #f8fafc; border: 1px solid #dbe4ee; border-radius: 6px; padding: 18px 20px; margin: 25px 0; }}
+        .summary-title {{ display: block; font-size: 13px; color: #053F74; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid #d1d9e0; padding-bottom: 6px; }}
+        .summary-row {{ border-bottom: 1px solid #e5edf5; }}
+        .summary-row-last {{ border-bottom: 0; }}
+        .summary-label {{ padding: 10px 0; font-size: 14px; color: #64748b; }}
+        .summary-value {{ padding: 10px 0; font-size: 14px; color: #25364d; font-weight: bold; text-align: right; }}
+        .obs-box {{ background-color: #f0f4f8; border: 1px solid #053F74; border-radius: 6px; padding: 20px; text-align: left; margin: 25px 0; }}
+        .obs-label {{ display: block; font-size: 13px; color: #053F74; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #d1d9e0; padding-bottom: 5px; }}
+        .obs-content {{ display: block; font-size: 14px; color: #444; line-height: 1.5; white-space: pre-line; }}
+        .alert-section {{ border-left: 4px solid #3FBD80; background-color: #f9fdfb; padding: 15px 20px; margin-top: 25px; }}
+        .alert-title {{ color: #259D89; font-weight: bold; display: block; margin-bottom: 5px; }}
+        .footer {{ text-align: center; padding: 30px; font-size: 12px; color: #999999; }}
+    </style>
+</head>
+<body>
+    <div style="display:none; max-height:0px; max-width:0px; opacity:0; overflow:hidden;">
+        Olá Dr(a). {escaped_professional_name}, o demonstrativo de atendimentos de {escaped_period_ref} está disponível para conferência.
+    </div>
+    <center class="wrapper">
+        <table class="main" width="100%">
             <tr>
-              <td style="background:#17407e;padding:24px 28px;color:#ffffff;">
-                <div style="font-size:12px;letter-spacing:1.4px;text-transform:uppercase;font-weight:700;color:#c7d7ef;">Consultare</div>
-                <h1 style="margin:8px 0 0;font-size:22px;line-height:1.25;font-weight:700;color:#ffffff;">Fechamento mensal de repasses</h1>
-              </td>
+                <td class="header">
+                    <img src="{escaped_logo_url}" alt="Consultare" class="logo">
+                </td>
             </tr>
             <tr>
-              <td style="padding:28px;">
-                <p style="margin:0 0 18px;font-size:16px;line-height:1.6;color:#1f2937;">Olá, <strong>{escaped_professional_name}</strong>.</p>
-                <p style="margin:0 0 22px;font-size:16px;line-height:1.6;color:#334155;">{attachment_html}</p>
-                <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;border-collapse:separate;border-spacing:0;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;margin:0 0 22px;">
-                  <tr>
-                    <td style="padding:18px 18px 8px;font-size:12px;letter-spacing:1px;text-transform:uppercase;font-weight:700;color:#64748b;">Resumo do fechamento</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:0 18px 18px;">
-                      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="width:100%;">
-                        <tr>
-                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Competência</td>
-                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">{escaped_period_ref}</td>
-                        </tr>
-                        <tr>
-                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Valor final</td>
-                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">{escaped_amount_text}</td>
-                        </tr>
-                        <tr>
-                          <td style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;color:#64748b;">Data limite para NF</td>
-                          <td align="right" style="padding:10px 0;border-top:1px solid #e2e8f0;font-size:14px;font-weight:700;color:#1f2937;">{escaped_due_date_nf}</td>
-                        </tr>
-                      </table>
-                    </td>
-                  </tr>
-                </table>
-                <span style="display:inline-block;border:1px solid;border-radius:999px;padding:7px 12px;font-size:12px;font-weight:700;{attachment_badge_style}">{attachment_badge}</span>
-                <p style="margin:28px 0 0;font-size:15px;line-height:1.6;color:#334155;">Atenciosamente,<br /><strong>Financeiro Consultare</strong></p>
-              </td>
+                <td class="content">
+                    <h1>Olá, Dr(a). {escaped_professional_name}!</h1>
+                    <p>Esperamos que esteja bem. Segue o demonstrativo de atendimentos realizados no mês de <strong>{escaped_period_ref}</strong> na Clínica Consultare.</p>
+                    <div class="value-box">
+                        <span class="value-label">Valor Total a Receber</span>
+                        <span class="value-amount">{escaped_amount_text}</span>
+                    </div>
+                    <div class="summary-box">
+                        <span class="summary-title">Resumo do fechamento</span>
+                        <table width="100%">
+                            <tr class="summary-row">
+                                <td class="summary-label">Competência</td>
+                                <td class="summary-value">{escaped_period_ref}</td>
+                            </tr>
+                            <tr class="summary-row">
+                                <td class="summary-label">Valor final</td>
+                                <td class="summary-value">{escaped_amount_text}</td>
+                            </tr>
+                            <tr class="summary-row-last">
+                                <td class="summary-label">Data limite para NF</td>
+                                <td class="summary-value">{escaped_due_date_nf}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    {observations_html}
+                    {attachment_html}
+                    <div class="alert-section">
+                        <span class="alert-title">Prazo para Nota Fiscal</span>
+                        Solicitamos o envio da NF até o dia <strong>{escaped_due_date_nf}</strong> para processamento do pagamento no ciclo atual.
+                    </div>
+                    <p style="font-size: 13px; color: #888; margin-top: 30px;">
+                        Dúvidas sobre o fechamento? Responda a este e-mail e nossa equipe financeira entrará em contato.
+                    </p>
+                </td>
             </tr>
             <tr>
-              <td style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:18px 28px;font-size:12px;line-height:1.5;color:#64748b;">
-                Este e-mail foi enviado automaticamente pelo painel Consultare. Em caso de dúvidas, responda esta mensagem.
-              </td>
+                <td class="footer">
+                    <strong>Clínica Consultare</strong><br>
+                    Rua Jacy Teixeira de Camargo, 940 - Campinas/SP<br>
+                    Telefone: (19) 3500-1700<br>
+                    <br>
+                    <p style="font-size: 10px; color: #bbb;">
+                        Caso não queira mais receber estes demonstrativos por e-mail, responda com o assunto "Unsubscribe".
+                    </p>
+                    &copy; 2026 Consultare - Centro Médico Acessível. Todos os direitos reservados.
+                </td>
             </tr>
-          </table>
-        </td>
-      </tr>
-    </table>
-  </body>
+        </table>
+    </center>
+</body>
 </html>
     """.strip()
 
