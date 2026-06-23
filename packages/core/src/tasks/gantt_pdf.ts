@@ -26,6 +26,7 @@ const getStatusColor = (task: TaskSummary) => {
   if (task.status === 'AGUARDANDO_APROVACAO') return rgb(0.49, 0.23, 0.93);
   if (task.status === 'EM_ANDAMENTO') return rgb(0.15, 0.36, 0.91);
   if (task.status === 'A_FAZER') return rgb(0.85, 0.54, 0.12);
+  if (task.status === 'PAUSADO') return rgb(0.59, 0.43, 0.16);
   return rgb(0.42, 0.49, 0.59);
 };
 

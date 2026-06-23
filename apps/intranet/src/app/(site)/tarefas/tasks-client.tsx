@@ -118,6 +118,7 @@ const KANBAN_COLUMNS: Array<{ key: TaskStatus; label: string; description: strin
   { key: 'EM_ANDAMENTO', label: 'Em andamento', description: 'Tarefas em execução no dia a dia.' },
   { key: 'AGUARDANDO_APROVACAO', label: 'Aguardando aprovação', description: 'Itens enviados para revisão formal.' },
   { key: 'CONCLUIDA', label: 'Concluída', description: 'Entregas finalizadas.' },
+  { key: 'PAUSADO', label: 'Pausadas', description: 'Demandas interrompidas temporariamente, mas ainda operacionais.' },
 ];
 
 const PRIORITY_OPTIONS: Array<{ value: TaskPriority; label: string }> = [
@@ -133,6 +134,7 @@ const STATUS_OPTIONS: Array<{ value: TaskStatus; label: string }> = [
   { value: 'EM_ANDAMENTO', label: 'Em andamento' },
   { value: 'AGUARDANDO_APROVACAO', label: 'Aguardando aprovação' },
   { value: 'CONCLUIDA', label: 'Concluída' },
+  { value: 'PAUSADO', label: 'Pausada' },
   { value: 'ARQUIVADA', label: 'Arquivada' },
   { value: 'CANCELADA', label: 'Cancelada' },
 ];
@@ -166,6 +168,7 @@ const statusLabelMap: Record<TaskStatus, string> = {
   EM_ANDAMENTO: 'Em andamento',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
   CONCLUIDA: 'Concluída',
+  PAUSADO: 'Pausada',
   ARQUIVADA: 'Arquivada',
   CANCELADA: 'Cancelada',
 };
@@ -235,6 +238,12 @@ const kanbanColumnToneMap: Record<
     headerClassName: 'border-emerald-200 bg-emerald-100/80',
     badgeClassName: 'bg-white text-emerald-700 ring-emerald-200',
     dragOverClassName: 'border-emerald-400 ring-2 ring-emerald-100',
+  },
+  PAUSADO: {
+    columnClassName: 'border-orange-200 bg-orange-50/80',
+    headerClassName: 'border-orange-200 bg-orange-100/80',
+    badgeClassName: 'bg-white text-orange-700 ring-orange-200',
+    dragOverClassName: 'border-orange-400 ring-2 ring-orange-100',
   },
   ARQUIVADA: {
     columnClassName: 'border-slate-200 bg-slate-50/80',
@@ -4763,9 +4772,11 @@ function GanttTimeline({
                   ? 'bg-violet-500'
                   : task.status === 'EM_ANDAMENTO'
                     ? 'bg-blue-600'
+                    : task.status === 'PAUSADO'
+                      ? 'bg-orange-500'
                     : isOverdue(task.dueDate, task.status)
                       ? 'bg-rose-500'
-                  : task.status === 'A_FAZER'
+                      : task.status === 'A_FAZER'
                         ? 'bg-amber-500'
                         : 'bg-slate-500';
             const orderLabel = `#${task.projectSortOrder ?? index + 1}`;
@@ -5186,6 +5197,7 @@ const canMoveForward = (task: TaskSummary) => {
 
 const canDropTaskToStatus = (task: TaskSummary, status: TaskStatus) => {
   if (task.status === status || isRetiredTaskStatus(task.status) || isRetiredTaskStatus(status)) return false;
+  if (task.status === 'CONCLUIDA' && status === 'PAUSADO') return false;
   if (status === 'AGUARDANDO_APROVACAO' && !task.approverUserId) return false;
   return true;
 };

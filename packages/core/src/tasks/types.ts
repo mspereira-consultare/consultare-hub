@@ -7,6 +7,7 @@ export type TaskStatus =
   | 'EM_ANDAMENTO'
   | 'AGUARDANDO_APROVACAO'
   | 'CONCLUIDA'
+  | 'PAUSADO'
   | 'ARQUIVADA'
   | 'CANCELADA';
 export type TaskAssigneeRoleType = 'PRIMARY' | 'COLLABORATOR';

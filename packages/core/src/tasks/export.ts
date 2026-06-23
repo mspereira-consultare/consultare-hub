@@ -30,6 +30,7 @@ const statusLabelMap = {
   EM_ANDAMENTO: 'Em andamento',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
   CONCLUIDA: 'Concluída',
+  PAUSADO: 'Pausada',
   ARQUIVADA: 'Arquivada',
   CANCELADA: 'Cancelada',
 } as const;

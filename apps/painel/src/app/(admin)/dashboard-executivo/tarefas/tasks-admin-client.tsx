@@ -144,6 +144,7 @@ const KANBAN_COLUMNS: Array<{ key: TaskStatus; label: string; description: strin
   { key: 'EM_ANDAMENTO', label: 'Em andamento', description: 'Execução ativa pela equipe.' },
   { key: 'AGUARDANDO_APROVACAO', label: 'Aguardando aprovação', description: 'Em revisão formal.' },
   { key: 'CONCLUIDA', label: 'Concluídas', description: 'Entregas encerradas.' },
+  { key: 'PAUSADO', label: 'Pausadas', description: 'Demandas temporariamente interrompidas, mas ainda sob gestão operacional.' },
   { key: 'ARQUIVADA', label: 'Arquivadas', description: 'Tarefas retiradas do fluxo operacional.' },
   { key: 'CANCELADA', label: 'Canceladas', description: 'Demandas descontinuadas com histórico preservado.' },
 ];
@@ -161,6 +162,7 @@ const statusLabelMap: Record<TaskStatus, string> = {
   EM_ANDAMENTO: 'Em andamento',
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
   CONCLUIDA: 'Concluída',
+  PAUSADO: 'Pausada',
   ARQUIVADA: 'Arquivada',
   CANCELADA: 'Cancelada',
 };
@@ -263,6 +265,12 @@ const kanbanColumnToneMap: Record<
     headerClassName: 'border-emerald-100 bg-emerald-100/70',
     badgeClassName: 'bg-white text-emerald-700 ring-emerald-200',
     dragOverClassName: 'border-emerald-300 ring-2 ring-emerald-100',
+  },
+  PAUSADO: {
+    columnClassName: 'border-orange-100 bg-orange-50/65',
+    headerClassName: 'border-orange-100 bg-orange-100/70',
+    badgeClassName: 'bg-white text-orange-700 ring-orange-200',
+    dragOverClassName: 'border-orange-300 ring-2 ring-orange-100',
   },
   ARQUIVADA: {
     columnClassName: 'border-slate-200 bg-slate-100/75',
@@ -522,6 +530,7 @@ const buildQueryString = (filters: FiltersState) => {
 const canDropTaskToStatus = (task: TaskSummary, status: TaskStatus, canEdit: boolean) => {
   if (!canEdit) return false;
   if (task.status === status || status === 'CANCELADA' || status === 'ARQUIVADA') return false;
+  if (task.status === 'CONCLUIDA' && status === 'PAUSADO') return false;
   if (status === 'AGUARDANDO_APROVACAO' && !task.approverUserId) return false;
   return true;
 };
@@ -2926,9 +2935,11 @@ function ExecutiveGanttTimeline({
                   ? 'bg-violet-500'
                   : task.status === 'EM_ANDAMENTO'
                     ? 'bg-blue-600'
+                    : task.status === 'PAUSADO'
+                      ? 'bg-orange-500'
                     : isOverdue(task.dueDate, task.status)
                       ? 'bg-rose-500'
-                  : task.status === 'A_FAZER'
+                      : task.status === 'A_FAZER'
                         ? 'bg-amber-500'
                         : 'bg-slate-500';
             const orderLabel = `#${task.projectSortOrder ?? index + 1}`;

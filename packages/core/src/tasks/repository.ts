@@ -89,7 +89,7 @@ const normalizeProjectStatus = (value: unknown, archivedAt?: unknown): TaskProje
 };
 
 const PRIORITIES: TaskPriority[] = ['BAIXA', 'MEDIA', 'ALTA', 'URGENTE'];
-const STATUSES: TaskStatus[] = ['BACKLOG', 'A_FAZER', 'EM_ANDAMENTO', 'AGUARDANDO_APROVACAO', 'CONCLUIDA', 'ARQUIVADA', 'CANCELADA'];
+const STATUSES: TaskStatus[] = ['BACKLOG', 'A_FAZER', 'EM_ANDAMENTO', 'AGUARDANDO_APROVACAO', 'CONCLUIDA', 'PAUSADO', 'ARQUIVADA', 'CANCELADA'];
 const APPROVAL_DECISIONS = ['PENDENTE', 'APROVADA', 'REPROVADA', 'DEVOLVIDA', 'CANCELADA'] as const;
 const RETIRED_STATUSES: TaskStatus[] = ['ARQUIVADA', 'CANCELADA'];
 const OPERATIONAL_STATUSES: Array<Exclude<TaskStatus, 'ARQUIVADA' | 'CANCELADA'>> = [
@@ -98,6 +98,7 @@ const OPERATIONAL_STATUSES: Array<Exclude<TaskStatus, 'ARQUIVADA' | 'CANCELADA'>
   'EM_ANDAMENTO',
   'AGUARDANDO_APROVACAO',
   'CONCLUIDA',
+  'PAUSADO',
 ];
 
 const buildTaskEfficiencySummary = (tasks: Array<Pick<TaskSummary, 'status'>>): TaskEfficiencySummary => {
@@ -182,6 +183,7 @@ const taskStatusLabel = (status: TaskStatus) =>
     EM_ANDAMENTO: 'Em andamento',
     AGUARDANDO_APROVACAO: 'Aguardando aprovação',
     CONCLUIDA: 'Concluída',
+    PAUSADO: 'Pausada',
     ARQUIVADA: 'Arquivada',
     CANCELADA: 'Cancelada',
   })[status];
@@ -1452,6 +1454,10 @@ export const updateTask = async (
       throw new TaskValidationError('Informe um motivo para cancelar a tarefa.');
     }
 
+    if (currentStatus === 'CONCLUIDA' && nextStatus === 'PAUSADO') {
+      throw new TaskValidationError('Reabra a tarefa em um status operacional antes de pausá-la.', 409);
+    }
+
     const nextPrimaryAssigneeUserId = Object.prototype.hasOwnProperty.call(input, 'primaryAssigneeUserId')
       ? nullable(input.primaryAssigneeUserId)
       : nullable(current.primary_assignee_user_id);
@@ -2696,7 +2702,8 @@ const isPendingOperationalTask = (task: Pick<TaskSummary, 'status'>) =>
   task.status === 'BACKLOG' ||
   task.status === 'A_FAZER' ||
   task.status === 'EM_ANDAMENTO' ||
-  task.status === 'AGUARDANDO_APROVACAO';
+  task.status === 'AGUARDANDO_APROVACAO' ||
+  task.status === 'PAUSADO';
 
 const isCompletedWithinWindow = (completedAt: string | null, window: TaskWeeklyReportWindow) => {
   if (!completedAt) return false;
@@ -2764,7 +2771,7 @@ export const getTaskWeeklyReportEligibilitySummary = async (
       u.id AS user_id,
       COUNT(DISTINCT CASE
         WHEN t.id IS NOT NULL
-          AND t.status IN ('BACKLOG', 'A_FAZER', 'EM_ANDAMENTO', 'AGUARDANDO_APROVACAO')
+          AND t.status IN ('BACKLOG', 'A_FAZER', 'EM_ANDAMENTO', 'AGUARDANDO_APROVACAO', 'PAUSADO')
           AND (
             ${primaryAssigneeJoinSql}
             OR EXISTS (
