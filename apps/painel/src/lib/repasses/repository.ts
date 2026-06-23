@@ -2265,17 +2265,18 @@ const renderRepasseEmailContent = (recipient: RepasseEmailRecipient) => {
         .main { background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-spacing: 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
         .header { background-color: #053F74; padding: 36px 20px; text-align: center; }
         .logo { width: 280px; max-width: 80%; height: auto; }
-        .content { padding: 40px 50px; color: #444444; line-height: 1.6; }
-        h1 { color: #053F74; font-size: 22px; margin-top: 0; }
+        .content { padding: 40px 50px; color: #444444; font-size: 17px; line-height: 1.7; }
+        h1 { color: #053F74; font-size: 24px; line-height: 1.25; margin-top: 0; }
+        p { font-size: 17px; }
         .value-box { background-color: #f0f9f8; border: 1px solid #229A8A; border-radius: 6px; padding: 20px; text-align: center; margin: 25px 0; }
-        .value-label { display: block; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        .value-label { display: block; font-size: 15px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
         .value-amount { display: block; font-size: 32px; color: #229A8A; font-weight: bold; margin-top: 5px; }
         .obs-box { background-color: #f0f4f8; border: 1px solid #053F74; border-radius: 6px; padding: 20px; text-align: left; margin: 25px 0; }
         .obs-label { display: block; font-size: 13px; color: #053F74; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #d1d9e0; padding-bottom: 5px; }
-        .obs-content { display: block; font-size: 14px; color: #444; line-height: 1.5; white-space: pre-line; }
-        .alert-section { border-left: 4px solid #3FBD80; background-color: #f9fdfb; padding: 15px 20px; margin-top: 25px; }
+        .obs-content { display: block; font-size: 16px; color: #444; line-height: 1.55; white-space: pre-line; }
+        .alert-section { border-left: 4px solid #3FBD80; background-color: #f9fdfb; padding: 15px 20px; margin-top: 25px; font-size: 16px; }
         .alert-title { color: #259D89; font-weight: bold; display: block; margin-bottom: 5px; }
-        .footer { text-align: center; padding: 30px; font-size: 12px; color: #999999; }
+        .footer { text-align: center; padding: 30px; font-size: 13px; color: #999999; }
     </style>
 </head>
 <body>
@@ -2303,7 +2304,7 @@ const renderRepasseEmailContent = (recipient: RepasseEmailRecipient) => {
                         <span class="alert-title">Prazo para Nota Fiscal</span>
                         Solicitamos o envio da NF até o dia <strong>${escapedDueDateNf}</strong> para processamento do pagamento no ciclo atual.
                     </div>
-                    <p style="font-size: 13px; color: #888; margin-top: 30px;">
+                    <p style="font-size: 15px; color: #888; margin-top: 30px;">
                         Dúvidas sobre o fechamento? Responda a este e-mail e nossa equipe financeira entrará em contato.
                     </p>
                 </td>

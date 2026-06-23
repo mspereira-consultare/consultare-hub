@@ -8,6 +8,7 @@ import re
 import time
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import requests
@@ -95,14 +96,36 @@ def _format_period_br(value: str) -> str:
     return raw or "-"
 
 
-def _resolve_logo_url() -> str:
-    explicit = _clean(os.getenv("REPASSE_EMAIL_LOGO_URL"))
+def _parse_email_list(value: str) -> List[str]:
+    emails: List[str] = []
+    for part in re.split(r"[;,]", _clean(value)):
+        email = _clean(part)
+        if email and _is_valid_email(email) and email.lower() not in [item.lower() for item in emails]:
+            emails.append(email)
+    return emails
+
+
+def _resolve_logo_path() -> Path:
+    explicit = _clean(os.getenv("REPASSE_EMAIL_LOGO_PATH"))
     if explicit:
-        return explicit
-    base = _clean(os.getenv("NEXTAUTH_URL") or os.getenv("AUTH_URL"))
-    if base:
-        return base.rstrip("/") + "/logo-white.png"
-    return ""
+        return Path(explicit)
+    return Path(__file__).resolve().parents[1] / "apps" / "painel" / "public" / "logo-white.png"
+
+
+def _load_logo_attachment() -> Optional[Dict]:
+    try:
+        logo_bytes = _resolve_logo_path().read_bytes()
+    except Exception as exc:
+        print(f"repasse_email: logo inline indisponivel: {exc}")
+        return None
+    if not logo_bytes:
+        return None
+    return {
+        "content": base64.b64encode(logo_bytes).decode("ascii"),
+        "filename": "logo-white.png",
+        "disposition": "inline",
+        "id": "consultare_logo",
+    }
 
 
 def _build_observations_html(observations: str) -> str:
@@ -399,7 +422,42 @@ def _load_job_recipients(db: "DatabaseManager", job) -> List:
     return _query(
         db,
         f"""
-        SELECT *
+        SELECT
+          id,
+          batch_id,
+          period_ref,
+          professional_id,
+          professional_name,
+          recipient_email,
+          amount_value,
+          due_date_nf,
+          pdf_artifact_id,
+          storage_provider,
+          storage_bucket,
+          storage_key,
+          drive_file_id,
+          drive_file_url,
+          file_name,
+          professional_match_status,
+          professional_match_score,
+          attachment_match_status,
+          attachment_source,
+          attachment_code,
+          original_sheet_row_json,
+          observations,
+          attachment_size_bytes,
+          attachment_content_type,
+          validation_status,
+          validation_errors_json,
+          send_status,
+          last_message_id,
+          last_provider_message_id,
+          last_event_type,
+          last_event_at,
+          manual_confirmed_by,
+          manual_confirmed_at,
+          created_at,
+          updated_at
         FROM repasse_email_recipients
         WHERE batch_id = ?
           AND id IN ({placeholders})
@@ -445,7 +503,6 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
     escaped_due_date_nf = html_lib.escape(due_date_text)
     escaped_amount_text = html_lib.escape(amount_text)
     escaped_subject = html_lib.escape(subject)
-    escaped_logo_url = html_lib.escape(_resolve_logo_url())
     observations_html = _build_observations_html(observations)
     attachment_text = (
         "O relatório detalhado está anexado a este e-mail em formato PDF para sua conferência."
@@ -481,17 +538,18 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
         .main {{ background-color: #ffffff; margin: 0 auto; width: 100%; max-width: 600px; border-spacing: 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }}
         .header {{ background-color: #053F74; padding: 36px 20px; text-align: center; }}
         .logo {{ width: 280px; max-width: 80%; height: auto; }}
-        .content {{ padding: 40px 50px; color: #444444; line-height: 1.6; }}
-        h1 {{ color: #053F74; font-size: 22px; margin-top: 0; }}
+        .content {{ padding: 40px 50px; color: #444444; font-size: 17px; line-height: 1.7; }}
+        h1 {{ color: #053F74; font-size: 24px; line-height: 1.25; margin-top: 0; }}
+        p {{ font-size: 17px; }}
         .value-box {{ background-color: #f0f9f8; border: 1px solid #229A8A; border-radius: 6px; padding: 20px; text-align: center; margin: 25px 0; }}
-        .value-label {{ display: block; font-size: 14px; color: #666; text-transform: uppercase; letter-spacing: 1px; }}
+        .value-label {{ display: block; font-size: 15px; color: #666; text-transform: uppercase; letter-spacing: 1px; }}
         .value-amount {{ display: block; font-size: 32px; color: #229A8A; font-weight: bold; margin-top: 5px; }}
         .obs-box {{ background-color: #f0f4f8; border: 1px solid #053F74; border-radius: 6px; padding: 20px; text-align: left; margin: 25px 0; }}
         .obs-label {{ display: block; font-size: 13px; color: #053F74; text-transform: uppercase; letter-spacing: 1px; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #d1d9e0; padding-bottom: 5px; }}
-        .obs-content {{ display: block; font-size: 14px; color: #444; line-height: 1.5; white-space: pre-line; }}
-        .alert-section {{ border-left: 4px solid #3FBD80; background-color: #f9fdfb; padding: 15px 20px; margin-top: 25px; }}
+        .obs-content {{ display: block; font-size: 16px; color: #444; line-height: 1.55; white-space: pre-line; }}
+        .alert-section {{ border-left: 4px solid #3FBD80; background-color: #f9fdfb; padding: 15px 20px; margin-top: 25px; font-size: 16px; }}
         .alert-title {{ color: #259D89; font-weight: bold; display: block; margin-bottom: 5px; }}
-        .footer {{ text-align: center; padding: 30px; font-size: 12px; color: #999999; }}
+        .footer {{ text-align: center; padding: 30px; font-size: 13px; color: #999999; }}
     </style>
 </head>
 <body>
@@ -502,7 +560,7 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
         <table class="main" width="100%">
             <tr>
                 <td class="header">
-                    <img src="{escaped_logo_url}" alt="Consultare" class="logo">
+                    <img src="cid:consultare_logo" alt="Consultare" class="logo">
                 </td>
             </tr>
             <tr>
@@ -519,7 +577,7 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
                         <span class="alert-title">Prazo para Nota Fiscal</span>
                         Solicitamos o envio da NF até o dia <strong>{escaped_due_date_nf}</strong> para processamento do pagamento no ciclo atual.
                     </div>
-                    <p style="font-size: 13px; color: #888; margin-top: 30px;">
+                    <p style="font-size: 15px; color: #888; margin-top: 30px;">
                         Dúvidas sobre o fechamento? Responda a este e-mail e nossa equipe financeira entrará em contato.
                     </p>
                 </td>
@@ -550,23 +608,41 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
         "html": html_body,
         "tags": ["repasses", "fechamento"],
     }
+    attachments_payload: List[Dict] = []
+    attachments_audit: List[Dict] = []
+    logo_attachment = _load_logo_attachment()
+    if logo_attachment:
+        attachments_payload.append(logo_attachment)
+        attachments_audit.append(
+            {
+                "filename": logo_attachment["filename"],
+                "disposition": "inline",
+                "id": logo_attachment["id"],
+            }
+        )
     if pdf_bytes:
-        payload["attachments"] = [
+        attachments_payload.append(
             {
                 "content": base64.b64encode(pdf_bytes).decode("ascii"),
                 "filename": file_name,
                 "disposition": "attachment",
             }
-        ]
+        )
+        attachments_audit.append({"filename": file_name, "disposition": "attachment", "size_bytes": len(pdf_bytes)})
+    if attachments_payload:
+        payload["attachments"] = attachments_payload
     if reply_to:
         payload["reply_to"] = {"email": reply_to, "name": from_name}
+    bcc_config = _clean(os.getenv("REPASSE_EMAIL_BCC") or os.getenv("MAILERSEND_BCC"))
+    if not bcc_config:
+        bcc_config = reply_to
+    bcc_emails = _parse_email_list(bcc_config)
+    bcc_emails = [email for email in bcc_emails if email.lower() != to_email.lower()]
+    if bcc_emails:
+        payload["bcc"] = [{"email": email, "name": from_name} for email in bcc_emails[:10]]
 
     audit_payload = dict(payload)
-    audit_payload["attachments"] = (
-        [{"filename": file_name, "disposition": "attachment", "size_bytes": len(pdf_bytes)}]
-        if pdf_bytes
-        else []
-    )
+    audit_payload["attachments"] = attachments_audit
     return payload, audit_payload
 
 
@@ -574,7 +650,11 @@ def _insert_message(db: "DatabaseManager", recipient, job_id: str, subject: str,
     now = _now_iso()
     message_id = str(uuid.uuid4())
     attachments = audit_payload.get("attachments") or []
-    attachment_file_name = _clean(attachments[0].get("filename")) if attachments else None
+    attachment_file_name = None
+    for attachment in attachments:
+        if _clean(attachment.get("disposition")) == "attachment":
+            attachment_file_name = _clean(attachment.get("filename")) or None
+            break
     _execute(
         db,
         """
