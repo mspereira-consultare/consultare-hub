@@ -633,10 +633,7 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
         payload["attachments"] = attachments_payload
     if reply_to:
         payload["reply_to"] = {"email": reply_to, "name": from_name}
-    bcc_config = _clean(os.getenv("REPASSE_EMAIL_BCC") or os.getenv("MAILERSEND_BCC"))
-    if not bcc_config:
-        bcc_config = reply_to
-    bcc_emails = _parse_email_list(bcc_config)
+    bcc_emails = _parse_email_list(os.getenv("REPASSE_EMAIL_BCC") or os.getenv("MAILERSEND_BCC") or "")
     bcc_emails = [email for email in bcc_emails if email.lower() != to_email.lower()]
     if bcc_emails:
         payload["bcc"] = [{"email": email, "name": from_name} for email in bcc_emails[:10]]
