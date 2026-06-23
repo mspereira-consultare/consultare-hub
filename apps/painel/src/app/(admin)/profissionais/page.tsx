@@ -3007,11 +3007,11 @@ export default function ProfessionalsPage() {
                 <AlertTriangle size={18} />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-slate-800">Confirmar sincronizacao</h3>
+                <h3 className="text-lg font-semibold text-slate-800">Confirmar sincronização</h3>
                 <p className="text-sm text-slate-600 mt-2">
-                  Esta acao atualiza o cadastro de profissionais com os dados vindos do Feegow.
-                  Campos internos gerenciados pelo painel serao preservados, mas dados cadastrais do medico
-                  como telefone, email, endereco, especialidades, unidades e permissoes Feegow podem ser atualizados.
+                  Esta ação atualiza o cadastro de profissionais com os dados vindos do Feegow.
+                  Campos internos gerenciados pelo painel serão preservados, mas dados cadastrais do médico
+                  como telefone, email, endereço, especialidades, unidades e permissões Feegow podem ser atualizados.
                 </p>
               </div>
             </div>
@@ -3034,7 +3034,7 @@ export default function ProfessionalsPage() {
                 className="px-3 py-2 rounded-lg bg-[#17407E] text-white disabled:opacity-60 inline-flex items-center gap-2"
               >
                 {professionalsSyncRefreshing && <Loader2 size={14} className="animate-spin" />}
-                {professionalsSyncRefreshing ? 'Sincronizando...' : 'Confirmar sincronizacao'}
+                {professionalsSyncRefreshing ? 'Sincronizando...' : 'Confirmar sincronização'}
               </button>
             </div>
           </div>

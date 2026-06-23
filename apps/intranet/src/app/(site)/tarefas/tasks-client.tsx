@@ -1905,140 +1905,146 @@ export function TasksClient({ currentUser }: TasksClientProps) {
               </div>
             )
           ) : (
-              <div className="grid min-w-[1200px] grid-cols-5 items-start gap-4">
-              {boardByColumn.map((column) => {
-                const tone = kanbanColumnToneMap[column.key];
-                return (
-                <div
-                  key={column.key}
-                  onDragOver={(event) => handleColumnDragOver(column.key, event)}
-                  onDragLeave={() => {
-                    if (dragOverColumn === column.key) {
-                      setDragOverColumn(null);
-                    }
-                  }}
-                  onDrop={(event) => {
-                    void handleColumnDrop(column.key, event);
-                  }}
-                  className={`flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border transition ${
-                    tone.columnClassName
-                  } ${dragOverColumn === column.key ? tone.dragOverClassName : ''}`}
-                >
-                  <div className={`border-b px-4 py-4 ${tone.headerClassName}`}>
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h2 className="font-semibold text-slate-900">{column.label}</h2>
-                        <p className="mt-1 text-xs leading-5 text-slate-500">{column.description}</p>
-                      </div>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${tone.badgeClassName}`}>
-                        {column.tasks.length}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex-1 space-y-3 overflow-y-auto p-3">
-                    {column.tasks.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
-                        Nenhuma tarefa nesta coluna
-                      </div>
-                    ) : (
-                      column.tasks.map((task) => (
-                        <div
-                          key={task.id}
-                          role="button"
-                          tabIndex={0}
-                          draggable={!saving}
-                          onDragStart={(event) => handleTaskDragStart(task, event)}
-                          onDragEnd={() => handleTaskDragEnd(task.id)}
-                          onClick={() => {
-                            if (dragClickGuardRef.current === task.id) {
-                              dragClickGuardRef.current = null;
-                              return;
-                            }
-                            void openTaskDetail(task.id);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter' || event.key === ' ') {
-                              event.preventDefault();
-                              void openTaskDetail(task.id);
-                            }
-                          }}
-                          className={`w-full text-left ${cardBaseClassName} ${getTaskTone(task)} ${
-                            selectedTaskId === task.id ? 'ring-2 ring-blue-200' : ''
-                          } ${
-                            draggedTaskId === task.id ? 'cursor-grabbing opacity-60' : 'cursor-grab'
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-[11px] font-semibold uppercase tracking-wide text-[#17407E]">
-                                {task.protocolId}
-                              </p>
-                              <h3 className="mt-1 line-clamp-2 font-semibold text-slate-900">{task.title}</h3>
-                            </div>
-                            <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold ${priorityStyles[task.priority]}`}>
-                              {task.priority}
-                            </span>
+            <div className="overflow-x-auto pb-2">
+              <div
+                className="grid min-w-max auto-cols-[minmax(320px,1fr)] grid-flow-col items-start gap-4"
+                style={{ gridTemplateColumns: `repeat(${KANBAN_COLUMNS.length}, minmax(320px, 1fr))` }}
+              >
+                {boardByColumn.map((column) => {
+                  const tone = kanbanColumnToneMap[column.key];
+                  return (
+                    <div
+                      key={column.key}
+                      onDragOver={(event) => handleColumnDragOver(column.key, event)}
+                      onDragLeave={() => {
+                        if (dragOverColumn === column.key) {
+                          setDragOverColumn(null);
+                        }
+                      }}
+                      onDrop={(event) => {
+                        void handleColumnDrop(column.key, event);
+                      }}
+                      className={`flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border transition ${
+                        tone.columnClassName
+                      } ${dragOverColumn === column.key ? tone.dragOverClassName : ''}`}
+                    >
+                      <div className={`border-b px-4 py-4 ${tone.headerClassName}`}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <h2 className="font-semibold text-slate-900">{column.label}</h2>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">{column.description}</p>
                           </div>
-                          <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{task.description || 'Sem descrição detalhada.'}</p>
-                          {task.checklistTotalItems > 0 ? (
-                            <div className="mt-3">
-                              <ChecklistProgressInline
-                                completedItems={task.checklistCompletedItems}
-                                totalItems={task.checklistTotalItems}
-                                progressPercent={task.checklistProgressPercent}
-                              />
-                            </div>
-                          ) : null}
-                          <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
-                            <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{task.department}</span>
-                            <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">
-                              {task.primaryAssigneeUserId
-                                ? `Responsável: ${
-                                    task.primaryAssigneeUserId === currentUser.id
-                                      ? 'você'
-                                      : usersById.get(task.primaryAssigneeUserId)?.name || 'atribuído'
-                                  }`
-                                : 'Sem responsável principal'}
-                            </span>
-                            {task.status === 'AGUARDANDO_APROVACAO' ? (
-                              <span className="rounded-full bg-violet-100 px-2 py-1 font-semibold text-violet-700 ring-1 ring-violet-200">
-                                Em aprovação
-                              </span>
-                            ) : null}
-                            {isOverdue(task.dueDate, task.status) ? (
-                              <span className="rounded-full bg-rose-100 px-2 py-1 font-semibold text-rose-700 ring-1 ring-rose-200">
-                                Vencida
-                              </span>
-                            ) : null}
-                            {!isOverdue(task.dueDate, task.status) && isDueSoon(task.dueDate, task.status) ? (
-                              <span className="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-700 ring-1 ring-amber-200">
-                                A vencer
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
-                            <span className="inline-flex items-center gap-1">
-                              <Calendar size={12} />
-                              {formatDate(task.dueDate)}
-                            </span>
-                            <span className="inline-flex items-center gap-3">
-                              <span className="inline-flex items-center gap-1">
-                                <MessageCircle size={12} />
-                                {task.commentCount}
-                              </span>
-                              <span className="inline-flex items-center gap-1">
-                                <Paperclip size={12} />
-                                {task.attachmentCount}
-                              </span>
-                            </span>
-                          </div>
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${tone.badgeClassName}`}>
+                            {column.tasks.length}
+                          </span>
                         </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )})}
+                      </div>
+                      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+                        {column.tasks.length === 0 ? (
+                          <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
+                            Nenhuma tarefa nesta coluna
+                          </div>
+                        ) : (
+                          column.tasks.map((task) => (
+                            <div
+                              key={task.id}
+                              role="button"
+                              tabIndex={0}
+                              draggable={!saving}
+                              onDragStart={(event) => handleTaskDragStart(task, event)}
+                              onDragEnd={() => handleTaskDragEnd(task.id)}
+                              onClick={() => {
+                                if (dragClickGuardRef.current === task.id) {
+                                  dragClickGuardRef.current = null;
+                                  return;
+                                }
+                                void openTaskDetail(task.id);
+                              }}
+                              onKeyDown={(event) => {
+                                if (event.key === 'Enter' || event.key === ' ') {
+                                  event.preventDefault();
+                                  void openTaskDetail(task.id);
+                                }
+                              }}
+                              className={`w-full text-left ${cardBaseClassName} ${getTaskTone(task)} ${
+                                selectedTaskId === task.id ? 'ring-2 ring-blue-200' : ''
+                              } ${
+                                draggedTaskId === task.id ? 'cursor-grabbing opacity-60' : 'cursor-grab'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#17407E]">
+                                    {task.protocolId}
+                                  </p>
+                                  <h3 className="mt-1 line-clamp-2 font-semibold text-slate-900">{task.title}</h3>
+                                </div>
+                                <span className={`shrink-0 rounded-full border px-2 py-1 text-[10px] font-semibold ${priorityStyles[task.priority]}`}>
+                                  {task.priority}
+                                </span>
+                              </div>
+                              <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{task.description || 'Sem descrição detalhada.'}</p>
+                              {task.checklistTotalItems > 0 ? (
+                                <div className="mt-3">
+                                  <ChecklistProgressInline
+                                    completedItems={task.checklistCompletedItems}
+                                    totalItems={task.checklistTotalItems}
+                                    progressPercent={task.checklistProgressPercent}
+                                  />
+                                </div>
+                              ) : null}
+                              <div className="mt-3 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                                <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">{task.department}</span>
+                                <span className="rounded-full bg-white px-2 py-1 ring-1 ring-slate-200">
+                                  {task.primaryAssigneeUserId
+                                    ? `Responsável: ${
+                                        task.primaryAssigneeUserId === currentUser.id
+                                          ? 'você'
+                                          : usersById.get(task.primaryAssigneeUserId)?.name || 'atribuído'
+                                      }`
+                                    : 'Sem responsável principal'}
+                                </span>
+                                {task.status === 'AGUARDANDO_APROVACAO' ? (
+                                  <span className="rounded-full bg-violet-100 px-2 py-1 font-semibold text-violet-700 ring-1 ring-violet-200">
+                                    Em aprovação
+                                  </span>
+                                ) : null}
+                                {isOverdue(task.dueDate, task.status) ? (
+                                  <span className="rounded-full bg-rose-100 px-2 py-1 font-semibold text-rose-700 ring-1 ring-rose-200">
+                                    Vencida
+                                  </span>
+                                ) : null}
+                                {!isOverdue(task.dueDate, task.status) && isDueSoon(task.dueDate, task.status) ? (
+                                  <span className="rounded-full bg-amber-100 px-2 py-1 font-semibold text-amber-700 ring-1 ring-amber-200">
+                                    A vencer
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div className="mt-4 flex items-center justify-between gap-3 text-xs text-slate-500">
+                                <span className="inline-flex items-center gap-1">
+                                  <Calendar size={12} />
+                                  {formatDate(task.dueDate)}
+                                </span>
+                                <span className="inline-flex items-center gap-3">
+                                  <span className="inline-flex items-center gap-1">
+                                    <MessageCircle size={12} />
+                                    {task.commentCount}
+                                  </span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <Paperclip size={12} />
+                                    {task.attachmentCount}
+                                  </span>
+                                </span>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
+            </div>
           )}
         </div>
       </section>
