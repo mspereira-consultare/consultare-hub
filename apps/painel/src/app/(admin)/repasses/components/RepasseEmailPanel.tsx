@@ -31,6 +31,13 @@ const formatDateBr = (value: string | null | undefined) => {
   return raw || "-";
 };
 
+const formatDateTimeBr = (value: string | null | undefined) => {
+  const raw = String(value || "").trim();
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
+  if (match) return `${match[3]}/${match[2]}/${match[1]} ${match[4]}:${match[5]}`;
+  return formatDateBr(raw);
+};
+
 const formatPeriodBr = (value: string | null | undefined) => {
   const raw = String(value || "").trim();
   const match = raw.match(/^(\d{4})-(\d{2})$/);
@@ -42,6 +49,56 @@ const todayInputValue = () => new Date().toISOString().slice(0, 10);
 
 const errorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
+
+const statusLabel = (status: string | null | undefined) => {
+  const normalized = String(status || "").toUpperCase();
+  const labels: Record<string, string> = {
+    ACCEPTED_PROVIDER: "Enviado",
+    ANEXO_AMBIGUO: "Anexo ambíguo",
+    COMPLETED: "Concluído",
+    DEFERRED: "Aguardando",
+    DELIVERED: "Entregue",
+    DRAFT: "Rascunho",
+    ERROR: "Erro",
+    FAILED: "Falhou",
+    HARD_BOUNCE: "Não entregue",
+    IMPORTED: "Importado",
+    MANUAL_CONFIRMED: "Confirmado",
+    PARTIAL: "Parcial",
+    PENDING: "Pendente",
+    QUEUED: "Na fila",
+    READY: "Pronto",
+    RESOLVED: "Vinculado",
+    RESOLVED_APPROX: "Vinculado por nome",
+    RESOLVED_EMAIL: "Vinculado por e-mail",
+    RESOLVED_ID: "Vinculado por cadastro",
+    RESOLVED_NAME: "Vinculado por nome",
+    RUNNING: "Processando",
+    SEM_ANEXO: "Sem anexo",
+    SENDING: "Enviando",
+    SKIPPED: "Ignorado",
+    SOFT_BOUNCE: "Falha temporária",
+    SPAM_COMPLAINT: "Marcado como spam",
+    VALID: "Válido",
+    WARNING: "Atenção",
+  };
+  return labels[normalized] || status || "-";
+};
+
+const eventLabel = (event: string | null | undefined) => {
+  const normalized = String(event || "").toLowerCase();
+  const labels: Record<string, string> = {
+    "accepted_provider": "Enviado",
+    "activity.delivered": "Entregue",
+    "activity.hard_bounced": "Não entregue",
+    "activity.sent": "Enviado",
+    "activity.soft_bounced": "Falha temporária",
+    "activity.spam_complaint": "Marcado como spam",
+    "delivered": "Entregue",
+    "failed": "Falhou",
+  };
+  return labels[normalized] || event || "-";
+};
 
 const statusClass = (status: string) => {
   const normalized = String(status || "").toUpperCase();
@@ -59,7 +116,7 @@ const statusClass = (status: string) => {
 
 const StatusPill = ({ value }: { value: string }) => (
   <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(value)}`}>
-    {value || "-"}
+    {statusLabel(value)}
   </span>
 );
 
@@ -149,10 +206,12 @@ export function RepasseEmailPanel({
     setSelectedRecipientIds((prev) => prev.filter((id) => items.some((item: RepasseEmailRecipient) => item.id === id)));
   }, [canView]);
 
-  const loadEmailPanel = useCallback(async () => {
+  const loadEmailPanel = useCallback(async (silent = false) => {
     if (!canView) return;
-    setLoading(true);
-    setError("");
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const qs = new URLSearchParams({ periodRef, limit: "10" }).toString();
       const [batchRes, jobRes] = await Promise.all([
@@ -162,7 +221,7 @@ export function RepasseEmailPanel({
       const batchData = await batchRes.json().catch(() => ({}));
       const jobData = await jobRes.json().catch(() => ({}));
       if (!batchRes.ok) throw new Error(batchData?.error || "Falha ao carregar lotes de e-mail.");
-      if (!jobRes.ok) throw new Error(jobData?.error || "Falha ao carregar jobs de e-mail.");
+      if (!jobRes.ok) throw new Error(jobData?.error || "Falha ao carregar processamentos de e-mail.");
 
       const loadedBatches: RepasseEmailBatch[] = Array.isArray(batchData?.data?.items)
         ? batchData.data.items
@@ -178,7 +237,7 @@ export function RepasseEmailPanel({
     } catch (e: unknown) {
       setError(errorMessage(e, "Erro ao carregar envios de fechamento."));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [activeBatchId, canView, loadRecipients, periodRef]);
 
@@ -188,6 +247,15 @@ export function RepasseEmailPanel({
     }, 0);
     return () => window.clearTimeout(timer);
   }, [loadEmailPanel]);
+
+  useEffect(() => {
+    if (!canView) return;
+    const interval = window.setInterval(() => {
+      if (preparing || uploadingAttachments || enqueueing || preview) return;
+      void loadEmailPanel(true);
+    }, 10000);
+    return () => window.clearInterval(interval);
+  }, [canView, enqueueing, loadEmailPanel, preparing, preview, uploadingAttachments]);
 
   const prepareBatch = async () => {
     if (!canRefresh) return;
@@ -243,7 +311,7 @@ export function RepasseEmailPanel({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Falha ao enviar anexos.");
       const summary = data?.data || {};
-      setNotice(`Anexos processados: ${summary.matched || 0} vinculados, ${summary.unmatched || 0} sem match, ${summary.ambiguous || 0} ambíguos.`);
+      setNotice(`Anexos processados: ${summary.matched || 0} vinculados, ${summary.unmatched || 0} sem vínculo, ${summary.ambiguous || 0} ambíguos.`);
       setAttachmentFiles(null);
       setSelectedRecipientIds([]);
       await loadRecipients(activeBatch.id);
@@ -259,7 +327,7 @@ export function RepasseEmailPanel({
   const enqueueSelected = async () => {
     if (!canRefresh || !activeBatch) return;
     if (selectedDispatchableIds.length === 0) {
-      setError("Selecione ao menos um destinatário elegível para envio ou reenvio.");
+      setError("Selecione ao menos um destinatário apto para envio ou reenvio.");
       return;
     }
     setEnqueueing(true);
@@ -277,7 +345,7 @@ export function RepasseEmailPanel({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Falha ao enfileirar envio.");
-      setNotice(`Envio enfileirado. Job: ${data?.data?.id || "-"}.`);
+      setNotice(`Envio colocado na fila. Identificador: ${data?.data?.id || "-"}.`);
       setSelectedRecipientIds([]);
       await loadEmailPanel();
     } catch (e: unknown) {
@@ -313,7 +381,7 @@ export function RepasseEmailPanel({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Falha ao atualizar destinatário.");
-      setNotice(action === "retry" ? "Reenvio enfileirado." : "Confirmação manual registrada.");
+      setNotice(action === "retry" ? "Reenvio colocado na fila." : "Confirmação manual registrada.");
       if (activeBatch) await loadRecipients(activeBatch.id);
       await loadEmailPanel();
     } catch (e: unknown) {
@@ -351,15 +419,15 @@ export function RepasseEmailPanel({
             <h2 className="text-base font-bold text-slate-800">Preparação do lote</h2>
           </div>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
-            Importe a planilha .xlsx de fechamento, envie os PDFs para o S3 e confira os vínculos antes de enfileirar.
-            O upload não envia e-mails; o disparo acontece apenas pelo botão de enfileirar destinatários selecionados.
+            Importe a planilha de fechamento, anexe os PDFs quando houver e confira se cada profissional está correto antes de enviar.
+            A importação não dispara e-mails; o envio só acontece para os destinatários selecionados.
           </p>
           <p className="mt-1 text-xs font-medium text-slate-500">
-            Aceito pelo provedor não significa entregue; o status final vem dos webhooks de entrega, bounce ou falha.
+            Depois do envio, a tela acompanha automaticamente se a mensagem foi entregue ou se houve falha.
           </p>
         </div>
 
-        <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-[minmax(240px,1fr)_180px_auto_auto_auto] xl:max-w-6xl">
+        <div className="grid w-full grid-cols-1 gap-3 md:grid-cols-2 xl:max-w-6xl xl:grid-cols-[minmax(220px,1fr)_160px_auto_auto_auto]">
           <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-slate-500">
             Planilha
             <input
@@ -396,13 +464,41 @@ export function RepasseEmailPanel({
           </a>
           <button
             type="button"
-            onClick={loadEmailPanel}
+            onClick={() => loadEmailPanel()}
             disabled={loading}
             className="inline-flex h-10 items-center justify-center gap-2 self-end rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
           >
             {loading ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
             Atualizar
           </button>
+          {activeBatch && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 md:col-span-2 xl:col-span-5">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(260px,1fr)_auto] md:items-end">
+                <label className="flex min-w-0 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Anexos PDF ou ZIP
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.zip,application/pdf,application/zip"
+                    onChange={(event) => setAttachmentFiles(event.target.files)}
+                    className="h-10 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => uploadAttachments(attachmentFiles)}
+                  disabled={!canRefresh || uploadingAttachments || !attachmentFiles || attachmentFiles.length === 0}
+                  className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-700 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {uploadingAttachments ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
+                  Vincular anexos
+                </button>
+              </div>
+              <p className="mt-2 text-xs text-slate-500">
+                O sistema tenta associar os arquivos aos profissionais pelo código, nome do arquivo ou nome do profissional. Você também pode anexar um PDF em uma linha específica.
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -421,15 +517,15 @@ export function RepasseEmailPanel({
 
       <div className="grid grid-cols-2 gap-3 p-5 md:grid-cols-4 xl:grid-cols-7">
         {[
-          ["Lotes", batches.length],
-          ["Destinatários", activeBatch?.totalRecipients || 0],
-          ["Prontos", activeBatch?.readyCount || 0],
-          ["Warnings", activeBatch?.warningCount || 0],
-          ["Erros", activeBatch?.errorCount || 0],
-          ["Entregues", activeBatch?.deliveredCount || 0],
-          ["Falhas", activeBatch?.failedCount || 0],
-        ].map(([label, value]) => (
-          <div key={String(label)} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+          ["Lotes", batches.length, "border-blue-100 bg-blue-50/60"],
+          ["Destinatários", activeBatch?.totalRecipients || 0, "border-slate-200 bg-slate-50"],
+          ["Prontos", activeBatch?.readyCount || 0, "border-emerald-100 bg-emerald-50/60"],
+          ["Alertas", activeBatch?.warningCount || 0, "border-amber-100 bg-amber-50/60"],
+          ["Erros", activeBatch?.errorCount || 0, "border-rose-100 bg-rose-50/60"],
+          ["Entregues", activeBatch?.deliveredCount || 0, "border-teal-100 bg-teal-50/60"],
+          ["Falhas", activeBatch?.failedCount || 0, "border-red-100 bg-red-50/60"],
+        ].map(([label, value, tone]) => (
+          <div key={String(label)} className={`rounded-xl border px-4 py-3 ${tone}`}>
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</p>
             <p className="mt-1 text-xl font-bold text-slate-800">{value}</p>
           </div>
@@ -437,6 +533,10 @@ export function RepasseEmailPanel({
       </div>
 
       <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 px-5 py-4">
+        <div className="mr-auto max-w-xl text-xs leading-relaxed text-slate-500">
+          <strong className="text-slate-700">Competência</strong> é o mês de fechamento exibido no topo da página.
+          <strong className="ml-1 text-slate-700">Lote</strong> é cada importação feita para essa competência; use a lista abaixo para consultar importações anteriores.
+        </div>
         <select
           value={activeBatch?.id || ""}
           onChange={(event) => {
@@ -449,41 +549,21 @@ export function RepasseEmailPanel({
           <option value="">Nenhum lote preparado</option>
           {batches.map((batch) => (
             <option key={batch.id} value={batch.id}>
-              {formatPeriodBr(batch.periodRef)} | NF {formatDateBr(batch.dueDateNf)} | {batch.status} | {batch.totalRecipients} destinatários
+              {formatPeriodBr(batch.periodRef)} | NF {formatDateBr(batch.dueDateNf)} | {statusLabel(batch.status)} | {batch.totalRecipients} destinatários
             </option>
           ))}
         </select>
         {activeBatch && <StatusPill value={activeBatch.status} />}
         {jobs[0] && (
           <span className="text-xs text-slate-500">
-            Último job: {jobs[0].status} em {jobs[0].createdAt}
+            Último processamento: {statusLabel(jobs[0].status)} em {formatDateTimeBr(jobs[0].createdAt)}
           </span>
         )}
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700">
+          <RefreshCw size={11} />
+          Atualização automática ativa
+        </span>
       </div>
-
-      {activeBatch && (
-        <div className="mx-5 mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
-          <label className="flex min-w-[260px] flex-1 flex-col gap-1 text-xs font-bold uppercase tracking-wider text-slate-500">
-            PDFs ou ZIP
-            <input
-              type="file"
-              multiple
-              accept=".pdf,.zip,application/pdf,application/zip"
-              onChange={(event) => setAttachmentFiles(event.target.files)}
-              className="h-10 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm text-slate-700"
-            />
-          </label>
-          <button
-            type="button"
-            onClick={() => uploadAttachments(attachmentFiles)}
-            disabled={!canRefresh || uploadingAttachments || !attachmentFiles || attachmentFiles.length === 0}
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-700 disabled:opacity-50"
-          >
-            {uploadingAttachments ? <Loader2 size={14} className="animate-spin" /> : <Paperclip size={14} />}
-            Enviar anexos
-          </button>
-        </div>
-      )}
 
       <div className="border-t border-slate-100 px-5 pb-5">
         <div className="mb-3 flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-3 md:flex-row md:items-center md:justify-between">
@@ -494,10 +574,10 @@ export function RepasseEmailPanel({
               disabled={dispatchableRecipientIds.length === 0}
               className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
             >
-              {allDispatchableSelected ? "Limpar seleção" : "Selecionar elegíveis"}
+              {allDispatchableSelected ? "Limpar seleção" : "Selecionar aptos"}
             </button>
             <span className="text-xs text-slate-500">
-              {selectedDispatchableIds.length} selecionado(s) de {dispatchableRecipientIds.length} elegível(is), {readyCount} pronto(s)
+              {selectedDispatchableIds.length} selecionado(s) de {dispatchableRecipientIds.length} apto(s), {readyCount} pronto(s)
             </span>
           </div>
           <button
@@ -507,7 +587,7 @@ export function RepasseEmailPanel({
             className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#229A8A] px-4 text-xs font-semibold text-white transition hover:bg-[#1b7d70] disabled:opacity-50"
           >
             {enqueueing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-            Enfileirar selecionados ({selectedDispatchableIds.length})
+            Enviar selecionados ({selectedDispatchableIds.length})
           </button>
         </div>
 
@@ -515,25 +595,25 @@ export function RepasseEmailPanel({
         <table className="min-w-[1180px] w-full border-collapse text-left text-xs">
           <thead className="sticky top-0 z-10 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500 shadow-sm">
             <tr>
-              <th className="w-10 px-2 py-2">
+              <th className="sticky left-0 z-30 w-10 bg-slate-50 px-2 py-2">
                 <input
                   type="checkbox"
                   checked={allDispatchableSelected}
                   disabled={dispatchableRecipientIds.length === 0}
                   onChange={toggleAllReady}
                   className="h-4 w-4 rounded border-slate-300 text-[#17407E]"
-                  aria-label="Selecionar todos os elegíveis"
+                  aria-label="Selecionar todos os aptos"
                 />
               </th>
-              <th className="px-2 py-2">Profissional</th>
+              <th className="sticky left-10 z-30 w-44 bg-slate-50 px-2 py-2 shadow-[1px_0_0_0_rgba(226,232,240,1)]">Profissional</th>
               <th className="px-2 py-2">E-mail</th>
               <th className="px-2 py-2">Valor</th>
               <th className="px-2 py-2">Prazo NF</th>
-              <th className="px-2 py-2">Vínculo prof.</th>
+              <th className="px-2 py-2">Cadastro</th>
               <th className="px-2 py-2">Anexo</th>
-              <th className="px-2 py-2">Validação</th>
+              <th className="px-2 py-2">Conferência</th>
               <th className="px-2 py-2">Envio</th>
-              <th className="px-2 py-2">Último evento</th>
+              <th className="px-2 py-2">Última atualização</th>
               <th className="px-2 py-2 text-right">Ações</th>
             </tr>
           </thead>
@@ -560,8 +640,8 @@ export function RepasseEmailPanel({
                 const isSelected = selectedRecipientIds.includes(recipient.id);
                 const previewLoading = previewLoadingId === recipient.id;
                 return (
-                  <tr key={recipient.id} className="border-t align-top hover:bg-slate-50/70">
-                    <td className="px-2 py-2">
+                  <tr key={recipient.id} className="group border-t align-top hover:bg-slate-50/70">
+                    <td className="sticky left-0 z-20 bg-white px-2 py-2 group-hover:bg-slate-50">
                       <input
                         type="checkbox"
                         checked={isSelected}
@@ -571,7 +651,7 @@ export function RepasseEmailPanel({
                         aria-label={`Selecionar ${recipient.professionalName}`}
                       />
                     </td>
-                    <td className="px-2 py-2 font-medium text-slate-800">{recipient.professionalName}</td>
+                    <td className="sticky left-10 z-20 w-44 bg-white px-2 py-2 font-medium text-slate-800 shadow-[1px_0_0_0_rgba(226,232,240,1)] group-hover:bg-slate-50">{recipient.professionalName}</td>
                     <td className="px-2 py-2 text-slate-600">{recipient.recipientEmail || "-"}</td>
                     <td className="px-2 py-2 font-semibold text-slate-700">{formatCurrency(recipient.amountValue)}</td>
                     <td className="px-2 py-2 text-slate-600">{formatDateBr(recipient.dueDateNf)}</td>
@@ -579,7 +659,7 @@ export function RepasseEmailPanel({
                       <div className="flex flex-col gap-1">
                         <StatusPill value={recipient.professionalMatchStatus || "-"} />
                         {recipient.professionalMatchScore !== null ? (
-                          <span className="text-[11px] text-slate-400">score {recipient.professionalMatchScore.toFixed(2)}</span>
+                          <span className="text-[11px] text-slate-400">confiança {recipient.professionalMatchScore.toFixed(2)}</span>
                         ) : null}
                       </div>
                     </td>
@@ -620,8 +700,8 @@ export function RepasseEmailPanel({
                       <StatusPill value={recipient.sendStatus} />
                     </td>
                     <td className="px-2 py-2 text-slate-600">
-                      {recipient.lastEventType || "-"}
-                      {recipient.lastEventAt ? <span className="block text-[11px] text-slate-400">{recipient.lastEventAt}</span> : null}
+                      {eventLabel(recipient.lastEventType)}
+                      {recipient.lastEventAt ? <span className="block text-[11px] text-slate-400">{formatDateTimeBr(recipient.lastEventAt)}</span> : null}
                     </td>
                     <td className="px-2 py-2">
                       <div className="flex justify-end gap-1">

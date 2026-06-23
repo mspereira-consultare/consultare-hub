@@ -68,7 +68,7 @@ export default function RepasseEmailPage() {
             <h1 className="text-xl font-bold text-slate-800">Envios de fechamento</h1>
           </div>
           <p className="mt-1 max-w-2xl text-xs text-slate-500">
-            Importe a planilha, vincule os anexos e selecione os destinatários antes de enfileirar o envio.
+            Escolha a competência do fechamento, importe a planilha, vincule os anexos quando houver e selecione quem deve receber o e-mail.
           </p>
         </div>
         <label className="flex w-full flex-col gap-1 text-xs font-bold uppercase tracking-wider text-slate-500 md:w-48">
