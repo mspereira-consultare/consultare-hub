@@ -33,6 +33,7 @@ import type {
   TaskApprovalDecisionStatus,
   TaskDependency,
   TaskDetail,
+  TaskEfficiencySummary,
   TaskPortfolioGantt,
   TaskPortfolioGanttSection,
   TaskPriority,
@@ -532,6 +533,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [personalEfficiency, setPersonalEfficiency] = useState<TaskEfficiencySummary | null>(null);
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<FilterKey>('ALL');
   const [assigneeFilter, setAssigneeFilter] = useState('');
@@ -596,11 +598,18 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       if (projectFilter && projectFilter !== 'ALL' && projectFilter !== 'STANDALONE') {
         params.set('projectId', projectFilter);
       }
-      const response = await fetch(`/api/tasks${params.size ? `?${params.toString()}` : ''}`, { cache: 'no-store' });
-      if (!response.ok) throw new Error(await normalizeError(response));
-      const json = await response.json();
+      const [tasksResponse, efficiencyResponse] = await Promise.all([
+        fetch(`/api/tasks${params.size ? `?${params.toString()}` : ''}`, { cache: 'no-store' }),
+        fetch('/api/tasks/my-efficiency', { cache: 'no-store' }),
+      ]);
+      if (!tasksResponse.ok) throw new Error(await normalizeError(tasksResponse));
+      if (!efficiencyResponse.ok) throw new Error(await normalizeError(efficiencyResponse));
+
+      const json = await tasksResponse.json();
+      const efficiencyJson = await efficiencyResponse.json();
       const nextTasks = Array.isArray(json.data) ? (json.data as TaskSummary[]) : [];
       setTasks(nextTasks);
+      setPersonalEfficiency((efficiencyJson.data || null) as TaskEfficiencySummary | null);
       if (focusTaskId) {
         setSelectedTaskId(focusTaskId);
       } else if (!selectedTaskId && nextTasks[0]?.id) {
@@ -865,6 +874,12 @@ export function TasksClient({ currentUser }: TasksClientProps) {
     awaitingApproval: tasks.filter((task) => task.status === 'AGUARDANDO_APROVACAO').length,
     approved: tasks.filter((task) => task.latestApproval?.decisionStatus === 'APROVADA').length,
   }), [tasks]);
+
+  const personalEfficiencyValue = personalEfficiency?.efficiencyPercent == null ? '—' : `${personalEfficiency.efficiencyPercent}%`;
+  const personalEfficiencyHelper =
+    personalEfficiency && personalEfficiency.operationalTasks > 0
+      ? `${personalEfficiency.completedTasks} de ${personalEfficiency.operationalTasks} tarefas sob sua execução concluídas`
+      : 'Nenhuma tarefa operacional sob sua execução no momento';
 
   const openCreate = () => {
     setCreateForm(defaultForm(currentUser));
@@ -1581,12 +1596,13 @@ export function TasksClient({ currentUser }: TasksClientProps) {
         </div>
       </section>
 
-      <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <SummaryCard label="Total de tarefas" value={summary.total} helper="Tudo que você pode visualizar" tone="neutral" />
         <SummaryCard label="A vencer" value={summary.dueSoon} helper="Prazo até 2 dias" tone="warning" />
         <SummaryCard label="Vencidas" value={summary.overdue} helper="Pendências com prazo expirado" tone="danger" />
         <SummaryCard label="Aguardando aprovação" value={summary.awaitingApproval} helper="Solicitações pendentes" tone="info" />
         <SummaryCard label="Aprovadas" value={summary.approved} helper="Última decisão aprovada" tone="success" />
+        <SummaryCard label="Minha eficiência" value={personalEfficiencyValue} helper={personalEfficiencyHelper} tone="info" />
       </section>
 
       <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -2145,7 +2161,7 @@ function SummaryCard({
   tone,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   helper: string;
   tone: 'neutral' | 'warning' | 'danger' | 'info' | 'success';
 }) {

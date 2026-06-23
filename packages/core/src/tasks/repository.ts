@@ -21,6 +21,7 @@ import type {
   TaskDependencyCreateInput,
   TaskDashboardSummary,
   TaskDetail,
+  TaskEfficiencySummary,
   TaskListFilters,
   TaskPriority,
   TaskProjectCreateInput,
@@ -92,6 +93,18 @@ const OPERATIONAL_STATUSES: Array<Exclude<TaskStatus, 'ARQUIVADA' | 'CANCELADA'>
   'AGUARDANDO_APROVACAO',
   'CONCLUIDA',
 ];
+
+const buildTaskEfficiencySummary = (tasks: Array<Pick<TaskSummary, 'status'>>): TaskEfficiencySummary => {
+  const operationalTasks = tasks.filter((task) => OPERATIONAL_STATUSES.includes(task.status as (typeof OPERATIONAL_STATUSES)[number])).length;
+  const completedTasks = tasks.filter((task) => task.status === 'CONCLUIDA').length;
+  const efficiencyPercent = operationalTasks > 0 ? Math.round((completedTasks / operationalTasks) * 100) : null;
+
+  return {
+    completedTasks,
+    operationalTasks,
+    efficiencyPercent,
+  };
+};
 
 const isMysqlProvider = () => {
   const provider = clean(process.env.DB_PROVIDER).toLowerCase();
@@ -2592,6 +2605,7 @@ export const getTaskDashboardSummary = async (
 
   const awaitingApprovalTasks = tasks.filter((task) => task.status === 'AGUARDANDO_APROVACAO').length;
   const approvedTasks = tasks.filter((task) => task.latestApproval?.decisionStatus === 'APROVADA').length;
+  const efficiency = buildTaskEfficiencySummary(tasks);
 
   const byStatus = STATUSES.map((status) => ({
     status,
@@ -2618,8 +2632,18 @@ export const getTaskDashboardSummary = async (
     overdueTasks,
     awaitingApprovalTasks,
     approvedTasks,
+    efficiency,
     byStatus,
     byPriority,
     byDepartment,
   };
+};
+
+export const getTaskEfficiencySummary = async (
+  db: DbInterface,
+  viewer: TaskViewerContext,
+  filters: TaskListFilters = {}
+): Promise<TaskEfficiencySummary> => {
+  const tasks = await listTasks(db, viewer, { ...filters, includeCanceled: true });
+  return buildTaskEfficiencySummary(tasks);
 };

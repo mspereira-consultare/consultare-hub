@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
+  Gauge,
   Calendar,
   CheckCircle2,
   Clock3,
@@ -140,6 +141,17 @@ const buildGanttCompactDescription = (task: TaskSummary) => {
     .filter(Boolean)
     .join(' • ');
   return fallback || 'Sem contexto adicional informado.';
+};
+
+const buildEfficiencyValue = (summary: TaskDashboardSummary | null) =>
+  summary?.efficiency?.efficiencyPercent == null ? '—' : `${summary.efficiency.efficiencyPercent}%`;
+
+const buildEfficiencyHelper = (summary: TaskDashboardSummary | null) => {
+  if (!summary?.efficiency || summary.efficiency.operationalTasks <= 0) {
+    return 'Nenhuma tarefa operacional no recorte atual';
+  }
+
+  return `${summary.efficiency.completedTasks} de ${summary.efficiency.operationalTasks} tarefas operacionais concluídas`;
 };
 
 const RETIRED_TASK_STATUSES: TaskStatus[] = ['ARQUIVADA', 'CANCELADA'];
@@ -1143,12 +1155,13 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
         </div>
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-6">
         <ExecutiveMetricCard label="Total de tarefas" value={summary?.totalTasks || 0} helper="Tudo sob escopo global" tone="neutral" icon={<FileText size={18} />} />
         <ExecutiveMetricCard label="A vencer" value={summary?.dueSoonTasks || 0} helper="Próximos 2 dias" tone="warning" icon={<Clock3 size={18} />} />
         <ExecutiveMetricCard label="Vencidas" value={summary?.overdueTasks || 0} helper="Prazos já expirados" tone="danger" icon={<AlertCircle size={18} />} />
         <ExecutiveMetricCard label="Aguardando aprovação" value={summary?.awaitingApprovalTasks || 0} helper="Fila de decisão" tone="info" icon={<ShieldCheck size={18} />} />
         <ExecutiveMetricCard label="Aprovadas" value={summary?.approvedTasks || 0} helper="Último ciclo aprovado" tone="success" icon={<CheckCircle2 size={18} />} />
+        <ExecutiveMetricCard label="Eficiência no recorte" value={buildEfficiencyValue(summary)} helper={buildEfficiencyHelper(summary)} tone="info" icon={<Gauge size={18} />} />
       </section>
 
       <section className={`${panelClassName} overflow-hidden`}>
@@ -1524,7 +1537,7 @@ function ExecutiveMetricCard({
   icon,
 }: {
   label: string;
-  value: number;
+  value: number | string;
   helper: string;
   tone: 'neutral' | 'warning' | 'danger' | 'info' | 'success';
   icon: React.ReactNode;

@@ -292,9 +292,16 @@ export type TaskDashboardSummary = {
   overdueTasks: number;
   awaitingApprovalTasks: number;
   approvedTasks: number;
+  efficiency: TaskEfficiencySummary;
   byStatus: Array<{ status: TaskStatus; count: number }>;
   byPriority: Array<{ priority: TaskPriority; count: number }>;
   byDepartment: Array<{ department: string; count: number }>;
+};
+
+export type TaskEfficiencySummary = {
+  completedTasks: number;
+  operationalTasks: number;
+  efficiencyPercent: number | null;
 };
 
 export type TaskChecklistItemCreateInput = {
