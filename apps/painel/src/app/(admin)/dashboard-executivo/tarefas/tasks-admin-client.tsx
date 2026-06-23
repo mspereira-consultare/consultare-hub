@@ -144,6 +144,59 @@ const buildGanttCompactDescription = (task: TaskSummary) => {
 
 const RETIRED_TASK_STATUSES: TaskStatus[] = ['ARQUIVADA', 'CANCELADA'];
 
+const kanbanColumnToneMap: Record<
+  TaskStatus,
+  {
+    columnClassName: string;
+    headerClassName: string;
+    badgeClassName: string;
+    dragOverClassName: string;
+  }
+> = {
+  BACKLOG: {
+    columnClassName: 'border-slate-200 bg-slate-50/80',
+    headerClassName: 'border-slate-200 bg-slate-100/85',
+    badgeClassName: 'bg-white text-slate-700 ring-slate-200',
+    dragOverClassName: 'border-slate-400 ring-2 ring-slate-200',
+  },
+  A_FAZER: {
+    columnClassName: 'border-sky-100 bg-sky-50/65',
+    headerClassName: 'border-sky-100 bg-sky-100/70',
+    badgeClassName: 'bg-white text-sky-700 ring-sky-200',
+    dragOverClassName: 'border-sky-300 ring-2 ring-sky-100',
+  },
+  EM_ANDAMENTO: {
+    columnClassName: 'border-amber-100 bg-amber-50/65',
+    headerClassName: 'border-amber-100 bg-amber-100/70',
+    badgeClassName: 'bg-white text-amber-700 ring-amber-200',
+    dragOverClassName: 'border-amber-300 ring-2 ring-amber-100',
+  },
+  AGUARDANDO_APROVACAO: {
+    columnClassName: 'border-violet-100 bg-violet-50/65',
+    headerClassName: 'border-violet-100 bg-violet-100/70',
+    badgeClassName: 'bg-white text-violet-700 ring-violet-200',
+    dragOverClassName: 'border-violet-300 ring-2 ring-violet-100',
+  },
+  CONCLUIDA: {
+    columnClassName: 'border-emerald-100 bg-emerald-50/65',
+    headerClassName: 'border-emerald-100 bg-emerald-100/70',
+    badgeClassName: 'bg-white text-emerald-700 ring-emerald-200',
+    dragOverClassName: 'border-emerald-300 ring-2 ring-emerald-100',
+  },
+  ARQUIVADA: {
+    columnClassName: 'border-slate-200 bg-slate-100/75',
+    headerClassName: 'border-slate-200 bg-slate-200/70',
+    badgeClassName: 'bg-white text-slate-600 ring-slate-200',
+    dragOverClassName: 'border-slate-400 ring-2 ring-slate-200',
+  },
+  CANCELADA: {
+    columnClassName: 'border-rose-100 bg-rose-50/65',
+    headerClassName: 'border-rose-100 bg-rose-100/70',
+    badgeClassName: 'bg-white text-rose-700 ring-rose-200',
+    dragOverClassName: 'border-rose-300 ring-2 ring-rose-100',
+  },
+};
+
 const inputClassName =
   'w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100';
 const panelClassName = 'rounded-2xl border border-slate-200 bg-white shadow-sm';
@@ -1222,7 +1275,9 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
           ) : viewMode === 'KANBAN' ? (
             <div className="overflow-x-auto">
               <div className="grid min-w-[1200px] grid-cols-5 items-start gap-4">
-                {boardByColumn.map((column) => (
+                {boardByColumn.map((column) => {
+                  const tone = kanbanColumnToneMap[column.key];
+                  return (
                   <div
                     key={column.key}
                     onDragOver={(event) => handleColumnDragOver(column.key, event)}
@@ -1234,17 +1289,17 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
                     onDrop={(event) => {
                       void handleColumnDrop(column.key, event);
                     }}
-                    className={`flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border bg-slate-50/70 transition ${
-                      dragOverColumn === column.key ? 'border-blue-300 ring-2 ring-blue-100' : 'border-slate-200'
-                    }`}
+                    className={`flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border transition ${
+                      tone.columnClassName
+                    } ${dragOverColumn === column.key ? tone.dragOverClassName : ''}`}
                   >
-                    <div className="border-b border-slate-200 px-4 py-4">
+                    <div className={`border-b px-4 py-4 ${tone.headerClassName}`}>
                       <div className="flex items-center justify-between gap-3">
                         <div>
                           <h3 className="font-semibold text-slate-900">{column.label}</h3>
                           <p className="mt-1 text-xs leading-5 text-slate-500">{column.description}</p>
                         </div>
-                        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">{column.tasks.length}</span>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${tone.badgeClassName}`}>{column.tasks.length}</span>
                       </div>
                     </div>
                     <div className="flex-1 space-y-3 overflow-y-auto p-3">
@@ -1322,7 +1377,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
                       )}
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
             </div>
           ) : viewMode === 'GANTT' ? (

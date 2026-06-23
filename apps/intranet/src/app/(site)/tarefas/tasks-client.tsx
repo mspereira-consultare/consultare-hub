@@ -196,6 +196,59 @@ const projectStatusToneMap: Record<TaskProjectStatus, string> = {
 
 const RETIRED_TASK_STATUSES: TaskStatus[] = ['ARQUIVADA', 'CANCELADA'];
 
+const kanbanColumnToneMap: Record<
+  TaskStatus,
+  {
+    columnClassName: string;
+    headerClassName: string;
+    badgeClassName: string;
+    dragOverClassName: string;
+  }
+> = {
+  BACKLOG: {
+    columnClassName: 'border-slate-200 bg-slate-100/80',
+    headerClassName: 'border-slate-200 bg-slate-200/70',
+    badgeClassName: 'bg-white text-slate-700 ring-slate-300',
+    dragOverClassName: 'border-slate-400 ring-2 ring-slate-200',
+  },
+  A_FAZER: {
+    columnClassName: 'border-sky-200 bg-sky-50/80',
+    headerClassName: 'border-sky-200 bg-sky-100/80',
+    badgeClassName: 'bg-white text-sky-700 ring-sky-200',
+    dragOverClassName: 'border-sky-400 ring-2 ring-sky-100',
+  },
+  EM_ANDAMENTO: {
+    columnClassName: 'border-amber-200 bg-amber-50/80',
+    headerClassName: 'border-amber-200 bg-amber-100/80',
+    badgeClassName: 'bg-white text-amber-700 ring-amber-200',
+    dragOverClassName: 'border-amber-400 ring-2 ring-amber-100',
+  },
+  AGUARDANDO_APROVACAO: {
+    columnClassName: 'border-violet-200 bg-violet-50/80',
+    headerClassName: 'border-violet-200 bg-violet-100/80',
+    badgeClassName: 'bg-white text-violet-700 ring-violet-200',
+    dragOverClassName: 'border-violet-400 ring-2 ring-violet-100',
+  },
+  CONCLUIDA: {
+    columnClassName: 'border-emerald-200 bg-emerald-50/80',
+    headerClassName: 'border-emerald-200 bg-emerald-100/80',
+    badgeClassName: 'bg-white text-emerald-700 ring-emerald-200',
+    dragOverClassName: 'border-emerald-400 ring-2 ring-emerald-100',
+  },
+  ARQUIVADA: {
+    columnClassName: 'border-slate-200 bg-slate-50/80',
+    headerClassName: 'border-slate-200 bg-slate-100/80',
+    badgeClassName: 'bg-white text-slate-600 ring-slate-200',
+    dragOverClassName: 'border-slate-400 ring-2 ring-slate-100',
+  },
+  CANCELADA: {
+    columnClassName: 'border-rose-200 bg-rose-50/80',
+    headerClassName: 'border-rose-200 bg-rose-100/80',
+    badgeClassName: 'bg-white text-rose-700 ring-rose-200',
+    dragOverClassName: 'border-rose-400 ring-2 ring-rose-100',
+  },
+};
+
 const priorityRank: Record<TaskPriority, number> = {
   URGENTE: 0,
   ALTA: 1,
@@ -1827,8 +1880,10 @@ export function TasksClient({ currentUser }: TasksClientProps) {
               </div>
             )
           ) : (
-            <div className="grid min-w-[1200px] grid-cols-5 items-start gap-4">
-              {boardByColumn.map((column) => (
+              <div className="grid min-w-[1200px] grid-cols-5 items-start gap-4">
+              {boardByColumn.map((column) => {
+                const tone = kanbanColumnToneMap[column.key];
+                return (
                 <div
                   key={column.key}
                   onDragOver={(event) => handleColumnDragOver(column.key, event)}
@@ -1840,17 +1895,17 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                   onDrop={(event) => {
                     void handleColumnDrop(column.key, event);
                   }}
-                  className={`flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border bg-slate-50/70 transition ${
-                    dragOverColumn === column.key ? 'border-blue-300 ring-2 ring-blue-100' : 'border-slate-200'
-                  }`}
+                  className={`flex h-[72vh] min-h-[520px] min-w-0 flex-col rounded-2xl border transition ${
+                    tone.columnClassName
+                  } ${dragOverColumn === column.key ? tone.dragOverClassName : ''}`}
                 >
-                  <div className="border-b border-slate-200 px-4 py-4">
+                  <div className={`border-b px-4 py-4 ${tone.headerClassName}`}>
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <h2 className="font-semibold text-slate-900">{column.label}</h2>
                         <p className="mt-1 text-xs leading-5 text-slate-500">{column.description}</p>
                       </div>
-                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${tone.badgeClassName}`}>
                         {column.tasks.length}
                       </span>
                     </div>
@@ -1957,8 +2012,8 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
+              )})}
+              </div>
           )}
         </div>
       </section>
