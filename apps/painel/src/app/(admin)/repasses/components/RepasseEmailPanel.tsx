@@ -492,7 +492,7 @@ export function RepasseEmailPanel({
                 className="h-9 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-700 disabled:opacity-50"
               />
             </label>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:w-36 lg:grid-cols-1">
+            <div className="flex flex-col gap-2 lg:w-36">
               <button
                 type="button"
                 onClick={() => uploadAttachments(attachmentFiles)}
