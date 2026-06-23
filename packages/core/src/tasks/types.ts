@@ -304,6 +304,32 @@ export type TaskEfficiencySummary = {
   efficiencyPercent: number | null;
 };
 
+export type TaskWeeklyReportEligibilitySkipReason =
+  | 'MISSING_USER_EMPLOYEE_LINK'
+  | 'MISSING_CORPORATE_EMAIL'
+  | 'NO_ELIGIBLE_PENDING_TASKS';
+
+export type TaskWeeklyReportEligibilityRecipient = {
+  userId: string;
+  employeeId: string;
+  employeeName: string;
+  corporateEmail: string;
+  eligiblePendingTaskCount: number;
+};
+
+export type TaskWeeklyReportEligibilitySkippedRecipient = {
+  userId: string | null;
+  employeeId: string | null;
+  employeeName: string | null;
+  reason: TaskWeeklyReportEligibilitySkipReason;
+};
+
+export type TaskWeeklyReportEligibilitySummary = {
+  generatedAt: string;
+  eligibleRecipients: TaskWeeklyReportEligibilityRecipient[];
+  skippedRecipients: TaskWeeklyReportEligibilitySkippedRecipient[];
+};
+
 export type TaskChecklistItemCreateInput = {
   title: string;
 };

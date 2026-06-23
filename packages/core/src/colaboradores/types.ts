@@ -23,6 +23,7 @@ export type Employee = {
   rg: string | null;
   cpf: string | null;
   email: string | null;
+  corporateEmail: string | null;
   phone: string | null;
   birthDate: string | null;
   street: string | null;
@@ -157,6 +158,7 @@ export type EmployeeInput = {
   rg?: string | null;
   cpf?: string | null;
   email?: string | null;
+  corporateEmail?: string | null;
   phone?: string | null;
   birthDate?: string | null;
   street?: string | null;

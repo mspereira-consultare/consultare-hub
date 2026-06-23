@@ -287,6 +287,7 @@ const mapEmployee = (row: any): Employee => ({
   rg: clean(row.rg) || null,
   cpf: clean(row.cpf) || null,
   email: clean(row.email) || null,
+  corporateEmail: clean(row.corporate_email) || null,
   phone: clean(row.phone) || null,
   birthDate: parseDate(row.birth_date),
   street: clean(row.street) || null,
@@ -683,6 +684,10 @@ const normalizeInput = (payload: any): EmployeeInput => {
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     throw new EmployeeValidationError('Email inválido.');
   }
+  const corporateEmail = clean(payload?.corporateEmail || payload?.corporate_email) || null;
+  if (corporateEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(corporateEmail)) {
+    throw new EmployeeValidationError('E-mail corporativo inválido.');
+  }
 
   const admissionDate = parseDate(payload?.admissionDate || payload?.admission_date);
   if (!admissionDate) {
@@ -716,6 +721,7 @@ const normalizeInput = (payload: any): EmployeeInput => {
     rg: normalizeRg(payload?.rg),
     cpf,
     email,
+    corporateEmail,
     phone: normalizePhone(payload?.phone),
     birthDate: parseDate(payload?.birthDate || payload?.birth_date),
     street: clean(payload?.street) || null,
@@ -789,6 +795,25 @@ const normalizeInput = (payload: any): EmployeeInput => {
 
   return input;
 };
+
+const ensureCorporateEmailAvailable = async (db: DbInterface, corporateEmail: string | null, currentEmployeeId?: string | null) => {
+  if (!corporateEmail) return;
+
+  const rows = await db.query(
+    `
+    SELECT id
+    FROM employees
+    WHERE UPPER(TRIM(COALESCE(corporate_email, ''))) = UPPER(TRIM(?))
+      AND id <> ?
+    LIMIT 1
+    `,
+    [corporateEmail, clean(currentEmployeeId) || '']
+  );
+
+  if (rows[0]) {
+    throw new EmployeeValidationError('Este e-mail corporativo já está vinculado a outro colaborador.');
+  }
+};
 const loadDocumentsMap = async (db: DbInterface, employeeIds: string[]) => {
   const documentsByEmployee = new Map<string, EmployeeDocument[]>();
   if (employeeIds.length === 0) return documentsByEmployee;
@@ -841,6 +866,7 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
       rg VARCHAR(40) NULL,
       cpf VARCHAR(14) NOT NULL,
       email VARCHAR(180) NULL,
+      corporate_email VARCHAR(180) NULL,
       phone VARCHAR(40) NULL,
       birth_date DATE NULL,
       street VARCHAR(180) NULL,
@@ -1069,6 +1095,7 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN payroll_notes TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN solides_employee_id VARCHAR(80) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN solides_external_id VARCHAR(120) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN corporate_email VARCHAR(180) NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN location_detail VARCHAR(180) NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN notes TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_locker_assignments ADD COLUMN returned_at DATE NULL`);
@@ -1631,6 +1658,7 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
   const now = NOW();
 
   return runInTransaction(db, async (txDb) => {
+    await ensureCorporateEmailAvailable(txDb, input.corporateEmail ?? null);
     const departmentLink = await syncEmployeeCatalogLink(txDb, 'department', input.department);
     const jobTitleLink = await syncEmployeeCatalogLink(txDb, 'jobTitle', input.jobTitle);
     input.department = departmentLink.value;
@@ -1638,7 +1666,7 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
     await txDb.execute(
       `
       INSERT INTO employees (
-        id, full_name, employment_regime, status, solides_employee_id, solides_external_id, rg, cpf, email, phone, birth_date,
+        id, full_name, employment_regime, status, solides_employee_id, solides_external_id, rg, cpf, email, corporate_email, phone, birth_date,
         street, street_number, address_complement, district, city, state_uf, zip_code,
         education_institution, education_level, course_name, current_semester,
         work_schedule, salary_amount, contract_duration_text, admission_date, contract_end_date,
@@ -1649,7 +1677,7 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
         totalpass_discount_fixed, other_fixed_discount_amount, other_fixed_discount_description,
         payroll_notes, life_insurance_status, marital_status, has_children, children_count,
         bank_name, bank_agency, bank_account, pix_key, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
@@ -1661,6 +1689,7 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
         input.rg,
         input.cpf,
         input.email,
+        input.corporateEmail,
         input.phone,
         input.birthDate,
         input.street,
@@ -1739,6 +1768,7 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
   const now = NOW();
 
   return runInTransaction(db, async (txDb) => {
+    await ensureCorporateEmailAvailable(txDb, input.corporateEmail ?? null, employeeId);
     const departmentLink = await syncEmployeeCatalogLink(txDb, 'department', input.department);
     const jobTitleLink = await syncEmployeeCatalogLink(txDb, 'jobTitle', input.jobTitle);
     input.department = departmentLink.value;
@@ -1755,6 +1785,7 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
         rg = ?,
         cpf = ?,
         email = ?,
+        corporate_email = ?,
         phone = ?,
         birth_date = ?,
         street = ?,
@@ -1813,6 +1844,7 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
         input.rg,
         input.cpf,
         input.email,
+        input.corporateEmail,
         input.phone,
         input.birthDate,
         input.street,

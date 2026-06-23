@@ -38,6 +38,9 @@ import type {
   TaskStatus,
   TaskSummary,
   TaskUpdateInput,
+  TaskWeeklyReportEligibilityRecipient,
+  TaskWeeklyReportEligibilitySkippedRecipient,
+  TaskWeeklyReportEligibilitySummary,
   TaskViewerContext,
 } from './types';
 
@@ -2646,4 +2649,106 @@ export const getTaskEfficiencySummary = async (
 ): Promise<TaskEfficiencySummary> => {
   const tasks = await listTasks(db, viewer, { ...filters, includeCanceled: true });
   return buildTaskEfficiencySummary(tasks);
+};
+
+export const getTaskWeeklyReportEligibilitySummary = async (
+  db: DbInterface
+): Promise<TaskWeeklyReportEligibilitySummary> => {
+  await ensureTaskTables(db);
+
+  const rows = await db.query(
+    `
+    SELECT
+      e.id AS employee_id,
+      e.full_name AS employee_name,
+      e.corporate_email,
+      u.id AS user_id,
+      COUNT(DISTINCT CASE
+        WHEN t.id IS NOT NULL
+          AND t.status IN ('BACKLOG', 'A_FAZER', 'EM_ANDAMENTO', 'AGUARDANDO_APROVACAO')
+          AND (
+            t.primary_assignee_user_id = u.id
+            OR EXISTS (
+              SELECT 1
+              FROM task_assignees ta
+              WHERE ta.task_id = t.id AND ta.user_id = u.id
+            )
+          )
+        THEN t.id
+        ELSE NULL
+      END) AS eligible_pending_task_count
+    FROM employees e
+    LEFT JOIN users u
+      ON u.employee_id = e.id
+      AND UPPER(TRIM(COALESCE(u.status, 'ATIVO'))) = 'ATIVO'
+    LEFT JOIN tasks t
+      ON u.id IS NOT NULL
+      AND (
+        t.primary_assignee_user_id = u.id
+        OR EXISTS (
+          SELECT 1
+          FROM task_assignees a
+          WHERE a.task_id = t.id AND a.user_id = u.id
+        )
+      )
+    WHERE UPPER(TRIM(COALESCE(e.status, 'ATIVO'))) = 'ATIVO'
+    GROUP BY e.id, e.full_name, e.corporate_email, u.id
+    ORDER BY e.full_name ASC
+    `
+  );
+
+  const eligibleRecipients: TaskWeeklyReportEligibilityRecipient[] = [];
+  const skippedRecipients: TaskWeeklyReportEligibilitySkippedRecipient[] = [];
+
+  for (const row of rows as Row[]) {
+    const employeeId = nullable(row.employee_id);
+    const employeeName = nullable(row.employee_name);
+    const userId = nullable(row.user_id);
+    const corporateEmail = nullable(row.corporate_email);
+    const eligiblePendingTaskCount = parseIntSafe(row.eligible_pending_task_count, 0);
+
+    if (!userId) {
+      skippedRecipients.push({
+        userId: null,
+        employeeId,
+        employeeName,
+        reason: 'MISSING_USER_EMPLOYEE_LINK',
+      });
+      continue;
+    }
+
+    if (!corporateEmail) {
+      skippedRecipients.push({
+        userId,
+        employeeId,
+        employeeName,
+        reason: 'MISSING_CORPORATE_EMAIL',
+      });
+      continue;
+    }
+
+    if (eligiblePendingTaskCount <= 0) {
+      skippedRecipients.push({
+        userId,
+        employeeId,
+        employeeName,
+        reason: 'NO_ELIGIBLE_PENDING_TASKS',
+      });
+      continue;
+    }
+
+    eligibleRecipients.push({
+      userId,
+      employeeId: employeeId || '',
+      employeeName: employeeName || '',
+      corporateEmail,
+      eligiblePendingTaskCount,
+    });
+  }
+
+  return {
+    generatedAt: NOW(),
+    eligibleRecipients,
+    skippedRecipients,
+  };
 };

@@ -129,6 +129,7 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
       rg VARCHAR(40) NULL,
       cpf VARCHAR(14) NOT NULL,
       email VARCHAR(180) NULL,
+      corporate_email VARCHAR(180) NULL,
       phone VARCHAR(40) NULL,
       birth_date DATE NULL,
       street VARCHAR(180) NULL,
@@ -243,6 +244,7 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN bank_account VARCHAR(80) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN pix_key VARCHAR(180) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN notes TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN corporate_email VARCHAR(180) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN education_institution VARCHAR(180) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN education_level VARCHAR(20) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN course_name VARCHAR(180) NULL`);
@@ -266,6 +268,7 @@ const mapEmployee = (row: any): Employee => ({
   rg: clean(row.rg) || null,
   cpf: clean(row.cpf) || null,
   email: clean(row.email) || null,
+  corporateEmail: clean(row.corporate_email) || null,
   phone: clean(row.phone) || null,
   birthDate: parseDate(row.birth_date),
   street: clean(row.street) || null,

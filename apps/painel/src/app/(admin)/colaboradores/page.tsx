@@ -111,6 +111,7 @@ type EmployeeFormState = {
   rg: string;
   cpf: string;
   email: string;
+  corporateEmail: string;
   phone: string;
   birthDate: string;
   street: string;
@@ -269,6 +270,7 @@ const emptyEmployeeForm = (): EmployeeFormState => ({
   rg: '',
   cpf: '',
   email: '',
+  corporateEmail: '',
   phone: '',
   birthDate: '',
   street: '',
@@ -402,6 +404,7 @@ const mapEmployeeToForm = (employee: EmployeeListItem): EmployeeFormState => ({
   rg: employee.rg || '',
   cpf: formatCpf(employee.cpf || ''),
   email: employee.email || '',
+  corporateEmail: employee.corporateEmail || '',
   phone: formatPhone(employee.phone || ''),
   birthDate: employee.birthDate || '',
   street: employee.street || '',
@@ -915,6 +918,7 @@ export default function ColaboradoresPage() {
         ...form,
         cpf: form.cpf,
         phone: form.phone,
+        corporateEmail: form.corporateEmail.trim(),
         solidesEmployeeId: form.solidesEmployeeId.trim(),
         solidesExternalId: form.solidesExternalId.trim(),
         salaryAmount: parseNumericInput(form.salaryAmount),
@@ -1632,11 +1636,22 @@ export default function ColaboradoresPage() {
 
                       <SectionCard title="Contato" description="Canais de contato e endereço residencial." icon={Briefcase}>
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-                          <div className="md:col-span-6">
-                            <label className={fieldLabelClassName}>E-mail</label>
+                          <div className="md:col-span-4">
+                            <label className={fieldLabelClassName}>E-mail pessoal</label>
                             <input disabled={currentEmployeeReadOnly} type="email" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} className={filterInputClassName} />
                           </div>
-                          <div className="md:col-span-6">
+                          <div className="md:col-span-4">
+                            <label className={fieldLabelClassName}>E-mail corporativo</label>
+                            <input
+                              disabled={currentEmployeeReadOnly}
+                              type="email"
+                              value={form.corporateEmail}
+                              onChange={(event) => setForm((prev) => ({ ...prev, corporateEmail: event.target.value }))}
+                              className={filterInputClassName}
+                              placeholder="nome@consultare.com.br"
+                            />
+                          </div>
+                          <div className="md:col-span-4">
                             <label className={fieldLabelClassName}>Telefone</label>
                             <input disabled={currentEmployeeReadOnly} value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: formatPhone(event.target.value) }))} className={filterInputClassName} placeholder="(19) 99999-9999" />
                           </div>
