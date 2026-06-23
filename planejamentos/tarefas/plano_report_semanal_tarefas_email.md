@@ -3,7 +3,7 @@
 ## Resumo
 Objetivo:
 - enviar automaticamente um **report semanal por e-mail** para colaboradores com pendências reais no módulo de tarefas;
-- usar **MailerSend** com remetente próprio do fluxo;
+- usar **SendPulse** com remetente próprio do fluxo;
 - adicionar **e-mail corporativo** no cadastro oficial de colaborador;
 - incluir **eficiência acumulada** e **eficiência semanal**;
 - disponibilizar uma **camada administrativa simples no painel** para acompanhar envios, faltantes e falhas.
@@ -18,9 +18,15 @@ Decisões fechadas:
 - formato do e-mail: **resumo + lista curta**;
 - lista prioriza **atrasadas e urgentes**;
 - o e-mail mostra **eficiência acumulada** e **eficiência da semana**;
+- configurações operacionais do report serão gerenciadas no painel, não no `.env`:
+  - ativação do recurso
+  - e-mail remetente
+  - nome do remetente
+  - e-mail de resposta
 - remetente padrão do V1:
   - `no-reply@consultare.com.br`
   - nome: `Consultare Intranet`
+- o módulo de **repasses** permanece em `MailerSend` e não entra neste escopo
 
 ## Sprint 1 — Base Cadastral e Elegibilidade
 Objetivo:
@@ -95,16 +101,18 @@ Entregas:
   - ignorados com motivo
   - falhas
   - `provider_message_id`
-- integrar com MailerSend;
-- adicionar envs específicas:
-  - `TASKS_WEEKLY_REPORT_ENABLED`
-  - `TASKS_WEEKLY_REPORT_FROM_EMAIL`
-  - `TASKS_WEEKLY_REPORT_FROM_NAME`
-  - `TASKS_WEEKLY_REPORT_REPLY_TO_EMAIL`
+- integrar com SendPulse;
+- manter em `.env` apenas segredos e infraestrutura do fluxo:
   - `TASKS_WEEKLY_REPORT_CRON_SECRET`
+- criar persistência/configuração administrativa do recurso para substituir envs operacionais:
+  - `enabled`
+  - `fromEmail`
+  - `fromName`
+  - `replyToEmail`
+- validar que `fromEmail` pertence a remetente/domínio autorizado no SendPulse antes de ativar o envio;
 - criar rota processadora protegida por segredo;
 - garantir idempotência por semana;
-- criar webhook ou trilha equivalente para status de entrega/falha.
+- criar webhook ou trilha equivalente para status de entrega/falha no SendPulse.
 
 Critério de pronto:
 - um lote semanal pode ser executado ponta a ponta sem duplicação automática e com rastreabilidade completa.
@@ -118,7 +126,13 @@ Entregas:
 - mostrar status do recurso:
   - ativo/desativado
   - remetente configurado
+  - e-mail de resposta configurado
   - próximo disparo esperado
+- permitir editar diretamente na UI administrativa:
+  - ativação do recurso
+  - e-mail remetente
+  - nome do remetente
+  - e-mail de resposta
 - mostrar resumo do último run:
   - elegíveis
   - enviados
@@ -153,11 +167,11 @@ Entregas:
   - só criador
   - com vencidas e urgentes
 - validar assunto, HTML, texto e CTA;
-- validar remetente, reply-to e webhook no MailerSend;
+- validar remetente, reply-to e webhook no SendPulse;
 - revisar mensagens administrativas de skip/falha;
 - preparar checklist de ativação:
-  - remetente validado
-  - envs preenchidas
+  - remetente validado no SendPulse
+  - configuração administrativa preenchida
   - cron configurado
   - base mínima de `corporate_email` carregada
 
@@ -176,15 +190,17 @@ Critério de pronto:
   - `task_weekly_report_runs`
   - `task_weekly_report_recipients`
   - `task_weekly_report_events`
+- Nova configuração administrativa esperada:
+  - `TaskWeeklyReportSettings`
+  - `enabled`
+  - `fromEmail`
+  - `fromName`
+  - `replyToEmail`
 - Novas envs:
-  - `TASKS_WEEKLY_REPORT_ENABLED`
-  - `TASKS_WEEKLY_REPORT_FROM_EMAIL`
-  - `TASKS_WEEKLY_REPORT_FROM_NAME`
-  - `TASKS_WEEKLY_REPORT_REPLY_TO_EMAIL`
   - `TASKS_WEEKLY_REPORT_CRON_SECRET`
 - Reuso obrigatório:
   - `INTRANET_BASE_URL`
-  - MailerSend já configurado no projeto
+  - credenciais/integração de SendPulse já configuradas no projeto
 
 ## Testes e Cenários
 - colaborador com 0 pendências no corte não recebe;
@@ -199,10 +215,11 @@ Critério de pronto:
 - lista curta respeita a ordem por atraso e urgência;
 - CTA abre `/tarefas` na intranet;
 - o mesmo período semanal não dispara automaticamente duas vezes;
-- eventos do MailerSend atualizam o status do envio.
+- eventos do SendPulse atualizam o status do envio.
 
 ## Assumptions e Defaults
 - O backend e a operação ficam no painel; o destino do colaborador é a intranet.
 - O V1 não inclui anexos, PDF, XLSX ou editor visual de template.
 - O V1 não usa e-mail pessoal em nenhum cenário.
 - O V1 já inclui disparo manual controlado para homologação, além do cron automático.
+- As configurações operacionais do fluxo vivem no painel; o `.env` fica restrito a segredo e infraestrutura.
