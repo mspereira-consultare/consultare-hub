@@ -38,9 +38,12 @@ import type {
   TaskStatus,
   TaskSummary,
   TaskUpdateInput,
+  TaskWeeklyReportEmailPayload,
   TaskWeeklyReportEligibilityRecipient,
   TaskWeeklyReportEligibilitySkippedRecipient,
   TaskWeeklyReportEligibilitySummary,
+  TaskWeeklyReportTaskItem,
+  TaskWeeklyReportWindow,
   TaskViewerContext,
 } from './types';
 
@@ -218,6 +221,39 @@ const parseDate = (value: unknown): string | null => {
   if (br) return `${br[3]}-${br[2]}-${br[1]}`;
 
   return null;
+};
+
+const SAO_PAULO_TIME_ZONE = 'America/Sao_Paulo';
+const getTodayInSaoPauloIso = () => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SAO_PAULO_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const byType = new Map(parts.map((part) => [part.type, part.value]));
+  return `${byType.get('year')}-${byType.get('month')}-${byType.get('day')}`;
+};
+
+const shiftIsoDate = (isoDate: string, days: number) => {
+  const date = new Date(`${isoDate}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+const getPreviousWeeklyReportWindow = (): TaskWeeklyReportWindow => {
+  const todayIso = getTodayInSaoPauloIso();
+  const weekday = new Date(`${todayIso}T12:00:00Z`).getUTCDay();
+  const diffToCurrentMonday = weekday === 0 ? -6 : 1 - weekday;
+  const currentWeekStart = shiftIsoDate(todayIso, diffToCurrentMonday);
+  const startDate = shiftIsoDate(currentWeekStart, -7);
+  const endDate = shiftIsoDate(currentWeekStart, -1);
+
+  return {
+    startDate,
+    endDate,
+    label: `${startDate} a ${endDate}`,
+  };
 };
 
 const serializePayload = (payload: Record<string, unknown> | null) => (payload ? JSON.stringify(payload) : null);
@@ -2651,6 +2687,60 @@ export const getTaskEfficiencySummary = async (
   return buildTaskEfficiencySummary(tasks);
 };
 
+const isPendingOperationalTask = (task: Pick<TaskSummary, 'status'>) =>
+  task.status === 'BACKLOG' ||
+  task.status === 'A_FAZER' ||
+  task.status === 'EM_ANDAMENTO' ||
+  task.status === 'AGUARDANDO_APROVACAO';
+
+const isCompletedWithinWindow = (completedAt: string | null, window: TaskWeeklyReportWindow) => {
+  if (!completedAt) return false;
+  return completedAt >= `${window.startDate}T00:00:00.000Z` && completedAt <= `${window.endDate}T23:59:59.999Z`;
+};
+
+const isTaskDueBetween = (dueDate: string | null, startDate: string, endDate: string) => {
+  if (!dueDate) return false;
+  return dueDate >= startDate && dueDate <= endDate;
+};
+
+const compareHighlightedTasks = (left: TaskSummary, right: TaskSummary, todayIso: string) => {
+  const leftOverdue = Boolean(left.dueDate && left.dueDate < todayIso);
+  const rightOverdue = Boolean(right.dueDate && right.dueDate < todayIso);
+  if (leftOverdue !== rightOverdue) return leftOverdue ? -1 : 1;
+
+  const priorityRank = (priority: TaskPriority) =>
+    ({
+      URGENTE: 0,
+      ALTA: 1,
+      MEDIA: 2,
+      BAIXA: 3,
+    })[priority];
+
+  const leftPriority = priorityRank(left.priority);
+  const rightPriority = priorityRank(right.priority);
+  if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+
+  const leftDue = left.dueDate || '9999-12-31';
+  const rightDue = right.dueDate || '9999-12-31';
+  if (leftDue !== rightDue) return leftDue.localeCompare(rightDue);
+
+  return left.protocolNumber - right.protocolNumber;
+};
+
+const mapWeeklyReportTaskItem = (task: TaskSummary, todayIso: string, dueSoonEndDate: string): TaskWeeklyReportTaskItem => ({
+  taskId: task.id,
+  protocolId: task.protocolId,
+  title: task.title,
+  status: task.status,
+  priority: task.priority,
+  dueDate: task.dueDate,
+  startDate: task.startDate,
+  department: task.department,
+  projectName: task.projectName,
+  isOverdue: Boolean(task.dueDate && task.dueDate < todayIso),
+  isDueSoon: Boolean(task.dueDate && task.dueDate >= todayIso && task.dueDate <= dueSoonEndDate),
+});
+
 export const getTaskWeeklyReportEligibilitySummary = async (
   db: DbInterface
 ): Promise<TaskWeeklyReportEligibilitySummary> => {
@@ -2750,5 +2840,105 @@ export const getTaskWeeklyReportEligibilitySummary = async (
     generatedAt: NOW(),
     eligibleRecipients,
     skippedRecipients,
+  };
+};
+
+export const getTaskWeeklyReportPreview = async (
+  db: DbInterface,
+  userId: string
+): Promise<TaskWeeklyReportEmailPayload> => {
+  await ensureTaskTables(db);
+
+  const cleanUserId = clean(userId);
+  if (!cleanUserId) {
+    throw new TaskValidationError('Usuário do report semanal não informado.', 400);
+  }
+
+  const window = getPreviousWeeklyReportWindow();
+  const todayIso = getTodayInSaoPauloIso();
+  const dueSoonEndDate = shiftIsoDate(todayIso, 7);
+  const intranetBaseUrl = clean(process.env.INTRANET_BASE_URL) || clean(process.env.NEXT_PUBLIC_INTRANET_URL) || '';
+  const intranetTasksUrl = `${intranetBaseUrl.replace(/\/$/, '')}/tarefas`;
+
+  const recipientRows = await db.query(
+    `
+    SELECT
+      u.id AS user_id,
+      e.id AS employee_id,
+      e.full_name AS employee_name,
+      e.corporate_email
+    FROM users u
+    INNER JOIN employees e ON e.id = u.employee_id
+    WHERE ${userIdEqualsSql('u.id')}
+      AND UPPER(TRIM(COALESCE(u.status, 'ATIVO'))) = 'ATIVO'
+      AND UPPER(TRIM(COALESCE(e.status, 'ATIVO'))) = 'ATIVO'
+    LIMIT 1
+    `,
+    [cleanUserId]
+  );
+
+  const recipientRow = recipientRows[0] as Row | undefined;
+  if (!recipientRow) {
+    throw new TaskValidationError('Usuário não possui vínculo ativo com colaborador para o report semanal.', 404);
+  }
+
+  const corporateEmail = nullable(recipientRow.corporate_email);
+  if (!corporateEmail) {
+    throw new TaskValidationError('Colaborador não possui e-mail corporativo cadastrado.', 400);
+  }
+
+  const viewer: TaskViewerContext = {
+    userId: cleanUserId,
+    canViewAll: true,
+  };
+
+  const tasks = await listTasks(db, viewer, {
+    assigneeUserId: cleanUserId,
+    includeCanceled: true,
+  });
+
+  const pendingTasks = tasks.filter((task) => isPendingOperationalTask(task));
+  const overdueTasks = pendingTasks.filter((task) => Boolean(task.dueDate && task.dueDate < todayIso));
+  const dueNext7DaysTasks = pendingTasks.filter((task) => isTaskDueBetween(task.dueDate, todayIso, dueSoonEndDate));
+  const awaitingApprovalTasks = pendingTasks.filter((task) => task.status === 'AGUARDANDO_APROVACAO');
+  const accumulatedEfficiency = buildTaskEfficiencySummary(tasks);
+  if (pendingTasks.length <= 0) {
+    throw new TaskValidationError('Colaborador não possui pendências operacionais elegíveis para o report semanal.', 400);
+  }
+
+  const weeklyCompletedTasks = tasks.filter(
+    (task) => task.status !== 'CANCELADA' && Boolean(task.completedAt) && isCompletedWithinWindow(task.completedAt, window)
+  ).length;
+  const weeklyEfficiencyBaseTasks = weeklyCompletedTasks + pendingTasks.length;
+  const weeklyEfficiencyPercent =
+    weeklyEfficiencyBaseTasks > 0 ? Math.round((weeklyCompletedTasks / weeklyEfficiencyBaseTasks) * 100) : null;
+
+  const highlightedTasks = pendingTasks
+    .slice()
+    .sort((left, right) => compareHighlightedTasks(left, right, todayIso))
+    .slice(0, 8)
+    .map((task) => mapWeeklyReportTaskItem(task, todayIso, dueSoonEndDate));
+
+  return {
+    recipient: {
+      userId: clean(recipientRow.user_id),
+      employeeId: clean(recipientRow.employee_id),
+      employeeName: clean(recipientRow.employee_name),
+      corporateEmail,
+    },
+    period: window,
+    generatedAt: NOW(),
+    intranetTasksUrl,
+    summary: {
+      pendingTasks: pendingTasks.length,
+      overdueTasks: overdueTasks.length,
+      dueNext7DaysTasks: dueNext7DaysTasks.length,
+      awaitingApprovalTasks: awaitingApprovalTasks.length,
+      accumulatedEfficiency,
+      weeklyEfficiencyPercent,
+      weeklyCompletedTasks,
+      weeklyEfficiencyBaseTasks,
+    },
+    highlightedTasks,
   };
 };

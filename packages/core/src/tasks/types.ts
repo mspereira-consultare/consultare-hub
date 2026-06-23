@@ -330,6 +330,49 @@ export type TaskWeeklyReportEligibilitySummary = {
   skippedRecipients: TaskWeeklyReportEligibilitySkippedRecipient[];
 };
 
+export type TaskWeeklyReportWindow = {
+  startDate: string;
+  endDate: string;
+  label: string;
+};
+
+export type TaskWeeklyReportTaskItem = {
+  taskId: string;
+  protocolId: string;
+  title: string;
+  status: TaskStatus;
+  priority: TaskPriority;
+  dueDate: string | null;
+  startDate: string | null;
+  department: string;
+  projectName: string | null;
+  isOverdue: boolean;
+  isDueSoon: boolean;
+};
+
+export type TaskWeeklyReportEmailPayload = {
+  recipient: {
+    userId: string;
+    employeeId: string;
+    employeeName: string;
+    corporateEmail: string;
+  };
+  period: TaskWeeklyReportWindow;
+  generatedAt: string;
+  intranetTasksUrl: string;
+  summary: {
+    pendingTasks: number;
+    overdueTasks: number;
+    dueNext7DaysTasks: number;
+    awaitingApprovalTasks: number;
+    accumulatedEfficiency: TaskEfficiencySummary;
+    weeklyEfficiencyPercent: number | null;
+    weeklyCompletedTasks: number;
+    weeklyEfficiencyBaseTasks: number;
+  };
+  highlightedTasks: TaskWeeklyReportTaskItem[];
+};
+
 export type TaskChecklistItemCreateInput = {
   title: string;
 };
