@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
+  Activity,
   Gauge,
   Calendar,
   CheckCircle2,
@@ -15,9 +16,12 @@ import {
   Filter,
   LayoutGrid,
   Loader2,
+  Mail,
   MessageCircle,
   Paperclip,
+  Play,
   Search,
+  Send,
   ShieldCheck,
   SlidersHorizontal,
   Table2,
@@ -29,9 +33,11 @@ import type {
   TaskDashboardSummary,
   TaskDependency,
   TaskDetail,
+  TaskEfficiencySummary,
   TaskPortfolioGantt,
   TaskPortfolioGanttSection,
   TaskPriority,
+  TaskWeeklyReportEmailPayload,
   TaskProjectDetail,
   TaskProjectStatus,
   TaskProjectSummary,
@@ -81,6 +87,53 @@ type FiltersState = {
   status: string;
   dueBucket: string;
   scheduleState: 'all' | 'SCHEDULED' | 'UNSCHEDULED';
+};
+
+type WeeklyReportSettingsState = {
+  enabled: boolean;
+  fromEmail: string;
+  fromName: string;
+  replyToEmail: string;
+  updatedAt: string | null;
+  updatedBy: string | null;
+};
+
+type WeeklyReportRunItem = {
+  id: string;
+  runKey: string;
+  windowStartDate: string;
+  windowEndDate: string;
+  status: 'RUNNING' | 'COMPLETED' | 'FAILED';
+  triggerSource: 'cron' | 'manual';
+  triggeredBy: string;
+  attemptNumber: number;
+  provider: string;
+  eligibleCount: number;
+  skippedCount: number;
+  sentCount: number;
+  failedCount: number;
+  startedAt: string;
+  finishedAt: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type WeeklyReportEligibilityState = {
+  generatedAt: string;
+  eligibleRecipients: Array<{
+    userId: string;
+    employeeId: string;
+    employeeName: string;
+    corporateEmail: string;
+    eligiblePendingTaskCount: number;
+  }>;
+  skippedRecipients: Array<{
+    userId: string | null;
+    employeeId: string | null;
+    employeeName: string | null;
+    reason: 'MISSING_USER_EMPLOYEE_LINK' | 'MISSING_CORPORATE_EMAIL' | 'NO_ELIGIBLE_PENDING_TASKS';
+  }>;
 };
 
 const KANBAN_COLUMNS: Array<{ key: TaskStatus; label: string; description: string }> = [
@@ -152,6 +205,20 @@ const buildEfficiencyHelper = (summary: TaskDashboardSummary | null) => {
   }
 
   return `${summary.efficiency.completedTasks} de ${summary.efficiency.operationalTasks} tarefas operacionais concluídas`;
+};
+
+const buildEfficiencySummaryLabel = (summary: TaskEfficiencySummary | null | undefined) => {
+  if (!summary || summary.efficiencyPercent == null) return '—';
+  return `${summary.efficiencyPercent}%`;
+};
+
+const weeklyReportSkipReasonLabelMap: Record<
+  WeeklyReportEligibilityState['skippedRecipients'][number]['reason'],
+  string
+> = {
+  MISSING_USER_EMPLOYEE_LINK: 'Sem vínculo entre usuário e colaborador',
+  MISSING_CORPORATE_EMAIL: 'Sem e-mail corporativo',
+  NO_ELIGIBLE_PENDING_TASKS: 'Sem pendências elegíveis',
 };
 
 const RETIRED_TASK_STATUSES: TaskStatus[] = ['ARQUIVADA', 'CANCELADA'];
@@ -487,6 +554,22 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dragOverColumn, setDragOverColumn] = useState<TaskStatus | null>(null);
   const dragClickGuardRef = useRef<string | null>(null);
+  const [weeklyReportSettings, setWeeklyReportSettings] = useState<WeeklyReportSettingsState>({
+    enabled: false,
+    fromEmail: '',
+    fromName: 'Consultare Intranet',
+    replyToEmail: '',
+    updatedAt: null,
+    updatedBy: null,
+  });
+  const [weeklyReportEligibility, setWeeklyReportEligibility] = useState<WeeklyReportEligibilityState | null>(null);
+  const [weeklyReportRuns, setWeeklyReportRuns] = useState<WeeklyReportRunItem[]>([]);
+  const [weeklyReportPreview, setWeeklyReportPreview] = useState<TaskWeeklyReportEmailPayload | null>(null);
+  const [selectedPreviewUserId, setSelectedPreviewUserId] = useState('all');
+  const [weeklyReportLoading, setWeeklyReportLoading] = useState(false);
+  const [weeklyReportSaving, setWeeklyReportSaving] = useState(false);
+  const [weeklyReportRunning, setWeeklyReportRunning] = useState(false);
+  const [weeklyReportPreviewLoading, setWeeklyReportPreviewLoading] = useState(false);
 
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
   const projectOptions = useMemo(
@@ -590,6 +673,48 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
     } catch (err) {
       console.error('Erro ao carregar projetos da governança:', err);
       setProjects([]);
+    }
+  };
+
+  const loadWeeklyReportAdmin = async () => {
+    setWeeklyReportLoading(true);
+    try {
+      const [settingsResponse, eligibilityResponse, runsResponse] = await Promise.all([
+        fetch('/api/admin/tasks/weekly-report/settings', { cache: 'no-store' }),
+        fetch('/api/admin/tasks/weekly-report/eligibility', { cache: 'no-store' }),
+        fetch('/api/admin/tasks/weekly-report/runs?limit=8', { cache: 'no-store' }),
+      ]);
+
+      if (!settingsResponse.ok) throw new Error(await normalizeError(settingsResponse));
+      if (!eligibilityResponse.ok) throw new Error(await normalizeError(eligibilityResponse));
+      if (!runsResponse.ok) throw new Error(await normalizeError(runsResponse));
+
+      const settingsPayload = await settingsResponse.json();
+      const eligibilityPayload = await eligibilityResponse.json();
+      const runsPayload = await runsResponse.json();
+
+      const nextSettings = (settingsPayload.data || null) as WeeklyReportSettingsState | null;
+      const nextEligibility = (eligibilityPayload.data || null) as WeeklyReportEligibilityState | null;
+      const nextRuns = Array.isArray(runsPayload.data) ? (runsPayload.data as WeeklyReportRunItem[]) : [];
+
+      if (nextSettings) {
+        setWeeklyReportSettings({
+          ...nextSettings,
+          replyToEmail: nextSettings.replyToEmail || '',
+        });
+      }
+      setWeeklyReportEligibility(nextEligibility);
+      setWeeklyReportRuns(nextRuns);
+      setSelectedPreviewUserId((current) => {
+        if (current !== 'all' && nextEligibility?.eligibleRecipients.some((recipient) => recipient.userId === current)) {
+          return current;
+        }
+        return nextEligibility?.eligibleRecipients[0]?.userId || 'all';
+      });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao carregar a administração do report semanal.');
+    } finally {
+      setWeeklyReportLoading(false);
     }
   };
 
@@ -703,6 +828,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
 
   useEffect(() => {
     void loadProjects();
+    void loadWeeklyReportAdmin();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -745,6 +871,31 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
     [filters]
   );
 
+  const latestWeeklyReportRun = weeklyReportRuns[0] || null;
+  const ignoredByCorporateEmail = useMemo(
+    () =>
+      weeklyReportEligibility?.skippedRecipients.filter((item) => item.reason === 'MISSING_CORPORATE_EMAIL') || [],
+    [weeklyReportEligibility]
+  );
+  const ignoredByUserLink = useMemo(
+    () =>
+      weeklyReportEligibility?.skippedRecipients.filter((item) => item.reason === 'MISSING_USER_EMPLOYEE_LINK') || [],
+    [weeklyReportEligibility]
+  );
+  const ignoredByNoPending = useMemo(
+    () =>
+      weeklyReportEligibility?.skippedRecipients.filter((item) => item.reason === 'NO_ELIGIBLE_PENDING_TASKS') || [],
+    [weeklyReportEligibility]
+  );
+  const previewUserOptions = useMemo(
+    () =>
+      (weeklyReportEligibility?.eligibleRecipients || []).map((recipient) => ({
+        value: recipient.userId,
+        label: `${recipient.employeeName} · ${recipient.corporateEmail}`,
+      })),
+    [weeklyReportEligibility]
+  );
+
   const handleSave = async () => {
     if (!selectedTask || !canEdit || saving) return;
     setSaving(true);
@@ -775,6 +926,78 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       setError(err instanceof Error ? err.message : 'Erro ao salvar tarefa.');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleSaveWeeklyReportSettings = async () => {
+    if (!canEdit || weeklyReportSaving) return;
+    setWeeklyReportSaving(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/tasks/weekly-report/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: weeklyReportSettings.enabled,
+          fromEmail: weeklyReportSettings.fromEmail,
+          fromName: weeklyReportSettings.fromName,
+          replyToEmail: weeklyReportSettings.replyToEmail.trim() || null,
+        }),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const payload = await response.json();
+      const data = (payload.data || null) as WeeklyReportSettingsState | null;
+      if (data) {
+        setWeeklyReportSettings({
+          ...data,
+          replyToEmail: data.replyToEmail || '',
+        });
+      }
+      setSuccessMessage('Configurações do report semanal salvas com sucesso.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao salvar as configurações do report semanal.');
+    } finally {
+      setWeeklyReportSaving(false);
+    }
+  };
+
+  const handleGenerateWeeklyReportPreview = async () => {
+    if (selectedPreviewUserId === 'all' || weeklyReportPreviewLoading) return;
+    setWeeklyReportPreviewLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/tasks/weekly-report/preview?userId=${encodeURIComponent(selectedPreviewUserId)}`, {
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const payload = await response.json();
+      setWeeklyReportPreview((payload.data || null) as TaskWeeklyReportEmailPayload | null);
+      setSuccessMessage('Prévia do report semanal carregada para homologação.');
+    } catch (err: unknown) {
+      setWeeklyReportPreview(null);
+      setError(err instanceof Error ? err.message : 'Erro ao gerar a prévia do report semanal.');
+    } finally {
+      setWeeklyReportPreviewLoading(false);
+    }
+  };
+
+  const handleRunWeeklyReport = async () => {
+    if (!canEdit || weeklyReportRunning) return;
+    setWeeklyReportRunning(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/tasks/weekly-report/process', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force: true }),
+      });
+      if (!response.ok) throw new Error(await normalizeError(response));
+      await loadWeeklyReportAdmin();
+      setSuccessMessage('Disparo manual do report semanal iniciado com sucesso.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao iniciar o disparo manual do report semanal.');
+    } finally {
+      setWeeklyReportRunning(false);
     }
   };
 
@@ -1162,6 +1385,295 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
         <ExecutiveMetricCard label="Aguardando aprovação" value={summary?.awaitingApprovalTasks || 0} helper="Fila de decisão" tone="info" icon={<ShieldCheck size={18} />} />
         <ExecutiveMetricCard label="Aprovadas" value={summary?.approvedTasks || 0} helper="Último ciclo aprovado" tone="success" icon={<CheckCircle2 size={18} />} />
         <ExecutiveMetricCard label="Eficiência no recorte" value={buildEfficiencyValue(summary)} helper={buildEfficiencyHelper(summary)} tone="info" icon={<Gauge size={18} />} />
+      </section>
+
+      <section className={`${panelClassName} overflow-hidden`}>
+        <div className="border-b border-slate-200 px-5 py-4">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Report semanal por e-mail</div>
+              <h2 className="mt-1 text-lg font-semibold text-slate-900">Camada administrativa do disparo automático</h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Acompanhe elegibilidade, remetente, histórico recente e rode homologações controladas sem sair da governança.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {weeklyReportLoading ? (
+                <span className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#17407E]">
+                  <Loader2 size={14} className="animate-spin" />
+                  Atualizando painel
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => void loadWeeklyReportAdmin()}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                <Activity size={16} />
+                Atualizar
+              </button>
+              <button
+                type="button"
+                disabled={!canEdit || weeklyReportRunning}
+                onClick={() => void handleRunWeeklyReport()}
+                className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-[#17407E] disabled:opacity-60"
+              >
+                {weeklyReportRunning ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+                Disparo manual
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-4 p-5 xl:grid-cols-[1.25fr_0.95fr]">
+          <div className="space-y-4">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Status do recurso</div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{weeklyReportSettings.enabled ? 'Ativo' : 'Desativado'}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {weeklyReportSettings.enabled ? 'Pronto para processar quando as credenciais do SendPulse estiverem válidas.' : 'Fluxo pausado na camada administrativa.'}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Elegíveis agora</div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{weeklyReportEligibility?.eligibleRecipients.length || 0}</div>
+                <div className="mt-1 text-xs text-slate-500">Colaboradores com pendências operacionais sob execução direta.</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Ignorados por cadastro</div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{ignoredByCorporateEmail.length + ignoredByUserLink.length}</div>
+                <div className="mt-1 text-xs text-slate-500">Sem e-mail corporativo ou sem vínculo entre usuário e colaborador.</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Último run</div>
+                <div className="mt-2 text-2xl font-bold text-slate-900">{latestWeeklyReportRun?.status || '—'}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {latestWeeklyReportRun ? `${latestWeeklyReportRun.sentCount} envio(s), ${latestWeeklyReportRun.failedCount} falha(s)` : 'Nenhuma execução registrada ainda.'}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <Send size={16} className="text-[#17407E]" />
+                  Configuração operacional
+                </div>
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={weeklyReportSettings.enabled}
+                      disabled={!canEdit}
+                      onChange={(event) =>
+                        setWeeklyReportSettings((current) => ({
+                          ...current,
+                          enabled: event.target.checked,
+                        }))
+                      }
+                    />
+                    Ativar envio semanal
+                  </label>
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                    Próximo disparo esperado: segunda-feira às 06h30, horário de São Paulo.
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-sm font-medium text-slate-700">E-mail remetente</label>
+                    <input
+                      value={weeklyReportSettings.fromEmail}
+                      disabled={!canEdit || weeklyReportSaving}
+                      onChange={(event) =>
+                        setWeeklyReportSettings((current) => ({
+                          ...current,
+                          fromEmail: event.target.value,
+                        }))
+                      }
+                      className={inputClassName}
+                      placeholder="no-reply@consultare.com.br"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">Nome do remetente</label>
+                    <input
+                      value={weeklyReportSettings.fromName}
+                      disabled={!canEdit || weeklyReportSaving}
+                      onChange={(event) =>
+                        setWeeklyReportSettings((current) => ({
+                          ...current,
+                          fromName: event.target.value,
+                        }))
+                      }
+                      className={inputClassName}
+                      placeholder="Consultare Intranet"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">E-mail de resposta</label>
+                    <input
+                      value={weeklyReportSettings.replyToEmail}
+                      disabled={!canEdit || weeklyReportSaving}
+                      onChange={(event) =>
+                        setWeeklyReportSettings((current) => ({
+                          ...current,
+                          replyToEmail: event.target.value,
+                        }))
+                      }
+                      className={inputClassName}
+                      placeholder="gestao@consultare.com.br"
+                    />
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs text-slate-500">
+                    Última atualização: {weeklyReportSettings.updatedAt ? formatDateTime(weeklyReportSettings.updatedAt) : 'Ainda não configurado'}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveWeeklyReportSettings()}
+                    disabled={!canEdit || weeklyReportSaving}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {weeklyReportSaving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                    Salvar configuração
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  <Mail size={16} className="text-[#17407E]" />
+                  Homologação rápida
+                </div>
+                <p className="mt-2 text-sm text-slate-500">
+                  Gere uma prévia real do resumo de um colaborador elegível antes de liberar o fluxo automático.
+                </p>
+                <div className="mt-3 space-y-3">
+                  <SearchableFilterSelect
+                    label="Colaborador elegível"
+                    value={selectedPreviewUserId}
+                    onChange={setSelectedPreviewUserId}
+                    allLabel={previewUserOptions.length ? 'Selecione um colaborador elegível' : 'Nenhum elegível no momento'}
+                    options={previewUserOptions}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleGenerateWeeklyReportPreview()}
+                    disabled={selectedPreviewUserId === 'all' || weeklyReportPreviewLoading}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {weeklyReportPreviewLoading ? <Loader2 size={16} className="animate-spin" /> : <ExternalLink size={16} />}
+                    Gerar prévia manual
+                  </button>
+                  {weeklyReportPreview ? (
+                    <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-slate-700">
+                      <div className="font-semibold text-[#17407E]">{weeklyReportPreview.recipient.employeeName}</div>
+                      <div className="mt-1 text-xs text-slate-500">{weeklyReportPreview.recipient.corporateEmail}</div>
+                      <div className="mt-3 grid gap-2 text-xs text-slate-600 md:grid-cols-2">
+                        <div>Pendências atuais: <span className="font-semibold text-slate-900">{weeklyReportPreview.summary.pendingTasks}</span></div>
+                        <div>Vencidas: <span className="font-semibold text-slate-900">{weeklyReportPreview.summary.overdueTasks}</span></div>
+                        <div>A vencer em 7 dias: <span className="font-semibold text-slate-900">{weeklyReportPreview.summary.dueNext7DaysTasks}</span></div>
+                        <div>Aguardando aprovação: <span className="font-semibold text-slate-900">{weeklyReportPreview.summary.awaitingApprovalTasks}</span></div>
+                        <div>Eficiência acumulada: <span className="font-semibold text-slate-900">{buildEfficiencySummaryLabel(weeklyReportPreview.summary.accumulatedEfficiency)}</span></div>
+                        <div>Eficiência da semana: <span className="font-semibold text-slate-900">{weeklyReportPreview.summary.weeklyEfficiencyPercent == null ? '—' : `${weeklyReportPreview.summary.weeklyEfficiencyPercent}%`}</span></div>
+                      </div>
+                      <div className="mt-3">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Tarefas destacadas</div>
+                        <div className="mt-2 space-y-2">
+                          {weeklyReportPreview.highlightedTasks.slice(0, 4).map((task) => (
+                            <div key={task.taskId} className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
+                              <div className="text-xs font-semibold text-[#17407E]">{task.protocolId}</div>
+                              <div className="text-sm font-semibold text-slate-900">{task.title}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">Histórico recente</div>
+                  <p className="mt-1 text-xs text-slate-500">Últimos lotes do report semanal para auditoria rápida.</p>
+                </div>
+              </div>
+              <div className="mt-3 space-y-3">
+                {weeklyReportRuns.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                    Nenhum run registrado até o momento.
+                  </div>
+                ) : (
+                  weeklyReportRuns.map((run) => (
+                    <div key={run.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-slate-900">{run.windowStartDate} até {run.windowEndDate}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {run.triggerSource === 'manual' ? 'Disparo manual' : 'Disparo automático'} · tentativa {run.attemptNumber} · {formatDateTime(run.createdAt)}
+                          </div>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          run.status === 'COMPLETED'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : run.status === 'FAILED'
+                              ? 'bg-rose-50 text-rose-700'
+                              : 'bg-amber-50 text-amber-700'
+                        }`}>
+                          {run.status}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
+                        <div>Elegíveis: <span className="font-semibold text-slate-900">{run.eligibleCount}</span></div>
+                        <div>Enviados: <span className="font-semibold text-slate-900">{run.sentCount}</span></div>
+                        <div>Ignorados: <span className="font-semibold text-slate-900">{run.skippedCount}</span></div>
+                        <div>Falhas: <span className="font-semibold text-slate-900">{run.failedCount}</span></div>
+                      </div>
+                      {run.errorMessage ? <div className="mt-2 text-xs text-rose-600">{run.errorMessage}</div> : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-4">
+              <div className="text-sm font-semibold text-slate-900">Ignorados no recorte atual</div>
+              <p className="mt-1 text-xs text-slate-500">Ajuste vínculo e cadastro antes de ativar o disparo em produção.</p>
+              <div className="mt-3 grid gap-3">
+                <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Sem e-mail corporativo</div>
+                  <div className="mt-1 text-2xl font-bold text-amber-900">{ignoredByCorporateEmail.length}</div>
+                </div>
+                <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">Sem vínculo usuário → colaborador</div>
+                  <div className="mt-1 text-2xl font-bold text-rose-900">{ignoredByUserLink.length}</div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Sem pendências elegíveis</div>
+                  <div className="mt-1 text-2xl font-bold text-slate-900">{ignoredByNoPending.length}</div>
+                </div>
+              </div>
+              <div className="mt-4 space-y-2">
+                {(weeklyReportEligibility?.skippedRecipients || []).slice(0, 8).map((item, index) => (
+                  <div key={`${item.employeeId || item.userId || 'skip'}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+                    <div className="font-semibold text-slate-900">{item.employeeName || item.userId || 'Registro sem identificação'}</div>
+                    <div className="mt-1 text-xs text-slate-500">{weeklyReportSkipReasonLabelMap[item.reason]}</div>
+                  </div>
+                ))}
+                {!weeklyReportEligibility?.skippedRecipients.length ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                    Nenhum colaborador ignorado no recorte atual.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className={`${panelClassName} overflow-hidden`}>
