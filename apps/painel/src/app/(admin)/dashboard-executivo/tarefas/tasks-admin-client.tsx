@@ -1550,10 +1550,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
             </div>
           ) : viewMode === 'KANBAN' ? (
             <div className="overflow-x-auto pb-2">
-              <div
-                className="grid min-w-max auto-cols-[minmax(320px,1fr)] grid-flow-col items-start gap-4"
-                style={{ gridTemplateColumns: `repeat(${KANBAN_COLUMNS.length}, minmax(320px, 1fr))` }}
-              >
+              <div className="grid min-w-max auto-cols-[360px] grid-flow-col items-start gap-4">
                 {boardByColumn.map((column) => {
                   const tone = kanbanColumnToneMap[column.key];
                   return (

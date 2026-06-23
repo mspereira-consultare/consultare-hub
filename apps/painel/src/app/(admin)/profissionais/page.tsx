@@ -2200,13 +2200,14 @@ export default function ProfessionalsPage() {
                         </div>
                         <div className="md:col-span-3">
                           <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1">Observação para intranet</label>
-                          <input
+                          <textarea
                             value={form.intranetNotesText}
                             onChange={(e) => setForm((p) => ({ ...p, intranetNotesText: e.target.value }))}
                             placeholder="Ex.: Indica pacotes e checkups"
-                            className="w-full px-3 py-2 border rounded-lg bg-white"
+                            rows={3}
+                            className="w-full px-3 py-2 border rounded-lg bg-white resize-y"
                           />
-                          <p className="mt-1 text-[11px] text-slate-500">Aparece no card público do médico na intranet.</p>
+                          <p className="mt-1 text-[11px] text-slate-500">Aparece no card público do médico na intranet e preserva quebras de linha.</p>
                         </div>
                       </div>
                     </div>

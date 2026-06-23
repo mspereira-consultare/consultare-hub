@@ -110,7 +110,7 @@ function ProfessionalCard({ professional, procedures }: { professional: Intranet
         <InfoValue title="Atende a partir de" value={patientAge} />
         <InfoValue title="Encaixes" value={professional.walkInPolicyText} />
         <InfoValue title="Consultório ideal" value={professional.idealRoomText} />
-        <InfoValue title="Obs" value={notes} />
+        <InfoValue title="Obs" value={notes} preserveWhitespace />
       </div>
     </article>
   );
@@ -140,13 +140,21 @@ function InfoList({ title, items }: { title: string; items: string[] }) {
   );
 }
 
-function InfoValue({ title, value }: { title: string; value: string | null }) {
+function InfoValue({
+  title,
+  value,
+  preserveWhitespace = false,
+}: {
+  title: string;
+  value: string | null;
+  preserveWhitespace?: boolean;
+}) {
   const text = String(value || '').trim();
   if (!text) return null;
   return (
     <div>
       <h4 className="font-semibold text-[#17407E]">{title}:</h4>
-      <p className="mt-1 whitespace-pre-line">{text}</p>
+      <p className={`mt-1 ${preserveWhitespace ? 'whitespace-pre-wrap' : 'whitespace-pre-line'}`}>{text}</p>
     </div>
   );
 }
