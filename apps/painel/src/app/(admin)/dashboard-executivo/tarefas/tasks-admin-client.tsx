@@ -8,6 +8,8 @@ import {
   Activity,
   Gauge,
   Calendar,
+  ChevronDown,
+  ChevronRight,
   CheckCircle2,
   Clock3,
   Columns3,
@@ -547,6 +549,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const [selectedTask, setSelectedTask] = useState<TaskDetail | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [projectDetailOpen, setProjectDetailOpen] = useState(false);
+  const [weeklyReportModalOpen, setWeeklyReportModalOpen] = useState(false);
   const [form, setForm] = useState<TaskFormState>(defaultForm());
   const [projectForm, setProjectForm] = useState<{ name: string; description: string }>({ name: '', description: '' });
   const [lifecycleReason, setLifecycleReason] = useState('');
@@ -570,6 +573,12 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const [weeklyReportSaving, setWeeklyReportSaving] = useState(false);
   const [weeklyReportRunning, setWeeklyReportRunning] = useState(false);
   const [weeklyReportPreviewLoading, setWeeklyReportPreviewLoading] = useState(false);
+  const [weeklyReportSectionsOpen, setWeeklyReportSectionsOpen] = useState({
+    configuration: true,
+    preview: true,
+    history: false,
+    ignored: false,
+  });
 
   const usersById = useMemo(() => new Map(users.map((user) => [user.id, user])), [users]);
   const projectOptions = useMemo(
@@ -1001,6 +1010,20 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
     }
   };
 
+  const handleOpenWeeklyReportModal = async () => {
+    setWeeklyReportModalOpen(true);
+    if (!weeklyReportLoading) {
+      void loadWeeklyReportAdmin();
+    }
+  };
+
+  const toggleWeeklyReportSection = (section: keyof typeof weeklyReportSectionsOpen) => {
+    setWeeklyReportSectionsOpen((current) => ({
+      ...current,
+      [section]: !current[section],
+    }));
+  };
+
   const openUnscheduledTasksList = () => {
     setViewMode('LIST');
     setFilters((current) => ({
@@ -1340,6 +1363,14 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
           <div className="flex flex-wrap gap-2 xl:justify-end">
             <button
               type="button"
+              onClick={() => void handleOpenWeeklyReportModal()}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              <Mail size={16} />
+              Report semanal
+            </button>
+            <button
+              type="button"
               onClick={() => setViewMode('KANBAN')}
               className={`inline-flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-semibold transition ${
                 viewMode === 'KANBAN'
@@ -1385,295 +1416,6 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
         <ExecutiveMetricCard label="Aguardando aprovação" value={summary?.awaitingApprovalTasks || 0} helper="Fila de decisão" tone="info" icon={<ShieldCheck size={18} />} />
         <ExecutiveMetricCard label="Aprovadas" value={summary?.approvedTasks || 0} helper="Último ciclo aprovado" tone="success" icon={<CheckCircle2 size={18} />} />
         <ExecutiveMetricCard label="Eficiência no recorte" value={buildEfficiencyValue(summary)} helper={buildEfficiencyHelper(summary)} tone="info" icon={<Gauge size={18} />} />
-      </section>
-
-      <section className={`${panelClassName} overflow-hidden`}>
-        <div className="border-b border-slate-200 px-5 py-4">
-          <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Report semanal por e-mail</div>
-              <h2 className="mt-1 text-lg font-semibold text-slate-900">Camada administrativa do disparo automático</h2>
-              <p className="mt-1 text-sm text-slate-500">
-                Acompanhe elegibilidade, remetente, histórico recente e rode homologações controladas sem sair da governança.
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {weeklyReportLoading ? (
-                <span className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#17407E]">
-                  <Loader2 size={14} className="animate-spin" />
-                  Atualizando painel
-                </span>
-              ) : null}
-              <button
-                type="button"
-                onClick={() => void loadWeeklyReportAdmin()}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                <Activity size={16} />
-                Atualizar
-              </button>
-              <button
-                type="button"
-                disabled={!canEdit || weeklyReportRunning}
-                onClick={() => void handleRunWeeklyReport()}
-                className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-[#17407E] disabled:opacity-60"
-              >
-                {weeklyReportRunning ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
-                Disparo manual
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid gap-4 p-5 xl:grid-cols-[1.25fr_0.95fr]">
-          <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Status do recurso</div>
-                <div className="mt-2 text-2xl font-bold text-slate-900">{weeklyReportSettings.enabled ? 'Ativo' : 'Desativado'}</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {weeklyReportSettings.enabled ? 'Pronto para processar quando as credenciais do SendPulse estiverem válidas.' : 'Fluxo pausado na camada administrativa.'}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Elegíveis agora</div>
-                <div className="mt-2 text-2xl font-bold text-slate-900">{weeklyReportEligibility?.eligibleRecipients.length || 0}</div>
-                <div className="mt-1 text-xs text-slate-500">Colaboradores com pendências operacionais sob execução direta.</div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Ignorados por cadastro</div>
-                <div className="mt-2 text-2xl font-bold text-slate-900">{ignoredByCorporateEmail.length + ignoredByUserLink.length}</div>
-                <div className="mt-1 text-xs text-slate-500">Sem e-mail corporativo ou sem vínculo entre usuário e colaborador.</div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Último run</div>
-                <div className="mt-2 text-2xl font-bold text-slate-900">{latestWeeklyReportRun?.status || '—'}</div>
-                <div className="mt-1 text-xs text-slate-500">
-                  {latestWeeklyReportRun ? `${latestWeeklyReportRun.sentCount} envio(s), ${latestWeeklyReportRun.failedCount} falha(s)` : 'Nenhuma execução registrada ainda.'}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <Send size={16} className="text-[#17407E]" />
-                  Configuração operacional
-                </div>
-                <div className="mt-3 grid gap-3 md:grid-cols-2">
-                  <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={weeklyReportSettings.enabled}
-                      disabled={!canEdit}
-                      onChange={(event) =>
-                        setWeeklyReportSettings((current) => ({
-                          ...current,
-                          enabled: event.target.checked,
-                        }))
-                      }
-                    />
-                    Ativar envio semanal
-                  </label>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
-                    Próximo disparo esperado: segunda-feira às 06h30, horário de São Paulo.
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-1 block text-sm font-medium text-slate-700">E-mail remetente</label>
-                    <input
-                      value={weeklyReportSettings.fromEmail}
-                      disabled={!canEdit || weeklyReportSaving}
-                      onChange={(event) =>
-                        setWeeklyReportSettings((current) => ({
-                          ...current,
-                          fromEmail: event.target.value,
-                        }))
-                      }
-                      className={inputClassName}
-                      placeholder="no-reply@consultare.com.br"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">Nome do remetente</label>
-                    <input
-                      value={weeklyReportSettings.fromName}
-                      disabled={!canEdit || weeklyReportSaving}
-                      onChange={(event) =>
-                        setWeeklyReportSettings((current) => ({
-                          ...current,
-                          fromName: event.target.value,
-                        }))
-                      }
-                      className={inputClassName}
-                      placeholder="Consultare Intranet"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm font-medium text-slate-700">E-mail de resposta</label>
-                    <input
-                      value={weeklyReportSettings.replyToEmail}
-                      disabled={!canEdit || weeklyReportSaving}
-                      onChange={(event) =>
-                        setWeeklyReportSettings((current) => ({
-                          ...current,
-                          replyToEmail: event.target.value,
-                        }))
-                      }
-                      className={inputClassName}
-                      placeholder="gestao@consultare.com.br"
-                    />
-                  </div>
-                </div>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-xs text-slate-500">
-                    Última atualização: {weeklyReportSettings.updatedAt ? formatDateTime(weeklyReportSettings.updatedAt) : 'Ainda não configurado'}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleSaveWeeklyReportSettings()}
-                    disabled={!canEdit || weeklyReportSaving}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
-                  >
-                    {weeklyReportSaving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                    Salvar configuração
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-                  <Mail size={16} className="text-[#17407E]" />
-                  Homologação rápida
-                </div>
-                <p className="mt-2 text-sm text-slate-500">
-                  Gere uma prévia real do resumo de um colaborador elegível antes de liberar o fluxo automático.
-                </p>
-                <div className="mt-3 space-y-3">
-                  <SearchableFilterSelect
-                    label="Colaborador elegível"
-                    value={selectedPreviewUserId}
-                    onChange={setSelectedPreviewUserId}
-                    allLabel={previewUserOptions.length ? 'Selecione um colaborador elegível' : 'Nenhum elegível no momento'}
-                    options={previewUserOptions}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleGenerateWeeklyReportPreview()}
-                    disabled={selectedPreviewUserId === 'all' || weeklyReportPreviewLoading}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
-                  >
-                    {weeklyReportPreviewLoading ? <Loader2 size={16} className="animate-spin" /> : <ExternalLink size={16} />}
-                    Gerar prévia manual
-                  </button>
-                  {weeklyReportPreview ? (
-                    <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4 text-sm text-slate-700">
-                      <div className="font-semibold text-[#17407E]">{weeklyReportPreview.recipient.employeeName}</div>
-                      <div className="mt-1 text-xs text-slate-500">{weeklyReportPreview.recipient.corporateEmail}</div>
-                      <div className="mt-3 grid gap-2 text-xs text-slate-600 md:grid-cols-2">
-                        <div>Pendências atuais: <span className="font-semibold text-slate-900">{weeklyReportPreview.summary.pendingTasks}</span></div>
-                        <div>Vencidas: <span className="font-semibold text-slate-900">{weeklyReportPreview.summary.overdueTasks}</span></div>
-                        <div>A vencer em 7 dias: <span className="font-semibold text-slate-900">{weeklyReportPreview.summary.dueNext7DaysTasks}</span></div>
-                        <div>Aguardando aprovação: <span className="font-semibold text-slate-900">{weeklyReportPreview.summary.awaitingApprovalTasks}</span></div>
-                        <div>Eficiência acumulada: <span className="font-semibold text-slate-900">{buildEfficiencySummaryLabel(weeklyReportPreview.summary.accumulatedEfficiency)}</span></div>
-                        <div>Eficiência da semana: <span className="font-semibold text-slate-900">{weeklyReportPreview.summary.weeklyEfficiencyPercent == null ? '—' : `${weeklyReportPreview.summary.weeklyEfficiencyPercent}%`}</span></div>
-                      </div>
-                      <div className="mt-3">
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Tarefas destacadas</div>
-                        <div className="mt-2 space-y-2">
-                          {weeklyReportPreview.highlightedTasks.slice(0, 4).map((task) => (
-                            <div key={task.taskId} className="rounded-xl border border-white/80 bg-white/80 px-3 py-2">
-                              <div className="text-xs font-semibold text-[#17407E]">{task.protocolId}</div>
-                              <div className="text-sm font-semibold text-slate-900">{task.title}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-slate-900">Histórico recente</div>
-                  <p className="mt-1 text-xs text-slate-500">Últimos lotes do report semanal para auditoria rápida.</p>
-                </div>
-              </div>
-              <div className="mt-3 space-y-3">
-                {weeklyReportRuns.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                    Nenhum run registrado até o momento.
-                  </div>
-                ) : (
-                  weeklyReportRuns.map((run) => (
-                    <div key={run.id} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900">{run.windowStartDate} até {run.windowEndDate}</div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            {run.triggerSource === 'manual' ? 'Disparo manual' : 'Disparo automático'} · tentativa {run.attemptNumber} · {formatDateTime(run.createdAt)}
-                          </div>
-                        </div>
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          run.status === 'COMPLETED'
-                            ? 'bg-emerald-50 text-emerald-700'
-                            : run.status === 'FAILED'
-                              ? 'bg-rose-50 text-rose-700'
-                              : 'bg-amber-50 text-amber-700'
-                        }`}>
-                          {run.status}
-                        </span>
-                      </div>
-                      <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600">
-                        <div>Elegíveis: <span className="font-semibold text-slate-900">{run.eligibleCount}</span></div>
-                        <div>Enviados: <span className="font-semibold text-slate-900">{run.sentCount}</span></div>
-                        <div>Ignorados: <span className="font-semibold text-slate-900">{run.skippedCount}</span></div>
-                        <div>Falhas: <span className="font-semibold text-slate-900">{run.failedCount}</span></div>
-                      </div>
-                      {run.errorMessage ? <div className="mt-2 text-xs text-rose-600">{run.errorMessage}</div> : null}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-4">
-              <div className="text-sm font-semibold text-slate-900">Ignorados no recorte atual</div>
-              <p className="mt-1 text-xs text-slate-500">Ajuste vínculo e cadastro antes de ativar o disparo em produção.</p>
-              <div className="mt-3 grid gap-3">
-                <div className="rounded-2xl border border-amber-100 bg-amber-50/70 p-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-700">Sem e-mail corporativo</div>
-                  <div className="mt-1 text-2xl font-bold text-amber-900">{ignoredByCorporateEmail.length}</div>
-                </div>
-                <div className="rounded-2xl border border-rose-100 bg-rose-50/70 p-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-rose-700">Sem vínculo usuário → colaborador</div>
-                  <div className="mt-1 text-2xl font-bold text-rose-900">{ignoredByUserLink.length}</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
-                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-600">Sem pendências elegíveis</div>
-                  <div className="mt-1 text-2xl font-bold text-slate-900">{ignoredByNoPending.length}</div>
-                </div>
-              </div>
-              <div className="mt-4 space-y-2">
-                {(weeklyReportEligibility?.skippedRecipients || []).slice(0, 8).map((item, index) => (
-                  <div key={`${item.employeeId || item.userId || 'skip'}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
-                    <div className="font-semibold text-slate-900">{item.employeeName || item.userId || 'Registro sem identificação'}</div>
-                    <div className="mt-1 text-xs text-slate-500">{weeklyReportSkipReasonLabelMap[item.reason]}</div>
-                  </div>
-                ))}
-                {!weeklyReportEligibility?.skippedRecipients.length ? (
-                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
-                    Nenhum colaborador ignorado no recorte atual.
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          </div>
-        </div>
       </section>
 
       <section className={`${panelClassName} overflow-hidden`}>
@@ -2037,6 +1779,33 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
           canEdit={canEdit}
         />
       ) : null}
+      <WeeklyReportAdminModal
+        open={weeklyReportModalOpen}
+        canEdit={canEdit}
+        loading={weeklyReportLoading}
+        saving={weeklyReportSaving}
+        running={weeklyReportRunning}
+        previewLoading={weeklyReportPreviewLoading}
+        settings={weeklyReportSettings}
+        eligibility={weeklyReportEligibility}
+        runs={weeklyReportRuns}
+        preview={weeklyReportPreview}
+        previewUserOptions={previewUserOptions}
+        selectedPreviewUserId={selectedPreviewUserId}
+        ignoredByCorporateEmail={ignoredByCorporateEmail}
+        ignoredByUserLink={ignoredByUserLink}
+        ignoredByNoPending={ignoredByNoPending}
+        latestRun={latestWeeklyReportRun}
+        sectionsOpen={weeklyReportSectionsOpen}
+        onClose={() => setWeeklyReportModalOpen(false)}
+        onRefresh={() => void loadWeeklyReportAdmin()}
+        onRun={() => void handleRunWeeklyReport()}
+        onSave={() => void handleSaveWeeklyReportSettings()}
+        onGeneratePreview={() => void handleGenerateWeeklyReportPreview()}
+        onPreviewUserChange={setSelectedPreviewUserId}
+        onSettingsChange={setWeeklyReportSettings}
+        onToggleSection={toggleWeeklyReportSection}
+      />
     </main>
   );
 }
@@ -2073,6 +1842,432 @@ function ExecutiveMetricCard({
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/80 ring-1 ring-black/5">{icon}</div>
       </div>
     </div>
+  );
+}
+
+function WeeklyReportAdminModal({
+  open,
+  canEdit,
+  loading,
+  saving,
+  running,
+  previewLoading,
+  settings,
+  eligibility,
+  runs,
+  preview,
+  previewUserOptions,
+  selectedPreviewUserId,
+  ignoredByCorporateEmail,
+  ignoredByUserLink,
+  ignoredByNoPending,
+  latestRun,
+  sectionsOpen,
+  onClose,
+  onRefresh,
+  onRun,
+  onSave,
+  onGeneratePreview,
+  onPreviewUserChange,
+  onSettingsChange,
+  onToggleSection,
+}: {
+  open: boolean;
+  canEdit: boolean;
+  loading: boolean;
+  saving: boolean;
+  running: boolean;
+  previewLoading: boolean;
+  settings: WeeklyReportSettingsState;
+  eligibility: WeeklyReportEligibilityState | null;
+  runs: WeeklyReportRunItem[];
+  preview: TaskWeeklyReportEmailPayload | null;
+  previewUserOptions: Array<{ value: string; label: string }>;
+  selectedPreviewUserId: string;
+  ignoredByCorporateEmail: WeeklyReportEligibilityState['skippedRecipients'];
+  ignoredByUserLink: WeeklyReportEligibilityState['skippedRecipients'];
+  ignoredByNoPending: WeeklyReportEligibilityState['skippedRecipients'];
+  latestRun: WeeklyReportRunItem | null;
+  sectionsOpen: {
+    configuration: boolean;
+    preview: boolean;
+    history: boolean;
+    ignored: boolean;
+  };
+  onClose: () => void;
+  onRefresh: () => void;
+  onRun: () => void;
+  onSave: () => void;
+  onGeneratePreview: () => void;
+  onPreviewUserChange: (value: string) => void;
+  onSettingsChange: React.Dispatch<React.SetStateAction<WeeklyReportSettingsState>>;
+  onToggleSection: (section: 'configuration' | 'preview' | 'history' | 'ignored') => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, open]);
+
+  if (!open) return null;
+
+  const statusLabel = settings.enabled ? 'Ativo' : 'Desativado';
+  const ignoredCount = ignoredByCorporateEmail.length + ignoredByUserLink.length;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6" onMouseDown={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="weekly-report-admin-title"
+        className="max-h-[90vh] w-full max-w-6xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Administração de e-mail</div>
+            <h3 id="weekly-report-admin-title" className="mt-1 text-lg font-bold text-slate-900">
+              Report semanal de tarefas
+            </h3>
+            <p className="mt-1 max-w-3xl text-sm text-slate-500">
+              Camada gerencial para configuração, homologação e auditoria do disparo automático, sem poluir a governança principal.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {loading ? (
+              <span className="inline-flex items-center gap-2 rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs font-semibold text-[#17407E]">
+                <Loader2 size={14} className="animate-spin" />
+                Atualizando
+              </span>
+            ) : null}
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              <Activity size={16} />
+              Atualizar
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+              aria-label="Fechar modal do report semanal"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="max-h-[76vh] overflow-y-auto px-5 py-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <CompactInfoCard
+              label="Status"
+              value={statusLabel}
+              helper={
+                settings.enabled
+                  ? 'Pronto para processar quando as credenciais do SendPulse estiverem válidas.'
+                  : 'Fluxo pausado na camada administrativa.'
+              }
+            />
+            <CompactInfoCard
+              label="Elegíveis"
+              value={eligibility?.eligibleRecipients.length || 0}
+              helper="Pendências operacionais sob execução direta"
+            />
+            <CompactInfoCard
+              label="Ignorados por cadastro"
+              value={ignoredCount}
+              helper="Sem vínculo ou sem e-mail corporativo"
+            />
+            <CompactInfoCard
+              label="Último run"
+              value={latestRun?.status || '—'}
+              helper={latestRun ? `${latestRun.sentCount} envio(s) · ${latestRun.failedCount} falha(s)` : 'Nenhum lote registrado'}
+            />
+            <CompactInfoCard label="Próximo disparo" value="Seg 06h30" helper="America/Sao_Paulo" />
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={!canEdit || running}
+              onClick={onRun}
+              className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-[#17407E] disabled:opacity-60"
+            >
+              {running ? <Loader2 size={16} className="animate-spin" /> : <Play size={16} />}
+              Disparo manual
+            </button>
+            <button
+              type="button"
+              disabled={selectedPreviewUserId === 'all' || previewLoading}
+              onClick={onGeneratePreview}
+              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              {previewLoading ? <Loader2 size={16} className="animate-spin" /> : <ExternalLink size={16} />}
+              Gerar prévia
+            </button>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <CollapsibleAdminSection
+              title="Configuração operacional"
+              description="Remetente, resposta e ativação do fluxo."
+              open={sectionsOpen.configuration}
+              onToggle={() => onToggleSection('configuration')}
+              icon={<Send size={16} className="text-[#17407E]" />}
+            >
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[0.75fr_1fr_1fr_1fr_auto]">
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={settings.enabled}
+                    disabled={!canEdit}
+                    onChange={(event) =>
+                      onSettingsChange((current) => ({
+                        ...current,
+                        enabled: event.target.checked,
+                      }))
+                    }
+                  />
+                  Ativar envio semanal
+                </label>
+                <FieldInput
+                  label="E-mail remetente"
+                  value={settings.fromEmail}
+                  disabled={!canEdit || saving}
+                  onChange={(value) =>
+                    onSettingsChange((current) => ({
+                      ...current,
+                      fromEmail: value,
+                    }))
+                  }
+                />
+                <FieldInput
+                  label="Nome do remetente"
+                  value={settings.fromName}
+                  disabled={!canEdit || saving}
+                  onChange={(value) =>
+                    onSettingsChange((current) => ({
+                      ...current,
+                      fromName: value,
+                    }))
+                  }
+                />
+                <FieldInput
+                  label="E-mail de resposta"
+                  value={settings.replyToEmail}
+                  disabled={!canEdit || saving}
+                  onChange={(value) =>
+                    onSettingsChange((current) => ({
+                      ...current,
+                      replyToEmail: value,
+                    }))
+                  }
+                />
+                <div className="flex items-end">
+                  <button
+                    type="button"
+                    onClick={onSave}
+                    disabled={!canEdit || saving}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                    Salvar
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 text-xs text-slate-500">
+                Última atualização: {settings.updatedAt ? formatDateTime(settings.updatedAt) : 'Ainda não configurado'}
+              </div>
+            </CollapsibleAdminSection>
+
+            <CollapsibleAdminSection
+              title="Homologação rápida"
+              description="Prévia real para um colaborador elegível."
+              open={sectionsOpen.preview}
+              onToggle={() => onToggleSection('preview')}
+              icon={<Mail size={16} className="text-[#17407E]" />}
+            >
+              <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+                <div className="space-y-3">
+                  <SearchableFilterSelect
+                    label="Colaborador elegível"
+                    value={selectedPreviewUserId}
+                    onChange={onPreviewUserChange}
+                    allLabel={previewUserOptions.length ? 'Selecione um colaborador elegível' : 'Nenhum elegível no momento'}
+                    options={previewUserOptions}
+                  />
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                    O disparo manual continua controlado. A prévia serve para homologar o conteúdo antes da ativação real.
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  {preview ? (
+                    <div className="space-y-3 text-sm text-slate-700">
+                      <div>
+                        <div className="font-semibold text-[#17407E]">{preview.recipient.employeeName}</div>
+                        <div className="mt-1 text-xs text-slate-500">{preview.recipient.corporateEmail}</div>
+                      </div>
+                      <div className="grid gap-2 text-xs text-slate-600 md:grid-cols-2">
+                        <div>Pendências atuais: <span className="font-semibold text-slate-900">{preview.summary.pendingTasks}</span></div>
+                        <div>Vencidas: <span className="font-semibold text-slate-900">{preview.summary.overdueTasks}</span></div>
+                        <div>A vencer em 7 dias: <span className="font-semibold text-slate-900">{preview.summary.dueNext7DaysTasks}</span></div>
+                        <div>Aguardando aprovação: <span className="font-semibold text-slate-900">{preview.summary.awaitingApprovalTasks}</span></div>
+                        <div>Eficiência acumulada: <span className="font-semibold text-slate-900">{buildEfficiencySummaryLabel(preview.summary.accumulatedEfficiency)}</span></div>
+                        <div>Eficiência da semana: <span className="font-semibold text-slate-900">{preview.summary.weeklyEfficiencyPercent == null ? '—' : `${preview.summary.weeklyEfficiencyPercent}%`}</span></div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Tarefas destacadas</div>
+                        {preview.highlightedTasks.slice(0, 4).map((task) => (
+                          <div key={task.taskId} className="rounded-xl border border-white/80 bg-white px-3 py-2">
+                            <div className="text-xs font-semibold text-[#17407E]">{task.protocolId}</div>
+                            <div className="text-sm font-semibold text-slate-900">{task.title}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex min-h-[180px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">
+                      Gere uma prévia manual para validar o conteúdo do e-mail antes da ativação.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CollapsibleAdminSection>
+
+            <CollapsibleAdminSection
+              title="Histórico recente"
+              description="Últimos lotes para auditoria rápida."
+              open={sectionsOpen.history}
+              onToggle={() => onToggleSection('history')}
+              icon={<Activity size={16} className="text-[#17407E]" />}
+            >
+              <div className="space-y-2">
+                {runs.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                    Nenhum run registrado até o momento.
+                  </div>
+                ) : (
+                  runs.map((run) => (
+                    <div key={run.id} className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-900">{run.windowStartDate} até {run.windowEndDate}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {run.triggerSource === 'manual' ? 'Disparo manual' : 'Disparo automático'} · tentativa {run.attemptNumber} · {formatDateTime(run.createdAt)}
+                          </div>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          run.status === 'COMPLETED'
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : run.status === 'FAILED'
+                              ? 'bg-rose-50 text-rose-700'
+                              : 'bg-amber-50 text-amber-700'
+                        }`}>
+                          {run.status}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-xs text-slate-600 md:grid-cols-4">
+                        <div>Elegíveis: <span className="font-semibold text-slate-900">{run.eligibleCount}</span></div>
+                        <div>Enviados: <span className="font-semibold text-slate-900">{run.sentCount}</span></div>
+                        <div>Ignorados: <span className="font-semibold text-slate-900">{run.skippedCount}</span></div>
+                        <div>Falhas: <span className="font-semibold text-slate-900">{run.failedCount}</span></div>
+                      </div>
+                      {run.errorMessage ? <div className="mt-2 text-xs text-rose-600">{run.errorMessage}</div> : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </CollapsibleAdminSection>
+
+            <CollapsibleAdminSection
+              title="Pendências cadastrais"
+              description="Quem ficou de fora e por quê."
+              open={sectionsOpen.ignored}
+              onToggle={() => onToggleSection('ignored')}
+              icon={<AlertCircle size={16} className="text-[#17407E]" />}
+            >
+              <div className="grid gap-3 md:grid-cols-3">
+                <CompactInfoCard label="Sem e-mail corporativo" value={ignoredByCorporateEmail.length} helper="Cadastro do colaborador incompleto" />
+                <CompactInfoCard label="Sem vínculo usuário-colaborador" value={ignoredByUserLink.length} helper="Resolver employee_id do usuário" />
+                <CompactInfoCard label="Sem pendências elegíveis" value={ignoredByNoPending.length} helper="Fora do recorte operacional" />
+              </div>
+              <div className="mt-3 space-y-2">
+                {(eligibility?.skippedRecipients || []).slice(0, 8).map((item, index) => (
+                  <div key={`${item.employeeId || item.userId || 'skip'}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
+                    <div className="font-semibold text-slate-900">{item.employeeName || item.userId || 'Registro sem identificação'}</div>
+                    <div className="mt-1 text-xs text-slate-500">{weeklyReportSkipReasonLabelMap[item.reason]}</div>
+                  </div>
+                ))}
+                {!eligibility?.skippedRecipients.length ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
+                    Nenhum colaborador ignorado no recorte atual.
+                  </div>
+                ) : null}
+              </div>
+            </CollapsibleAdminSection>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CompactInfoCard({
+  label,
+  value,
+  helper,
+}: {
+  label: string;
+  value: number | string;
+  helper: string;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">{label}</div>
+      <div className="mt-2 text-lg font-semibold text-slate-900">{value}</div>
+      <div className="mt-1 text-xs text-slate-500">{helper}</div>
+    </div>
+  );
+}
+
+function CollapsibleAdminSection({
+  title,
+  description,
+  open,
+  onToggle,
+  icon,
+  children,
+}: {
+  title: string;
+  description: string;
+  open: boolean;
+  onToggle: () => void;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+      >
+        <span className="flex min-w-0 items-start gap-3">
+          <span className="mt-0.5">{icon}</span>
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-slate-900">{title}</span>
+            <span className="mt-1 block text-xs text-slate-500">{description}</span>
+          </span>
+        </span>
+        <span className="shrink-0 text-slate-400">{open ? <ChevronDown size={18} /> : <ChevronRight size={18} />}</span>
+      </button>
+      {open ? <div className="border-t border-slate-200 px-4 py-4">{children}</div> : null}
+    </section>
   );
 }
 
