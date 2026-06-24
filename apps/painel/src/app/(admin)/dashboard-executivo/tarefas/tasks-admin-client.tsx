@@ -2030,6 +2030,7 @@ function WeeklyReportAdminModal({
   }));
   const globalReadyCount = eligibility?.globalRecipients.readyRecipients.length || 0;
   const globalSkippedCount = eligibility?.globalRecipients.skippedRecipients.length || 0;
+  const latestRunLabel = latestRun ? `${latestRun.status} · ${formatDateTime(latestRun.createdAt)}` : '—';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6" onMouseDown={onClose}>
@@ -2077,7 +2078,7 @@ function WeeklyReportAdminModal({
         </div>
 
         <div className="max-h-[76vh] overflow-y-auto px-5 py-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <CompactInfoCard
               label="Status"
               value={moduleStatusLabel}
@@ -2087,27 +2088,31 @@ function WeeklyReportAdminModal({
                   : 'Fluxo pausado na camada administrativa.'
               }
             />
-            <CompactInfoCard
-              label="Elegíveis"
-              value={eligibility?.eligibleRecipients.length || 0}
-              helper="Pendências operacionais sob execução direta"
-            />
+            <div className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">Elegíveis</div>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                <div className="rounded-lg border border-white/80 bg-white px-3 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Individual</div>
+                  <div className="mt-1 text-base font-semibold text-slate-900">{eligibility?.eligibleRecipients.length || 0}</div>
+                </div>
+                <div className="rounded-lg border border-white/80 bg-white px-3 py-2">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Global</div>
+                  <div className="mt-1 text-base font-semibold text-slate-900">{globalReadyCount}</div>
+                </div>
+              </div>
+              <div className="mt-2 text-xs text-slate-500">Base pronta para o lote individual e para os destinatários executivos.</div>
+            </div>
             <CompactInfoCard
               label="Ignorados por cadastro"
               value={ignoredCount}
               helper="Sem vínculo ou sem e-mail corporativo"
             />
             <CompactInfoCard
-              label="Globais prontos"
-              value={globalReadyCount}
-              helper={settings.globalReportEnabled ? 'Destinatários executivos aptos' : 'Relatório global desativado'}
-            />
-            <CompactInfoCard
-              label="Último run"
-              value={latestRun?.status || '—'}
+              label="Último envio"
+              value={latestRunLabel}
               helper={latestRun ? `${latestRun.sentCount} envio(s) · ${latestRun.failedCount} falha(s)` : 'Nenhum lote registrado'}
             />
-            <CompactInfoCard label="Próximo disparo" value="Seg 06h30" helper="America/Sao_Paulo" />
+            <CompactInfoCard label="Próximo disparo" value="Seg 06h30" helper="Execução automática semanal" />
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -2284,12 +2289,14 @@ function WeeklyReportAdminModal({
                       </div>
                       <div className="space-y-2">
                         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Tarefas destacadas</div>
-                        {preview.highlightedTasks.slice(0, 4).map((task) => (
-                          <div key={task.taskId} className="rounded-xl border border-white/80 bg-white px-3 py-2">
-                            <div className="text-xs font-semibold text-[#17407E]">{task.protocolId}</div>
-                            <div className="text-sm font-semibold text-slate-900">{task.title}</div>
-                          </div>
-                        ))}
+                        <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                          {preview.highlightedTasks.slice(0, 4).map((task) => (
+                            <div key={task.taskId} className="rounded-xl border border-white/80 bg-white px-3 py-2">
+                              <div className="text-xs font-semibold text-[#17407E]">{task.protocolId}</div>
+                              <div className="text-sm font-semibold text-slate-900">{task.title}</div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -2347,17 +2354,19 @@ function WeeklyReportAdminModal({
                       </div>
                       <div className="space-y-2">
                         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Destaques</div>
-                        {globalPreview.highlightedOverdueTasks.slice(0, 2).map((task) => (
-                          <div key={task.taskId} className="rounded-xl border border-white/80 bg-white px-3 py-2">
-                            <div className="text-xs font-semibold text-[#17407E]">{task.protocolId}</div>
-                            <div className="text-sm font-semibold text-slate-900">{task.title}</div>
-                          </div>
-                        ))}
-                        {globalPreview.highlightedOverdueTasks.length <= 0 ? (
-                          <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-5 text-center text-xs text-slate-500">
-                            Nenhuma tarefa vencida crítica destacada nesta prévia.
-                          </div>
-                        ) : null}
+                        <div className="max-h-56 space-y-2 overflow-y-auto pr-1">
+                          {globalPreview.highlightedOverdueTasks.slice(0, 2).map((task) => (
+                            <div key={task.taskId} className="rounded-xl border border-white/80 bg-white px-3 py-2">
+                              <div className="text-xs font-semibold text-[#17407E]">{task.protocolId}</div>
+                              <div className="text-sm font-semibold text-slate-900">{task.title}</div>
+                            </div>
+                          ))}
+                          {globalPreview.highlightedOverdueTasks.length <= 0 ? (
+                            <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-5 text-center text-xs text-slate-500">
+                              Nenhuma tarefa vencida crítica destacada nesta prévia.
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -2370,13 +2379,13 @@ function WeeklyReportAdminModal({
             </CollapsibleAdminSection>
 
             <CollapsibleAdminSection
-              title="Histórico recente"
-              description="Últimos lotes para auditoria rápida."
+              title="Histórico de envios"
+              description="Últimos jobs do report para auditoria rápida."
               open={sectionsOpen.history}
               onToggle={() => onToggleSection('history')}
               icon={<Activity size={16} className="text-[#17407E]" />}
             >
-              <div className="space-y-2">
+              <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
                 {runs.length === 0 ? (
                   <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm text-slate-500">
                     Nenhum run registrado até o momento.
@@ -2386,7 +2395,7 @@ function WeeklyReportAdminModal({
                     <div key={run.id} className="rounded-xl border border-slate-200 bg-slate-50/80 px-3 py-3">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-slate-900">{run.windowStartDate} até {run.windowEndDate}</div>
+                          <div className="text-sm font-semibold text-slate-900">Job semanal {formatDate(run.windowStartDate)} a {formatDate(run.windowEndDate)}</div>
                           <div className="mt-1 text-xs text-slate-500">
                             {run.triggerSource === 'manual' ? 'Disparo manual' : 'Disparo automático'} · tentativa {run.attemptNumber} · {formatDateTime(run.createdAt)}
                           </div>
@@ -2431,7 +2440,7 @@ function WeeklyReportAdminModal({
                   Relatório global: {eligibility.globalRecipients.skippedRecipients.length} destinatário(s) executivo(s) selecionado(s) ainda têm pendência cadastral.
                 </div>
               ) : null}
-              <div className="mt-3 space-y-2">
+              <div className="mt-3 max-h-[320px] space-y-2 overflow-y-auto pr-1">
                 {(eligibility?.skippedRecipients || []).slice(0, 8).map((item, index) => (
                   <div key={`${item.employeeId || item.userId || 'skip'}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
                     <div className="font-semibold text-slate-900">{item.employeeName || item.userId || 'Registro sem identificação'}</div>
