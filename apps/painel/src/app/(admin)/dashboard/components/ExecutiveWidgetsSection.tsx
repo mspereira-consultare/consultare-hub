@@ -71,7 +71,9 @@ export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionPro
     .map((widgetKey) => EXECUTIVE_WIDGET_DEFINITIONS.find((item) => item.key === widgetKey))
     .filter(Boolean);
   const plannedVisibleDefinitions = visibleWidgetDefinitions.filter((item) => item?.status === 'planned');
+  const blockedVisibleDefinitions = visibleWidgetDefinitions.filter((item) => item?.status === 'blocked');
   const plannedVisibleCount = plannedVisibleDefinitions.length;
+  const blockedVisibleCount = blockedVisibleDefinitions.length;
   const coveredAreas = new Set(widgets.map((widget) => widget.areaKey));
 
   const widgetsByArea = AREA_ORDER.map((areaKey) => {
@@ -126,14 +128,14 @@ export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionPro
           helper="Itens previstos para o perfil, mas ainda sem fonte executiva pronta."
         />
         <CoverageCard
+          label="Bloqueados"
+          value={String(blockedVisibleCount)}
+          helper="Itens fora do escopo atual ou dependentes de integração externa."
+        />
+        <CoverageCard
           label="Áreas cobertas"
           value={String(coveredAreas.size)}
           helper="Eixos do dashboard já representados por widgets ativos."
-        />
-        <CoverageCard
-          label="Escopo visível"
-          value={String(snapshot.metrics.profile.visibleWidgetKeys.length)}
-          helper="Total de widgets autorizados hoje para este perfil."
         />
       </div>
 
@@ -152,6 +154,29 @@ export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionPro
               <span
                 key={definition?.key}
                 className="inline-flex items-center rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium text-sky-900"
+              >
+                {definition?.label} · {formatAreaLabel(definition?.areaKey || 'operacao')}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {blockedVisibleDefinitions.length ? (
+        <div className="rounded-xl border border-dashed border-rose-200 bg-rose-50 px-5 py-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-rose-900">Widgets bloqueados nesta retomada</h3>
+              <p className="mt-1 text-sm text-rose-800">
+                Estes itens ficaram fora da V1 atual porque dependem de integração externa, regra ainda não definida ou escopo proibido nesta retomada.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {blockedVisibleDefinitions.map((definition) => (
+              <span
+                key={definition?.key}
+                className="inline-flex items-center rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-medium text-rose-900"
               >
                 {definition?.label} · {formatAreaLabel(definition?.areaKey || 'operacao')}
               </span>

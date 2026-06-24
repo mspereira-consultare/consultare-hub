@@ -32,7 +32,12 @@ export async function POST() {
 
     invalidateCache('admin:');
     return NextResponse.json({ status: 'success', data: snapshot });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Erro interno ao atualizar dashboard executivo.';
+    const status =
+      typeof error === 'object' && error !== null && 'status' in error
+        ? Number((error as { status?: number }).status) || 500
+        : 500;
     console.error('Erro ao atualizar dashboard executivo:', error);
     try {
       const auth = await requireDashboardPermission('refresh');
@@ -40,14 +45,14 @@ export async function POST() {
         await upsertSystemStatus(auth.db, {
           serviceName: SERVICE_NAME,
           status: 'ERROR',
-          details: error?.message || 'Falha ao gerar snapshot executivo',
+          details: message || 'Falha ao gerar snapshot executivo',
         });
       }
     } catch {}
 
     return NextResponse.json(
-      { error: error?.message || 'Erro interno ao atualizar dashboard executivo.' },
-      { status: Number(error?.status) || 500 }
+      { error: message },
+      { status }
     );
   }
 }

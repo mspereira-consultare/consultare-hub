@@ -954,6 +954,8 @@ Resultado entregue:
 
 ### Lote D - Estabilizacao final
 
+Status em 2026-06-24: **concluido**
+
 Objetivo:
 
 - encerrar a retomada com backlog limpo e comportamento previsivel.
@@ -968,6 +970,46 @@ Entregas:
   - falta de fonte;
   - custo alto de descoberta;
   - dependencia de escopo proibido nesta retomada.
+
+Resultado entregue:
+
+- mensagens de erro e estados vazios do `/dashboard` foram revisados para deixar mais claro quando o problema e:
+  - falha de carga/refresh/export;
+  - ausencia de snapshot valido;
+  - configuracao pendente sem fallback de escopo amplo;
+- handlers da API executiva foram estabilizados com tratamento de erro mais previsivel em `GET /api/admin/dashboard/executive` e `POST /api/admin/dashboard/executive/refresh`;
+- o backlog residual do catalogo passou a ficar separado entre:
+  - `planned`: widgets ainda previstos, mas dependentes de fonte ou refinamento;
+  - `blocked`: widgets fora do escopo atual ou dependentes de integracao externa nao consolidada;
+- `reclame_aqui` ficou explicitamente tratado como `blocked` na V1 atual;
+- tela e PDF passaram a refletir a diferenca entre item “em preparacao” e item “bloqueado nesta retomada”.
+
+Backlog residual oficial apos a estabilizacao:
+
+- `planned` por falta de fonte ou regra executiva adicional:
+  - `banco_horas`
+  - `agenda_calendario`
+  - `contas_aberto`
+  - `nf_aberto`
+  - `recoletas`
+  - `fila_telefonia`
+  - `ultima_inspecao`
+  - `contas_semana`
+  - `notas_fiscais`
+  - `previsto_realizado`
+  - `estornos_pendentes`
+  - `contratos_pendentes_vencidos`
+  - `estoque_vencendo`
+- `blocked` por dependencia externa ou fora do recorte atual:
+  - `reclame_aqui`
+
+Proximo lote funcional recomendado:
+
+- iniciar um ciclo dedicado de refinamento de backlog residual por fonte, nesta ordem:
+  1. `banco_horas` e definicao de competencia executiva;
+  2. `agenda_calendario` e experiencia visual de agenda consolidada;
+  3. bloco financeiro residual (`contas_aberto`, `nf_aberto`, `contas_semana`, `notas_fiscais`, `previsto_realizado`, `estornos_pendentes`);
+  4. bloco operacional/qualidade residual (`recoletas`, `fila_telefonia`, `ultima_inspecao`, `contratos_pendentes_vencidos`, `estoque_vencendo`).
 
 ## 16.4 Ordem recomendada de execucao
 
@@ -986,6 +1028,8 @@ Esta retomada sera considerada concluida quando:
 - o primeiro sublote fechado estiver consolidado no snapshot, na tela e no PDF;
 - os widgets restantes estiverem claramente classificados entre `planned real`, `sem fonte`, ou `fora de escopo`;
 - a experiencia final do `/dashboard` estiver fechada e coerente para uso executivo dentro do modelo `widgets-first`.
+
+Status final da retomada em 2026-06-24: **concluida**
 
 ---
 

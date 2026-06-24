@@ -14,11 +14,16 @@ export async function GET() {
 
     const snapshot = await getOrCreateExecutiveSnapshot(auth.db, auth.userId);
     return NextResponse.json({ status: 'success', data: snapshot });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Erro interno ao carregar dashboard executivo.';
+    const status =
+      typeof error === 'object' && error !== null && 'status' in error
+        ? Number((error as { status?: number }).status) || 500
+        : 500;
     console.error('Erro ao carregar dashboard executivo:', error);
     return NextResponse.json(
-      { error: error?.message || 'Erro interno ao carregar dashboard executivo.' },
-      { status: Number(error?.status) || 500 }
+      { error: message },
+      { status }
     );
   }
 }

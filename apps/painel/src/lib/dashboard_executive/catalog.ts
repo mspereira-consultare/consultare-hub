@@ -61,7 +61,7 @@ const WIDGETS: WidgetSeed[] = [
   { key: 'nf_aberto', label: 'NF em aberto', areaKey: 'financeiro', status: 'planned', sourceKey: null, description: 'Notas fiscais em aberto.' },
   { key: 'mapa_semanal_agendas', label: 'Mapa semanal das agendas', areaKey: 'operacao', status: 'available', sourceKey: 'agenda_occupancy', description: 'Distribuição semanal das agendas.' },
   { key: 'google', label: 'Google', areaKey: 'comercial', status: 'available', sourceKey: 'marketing.funil', description: 'Indicadores consolidados de Google e origem digital.' },
-  { key: 'reclame_aqui', label: 'ReclameAqui', areaKey: 'qualidade', status: 'planned', sourceKey: null, description: 'Acompanhamento reputacional no ReclameAqui.' },
+  { key: 'reclame_aqui', label: 'ReclameAqui', areaKey: 'qualidade', status: 'blocked', sourceKey: null, description: 'Acompanhamento reputacional no ReclameAqui depende de integração externa ainda não consolidada.' },
   { key: 'progresso_metas', label: 'Progresso das metas', areaKey: 'comercial', status: 'available', sourceKey: 'goals.dashboard', description: 'Andamento das metas executivas do recorte.' },
   { key: 'documentos_equipamentos_vencendo', label: 'Documentos ou equipamentos vencidos', areaKey: 'qualidade', status: 'available', sourceKey: 'qms.surveillance', description: 'Itens vencidos ou a vencer em qualidade.' },
   { key: 'recoletas', label: 'Recoletas', areaKey: 'operacao', status: 'planned', sourceKey: null, description: 'Indicadores de recoleta e reprocesso.' },

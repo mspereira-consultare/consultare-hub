@@ -24,26 +24,32 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchExecutiveDashboard = useCallback(async () => {
-    setError(null);
     const response = await fetch('/api/admin/dashboard/executive', { cache: 'no-store' });
     const payload = (await response.json()) as ExecutiveApiResponse | { error?: string };
     if (!response.ok || !('data' in payload)) {
       throw new Error((payload as { error?: string }).error || 'Falha ao carregar o painel executivo.');
     }
-    setSnapshot(payload.data);
+    return payload.data;
   }, []);
 
   useEffect(() => {
     let mounted = true;
 
-    fetchExecutiveDashboard()
-      .catch((err: unknown) => {
+    const loadInitialSnapshot = async () => {
+      try {
+        const data = await fetchExecutiveDashboard();
+        if (!mounted) return;
+        setError(null);
+        setSnapshot(data);
+      } catch (err: unknown) {
         if (!mounted) return;
         setError(err instanceof Error ? err.message : 'Falha ao carregar o painel executivo.');
-      })
-      .finally(() => {
+      } finally {
         if (mounted) setLoading(false);
-      });
+      }
+    };
+
+    loadInitialSnapshot();
 
     return () => {
       mounted = false;
@@ -55,6 +61,7 @@ export default function DashboardPage() {
     setError(null);
 
     try {
+      setError(null);
       const response = await fetch('/api/admin/dashboard/executive/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -63,7 +70,8 @@ export default function DashboardPage() {
       if (!response.ok) {
         throw new Error(payload?.error || 'Falha ao atualizar o painel executivo.');
       }
-      await fetchExecutiveDashboard();
+      const data = await fetchExecutiveDashboard();
+      setSnapshot(data);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Falha ao atualizar o painel executivo.');
     } finally {
@@ -74,9 +82,9 @@ export default function DashboardPage() {
   const handleExportPdf = useCallback(async () => {
     if (!snapshot?.id) return;
     setExportingPdf(true);
-    setError(null);
 
     try {
+      setError(null);
       const response = await fetch(`/api/admin/dashboard/executive/export?snapshotId=${encodeURIComponent(snapshot.id)}`, {
         method: 'GET',
       });
@@ -143,6 +151,9 @@ export default function DashboardPage() {
     const plannedVisibleCount = snapshot.metrics.profile.visibleWidgetKeys.filter((widgetKey) =>
       EXECUTIVE_WIDGET_DEFINITIONS.some((widget) => widget.key === widgetKey && widget.status === 'planned')
     ).length;
+    const blockedVisibleCount = snapshot.metrics.profile.visibleWidgetKeys.filter((widgetKey) =>
+      EXECUTIVE_WIDGET_DEFINITIONS.some((widget) => widget.key === widgetKey && widget.status === 'blocked')
+    ).length;
 
     return [
       {
@@ -163,7 +174,9 @@ export default function DashboardPage() {
       {
         label: 'Em preparação',
         value: String(plannedVisibleCount),
-        helper: 'Widgets do perfil que seguem dependentes de fonte ou refinamento',
+        helper: blockedVisibleCount
+          ? `${blockedVisibleCount} item(ns) adicionais seguem bloqueados nesta retomada`
+          : 'Widgets do perfil que seguem dependentes de fonte ou refinamento',
       },
     ];
   }, [snapshot]);
@@ -222,13 +235,14 @@ export default function DashboardPage() {
 
         {error ? (
           <div className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700">
-            {error}
+            <p className="font-medium">O painel executivo encontrou um problema nesta ação.</p>
+            <p className="mt-1">{error}</p>
           </div>
         ) : null}
 
         {!snapshot ? (
           <div className="rounded-xl border border-dashed border-slate-300 bg-white px-6 py-12 text-center text-sm text-slate-500 shadow-sm">
-            Nenhum snapshot executivo foi encontrado para este usuário.
+            Nenhum snapshot executivo válido foi encontrado para este usuário. Tente atualizar o painel para gerar uma nova leitura consolidada.
           </div>
         ) : needsConfiguration ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-6 py-10 shadow-sm">
@@ -237,6 +251,9 @@ export default function DashboardPage() {
               <p className="mt-2 text-sm leading-6 text-amber-800">
                 Este acesso ainda não está vinculado a um perfil de visualização. Assim que a configuração for concluída,
                 o dashboard passará a mostrar apenas os indicadores permitidos para este cargo e setor.
+              </p>
+              <p className="mt-3 text-sm leading-6 text-amber-800">
+                Enquanto isso, a leitura de IA e a exportação executiva permanecem restritas ao snapshot seguro sem escopo amplo por fallback.
               </p>
             </div>
           </div>
