@@ -6,6 +6,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertCircle,
   Activity,
+  Check,
   Gauge,
   Calendar,
   ChevronDown,
@@ -36,6 +37,7 @@ import type {
   TaskDependency,
   TaskDetail,
   TaskEfficiencySummary,
+  TaskGlobalWeeklyReportEmailPayload,
   TaskPortfolioGantt,
   TaskPortfolioGanttSection,
   TaskPriority,
@@ -93,6 +95,8 @@ type FiltersState = {
 
 type WeeklyReportSettingsState = {
   enabled: boolean;
+  globalReportEnabled: boolean;
+  globalRecipientUserIds: string[];
   fromEmail: string;
   fromName: string;
   replyToEmail: string;
@@ -136,6 +140,28 @@ type WeeklyReportEligibilityState = {
     employeeName: string | null;
     reason: 'MISSING_USER_EMPLOYEE_LINK' | 'MISSING_CORPORATE_EMAIL' | 'NO_ELIGIBLE_PENDING_TASKS';
   }>;
+  globalRecipients: {
+    generatedAt: string;
+    selectedCount: number;
+    readyRecipients: Array<{
+      userId: string | null;
+      userName: string | null;
+      employeeId: string | null;
+      employeeName: string | null;
+      corporateEmail: string | null;
+      status: 'READY';
+      reason: null;
+    }>;
+    skippedRecipients: Array<{
+      userId: string | null;
+      userName: string | null;
+      employeeId: string | null;
+      employeeName: string | null;
+      corporateEmail: string | null;
+      status: 'SKIPPED';
+      reason: 'MISSING_USER_EMPLOYEE_LINK' | 'MISSING_CORPORATE_EMAIL' | 'USER_NOT_FOUND';
+    }>;
+  };
 };
 
 const KANBAN_COLUMNS: Array<{ key: TaskStatus; label: string; description: string }> = [
@@ -568,6 +594,8 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const dragClickGuardRef = useRef<string | null>(null);
   const [weeklyReportSettings, setWeeklyReportSettings] = useState<WeeklyReportSettingsState>({
     enabled: false,
+    globalReportEnabled: false,
+    globalRecipientUserIds: [],
     fromEmail: '',
     fromName: 'Consultare Intranet',
     replyToEmail: '',
@@ -577,7 +605,9 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const [weeklyReportEligibility, setWeeklyReportEligibility] = useState<WeeklyReportEligibilityState | null>(null);
   const [weeklyReportRuns, setWeeklyReportRuns] = useState<WeeklyReportRunItem[]>([]);
   const [weeklyReportPreview, setWeeklyReportPreview] = useState<TaskWeeklyReportEmailPayload | null>(null);
+  const [weeklyReportGlobalPreview, setWeeklyReportGlobalPreview] = useState<TaskGlobalWeeklyReportEmailPayload | null>(null);
   const [selectedPreviewUserId, setSelectedPreviewUserId] = useState('all');
+  const [selectedGlobalPreviewUserId, setSelectedGlobalPreviewUserId] = useState('all');
   const [weeklyReportLoading, setWeeklyReportLoading] = useState(false);
   const [weeklyReportSaving, setWeeklyReportSaving] = useState(false);
   const [weeklyReportRunning, setWeeklyReportRunning] = useState(false);
@@ -585,6 +615,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
   const [weeklyReportSectionsOpen, setWeeklyReportSectionsOpen] = useState({
     configuration: true,
     preview: true,
+    globalPreview: true,
     history: false,
     ignored: false,
   });
@@ -719,6 +750,7 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
         setWeeklyReportSettings({
           ...nextSettings,
           replyToEmail: nextSettings.replyToEmail || '',
+          globalRecipientUserIds: nextSettings.globalRecipientUserIds || [],
         });
       }
       setWeeklyReportEligibility(nextEligibility);
@@ -728,6 +760,13 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
           return current;
         }
         return nextEligibility?.eligibleRecipients[0]?.userId || 'all';
+      });
+      setSelectedGlobalPreviewUserId((current) => {
+        const readyRecipients = nextEligibility?.globalRecipients?.readyRecipients || [];
+        if (current !== 'all' && readyRecipients.some((recipient) => recipient.userId === current)) {
+          return current;
+        }
+        return readyRecipients[0]?.userId || 'all';
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar a administração do report semanal.');
@@ -913,6 +952,16 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
       })),
     [weeklyReportEligibility]
   );
+  const globalPreviewUserOptions = useMemo(
+    () =>
+      (weeklyReportEligibility?.globalRecipients.readyRecipients || [])
+        .filter((recipient) => recipient.userId && recipient.employeeName && recipient.corporateEmail)
+        .map((recipient) => ({
+          value: recipient.userId || '',
+          label: `${recipient.employeeName} · ${recipient.corporateEmail}`,
+        })),
+    [weeklyReportEligibility]
+  );
 
   const handleSave = async () => {
     if (!selectedTask || !canEdit || saving) return;
@@ -957,6 +1006,8 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           enabled: weeklyReportSettings.enabled,
+          globalReportEnabled: weeklyReportSettings.globalReportEnabled,
+          globalRecipientUserIds: weeklyReportSettings.globalRecipientUserIds,
           fromEmail: weeklyReportSettings.fromEmail,
           fromName: weeklyReportSettings.fromName,
           replyToEmail: weeklyReportSettings.replyToEmail.trim() || null,
@@ -994,6 +1045,27 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
     } catch (err: unknown) {
       setWeeklyReportPreview(null);
       setError(err instanceof Error ? err.message : 'Erro ao gerar a prévia do report semanal.');
+    } finally {
+      setWeeklyReportPreviewLoading(false);
+    }
+  };
+
+  const handleGenerateGlobalWeeklyReportPreview = async () => {
+    if (selectedGlobalPreviewUserId === 'all' || weeklyReportPreviewLoading) return;
+    setWeeklyReportPreviewLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(
+        `/api/admin/tasks/weekly-report/preview?kind=global&userId=${encodeURIComponent(selectedGlobalPreviewUserId)}`,
+        { cache: 'no-store' }
+      );
+      if (!response.ok) throw new Error(await normalizeError(response));
+      const payload = await response.json();
+      setWeeklyReportGlobalPreview((payload.data || null) as TaskGlobalWeeklyReportEmailPayload | null);
+      setSuccessMessage('Prévia do relatório global carregada para homologação.');
+    } catch (err: unknown) {
+      setWeeklyReportGlobalPreview(null);
+      setError(err instanceof Error ? err.message : 'Erro ao gerar a prévia do relatório global.');
     } finally {
       setWeeklyReportPreviewLoading(false);
     }
@@ -1799,8 +1871,11 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
         eligibility={weeklyReportEligibility}
         runs={weeklyReportRuns}
         preview={weeklyReportPreview}
+        globalPreview={weeklyReportGlobalPreview}
         previewUserOptions={previewUserOptions}
+        globalPreviewUserOptions={globalPreviewUserOptions}
         selectedPreviewUserId={selectedPreviewUserId}
+        selectedGlobalPreviewUserId={selectedGlobalPreviewUserId}
         ignoredByCorporateEmail={ignoredByCorporateEmail}
         ignoredByUserLink={ignoredByUserLink}
         ignoredByNoPending={ignoredByNoPending}
@@ -1811,9 +1886,12 @@ export function ExecutiveTasksClient({ users, departments, canEdit }: ExecutiveT
         onRun={() => void handleRunWeeklyReport()}
         onSave={() => void handleSaveWeeklyReportSettings()}
         onGeneratePreview={() => void handleGenerateWeeklyReportPreview()}
+        onGenerateGlobalPreview={() => void handleGenerateGlobalWeeklyReportPreview()}
         onPreviewUserChange={setSelectedPreviewUserId}
+        onGlobalPreviewUserChange={setSelectedGlobalPreviewUserId}
         onSettingsChange={setWeeklyReportSettings}
         onToggleSection={toggleWeeklyReportSection}
+        users={users}
       />
     </main>
   );
@@ -1865,8 +1943,11 @@ function WeeklyReportAdminModal({
   eligibility,
   runs,
   preview,
+  globalPreview,
   previewUserOptions,
+  globalPreviewUserOptions,
   selectedPreviewUserId,
+  selectedGlobalPreviewUserId,
   ignoredByCorporateEmail,
   ignoredByUserLink,
   ignoredByNoPending,
@@ -1877,9 +1958,12 @@ function WeeklyReportAdminModal({
   onRun,
   onSave,
   onGeneratePreview,
+  onGenerateGlobalPreview,
   onPreviewUserChange,
+  onGlobalPreviewUserChange,
   onSettingsChange,
   onToggleSection,
+  users,
 }: {
   open: boolean;
   canEdit: boolean;
@@ -1891,8 +1975,11 @@ function WeeklyReportAdminModal({
   eligibility: WeeklyReportEligibilityState | null;
   runs: WeeklyReportRunItem[];
   preview: TaskWeeklyReportEmailPayload | null;
+  globalPreview: TaskGlobalWeeklyReportEmailPayload | null;
   previewUserOptions: Array<{ value: string; label: string }>;
+  globalPreviewUserOptions: Array<{ value: string; label: string }>;
   selectedPreviewUserId: string;
+  selectedGlobalPreviewUserId: string;
   ignoredByCorporateEmail: WeeklyReportEligibilityState['skippedRecipients'];
   ignoredByUserLink: WeeklyReportEligibilityState['skippedRecipients'];
   ignoredByNoPending: WeeklyReportEligibilityState['skippedRecipients'];
@@ -1900,6 +1987,7 @@ function WeeklyReportAdminModal({
   sectionsOpen: {
     configuration: boolean;
     preview: boolean;
+    globalPreview: boolean;
     history: boolean;
     ignored: boolean;
   };
@@ -1908,9 +1996,12 @@ function WeeklyReportAdminModal({
   onRun: () => void;
   onSave: () => void;
   onGeneratePreview: () => void;
+  onGenerateGlobalPreview: () => void;
   onPreviewUserChange: (value: string) => void;
+  onGlobalPreviewUserChange: (value: string) => void;
   onSettingsChange: React.Dispatch<React.SetStateAction<WeeklyReportSettingsState>>;
-  onToggleSection: (section: 'configuration' | 'preview' | 'history' | 'ignored') => void;
+  onToggleSection: (section: 'configuration' | 'preview' | 'globalPreview' | 'history' | 'ignored') => void;
+  users: UserOption[];
 }) {
   useEffect(() => {
     if (!open) return;
@@ -1925,6 +2016,20 @@ function WeeklyReportAdminModal({
 
   const statusLabel = settings.enabled ? 'Ativo' : 'Desativado';
   const ignoredCount = ignoredByCorporateEmail.length + ignoredByUserLink.length;
+  const moduleStatusLabel =
+    settings.enabled && settings.globalReportEnabled
+      ? 'Individual + global ativos'
+      : settings.enabled
+        ? 'Individual ativo'
+        : settings.globalReportEnabled
+          ? 'Global ativo'
+          : 'Desativado';
+  const globalRecipientOptions = users.map((user) => ({
+    value: user.id,
+    label: `${user.name} · ${user.department || user.email || 'Sem setor'}`,
+  }));
+  const globalReadyCount = eligibility?.globalRecipients.readyRecipients.length || 0;
+  const globalSkippedCount = eligibility?.globalRecipients.skippedRecipients.length || 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6" onMouseDown={onClose}>
@@ -1975,9 +2080,9 @@ function WeeklyReportAdminModal({
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <CompactInfoCard
               label="Status"
-              value={statusLabel}
+              value={moduleStatusLabel}
               helper={
-                settings.enabled
+                settings.enabled || settings.globalReportEnabled
                   ? 'Pronto para processar quando as credenciais do SendPulse estiverem válidas.'
                   : 'Fluxo pausado na camada administrativa.'
               }
@@ -1991,6 +2096,11 @@ function WeeklyReportAdminModal({
               label="Ignorados por cadastro"
               value={ignoredCount}
               helper="Sem vínculo ou sem e-mail corporativo"
+            />
+            <CompactInfoCard
+              label="Globais prontos"
+              value={globalReadyCount}
+              helper={settings.globalReportEnabled ? 'Destinatários executivos aptos' : 'Relatório global desativado'}
             />
             <CompactInfoCard
               label="Último run"
@@ -2029,21 +2139,64 @@ function WeeklyReportAdminModal({
               onToggle={() => onToggleSection('configuration')}
               icon={<Send size={16} className="text-[#17407E]" />}
             >
-              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[0.75fr_1fr_1fr_1fr_auto]">
-                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={settings.enabled}
-                    disabled={!canEdit}
-                    onChange={(event) =>
+              <div className="grid gap-4 xl:grid-cols-[1.1fr_1fr]">
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Relatório individual</div>
+                  <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={settings.enabled}
+                      disabled={!canEdit}
+                      onChange={(event) =>
+                        onSettingsChange((current) => ({
+                          ...current,
+                          enabled: event.target.checked,
+                        }))
+                      }
+                    />
+                    Ativar envio semanal individual
+                  </label>
+                  <div className="text-xs text-slate-500">
+                    Dispara o resumo operacional apenas para colaboradores com pendências elegíveis sob execução direta.
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Relatório global</div>
+                  <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={settings.globalReportEnabled}
+                      disabled={!canEdit}
+                      onChange={(event) =>
+                        onSettingsChange((current) => ({
+                          ...current,
+                          globalReportEnabled: event.target.checked,
+                        }))
+                      }
+                    />
+                    Ativar resumo executivo global
+                  </label>
+                  <SearchableMultiSelect
+                    label="Destinatários executivos"
+                    value={settings.globalRecipientUserIds}
+                    onChange={(value) =>
                       onSettingsChange((current) => ({
                         ...current,
-                        enabled: event.target.checked,
+                        globalRecipientUserIds: value,
                       }))
                     }
+                    options={globalRecipientOptions}
+                    placeholder="Selecione CEO, gerente e demais destinatários"
+                    helper="Esses usuários recebem o relatório global no mesmo lote semanal. O vínculo final do envio continua sendo resolvido via colaborador + e-mail corporativo."
                   />
-                  Ativar envio semanal
-                </label>
+                  <div className="text-xs text-slate-500">
+                    {globalReadyCount} pronto(s) para envio · {globalSkippedCount} com pendência cadastral no momento.
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]">
                 <FieldInput
                   label="E-mail remetente"
                   value={settings.fromEmail}
@@ -2149,6 +2302,74 @@ function WeeklyReportAdminModal({
             </CollapsibleAdminSection>
 
             <CollapsibleAdminSection
+              title="Prévia executiva global"
+              description="Homologação do conteúdo consolidado para CEO e gerência."
+              open={sectionsOpen.globalPreview}
+              onToggle={() => onToggleSection('globalPreview')}
+              icon={<Gauge size={16} className="text-[#17407E]" />}
+            >
+              <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
+                <div className="space-y-3">
+                  <SearchableFilterSelect
+                    label="Destinatário configurado"
+                    value={selectedGlobalPreviewUserId}
+                    onChange={onGlobalPreviewUserChange}
+                    allLabel={globalPreviewUserOptions.length ? 'Selecione um destinatário do global' : 'Nenhum destinatário apto no momento'}
+                    options={globalPreviewUserOptions}
+                  />
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+                    A prévia global usa o mesmo recorte semanal do disparo automático e mostra a leitura executiva consolidada da empresa.
+                  </div>
+                  <button
+                    type="button"
+                    disabled={selectedGlobalPreviewUserId === 'all' || previewLoading}
+                    onClick={onGenerateGlobalPreview}
+                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    {previewLoading ? <Loader2 size={16} className="animate-spin" /> : <ExternalLink size={16} />}
+                    Gerar prévia global
+                  </button>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  {globalPreview ? (
+                    <div className="space-y-3 text-sm text-slate-700">
+                      <div>
+                        <div className="font-semibold text-[#17407E]">{globalPreview.recipient.employeeName}</div>
+                        <div className="mt-1 text-xs text-slate-500">{globalPreview.recipient.corporateEmail}</div>
+                      </div>
+                      <div className="grid gap-2 text-xs text-slate-600 md:grid-cols-2">
+                        <div>Base operacional: <span className="font-semibold text-slate-900">{globalPreview.summary.operationalTasks}</span></div>
+                        <div>Pendências: <span className="font-semibold text-slate-900">{globalPreview.summary.pendingTasks}</span></div>
+                        <div>Concluídas na semana: <span className="font-semibold text-slate-900">{globalPreview.summary.completedThisWeek}</span></div>
+                        <div>Vencidas: <span className="font-semibold text-slate-900">{globalPreview.summary.overdueTasks}</span></div>
+                        <div>Aguardando aprovação: <span className="font-semibold text-slate-900">{globalPreview.summary.awaitingApprovalTasks}</span></div>
+                        <div>Eficiência global: <span className="font-semibold text-slate-900">{buildEfficiencySummaryLabel(globalPreview.summary.efficiency)}</span></div>
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Destaques</div>
+                        {globalPreview.highlightedOverdueTasks.slice(0, 2).map((task) => (
+                          <div key={task.taskId} className="rounded-xl border border-white/80 bg-white px-3 py-2">
+                            <div className="text-xs font-semibold text-[#17407E]">{task.protocolId}</div>
+                            <div className="text-sm font-semibold text-slate-900">{task.title}</div>
+                          </div>
+                        ))}
+                        {globalPreview.highlightedOverdueTasks.length <= 0 ? (
+                          <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-5 text-center text-xs text-slate-500">
+                            Nenhuma tarefa vencida crítica destacada nesta prévia.
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex min-h-[180px] items-center justify-center rounded-xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">
+                      Gere uma prévia executiva para validar o conteúdo global antes do disparo.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </CollapsibleAdminSection>
+
+            <CollapsibleAdminSection
               title="Histórico recente"
               description="Últimos lotes para auditoria rápida."
               open={sectionsOpen.history}
@@ -2205,6 +2426,11 @@ function WeeklyReportAdminModal({
                 <CompactInfoCard label="Sem vínculo usuário-colaborador" value={ignoredByUserLink.length} helper="Resolver employee_id do usuário" />
                 <CompactInfoCard label="Sem pendências elegíveis" value={ignoredByNoPending.length} helper="Fora do recorte operacional" />
               </div>
+              {eligibility?.globalRecipients.skippedRecipients.length ? (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs text-amber-800">
+                  Relatório global: {eligibility.globalRecipients.skippedRecipients.length} destinatário(s) executivo(s) selecionado(s) ainda têm pendência cadastral.
+                </div>
+              ) : null}
               <div className="mt-3 space-y-2">
                 {(eligibility?.skippedRecipients || []).slice(0, 8).map((item, index) => (
                   <div key={`${item.employeeId || item.userId || 'skip'}-${index}`} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm">
@@ -3218,6 +3444,180 @@ function SearchableFilterSelect({
                       <span className="truncate">{option.label}</span>
                     </button>
                   ))
+                )}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+    </div>
+  );
+}
+
+function SearchableMultiSelect({
+  label,
+  value,
+  onChange,
+  options,
+  placeholder,
+  helper,
+}: {
+  label: string;
+  value: string[];
+  onChange: (value: string[]) => void;
+  options: Array<{ value: string; label: string }>;
+  placeholder: string;
+  helper: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  const [dropdownStyle, setDropdownStyle] = useState<{ top: number; left: number; minWidth: number } | null>(null);
+
+  const selectedOptions = useMemo(
+    () => value.map((selectedValue) => options.find((option) => option.value === selectedValue)).filter(Boolean) as Array<{ value: string; label: string }>,
+    [options, value]
+  );
+  const visibleOptions = useMemo(() => {
+    if (!searchTerm.trim()) return options;
+    const normalized = normalizeText(searchTerm);
+    return options.filter((option) => normalizeText(option.label).includes(normalized));
+  }, [options, searchTerm]);
+
+  useEffect(() => {
+    if (!open) return;
+    const updatePosition = () => {
+      const rect = buttonRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setDropdownStyle({
+        top: rect.bottom + 8,
+        left: rect.left,
+        minWidth: rect.width,
+      });
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!containerRef.current?.contains(target) && !dropdownRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  const toggleValue = (selectedValue: string) => {
+    if (value.includes(selectedValue)) {
+      onChange(value.filter((item) => item !== selectedValue));
+      return;
+    }
+    onChange([...value, selectedValue]);
+  };
+
+  return (
+    <div ref={containerRef} className="space-y-1.5">
+      <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</label>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={() => {
+          setOpen((current) => !current);
+          setSearchTerm('');
+        }}
+        className={`${inputClassName} flex min-h-[44px] items-center justify-between gap-3 text-left`}
+      >
+        <span className={`truncate ${selectedOptions.length ? 'text-slate-700' : 'text-slate-400'}`}>
+          {selectedOptions.length <= 0
+            ? placeholder
+            : selectedOptions.length <= 2
+              ? selectedOptions.map((option) => option.label).join(', ')
+              : `${selectedOptions.length} destinatários selecionados`}
+        </span>
+        <span className="text-xs text-slate-400">{open ? '▲' : '▼'}</span>
+      </button>
+
+      {selectedOptions.length ? (
+        <div className="flex flex-wrap gap-2">
+          {selectedOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => toggleValue(option.value)}
+              className="inline-flex max-w-full items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700"
+            >
+              <span className="truncate">{option.label}</span>
+              <X size={12} />
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="text-xs text-slate-500">{helper}</div>
+
+      {open && dropdownStyle
+        ? createPortal(
+            <div
+              ref={dropdownRef}
+              className="fixed z-[80] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+              style={{ top: dropdownStyle.top, left: dropdownStyle.left, minWidth: dropdownStyle.minWidth }}
+            >
+              <div className="border-b border-slate-200 p-3">
+                <div className="relative">
+                  <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    autoFocus
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder={`Buscar ${label.toLowerCase()}`}
+                    className={`${inputClassName} pl-9`}
+                  />
+                </div>
+              </div>
+              <div className="max-h-72 overflow-y-auto p-2">
+                {visibleOptions.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-sm text-slate-500">Nenhum usuário encontrado.</div>
+                ) : (
+                  visibleOptions.map((option) => {
+                    const checked = value.includes(option.value);
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => toggleValue(option.value)}
+                        className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                          checked ? 'bg-blue-50 font-semibold text-[#17407E]' : 'text-slate-700 hover:bg-slate-50'
+                        }`}
+                      >
+                        <span className="truncate">{option.label}</span>
+                        <span
+                          className={`flex h-5 w-5 items-center justify-center rounded-md border ${
+                            checked ? 'border-blue-500 bg-blue-500 text-white' : 'border-slate-300 bg-white text-transparent'
+                          }`}
+                        >
+                          <Check size={12} />
+                        </span>
+                      </button>
+                    );
+                  })
                 )}
               </div>
             </div>,

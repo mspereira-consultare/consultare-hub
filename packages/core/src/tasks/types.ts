@@ -374,6 +374,37 @@ export type TaskWeeklyReportEmailPayload = {
   highlightedTasks: TaskWeeklyReportTaskItem[];
 };
 
+export type TaskGlobalWeeklyReportEmailPayload = {
+  recipient: {
+    userId: string;
+    employeeId: string;
+    employeeName: string;
+    corporateEmail: string;
+  };
+  period: TaskWeeklyReportWindow;
+  generatedAt: string;
+  governanceTasksUrl: string;
+  summary: {
+    operationalTasks: number;
+    pendingTasks: number;
+    completedThisWeek: number;
+    overdueTasks: number;
+    dueNext7DaysTasks: number;
+    awaitingApprovalTasks: number;
+    pausedTasks: number;
+    archivedTasks: number;
+    canceledTasks: number;
+    efficiency: TaskEfficiencySummary;
+  };
+  byStatus: Array<{ status: TaskStatus; count: number }>;
+  byPriority: Array<{ priority: TaskPriority; count: number }>;
+  byDepartment: Array<{ department: string; count: number }>;
+  highlightedOverdueTasks: TaskWeeklyReportTaskItem[];
+  highlightedPriorityTasks: TaskWeeklyReportTaskItem[];
+  highlightedApprovalTasks: TaskWeeklyReportTaskItem[];
+  topPendingGroups: Array<{ label: string; count: number; scope: 'PROJECT' | 'DEPARTMENT' }>;
+};
+
 export type TaskChecklistItemCreateInput = {
   title: string;
 };

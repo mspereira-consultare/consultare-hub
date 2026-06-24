@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { getTaskGlobalWeeklyReportPreview, getTaskWeeklyReportSettings } from '@/lib/tasks/weekly-report';
 import { getTaskWeeklyReportPreview } from '@consultare/core/tasks/repository';
 import { requireTaskGovernanceAccess } from '@/lib/tasks/auth';
 
@@ -12,9 +13,19 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url);
+    const kind = String(searchParams.get('kind') || 'individual').trim().toLowerCase();
     const userId = String(searchParams.get('userId') || '').trim();
     if (!userId) {
       return NextResponse.json({ error: 'Informe o userId para gerar a prévia do report semanal.' }, { status: 400 });
+    }
+
+    if (kind === 'global') {
+      const settings = await getTaskWeeklyReportSettings(auth.db);
+      if (!settings.globalRecipientUserIds.includes(userId)) {
+        return NextResponse.json({ error: 'Selecione um destinatário configurado no relatório global para gerar a prévia.' }, { status: 400 });
+      }
+      const data = await getTaskGlobalWeeklyReportPreview(auth.db, userId);
+      return NextResponse.json({ status: 'success', data });
     }
 
     const data = await getTaskWeeklyReportPreview(auth.db, userId);
