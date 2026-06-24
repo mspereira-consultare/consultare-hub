@@ -166,11 +166,24 @@ export function ChatAdmin({ canEdit }: ChatAdminProps) {
   };
 
   const toggleList = (key: 'memberIds' | 'moderatorIds' | 'ownerIds', userId: string) => {
-    setForm((current) => ({
-      ...current,
-      [key]: current[key].includes(userId) ? current[key].filter((id) => id !== userId) : [...current[key], userId],
-      memberIds: key === 'memberIds' || current.memberIds.includes(userId) ? current.memberIds : [...current.memberIds, userId],
-    }));
+    setForm((current) => {
+      if (key === 'memberIds') {
+        const isSelected = current.memberIds.includes(userId);
+        return {
+          ...current,
+          memberIds: isSelected ? current.memberIds.filter((id) => id !== userId) : [...current.memberIds, userId],
+          moderatorIds: isSelected ? current.moderatorIds.filter((id) => id !== userId) : current.moderatorIds,
+          ownerIds: isSelected ? current.ownerIds.filter((id) => id !== userId) : current.ownerIds,
+        };
+      }
+
+      const nextValues = current[key].includes(userId) ? current[key].filter((id) => id !== userId) : [...current[key], userId];
+      return {
+        ...current,
+        [key]: nextValues,
+        memberIds: current.memberIds.includes(userId) ? current.memberIds : [...current.memberIds, userId],
+      };
+    });
   };
 
   const saveConversation = async () => {
