@@ -314,6 +314,13 @@ export function ChatClient() {
     }
   };
 
+  const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey) return;
+    event.preventDefault();
+    if (!canSendInSelected || sending || (!body.trim() && !files.length)) return;
+    void sendMessage();
+  };
+
   const editMessage = async (message: ChatMessage) => {
     const nextBody = window.prompt('Editar mensagem', message.body);
     if (nextBody === null || !nextBody.trim()) return;
@@ -509,7 +516,7 @@ export function ChatClient() {
                   <button type="button" onClick={() => fileInputRef.current?.click()} disabled={!canSendInSelected} className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50" aria-label="Anexar arquivo">
                     <Paperclip size={18} />
                   </button>
-                  <textarea value={body} onChange={(event) => setBody(event.target.value)} disabled={!canSendInSelected} rows={1} placeholder={canSendInSelected ? 'Digite uma mensagem' : 'Envio restrito a moderadores'} className="min-h-11 flex-1 resize-none rounded-lg border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#17407E] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100" />
+                  <textarea value={body} onChange={(event) => setBody(event.target.value)} onKeyDown={handleComposerKeyDown} disabled={!canSendInSelected} rows={1} placeholder={canSendInSelected ? 'Digite uma mensagem' : 'Envio restrito a moderadores'} className="min-h-11 flex-1 resize-none rounded-lg border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#17407E] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100" />
                   <button type="button" onClick={sendMessage} disabled={!canSendInSelected || sending || (!body.trim() && !files.length)} className="flex h-11 w-11 items-center justify-center rounded-lg bg-[#17407E] text-white hover:bg-[#123463] disabled:cursor-not-allowed disabled:opacity-50" aria-label="Enviar">
                     {sending ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
                   </button>
