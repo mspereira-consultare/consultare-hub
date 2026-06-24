@@ -549,6 +549,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   const [activeFilter, setActiveFilter] = useState<FilterKey>('ALL');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [departmentFilter, setDepartmentFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState<TaskPriority | ''>('');
   const [createOpen, setCreateOpen] = useState(false);
   const [projectModalOpen, setProjectModalOpen] = useState(false);
   const [projectDetailModalOpen, setProjectDetailModalOpen] = useState(false);
@@ -605,6 +606,9 @@ export function TasksClient({ currentUser }: TasksClientProps) {
       }
       if (departmentFilter) {
         params.set('department', departmentFilter);
+      }
+      if (priorityFilter) {
+        params.set('priorities', priorityFilter);
       }
       if (projectFilter && projectFilter !== 'ALL' && projectFilter !== 'STANDALONE') {
         params.set('projectId', projectFilter);
@@ -809,7 +813,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   useEffect(() => {
     void loadTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeFilter, assigneeFilter, departmentFilter, projectFilter]);
+  }, [activeFilter, assigneeFilter, departmentFilter, priorityFilter, projectFilter]);
 
   useEffect(() => {
     if (isRetiredFilter(activeFilter) || viewMode !== 'GANTT') return;
@@ -1706,7 +1710,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
               </div>
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_320px_260px_240px]">
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_320px_220px_260px_240px]">
               <SearchableUserSelect
                 label="Responsável"
                 value={assigneeFilter}
@@ -1728,6 +1732,17 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                 </select>
               </div>
               <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Prioridade</label>
+                <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as TaskPriority | '')} className={inputClassName}>
+                  <option value="">Todas as prioridades</option>
+                  {PRIORITY_OPTIONS.map((priority) => (
+                    <option key={priority.value} value={priority.value}>
+                      {priority.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Setor</label>
                 <select value={departmentFilter} onChange={(event) => setDepartmentFilter(event.target.value)} className={inputClassName}>
                   <option value="">Todos os setores</option>
@@ -1742,12 +1757,13 @@ export function TasksClient({ currentUser }: TasksClientProps) {
                 <span className="rounded-full bg-slate-50 px-3 py-2 ring-1 ring-slate-200">
                   {visibleTasks.length} tarefa(s) no recorte
                 </span>
-                {(assigneeFilter || departmentFilter || projectFilter !== 'ALL') ? (
+                {(assigneeFilter || departmentFilter || priorityFilter || projectFilter !== 'ALL') ? (
                   <button
                     type="button"
                     onClick={() => {
                       setAssigneeFilter('');
                       setDepartmentFilter('');
+                      setPriorityFilter('');
                       setProjectFilter('ALL');
                     }}
                     className="rounded-full border border-slate-200 bg-white px-3 py-2 font-semibold text-slate-600 transition hover:bg-slate-50"
