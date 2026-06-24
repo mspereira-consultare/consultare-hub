@@ -4226,7 +4226,7 @@ function TaskDetailPanel({
                   {orderedActivity.length === 0 ? (
                     <p className="text-sm text-slate-500">Nenhum evento registrado.</p>
                   ) : (
-                    <TaskActivityTimeline items={orderedActivity.slice(0, 12)} />
+                    <TaskActivityTimeline items={orderedActivity.slice(0, 12)} usersById={usersById} />
                   )}
                 </div>
               </div>
@@ -4590,21 +4590,28 @@ function TaskAttachmentList({
 
 function TaskActivityTimeline({
   items,
+  usersById,
 }: {
   items: TaskDetail['activity'];
+  usersById: Map<string, UserOption>;
 }) {
   return (
     <div className="space-y-3">
-      {items.map((item) => (
-        <div key={item.id} className="relative pl-5">
-          <span className="absolute left-0 top-2.5 h-2.5 w-2.5 rounded-full bg-[#17407E]" />
-          <span className="absolute left-[4px] top-5 h-[calc(100%-0.25rem)] w-px bg-slate-200" />
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-            <div className="text-sm font-semibold text-slate-900">{describeTaskActivity(item.action, item.payloadJson)}</div>
-            <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)}</div>
+      {items.map((item) => {
+        const actorLabel = item.actorUserName || (item.actorUserId ? usersById.get(item.actorUserId)?.name : null) || 'Usuário';
+        return (
+          <div key={item.id} className="relative pl-5">
+            <span className="absolute left-0 top-2.5 h-2.5 w-2.5 rounded-full bg-[#17407E]" />
+            <span className="absolute left-[4px] top-5 h-[calc(100%-0.25rem)] w-px bg-slate-200" />
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="text-sm font-semibold text-slate-900">{describeTaskActivity(item.action, item.payloadJson)}</div>
+              <div className="mt-1 text-xs text-slate-500">
+                {actorLabel} • {formatDateTime(item.createdAt)}
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

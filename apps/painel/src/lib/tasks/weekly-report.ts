@@ -159,6 +159,10 @@ const isMysqlProvider = () => {
 };
 
 const isValidEmail = (value: string | null) => !value || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const userEmployeeEqualsSql = (left: string, right: string) =>
+  isMysqlProvider()
+    ? `CONVERT(${left} USING utf8mb4) COLLATE utf8mb4_0900_ai_ci = CONVERT(${right} USING utf8mb4) COLLATE utf8mb4_0900_ai_ci`
+    : `${left} = ${right}`;
 
 const safeCreateIndex = async (db: DbInterface, sql: string) => {
   try {
@@ -597,7 +601,7 @@ const resolveCorporateRecipientByUserId = async (db: DbInterface, userId: string
       e.full_name AS employee_name,
       e.corporate_email
     FROM users u
-    LEFT JOIN employees e ON u.employee_id = e.id
+    LEFT JOIN employees e ON ${userEmployeeEqualsSql('u.employee_id', 'e.id')}
     WHERE ${isMysqlProvider() ? `u.id COLLATE utf8mb4_unicode_ci = ? COLLATE utf8mb4_unicode_ci` : `u.id = ?`}
       AND UPPER(TRIM(COALESCE(u.status, 'ATIVO'))) = 'ATIVO'
     LIMIT 1

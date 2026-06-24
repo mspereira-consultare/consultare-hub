@@ -562,6 +562,7 @@ const mapActivity = (row: Row): TaskActivityLog => ({
   taskId: clean(row.task_id),
   action: clean(row.action),
   actorUserId: clean(row.actor_user_id),
+  actorUserName: nullable(row.actor_user_name),
   payloadJson: nullable(row.payload_json),
   createdAt: clean(row.created_at),
 });
@@ -689,7 +690,16 @@ const loadTaskCollections = async (db: DbInterface, taskIds: string[]) => {
     ),
     db.query(`SELECT * FROM task_checklist_items WHERE task_id IN (${placeholders}) ORDER BY sort_order ASC, created_at ASC`, taskIds),
     db.query(`SELECT * FROM task_approval_requests WHERE task_id IN (${placeholders}) ORDER BY cycle_number DESC, requested_at DESC`, taskIds),
-    db.query(`SELECT * FROM task_activity_log WHERE task_id IN (${placeholders}) ORDER BY created_at DESC`, taskIds),
+    db.query(
+      `
+      SELECT l.*, u.name AS actor_user_name
+      FROM task_activity_log l
+      LEFT JOIN users u ON ${idColumnEqualsSql('l.actor_user_id', 'u.id')}
+      WHERE l.task_id IN (${placeholders})
+      ORDER BY l.created_at DESC
+      `,
+      taskIds
+    ),
     db.query(
       `SELECT * FROM task_dependencies WHERE predecessor_task_id IN (${placeholders}) OR successor_task_id IN (${placeholders}) ORDER BY created_at ASC`,
       [...taskIds, ...taskIds]
@@ -1298,6 +1308,13 @@ export const createTask = async (db: DbInterface, input: TaskCreateInput, actorU
   const approverUserId = nullable(input.approverUserId);
   const primaryAssigneeUserId = nullable(input.primaryAssigneeUserId) || actorUserId;
   const assigneeIds = computeAssigneeIds(primaryAssigneeUserId, input.assigneeUserIds || []);
+
+  if (!startDate || !dueDate) {
+    throw new TaskValidationError('Data de início e prazo são obrigatórios na criação da tarefa.');
+  }
+  if (dueDate < startDate) {
+    throw new TaskValidationError('O prazo da tarefa não pode ser menor que a data de início.');
+  }
 
   await ensureUserIsActive(db, actorUserId);
   for (const userId of assigneeIds) await ensureUserIsActive(db, userId);

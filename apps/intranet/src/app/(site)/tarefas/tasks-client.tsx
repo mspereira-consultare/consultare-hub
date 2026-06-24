@@ -946,7 +946,7 @@ export function TasksClient({ currentUser }: TasksClientProps) {
   };
 
   const createTask = async () => {
-    if (!createForm.title.trim() || !createForm.department.trim() || saving) return;
+    if (!createForm.title.trim() || !createForm.department.trim() || !createForm.startDate || !createForm.dueDate || saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -2663,6 +2663,7 @@ function TaskModal({
                   <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onChange({ ...form, dueDate: value })} />
                   <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onChange({ ...form, startDate: value })} />
                 </div>
+                <div className="text-xs text-slate-500">Data de início e prazo são obrigatórios na criação da tarefa.</div>
                 {requiresProjectSchedule ? (
                   <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-[#17407E]">
                     Tarefas vinculadas a projeto precisam ter início e prazo definidos para aparecer no Gantt.
@@ -2760,7 +2761,7 @@ function TaskModal({
           <button
             type="button"
             onClick={onSubmit}
-            disabled={saving || !form.title.trim() || !form.department.trim() || (requiresProjectSchedule && (!form.startDate || !form.dueDate))}
+            disabled={saving || !form.title.trim() || !form.department.trim() || !form.startDate || !form.dueDate}
             className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123463] disabled:opacity-50"
           >
             {saving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
@@ -3602,7 +3603,7 @@ function TaskDetailModal({
                   {orderedActivity.length === 0 ? (
                     <p className="text-sm text-slate-500">Nenhum evento registrado.</p>
                   ) : (
-                    <TaskActivityTimeline items={orderedActivity.slice(0, 12)} />
+                    <TaskActivityTimeline items={orderedActivity.slice(0, 12)} usersById={usersById} />
                   )}
                 </div>
               </div>
@@ -4027,21 +4028,28 @@ function TaskAttachmentList({
 
 function TaskActivityTimeline({
   items,
+  usersById,
 }: {
   items: TaskDetail['activity'];
+  usersById: Map<string, TaskUserOption>;
 }) {
   return (
     <div className="space-y-3">
-      {items.map((item) => (
-        <div key={item.id} className="relative pl-5">
-          <span className="absolute left-0 top-2.5 h-2.5 w-2.5 rounded-full bg-[#17407E]" />
-          <span className="absolute left-[4px] top-5 h-[calc(100%-0.25rem)] w-px bg-slate-200 last:hidden" />
-          <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-            <div className="text-sm font-semibold text-slate-900">{describeTaskActivity(item.action, item.payloadJson)}</div>
-            <div className="mt-1 text-xs text-slate-500">{formatDateTime(item.createdAt)}</div>
+      {items.map((item) => {
+        const actorLabel = item.actorUserName || (item.actorUserId ? usersById.get(item.actorUserId)?.name : null) || 'Usuário';
+        return (
+          <div key={item.id} className="relative pl-5">
+            <span className="absolute left-0 top-2.5 h-2.5 w-2.5 rounded-full bg-[#17407E]" />
+            <span className="absolute left-[4px] top-5 h-[calc(100%-0.25rem)] w-px bg-slate-200 last:hidden" />
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <div className="text-sm font-semibold text-slate-900">{describeTaskActivity(item.action, item.payloadJson)}</div>
+              <div className="mt-1 text-xs text-slate-500">
+                {actorLabel} • {formatDateTime(item.createdAt)}
+              </div>
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

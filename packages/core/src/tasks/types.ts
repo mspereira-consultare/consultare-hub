@@ -82,6 +82,7 @@ export type TaskActivityLog = {
   taskId: string;
   action: string;
   actorUserId: string;
+  actorUserName: string | null;
   payloadJson: string | null;
   createdAt: string;
 };
