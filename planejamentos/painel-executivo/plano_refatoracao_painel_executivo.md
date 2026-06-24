@@ -926,6 +926,8 @@ Entregas:
 
 ### Lote C - Fechamento de consistencia do PDF
 
+Status em 2026-06-24: **concluido**
+
 Objetivo:
 
 - garantir que o PDF represente a experiencia final do painel, e nao uma variacao paralela.
@@ -937,6 +939,18 @@ Entregas:
 - garantir que itens ainda `planned` nao aparecam como se estivessem implementados;
 - validar export para perfis com escopo reduzido e para usuarios em configuracao pendente;
 - manter o PDF coerente com a abordagem `widgets-first`, sem criar uma estrutura paralela baseada em blocos por area.
+
+Resultado entregue:
+
+- o cabecalho do PDF passou a refletir perfil executivo, governanca aplicada, escopo e status geral do snapshot;
+- o PDF agora mostra a mesma leitura de composicao do `/dashboard`, incluindo:
+  - prioridades principais;
+  - leitura executiva da IA com tratamento explicito para `READY`, `FAILED`, `UNAVAILABLE` e `PENDING_PHASE_2`;
+  - widgets ativos do perfil;
+  - backlog visivel de widgets ainda em preparacao;
+  - operacao ao vivo com metricas e heartbeats;
+- itens `planned` deixaram de aparecer como se fossem widgets implementados;
+- a exportacao passou a manter o mesmo principio da tela: nao inventar leitura de IA nem estrutura paralela quando o snapshot estiver parcial ou com configuracao pendente.
 
 ### Lote D - Estabilizacao final
 

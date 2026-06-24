@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
+import { EXECUTIVE_WIDGET_DEFINITIONS } from '@/lib/dashboard_executive/catalog';
 import { requireDashboardPermission } from '@/lib/dashboard_executive/auth';
 import { getExecutiveSnapshotById } from '@/lib/dashboard_executive/repository';
 import type { ExecutiveAiInsightItem, ExecutiveSnapshot } from '@/lib/dashboard_executive/types';
@@ -29,6 +30,48 @@ const formatTimestamp = (value: string | null | undefined) => {
     timeStyle: 'short',
     timeZone: 'America/Sao_Paulo',
   }).format(date);
+};
+
+const formatAreaLabel = (areaKey: string | null | undefined) => {
+  if (areaKey === 'financeiro') return 'Financeiro';
+  if (areaKey === 'comercial') return 'Comercial';
+  if (areaKey === 'operacao') return 'Operação';
+  if (areaKey === 'pessoas') return 'Pessoas';
+  if (areaKey === 'qualidade') return 'Qualidade';
+  return 'Geral';
+};
+
+const formatProfileLabel = (profileKey: string | null | undefined) => {
+  if (profileKey === 'diretoria_gerencia_adm') return 'Diretoria e Gerência ADM';
+  if (profileKey === 'gerencia_operacional') return 'Gerência Operacional';
+  if (profileKey === 'lider_unidades') return 'Líder de Unidades';
+  if (profileKey === 'lider_operacional') return 'Líder Operacional';
+  if (profileKey === 'agendas') return 'Agendas';
+  if (profileKey === 'financeiro') return 'Financeiro';
+  if (profileKey === 'marketing') return 'Marketing';
+  if (profileKey === 'rh') return 'RH';
+  if (profileKey === 'crc') return 'CRC';
+  return 'Configuração pendente';
+};
+
+const formatResolutionSourceLabel = (source: string | null | undefined) => {
+  if (source === 'user_exception') return 'Exceção por usuário';
+  if (source === 'group_mapping') return 'Grupo e cargo';
+  return 'Não configurado';
+};
+
+const formatStatusLabel = (status: string | null | undefined) => {
+  if (status === 'DANGER') return 'Crítico';
+  if (status === 'WARNING') return 'Atenção';
+  if (status === 'SUCCESS') return 'Estável';
+  return 'Sem dado';
+};
+
+const formatAiStatusLabel = (status: string | null | undefined) => {
+  if (status === 'READY') return 'IA pronta';
+  if (status === 'FAILED') return 'IA indisponível';
+  if (status === 'UNAVAILABLE') return 'IA não disponível';
+  return 'IA pendente';
 };
 
 const statusColors = (status: string) => {
@@ -148,6 +191,54 @@ const drawMetaRow = (page: PDFPage, regular: PDFFont, label: string, value: stri
     width,
     height: 0.8,
     color: rgb(0.89, 0.92, 0.96),
+  });
+};
+
+const drawStatCard = (
+  page: PDFPage,
+  bold: PDFFont,
+  regular: PDFFont,
+  args: {
+    x: number;
+    y: number;
+    width: number;
+    label: string;
+    value: string;
+    helper: string;
+  }
+) => {
+  page.drawRectangle({
+    x: args.x,
+    y: args.y - 52,
+    width: args.width,
+    height: 52,
+    color: rgb(1, 1, 1),
+    borderColor: rgb(0.88, 0.91, 0.95),
+    borderWidth: 1,
+  });
+
+  page.drawText(truncateText(args.label, 28), {
+    x: args.x + 10,
+    y: args.y - 14,
+    size: 8,
+    font: regular,
+    color: rgb(0.39, 0.46, 0.55),
+  });
+
+  page.drawText(truncateText(args.value, 26), {
+    x: args.x + 10,
+    y: args.y - 29,
+    size: 12,
+    font: bold,
+    color: rgb(0.11, 0.17, 0.27),
+  });
+
+  page.drawText(truncateText(args.helper, 40), {
+    x: args.x + 10,
+    y: args.y - 42,
+    size: 7,
+    font: regular,
+    color: rgb(0.46, 0.52, 0.59),
   });
 };
 
@@ -297,6 +388,70 @@ const drawInsightColumn = (
   return cursorY;
 };
 
+const drawTagCloud = (
+  page: PDFPage,
+  bold: PDFFont,
+  args: {
+    x: number;
+    y: number;
+    width: number;
+    title: string;
+    items: string[];
+  }
+) => {
+  page.drawText(args.title, {
+    x: args.x,
+    y: args.y,
+    size: 11,
+    font: bold,
+    color: rgb(0.1, 0.17, 0.29),
+  });
+
+  if (!args.items.length) {
+    page.drawText('Nenhum item pendente para este perfil.', {
+      x: args.x,
+      y: args.y - 16,
+      size: 9,
+      font: bold,
+      color: rgb(0.46, 0.52, 0.59),
+    });
+    return args.y - 34;
+  }
+
+  let cursorX = args.x;
+  let cursorY = args.y - 20;
+  const lineHeight = 18;
+
+  args.items.forEach((item) => {
+    const label = truncateText(item, 34);
+    const width = bold.widthOfTextAtSize(label, 8) + 18;
+    if (cursorX + width > args.x + args.width) {
+      cursorX = args.x;
+      cursorY -= lineHeight;
+    }
+
+    page.drawRectangle({
+      x: cursorX,
+      y: cursorY - 11,
+      width,
+      height: 15,
+      color: rgb(0.94, 0.98, 1),
+      borderColor: rgb(0.78, 0.88, 0.98),
+      borderWidth: 1,
+    });
+    page.drawText(label, {
+      x: cursorX + 9,
+      y: cursorY - 6,
+      size: 8,
+      font: bold,
+      color: rgb(0.12, 0.33, 0.6),
+    });
+    cursorX += width + 8;
+  });
+
+  return cursorY - 18;
+};
+
 const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string }) => {
   const pdfDoc = await PDFDocument.create();
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -305,8 +460,10 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
   let y = drawDocumentHeader(page, bold, regular, true);
   const contentWidth = PAGE.width - MARGIN_X * 2;
   const halfWidth = (contentWidth - 16) / 2;
+  const quarterWidth = (contentWidth - 24) / 4;
 
   const summary = snapshot.aiSummary?.executiveSummary || snapshot.metrics.executiveSummary;
+  const aiStatus = snapshot.metrics.aiStatus;
   const priorities = snapshot.aiSummary?.topPriorities?.slice(0, 3) || snapshot.metrics.topPriorities.slice(0, 3).map((item) => ({
     areaKey: item.areaKey,
     severity: item.severity === 'high' ? 'high' : 'medium',
@@ -315,12 +472,29 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
     description: item.description,
     rationale: null,
   }));
+  const activeAreasCount = new Set(snapshot.metrics.widgets.map((widget) => widget.areaKey)).size;
+  const visibleWidgetDefinitions = snapshot.metrics.profile.visibleWidgetKeys
+    .map((widgetKey) => EXECUTIVE_WIDGET_DEFINITIONS.find((item) => item.key === widgetKey))
+    .filter(Boolean);
+  const plannedVisibleDefinitions = visibleWidgetDefinitions.filter((item) => item?.status === 'planned');
+  const plannedLabels = plannedVisibleDefinitions.map((item) => `${item?.label} · ${formatAreaLabel(item?.areaKey)}`);
+  const widgets = snapshot.metrics.widgets;
 
   drawMetaRow(page, regular, 'Gerado em', formatTimestamp(snapshot.completedAt || snapshot.createdAt), MARGIN_X, y, 120);
   drawMetaRow(page, regular, 'Usuário', authUser.userId, MARGIN_X + 150, y, 120);
-  drawMetaRow(page, regular, 'Perfil', snapshot.metrics.scope.profileKey || 'Sem perfil', MARGIN_X + 300, y, 120);
+  drawMetaRow(page, regular, 'Perfil', formatProfileLabel(snapshot.metrics.scope.profileKey), MARGIN_X + 300, y, 120);
   y -= 42;
   drawMetaRow(page, regular, 'Escopo', `${snapshot.metrics.scope.areas.length} área(s) • ${snapshot.metrics.scope.units.length} unidade(s) • ${snapshot.metrics.scope.departments.length} departamento(s)`, MARGIN_X, y, contentWidth);
+  y -= 40;
+  drawMetaRow(
+    page,
+    regular,
+    'Governança',
+    snapshot.metrics.profile.matchedGroupLabel || formatResolutionSourceLabel(snapshot.metrics.profile.resolutionSource),
+    MARGIN_X,
+    y,
+    contentWidth
+  );
   y -= 40;
 
   y = drawSectionTitle(page, bold, 'Resumo executivo', y);
@@ -334,23 +508,72 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
     borderWidth: 1,
   });
   drawWrappedText(page, regular, truncateText(summary, 300), MARGIN_X + 14, y - 18, contentWidth - 28, 11, rgb(0.25, 0.31, 0.4));
-  drawBadge(page, bold, snapshot.metrics.overallStatus === 'DANGER' ? 'Crítico' : snapshot.metrics.overallStatus === 'WARNING' ? 'Atenção' : snapshot.metrics.overallStatus === 'SUCCESS' ? 'Estável' : 'Sem dado', snapshot.metrics.overallStatus, MARGIN_X + contentWidth - 78, y - 8);
+  drawBadge(page, bold, formatStatusLabel(snapshot.metrics.overallStatus), snapshot.metrics.overallStatus, MARGIN_X + contentWidth - 78, y - 8);
   y -= 84;
 
+  y = drawSectionTitle(page, bold, 'Leitura do snapshot', y);
+  drawStatCard(page, bold, regular, {
+    x: MARGIN_X,
+    y,
+    width: quarterWidth,
+    label: 'Perfil executivo',
+    value: formatProfileLabel(snapshot.metrics.profile.profileKey),
+    helper: snapshot.metrics.profile.matchedGroupLabel || 'Governança atual aplicada',
+  });
+  drawStatCard(page, bold, regular, {
+    x: MARGIN_X + quarterWidth + 8,
+    y,
+    width: quarterWidth,
+    label: 'Widgets ativos',
+    value: String(widgets.length),
+    helper: `${snapshot.metrics.profile.visibleWidgetKeys.length} widgets visíveis`,
+  });
+  drawStatCard(page, bold, regular, {
+    x: MARGIN_X + (quarterWidth + 8) * 2,
+    y,
+    width: quarterWidth,
+    label: 'Áreas cobertas',
+    value: String(activeAreasCount),
+    helper: 'Eixos já refletidos no snapshot',
+  });
+  drawStatCard(page, bold, regular, {
+    x: MARGIN_X + (quarterWidth + 8) * 3,
+    y,
+    width: quarterWidth,
+    label: 'IA',
+    value: formatAiStatusLabel(aiStatus),
+    helper: plannedVisibleDefinitions.length ? `${plannedVisibleDefinitions.length} widget(s) em preparação` : 'Sem backlog visível no perfil',
+  });
+  y -= 74;
+
   y = drawSectionTitle(page, bold, 'Prioridades principais', y);
-  for (const priority of priorities) {
-    const space = ensureSpace(pdfDoc, page, y, 86, bold, regular);
-    page = space.page;
-    y = space.y;
-    const status = priority.severity === 'critical' || priority.severity === 'high' ? 'DANGER' : 'WARNING';
+  if (priorities.length) {
+    for (const priority of priorities) {
+      const space = ensureSpace(pdfDoc, page, y, 86, bold, regular);
+      page = space.page;
+      y = space.y;
+      const status = priority.severity === 'critical' || priority.severity === 'high' ? 'DANGER' : 'WARNING';
+      const footer = [priority.areaKey ? formatAreaLabel(priority.areaKey) : null, priority.rationale].filter(Boolean).join(' • ');
+      const height = drawCompactCard(page, bold, regular, {
+        x: MARGIN_X,
+        y,
+        width: contentWidth,
+        title: truncateText(priority.title, 72),
+        body: truncateText(priority.description, 150),
+        footer: footer || null,
+        status,
+      });
+      y -= height + 12;
+    }
+  } else {
     const height = drawCompactCard(page, bold, regular, {
       x: MARGIN_X,
       y,
       width: contentWidth,
-      title: truncateText(priority.title, 72),
-      body: truncateText(priority.description, 150),
-      footer: priority.rationale,
-      status,
+      title: 'Sem alertas críticos neste snapshot',
+      body: 'Os indicadores atuais não sinalizam criticidade imediata para o perfil e o escopo ativos.',
+      footer: null,
+      status: 'SUCCESS',
     });
     y -= height + 12;
   }
@@ -358,36 +581,87 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
   const actionPlans = snapshot.aiSummary?.actionPlans || [];
   const risks = snapshot.aiSummary?.risks || [];
   const opportunities = snapshot.aiSummary?.opportunities || [];
+  const dataGaps = snapshot.aiSummary?.dataGaps || [];
+  const diagnoses = snapshot.aiSummary?.areaDiagnoses || [];
 
-  const multiSectionSpace = ensureSpace(pdfDoc, page, y, 210, bold, regular);
+  const multiSectionSpace = ensureSpace(pdfDoc, page, y, aiStatus === 'READY' ? 260 : 110, bold, regular);
   page = multiSectionSpace.page;
   y = multiSectionSpace.y;
-  y = drawSectionTitle(page, bold, 'Ações, riscos e oportunidades', y);
-  const leftBottom = drawInsightColumn(page, bold, regular, {
-    x: MARGIN_X,
-    y,
-    width: halfWidth,
-    title: 'Planos de ação',
-    items: actionPlans,
-  });
-  const rightTop = y;
-  const rightAfterRisks = drawInsightColumn(page, bold, regular, {
-    x: MARGIN_X + halfWidth + 16,
-    y: rightTop,
-    width: halfWidth,
-    title: 'Riscos',
-    items: risks,
-  });
-  const leftAfterOpp = drawInsightColumn(page, bold, regular, {
-    x: MARGIN_X,
-    y: leftBottom - 12,
-    width: halfWidth,
-    title: 'Oportunidades',
-    items: opportunities,
-  });
-  y = Math.min(leftAfterOpp, rightAfterRisks) - 10;
+  y = drawSectionTitle(page, bold, 'Leitura executiva da IA', y);
+  if (aiStatus === 'READY' && snapshot.aiSummary) {
+    const diagnosisCards = diagnoses.slice(0, 4);
+    let cursorY = y;
+    diagnosisCards.forEach((diagnosis, index) => {
+      const column = index % 2;
+      if (column === 0) {
+        const space = ensureSpace(pdfDoc, page, cursorY, 116, bold, regular);
+        page = space.page;
+        cursorY = space.y;
+      }
+      const x = MARGIN_X + column * (halfWidth + 16);
+      drawCompactCard(page, bold, regular, {
+        x,
+        y: cursorY,
+        width: halfWidth,
+        title: formatAreaLabel(diagnosis.areaKey),
+        body: truncateText(diagnosis.summary, 150),
+        footer: truncateText(diagnosis.rationale, 120),
+        status: diagnosis.status,
+      });
+      if (column === 1 || index === diagnosisCards.length - 1) cursorY -= 118;
+    });
+    y = cursorY;
 
-  const widgets = snapshot.metrics.widgets.slice(0, 6);
+    const insightsSpace = ensureSpace(pdfDoc, page, y, 210, bold, regular);
+    page = insightsSpace.page;
+    y = insightsSpace.y;
+    y = drawSectionTitle(page, bold, 'Ações, riscos e oportunidades', y);
+    const leftBottom = drawInsightColumn(page, bold, regular, {
+      x: MARGIN_X,
+      y,
+      width: halfWidth,
+      title: 'Planos de ação',
+      items: actionPlans,
+    });
+    const rightAfterRisks = drawInsightColumn(page, bold, regular, {
+      x: MARGIN_X + halfWidth + 16,
+      y,
+      width: halfWidth,
+      title: 'Riscos',
+      items: risks,
+    });
+    const leftAfterOpp = drawInsightColumn(page, bold, regular, {
+      x: MARGIN_X,
+      y: leftBottom - 12,
+      width: halfWidth,
+      title: 'Oportunidades',
+      items: opportunities,
+    });
+    const rightAfterGaps = drawInsightColumn(page, bold, regular, {
+      x: MARGIN_X + halfWidth + 16,
+      y: rightAfterRisks - 12,
+      width: halfWidth,
+      title: 'Lacunas de dados',
+      items: dataGaps,
+    });
+    y = Math.min(leftAfterOpp, rightAfterGaps) - 10;
+  } else {
+    const height = drawCompactCard(page, bold, regular, {
+      x: MARGIN_X,
+      y,
+      width: contentWidth,
+      title: formatAiStatusLabel(aiStatus),
+      body:
+        snapshot.metrics.aiMessage ||
+        (aiStatus === 'FAILED'
+          ? 'Os indicadores quantitativos seguem disponíveis, mas a leitura interpretativa da IA não pôde ser gerada neste snapshot.'
+          : 'A leitura executiva da IA será exibida quando o perfil e os dados disponíveis permitirem análise estruturada.'),
+      footer: 'O PDF mantém a mesma política da tela: sem inventar diagnóstico quando a IA não estiver pronta.',
+      status: aiStatus === 'FAILED' ? 'WARNING' : 'NO_DATA',
+    });
+    y -= height + 12;
+  }
+
   if (widgets.length) {
     const widgetSectionSpace = ensureSpace(pdfDoc, page, y, 240, bold, regular);
     page = widgetSectionSpace.page;
@@ -403,7 +677,7 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
       const column = index % 2;
       const x = MARGIN_X + column * (halfWidth + 16);
       const valuesText = widget.values
-        .slice(0, 3)
+        .slice(0, 4)
         .map((item) => `${item.label}: ${item.value}`)
         .join(' • ');
       drawCompactCard(page, bold, regular, {
@@ -411,8 +685,13 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
         y: cursorY,
         width: halfWidth,
         title: widget.label,
-        body: truncateText(valuesText || widget.note || widget.description || 'Sem detalhe adicional.', 160),
-        footer: widget.updatedAt ? `Atualizado em ${formatTimestamp(widget.updatedAt)}` : null,
+        body: truncateText(valuesText || widget.note || widget.description || 'Sem detalhe adicional.', 180),
+        footer: [
+          widget.note ? truncateText(widget.note, 110) : null,
+          widget.updatedAt ? `Atualizado em ${formatTimestamp(widget.updatedAt)}` : null,
+        ]
+          .filter(Boolean)
+          .join(' • '),
         status: widget.status,
       });
       if (column === 1 || index === widgets.length - 1) {
@@ -422,28 +701,86 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
     y = cursorY - 4;
   }
 
+  const plannedSectionSpace = ensureSpace(pdfDoc, page, y, 96, bold, regular);
+  page = plannedSectionSpace.page;
+  y = plannedSectionSpace.y;
+  y = drawSectionTitle(page, bold, 'Widgets em preparação para este perfil', y);
+  y = drawTagCloud(page, bold, {
+    x: MARGIN_X,
+    y,
+    width: contentWidth,
+    title: 'Backlog visível',
+    items: plannedLabels,
+  }) - 4;
+
   const live = snapshot.metrics.liveOperations;
-  const liveSectionSpace = ensureSpace(pdfDoc, page, y, 92, bold, regular);
+  const liveSectionSpace = ensureSpace(pdfDoc, page, y, 190, bold, regular);
   page = liveSectionSpace.page;
   y = liveSectionSpace.y;
   y = drawSectionTitle(page, bold, 'Operação ao vivo', y);
-  const operationSummary = [
-    `Fila médica: ${live.medicQueue}`,
-    `Fila recepção: ${live.receptionQueue}`,
-    `WhatsApp: ${live.whatsappQueue}`,
-    `Espera crítica: ${live.criticalWaitCount}`,
-    `Atendidos hoje: ${live.attendedToday}`,
-  ].join(' • ');
-  page.drawRectangle({
+  drawStatCard(page, bold, regular, {
     x: MARGIN_X,
-    y: y - 48,
-    width: contentWidth,
-    height: 48,
-    color: rgb(1, 1, 1),
-    borderColor: rgb(0.88, 0.91, 0.95),
-    borderWidth: 1,
+    y,
+    width: quarterWidth,
+    label: 'Fila médica',
+    value: String(live.medicQueue),
+    helper: `${live.attendedToday} atendimento(s) hoje`,
   });
-  drawWrappedText(page, regular, operationSummary, MARGIN_X + 12, y - 16, contentWidth - 24, 10, rgb(0.3, 0.36, 0.44));
+  drawStatCard(page, bold, regular, {
+    x: MARGIN_X + quarterWidth + 8,
+    y,
+    width: quarterWidth,
+    label: 'Fila recepção',
+    value: String(live.receptionQueue),
+    helper: `${live.averageReceptionWaitMinutes} min em média`,
+  });
+  drawStatCard(page, bold, regular, {
+    x: MARGIN_X + (quarterWidth + 8) * 2,
+    y,
+    width: quarterWidth,
+    label: 'WhatsApp digital',
+    value: String(live.whatsappQueue),
+    helper: 'Pacientes ativos no hub',
+  });
+  drawStatCard(page, bold, regular, {
+    x: MARGIN_X + (quarterWidth + 8) * 3,
+    y,
+    width: quarterWidth,
+    label: 'Espera crítica',
+    value: String(live.criticalWaitCount),
+    helper: 'Pacientes acima do limite',
+  });
+  y -= 72;
+
+  if (live.heartbeats.length) {
+    let cursorY = y;
+    live.heartbeats.slice(0, 6).forEach((heartbeat, index) => {
+      if (index % 2 === 0) {
+        const space = ensureSpace(pdfDoc, page, cursorY, 88, bold, regular);
+        page = space.page;
+        cursorY = space.y;
+      }
+      const column = index % 2;
+      const x = MARGIN_X + column * (halfWidth + 16);
+      drawCompactCard(page, bold, regular, {
+        x,
+        y: cursorY,
+        width: halfWidth,
+        title: heartbeat.serviceName,
+        body: `Status ${cleanText(heartbeat.status)} • Última execução ${formatTimestamp(heartbeat.lastRun)}`,
+        footer: heartbeat.details || null,
+        status:
+          heartbeat.status === 'COMPLETED'
+            ? 'SUCCESS'
+            : heartbeat.status === 'RUNNING'
+              ? 'WARNING'
+              : heartbeat.status === 'ERROR'
+                ? 'DANGER'
+                : 'NO_DATA',
+      });
+      if (column === 1 || index === live.heartbeats.length - 1) cursorY -= 92;
+    });
+  }
 
   return pdfDoc.save();
 };
@@ -474,11 +811,16 @@ export async function GET(request: Request) {
         'Content-Disposition': `attachment; filename=\"painel-executivo-${snapshot.id}.pdf\"`,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Erro interno ao exportar o dashboard executivo em PDF.';
+    const status =
+      typeof error === 'object' && error !== null && 'status' in error
+        ? Number((error as { status?: number }).status) || 500
+        : 500;
     console.error('Erro ao exportar dashboard executivo em PDF:', error);
     return NextResponse.json(
-      { error: error?.message || 'Erro interno ao exportar o dashboard executivo em PDF.' },
-      { status: Number(error?.status) || 500 }
+      { error: message },
+      { status }
     );
   }
 }
