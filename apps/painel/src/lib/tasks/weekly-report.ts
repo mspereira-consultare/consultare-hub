@@ -182,6 +182,19 @@ const getPreviousWeeklyReportWindow = () => {
   };
 };
 
+const formatIsoDate = (value: string | null, options: { includeYear?: boolean } = {}) => {
+  if (!value) return '—';
+  const date = new Date(`${value}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return value;
+
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    ...(options.includeYear === false ? {} : { year: 'numeric' }),
+  }).format(date);
+};
+
 const mapRun = (row: any): TaskWeeklyReportRun => ({
   id: clean(row.id),
   runKey: clean(row.run_key),
@@ -557,7 +570,7 @@ export const updateTaskWeeklyReportSettings = async (
 };
 
 const buildWeeklyReportSubject = (payload: TaskWeeklyReportEmailPayload) =>
-  `Consultare Intranet | Tarefas da semana | ${payload.period.startDate} a ${payload.period.endDate}`;
+  `Consultare Intranet | Tarefas da semana | ${formatIsoDate(payload.period.startDate, { includeYear: false })} a ${formatIsoDate(payload.period.endDate, { includeYear: false })}`;
 
 const renderWeeklyEfficiency = (value: number | null) => (value == null ? '—' : `${value}%`);
 
@@ -565,7 +578,7 @@ const renderWeeklyReportText = (payload: TaskWeeklyReportEmailPayload) => {
   const lines = [
     `Olá, ${payload.recipient.employeeName}.`,
     '',
-    `Segue seu resumo semanal de tarefas da Consultare referente ao período ${payload.period.startDate} a ${payload.period.endDate}.`,
+    `Segue seu resumo semanal de tarefas da Consultare referente ao período ${formatIsoDate(payload.period.startDate)} a ${formatIsoDate(payload.period.endDate)}.`,
     '',
     `Pendências atuais: ${payload.summary.pendingTasks}`,
     `Vencidas: ${payload.summary.overdueTasks}`,
@@ -578,7 +591,7 @@ const renderWeeklyReportText = (payload: TaskWeeklyReportEmailPayload) => {
   ];
 
   for (const task of payload.highlightedTasks) {
-    const duePart = task.dueDate ? ` | prazo ${task.dueDate}` : '';
+    const duePart = task.dueDate ? ` | prazo ${formatIsoDate(task.dueDate)}` : '';
     const projectPart = task.projectName ? ` | projeto ${task.projectName}` : '';
     lines.push(`- ${task.protocolId} | ${task.title} | ${task.priority}${duePart}${projectPart}`);
   }
@@ -612,7 +625,7 @@ const renderWeeklyReportHtml = (payload: TaskWeeklyReportEmailPayload) => {
           <div style="font-size:12px;color:#123b78;font-weight:700;">${escapeHtml(task.protocolId)}</div>
           <div style="margin-top:4px;font-size:15px;color:#0f172a;font-weight:700;">${escapeHtml(task.title)}</div>
           <div style="margin-top:4px;font-size:12px;color:#64748b;">
-            ${escapeHtml(task.priority)}${task.projectName ? ` • ${escapeHtml(task.projectName)}` : ''}${task.dueDate ? ` • prazo ${escapeHtml(task.dueDate)}` : ''}
+            ${escapeHtml(task.priority)}${task.projectName ? ` • ${escapeHtml(task.projectName)}` : ''}${task.dueDate ? ` • prazo ${escapeHtml(formatIsoDate(task.dueDate))}` : ''}
           </div>
         </td>
       </tr>
@@ -627,7 +640,7 @@ const renderWeeklyReportHtml = (payload: TaskWeeklyReportEmailPayload) => {
           <div style="font-size:12px;letter-spacing:0.12em;text-transform:uppercase;font-weight:700;opacity:0.88;">Consultare Intranet</div>
           <h1 style="margin:10px 0 0;font-size:30px;line-height:1.2;">Resumo semanal das suas tarefas</h1>
           <p style="margin:12px 0 0;font-size:15px;line-height:1.6;opacity:0.92;">
-            ${escapeHtml(payload.recipient.employeeName)}, aqui está seu panorama operacional de ${escapeHtml(payload.period.startDate)} até ${escapeHtml(payload.period.endDate)}.
+            ${escapeHtml(payload.recipient.employeeName)}, aqui está seu panorama operacional de ${escapeHtml(formatIsoDate(payload.period.startDate))} até ${escapeHtml(formatIsoDate(payload.period.endDate))}.
           </p>
         </div>
         <div style="padding:28px 32px;">
