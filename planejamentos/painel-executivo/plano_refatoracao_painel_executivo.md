@@ -1031,6 +1031,77 @@ Esta retomada sera considerada concluida quando:
 
 Status final da retomada em 2026-06-24: **concluida**
 
+## 16.6 Proximo ciclo recomendado - Automacao do snapshot e controle de custo da IA
+
+Status em 2026-06-24: **planejado**
+
+Objetivo:
+
+- reduzir a dependencia de refresh manual para a lideranca;
+- conter custo da OpenAI sem perder utilidade executiva do painel;
+- separar a politica de atualizacao quantitativa da politica de geracao da IA.
+
+Decisoes ja fechadas para este ciclo:
+
+- refresh automatico em `3x por dia`;
+- horarios-alvo iniciais:
+  - `06:15`
+  - `12:45`
+  - `18:45`
+- abrangencia automatica restrita a perfis de lideranca:
+  - `diretoria_gerencia_adm`
+  - `gerencia_operacional`
+  - `lider_unidades`
+  - `lider_operacional`
+- IA automatica apenas em janelas fixas:
+  - `06:15`
+  - `12:45`
+- no ciclo das `18:45`, o snapshot quantitativo deve ser atualizado sem nova chamada obrigatoria a OpenAI;
+- o botao manual continua existente e continua sendo a via de refresh completo sob demanda.
+
+Estratégia fechada para reduzir requests e tokens:
+
+- nao rodar IA em toda atualizacao automatica;
+- reaproveitar a ultima leitura de IA valida do mesmo `user_id + scope_hash` fora das janelas de IA;
+- limitar a automacao apenas aos perfis executivos de maior valor gerencial;
+- reduzir o payload enviado para a IA ao minimo executivo necessario;
+- truncar listas, notas e textos longos antes da chamada;
+- manter limites curtos de resposta estruturada para prioridades, planos, riscos, oportunidades e lacunas;
+- registrar contadores operacionais para requests automaticos com e sem IA.
+
+Entregas esperadas deste ciclo:
+
+- criar endpoint cron autenticado para processamento automatico do dashboard executivo;
+- adotar o mesmo padrao de autenticacao por segredo ja usado em outras rotas de cron do projeto;
+- evoluir a criacao de snapshot para aceitar politica de IA:
+  - `generate`
+  - `reuse_last_valid`
+  - `skip`
+- reaproveitar a ultima `ai_summary_json` valida quando a politica nao exigir nova geracao;
+- bloquear concorrencia por `system_status` para nao iniciar mais de uma rodada automatica ao mesmo tempo;
+- registrar resumo da rodada automatica em `system_status.details`;
+- expor variaveis de ambiente para habilitacao, segredo e janelas de execucao;
+- manter o refresh manual atual sem regressao de contrato nem de comportamento.
+
+Variaveis de ambiente previstas:
+
+- `DASHBOARD_EXECUTIVE_CRON_SECRET`
+- `DASHBOARD_EXECUTIVE_AUTO_REFRESH_ENABLED`
+- `DASHBOARD_EXECUTIVE_AUTO_REFRESH_HOURS`
+- `DASHBOARD_EXECUTIVE_AUTO_AI_HOURS`
+- opcionalmente `OPENAI_EXECUTIVE_MODEL_AUTO` se quisermos diferenciar modelo manual x automatico em etapa posterior.
+
+Risco principal controlado por este plano:
+
+- hoje o custo esta alto porque o fluxo atual pode gerar muitas requests completas de IA no mesmo dia;
+- este ciclo passa a tratar snapshot quantitativo e leitura executiva como camadas com politicas diferentes;
+- o maior ganho esperado vem da reducao de chamadas, nao apenas da reducao de tokens por request.
+
+Observacao de escopo:
+
+- este ciclo nao altera a logica de permissao, `users`, governanca executiva, perfis, grupos ou excecoes;
+- o foco e operacionalizar melhor o que ja foi entregue no painel executivo.
+
 ---
 
 ## 17. Resultado esperado

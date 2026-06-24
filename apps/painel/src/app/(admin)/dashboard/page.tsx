@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
-import { EXECUTIVE_WIDGET_DEFINITIONS } from '@/lib/dashboard_executive/catalog';
 import type { ExecutiveSnapshot } from '@/lib/dashboard_executive/types';
 import { ExecutiveAiInsightsSection } from './components/ExecutiveAiInsightsSection';
 import { ExecutiveHeaderSection } from './components/ExecutiveHeaderSection';
@@ -148,12 +147,6 @@ export default function DashboardPage() {
   const overviewCards = useMemo(() => {
     if (!snapshot) return [];
     const activeAreas = new Set(snapshot.metrics.widgets.map((widget) => widget.areaKey));
-    const plannedVisibleCount = snapshot.metrics.profile.visibleWidgetKeys.filter((widgetKey) =>
-      EXECUTIVE_WIDGET_DEFINITIONS.some((widget) => widget.key === widgetKey && widget.status === 'planned')
-    ).length;
-    const blockedVisibleCount = snapshot.metrics.profile.visibleWidgetKeys.filter((widgetKey) =>
-      EXECUTIVE_WIDGET_DEFINITIONS.some((widget) => widget.key === widgetKey && widget.status === 'blocked')
-    ).length;
 
     return [
       {
@@ -172,11 +165,14 @@ export default function DashboardPage() {
         helper: 'Eixos com indicadores já consolidados neste snapshot',
       },
       {
-        label: 'Em preparação',
-        value: String(plannedVisibleCount),
-        helper: blockedVisibleCount
-          ? `${blockedVisibleCount} item(ns) adicionais seguem bloqueados nesta retomada`
-          : 'Widgets do perfil que seguem dependentes de fonte ou refinamento',
+        label: 'IA executiva',
+        value:
+          snapshot.metrics.aiStatus === 'READY'
+            ? 'Disponível'
+            : snapshot.metrics.aiStatus === 'FAILED'
+              ? 'Indisponível'
+              : 'Aguardando',
+        helper: snapshot.metrics.aiMessage || 'Leitura interpretativa conforme disponibilidade do snapshot',
       },
     ];
   }, [snapshot]);

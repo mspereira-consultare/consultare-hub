@@ -1,7 +1,4 @@
 import { LayoutGrid } from 'lucide-react';
-import {
-  EXECUTIVE_WIDGET_DEFINITIONS,
-} from '@/lib/dashboard_executive/catalog';
 import type {
   ExecutiveAreaKey,
   ExecutiveSnapshot,
@@ -67,13 +64,6 @@ function CoverageCard({ label, value, helper }: { label: string; value: string; 
 
 export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionProps) {
   const widgets = snapshot.metrics.widgets || [];
-  const visibleWidgetDefinitions = snapshot.metrics.profile.visibleWidgetKeys
-    .map((widgetKey) => EXECUTIVE_WIDGET_DEFINITIONS.find((item) => item.key === widgetKey))
-    .filter(Boolean);
-  const plannedVisibleDefinitions = visibleWidgetDefinitions.filter((item) => item?.status === 'planned');
-  const blockedVisibleDefinitions = visibleWidgetDefinitions.filter((item) => item?.status === 'blocked');
-  const plannedVisibleCount = plannedVisibleDefinitions.length;
-  const blockedVisibleCount = blockedVisibleDefinitions.length;
   const coveredAreas = new Set(widgets.map((widget) => widget.areaKey));
 
   const widgetsByArea = AREA_ORDER.map((areaKey) => {
@@ -108,29 +98,18 @@ export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionPro
             Widgets executivos consolidados para o perfil {formatProfileLabel(snapshot.metrics.profile.profileKey)} dentro do escopo atual.
           </p>
         </div>
-
-        {plannedVisibleCount > 0 ? (
-          <div className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2 text-xs font-medium text-sky-800 lg:max-w-md">
-            {plannedVisibleCount} widget(s) do perfil seguem em preparação.
-          </div>
-        ) : null}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-3">
         <CoverageCard
           label="Widgets ativos"
           value={String(widgets.length)}
           helper="Blocos realmente consolidados neste snapshot."
         />
         <CoverageCard
-          label="Em preparação"
-          value={String(plannedVisibleCount)}
-          helper="Itens previstos para o perfil, mas ainda sem fonte executiva pronta."
-        />
-        <CoverageCard
-          label="Bloqueados"
-          value={String(blockedVisibleCount)}
-          helper="Itens fora do escopo atual ou dependentes de integração externa."
+          label="Widgets visíveis"
+          value={String(snapshot.metrics.profile.visibleWidgetKeys.length)}
+          helper="Escopo atualmente liberado para este perfil executivo."
         />
         <CoverageCard
           label="Áreas cobertas"
@@ -138,52 +117,6 @@ export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionPro
           helper="Eixos do dashboard já representados por widgets ativos."
         />
       </div>
-
-      {plannedVisibleDefinitions.length ? (
-        <div className="rounded-xl border border-dashed border-sky-200 bg-sky-50 px-5 py-4 shadow-sm">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-sky-900">Widgets do perfil ainda em preparação</h3>
-              <p className="mt-1 text-sm text-sky-800">
-                Estes itens continuam previstos para o perfil atual, mas dependem de fonte executiva ou refinamento adicional.
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {plannedVisibleDefinitions.map((definition) => (
-              <span
-                key={definition?.key}
-                className="inline-flex items-center rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium text-sky-900"
-              >
-                {definition?.label} · {formatAreaLabel(definition?.areaKey || 'operacao')}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
-      {blockedVisibleDefinitions.length ? (
-        <div className="rounded-xl border border-dashed border-rose-200 bg-rose-50 px-5 py-4 shadow-sm">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-rose-900">Widgets bloqueados nesta retomada</h3>
-              <p className="mt-1 text-sm text-rose-800">
-                Estes itens ficaram fora da V1 atual porque dependem de integração externa, regra ainda não definida ou escopo proibido nesta retomada.
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            {blockedVisibleDefinitions.map((definition) => (
-              <span
-                key={definition?.key}
-                className="inline-flex items-center rounded-full border border-rose-200 bg-white px-3 py-1 text-xs font-medium text-rose-900"
-              >
-                {definition?.label} · {formatAreaLabel(definition?.areaKey || 'operacao')}
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
 
       {widgetsByArea.map(({ areaKey, items }) => {
         const Icon = areaIcons[areaKey];

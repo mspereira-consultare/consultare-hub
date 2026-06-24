@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
-import { EXECUTIVE_WIDGET_DEFINITIONS } from '@/lib/dashboard_executive/catalog';
 import { requireDashboardPermission } from '@/lib/dashboard_executive/auth';
 import { getExecutiveSnapshotById } from '@/lib/dashboard_executive/repository';
 import type { ExecutiveAiInsightItem, ExecutiveSnapshot } from '@/lib/dashboard_executive/types';
@@ -388,70 +387,6 @@ const drawInsightColumn = (
   return cursorY;
 };
 
-const drawTagCloud = (
-  page: PDFPage,
-  bold: PDFFont,
-  args: {
-    x: number;
-    y: number;
-    width: number;
-    title: string;
-    items: string[];
-  }
-) => {
-  page.drawText(args.title, {
-    x: args.x,
-    y: args.y,
-    size: 11,
-    font: bold,
-    color: rgb(0.1, 0.17, 0.29),
-  });
-
-  if (!args.items.length) {
-    page.drawText('Nenhum item pendente para este perfil.', {
-      x: args.x,
-      y: args.y - 16,
-      size: 9,
-      font: bold,
-      color: rgb(0.46, 0.52, 0.59),
-    });
-    return args.y - 34;
-  }
-
-  let cursorX = args.x;
-  let cursorY = args.y - 20;
-  const lineHeight = 18;
-
-  args.items.forEach((item) => {
-    const label = truncateText(item, 34);
-    const width = bold.widthOfTextAtSize(label, 8) + 18;
-    if (cursorX + width > args.x + args.width) {
-      cursorX = args.x;
-      cursorY -= lineHeight;
-    }
-
-    page.drawRectangle({
-      x: cursorX,
-      y: cursorY - 11,
-      width,
-      height: 15,
-      color: rgb(0.94, 0.98, 1),
-      borderColor: rgb(0.78, 0.88, 0.98),
-      borderWidth: 1,
-    });
-    page.drawText(label, {
-      x: cursorX + 9,
-      y: cursorY - 6,
-      size: 8,
-      font: bold,
-      color: rgb(0.12, 0.33, 0.6),
-    });
-    cursorX += width + 8;
-  });
-
-  return cursorY - 18;
-};
-
 const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string }) => {
   const pdfDoc = await PDFDocument.create();
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -473,11 +408,6 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
     rationale: null,
   }));
   const activeAreasCount = new Set(snapshot.metrics.widgets.map((widget) => widget.areaKey)).size;
-  const visibleWidgetDefinitions = snapshot.metrics.profile.visibleWidgetKeys
-    .map((widgetKey) => EXECUTIVE_WIDGET_DEFINITIONS.find((item) => item.key === widgetKey))
-    .filter(Boolean);
-  const plannedVisibleDefinitions = visibleWidgetDefinitions.filter((item) => item?.status === 'planned');
-  const plannedLabels = plannedVisibleDefinitions.map((item) => `${item?.label} · ${formatAreaLabel(item?.areaKey)}`);
   const widgets = snapshot.metrics.widgets;
 
   drawMetaRow(page, regular, 'Gerado em', formatTimestamp(snapshot.completedAt || snapshot.createdAt), MARGIN_X, y, 120);
@@ -542,7 +472,11 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
     width: quarterWidth,
     label: 'IA',
     value: formatAiStatusLabel(aiStatus),
-    helper: plannedVisibleDefinitions.length ? `${plannedVisibleDefinitions.length} widget(s) em preparação` : 'Sem backlog visível no perfil',
+    helper:
+      snapshot.metrics.aiMessage ||
+      (aiStatus === 'READY'
+        ? 'Leitura interpretativa disponível neste snapshot'
+        : 'Leitura interpretativa conforme disponibilidade da IA'),
   });
   y -= 74;
 
@@ -700,18 +634,6 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
     });
     y = cursorY - 4;
   }
-
-  const plannedSectionSpace = ensureSpace(pdfDoc, page, y, 96, bold, regular);
-  page = plannedSectionSpace.page;
-  y = plannedSectionSpace.y;
-  y = drawSectionTitle(page, bold, 'Widgets em preparação para este perfil', y);
-  y = drawTagCloud(page, bold, {
-    x: MARGIN_X,
-    y,
-    width: contentWidth,
-    title: 'Backlog visível',
-    items: plannedLabels,
-  }) - 4;
 
   const live = snapshot.metrics.liveOperations;
   const liveSectionSpace = ensureSpace(pdfDoc, page, y, 190, bold, regular);
