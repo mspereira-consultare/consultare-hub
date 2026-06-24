@@ -57,6 +57,25 @@ export function formatAreaLabel(areaKey: ExecutiveAreaKey) {
   return 'Qualidade';
 }
 
+export function formatProfileLabel(profileKey: ExecutiveSnapshot['metrics']['profile']['profileKey']) {
+  if (profileKey === 'diretoria_gerencia_adm') return 'Diretoria e Gerência ADM';
+  if (profileKey === 'gerencia_operacional') return 'Gerência Operacional';
+  if (profileKey === 'lider_unidades') return 'Líder de Unidades';
+  if (profileKey === 'lider_operacional') return 'Líder Operacional';
+  if (profileKey === 'agendas') return 'Agendas';
+  if (profileKey === 'financeiro') return 'Financeiro';
+  if (profileKey === 'marketing') return 'Marketing';
+  if (profileKey === 'rh') return 'RH';
+  if (profileKey === 'crc') return 'CRC';
+  return 'Configuração pendente';
+}
+
+export function formatResolutionSourceLabel(source: ExecutiveSnapshot['metrics']['profile']['resolutionSource']) {
+  if (source === 'user_exception') return 'Exceção por usuário';
+  if (source === 'group_mapping') return 'Grupo e cargo';
+  return 'Não configurado';
+}
+
 export function formatSnapshotTimestamp(value: string | null | undefined) {
   if (!value) return 'Nunca';
   const date = new Date(value);

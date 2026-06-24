@@ -27,12 +27,40 @@ function LiveHeartbeatCard({ heartbeat }: { heartbeat: ExecutiveLiveHeartbeat })
   );
 }
 
-export function ExecutiveLiveSection({ heartbeats }: { heartbeats: ExecutiveLiveHeartbeat[] }) {
+type LiveMetric = {
+  label: string;
+  value: number;
+  helper: string;
+};
+
+function LiveMetricCard({ metric }: { metric: LiveMetric }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+      <p className="text-sm font-medium text-slate-500">{metric.label}</p>
+      <p className="mt-2 text-3xl font-bold text-slate-900">{metric.value}</p>
+      <p className="mt-1 text-xs text-slate-500">{metric.helper}</p>
+    </div>
+  );
+}
+
+export function ExecutiveLiveSection({
+  heartbeats,
+  metrics,
+}: {
+  heartbeats: ExecutiveLiveHeartbeat[];
+  metrics: LiveMetric[];
+}) {
   return (
     <section className="space-y-4">
       <div className="flex items-center gap-2">
         <Clock3 size={18} className="text-slate-500" />
         <h2 className="text-lg font-semibold text-slate-900">Operação ao vivo</h2>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {metrics.map((metric) => (
+          <LiveMetricCard key={metric.label} metric={metric} />
+        ))}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">

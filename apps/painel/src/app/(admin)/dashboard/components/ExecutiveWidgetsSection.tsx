@@ -12,6 +12,7 @@ import { ExecutiveStatusBadge } from './ExecutiveStatusBadge';
 import {
   areaAccentStyles,
   areaIcons,
+  formatProfileLabel,
   formatSnapshotTimestamp,
   formatAreaLabel,
   truncateText,
@@ -54,12 +55,24 @@ function WidgetSummaryCard({ widget }: { widget: ExecutiveWidgetSnapshot }) {
   );
 }
 
+function CoverageCard({ label, value, helper }: { label: string; value: string; helper: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{label}</p>
+      <p className="mt-2 text-xl font-bold text-slate-900">{value}</p>
+      <p className="mt-1 text-xs text-slate-500">{helper}</p>
+    </div>
+  );
+}
+
 export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionProps) {
   const widgets = snapshot.metrics.widgets || [];
-  const plannedVisibleCount = snapshot.metrics.profile.visibleWidgetKeys.filter((widgetKey) => {
-    const definition = EXECUTIVE_WIDGET_DEFINITIONS.find((item) => item.key === widgetKey);
-    return definition?.status === 'planned';
-  }).length;
+  const visibleWidgetDefinitions = snapshot.metrics.profile.visibleWidgetKeys
+    .map((widgetKey) => EXECUTIVE_WIDGET_DEFINITIONS.find((item) => item.key === widgetKey))
+    .filter(Boolean);
+  const plannedVisibleDefinitions = visibleWidgetDefinitions.filter((item) => item?.status === 'planned');
+  const plannedVisibleCount = plannedVisibleDefinitions.length;
+  const coveredAreas = new Set(widgets.map((widget) => widget.areaKey));
 
   const widgetsByArea = AREA_ORDER.map((areaKey) => {
     const items = widgets.filter((widget) => widget.areaKey === areaKey);
@@ -90,7 +103,7 @@ export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionPro
             <h2 className="text-lg font-semibold text-slate-900">Indicadores do seu perfil</h2>
           </div>
           <p className="text-sm text-slate-500">
-            Widgets executivos consolidados para o seu perfil e escopo atual.
+            Widgets executivos consolidados para o perfil {formatProfileLabel(snapshot.metrics.profile.profileKey)} dentro do escopo atual.
           </p>
         </div>
 
@@ -101,9 +114,54 @@ export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionPro
         ) : null}
       </div>
 
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <CoverageCard
+          label="Widgets ativos"
+          value={String(widgets.length)}
+          helper="Blocos realmente consolidados neste snapshot."
+        />
+        <CoverageCard
+          label="Em preparação"
+          value={String(plannedVisibleCount)}
+          helper="Itens previstos para o perfil, mas ainda sem fonte executiva pronta."
+        />
+        <CoverageCard
+          label="Áreas cobertas"
+          value={String(coveredAreas.size)}
+          helper="Eixos do dashboard já representados por widgets ativos."
+        />
+        <CoverageCard
+          label="Escopo visível"
+          value={String(snapshot.metrics.profile.visibleWidgetKeys.length)}
+          helper="Total de widgets autorizados hoje para este perfil."
+        />
+      </div>
+
+      {plannedVisibleDefinitions.length ? (
+        <div className="rounded-xl border border-dashed border-sky-200 bg-sky-50 px-5 py-4 shadow-sm">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-sky-900">Widgets do perfil ainda em preparação</h3>
+              <p className="mt-1 text-sm text-sky-800">
+                Estes itens continuam previstos para o perfil atual, mas dependem de fonte executiva ou refinamento adicional.
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {plannedVisibleDefinitions.map((definition) => (
+              <span
+                key={definition?.key}
+                className="inline-flex items-center rounded-full border border-sky-200 bg-white px-3 py-1 text-xs font-medium text-sky-900"
+              >
+                {definition?.label} · {formatAreaLabel(definition?.areaKey || 'operacao')}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
       {widgetsByArea.map(({ areaKey, items }) => {
         const Icon = areaIcons[areaKey];
-        const definition = EXECUTIVE_WIDGET_DEFINITIONS.find((item) => item.areaKey === areaKey);
 
         return (
           <article key={areaKey} className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -114,7 +172,7 @@ export function ExecutiveWidgetsSection({ snapshot }: ExecutiveWidgetsSectionPro
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900">
-                    {definition ? formatAreaLabel(definition.areaKey) : formatAreaLabel(areaKey)}
+                    {formatAreaLabel(areaKey)}
                   </h3>
                   <p className="mt-1 text-xs text-slate-500">
                     {items.length} widget(s) consolidados para este eixo do dashboard.

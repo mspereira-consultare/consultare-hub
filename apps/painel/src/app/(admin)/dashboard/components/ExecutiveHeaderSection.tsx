@@ -1,11 +1,17 @@
 import { BrainCircuit, Download, Loader2, RefreshCw, Target } from 'lucide-react';
 import type { ExecutiveSnapshot } from '@/lib/dashboard_executive/types';
-import { formatScopeLabel, formatSnapshotTimestamp, truncateText } from './dashboardExecutiveUtils';
+import {
+  formatProfileLabel,
+  formatResolutionSourceLabel,
+  formatScopeLabel,
+  formatSnapshotTimestamp,
+  truncateText,
+} from './dashboardExecutiveUtils';
 import { ExecutiveStatusBadge } from './ExecutiveStatusBadge';
 
 type OverviewCard = {
   label: string;
-  value: number;
+  value: string;
   helper: string;
 };
 
@@ -61,9 +67,9 @@ export function ExecutiveHeaderSection({
               Painel Executivo
             </div>
             <h1 className="text-xl font-bold text-slate-800">Visão consolidada para priorização da liderança</h1>
-            <p className="max-w-3xl text-sm leading-6 text-slate-500">{aiSummary}</p>
-            {priorityHighlights.length ? (
-              <div className="flex flex-wrap gap-2">
+              <p className="max-w-3xl text-sm leading-6 text-slate-500">{aiSummary}</p>
+              {priorityHighlights.length ? (
+                <div className="flex flex-wrap gap-2">
                 {priorityHighlights.map((item) => (
                   <span
                     key={item.key}
@@ -109,8 +115,10 @@ export function ExecutiveHeaderSection({
               <div className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
                 Contexto do painel
               </div>
+              <p className="text-xs text-slate-500">Perfil: {formatProfileLabel(snapshot?.metrics.profile.profileKey || null)}</p>
+              <p className="text-xs text-slate-500">Escopo: {formatScopeLabel(snapshot)}</p>
               <p className="text-xs text-slate-500">
-                Escopo: {formatScopeLabel(snapshot)}
+                Governança: {snapshot?.metrics.profile.matchedGroupLabel || formatResolutionSourceLabel(snapshot?.metrics.profile.resolutionSource || 'unconfigured')}
               </p>
             </div>
 
@@ -123,7 +131,7 @@ export function ExecutiveHeaderSection({
           {overviewCards.map((card) => (
             <div key={card.label} className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
               <p className="text-sm font-medium text-slate-500">{card.label}</p>
-              <p className="mt-2 text-3xl font-bold text-slate-900">{card.value}</p>
+              <p className="mt-2 text-lg font-bold text-slate-900">{card.value}</p>
               <p className="mt-1 text-xs text-slate-500">{card.helper}</p>
             </div>
           ))}

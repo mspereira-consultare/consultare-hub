@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { EXECUTIVE_WIDGET_DEFINITIONS } from '@/lib/dashboard_executive/catalog';
 import type { ExecutiveSnapshot } from '@/lib/dashboard_executive/types';
 import { ExecutiveAiInsightsSection } from './components/ExecutiveAiInsightsSection';
 import { ExecutiveHeaderSection } from './components/ExecutiveHeaderSection';
 import { ExecutiveLiveSection } from './components/ExecutiveLiveSection';
 import { ExecutivePrioritiesSection, type DashboardPriorityItem } from './components/ExecutivePrioritiesSection';
 import { ExecutiveWidgetsSection } from './components/ExecutiveWidgetsSection';
+import { formatProfileLabel } from './components/dashboardExecutiveUtils';
 
 type ExecutiveApiResponse = {
   status: 'success';
@@ -33,7 +35,6 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
 
     fetchExecutiveDashboard()
       .catch((err: unknown) => {
@@ -137,6 +138,37 @@ export default function DashboardPage() {
   }, [priorities]);
 
   const overviewCards = useMemo(() => {
+    if (!snapshot) return [];
+    const activeAreas = new Set(snapshot.metrics.widgets.map((widget) => widget.areaKey));
+    const plannedVisibleCount = snapshot.metrics.profile.visibleWidgetKeys.filter((widgetKey) =>
+      EXECUTIVE_WIDGET_DEFINITIONS.some((widget) => widget.key === widgetKey && widget.status === 'planned')
+    ).length;
+
+    return [
+      {
+        label: 'Perfil executivo',
+        value: formatProfileLabel(snapshot.metrics.profile.profileKey),
+        helper: snapshot.metrics.profile.matchedGroupLabel || 'Perfil resolvido pela governança atual',
+      },
+      {
+        label: 'Widgets ativos',
+        value: String(snapshot.metrics.widgets.length),
+        helper: `${snapshot.metrics.profile.visibleWidgetKeys.length} widgets visíveis para o perfil`,
+      },
+      {
+        label: 'Áreas cobertas',
+        value: String(activeAreas.size),
+        helper: 'Eixos com indicadores já consolidados neste snapshot',
+      },
+      {
+        label: 'Em preparação',
+        value: String(plannedVisibleCount),
+        helper: 'Widgets do perfil que seguem dependentes de fonte ou refinamento',
+      },
+    ];
+  }, [snapshot]);
+
+  const liveMetrics = useMemo(() => {
     const liveOperations = snapshot?.metrics.liveOperations;
     if (!liveOperations) return [];
 
@@ -210,10 +242,12 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
-            <ExecutivePrioritiesSection priorities={priorities} />
-            <ExecutiveAiInsightsSection snapshot={snapshot} />
+            <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+              <ExecutivePrioritiesSection priorities={priorities} />
+              <ExecutiveAiInsightsSection snapshot={snapshot} />
+            </div>
             <ExecutiveWidgetsSection snapshot={snapshot} />
-            <ExecutiveLiveSection heartbeats={heartbeats} />
+            <ExecutiveLiveSection heartbeats={heartbeats} metrics={liveMetrics} />
           </>
         )}
       </div>
