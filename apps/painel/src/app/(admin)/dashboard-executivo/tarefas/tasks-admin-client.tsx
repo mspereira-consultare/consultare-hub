@@ -391,7 +391,9 @@ const isRetiredTaskStatus = (status: TaskStatus) => RETIRED_TASK_STATUSES.includ
 
 const formatDate = (value: string | null) => {
   if (!value) return 'Sem prazo';
-  const date = new Date(`${value}T00:00:00`);
+  const directDate = new Date(value);
+  const fallbackDate = new Date(`${value}T00:00:00`);
+  const date = !Number.isNaN(directDate.getTime()) ? directDate : fallbackDate;
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString('pt-BR');
 };
@@ -2078,7 +2080,7 @@ function WeeklyReportAdminModal({
         </div>
 
         <div className="max-h-[76vh] overflow-y-auto px-5 py-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
             <CompactInfoCard
               label="Status"
               value={moduleStatusLabel}
