@@ -3882,9 +3882,10 @@ function TaskDetailPanel({
                   description="Edite metadados principais e mantenha a governança alinhada com a execução."
                 >
                 <div className="grid gap-4 md:grid-cols-2">
-                  <FieldInput label="Título" value={form.title} onChange={(value) => onFormChange({ ...form, title: value })} disabled={!canEdit} />
+                  <FieldInput label="Título" required value={form.title} onChange={(value) => onFormChange({ ...form, title: value })} disabled={!canEdit} />
                   <FieldSelect
                     label="Setor"
+                    required
                     value={form.department}
                     onChange={(value) => onFormChange({ ...form, department: value })}
                     disabled={!canEdit}
@@ -3892,6 +3893,7 @@ function TaskDetailPanel({
                   />
                   <FieldSelect
                     label="Prioridade"
+                    required
                     value={form.priority}
                     onChange={(value) => onFormChange({ ...form, priority: value as TaskPriority })}
                     disabled={!canEdit}
@@ -3911,6 +3913,7 @@ function TaskDetailPanel({
                   />
                   <FieldSelect
                     label="Status"
+                    required
                     value={form.status}
                     onChange={(value) => onFormChange({ ...form, status: value as TaskStatus })}
                     disabled={!canEdit}
@@ -3918,9 +3921,10 @@ function TaskDetailPanel({
                       .filter(([value]) => value !== 'ARQUIVADA' && value !== 'CANCELADA')
                       .map(([value, label]) => ({ value, label }))}
                   />
-                  <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} disabled={!canEdit} />
-                  <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} disabled={!canEdit} />
+                  <FieldInput label="Prazo" required type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} disabled={!canEdit} />
+                  <FieldInput label="Início" required type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} disabled={!canEdit} />
                 </div>
+                <div className="text-xs text-slate-500">Campos com * são obrigatórios.</div>
                 {requiresProjectSchedule ? (
                   <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-[#17407E]">
                     Tarefas de projeto precisam manter início e prazo válidos para compor o Gantt global.
@@ -4097,6 +4101,7 @@ function TaskDetailPanel({
                 <div className="grid gap-4 md:grid-cols-2">
                   <FieldSelect
                     label="Responsável principal"
+                    required
                     value={form.primaryAssigneeUserId}
                     onChange={(value) => onFormChange({ ...form, primaryAssigneeUserId: value })}
                     disabled={!canEdit}
@@ -4622,16 +4627,21 @@ function FieldInput({
   onChange,
   type = 'text',
   disabled = false,
+  required = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
   disabled?: boolean;
+  required?: boolean;
 }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+      <label className="mb-1 block text-sm font-medium text-slate-700">
+        {label}
+        {required ? <span className="ml-1 text-rose-500">*</span> : null}
+      </label>
       <input type={type} value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} className={`${inputClassName} disabled:bg-slate-50`} />
     </div>
   );
@@ -4643,16 +4653,21 @@ function FieldSelect({
   onChange,
   options,
   disabled = false,
+  required = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   options: Array<{ value: string; label: string }>;
   disabled?: boolean;
+  required?: boolean;
 }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+      <label className="mb-1 block text-sm font-medium text-slate-700">
+        {label}
+        {required ? <span className="ml-1 text-rose-500">*</span> : null}
+      </label>
       <select value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)} className={`${inputClassName} disabled:bg-slate-50`}>
         {options.map((option) => (
           <option key={option.value || option.label} value={option.value}>

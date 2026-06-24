@@ -2216,6 +2216,7 @@ function SearchableUserSelect({
   onChange,
   placeholder = 'Selecione um colaborador',
   emptyLabel,
+  required = false,
 }: {
   label: string;
   users: Array<TaskUserOption & { label: string }>;
@@ -2223,6 +2224,7 @@ function SearchableUserSelect({
   onChange: (value: string) => void;
   placeholder?: string;
   emptyLabel?: string;
+  required?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -2287,7 +2289,10 @@ function SearchableUserSelect({
 
   return (
     <div ref={containerRef}>
-      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+      <label className="mb-1 block text-sm font-medium text-slate-700">
+        {label}
+        {required ? <span className="ml-1 text-rose-500">*</span> : null}
+      </label>
       <button
         ref={buttonRef}
         type="button"
@@ -2386,12 +2391,14 @@ function SearchableUserMultiSelect({
   users,
   selectedIds,
   onChange,
+  required = false,
 }: {
   label: string;
   currentUserId: string;
   users: Array<TaskUserOption & { label: string }>;
   selectedIds: string[];
   onChange: (next: string[]) => void;
+  required?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -2467,7 +2474,10 @@ function SearchableUserMultiSelect({
 
   return (
     <div ref={containerRef}>
-      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+      <label className="mb-1 block text-sm font-medium text-slate-700">
+        {label}
+        {required ? <span className="ml-1 text-rose-500">*</span> : null}
+      </label>
       <button
         ref={buttonRef}
         type="button"
@@ -2638,7 +2648,9 @@ function TaskModal({
                 description="Defina o que precisa ser entregue e o contexto operacional da tarefa."
               >
                 <div>
-                  <label className="mb-1 block text-sm font-medium text-slate-700">Título</label>
+                  <label className="mb-1 block text-sm font-medium text-slate-700">
+                    Título<span className="ml-1 text-rose-500">*</span>
+                  </label>
                   <input
                     value={form.title}
                     onChange={(event) => onChange({ ...form, title: event.target.value })}
@@ -2647,9 +2659,10 @@ function TaskModal({
                   />
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <FieldSelect label="Prioridade" value={form.priority} onChange={(value) => onChange({ ...form, priority: value as TaskPriority })} options={PRIORITY_OPTIONS} />
+                  <FieldSelect label="Prioridade" required value={form.priority} onChange={(value) => onChange({ ...form, priority: value as TaskPriority })} options={PRIORITY_OPTIONS} />
                   <FieldSelect
                     label="Status inicial"
+                    required
                     value={form.status}
                     onChange={(value) => onChange({ ...form, status: value as TaskStatus })}
                     options={STATUS_OPTIONS.filter((item) => item.value !== 'CANCELADA' && item.value !== 'ARQUIVADA')}
@@ -2660,10 +2673,10 @@ function TaskModal({
                     onChange={(value) => onChange({ ...form, projectId: value })}
                     options={[{ value: '', label: 'Tarefa avulsa' }, ...projectOptions]}
                   />
-                  <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onChange({ ...form, dueDate: value })} />
-                  <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onChange({ ...form, startDate: value })} />
+                  <FieldInput label="Prazo" required type="date" value={form.dueDate} onChange={(value) => onChange({ ...form, dueDate: value })} />
+                  <FieldInput label="Início" required type="date" value={form.startDate} onChange={(value) => onChange({ ...form, startDate: value })} />
                 </div>
-                <div className="text-xs text-slate-500">Data de início e prazo são obrigatórios na criação da tarefa.</div>
+                <div className="text-xs text-slate-500">Campos com * são obrigatórios.</div>
                 {requiresProjectSchedule ? (
                   <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-[#17407E]">
                     Tarefas vinculadas a projeto precisam ter início e prazo definidos para aparecer no Gantt.
@@ -2698,12 +2711,14 @@ function TaskModal({
                 <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
                   <FieldSelect
                     label="Setor"
+                    required
                     value={form.department}
                     onChange={(value) => onChange({ ...form, department: value })}
                     options={departmentOptions.map((department) => ({ value: department, label: department }))}
                   />
                   <SearchableUserSelect
                     label="Responsável principal"
+                    required
                     value={form.primaryAssigneeUserId}
                     onChange={(value) => onChange({ ...form, primaryAssigneeUserId: value })}
                     users={users}
@@ -3079,14 +3094,15 @@ function TaskDetailModal({
                   description="Edite os principais campos da tarefa sem perder contexto de prazo, prioridade e execução."
                 >
                 <div className="grid gap-4 md:grid-cols-2">
-                  <FieldInput label="Título" value={form.title} onChange={(value) => onFormChange({ ...form, title: value })} />
+                  <FieldInput label="Título" required value={form.title} onChange={(value) => onFormChange({ ...form, title: value })} />
                   <FieldSelect
                     label="Setor"
+                    required
                     value={form.department}
                     onChange={(value) => onFormChange({ ...form, department: value })}
                     options={departmentOptions.map((department) => ({ value: department, label: department }))}
                   />
-                  <FieldSelect label="Prioridade" value={form.priority} onChange={(value) => onFormChange({ ...form, priority: value as TaskPriority })} options={PRIORITY_OPTIONS} />
+                  <FieldSelect label="Prioridade" required value={form.priority} onChange={(value) => onFormChange({ ...form, priority: value as TaskPriority })} options={PRIORITY_OPTIONS} />
                   <FieldSelect
                     label="Projeto"
                     value={form.projectId}
@@ -3096,13 +3112,15 @@ function TaskDetailModal({
                   />
                   <FieldSelect
                     label="Status"
+                    required
                     value={form.status}
                     onChange={(value) => onFormChange({ ...form, status: value as TaskStatus })}
                     options={STATUS_OPTIONS.filter((item) => item.value !== 'ARQUIVADA' && item.value !== 'CANCELADA')}
                   />
-                  <FieldInput label="Prazo" type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} disabled={projectScheduleDisabled} />
-                  <FieldInput label="Início" type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} disabled={projectScheduleDisabled} />
+                  <FieldInput label="Prazo" required type="date" value={form.dueDate} onChange={(value) => onFormChange({ ...form, dueDate: value })} disabled={projectScheduleDisabled} />
+                  <FieldInput label="Início" required type="date" value={form.startDate} onChange={(value) => onFormChange({ ...form, startDate: value })} disabled={projectScheduleDisabled} />
                 </div>
+                <div className="text-xs text-slate-500">Campos com * são obrigatórios.</div>
                 {showProjectVisibilityNotice ? (
                   <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-[#17407E]">
                     Esta tarefa ficará visível para todos os membros do projeto. O cronograma Gantt depende de início e prazo válidos.
@@ -3277,6 +3295,7 @@ function TaskDetailModal({
                 <div className="grid gap-4 md:grid-cols-2">
                   <SearchableUserSelect
                     label="Responsável principal"
+                    required
                     value={form.primaryAssigneeUserId}
                     onChange={(value) => onFormChange({ ...form, primaryAssigneeUserId: value })}
                     users={users}
@@ -4940,6 +4959,7 @@ function FieldInput({
   type = 'text',
   placeholder,
   disabled = false,
+  required = false,
 }: {
   label: string;
   value: string;
@@ -4947,10 +4967,14 @@ function FieldInput({
   type?: string;
   placeholder?: string;
   disabled?: boolean;
+  required?: boolean;
 }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+      <label className="mb-1 block text-sm font-medium text-slate-700">
+        {label}
+        {required ? <span className="ml-1 text-rose-500">*</span> : null}
+      </label>
       <input
         type={type}
         value={value}
@@ -4969,16 +4993,21 @@ function FieldSelect({
   onChange,
   disabled,
   options,
+  required = false,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
   options: Array<{ value: string; label: string }>;
+  required?: boolean;
 }) {
   return (
     <div>
-      <label className="mb-1 block text-sm font-medium text-slate-700">{label}</label>
+      <label className="mb-1 block text-sm font-medium text-slate-700">
+        {label}
+        {required ? <span className="ml-1 text-rose-500">*</span> : null}
+      </label>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
