@@ -785,77 +785,193 @@ Isso evita:
 
 ## 16. Plano de entrega atualizado
 
-## Fase 0 - Fundacao tecnica ja pronta
+## 16.1 Leitura atual do projeto
 
-Status: **parcialmente concluida**
+Status real na retomada:
 
-Ja existe no projeto:
+- Fundacao tecnica: **concluida**
+- Governanca executiva por perfil/grupo/cargo/excecao: **concluida para o escopo atual**
+- IA e snapshot persistido: **concluidos com refinamentos pontuais pendentes**
+- Exportacao PDF: **concluida com espaco para refinamento visual**
+- Consolidacao dos widgets V1: **parcial**
 
-- agregador executivo inicial;
-- tipos e contratos iniciais;
-- snapshot persistido;
-- refresh manual;
-- tela base do dashboard executivo;
-- escopo executivo inicial por usuario.
+Em outras palavras, o projeto nao precisa reiniciar arquitetura, permissao ou governanca.
 
-O objetivo agora e evoluir essa base, e nao recomecar do zero.
+O gargalo atual esta em:
 
-## Fase 1 - Governanca de visibilidade e perfis
+- ligar mais widgets reais do catalogo;
+- fechar a composicao final da tela principal;
+- fechar a coerencia entre tela, snapshot e PDF para os widgets restantes.
 
-Objetivo:
+## 16.2 Regra de escopo para esta retomada
 
-- transformar o modelo atual de escopo em uma governanca completa por perfil.
+Esta retomada **nao deve mexer** na logica de acessos, permissoes, `users` ou no padrao atual de governanca ja implantado.
 
-Entregas:
+Fica explicitamente fora de escopo nesta fase:
 
-- modelar personas executivas;
-- modelar catalogo de widgets;
-- modelar regras por `department + jobTitle`;
-- modelar overrides por usuario;
-- criar permissao administrativa do painel executivo;
-- criar tela administrativa para a gerente editar tudo sem codigo;
-- colocar o dashboard em estado seguro quando faltar configuracao.
+- alterar o gate de `dashboard.view`;
+- alterar `packages/core/src/permissions.ts`;
+- alterar fluxos centrais de `/users`;
+- reabrir a refatoracao de acesso/perfil do painel;
+- mudar a regra atual de resolucao executiva por colaborador, cargo mestre, grupo e excecao;
+- misturar esta retomada com nova rodada de mudancas em permissao administrativa.
 
-## Fase 2 - Consolidacao de widgets V1
+Se algum widget novo depender de mudanca estrutural em permissao ou em `/users`, ele deve sair do lote atual e voltar como backlog futuro separado.
 
-Objetivo:
+## 16.3 Backlog executivo de retomada
 
-- ligar o dashboard aos widgets que ja possuem fonte real no projeto.
+### Lote A - Consolidacao de widgets V1 com fonte real
 
-Entregas:
-
-- mapear widgets `available`;
-- separar widgets `planned`;
-- reorganizar a tela por perfil, nao apenas por area;
-- melhorar a composicao final por persona do PDF.
-
-## Fase 3 - IA e priorizacao
+Status em 2026-06-24: **concluido**
 
 Objetivo:
 
-- integrar OpenAI sobre o snapshot ja governado por perfil.
+- ampliar a utilidade do dashboard sem tocar na camada de acesso.
+
+Diretriz de corte do lote:
+
+- buscar cobertura funcional entre areas, mas com **cobertura flexivel**;
+- nao forcar a entrada de financeiro e qualidade se isso exigir descoberta maior ou expansao de escopo;
+- priorizar primeiro os widgets com fonte mais proxima nas areas comercial, operacao e pessoas.
+
+Primeiro sublote fechado para implementacao:
+
+1. `progresso_metas`
+2. `agendamento_diario_meta`
+3. `agendamento_mensal_meta`
+4. `tempo_empresa_um_ano`
+
+Resultado entregue:
+
+- `progresso_metas`: implementado no snapshot executivo a partir de `goals_config` + `calculateKpi`;
+- `agendamento_diario_meta`: implementado com selecao da melhor meta elegivel de `agendamentos` para o escopo atual;
+- `agendamento_mensal_meta`: implementado com leitura mensal + projecao dentro da meta elegivel;
+- `tempo_empresa_um_ano`: implementado com base em `employees.admission_date`, respeitando o escopo executivo atual;
+- catalogo atualizado para marcar esses 4 widgets como `available`.
+
+Cobertura esperada deste primeiro sublote:
+
+- Comercial: `progresso_metas`
+- Operacao: `agendamento_diario_meta` e `agendamento_mensal_meta`
+- Pessoas: `tempo_empresa_um_ano`
+
+Financeiro e qualidade:
+
+- nao entram como obrigatorios neste primeiro sublote;
+- so entram no Lote A se houver fonte direta, limpa e aderente ao snapshot atual sem reabrir escopo.
+
+Criterios para entrar neste lote:
+
+- ja existir fonte de dados utilizavel no projeto atual;
+- nao exigir mudanca em permissao, `users` ou governanca;
+- conseguir entrar no snapshot de forma consistente com o perfil atual;
+- conseguir aparecer na tela e no PDF sem logica paralela.
 
 Entregas:
 
-- integrar Responses API;
-- validar structured output;
-- gerar resumo executivo;
-- gerar prioridades, riscos e planos de acao;
-- persistir a leitura de IA no snapshot.
+- revisar cada widget `planned` e classificar em:
+  - `entra agora`;
+  - `depende de fonte`;
+  - `fora do recorte atual`;
+- implementar o primeiro sublote fechado;
+- avaliar financeiro e qualidade apenas como extensao opcional do lote, nunca como bloqueio para concluir este ciclo;
+- atualizar o catalogo para refletir o status real de cada item;
+- manter `planned` apenas no que realmente nao tiver fonte pronta ou estiver fora do recorte atual.
 
-## Fase 4 - PDF e refinamento final
+Classificacao final do restante do backlog apos o fechamento do lote:
+
+- `depende de fonte ou regra executiva adicional`:
+  - `banco_horas`
+  - `agenda_calendario`
+  - `contas_aberto`
+  - `nf_aberto`
+  - `recoletas`
+  - `fila_telefonia`
+  - `ultima_inspecao`
+  - `contas_semana`
+  - `notas_fiscais`
+  - `previsto_realizado`
+  - `estornos_pendentes`
+  - `contratos_pendentes_vencidos`
+  - `estoque_vencendo`
+- `fora do recorte atual / depende de integracao externa nao consolidada`:
+  - `reclame_aqui`
+
+Observacoes de corte:
+
+- `banco_horas` possui fonte real em folha, mas ainda depende de regra executiva de competencia de referencia;
+- o bloco financeiro atual nao expone hoje recortes plugaveis suficientes para transformar os widgets planejados em widgets executivos sem nova rodada de refinamento;
+- qualidade ja possui fonte consolidada para vencimentos regulatorios em `documentos_equipamentos_vencendo`, mas isso nao cobre com seguranca semantica os widgets `estoque_vencendo`, `ultima_inspecao` ou `contratos_pendentes_vencidos`;
+- o fechamento do Lote A nao reabre permissao, governanca nem `/users`.
+
+### Lote B - Composicao final da tela principal
 
 Objetivo:
 
-- fechar consistencia entre tela, IA, export e manutencao operacional.
+- fechar a experiencia final do `/dashboard` usando a base ja pronta.
+
+Decisao ja fechada:
+
+- a V1 final permanece em formato **widgets-first**;
+- a experiencia principal continua centrada em `prioridades + IA + widgets + operacao ao vivo`;
+- os blocos executivos por area continuam como camada analitica do snapshot, da priorizacao e da IA, sem voltar como secao principal da pagina.
 
 Entregas:
 
-- gerar exportacao PDF a partir do snapshot;
-- refletir perfil, widgets e escopo no PDF;
-- ajustar layout executivo;
-- estabilizar estados de erro e loading;
-- preparar backlog formal dos widgets futuros.
+- consolidar a hierarquia visual final da pagina;
+- alinhar o uso de widgets por perfil com a narrativa executiva do topo;
+- garantir que estados de `sem configuracao`, `IA indisponivel` e `widget em preparacao` continuem claros;
+- evitar duplicidade visual entre blocos analiticos e widgets;
+- nao recolocar uma secao principal adicional de blocos por area no `/dashboard`.
+
+### Lote C - Fechamento de consistencia do PDF
+
+Objetivo:
+
+- garantir que o PDF represente a experiencia final do painel, e nao uma variacao paralela.
+
+Entregas:
+
+- refletir os widgets realmente ativos na V1;
+- revisar o cabecalho executivo, ordem dos blocos e coerencia com a tela;
+- garantir que itens ainda `planned` nao aparecam como se estivessem implementados;
+- validar export para perfis com escopo reduzido e para usuarios em configuracao pendente;
+- manter o PDF coerente com a abordagem `widgets-first`, sem criar uma estrutura paralela baseada em blocos por area.
+
+### Lote D - Estabilizacao final
+
+Objetivo:
+
+- encerrar a retomada com backlog limpo e comportamento previsivel.
+
+Entregas:
+
+- revisar mensagens de erro e loading do fluxo de snapshot, IA e exportacao;
+- revisar quais widgets permanecem oficialmente como backlog futuro;
+- documentar o que ficou fora por dependencia de fonte ou por dependencia de mudanca em acesso/governanca;
+- deixar claro o proximo lote funcional apos a V1 consolidada;
+- separar explicitamente o backlog residual entre:
+  - falta de fonte;
+  - custo alto de descoberta;
+  - dependencia de escopo proibido nesta retomada.
+
+## 16.4 Ordem recomendada de execucao
+
+1. Fechar o inventario dos widgets `planned`.
+2. Implementar o primeiro sublote fechado do Lote A.
+3. Avaliar extensoes opcionais de financeiro e qualidade sem bloquear a conclusao do lote.
+4. Consolidar o Lote B mantendo o `/dashboard` em formato `widgets-first`.
+5. Ajustar o PDF no Lote C para refletir o resultado final da tela.
+6. Encerrar com limpeza de backlog e estabilizacao do Lote D.
+
+## 16.5 Criterio de conclusao desta retomada
+
+Esta retomada sera considerada concluida quando:
+
+- o painel principal estiver usando a governanca atual sem alteracoes estruturais;
+- o primeiro sublote fechado estiver consolidado no snapshot, na tela e no PDF;
+- os widgets restantes estiverem claramente classificados entre `planned real`, `sem fonte`, ou `fora de escopo`;
+- a experiencia final do `/dashboard` estiver fechada e coerente para uso executivo dentro do modelo `widgets-first`.
 
 ---
 

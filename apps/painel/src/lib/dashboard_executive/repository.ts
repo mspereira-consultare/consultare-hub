@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import { runInTransaction, type DbInterface } from '@/lib/db';
+import { calculateKpi } from '@/lib/kpi_engine';
 import { hasPermission } from '@/lib/permissions';
 import { loadUserPermissionMatrix } from '@/lib/permissions_server';
 import { getAgendaOcupacaoHeartbeat, listAgendaOcupacaoDailyRows } from '@/lib/agenda_ocupacao/repository';
@@ -663,6 +664,317 @@ const getFinancialGoals = async (db: DbInterface) => {
     daily: normalized.find((goal: any) => clean(goal.periodicity).toLowerCase() === 'daily') || null,
     monthly: normalized.find((goal: any) => clean(goal.periodicity).toLowerCase() === 'monthly') || null,
   };
+};
+
+const normalizeGoalUnitFilter = (goal: any) => {
+  const raw = clean(goal?.clinic_unit);
+  if (raw && raw.toLowerCase() !== 'all') return raw;
+
+  const unitField = clean(goal?.unit);
+  if (unitField && !['currency', 'qtd', 'percent', 'minutes'].includes(unitField.toLowerCase())) {
+    return unitField;
+  }
+
+  return undefined;
+};
+
+const getGoalCalculationWindow = (goal: any, today: string) => {
+  let calcStart = clean(goal?.start_date) || today;
+  let calcEnd = clean(goal?.end_date) || today;
+  const periodicity = clean(goal?.periodicity).toLowerCase();
+
+  if (periodicity === 'daily') {
+    calcStart = today;
+    calcEnd = today;
+  } else if (periodicity === 'weekly') {
+    const { weekStart } = getDateRange();
+    calcStart = weekStart;
+    calcEnd = today;
+  } else if (periodicity === 'monthly') {
+    const { monthStart } = getDateRange();
+    calcStart = monthStart;
+    const [year, month] = monthStart.split('-').map(Number);
+    calcEnd = new Date(year, month, 0, 12, 0, 0).toISOString().slice(0, 10);
+  }
+
+  return { calcStart, calcEnd };
+};
+
+type ExecutiveGoalProgress = {
+  goalId: string;
+  name: string;
+  periodicity: string;
+  kpiId: string;
+  unitFilter: string | null;
+  targetValue: number;
+  currentValue: number;
+  percentage: number | null;
+  status: ExecutiveIndicatorStatus;
+};
+
+const isExecutiveGoalEligible = (goal: any, scope: ExecutiveScope) => {
+  const collaborator = clean(goal?.collaborator).toLowerCase();
+  const team = clean(goal?.team).toLowerCase();
+
+  if (collaborator && collaborator !== 'all') return false;
+  if (team && team !== 'all') return false;
+
+  const unitFilter = normalizeGoalUnitFilter(goal);
+  if (!unitFilter || !scope.units.length) return true;
+
+  return scope.units.some((unit) => upper(unit) === upper(unitFilter));
+};
+
+const listExecutiveGoalProgress = async (db: DbInterface, scope: ExecutiveScope): Promise<ExecutiveGoalProgress[]> => {
+  const today = formatDate(new Date());
+  const goals = await db.query(
+    `
+    SELECT *
+    FROM goals_config
+    WHERE start_date <= ?
+      AND end_date >= ?
+    `,
+    [today, today]
+  );
+
+  const eligibleGoals = (goals as any[])
+    .filter((goal) => clean(goal?.linked_kpi_id) && clean(goal?.linked_kpi_id).toLowerCase() !== 'manual')
+    .filter((goal) => isExecutiveGoalEligible(goal, scope));
+
+  return Promise.all(
+    eligibleGoals.map(async (goal: any) => {
+      const { calcStart, calcEnd } = getGoalCalculationWindow(goal, today);
+      const kpiId = clean(goal?.linked_kpi_id);
+      const result = await calculateKpi(kpiId, calcStart, calcEnd, {
+        group_filter: clean(goal?.filter_group) || undefined,
+        unit_filter: normalizeGoalUnitFilter(goal),
+        collaborator: clean(goal?.collaborator) || undefined,
+        team: clean(goal?.team) || undefined,
+        scope: upper(goal?.scope) === 'CARD' ? 'CARD' : 'CLINIC',
+      }).catch(() => ({ currentValue: 0 }));
+
+      const targetValue = Number(goal?.target_value || 0);
+      const currentValue = Number((result as { currentValue?: number })?.currentValue || 0);
+      const percentage = targetValue > 0 ? (currentValue / targetValue) * 100 : null;
+
+      return {
+        goalId: clean(goal?.id),
+        name: clean(goal?.name) || 'Meta sem nome',
+        periodicity: clean(goal?.periodicity).toLowerCase(),
+        kpiId: clean(goal?.linked_kpi_id).toLowerCase(),
+        unitFilter: normalizeGoalUnitFilter(goal) || null,
+        targetValue,
+        currentValue,
+        percentage,
+        status:
+          targetValue <= 0
+            ? 'NO_DATA'
+            : (percentage || 0) >= 100
+              ? 'SUCCESS'
+              : (percentage || 0) >= 70
+                ? 'WARNING'
+                : 'DANGER',
+      } satisfies ExecutiveGoalProgress;
+    })
+  );
+};
+
+const goalScopeScore = (goal: ExecutiveGoalProgress, scope: ExecutiveScope) => {
+  if (!goal.unitFilter) return 1;
+  if (scope.units.some((unit) => upper(unit) === upper(goal.unitFilter))) return 2;
+  return 0;
+};
+
+const getBestGoalForKpi = (
+  goals: ExecutiveGoalProgress[],
+  scope: ExecutiveScope,
+  filters: { periodicity: 'daily' | 'monthly'; kpiId: string }
+) => {
+  return goals
+    .filter((goal) => goal.periodicity === filters.periodicity)
+    .filter((goal) => goal.kpiId === filters.kpiId)
+    .sort((a, b) => goalScopeScore(b, scope) - goalScopeScore(a, scope))[0] || null;
+};
+
+const getGoalsProgressWidget = async (db: DbInterface, scope: ExecutiveScope) => {
+  const goals = await listExecutiveGoalProgress(db, scope);
+  if (!goals.length) {
+    return buildSummaryWidget(
+      'progresso_metas',
+      'NO_DATA',
+      NOW(),
+      [
+        buildWidgetValue('Ativas', '0'),
+        buildWidgetValue('No alvo', '0'),
+        buildWidgetValue('Abaixo 70%', '0'),
+        buildWidgetValue('Média', '—'),
+      ],
+      'Nenhuma meta executiva elegível foi encontrada para o recorte atual.'
+    );
+  }
+
+  const activeGoals = goals.filter((goal) => goal.targetValue > 0);
+  const successGoals = activeGoals.filter((goal) => goal.status === 'SUCCESS').length;
+  const dangerGoals = activeGoals.filter((goal) => goal.status === 'DANGER');
+  const averagePercentage =
+    activeGoals.length > 0
+      ? activeGoals.reduce((sum, goal) => sum + (goal.percentage || 0), 0) / activeGoals.length
+      : null;
+
+  const note = dangerGoals.length
+    ? `Metas em atenção: ${dangerGoals.slice(0, 3).map((goal) => goal.name).join(', ')}${dangerGoals.length > 3 ? '...' : ''}`
+    : `${activeGoals.length} meta(s) ativa(s) dentro do recorte executivo atual.`;
+
+  return buildSummaryWidget(
+    'progresso_metas',
+    worstStatus(activeGoals.map((goal) => goal.status)),
+    NOW(),
+    [
+      buildWidgetValue('Ativas', new Intl.NumberFormat('pt-BR').format(activeGoals.length)),
+      buildWidgetValue('No alvo', new Intl.NumberFormat('pt-BR').format(successGoals)),
+      buildWidgetValue('Abaixo 70%', new Intl.NumberFormat('pt-BR').format(dangerGoals.length)),
+      buildWidgetValue('Média', averagePercentage == null ? '—' : `${formatPercentCompact(averagePercentage)}%`),
+    ],
+    note
+  );
+};
+
+const getSchedulingGoalWidget = async (
+  db: DbInterface,
+  scope: ExecutiveScope,
+  widgetKey: 'agendamento_diario_meta' | 'agendamento_mensal_meta'
+) => {
+  const goals = await listExecutiveGoalProgress(db, scope);
+  const periodicity = widgetKey === 'agendamento_diario_meta' ? 'daily' : 'monthly';
+  const goal = getBestGoalForKpi(goals, scope, { periodicity, kpiId: 'agendamentos' });
+
+  if (!goal || goal.targetValue <= 0) {
+    return buildSummaryWidget(
+      widgetKey,
+      'NO_DATA',
+      NOW(),
+      [
+        buildWidgetValue('Meta', '—'),
+        buildWidgetValue('Realizado', '—'),
+        buildWidgetValue('Atingimento', '—'),
+        buildWidgetValue(periodicity === 'monthly' ? 'Projeção' : 'Restante', '—'),
+      ],
+      'Nenhuma meta ativa de agendamento foi encontrada para o recorte atual.'
+    );
+  }
+
+  if (periodicity === 'daily') {
+    const remaining = Math.max(0, goal.targetValue - goal.currentValue);
+    return buildSummaryWidget(
+      widgetKey,
+      goal.status,
+      NOW(),
+      [
+        buildWidgetValue('Meta', new Intl.NumberFormat('pt-BR').format(goal.targetValue)),
+        buildWidgetValue('Realizado', new Intl.NumberFormat('pt-BR').format(goal.currentValue)),
+        buildWidgetValue('Atingimento', `${formatPercentCompact(goal.percentage || 0)}%`),
+        buildWidgetValue('Restante', new Intl.NumberFormat('pt-BR').format(remaining)),
+      ],
+      `Meta diária de agendamento ${goal.unitFilter ? `para ${goal.unitFilter}` : 'global'} dentro do recorte executivo.`
+    );
+  }
+
+  const { currentDayOfMonth, monthEndDay } = getDateRange();
+  const projectionValue = currentDayOfMonth > 0 ? (goal.currentValue / currentDayOfMonth) * monthEndDay : goal.currentValue;
+  const projectionPercentage = goal.targetValue > 0 ? (projectionValue / goal.targetValue) * 100 : 0;
+  const projectedStatus: ExecutiveIndicatorStatus =
+    projectionPercentage >= 100 ? 'SUCCESS' : projectionPercentage >= 70 ? 'WARNING' : 'DANGER';
+
+  return buildSummaryWidget(
+    widgetKey,
+    projectedStatus,
+    NOW(),
+    [
+      buildWidgetValue('Meta', new Intl.NumberFormat('pt-BR').format(goal.targetValue)),
+      buildWidgetValue('Realizado', new Intl.NumberFormat('pt-BR').format(goal.currentValue)),
+      buildWidgetValue('Atingimento', `${formatPercentCompact(goal.percentage || 0)}%`),
+      buildWidgetValue('Projeção', new Intl.NumberFormat('pt-BR').format(Math.round(projectionValue))),
+    ],
+    `Projeção mensal de ${formatPercentCompact(projectionPercentage)}% sobre a meta de agendamentos${goal.unitFilter ? ` em ${goal.unitFilter}` : ''}.`
+  );
+};
+
+const getOneYearTenureWidget = async (db: DbInterface, scope: ExecutiveScope) => {
+  const employeesDashboard = await getEmployeeDashboard(db, {
+    status: 'all',
+    regime: 'all',
+    unit: scope.units.length === 1 ? scope.units[0] : 'all',
+    department: scope.departments.length === 1 ? scope.departments[0] : 'all',
+  });
+
+  const rows = await db.query(
+    `
+    SELECT id, full_name, department, units_json, admission_date, status
+    FROM employees
+    WHERE admission_date IS NOT NULL
+      AND (status IS NULL OR UPPER(TRIM(status)) <> 'DESLIGADO')
+    `
+  );
+
+  const today = getDateRange().today;
+  const filteredRows = (rows as any[])
+    .filter((row) => {
+      if (scope.departments.length && !scope.departments.some((department) => upper(department) === upper(row.department))) {
+        return false;
+      }
+      if (scope.units.length) {
+        const employeeUnits = parseJsonArray(row.units_json);
+        if (!employeeUnits.some((unit) => scope.units.some((scopeUnit) => upper(scopeUnit) === upper(unit)))) {
+          return false;
+        }
+      }
+      return true;
+    })
+    .map((row) => {
+      const admissionDate = clean(row.admission_date);
+      const firstAnniversary = admissionDate
+        ? `${String(Number(admissionDate.slice(0, 4)) + 1)}-${admissionDate.slice(5, 10)}`
+        : null;
+      const daysUntil = firstAnniversary
+        ? Math.round((new Date(`${firstAnniversary}T00:00:00Z`).getTime() - new Date(`${today}T00:00:00Z`).getTime()) / 86_400_000)
+        : null;
+
+      return {
+        fullName: clean(row.full_name) || 'Colaborador sem nome',
+        admissionDate,
+        daysUntil,
+      };
+    })
+    .filter((row) => row.daysUntil != null);
+
+  const upcoming = filteredRows.filter((row) => (row.daysUntil || 0) >= 0 && (row.daysUntil || 0) <= 30);
+  const recent = filteredRows.filter((row) => (row.daysUntil || 0) < 0 && (row.daysUntil || 0) >= -30);
+  const threeToTwelveMonths = filteredRows.filter((row) => {
+    const admissionDate = clean((row as any).admissionDate);
+    if (!admissionDate) return false;
+    const admission = new Date(`${admissionDate}T00:00:00Z`);
+    const current = new Date(`${today}T00:00:00Z`);
+    let months = (current.getUTCFullYear() - admission.getUTCFullYear()) * 12 + (current.getUTCMonth() - admission.getUTCMonth());
+    if (current.getUTCDate() < admission.getUTCDate()) months -= 1;
+    return months >= 3 && months < 12;
+  }).length;
+  const note = upcoming.length
+    ? `Próximos a completar 1 ano: ${upcoming.slice(0, 3).map((row) => row.fullName).join(', ')}${upcoming.length > 3 ? '...' : ''}`
+    : recent.length
+      ? `Completaram 1 ano nos últimos 30 dias: ${recent.slice(0, 3).map((row) => row.fullName).join(', ')}${recent.length > 3 ? '...' : ''}`
+      : 'Nenhum colaborador completa 1 ano nos próximos 30 dias dentro do recorte atual.';
+
+  return buildSummaryWidget(
+    'tempo_empresa_um_ano',
+    filteredRows.length ? (upcoming.length ? 'WARNING' : 'SUCCESS') : 'NO_DATA',
+    employeesDashboard.generatedAt,
+    [
+      buildWidgetValue('Próx. 30 dias', new Intl.NumberFormat('pt-BR').format(upcoming.length)),
+      buildWidgetValue('Últ. 30 dias', new Intl.NumberFormat('pt-BR').format(recent.length)),
+      buildWidgetValue('Faixa 3-12m', new Intl.NumberFormat('pt-BR').format(threeToTwelveMonths)),
+    ],
+    note
+  );
 };
 
 const getProposalSummary = async (db: DbInterface, startDate: string, endDate: string, units: string[]) => {
@@ -1600,6 +1912,26 @@ const buildExecutiveWidgets = async (
   if (availableKeys.includes('aniversariantes_dia')) {
     const birthdaysWidget = await getBirthdaysWidget(db, scope);
     if (birthdaysWidget) widgets.push(birthdaysWidget);
+  }
+
+  if (availableKeys.includes('progresso_metas')) {
+    const goalsProgressWidget = await getGoalsProgressWidget(db, scope);
+    if (goalsProgressWidget) widgets.push(goalsProgressWidget);
+  }
+
+  if (availableKeys.includes('agendamento_diario_meta')) {
+    const schedulingDailyWidget = await getSchedulingGoalWidget(db, scope, 'agendamento_diario_meta');
+    if (schedulingDailyWidget) widgets.push(schedulingDailyWidget);
+  }
+
+  if (availableKeys.includes('agendamento_mensal_meta')) {
+    const schedulingMonthlyWidget = await getSchedulingGoalWidget(db, scope, 'agendamento_mensal_meta');
+    if (schedulingMonthlyWidget) widgets.push(schedulingMonthlyWidget);
+  }
+
+  if (availableKeys.includes('tempo_empresa_um_ano')) {
+    const oneYearTenureWidget = await getOneYearTenureWidget(db, scope);
+    if (oneYearTenureWidget) widgets.push(oneYearTenureWidget);
   }
 
   if (availableKeys.some((key) => ['google', 'investimento_ads', 'faturamento_campanha_conversao'].includes(key))) {
