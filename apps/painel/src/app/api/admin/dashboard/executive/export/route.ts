@@ -99,6 +99,30 @@ const splitText = (font: PDFFont, text: string, maxWidth: number, size: number) 
   return lines.length ? lines : ['—'];
 };
 
+const fitTextToWidth = (font: PDFFont, value: unknown, maxWidth: number, size: number) => {
+  const text = cleanText(value);
+  if (font.widthOfTextAtSize(text, size) <= maxWidth) return text;
+
+  let low = 0;
+  let high = text.length;
+  let best = '…';
+
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const candidate = `${text.slice(0, middle).trimEnd()}…`;
+    if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      best = candidate;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+
+  return best;
+};
+
+const measureBadgeWidth = (font: PDFFont, label: string, size = 8) => font.widthOfTextAtSize(label, size) + 16;
+
 const drawWrappedText = (
   page: PDFPage,
   font: PDFFont,
@@ -177,7 +201,7 @@ const drawMetaRow = (page: PDFPage, regular: PDFFont, label: string, value: stri
     font: regular,
     color: rgb(0.39, 0.46, 0.55),
   });
-  page.drawText(truncateText(value, 72), {
+  page.drawText(fitTextToWidth(regular, value, width, 10), {
     x,
     y: y - 12,
     size: 10,
@@ -216,7 +240,7 @@ const drawStatCard = (
     borderWidth: 1,
   });
 
-  page.drawText(truncateText(args.label, 28), {
+  page.drawText(fitTextToWidth(regular, args.label, args.width - 20, 8), {
     x: args.x + 10,
     y: args.y - 14,
     size: 8,
@@ -224,7 +248,7 @@ const drawStatCard = (
     color: rgb(0.39, 0.46, 0.55),
   });
 
-  page.drawText(truncateText(args.value, 26), {
+  page.drawText(fitTextToWidth(bold, args.value, args.width - 20, 12), {
     x: args.x + 10,
     y: args.y - 29,
     size: 12,
@@ -232,7 +256,7 @@ const drawStatCard = (
     color: rgb(0.11, 0.17, 0.27),
   });
 
-  page.drawText(truncateText(args.helper, 40), {
+  page.drawText(fitTextToWidth(regular, args.helper, args.width - 20, 7), {
     x: args.x + 10,
     y: args.y - 42,
     size: 7,
@@ -243,11 +267,11 @@ const drawStatCard = (
 
 const drawBadge = (page: PDFPage, bold: PDFFont, label: string, status: string, x: number, y: number) => {
   const colors = statusColors(status);
-  const textWidth = bold.widthOfTextAtSize(label, 8);
+  const width = measureBadgeWidth(bold, label);
   page.drawRectangle({
     x,
     y: y - 12,
-    width: textWidth + 16,
+    width,
     height: 16,
     color: colors.bg,
     borderColor: colors.bg,
@@ -260,6 +284,27 @@ const drawBadge = (page: PDFPage, bold: PDFFont, label: string, status: string, 
     font: bold,
     color: colors.text,
   });
+  return width;
+};
+
+const formatCardStatusLabel = (status: string) => {
+  if (status === 'DANGER') return 'Crítico';
+  if (status === 'WARNING') return 'Atenção';
+  if (status === 'SUCCESS') return 'Estável';
+  return 'Sem dado';
+};
+
+const measureCompactCardHeight = (
+  regular: PDFFont,
+  args: {
+    width: number;
+    body: string;
+    footer?: string | null;
+  }
+) => {
+  const bodyLines = splitText(regular, args.body, args.width - 24, 10);
+  const footerLines = args.footer ? splitText(regular, args.footer, args.width - 24, 8) : [];
+  return 18 + bodyLines.length * 14 + (footerLines.length ? 10 + footerLines.length * 12 : 0) + 20;
 };
 
 const drawCompactCard = (
@@ -278,7 +323,10 @@ const drawCompactCard = (
 ) => {
   const bodyLines = splitText(regular, args.body, args.width - 24, 10);
   const footerLines = args.footer ? splitText(regular, args.footer, args.width - 24, 8) : [];
-  const height = 18 + bodyLines.length * 14 + (footerLines.length ? 10 + footerLines.length * 12 : 0) + 20;
+  const height = measureCompactCardHeight(regular, args);
+  const badgeLabel = args.status ? formatCardStatusLabel(args.status) : null;
+  const badgeWidth = badgeLabel ? measureBadgeWidth(bold, badgeLabel) : 0;
+  const titleMaxWidth = args.width - 24 - (badgeWidth ? badgeWidth + 12 : 0);
 
   page.drawRectangle({
     x: args.x,
@@ -290,7 +338,7 @@ const drawCompactCard = (
     borderWidth: 1,
   });
 
-  page.drawText(truncateText(args.title, 48), {
+  page.drawText(fitTextToWidth(bold, args.title, titleMaxWidth, 11), {
     x: args.x + 12,
     y: args.y - 16,
     size: 11,
@@ -298,8 +346,8 @@ const drawCompactCard = (
     color: rgb(0.11, 0.17, 0.27),
   });
 
-  if (args.status) {
-    drawBadge(page, bold, args.status === 'DANGER' ? 'Crítico' : args.status === 'WARNING' ? 'Atenção' : 'Estável', args.status, args.x + args.width - 78, args.y - 10);
+  if (args.status && badgeLabel) {
+    drawBadge(page, bold, badgeLabel, args.status, args.x + args.width - badgeWidth - 12, args.y - 10);
   }
 
   let lineY = args.y - 32;
@@ -396,6 +444,8 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
   const contentWidth = PAGE.width - MARGIN_X * 2;
   const halfWidth = (contentWidth - 16) / 2;
   const quarterWidth = (contentWidth - 24) / 4;
+  const metaGap = 16;
+  const metaColWidth = (contentWidth - metaGap * 2) / 3;
 
   const summary = snapshot.aiSummary?.executiveSummary || snapshot.metrics.executiveSummary;
   const aiStatus = snapshot.metrics.aiStatus;
@@ -410,9 +460,9 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
   const activeAreasCount = new Set(snapshot.metrics.widgets.map((widget) => widget.areaKey)).size;
   const widgets = snapshot.metrics.widgets;
 
-  drawMetaRow(page, regular, 'Gerado em', formatTimestamp(snapshot.completedAt || snapshot.createdAt), MARGIN_X, y, 120);
-  drawMetaRow(page, regular, 'Usuário', authUser.userId, MARGIN_X + 150, y, 120);
-  drawMetaRow(page, regular, 'Perfil', formatProfileLabel(snapshot.metrics.scope.profileKey), MARGIN_X + 300, y, 120);
+  drawMetaRow(page, regular, 'Gerado em', formatTimestamp(snapshot.completedAt || snapshot.createdAt), MARGIN_X, y, metaColWidth);
+  drawMetaRow(page, regular, 'Usuário', authUser.userId, MARGIN_X + metaColWidth + metaGap, y, metaColWidth);
+  drawMetaRow(page, regular, 'Perfil', formatProfileLabel(snapshot.metrics.scope.profileKey), MARGIN_X + (metaColWidth + metaGap) * 2, y, metaColWidth);
   y -= 42;
   drawMetaRow(page, regular, 'Escopo', `${snapshot.metrics.scope.areas.length} área(s) • ${snapshot.metrics.scope.units.length} unidade(s) • ${snapshot.metrics.scope.departments.length} departamento(s)`, MARGIN_X, y, contentWidth);
   y -= 40;
@@ -428,18 +478,23 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
   y -= 40;
 
   y = drawSectionTitle(page, bold, 'Resumo executivo', y);
+  const summaryLabel = formatStatusLabel(snapshot.metrics.overallStatus);
+  const summaryBadgeWidth = measureBadgeWidth(bold, summaryLabel);
+  const summaryTextWidth = contentWidth - 28 - summaryBadgeWidth - 18;
+  const summaryLines = splitText(regular, truncateText(summary, 300), summaryTextWidth, 11);
+  const summaryHeight = Math.max(62, 18 + summaryLines.length * 15 + 18);
   page.drawRectangle({
     x: MARGIN_X,
-    y: y - 62,
+    y: y - summaryHeight,
     width: contentWidth,
-    height: 62,
+    height: summaryHeight,
     color: rgb(0.97, 0.98, 1),
     borderColor: rgb(0.88, 0.91, 0.95),
     borderWidth: 1,
   });
-  drawWrappedText(page, regular, truncateText(summary, 300), MARGIN_X + 14, y - 18, contentWidth - 28, 11, rgb(0.25, 0.31, 0.4));
-  drawBadge(page, bold, formatStatusLabel(snapshot.metrics.overallStatus), snapshot.metrics.overallStatus, MARGIN_X + contentWidth - 78, y - 8);
-  y -= 84;
+  drawWrappedText(page, regular, truncateText(summary, 300), MARGIN_X + 14, y - 18, summaryTextWidth, 11, rgb(0.25, 0.31, 0.4));
+  drawBadge(page, bold, summaryLabel, snapshot.metrics.overallStatus, MARGIN_X + contentWidth - summaryBadgeWidth - 14, y - 8);
+  y -= summaryHeight + 22;
 
   y = drawSectionTitle(page, bold, 'Leitura do snapshot', y);
   drawStatCard(page, bold, regular, {
@@ -525,25 +580,50 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
   if (aiStatus === 'READY' && snapshot.aiSummary) {
     const diagnosisCards = diagnoses.slice(0, 4);
     let cursorY = y;
-    diagnosisCards.forEach((diagnosis, index) => {
-      const column = index % 2;
-      if (column === 0) {
-        const space = ensureSpace(pdfDoc, page, cursorY, 116, bold, regular);
-        page = space.page;
-        cursorY = space.y;
-      }
-      const x = MARGIN_X + column * (halfWidth + 16);
+    for (let index = 0; index < diagnosisCards.length; index += 2) {
+      const left = diagnosisCards[index];
+      const right = diagnosisCards[index + 1];
+      const leftArgs = {
+        width: halfWidth,
+        body: truncateText(left.summary, 150),
+        footer: truncateText(left.rationale, 120),
+      };
+      const rightArgs = right
+        ? {
+            width: halfWidth,
+            body: truncateText(right.summary, 150),
+            footer: truncateText(right.rationale, 120),
+          }
+        : null;
+      const rowHeight = Math.max(
+        measureCompactCardHeight(regular, leftArgs),
+        rightArgs ? measureCompactCardHeight(regular, rightArgs) : 0
+      );
+      const space = ensureSpace(pdfDoc, page, cursorY, rowHeight + 12, bold, regular);
+      page = space.page;
+      cursorY = space.y;
       drawCompactCard(page, bold, regular, {
-        x,
+        x: MARGIN_X,
         y: cursorY,
         width: halfWidth,
-        title: formatAreaLabel(diagnosis.areaKey),
-        body: truncateText(diagnosis.summary, 150),
-        footer: truncateText(diagnosis.rationale, 120),
-        status: diagnosis.status,
+        title: formatAreaLabel(left.areaKey),
+        body: leftArgs.body,
+        footer: leftArgs.footer,
+        status: left.status,
       });
-      if (column === 1 || index === diagnosisCards.length - 1) cursorY -= 118;
-    });
+      if (right) {
+        drawCompactCard(page, bold, regular, {
+          x: MARGIN_X + halfWidth + 16,
+          y: cursorY,
+          width: halfWidth,
+          title: formatAreaLabel(right.areaKey),
+          body: rightArgs?.body || '',
+          footer: rightArgs?.footer,
+          status: right.status,
+        });
+      }
+      cursorY -= rowHeight + 12;
+    }
     y = cursorY;
 
     const insightsSpace = ensureSpace(pdfDoc, page, y, 210, bold, regular);
@@ -602,36 +682,56 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
     y = widgetSectionSpace.y;
     y = drawSectionTitle(page, bold, 'Indicadores-chave do perfil', y);
     let cursorY = y;
-    widgets.forEach((widget, index) => {
-      if (index % 2 === 0) {
-        const space = ensureSpace(pdfDoc, page, cursorY, 112, bold, regular);
-        page = space.page;
-        cursorY = space.y;
-      }
-      const column = index % 2;
-      const x = MARGIN_X + column * (halfWidth + 16);
-      const valuesText = widget.values
-        .slice(0, 4)
-        .map((item) => `${item.label}: ${item.value}`)
-        .join(' • ');
+    for (let index = 0; index < widgets.length; index += 2) {
+      const left = widgets[index];
+      const right = widgets[index + 1];
+      const buildWidgetArgs = (widget: ExecutiveSnapshot['metrics']['widgets'][number]) => {
+        const valuesText = widget.values
+          .slice(0, 4)
+          .map((item) => `${item.label}: ${item.value}`)
+          .join(' • ');
+        return {
+          width: halfWidth,
+          body: truncateText(valuesText || widget.note || widget.description || 'Sem detalhe adicional.', 180),
+          footer: [
+            widget.note ? truncateText(widget.note, 110) : null,
+            widget.updatedAt ? `Atualizado em ${formatTimestamp(widget.updatedAt)}` : null,
+          ]
+            .filter(Boolean)
+            .join(' • '),
+        };
+      };
+      const leftArgs = buildWidgetArgs(left);
+      const rightArgs = right ? buildWidgetArgs(right) : null;
+      const rowHeight = Math.max(
+        measureCompactCardHeight(regular, leftArgs),
+        rightArgs ? measureCompactCardHeight(regular, rightArgs) : 0
+      );
+      const space = ensureSpace(pdfDoc, page, cursorY, rowHeight + 12, bold, regular);
+      page = space.page;
+      cursorY = space.y;
       drawCompactCard(page, bold, regular, {
-        x,
+        x: MARGIN_X,
         y: cursorY,
         width: halfWidth,
-        title: widget.label,
-        body: truncateText(valuesText || widget.note || widget.description || 'Sem detalhe adicional.', 180),
-        footer: [
-          widget.note ? truncateText(widget.note, 110) : null,
-          widget.updatedAt ? `Atualizado em ${formatTimestamp(widget.updatedAt)}` : null,
-        ]
-          .filter(Boolean)
-          .join(' • '),
-        status: widget.status,
+        title: left.label,
+        body: leftArgs.body,
+        footer: leftArgs.footer,
+        status: left.status,
       });
-      if (column === 1 || index === widgets.length - 1) {
-        cursorY -= 114;
+      if (right && rightArgs) {
+        drawCompactCard(page, bold, regular, {
+          x: MARGIN_X + halfWidth + 16,
+          y: cursorY,
+          width: halfWidth,
+          title: right.label,
+          body: rightArgs.body,
+          footer: rightArgs.footer,
+          status: right.status,
+        });
       }
-    });
+      cursorY -= rowHeight + 12;
+    }
     y = cursorY - 4;
   }
 
@@ -676,32 +776,60 @@ const buildPdf = async (snapshot: ExecutiveSnapshot, authUser: { userId: string 
 
   if (live.heartbeats.length) {
     let cursorY = y;
-    live.heartbeats.slice(0, 6).forEach((heartbeat, index) => {
-      if (index % 2 === 0) {
-        const space = ensureSpace(pdfDoc, page, cursorY, 88, bold, regular);
-        page = space.page;
-        cursorY = space.y;
-      }
-      const column = index % 2;
-      const x = MARGIN_X + column * (halfWidth + 16);
-      drawCompactCard(page, bold, regular, {
-        x,
-        y: cursorY,
+    const heartbeats = live.heartbeats.slice(0, 6);
+    for (let index = 0; index < heartbeats.length; index += 2) {
+      const left = heartbeats[index];
+      const right = heartbeats[index + 1];
+      const buildHeartbeatArgs = (heartbeat: typeof left) => ({
         width: halfWidth,
-        title: heartbeat.serviceName,
         body: `Status ${cleanText(heartbeat.status)} • Última execução ${formatTimestamp(heartbeat.lastRun)}`,
         footer: heartbeat.details || null,
+      });
+      const leftArgs = buildHeartbeatArgs(left);
+      const rightArgs = right ? buildHeartbeatArgs(right) : null;
+      const rowHeight = Math.max(
+        measureCompactCardHeight(regular, leftArgs),
+        rightArgs ? measureCompactCardHeight(regular, rightArgs) : 0
+      );
+      const space = ensureSpace(pdfDoc, page, cursorY, rowHeight + 12, bold, regular);
+      page = space.page;
+      cursorY = space.y;
+      drawCompactCard(page, bold, regular, {
+        x: MARGIN_X,
+        y: cursorY,
+        width: halfWidth,
+        title: left.serviceName,
+        body: leftArgs.body,
+        footer: leftArgs.footer,
         status:
-          heartbeat.status === 'COMPLETED'
+          left.status === 'COMPLETED'
             ? 'SUCCESS'
-            : heartbeat.status === 'RUNNING'
+            : left.status === 'RUNNING'
               ? 'WARNING'
-              : heartbeat.status === 'ERROR'
+              : left.status === 'ERROR'
                 ? 'DANGER'
                 : 'NO_DATA',
       });
-      if (column === 1 || index === live.heartbeats.length - 1) cursorY -= 92;
-    });
+      if (right && rightArgs) {
+        drawCompactCard(page, bold, regular, {
+          x: MARGIN_X + halfWidth + 16,
+          y: cursorY,
+          width: halfWidth,
+          title: right.serviceName,
+          body: rightArgs.body,
+          footer: rightArgs.footer,
+          status:
+            right.status === 'COMPLETED'
+              ? 'SUCCESS'
+              : right.status === 'RUNNING'
+                ? 'WARNING'
+                : right.status === 'ERROR'
+                  ? 'DANGER'
+                  : 'NO_DATA',
+        });
+      }
+      cursorY -= rowHeight + 12;
+    }
   }
 
   return pdfDoc.save();
