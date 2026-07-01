@@ -4584,11 +4584,44 @@ function ProjectGanttBoard({
 
         if (section.project && scheduledTasks.length < 2) {
           return (
-            <div key={section.project.id} className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10">
-              <div className="text-lg font-semibold text-slate-900">{sectionTitle}</div>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                O Gantt precisa de ao menos duas tarefas com início e prazo definidos. Vincule mais tarefas ao projeto e preencha o cronograma para habilitar a visão completa.
-              </p>
+            <div key={section.project.id} className="rounded-2xl border border-dashed border-slate-300 bg-slate-50">
+              <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900">{sectionTitle}</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {section.tasks.length} tarefa(s), {scheduledTasks.length} agendada(s) e {section.dependencies.length} dependência(s) registradas.
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs text-slate-500">
+                  <button
+                    type="button"
+                    onClick={() => onOpenProject(section.project!.id)}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Detalhes do projeto
+                  </button>
+                  <a
+                    href={`/api/task-projects/${encodeURIComponent(section.project.id)}/export.xlsx`}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Exportar XLSX
+                  </a>
+                  <a
+                    href={`/api/task-projects/${encodeURIComponent(section.project.id)}/export.pdf`}
+                    className="rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Exportar PDF
+                  </a>
+                  <span className="rounded-full bg-slate-50 px-3 py-1.5 ring-1 ring-slate-200">
+                    {canManageProject ? 'Você pode estruturar este cronograma.' : 'Você acompanha este cronograma como membro.'}
+                  </span>
+                </div>
+              </div>
+              <div className="px-5 py-10">
+                <p className="max-w-2xl text-sm leading-6 text-slate-500">
+                  O Gantt precisa de ao menos duas tarefas com início e prazo definidos. Vincule mais tarefas ao projeto e preencha o cronograma para habilitar a visão completa.
+                </p>
+              </div>
             </div>
           );
         }
