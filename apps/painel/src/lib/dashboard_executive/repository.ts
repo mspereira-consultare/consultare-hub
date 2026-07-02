@@ -1,4 +1,8 @@
 import { createHash, randomUUID } from 'crypto';
+import {
+  buildAppointmentConfirmationHybridCte,
+  getAppointmentConfirmationContext,
+} from '@/lib/appointments_confirmation_repository';
 import { runInTransaction, type DbInterface } from '@/lib/db';
 import { calculateKpi } from '@/lib/kpi_engine';
 import { hasPermission } from '@/lib/permissions';
@@ -1608,17 +1612,20 @@ const aggregateAgendaDailyRows = (
 const getAgendaConfirmationWidget = async (db: DbInterface, scope: ExecutiveScope) => {
   const { today, monthStart } = getDateRange();
   const { whereSql, params } = buildAppointmentsWhere(scope, monthStart, today);
+  const confirmationContext = await getAppointmentConfirmationContext(db);
+  const hybridCte = buildAppointmentConfirmationHybridCte(confirmationContext);
   const rows = await db.query(
     `
+    ${hybridCte.sql}
     SELECT
-      COUNT(*) as total_periodo,
-      SUM(CASE WHEN status_id IN (3,7) THEN 1 ELSE 0 END) as confirmados_periodo,
+      COUNT(DISTINCT f.appointment_id) as total_periodo,
+      SUM(COALESCE(f.effective_confirmed_d1, 0)) as confirmados_periodo,
       SUM(CASE WHEN f.scheduled_at BETWEEN ? AND ? THEN 1 ELSE 0 END) as total_hoje,
-      SUM(CASE WHEN f.scheduled_at BETWEEN ? AND ? AND status_id IN (3,7) THEN 1 ELSE 0 END) as confirmados_hoje
-    FROM feegow_appointments f
+      SUM(CASE WHEN f.scheduled_at BETWEEN ? AND ? THEN COALESCE(f.effective_confirmed_d1, 0) ELSE 0 END) as confirmados_hoje
+    FROM appointment_confirmation_base f
     ${whereSql}
     `,
-    [`${today} 00:00:00`, `${today} 23:59:59`, `${today} 00:00:00`, `${today} 23:59:59`, ...params]
+    [...hybridCte.params, `${today} 00:00:00`, `${today} 23:59:59`, `${today} 00:00:00`, `${today} 23:59:59`, ...params]
   );
   const heartbeatRows = await getSystemHeartbeats(db, ['appointments', 'agendamentos']);
   const base = rows[0] || {};

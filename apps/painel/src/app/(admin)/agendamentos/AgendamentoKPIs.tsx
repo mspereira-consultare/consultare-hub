@@ -14,7 +14,7 @@ export function AgendamentoKPIs({ total, confirmRate }: { total: number; confirm
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm flex items-center gap-4">
         <div className="p-3 bg-green-100 text-green-600 rounded-lg"><PercentCircle /></div>
         <div>
-          <p className="text-sm text-slate-500">Taxa de Confirmação</p>
+          <p className="text-sm text-slate-500">Taxa de Confirmação Real</p>
           <p className="text-2xl font-bold text-slate-800">{(confirmRate * 100).toFixed(2)}%</p>
         </div>
       </div>

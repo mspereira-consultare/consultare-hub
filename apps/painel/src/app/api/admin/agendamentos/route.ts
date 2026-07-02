@@ -1,4 +1,8 @@
 import { NextResponse } from 'next/server';
+import {
+  buildAppointmentConfirmationHybridCte,
+  getAppointmentConfirmationContext,
+} from '@/lib/appointments_confirmation_repository';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 import { upsertSystemStatus } from '@/lib/system_status_repository';
@@ -31,6 +35,8 @@ export async function GET(request: Request) {
       const dbEnd = `${endDate} 23:59:59`;
 
       const db = getDbConnection();
+      const confirmationContext = await getAppointmentConfirmationContext(db);
+      const hybridCte = buildAppointmentConfirmationHybridCte(confirmationContext);
 
       // choose period expression
       let dateExpr = "SUBSTR(f.scheduled_at,1,10)"; // day
@@ -60,30 +66,32 @@ export async function GET(request: Request) {
         params.push(professional);
       }
       if (status && status !== 'all') {
-        whereSql += ' AND f.status_id = ?';
+        whereSql += ' AND f.effective_status_id = ?';
         params.push(Number(status));
       }
 
       const seriesRes = await db.query(`
+        ${hybridCte.sql}
         SELECT
           ${dateExpr} as period,
-          COUNT(*) as total,
-          SUM(CASE WHEN status_id IN (3,7) THEN 1 ELSE 0 END) as confirmados,
-          SUM(CASE WHEN status_id = 6 THEN 1 ELSE 0 END) as nao_compareceu
-        FROM feegow_appointments f
+          COUNT(DISTINCT f.appointment_id) as total,
+          SUM(COALESCE(f.effective_confirmed_d1, 0)) as confirmados,
+          SUM(CASE WHEN f.effective_status_id = 6 THEN 1 ELSE 0 END) as nao_compareceu
+        FROM appointment_confirmation_base f
         ${whereSql}
         GROUP BY period
         ORDER BY period ASC
-      `, params);
+      `, [...hybridCte.params, ...params]);
 
       // overall stats in period
       const statsRes = await db.query(`
+        ${hybridCte.sql}
         SELECT
-          COUNT(*) as totalPeriod,
-          SUM(CASE WHEN status_id IN (3,7) THEN 1 ELSE 0 END) as confirmados
-        FROM feegow_appointments f
+          COUNT(DISTINCT f.appointment_id) as totalPeriod,
+          SUM(COALESCE(f.effective_confirmed_d1, 0)) as confirmados
+        FROM appointment_confirmation_base f
         ${whereSql}
-      `, params);
+      `, [...hybridCte.params, ...params]);
       const stats = statsRes[0] || { totalPeriod: 0, confirmados: 0 };
       const confirmedRate = stats.totalPeriod ? (stats.confirmados / stats.totalPeriod) : 0;
 
@@ -109,6 +117,8 @@ export async function GET(request: Request) {
           confirmedRate: Number(confirmedRate || 0),
         },
         heartbeat,
+        confirmationSource: confirmationContext.snapshotCoverageStartDate ? 'hybrid' : 'live',
+        snapshotCoverageStartDate: confirmationContext.snapshotCoverageStartDate,
       };
 
       if (wantDistincts) {
@@ -116,7 +126,16 @@ export async function GET(request: Request) {
           db.query("SELECT DISTINCT TRIM(scheduled_by) as v FROM feegow_appointments WHERE scheduled_by IS NOT NULL ORDER BY v LIMIT 1000"),
           db.query("SELECT DISTINCT TRIM(specialty) as v FROM feegow_appointments WHERE specialty IS NOT NULL ORDER BY v LIMIT 1000"),
           db.query("SELECT DISTINCT TRIM(professional_name) as v FROM feegow_appointments WHERE professional_name IS NOT NULL ORDER BY v LIMIT 1000"),
-          db.query("SELECT DISTINCT status_id as v FROM feegow_appointments ORDER BY v"),
+          db.query(
+            `
+            ${hybridCte.sql}
+            SELECT DISTINCT effective_status_id as v
+            FROM appointment_confirmation_base
+            WHERE effective_status_id IS NOT NULL
+            ORDER BY v
+            `,
+            [...hybridCte.params],
+          ),
         ]);
         out.distincts = {
           scheduled_by: (distincts[0] || []).map((r: any) => r.v).filter(Boolean),

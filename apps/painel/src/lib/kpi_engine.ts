@@ -1,4 +1,8 @@
 // apps/painel/src/lib/kpi_engine.ts
+import {
+    buildAppointmentConfirmationHybridCte,
+    getAppointmentConfirmationContext,
+} from '@/lib/appointments_confirmation_repository';
 import { getDbConnection } from '@/lib/db';
 
 interface KpiResult { 
@@ -97,16 +101,19 @@ const buildConsultasDateFilter = (startDate: string, endDate: string, options?: 
 
 const calculateConfirmRateAggregate = async (startDate: string, endDate: string, options?: KpiOptions) => {
     const db = getDbConnection();
+    const confirmationContext = await getAppointmentConfirmationContext(db);
+    const hybridCte = buildAppointmentConfirmationHybridCte(confirmationContext);
     const { joinSql, whereSql, params } = buildAppointmentsFilter(startDate, endDate, options);
 
     const rows = await db.query(`
+        ${hybridCte.sql}
         SELECT 
             COUNT(DISTINCT f.appointment_id) as total,
-            COUNT(DISTINCT CASE WHEN f.status_id IN (3, 7) THEN f.appointment_id END) as confirmados
-        FROM feegow_appointments f
+            COUNT(DISTINCT CASE WHEN COALESCE(f.effective_confirmed_d1, 0) = 1 THEN f.appointment_id END) as confirmados
+        FROM appointment_confirmation_base f
         ${joinSql}
         ${whereSql}
-    `, params);
+    `, [...hybridCte.params, ...params]);
 
     const total = Number(rows?.[0]?.total || 0);
     const confirmed = Number(rows?.[0]?.confirmados || 0);
@@ -500,17 +507,20 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                 `;
                 queryParams = params;
             } else if (kpiId === 'agendamentos_confirm_rate') {
+                const confirmationContext = await getAppointmentConfirmationContext(db);
+                const hybridCte = buildAppointmentConfirmationHybridCte(confirmationContext);
                 const { joinSql, whereSql, params } = buildAppointmentsFilter(startDate, endDate, options);
                 query = `
+                    ${hybridCte.sql}
                     SELECT 
                         substr(f.scheduled_at, 1, 10) as d, 
-                        (COUNT(DISTINCT CASE WHEN f.status_id IN (3, 7) THEN f.appointment_id END) * 100.0 / NULLIF(COUNT(DISTINCT f.appointment_id), 0)) as val
-                    FROM feegow_appointments f
+                        (COUNT(DISTINCT CASE WHEN COALESCE(f.effective_confirmed_d1, 0) = 1 THEN f.appointment_id END) * 100.0 / NULLIF(COUNT(DISTINCT f.appointment_id), 0)) as val
+                    FROM appointment_confirmation_base f
                     ${joinSql}
                     ${whereSql}
                     GROUP BY d ORDER BY d
                 `;
-                queryParams = params;
+                queryParams = [...hybridCte.params, ...params];
             } else if (!query) {
                 const buildClinicQuery = (useSummary: boolean) => {
                 const table = useSummary ? SUMMARY_TABLE : 'faturamento_analitico';

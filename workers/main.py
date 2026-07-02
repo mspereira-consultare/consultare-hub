@@ -96,6 +96,7 @@ try:
     from database_manager import DatabaseManager
     # Workers (Execução única)
     from worker_feegow_appointments import update_appointments_data
+    from worker_appointments_confirmation_snapshot import update_appointments_confirmation_snapshot
     from worker_feegow_procedures import update_procedures_catalog
     from worker_feegow_professionals_sync import run_sync as run_professionals_sync
     from worker_proposals import update_proposals
@@ -267,6 +268,7 @@ KNOWN_ACTIONS = {
     'monitor_medico', # Espera para atendimento médico
     'monitor_recepcao', # Espera para atendimento recepção
     'agenda_occupancy', # Ocupacao da agenda por especialidade
+    'appointments_confirmation_snapshot', # Snapshot D+1 de confirmacao real
     'blocked_agendas', # Mapa de agendas bloqueadas
     'payroll_point_import', # Importacao ass?ncrona do ponto da folha
     'payroll_point_sync', # Sincronizacao ass?ncrona do ponto da folha pela API
@@ -341,6 +343,10 @@ ALIAS_ACTION_MAP = {
     'agenda_occupancy': 'agenda_occupancy',
     'agenda_ocupacao': 'agenda_occupancy',
     'ocupacao_agenda': 'agenda_occupancy',
+    'appointments_confirmation_snapshot': 'appointments_confirmation_snapshot',
+    'appointments_confirmation': 'appointments_confirmation_snapshot',
+    'agendamentos_confirmacao_snapshot': 'appointments_confirmation_snapshot',
+    'confirmacao_agendamentos': 'appointments_confirmation_snapshot',
     'blocked_agendas': 'blocked_agendas',
     'agendas_bloqueadas': 'blocked_agendas',
     'agenda_bloqueada': 'blocked_agendas',
@@ -382,6 +388,7 @@ CANONICAL_NAME = {
     'monitor_medico': 'Monitor Médico',
     'monitor_recepcao': 'Monitor Recepção',
     'agenda_occupancy': 'Agenda Ocupacao (Feegow API)',
+    'appointments_confirmation_snapshot': 'Snapshot Confirmacao Agendamentos D+1',
     'blocked_agendas': 'Agendas Bloqueadas (Feegow API)',
     'payroll_point_import': 'Folha de Pagamento - Importacao de Ponto',
     'payroll_point_sync': 'Folha de Pagamento - Sincronizacao de Ponto',
@@ -584,6 +591,8 @@ def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
             clinia_cycle()
         elif action == "agenda_occupancy":
             process_pending_agenda_occupancy_jobs_once()
+        elif action == "appointments_confirmation_snapshot":
+            update_appointments_confirmation_snapshot()
         elif action == "blocked_agendas":
             process_pending_blocked_agendas_jobs_once()
         elif action == "payroll_point_import":
@@ -838,6 +847,9 @@ def run_scheduler():
     schedule.every().day.at("05:35").do(lambda: run_service('clinia_ads'))
     schedule.every().day.at("05:40").do(lambda: run_service('marketing_funnel'))
     schedule.every().day.at("06:15").do(run_agenda_occupancy_current_month)
+    schedule.every().day.at(str(os.getenv("APPOINTMENTS_CONFIRMATION_SNAPSHOT_SCHEDULE", "21:10"))).do(
+        lambda: run_service('appointments_confirmation_snapshot')
+    )
 
     schedule.every().day.at("12:00").do(lambda: run_service('contratos'))
 

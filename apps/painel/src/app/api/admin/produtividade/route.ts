@@ -1,4 +1,8 @@
 import { NextResponse } from 'next/server';
+import {
+  buildAppointmentConfirmationHybridCte,
+  getAppointmentConfirmationContext,
+} from '@/lib/appointments_confirmation_repository';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 
@@ -30,49 +34,54 @@ export async function GET(request: Request) {
     const dbEnd = `${endDate} 23:59:59`;
 
     const db = getDbConnection();
+    const confirmationContext = await getAppointmentConfirmationContext(db);
+    const hybridCte = buildAppointmentConfirmationHybridCte(confirmationContext);
 
     // 1. RANKING INDIVIDUAL
     // Agora traz também o time de cada usuário para exibir no card
     // User ranking: join with new many-to-many tables and aggregate team names
     const userStats = await db.query(`
+        ${hybridCte.sql}
         SELECT 
             f.scheduled_by as user,
             GROUP_CONCAT(DISTINCT tm.name) as team_name,
-            COUNT(*) as total,
-            SUM(CASE WHEN f.status_id IN (3, 7) THEN 1 ELSE 0 END) as confirmados
-        FROM feegow_appointments f
+            COUNT(DISTINCT f.appointment_id) as total,
+            SUM(COALESCE(f.effective_confirmed_d1, 0)) as confirmados
+        FROM appointment_confirmation_base f
         LEFT JOIN user_teams ut ON ut.user_name = f.scheduled_by
         LEFT JOIN teams_master tm ON tm.id = ut.team_id
         WHERE f.scheduled_at BETWEEN ? AND ?
         AND f.scheduled_by IS NOT NULL AND f.scheduled_by != '' AND f.scheduled_by != 'Sistema'
         GROUP BY f.scheduled_by
         ORDER BY total DESC
-    `, [dbStart, dbEnd]);
+    `, [...hybridCte.params, dbStart, dbEnd]);
 
     // 2. ESTATÍSTICAS GERAIS (GLOBAL - TODA A CLÍNICA)
     const globalStatsRes = await db.query(`
+        ${hybridCte.sql}
         SELECT 
-            COUNT(*) as total,
-            SUM(CASE WHEN status_id IN (3, 7) THEN 1 ELSE 0 END) as confirmados,
-            SUM(CASE WHEN status_id = 6 THEN 1 ELSE 0 END) as nao_compareceu
-        FROM feegow_appointments
+            COUNT(DISTINCT appointment_id) as total,
+            SUM(COALESCE(effective_confirmed_d1, 0)) as confirmados,
+            SUM(CASE WHEN effective_status_id = 6 THEN 1 ELSE 0 END) as nao_compareceu
+        FROM appointment_confirmation_base
         WHERE scheduled_at BETWEEN ? AND ?
-    `, [dbStart, dbEnd]);
+    `, [...hybridCte.params, dbStart, dbEnd]);
     const globalStats = globalStatsRes[0] || { total: 0, confirmados: 0, nao_compareceu: 0 };
 
     // 3. ESTATÍSTICAS DA EQUIPE SELECIONADA (Dinâmico via banco)
     // Team-specific stats using many-to-many relationship
     const teamStatsRes = await db.query(`
+        ${hybridCte.sql}
         SELECT 
-            COUNT(*) as total,
-            SUM(CASE WHEN f.status_id IN (3, 7) THEN 1 ELSE 0 END) as confirmados,
+            COUNT(DISTINCT f.appointment_id) as total,
+            SUM(COALESCE(f.effective_confirmed_d1, 0)) as confirmados,
             COUNT(DISTINCT f.scheduled_by) as active_members
-        FROM feegow_appointments f
+        FROM appointment_confirmation_base f
         JOIN user_teams ut ON ut.user_name = f.scheduled_by
         JOIN teams_master tm ON tm.id = ut.team_id
         WHERE f.scheduled_at BETWEEN ? AND ?
         AND tm.name = ?
-    `, [dbStart, dbEnd, selectedTeam]);
+    `, [...hybridCte.params, dbStart, dbEnd, selectedTeam]);
     
     const teamStats = teamStatsRes[0] || { total: 0, confirmados: 0, active_members: 0 };
 

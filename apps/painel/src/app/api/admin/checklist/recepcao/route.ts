@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from 'next/server';
 import { createSign } from 'crypto';
+import { buildTomorrowStrictConfirmedCase } from '@/lib/appointments_confirmation_repository';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
 import { getServerSession } from 'next-auth';
@@ -671,7 +672,7 @@ const loadChecklist = async (requestUrl: string) => {
     `
     SELECT
       COUNT(*) as total,
-      SUM(CASE WHEN status_id = 7 THEN 1 ELSE 0 END) as confirmados
+      SUM(${buildTomorrowStrictConfirmedCase('feegow_appointments')}) as confirmados
     FROM feegow_appointments
     WHERE substr(date, 1, 10) = ? ${tomorrowUnitSql}
     `,
@@ -814,5 +815,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ status: 'error', error: error?.message || 'Erro interno' }, { status: 500 });
   }
 }
-
 
