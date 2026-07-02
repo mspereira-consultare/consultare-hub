@@ -5,6 +5,7 @@ import {
   CalendarCheck,
   RefreshCw,
   Loader2,
+  Download,
   ChevronDown,
   ChevronRight,
   Calendar,
@@ -203,6 +204,7 @@ export default function AgendamentosPage() {
 
   const [heartbeat, setHeartbeat] = useState<Heartbeat | null>(null);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
 
   const hasAnyFilter =
     aggregateBy !== 'day' ||
@@ -269,6 +271,41 @@ export default function AgendamentosPage() {
     } catch (error) {
       console.error(error);
       setIsUpdating(false);
+    }
+  };
+
+  const onExport = async (format: 'xlsx' | 'pdf') => {
+    setExporting(format);
+    try {
+      const params = new URLSearchParams({
+        startDate: dateRange.start,
+        endDate: dateRange.end,
+        aggregateBy,
+        unit: filters.unit,
+        scheduled_by: filters.scheduled_by,
+        specialty: filters.specialty,
+        professional: filters.professional,
+        status: filters.status,
+        format,
+      }).toString();
+      const res = await fetch(`/api/admin/agendamentos/export?${params}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.error || `Falha ao exportar ${format.toUpperCase()}.`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `agendamentos-${dateRange.start}_${dateRange.end}.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setExporting(null);
     }
   };
 
@@ -367,6 +404,24 @@ export default function AgendamentosPage() {
             >
               {isUpdating ? <Loader2 className="animate-spin" size={14} /> : <RefreshCw size={14} />}
               {isUpdating ? 'Sincronizando...' : 'Atualizar'}
+            </button>
+
+            <button
+              onClick={() => onExport('xlsx')}
+              disabled={exporting !== null}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all border whitespace-nowrap bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-blue-600 disabled:opacity-50"
+            >
+              {exporting === 'xlsx' ? <Loader2 className="animate-spin" size={14} /> : <Download size={14} />}
+              Exportar XLSX
+            </button>
+
+            <button
+              onClick={() => onExport('pdf')}
+              disabled={exporting !== null}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all border whitespace-nowrap bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:text-blue-600 disabled:opacity-50"
+            >
+              {exporting === 'pdf' ? <Loader2 className="animate-spin" size={14} /> : <Download size={14} />}
+              Exportar PDF
             </button>
 
             <button

@@ -3,7 +3,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { 
     UserCheck, Calendar, Trophy, Info, Headphones, Activity,
-    RefreshCw, Clock, Loader2, Users, Search, Settings, X
+    RefreshCw, Clock, Loader2, Search, Settings, X, Download
 } from 'lucide-react';
 
 export default function ProductivityPage() {
@@ -179,6 +179,7 @@ export default function ProductivityPage() {
     const [isUpdating, setIsUpdating] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [showTeamGoals, setShowTeamGoals] = useState(true);
+    const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
 
     const isWorkerUpdating = (statusRaw: string | null | undefined) => {
         const status = String(statusRaw || '').trim().toUpperCase();
@@ -365,6 +366,39 @@ export default function ProductivityPage() {
         }
     };
 
+    const handleExport = async (format: 'xlsx' | 'pdf') => {
+        setError('');
+        setExporting(format);
+        try {
+            const params = new URLSearchParams({
+                startDate: dateRange.start,
+                endDate: dateRange.end,
+                team: selectedTeam,
+                search: searchTerm,
+                format,
+            }).toString();
+            const res = await fetch(`/api/admin/produtividade/export?${params}`);
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                throw new Error(data?.error || `Falha ao exportar ${format.toUpperCase()}.`);
+            }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `produtividade-${dateRange.start}_${dateRange.end}.${format}`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+        } catch (error: any) {
+            console.error(error);
+            setError(error?.message || 'Falha ao exportar os dados.');
+        } finally {
+            setExporting(null);
+        }
+    };
+
     const filteredUsers = rankingData.filter(u => u.user.toLowerCase().includes(searchTerm.toLowerCase()));
     const formatLastUpdate = (dateString: string) => {
         if (!dateString) return 'Nunca';
@@ -437,6 +471,24 @@ export default function ProductivityPage() {
                     >
                         {isUpdating ? <Loader2 className="animate-spin" size={16} /> : <RefreshCw size={16} />}
                         {isUpdating ? 'Atualizando...' : 'Atualizar'}
+                    </button>
+
+                    <button
+                        onClick={() => handleExport('xlsx')}
+                        disabled={exporting !== null}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border bg-white border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                        {exporting === 'xlsx' ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+                        Exportar XLSX
+                    </button>
+
+                    <button
+                        onClick={() => handleExport('pdf')}
+                        disabled={exporting !== null}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg font-medium text-sm transition-all shadow-sm border bg-white border-slate-200 text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                        {exporting === 'pdf' ? <Loader2 className="animate-spin" size={16} /> : <Download size={16} />}
+                        Exportar PDF
                     </button>
                     
                     <div className="flex items-center gap-2 bg-slate-50 px-3 py-2 rounded-lg border border-slate-200">

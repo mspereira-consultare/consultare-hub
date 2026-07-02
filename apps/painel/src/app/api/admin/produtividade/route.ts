@@ -46,7 +46,7 @@ export async function GET(request: Request) {
             f.scheduled_by as user,
             GROUP_CONCAT(DISTINCT tm.name) as team_name,
             COUNT(DISTINCT f.appointment_id) as total,
-            SUM(COALESCE(f.effective_confirmed_d1, 0)) as confirmados
+            COUNT(DISTINCT CASE WHEN COALESCE(f.effective_confirmed_d1, 0) = 1 THEN f.appointment_id END) as confirmados
         FROM appointment_confirmation_base f
         LEFT JOIN user_teams ut ON ut.user_name = f.scheduled_by
         LEFT JOIN teams_master tm ON tm.id = ut.team_id
@@ -61,7 +61,7 @@ export async function GET(request: Request) {
         ${hybridCte.sql}
         SELECT 
             COUNT(DISTINCT appointment_id) as total,
-            SUM(COALESCE(effective_confirmed_d1, 0)) as confirmados,
+            COUNT(DISTINCT CASE WHEN COALESCE(effective_confirmed_d1, 0) = 1 THEN appointment_id END) as confirmados,
             SUM(CASE WHEN effective_status_id = 6 THEN 1 ELSE 0 END) as nao_compareceu
         FROM appointment_confirmation_base
         WHERE scheduled_at BETWEEN ? AND ?
@@ -74,7 +74,7 @@ export async function GET(request: Request) {
         ${hybridCte.sql}
         SELECT 
             COUNT(DISTINCT f.appointment_id) as total,
-            SUM(COALESCE(f.effective_confirmed_d1, 0)) as confirmados,
+            COUNT(DISTINCT CASE WHEN COALESCE(f.effective_confirmed_d1, 0) = 1 THEN f.appointment_id END) as confirmados,
             COUNT(DISTINCT f.scheduled_by) as active_members
         FROM appointment_confirmation_base f
         JOIN user_teams ut ON ut.user_name = f.scheduled_by
