@@ -176,7 +176,7 @@ export const ensureChatTables = async (db: DbInterface) => {
     await safeCreateIndex(
       db,
       isMysql()
-        ? `CREATE INDEX idx_intranet_chat_conversations_slug ON intranet_chat_conversations (slug(191))`
+        ? `CREATE INDEX idx_intranet_chat_conversations_slug ON intranet_chat_conversations (slug)`
         : `CREATE INDEX idx_intranet_chat_conversations_slug ON intranet_chat_conversations (slug)`
     );
     await safeCreateIndex(
