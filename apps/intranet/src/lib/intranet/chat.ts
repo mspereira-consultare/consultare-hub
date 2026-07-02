@@ -328,58 +328,123 @@ const loadMembers = async (db: DbInterface, conversationId: string) => {
   }));
 };
 
-const loadLastMessage = async (db: DbInterface, conversationId: string) => {
+const loadMembersByConversationIds = async (db: DbInterface, conversationIds: string[]) => {
+  if (!conversationIds.length) return new Map<string, Awaited<ReturnType<typeof loadMembers>>>();
+  const placeholders = conversationIds.map(() => '?').join(',');
+  const rows = await db.query(
+    `
+    SELECT m.conversation_id, m.user_id, m.member_role, m.last_read_message_id, m.last_read_at, u.name, u.email, u.role, u.department
+    FROM intranet_chat_conversation_members m
+    INNER JOIN users u ON ${chatCollate('u.id')} = ${chatCollate('m.user_id')}
+    WHERE ${chatCollate('m.conversation_id')} IN (${placeholders})
+    ORDER BY CASE m.member_role WHEN 'owner' THEN 0 WHEN 'moderator' THEN 1 ELSE 2 END, u.name ASC
+    `,
+    conversationIds
+  );
+  const byConversation = new Map<string, Awaited<ReturnType<typeof loadMembers>>>();
+  for (const row of rows as Row[]) {
+    const conversationId = clean(row.conversation_id);
+    byConversation.set(conversationId, [
+      ...(byConversation.get(conversationId) || []),
+      {
+        userId: clean(row.user_id),
+        name: clean(row.name) || clean(row.email),
+        email: clean(row.email),
+        role: clean(row.member_role),
+        userRole: clean(row.role),
+        department: clean(row.department),
+        lastReadMessageId: clean(row.last_read_message_id) || null,
+        lastReadAt: clean(row.last_read_at) || null,
+      },
+    ]);
+  }
+  return byConversation;
+};
+
+const loadLastMessagesByConversationIds = async (db: DbInterface, conversationIds: string[]) => {
+  if (!conversationIds.length) return new Map<string, ReturnType<typeof mapMessageRow>>();
+  const placeholders = conversationIds.map(() => '?').join(',');
   const rows = await db.query(
     `
     SELECT m.*, u.name AS sender_name
     FROM intranet_chat_messages m
+    INNER JOIN (
+      SELECT conversation_id, MAX(created_at) AS latest_created_at
+      FROM intranet_chat_messages
+      WHERE ${chatCollate('conversation_id')} IN (${placeholders})
+      GROUP BY conversation_id
+    ) latest
+      ON ${chatCollate('latest.conversation_id')} = ${chatCollate('m.conversation_id')}
+      AND latest.latest_created_at = m.created_at
     LEFT JOIN users u ON ${chatCollate('u.id')} = ${chatCollate('m.sender_user_id')}
-    WHERE ${chatCollate('m.conversation_id')} = ?
     ORDER BY m.created_at DESC
-    LIMIT 1
     `,
-    [conversationId]
+    conversationIds
   );
-  return rows[0] ? mapMessageRow(rows[0] as Row, [], []) : null;
+  const byConversation = new Map<string, ReturnType<typeof mapMessageRow>>();
+  for (const row of rows as Row[]) {
+    const conversationId = clean(row.conversation_id);
+    if (byConversation.has(conversationId)) continue;
+    byConversation.set(conversationId, mapMessageRow(row, [], []));
+  }
+  return byConversation;
 };
 
-const unreadCountFor = async (db: DbInterface, conversationId: string, userId: string, lastReadAt: unknown) => {
-  const readAt = clean(lastReadAt);
+const loadUnreadCountsByConversationIds = async (db: DbInterface, conversationIds: string[], userId: string) => {
+  if (!conversationIds.length || !userId) return new Map<string, number>();
+  const placeholders = conversationIds.map(() => '?').join(',');
   const rows = await db.query(
     `
-    SELECT COUNT(*) AS total
-    FROM intranet_chat_messages
-    WHERE ${chatCollate('conversation_id')} = ? AND ${chatCollate('sender_user_id')} <> ? AND COALESCE(is_deleted, 0) = 0
-      AND (? = '' OR created_at > ?)
+    SELECT cm.conversation_id, COUNT(m.id) AS total
+    FROM intranet_chat_conversation_members cm
+    LEFT JOIN intranet_chat_messages m
+      ON ${chatCollate('m.conversation_id')} = ${chatCollate('cm.conversation_id')}
+      AND ${chatCollate('m.sender_user_id')} <> ${chatCollate('cm.user_id')}
+      AND COALESCE(m.is_deleted, 0) = 0
+      AND (COALESCE(cm.last_read_at, '') = '' OR m.created_at > cm.last_read_at)
+    WHERE ${chatCollate('cm.user_id')} = ? AND ${chatCollate('cm.conversation_id')} IN (${placeholders})
+    GROUP BY cm.conversation_id
     `,
-    [conversationId, userId, readAt, readAt]
+    [userId, ...conversationIds]
   );
-  return Number((rows[0] as Row | undefined)?.total || 0);
+  const counts = new Map<string, number>();
+  for (const row of rows as Row[]) {
+    counts.set(clean(row.conversation_id), Number(row.total || 0));
+  }
+  return counts;
 };
 
-const mapConversationRow = async (db: DbInterface, row: Row, currentUserId: string) => {
-  const id = clean(row.id);
-  const members = await loadMembers(db, id);
-  const currentMember = members.find((member) => member.userId === currentUserId);
-  const lastMessage = await loadLastMessage(db, id);
-  const unreadCount = await unreadCountFor(db, id, currentUserId, currentMember?.lastReadAt || '');
-  const type = clean(row.conversation_type);
-  const dmOther = type === 'dm' ? members.find((member) => member.userId !== currentUserId) : null;
-  return {
-    id,
-    conversationType: type,
-    name: type === 'dm' ? dmOther?.name || 'Conversa privada' : clean(row.name) || 'Conversa',
-    slug: clean(row.slug) || null,
-    description: clean(row.description) || null,
-    isActive: bool(row.is_active),
-    isAnnouncementOnly: bool(row.is_announcement_only),
-    currentMemberRole: currentMember?.role || 'member',
-    memberCount: members.length,
-    members,
-    lastMessage,
-    unreadCount,
-    updatedAt: clean(row.updated_at),
-  };
+const mapConversationRows = async (db: DbInterface, rows: Row[], currentUserId: string) => {
+  if (!rows.length) return [];
+  const conversationIds = rows.map((row) => clean(row.id)).filter(Boolean);
+  const [membersByConversation, lastMessagesByConversation, unreadCountsByConversation] = await Promise.all([
+    loadMembersByConversationIds(db, conversationIds),
+    loadLastMessagesByConversationIds(db, conversationIds),
+    currentUserId ? loadUnreadCountsByConversationIds(db, conversationIds, currentUserId) : Promise.resolve(new Map<string, number>()),
+  ]);
+
+  return rows.map((row) => {
+    const id = clean(row.id);
+    const members = membersByConversation.get(id) || [];
+    const currentMember = members.find((member) => member.userId === currentUserId);
+    const type = clean(row.conversation_type);
+    const dmOther = type === 'dm' ? members.find((member) => member.userId !== currentUserId) : null;
+    return {
+      id,
+      conversationType: type,
+      name: type === 'dm' ? dmOther?.name || 'Conversa privada' : clean(row.name) || 'Conversa',
+      slug: clean(row.slug) || null,
+      description: clean(row.description) || null,
+      isActive: bool(row.is_active),
+      isAnnouncementOnly: bool(row.is_announcement_only),
+      currentMemberRole: currentMember?.role || 'member',
+      memberCount: members.length,
+      members,
+      lastMessage: lastMessagesByConversation.get(id) || null,
+      unreadCount: unreadCountsByConversation.get(id) || 0,
+      updatedAt: clean(row.updated_at),
+    };
+  });
 };
 
 export const listChatConversations = async (db: DbInterface, user: ChatUserContext) => {
@@ -394,7 +459,7 @@ export const listChatConversations = async (db: DbInterface, user: ChatUserConte
     `,
     [user.id]
   );
-  return Promise.all((rows as Row[]).map((row) => mapConversationRow(db, row, user.id)));
+  return mapConversationRows(db, rows as Row[], user.id);
 };
 
 export const getChatUnreadCount = async (db: DbInterface, user: ChatUserContext) => {
@@ -711,7 +776,7 @@ export const deleteChatMessage = async (db: DbInterface, user: ChatUserContext, 
 export const listAdminChatConversations = async (db: DbInterface) => {
   await ensureChatTables(db);
   const rows = await db.query(`SELECT * FROM intranet_chat_conversations ORDER BY is_active DESC, updated_at DESC`);
-  return Promise.all((rows as Row[]).map((row) => mapConversationRow(db, row, '')));
+  return mapConversationRows(db, rows as Row[], '');
 };
 
 export const updateAdminChatConversation = async (db: DbInterface, conversationId: string, input: Row, actorUserId: string) => {
