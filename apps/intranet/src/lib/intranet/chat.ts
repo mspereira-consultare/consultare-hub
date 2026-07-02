@@ -26,13 +26,7 @@ export type ChatUserContext = {
 const CONVERSATION_TYPES = new Set(['dm', 'department_channel', 'custom_group', 'announcement_channel']);
 const MEMBER_ROLES = new Set(['owner', 'moderator', 'member']);
 const MAX_MESSAGE_LENGTH = 4000;
-const CHAT_TABLES = [
-  'intranet_chat_conversations',
-  'intranet_chat_conversation_members',
-  'intranet_chat_messages',
-  'intranet_chat_message_attachments',
-  'intranet_chat_moderation_log',
-];
+const DEPARTMENT_CHANNEL_SYNC_TTL_MS = 5 * 60 * 1000;
 
 const clean = (value: unknown) => String(value ?? '').trim();
 const nowIso = () => new Date().toISOString();
@@ -82,103 +76,141 @@ const safeAddColumn = async (db: DbInterface, sql: string) => {
   }
 };
 
-const safeExecute = async (db: DbInterface, sql: string) => {
+const safeCreateIndex = async (db: DbInterface, sql: string) => {
   try {
     await db.execute(sql);
   } catch (error: unknown) {
     const code = String((error as { code?: string })?.code || '');
     const message = String((error as { message?: string })?.message || '');
-    if (
-      code === 'ER_NO_SUCH_TABLE' ||
-      /doesn't exist|no such table|Table .* doesn't exist/i.test(message) ||
-      /syntax error|near "CONVERT"|near "CHARACTER"/i.test(message)
-    ) {
-      return;
-    }
+    if (code === 'ER_DUP_KEYNAME' || /Duplicate key name|already exists|duplicate key/i.test(message)) return;
     throw error;
   }
 };
 
-const normalizeChatTableCollations = async (db: DbInterface) => {
-  for (const table of CHAT_TABLES) {
-    await safeExecute(db, `ALTER TABLE ${table} CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-  }
+const isMysql = () => {
+  const provider = clean(process.env.DB_PROVIDER).toLowerCase();
+  if (provider === 'mysql') return true;
+  if (provider === 'turso') return false;
+  return Boolean(process.env.MYSQL_URL || process.env.MYSQL_PUBLIC_URL);
 };
 
 let chatTablesEnsured = false;
+let chatTablesEnsurePromise: Promise<void> | null = null;
+let lastDepartmentChannelsSyncAt = 0;
+let departmentChannelsSyncPromise: Promise<void> | null = null;
 
 export const ensureChatTables = async (db: DbInterface) => {
   if (chatTablesEnsured) return;
+  if (chatTablesEnsurePromise) {
+    await chatTablesEnsurePromise;
+    return;
+  }
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS intranet_chat_conversations (
-      id VARCHAR(64) PRIMARY KEY,
-      conversation_type VARCHAR(40) NOT NULL,
-      name VARCHAR(180),
-      slug VARCHAR(180),
-      description TEXT,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      is_announcement_only INTEGER NOT NULL DEFAULT 0,
-      created_by VARCHAR(64),
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
+  chatTablesEnsurePromise = (async () => {
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS intranet_chat_conversations (
+        id VARCHAR(64) PRIMARY KEY,
+        conversation_type VARCHAR(40) NOT NULL,
+        name VARCHAR(180),
+        slug VARCHAR(180),
+        description TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        is_announcement_only INTEGER NOT NULL DEFAULT 0,
+        created_by VARCHAR(64),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS intranet_chat_conversation_members (
-      id VARCHAR(64) PRIMARY KEY,
-      conversation_id VARCHAR(64) NOT NULL,
-      user_id VARCHAR(64) NOT NULL,
-      member_role VARCHAR(40) NOT NULL DEFAULT 'member',
-      last_read_message_id VARCHAR(64),
-      last_read_at TEXT,
-      is_muted INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
-    )
-  `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS intranet_chat_conversation_members (
+        id VARCHAR(64) PRIMARY KEY,
+        conversation_id VARCHAR(64) NOT NULL,
+        user_id VARCHAR(64) NOT NULL,
+        member_role VARCHAR(40) NOT NULL DEFAULT 'member',
+        last_read_message_id VARCHAR(64),
+        last_read_at TEXT,
+        is_muted INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL
+      )
+    `);
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS intranet_chat_messages (
-      id VARCHAR(64) PRIMARY KEY,
-      conversation_id VARCHAR(64) NOT NULL,
-      sender_user_id VARCHAR(64) NOT NULL,
-      body LONGTEXT,
-      message_type VARCHAR(40) NOT NULL DEFAULT 'text',
-      is_edited INTEGER NOT NULL DEFAULT 0,
-      edited_at TEXT,
-      is_deleted INTEGER NOT NULL DEFAULT 0,
-      deleted_at TEXT,
-      created_at TEXT NOT NULL
-    )
-  `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS intranet_chat_messages (
+        id VARCHAR(64) PRIMARY KEY,
+        conversation_id VARCHAR(64) NOT NULL,
+        sender_user_id VARCHAR(64) NOT NULL,
+        body LONGTEXT,
+        message_type VARCHAR(40) NOT NULL DEFAULT 'text',
+        is_edited INTEGER NOT NULL DEFAULT 0,
+        edited_at TEXT,
+        is_deleted INTEGER NOT NULL DEFAULT 0,
+        deleted_at TEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS intranet_chat_message_attachments (
-      id VARCHAR(64) PRIMARY KEY,
-      message_id VARCHAR(64) NOT NULL,
-      asset_id VARCHAR(64) NOT NULL,
-      uploaded_by VARCHAR(64),
-      created_at TEXT NOT NULL
-    )
-  `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS intranet_chat_message_attachments (
+        id VARCHAR(64) PRIMARY KEY,
+        message_id VARCHAR(64) NOT NULL,
+        asset_id VARCHAR(64) NOT NULL,
+        uploaded_by VARCHAR(64),
+        created_at TEXT NOT NULL
+      )
+    `);
 
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS intranet_chat_moderation_log (
-      id VARCHAR(64) PRIMARY KEY,
-      conversation_id VARCHAR(64),
-      message_id VARCHAR(64),
-      action VARCHAR(80) NOT NULL,
-      actor_user_id VARCHAR(64) NOT NULL,
-      payload_json LONGTEXT,
-      created_at TEXT NOT NULL
-    )
-  `);
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS intranet_chat_moderation_log (
+        id VARCHAR(64) PRIMARY KEY,
+        conversation_id VARCHAR(64),
+        message_id VARCHAR(64),
+        action VARCHAR(80) NOT NULL,
+        actor_user_id VARCHAR(64) NOT NULL,
+        payload_json LONGTEXT,
+        created_at TEXT NOT NULL
+      )
+    `);
 
-  await safeAddColumn(db, `ALTER TABLE intranet_chat_messages ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0`);
-  await normalizeChatTableCollations(db);
-  await syncDepartmentChannels(db);
-  chatTablesEnsured = true;
+    await safeAddColumn(db, `ALTER TABLE intranet_chat_messages ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0`);
+    await safeCreateIndex(
+      db,
+      isMysql()
+        ? `CREATE INDEX idx_intranet_chat_conversations_slug ON intranet_chat_conversations (slug(191))`
+        : `CREATE INDEX idx_intranet_chat_conversations_slug ON intranet_chat_conversations (slug)`
+    );
+    await safeCreateIndex(
+      db,
+      `CREATE INDEX idx_intranet_chat_conversations_updated ON intranet_chat_conversations (${isMysql() ? 'updated_at(32)' : 'updated_at'})`
+    );
+    await safeCreateIndex(
+      db,
+      `CREATE UNIQUE INDEX idx_intranet_chat_members_conversation_user ON intranet_chat_conversation_members (conversation_id, user_id)`
+    );
+    await safeCreateIndex(
+      db,
+      `CREATE INDEX idx_intranet_chat_members_user_conversation ON intranet_chat_conversation_members (user_id, conversation_id)`
+    );
+    await safeCreateIndex(
+      db,
+      `CREATE INDEX idx_intranet_chat_messages_conversation_created ON intranet_chat_messages (conversation_id, ${isMysql() ? 'created_at(32)' : 'created_at'})`
+    );
+    await safeCreateIndex(
+      db,
+      `CREATE INDEX idx_intranet_chat_messages_conversation_sender_created ON intranet_chat_messages (conversation_id, sender_user_id, ${isMysql() ? 'created_at(32)' : 'created_at'})`
+    );
+    await safeCreateIndex(
+      db,
+      `CREATE INDEX idx_intranet_chat_attachments_message ON intranet_chat_message_attachments (message_id)`
+    );
+    chatTablesEnsured = true;
+  })();
+
+  try {
+    await chatTablesEnsurePromise;
+  } finally {
+    chatTablesEnsurePromise = null;
+  }
 };
 
 const listActiveUsersRows = async (db: DbInterface) =>
@@ -239,6 +271,24 @@ const syncDepartmentChannels = async (db: DbInterface) => {
   }
 };
 
+const ensureDepartmentChannelsFresh = async (db: DbInterface) => {
+  const now = Date.now();
+  if (now - lastDepartmentChannelsSyncAt < DEPARTMENT_CHANNEL_SYNC_TTL_MS) return;
+  if (departmentChannelsSyncPromise) {
+    await departmentChannelsSyncPromise;
+    return;
+  }
+  departmentChannelsSyncPromise = (async () => {
+    await syncDepartmentChannels(db);
+    lastDepartmentChannelsSyncAt = Date.now();
+  })();
+  try {
+    await departmentChannelsSyncPromise;
+  } finally {
+    departmentChannelsSyncPromise = null;
+  }
+};
+
 const mapUser = (row: Row) => ({
   id: clean(row.id),
   name: clean(row.name) || clean(row.email),
@@ -249,7 +299,6 @@ const mapUser = (row: Row) => ({
 });
 
 export const listChatUsers = async (db: DbInterface, currentUserId?: string) => {
-  await ensureChatTables(db);
   const users = (await listActiveUsersRows(db) as Row[]).map(mapUser);
   return currentUserId ? users.filter((user) => user.id !== currentUserId) : users;
 };
@@ -449,6 +498,7 @@ const mapConversationRows = async (db: DbInterface, rows: Row[], currentUserId: 
 
 export const listChatConversations = async (db: DbInterface, user: ChatUserContext) => {
   await ensureChatTables(db);
+  await ensureDepartmentChannelsFresh(db);
   const rows = await db.query(
     `
     SELECT c.*
@@ -775,6 +825,7 @@ export const deleteChatMessage = async (db: DbInterface, user: ChatUserContext, 
 
 export const listAdminChatConversations = async (db: DbInterface) => {
   await ensureChatTables(db);
+  await ensureDepartmentChannelsFresh(db);
   const rows = await db.query(`SELECT * FROM intranet_chat_conversations ORDER BY is_active DESC, updated_at DESC`);
   return mapConversationRows(db, rows as Row[], '');
 };
