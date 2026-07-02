@@ -595,20 +595,28 @@ export function ChatClient() {
 function DmModal({ users, onClose, onCreated }: { users: ChatUser[]; onClose: () => void; onCreated: (id?: string) => void }) {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const filtered = users.filter((user) => normalizeText(`${user.name} ${user.email} ${user.department}`).includes(normalizeText(search)));
 
   const startDm = async (userId: string) => {
     setSaving(true);
-    const res = await fetch('/api/chat/conversations/dm', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId }),
-    });
-    if (res.ok) {
+    setError(null);
+    try {
+      const res = await fetch('/api/chat/conversations/dm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId }),
+      });
+      if (!res.ok) {
+        throw new Error(await normalizeError(res));
+      }
       const json = await res.json();
       onCreated(json.data?.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao iniciar conversa.');
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
   return (
@@ -619,6 +627,7 @@ function DmModal({ users, onClose, onCreated }: { users: ChatUser[]; onClose: ()
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"><X size={18} /></button>
         </div>
         <div className="p-4">
+          {error ? <div className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</div> : null}
           <input className={inputClassName} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar usuário" />
           <div className="mt-3 max-h-96 overflow-y-auto rounded-lg border border-slate-200">
             {filtered.map((user) => (

@@ -185,7 +185,7 @@ export const ensureChatTables = async (db: DbInterface) => {
     );
     await safeCreateIndex(
       db,
-      `CREATE UNIQUE INDEX idx_intranet_chat_members_conversation_user ON intranet_chat_conversation_members (conversation_id, user_id)`
+      `CREATE INDEX idx_intranet_chat_members_conversation_user ON intranet_chat_conversation_members (conversation_id, user_id)`
     );
     await safeCreateIndex(
       db,
@@ -391,12 +391,17 @@ const loadMembersByConversationIds = async (db: DbInterface, conversationIds: st
     conversationIds
   );
   const byConversation = new Map<string, Awaited<ReturnType<typeof loadMembers>>>();
+  const seenKeys = new Set<string>();
   for (const row of rows as Row[]) {
     const conversationId = clean(row.conversation_id);
+    const userId = clean(row.user_id);
+    const dedupeKey = `${conversationId}:${userId}`;
+    if (seenKeys.has(dedupeKey)) continue;
+    seenKeys.add(dedupeKey);
     byConversation.set(conversationId, [
       ...(byConversation.get(conversationId) || []),
       {
-        userId: clean(row.user_id),
+        userId,
         name: clean(row.name) || clean(row.email),
         email: clean(row.email),
         role: clean(row.member_role),
@@ -498,10 +503,12 @@ const mapConversationRows = async (db: DbInterface, rows: Row[], currentUserId: 
 
 export const listChatConversations = async (db: DbInterface, user: ChatUserContext) => {
   await ensureChatTables(db);
-  await ensureDepartmentChannelsFresh(db);
+  void ensureDepartmentChannelsFresh(db).catch((error) => {
+    console.error('Erro ao sincronizar canais de setor do chat:', error);
+  });
   const rows = await db.query(
     `
-    SELECT c.*
+    SELECT DISTINCT c.*
     FROM intranet_chat_conversations c
     INNER JOIN intranet_chat_conversation_members m ON ${chatCollate('m.conversation_id')} = ${chatCollate('c.id')}
     WHERE ${chatCollate('m.user_id')} = ? AND COALESCE(c.is_active, 1) = 1
