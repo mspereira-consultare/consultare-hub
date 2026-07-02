@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import {
-  Activity,
   Calendar,
   CalendarX2,
   ChevronDown,
@@ -81,7 +80,6 @@ export default function AgendasBloqueadasPage() {
   });
   const [professionals, setProfessionals] = useState<Array<{ professionalId: number; professionalName: string }>>([]);
   const [latestJob, setLatestJob] = useState<BlockedAgendaJob | null>(null);
-  const [dataJob, setDataJob] = useState<BlockedAgendaJob | null>(null);
   const [heartbeat, setHeartbeat] = useState<{ status: string; lastRun: string | null; details: string }>({
     status: 'UNKNOWN',
     lastRun: null,
@@ -97,6 +95,7 @@ export default function AgendasBloqueadasPage() {
   const [sortKey, setSortKey] = useState<BlockedAgendasSortKey>('dateStart');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const [refreshHovered, setRefreshHovered] = useState(false);
 
   const loadData = useCallback(
     async ({ silent = false }: { silent?: boolean } = {}) => {
@@ -134,7 +133,6 @@ export default function AgendasBloqueadasPage() {
         );
         setProfessionals(Array.isArray(data?.data?.professionals) ? data.data.professionals : []);
         setLatestJob(data?.data?.latestJob || null);
-        setDataJob(data?.data?.dataJob || null);
         setHeartbeat(data?.data?.heartbeat || { status: 'UNKNOWN', lastRun: null, details: '' });
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : 'Erro ao carregar dados.');
@@ -214,24 +212,6 @@ export default function AgendasBloqueadasPage() {
         : heartbeat.status === 'FAILED'
           ? 'bg-rose-500'
           : 'bg-slate-400';
-
-  const statusCards = [
-    {
-      label: 'Job atual',
-      value: latestJob ? latestJob.status : 'Nenhum',
-      helper: latestJob ? formatDateTime(latestJob.updatedAt) : 'Aguardando execucao',
-    },
-    {
-      label: 'Snapshot visivel',
-      value: dataJob ? `#${dataJob.id.slice(0, 8)}` : 'Nenhum',
-      helper: dataJob ? formatDateTime(dataJob.updatedAt) : 'Sem snapshot carregado',
-    },
-    {
-      label: 'Worker',
-      value: heartbeat.status || 'UNKNOWN',
-      helper: heartbeat.lastRun ? formatDateTime(heartbeat.lastRun) : 'Sem heartbeat recente',
-    },
-  ];
 
   const onRefresh = async () => {
     if (!canRefresh) return;
@@ -326,25 +306,12 @@ export default function AgendasBloqueadasPage() {
               </div>
 
               <div className="flex flex-col gap-3 lg:items-end">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 sm:min-w-[240px]">
-                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                      {heartbeatLabel}
-                    </span>
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${heartbeatTone} ${polling ? 'animate-pulse' : ''}`} />
-                      <span className="text-sm font-medium text-slate-700">
-                        {formatDateTime(heartbeat.lastRun)}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {polling
-                        ? 'Sincronizando status em segundo plano.'
-                        : heartbeat.details || 'Acompanhamento do worker dedicado do relatorio.'}
-                    </p>
-                  </div>
-
-                  <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div
+                    className="relative"
+                    onMouseEnter={() => setRefreshHovered(true)}
+                    onMouseLeave={() => setRefreshHovered(false)}
+                  >
                     <button
                       type="button"
                       onClick={onRefresh}
@@ -355,18 +322,26 @@ export default function AgendasBloqueadasPage() {
                       {refreshing ? 'Solicitando...' : 'Atualizar dados'}
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setFiltersExpanded((current) => !current)}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
-                      title={filtersExpanded ? 'Recolher filtros' : 'Expandir filtros'}
-                    >
-                      {filtersExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                    </button>
+                    {refreshHovered ? (
+                      <div className="absolute right-0 top-full z-20 mt-2 w-[320px] rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg">
+                        <span className="mb-1 block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                          {heartbeatLabel}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className={`h-2.5 w-2.5 rounded-full ${heartbeatTone} ${polling ? 'animate-pulse' : ''}`} />
+                          <span className="text-sm font-medium text-slate-700">
+                            {formatDateTime(heartbeat.lastRun)}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {polling
+                            ? 'Sincronizando status em segundo plano.'
+                            : heartbeat.details || 'Acompanhamento do worker dedicado do relatorio.'}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
-                </div>
 
-                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     onClick={() => onExport('xlsx')}
@@ -387,14 +362,16 @@ export default function AgendasBloqueadasPage() {
                     Exportar PDF
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => loadData()}
-                    className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-                  >
-                    <Activity size={14} />
-                    Atualizar tela
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setFiltersExpanded((current) => !current)}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                      title={filtersExpanded ? 'Recolher filtros' : 'Expandir filtros'}
+                    >
+                      {filtersExpanded ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -537,16 +514,6 @@ export default function AgendasBloqueadasPage() {
             ) : null}
           </div>
         )}
-
-        <section className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          {statusCards.map((card) => (
-            <div key={card.label} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{card.label}</p>
-              <p className="mt-2 text-base font-semibold text-slate-800">{card.value}</p>
-              <p className="mt-1 text-xs text-slate-500">{card.helper}</p>
-            </div>
-          ))}
-        </section>
 
         <section className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
