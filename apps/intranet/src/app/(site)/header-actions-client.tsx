@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject } from 'react';
 import { Bell, Loader2, MessageCircle, X } from 'lucide-react';
 import type { IntranetNotification, IntranetNotificationSummary } from '@consultare/core/intranet/notifications';
 
@@ -77,16 +77,19 @@ export function HeaderActionsClient({
   initialSummary: IntranetNotificationSummary;
 }) {
   const router = useRouter();
+  const isClient = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
   const [summary, setSummary] = useState(initialSummary);
   const [items, setItems] = useState<IntranetNotification[]>(initialSummary.items || []);
   const [open, setOpen] = useState(false);
   const [loadingDropdown, setLoadingDropdown] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
-  const [notificationsSupported, setNotificationsSupported] = useState(false);
-  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>('default');
+  const [, forceNotificationPermissionRefresh] = useState(0);
   const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
-  const [windowFocused, setWindowFocused] = useState(true);
   const [chatPulse, setChatPulse] = useState(false);
   const [bellPulse, setBellPulse] = useState(false);
   const [toasts, setToasts] = useState<NotificationToast[]>([]);
@@ -103,6 +106,8 @@ export function HeaderActionsClient({
   const lastUnreadChatCountRef = useRef(initialSummary.unreadByChannel?.chat || 0);
   const lastSoundAtRef = useRef(0);
 
+  const notificationsSupported = isClient && 'Notification' in window;
+  const notificationPermission: NotificationPermission = notificationsSupported ? window.Notification.permission : 'default';
   const unreadChatCount = summary.unreadByChannel?.chat || 0;
 
   const loadSummary = async () => {
@@ -119,7 +124,7 @@ export function HeaderActionsClient({
     return (Array.isArray(payload.data) ? payload.data : []) as IntranetNotification[];
   };
 
-  const markNotificationReadLocally = (item: IntranetNotification) => {
+  const markNotificationReadLocally = useCallback((item: IntranetNotification) => {
     setItems((current) => current.map((entry) => (entry.id === item.id ? { ...entry, isRead: true, readAt: new Date().toISOString() } : entry)));
     setSummary((current) => ({
       ...current,
@@ -129,23 +134,23 @@ export function HeaderActionsClient({
         [item.channel]: Math.max(0, (current.unreadByChannel?.[item.channel] || 0) - 1),
       },
     }));
-  };
+  }, []);
 
-  const closeDesktopNotification = (notificationId: string) => {
+  const closeDesktopNotification = useCallback((notificationId: string) => {
     const notification = desktopNotificationsRef.current.get(notificationId);
     if (!notification) return;
     notification.close();
     desktopNotificationsRef.current.delete(notificationId);
-  };
+  }, []);
 
-  const dismissToast = (toastKey: string) => {
+  const dismissToast = useCallback((toastKey: string) => {
     const timerId = toastTimersRef.current.get(toastKey);
     if (timerId) {
       window.clearTimeout(timerId);
       toastTimersRef.current.delete(toastKey);
     }
     setToasts((current) => current.filter((toast) => toast.toastKey !== toastKey));
-  };
+  }, []);
 
   useEffect(() => {
     const unlock = () => {
@@ -167,32 +172,17 @@ export function HeaderActionsClient({
   }, []);
 
   useEffect(() => {
-    const supported = typeof window !== 'undefined' && 'Notification' in window;
-    setNotificationsSupported(supported);
-    setNotificationPermission(supported ? window.Notification.permission : 'default');
-    setWindowFocused(typeof document !== 'undefined' ? document.hasFocus() : true);
-
-    const onFocus = () => setWindowFocused(true);
-    const onBlur = () => setWindowFocused(false);
-    window.addEventListener('focus', onFocus);
-    window.addEventListener('blur', onBlur);
-
+    const toastTimers = toastTimersRef.current;
+    const desktopNotifications = desktopNotificationsRef.current;
     return () => {
-      window.removeEventListener('focus', onFocus);
-      window.removeEventListener('blur', onBlur);
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      for (const timerId of toastTimersRef.current.values()) {
+      for (const timerId of toastTimers.values()) {
         window.clearTimeout(timerId);
       }
-      toastTimersRef.current.clear();
-      for (const notification of desktopNotificationsRef.current.values()) {
+      toastTimers.clear();
+      for (const notification of desktopNotifications.values()) {
         notification.close();
       }
-      desktopNotificationsRef.current.clear();
+      desktopNotifications.clear();
     };
   }, []);
 
@@ -224,10 +214,35 @@ export function HeaderActionsClient({
     return () => window.clearTimeout(timer);
   }, [bellPulse, chatPulse]);
 
+  const navigateToNotification = useCallback(async (item: IntranetNotification) => {
+    try {
+      closeDesktopNotification(item.id);
+      if (!item.isRead) {
+        await fetch('/api/notifications/read', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ notificationIds: [item.id] }),
+        });
+        markNotificationReadLocally(item);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Erro ao abrir notificação.');
+    } finally {
+      setToasts((current) => current.filter((toast) => toast.id !== item.id));
+      setOpen(false);
+      const currentUrl = `${window.location.pathname}${window.location.search}`;
+      if (item.href !== currentUrl) {
+        router.push(item.href);
+      } else {
+        router.refresh();
+      }
+    }
+  }, [closeDesktopNotification, markNotificationReadLocally, router]);
+
   useEffect(() => {
     let cancelled = false;
 
-    const isBackgroundContext = () => document.visibilityState !== 'visible' || !windowFocused;
+    const isBackgroundContext = () => document.visibilityState !== 'visible' || !document.hasFocus();
 
     const showDesktopNotification = (item: IntranetNotification) => {
       if (!notificationsSupported || notificationPermission !== 'granted') return;
@@ -320,7 +335,7 @@ export function HeaderActionsClient({
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [audioUnlocked, notificationPermission, notificationsSupported, open, windowFocused]);
+  }, [audioUnlocked, closeDesktopNotification, dismissToast, navigateToNotification, notificationPermission, notificationsSupported, open]);
 
   const unreadItems = useMemo(() => items.filter((item) => !item.isRead), [items]);
   const showNotificationPrompt = notificationsSupported && notificationPermission === 'default' && !notificationPromptDismissed;
@@ -340,37 +355,12 @@ export function HeaderActionsClient({
     }
   };
 
-  const navigateToNotification = async (item: IntranetNotification) => {
-    try {
-      closeDesktopNotification(item.id);
-      if (!item.isRead) {
-        await fetch('/api/notifications/read', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ notificationIds: [item.id] }),
-        });
-        markNotificationReadLocally(item);
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Erro ao abrir notificação.');
-    } finally {
-      setToasts((current) => current.filter((toast) => toast.id !== item.id));
-      setOpen(false);
-      const currentUrl = `${window.location.pathname}${window.location.search}`;
-      if (item.href !== currentUrl) {
-        router.push(item.href);
-      } else {
-        router.refresh();
-      }
-    }
-  };
-
   const requestDesktopNotificationPermission = async () => {
     if (!notificationsSupported || notificationPermission !== 'default') return;
     try {
-      const permission = await window.Notification.requestPermission();
-      setNotificationPermission(permission);
-      if (permission !== 'default') {
+      await window.Notification.requestPermission();
+      forceNotificationPermissionRefresh((current) => current + 1);
+      if (window.Notification.permission !== 'default') {
         setNotificationPromptDismissed(true);
       }
     } catch (err: unknown) {
@@ -527,6 +517,27 @@ export function HeaderActionsClient({
               </button>
             </div>
             {error ? <div className="mt-2 text-xs text-rose-600">{error}</div> : null}
+            {notificationsSupported && notificationPermission !== 'granted' ? (
+              <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50/70 px-3 py-3 text-xs text-slate-600">
+                <p className="font-semibold text-slate-800">
+                  {notificationPermission === 'denied' ? 'Alertas bloqueados no navegador' : 'Alertas do navegador desativados'}
+                </p>
+                <p className="mt-1 leading-5">
+                  {notificationPermission === 'denied'
+                    ? 'Libere as notificações nas permissões do navegador para receber avisos fora da intranet.'
+                    : 'Ative as notificações para receber avisos de chat e tarefas mesmo em outra tela.'}
+                </p>
+                {notificationPermission === 'default' ? (
+                  <button
+                    type="button"
+                    onClick={() => void requestDesktopNotificationPermission()}
+                    className="mt-3 rounded-lg bg-[#17407E] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#123463]"
+                  >
+                    Ativar alertas
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <div className="max-h-[420px] overflow-y-auto p-2">

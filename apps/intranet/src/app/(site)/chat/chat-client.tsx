@@ -188,7 +188,8 @@ export function ChatClient() {
       setMessages((current) => mode === 'older' ? [...next, ...current] : next);
       if (mode === 'replace') {
         const last = next[next.length - 1];
-        if (last) {
+        const shouldMarkAsRead = document.visibilityState === 'visible' && document.hasFocus();
+        if (last && shouldMarkAsRead) {
           void fetch(`/api/chat/conversations/${conversationId}/read`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
