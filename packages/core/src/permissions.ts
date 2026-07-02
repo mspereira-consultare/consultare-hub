@@ -31,6 +31,7 @@ export type PageKey =
   | 'recrutamento'
   | 'equipamentos'
   | 'agenda_ocupacao'
+  | 'agendas_bloqueadas'
   | 'metas_dashboard'
   | 'metas'
   | 'produtividade'
@@ -112,6 +113,7 @@ export const PAGE_DEFS: PermissionCatalogEntry[] = [
   { key: 'recrutamento', label: 'Recrutamento', path: '/recrutamento', moduleKey: 'pessoas', surface: 'painel', criticality: 'sensitive' },
   { key: 'equipamentos', label: 'Equipamentos', path: '/equipamentos', moduleKey: 'qualidade', surface: 'painel', criticality: 'standard' },
   { key: 'agenda_ocupacao', label: 'Ocupação de Agenda', path: '/agenda-ocupacao', moduleKey: 'inteligencia', surface: 'painel', criticality: 'standard' },
+  { key: 'agendas_bloqueadas', label: 'Agendas Bloqueadas', path: '/agendas-bloqueadas', moduleKey: 'operacoes', surface: 'painel', criticality: 'standard' },
   { key: 'metas_dashboard', label: 'Painel de Metas', path: '/metas/dashboard', moduleKey: 'inteligencia', surface: 'compartilhado', criticality: 'standard' },
   { key: 'metas', label: 'Gestão de Metas', path: '/metas', moduleKey: 'inteligencia', surface: 'painel', criticality: 'sensitive' },
   { key: 'produtividade', label: 'Produtividade', path: '/produtividade', moduleKey: 'operacoes', surface: 'painel', criticality: 'standard' },
@@ -206,15 +208,15 @@ export const getDefaultMatrixByRole = (roleRaw: string): PermissionMatrix => {
   }
 
   if (role === 'GESTOR') {
-    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_pos_consulta', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda', 'dashboard_executive_governance', 'intranet_tarefas', ...INTRANET_BACKOFFICE_PAGE_KEYS], { view: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_pos_consulta', 'metas', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'dashboard_executive_governance', 'intranet_tarefas', ...INTRANET_BACKOFFICE_PAGE_KEYS], { edit: true });
-    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_pos_consulta', 'propostas_gerencial', 'produtividade', 'agendamentos', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'intranet_dashboard', 'intranet_chatbot'], { refresh: true });
+    setMany(matrix, ['dashboard', 'monitor', 'financeiro', 'contratos', 'propostas', 'propostas_pos_consulta', 'propostas_gerencial', 'metas_dashboard', 'metas', 'produtividade', 'agendamentos', 'agendas_bloqueadas', 'profissionais', 'profissionais_mapas', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'ajuda', 'dashboard_executive_governance', 'intranet_tarefas', ...INTRANET_BACKOFFICE_PAGE_KEYS], { view: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_pos_consulta', 'metas', 'produtividade', 'agendamentos', 'agendas_bloqueadas', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'dashboard_executive_governance', 'intranet_tarefas', ...INTRANET_BACKOFFICE_PAGE_KEYS], { edit: true });
+    setMany(matrix, ['monitor', 'financeiro', 'contratos', 'propostas', 'propostas_pos_consulta', 'propostas_gerencial', 'produtividade', 'agendamentos', 'agendas_bloqueadas', 'profissionais', 'colaboradores', 'folha_pagamento', 'recrutamento', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_controle', 'marketing_funil', 'intranet_dashboard', 'intranet_chatbot'], { refresh: true });
     return matrix;
   }
 
-  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'propostas_pos_consulta', 'metas_dashboard', 'produtividade', 'agendamentos', 'profissionais', 'profissionais_mapas', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_funil', 'ajuda', 'intranet_tarefas'], { view: true });
+  setMany(matrix, ['dashboard', 'monitor', 'propostas', 'propostas_pos_consulta', 'metas_dashboard', 'produtividade', 'agendamentos', 'agendas_bloqueadas', 'profissionais', 'profissionais_mapas', 'colaboradores', 'equipamentos', 'qualidade_documentos', 'vigilancia_sanitaria', 'qualidade_treinamentos', 'qualidade_auditorias', 'checklist_crc', 'checklist_recepcao', 'marketing_funil', 'ajuda', 'intranet_tarefas'], { view: true });
   setMany(matrix, ['propostas', 'propostas_pos_consulta', 'checklist_crc', 'checklist_recepcao', 'intranet_tarefas'], { edit: true });
-  setMany(matrix, ['monitor', 'produtividade', 'agendamentos', 'colaboradores', 'equipamentos', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
+  setMany(matrix, ['monitor', 'produtividade', 'agendamentos', 'agendas_bloqueadas', 'colaboradores', 'equipamentos', 'checklist_crc', 'checklist_recepcao'], { refresh: true });
   return matrix;
 };
 

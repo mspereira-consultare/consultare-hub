@@ -113,6 +113,14 @@ const menuItems: MenuItem[] = [
     pageKey: "agendamentos",
   },
   {
+    href: "/agendas-bloqueadas",
+    label: "Agendas Bloqueadas",
+    icon: Calendar,
+    group: "OPERAÇÕES",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "agendas_bloqueadas",
+  },
+  {
     href: "/profissionais",
     label: "Gestão de Profissionais",
     icon: Stethoscope,

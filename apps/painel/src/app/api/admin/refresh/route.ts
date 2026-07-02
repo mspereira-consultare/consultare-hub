@@ -6,6 +6,8 @@ import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { hasAnyRefresh, hasPermission, type PageKey } from '@/lib/permissions';
 import { getAgendaOcupacaoDefaultRange } from '@/lib/agenda_ocupacao/date_range';
 import { createAgendaOcupacaoJob } from '@/lib/agenda_ocupacao/repository';
+import { getBlockedAgendasDefaultRange } from '@/lib/agendas_bloqueadas/date_range';
+import { createBlockedAgendasJob } from '@/lib/agendas_bloqueadas/repository';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +74,9 @@ const SERVICE_ALIASES: Record<string, string> = {
   agenda_occupancy: 'agenda_occupancy',
   agenda_ocupacao: 'agenda_occupancy',
   ocupacao_agenda: 'agenda_occupancy',
+  blocked_agendas: 'blocked_agendas',
+  agendas_bloqueadas: 'blocked_agendas',
+  agenda_bloqueada: 'blocked_agendas',
   marketing_funnel: 'marketing_funnel',
   marketing_funil: 'marketing_funnel',
   funil_marketing: 'marketing_funnel',
@@ -100,6 +105,7 @@ const SERVICE_PAGE_MAP: Record<string, PageKey> = {
   monitor_medico: 'monitor',
   monitor_recepcao: 'monitor',
   agenda_occupancy: 'agenda_ocupacao',
+  blocked_agendas: 'agendas_bloqueadas',
   clinia: 'monitor',
   procedures_catalog: 'profissionais',
   professionals_sync: 'profissionais',
@@ -121,6 +127,7 @@ const SERVICE_REFRESH_PAGES: Record<string, PageKey[]> = {
   monitor_medico: ['monitor'],
   monitor_recepcao: ['monitor'],
   agenda_occupancy: ['agenda_ocupacao', 'profissionais'],
+  blocked_agendas: ['agendas_bloqueadas'],
   procedures_catalog: ['profissionais'],
   professionals_sync: ['profissionais'],
   qms_documentos: ['qualidade_documentos'],
@@ -167,6 +174,19 @@ export async function POST(request: Request) {
       const defaults = getAgendaOcupacaoDefaultRange();
       const userId = String((session.user as any).id || '').trim();
       const job = await createAgendaOcupacaoJob(
+        db,
+        {
+          startDate: defaults.startDate,
+          endDate: defaults.endDate,
+          unitScope: 'all',
+        },
+        userId || 'unknown'
+      );
+      details = `Job ${job.id} enfileirado`;
+    } else if (serviceName === 'blocked_agendas') {
+      const defaults = getBlockedAgendasDefaultRange();
+      const userId = String((session.user as any).id || '').trim();
+      const job = await createBlockedAgendasJob(
         db,
         {
           startDate: defaults.startDate,
