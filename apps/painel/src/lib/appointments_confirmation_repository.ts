@@ -12,6 +12,15 @@ export type AppointmentConfirmationContext = {
   snapshotCoverageEndDate: string | null;
 };
 
+export type AppointmentConfirmationHybridCte = {
+  sql: string;
+  params: Array<string | number>;
+  mode: 'live' | 'hybrid';
+};
+
+const isMysqlRuntime = () =>
+  String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL || !!process.env.MYSQL_PUBLIC_URL;
+
 const toSaoPauloDate = (date: Date) =>
   new Intl.DateTimeFormat('sv-SE', {
     timeZone: 'America/Sao_Paulo',
@@ -79,26 +88,50 @@ export function buildTomorrowStrictConfirmedCase(alias = 'f') {
   return `CASE WHEN ${alias}.status_id = ${SNAPSHOT_CONFIRMED_STATUS_ID} THEN 1 ELSE 0 END`;
 }
 
+const buildHistoricalRangePredicate = (dateExpr: string) => {
+  if (isMysqlRuntime()) {
+    return `STR_TO_DATE(${dateExpr}, '%Y-%m-%d') >= STR_TO_DATE(?, '%Y-%m-%d') AND STR_TO_DATE(${dateExpr}, '%Y-%m-%d') <= STR_TO_DATE(?, '%Y-%m-%d')`;
+  }
+
+  return `${dateExpr} >= ? AND ${dateExpr} <= ?`;
+};
+
+const buildSnapshotDateJoinCondition = (snapshotExpr: string, appointmentExpr: string) => {
+  if (isMysqlRuntime()) {
+    return `STR_TO_DATE(${snapshotExpr}, '%Y-%m-%d') = STR_TO_DATE(${appointmentExpr}, '%Y-%m-%d')`;
+  }
+
+  return `${snapshotExpr} = ${appointmentExpr}`;
+};
+
+const buildLiveAppointmentConfirmationCte = (
+  cteName: string,
+  liveConfirmedExpr: string,
+): AppointmentConfirmationHybridCte => ({
+  sql: `
+    WITH ${cteName} AS (
+      SELECT
+        f.*,
+        f.status_id AS effective_status_id,
+        ${liveConfirmedExpr} AS effective_confirmed_d1,
+        'live' AS effective_confirmation_source
+      FROM feegow_appointments f
+    )
+  `,
+  params: [],
+  mode: 'live',
+});
+
 export function buildAppointmentConfirmationHybridCte(
   context: AppointmentConfirmationContext,
   cteName = 'appointment_confirmation_base',
-) {
+): AppointmentConfirmationHybridCte {
   const liveConfirmedExpr = buildLiveConfirmedCase('f');
+  const appointmentDateExpr = 'SUBSTR(f.date, 1, 10)';
+  const historicalRangePredicate = buildHistoricalRangePredicate(appointmentDateExpr);
 
-  if (!context.snapshotCoverageStartDate) {
-    return {
-      sql: `
-        WITH ${cteName} AS (
-          SELECT
-            f.*,
-            f.status_id AS effective_status_id,
-            ${liveConfirmedExpr} AS effective_confirmed_d1,
-            'live' AS effective_confirmation_source
-          FROM feegow_appointments f
-        )
-      `,
-      params: [] as Array<string | number>,
-    };
+  if (!context.snapshotCoverageStartDate || context.snapshotCoverageStartDate > context.yesterday) {
+    return buildLiveAppointmentConfirmationCte(cteName, liveConfirmedExpr);
   }
 
   return {
@@ -109,26 +142,26 @@ export function buildAppointmentConfirmationHybridCte(
           s.snapshot_status_id,
           s.is_confirmed_d1,
           CASE
-            WHEN SUBSTR(f.date, 1, 10) >= ? AND SUBSTR(f.date, 1, 10) <= ?
+            WHEN ${historicalRangePredicate}
               THEN COALESCE(s.snapshot_status_id, f.status_id)
             ELSE f.status_id
           END AS effective_status_id,
           CASE
-            WHEN SUBSTR(f.date, 1, 10) >= ? AND SUBSTR(f.date, 1, 10) <= ?
+            WHEN ${historicalRangePredicate}
               THEN COALESCE(s.is_confirmed_d1, ${liveConfirmedExpr})
             ELSE ${liveConfirmedExpr}
           END AS effective_confirmed_d1,
           CASE
-            WHEN SUBSTR(f.date, 1, 10) >= ? AND SUBSTR(f.date, 1, 10) <= ? AND s.appointment_id IS NOT NULL
+            WHEN ${historicalRangePredicate} AND s.appointment_id IS NOT NULL
               THEN 'snapshot'
-            WHEN SUBSTR(f.date, 1, 10) >= ? AND SUBSTR(f.date, 1, 10) <= ?
+            WHEN ${historicalRangePredicate}
               THEN 'hybrid'
             ELSE 'live'
           END AS effective_confirmation_source
         FROM feegow_appointments f
         LEFT JOIN ${APPOINTMENTS_CONFIRMATION_SNAPSHOT_TABLE} s
           ON s.appointment_id = f.appointment_id
-         AND s.target_date = SUBSTR(f.date, 1, 10)
+         AND ${buildSnapshotDateJoinCondition('s.target_date', appointmentDateExpr)}
       )
     `,
     params: [
@@ -141,5 +174,6 @@ export function buildAppointmentConfirmationHybridCte(
       context.snapshotCoverageStartDate,
       context.yesterday,
     ] as Array<string | number>,
+    mode: 'hybrid',
   };
 }

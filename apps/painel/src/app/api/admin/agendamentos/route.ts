@@ -117,7 +117,7 @@ export async function GET(request: Request) {
           confirmedRate: Number(confirmedRate || 0),
         },
         heartbeat,
-        confirmationSource: confirmationContext.snapshotCoverageStartDate ? 'hybrid' : 'live',
+        confirmationSource: hybridCte.mode,
         snapshotCoverageStartDate: confirmationContext.snapshotCoverageStartDate,
       };
 
