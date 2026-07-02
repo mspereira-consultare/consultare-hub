@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { Download, Loader2, RefreshCw } from 'lucide-react';
 import { getBlockedAgendasDefaultRange } from '@/lib/agendas_bloqueadas/date_range';
 import type { BlockedAgendaItem, BlockedAgendaJob } from '@/lib/agendas_bloqueadas/types';
 import { hasPermission } from '@/lib/permissions';
-import { BlockedAgendasTable } from './components/BlockedAgendasTable';
+import { BlockedAgendasTable, type BlockedAgendasSortKey } from './components/BlockedAgendasTable';
 
 type Totals = {
   totalBlocks: number;
@@ -78,48 +78,64 @@ export default function AgendasBloqueadasPage() {
   });
 
   const [loading, setLoading] = useState(false);
+  const [polling, setPolling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [exporting, setExporting] = useState<'xlsx' | 'pdf' | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [sortKey, setSortKey] = useState<BlockedAgendasSortKey>('dateStart');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
-  const loadData = useCallback(async () => {
-    if (!canView) return;
-    setLoading(true);
-    setError('');
-    try {
-      const qs = new URLSearchParams({
-        startDate,
-        endDate,
-        unit,
-        professionalId,
-        recurrence,
-        situation,
-        search,
-      }).toString();
-      const res = await fetch(`/api/admin/agendas-bloqueadas?${qs}`, { cache: 'no-store' });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || 'Falha ao carregar agendas bloqueadas.');
+  const loadData = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!canView) return;
 
-      setRows(Array.isArray(data?.data?.rows) ? data.data.rows : []);
-      setTotals(
-        data?.data?.totals || {
-          totalBlocks: 0,
-          activeBlocks: 0,
-          professionalsWithActiveBlocks: 0,
-          recurringBlocks: 0,
+      if (silent) {
+        setPolling(true);
+      } else {
+        setLoading(true);
+        setError('');
+      }
+
+      try {
+        const qs = new URLSearchParams({
+          startDate,
+          endDate,
+          unit,
+          professionalId,
+          recurrence,
+          situation,
+          search,
+        }).toString();
+        const res = await fetch(`/api/admin/agendas-bloqueadas?${qs}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || 'Falha ao carregar agendas bloqueadas.');
+
+        setRows(Array.isArray(data?.data?.rows) ? data.data.rows : []);
+        setTotals(
+          data?.data?.totals || {
+            totalBlocks: 0,
+            activeBlocks: 0,
+            professionalsWithActiveBlocks: 0,
+            recurringBlocks: 0,
+          }
+        );
+        setProfessionals(Array.isArray(data?.data?.professionals) ? data.data.professionals : []);
+        setLatestJob(data?.data?.latestJob || null);
+        setDataJob(data?.data?.dataJob || null);
+        setHeartbeat(data?.data?.heartbeat || { status: 'UNKNOWN', lastRun: null, details: '' });
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : 'Erro ao carregar dados.');
+      } finally {
+        if (silent) {
+          setPolling(false);
+        } else {
+          setLoading(false);
         }
-      );
-      setProfessionals(Array.isArray(data?.data?.professionals) ? data.data.professionals : []);
-      setLatestJob(data?.data?.latestJob || null);
-      setDataJob(data?.data?.dataJob || null);
-      setHeartbeat(data?.data?.heartbeat || { status: 'UNKNOWN', lastRun: null, details: '' });
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Erro ao carregar dados.');
-    } finally {
-      setLoading(false);
-    }
-  }, [canView, endDate, professionalId, recurrence, search, situation, startDate, unit]);
+      }
+    },
+    [canView, endDate, professionalId, recurrence, search, situation, startDate, unit]
+  );
 
   useEffect(() => {
     loadData();
@@ -131,11 +147,51 @@ export default function AgendasBloqueadasPage() {
     if (!running) return;
 
     const timer = setTimeout(() => {
-      loadData();
+      loadData({ silent: true });
     }, 4000);
 
     return () => clearTimeout(timer);
   }, [latestJob, loadData]);
+
+  const sortedRows = useMemo(() => {
+    const recurrenceLabel = (row: BlockedAgendaItem) =>
+      row.isRecurring ? `1-${row.weekDays.join(',')}` : '0-pontual';
+    const statusLabel = (row: BlockedAgendaItem) => row.statusLabels.join(' | ');
+
+    const getComparableValue = (row: BlockedAgendaItem, key: BlockedAgendasSortKey) => {
+      if (key === 'recurrence') return recurrenceLabel(row);
+      if (key === 'status') return statusLabel(row);
+      if (key === 'description') return row.description || '';
+      return row[key];
+    };
+
+    return [...rows].sort((a, b) => {
+      const dir = sortDir === 'asc' ? 1 : -1;
+      const left = getComparableValue(a, sortKey);
+      const right = getComparableValue(b, sortKey);
+
+      if (sortKey === 'dateStart') {
+        const dateCompare = a.dateStart.localeCompare(b.dateStart) || a.dateEnd.localeCompare(b.dateEnd);
+        return dateCompare * dir;
+      }
+
+      if (sortKey === 'timeStart') {
+        const timeCompare = a.timeStart.localeCompare(b.timeStart) || a.timeEnd.localeCompare(b.timeEnd);
+        return timeCompare * dir;
+      }
+
+      return String(left).localeCompare(String(right), 'pt-BR', { numeric: true, sensitivity: 'base' }) * dir;
+    });
+  }, [rows, sortDir, sortKey]);
+
+  const onSort = (key: BlockedAgendasSortKey) => {
+    if (key === sortKey) {
+      setSortDir((current) => (current === 'asc' ? 'desc' : 'asc'));
+      return;
+    }
+    setSortKey(key);
+    setSortDir(key === 'professionalName' || key === 'unitNamesText' || key === 'description' || key === 'status' ? 'asc' : 'desc');
+  };
 
   const onRefresh = async () => {
     if (!canRefresh) return;
@@ -248,7 +304,7 @@ export default function AgendasBloqueadasPage() {
               </select>
               <button
                 type="button"
-                onClick={loadData}
+                onClick={() => loadData()}
                 className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700"
               >
                 Atualizar tela
@@ -344,6 +400,7 @@ export default function AgendasBloqueadasPage() {
           <span className="text-xs text-slate-500">
             Worker: {heartbeat.status} | {formatDateTime(heartbeat.lastRun)}
           </span>
+          {polling ? <span className="text-xs text-slate-500">Sincronizando status sem recarregar a tela...</span> : null}
         </div>
       </header>
 
@@ -375,7 +432,7 @@ export default function AgendasBloqueadasPage() {
         </div>
       </section>
 
-      <BlockedAgendasTable rows={rows} loading={loading} />
+      <BlockedAgendasTable rows={sortedRows} loading={loading} sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
     </div>
   );
 }

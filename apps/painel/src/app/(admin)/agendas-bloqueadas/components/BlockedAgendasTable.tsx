@@ -1,32 +1,87 @@
 "use client";
 
+import { ArrowDownAZ, ArrowUpAZ, ArrowUpDown } from 'lucide-react';
 import type { BlockedAgendaItem } from '@/lib/agendas_bloqueadas/types';
-import { formatBlockedAgendaWeekDaysShort } from '@/lib/agendas_bloqueadas/types';
+import {
+  formatBlockedAgendaDate,
+  formatBlockedAgendaTime,
+  formatBlockedAgendaWeekDaysShort,
+} from '@/lib/agendas_bloqueadas/types';
+
+export type BlockedAgendasSortKey =
+  | 'professionalName'
+  | 'unitNamesText'
+  | 'dateStart'
+  | 'timeStart'
+  | 'recurrence'
+  | 'description'
+  | 'status';
 
 type Props = {
   rows: BlockedAgendaItem[];
   loading: boolean;
+  sortKey: BlockedAgendasSortKey;
+  sortDir: 'asc' | 'desc';
+  onSort: (key: BlockedAgendasSortKey) => void;
 };
 
 const formatPeriod = (row: BlockedAgendaItem) =>
-  row.dateStart === row.dateEnd ? row.dateStart : `${row.dateStart} ate ${row.dateEnd}`;
+  row.dateStart === row.dateEnd
+    ? formatBlockedAgendaDate(row.dateStart)
+    : `${formatBlockedAgendaDate(row.dateStart)} ate ${formatBlockedAgendaDate(row.dateEnd)}`;
 
-const formatTimeRange = (row: BlockedAgendaItem) => `${row.timeStart} - ${row.timeEnd}`;
+const formatTimeRange = (row: BlockedAgendaItem) =>
+  `${formatBlockedAgendaTime(row.timeStart)} - ${formatBlockedAgendaTime(row.timeEnd)}`;
 
-export function BlockedAgendasTable({ rows, loading }: Props) {
+const SortButton = ({
+  active,
+  dir,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  dir: 'asc' | 'desc';
+  label: string;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="inline-flex items-center gap-1 font-semibold text-slate-600 transition hover:text-slate-900"
+  >
+    <span>{label}</span>
+    {active ? (dir === 'asc' ? <ArrowUpAZ size={14} /> : <ArrowDownAZ size={14} />) : <ArrowUpDown size={14} />}
+  </button>
+);
+
+export function BlockedAgendasTable({ rows, loading, sortKey, sortDir, onSort }: Props) {
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="overflow-x-auto">
+      <div className="max-h-[70vh] overflow-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-slate-50 text-left text-xs uppercase tracking-[0.14em] text-slate-500">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-[0.14em] text-slate-500">
             <tr>
-              <th className="px-4 py-3 font-semibold">Medico</th>
-              <th className="px-4 py-3 font-semibold">Unidade(s)</th>
-              <th className="px-4 py-3 font-semibold">Periodo</th>
-              <th className="px-4 py-3 font-semibold">Horario</th>
-              <th className="px-4 py-3 font-semibold">Recorrencia</th>
-              <th className="px-4 py-3 font-semibold">Motivo</th>
-              <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3">
+                <SortButton active={sortKey === 'professionalName'} dir={sortDir} label="Medico" onClick={() => onSort('professionalName')} />
+              </th>
+              <th className="px-4 py-3">
+                <SortButton active={sortKey === 'unitNamesText'} dir={sortDir} label="Unidade(s)" onClick={() => onSort('unitNamesText')} />
+              </th>
+              <th className="px-4 py-3">
+                <SortButton active={sortKey === 'dateStart'} dir={sortDir} label="Periodo" onClick={() => onSort('dateStart')} />
+              </th>
+              <th className="px-4 py-3">
+                <SortButton active={sortKey === 'timeStart'} dir={sortDir} label="Horario" onClick={() => onSort('timeStart')} />
+              </th>
+              <th className="px-4 py-3">
+                <SortButton active={sortKey === 'recurrence'} dir={sortDir} label="Recorrencia" onClick={() => onSort('recurrence')} />
+              </th>
+              <th className="px-4 py-3">
+                <SortButton active={sortKey === 'description'} dir={sortDir} label="Motivo" onClick={() => onSort('description')} />
+              </th>
+              <th className="px-4 py-3">
+                <SortButton active={sortKey === 'status'} dir={sortDir} label="Status" onClick={() => onSort('status')} />
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">

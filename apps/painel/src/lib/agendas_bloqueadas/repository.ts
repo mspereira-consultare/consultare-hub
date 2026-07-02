@@ -359,12 +359,10 @@ const buildBaseWhere = (jobId: string, filters: ReturnType<typeof normalizeBlock
   return { where, params };
 };
 
-const buildListWhere = (
-  jobId: string,
+const applySituationAndRecurrenceWhere = (
+  where: string[],
   filters: ReturnType<typeof normalizeBlockedAgendaFilters>
 ) => {
-  const { where, params } = buildBaseWhere(jobId, filters);
-
   if (filters.situation === 'active') {
     where.push('is_active_in_range = 1');
   }
@@ -373,7 +371,14 @@ const buildListWhere = (
   } else if (filters.recurrence === 'single') {
     where.push('is_recurring = 0');
   }
+};
 
+const buildListWhere = (
+  jobId: string,
+  filters: ReturnType<typeof normalizeBlockedAgendaFilters>
+) => {
+  const { where, params } = buildBaseWhere(jobId, filters);
+  applySituationAndRecurrenceWhere(where, filters);
   return { where, params };
 };
 
@@ -429,15 +434,19 @@ export const listBlockedAgendaRows = async (
         COUNT(DISTINCT CASE WHEN is_active_in_range = 1 THEN professional_id ELSE NULL END) AS professionals_with_active_blocks,
         SUM(CASE WHEN is_recurring = 1 THEN 1 ELSE 0 END) AS recurring_blocks
       FROM agenda_blocked_report_items
-      WHERE ${base.where.join(' AND ')}
+      WHERE ${list.where.join(' AND ')}
       `,
-      base.params
+      list.params
     ),
     db.query(
       `
       SELECT DISTINCT professional_id, professional_name
       FROM agenda_blocked_report_items
-      WHERE ${base.where.join(' AND ')}
+      WHERE ${(() => {
+        const professionalWhere = [...base.where];
+        applySituationAndRecurrenceWhere(professionalWhere, normalized);
+        return professionalWhere.join(' AND ');
+      })()}
       ORDER BY professional_name ASC, professional_id ASC
       `,
       base.params

@@ -83,3 +83,15 @@ export const formatBlockedAgendaWeekDaysShort = (weekDays: number[]) =>
     .map((day) => weekdayLabelMap[day])
     .filter(Boolean)
     .join(', ');
+
+export const formatBlockedAgendaDate = (value: string) => {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return value;
+  return `${match[3]}/${match[2]}/${match[1]}`;
+};
+
+export const formatBlockedAgendaTime = (value: string) => {
+  const match = String(value || '').match(/^(\d{2}):(\d{2})/);
+  if (!match) return value;
+  return `${match[1]}:${match[2]}`;
+};
