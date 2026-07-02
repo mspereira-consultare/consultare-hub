@@ -6,6 +6,12 @@ export const metadata: Metadata = {
   description: "Painel de Inteligência e Automação",
 };
 
+// O painel administrativo depende de sessão, permissões e dados operacionais
+// em tempo real. Mantemos todo o subtree dinâmico para evitar pré-renderização
+// desnecessária durante o build do Next.
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 export default function AdminLayout({
   children,
 }: Readonly<{
