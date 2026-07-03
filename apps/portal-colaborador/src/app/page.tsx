@@ -1,25 +1,7 @@
 'use client';
 
-import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  AlertCircle,
-  CalendarDays,
-  CheckCircle2,
-  ChevronRight,
-  CircleHelp,
-  FileText,
-  Link2,
-  Loader2,
-  LogOut,
-  Pencil,
-  Plus,
-  Send,
-  Trash2,
-  Upload,
-  UserRound,
-  X,
-} from 'lucide-react';
+import { CheckCircle2, FileText, Loader2, Send, Upload } from 'lucide-react';
 import {
   EDUCATION_LEVELS,
   MARITAL_STATUSES,
@@ -28,78 +10,24 @@ import type {
   EmployeePortalChecklistItem,
   EmployeePortalOverview,
   EmployeePortalPersonalData,
-  EmployeePortalProductionEntry,
-  EmployeePortalProductionEntryType,
 } from '@consultare/core/employee-portal/types';
-
-type LoginState = {
-  token: string;
-  cpf: string;
-  birthDate: string;
-};
-
-type CredentialLoginState = {
-  usernameOrEmail: string;
-  password: string;
-};
-
-type LoginTab = 'invite' | 'credentials';
-
-type AuthResponse = {
-  status: string;
-  data: {
-    expiresAt: string;
-    authMethod: 'INVITE' | 'CREDENTIALS';
-    credentialIssuedNow: boolean;
-  };
-};
-
-type ProductionFormState = {
-  id: string | null;
-  serviceDate: string;
-  entryType: EmployeePortalProductionEntryType;
-  patientNameRaw: string;
-};
-
-const inputClassName =
-  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100 disabled:text-slate-500';
-const labelClassName = 'mb-1 block text-[11px] font-semibold uppercase text-slate-500';
-const productionTypeLabels: Record<EmployeePortalProductionEntryType, string> = {
-  RESOLVE: 'Cartão Resolve',
-  CHECKUP: 'Check-up',
-};
-const productionMatchStatusLabels = {
-  MATCHED: 'Vinculado',
-  NO_MATCH: 'Sem vínculo',
-  MULTIPLE_MATCHES: 'Múltiplos pacientes',
-  PENDING_MATCH: 'Aguardando vínculo',
-} as const;
-const productionMatchStatusClasses = {
-  MATCHED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  NO_MATCH: 'border-amber-200 bg-amber-50 text-amber-800',
-  MULTIPLE_MATCHES: 'border-rose-200 bg-rose-50 text-rose-700',
-  PENDING_MATCH: 'border-blue-200 bg-blue-50 text-[#17407E]',
-} as const;
-
-const documentStatusLabel: Record<EmployeePortalChecklistItem['status'], string> = {
-  PENDING: 'Pendente',
-  DRAFT: 'Enviado no rascunho',
-  PENDING_REVIEW: 'Em revisão',
-  APPROVED: 'Aprovado',
-  REJECTED: 'Correção solicitada',
-  OFFICIAL: 'Já consta no cadastro',
-  NOT_APPLICABLE: 'Não se aplica',
-};
-
-const documentStatusClassName: Record<EmployeePortalChecklistItem['status'], string> = {
-  PENDING: 'border-amber-200 bg-amber-50 text-amber-800',
-  DRAFT: 'border-blue-200 bg-blue-50 text-[#17407E]',
-  PENDING_REVIEW: 'border-blue-200 bg-blue-50 text-[#17407E]',
-  APPROVED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  REJECTED: 'border-rose-200 bg-rose-50 text-rose-700',
-  OFFICIAL: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  NOT_APPLICABLE: 'border-slate-200 bg-slate-50 text-slate-500',
-};
+import {
+  AuthResponse,
+  CredentialLoginState,
+  LoginState,
+  LoginTab,
+  PortalLoginCard,
+  PortalShell,
+  StatusBadge,
+  digitsOnly,
+  fetchJson,
+  formatCpf,
+  formatDateBr,
+  getErrorMessage,
+  inputClassName,
+  labelClassName,
+  personalFromOverview,
+} from '@/components/portal/shared';
 
 const submissionStatusLabel: Record<string, string> = {
   DRAFT: 'Rascunho',
@@ -110,115 +38,6 @@ const submissionStatusLabel: Record<string, string> = {
   REJECTED: 'Rejeitado',
   CANCELED: 'Cancelado',
 };
-
-async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, { cache: 'no-store', ...init });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(String((payload as { error?: unknown }).error || 'Falha ao carregar dados.'));
-  }
-  return payload as T;
-}
-
-const getErrorMessage = (error: unknown, fallback: string) =>
-  error instanceof Error ? error.message : fallback;
-
-const digitsOnly = (value: string) => value.replace(/\D/g, '');
-
-const formatCpf = (value: string | null | undefined) => {
-  const digits = digitsOnly(String(value || '')).slice(0, 11);
-  if (!digits) return '';
-  if (digits.length <= 3) return digits;
-  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
-  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
-  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9, 11)}`;
-};
-
-const formatDateBr = (value: string | null | undefined) => {
-  const raw = String(value || '').trim();
-  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (!match) return '-';
-  return `${match[3]}/${match[2]}/${match[1]}`;
-};
-
-const personalFromOverview = (overview: EmployeePortalOverview): EmployeePortalPersonalData => {
-  const employee = overview.employee;
-  const data: EmployeePortalPersonalData = {
-    fullName: String(overview.submission?.personalData.fullName ?? employee.fullName ?? ''),
-    rg: String(overview.submission?.personalData.rg ?? employee.rg ?? ''),
-    email: String(overview.submission?.personalData.email ?? employee.email ?? ''),
-    phone: String(overview.submission?.personalData.phone ?? employee.phone ?? ''),
-    street: String(overview.submission?.personalData.street ?? employee.street ?? ''),
-    streetNumber: String(overview.submission?.personalData.streetNumber ?? employee.streetNumber ?? ''),
-    addressComplement: String(overview.submission?.personalData.addressComplement ?? employee.addressComplement ?? ''),
-    district: String(overview.submission?.personalData.district ?? employee.district ?? ''),
-    city: String(overview.submission?.personalData.city ?? employee.city ?? ''),
-    stateUf: String(overview.submission?.personalData.stateUf ?? employee.stateUf ?? 'SP'),
-    zipCode: String(overview.submission?.personalData.zipCode ?? employee.zipCode ?? ''),
-    educationInstitution: String(overview.submission?.personalData.educationInstitution ?? employee.educationInstitution ?? ''),
-    educationLevel: String(overview.submission?.personalData.educationLevel ?? employee.educationLevel ?? ''),
-    courseName: String(overview.submission?.personalData.courseName ?? employee.courseName ?? ''),
-    currentSemester: String(overview.submission?.personalData.currentSemester ?? employee.currentSemester ?? ''),
-    maritalStatus: String(overview.submission?.personalData.maritalStatus ?? employee.maritalStatus ?? ''),
-    hasChildren: Boolean(overview.submission?.personalData.hasChildren ?? employee.hasChildren ?? false),
-    childrenCount: String(overview.submission?.personalData.childrenCount ?? employee.childrenCount ?? 0),
-  };
-
-  if (employee.employmentRegime === 'PJ') {
-    data.bankName = String(overview.submission?.personalData.bankName ?? employee.bankName ?? '');
-    data.bankAgency = String(overview.submission?.personalData.bankAgency ?? employee.bankAgency ?? '');
-    data.bankAccount = String(overview.submission?.personalData.bankAccount ?? employee.bankAccount ?? '');
-    data.pixKey = String(overview.submission?.personalData.pixKey ?? employee.pixKey ?? '');
-  }
-
-  return data;
-};
-
-function HelpModal({ onClose }: { onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 sm:items-center sm:p-4">
-      <div className="max-h-[92vh] w-full overflow-auto rounded-t-2xl bg-white p-5 shadow-2xl sm:max-w-2xl sm:rounded-2xl">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Precisa de ajuda?</h2>
-            <p className="mt-1 text-sm text-slate-500">Veja orientações rápidas para concluir seu envio.</p>
-          </div>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="mt-5 grid gap-3">
-          {[
-            ['Primeiro acesso', 'Use o link ou código do convite enviado pelo RH junto com seu CPF e data de nascimento. Esse passo é necessário apenas na primeira entrada.'],
-            ['Acessos seguintes', 'Depois da validação inicial, use seu usuário e senha. Se a senha já tiver sido exibida neste portal e você não a tiver mais, solicite uma nova ao RH/DP.'],
-            ['Dados de identificação', 'Digite o CPF apenas com os números ou no formato 000.000.000-00 e confirme a data de nascimento cadastrada pelo RH.'],
-            ['Dados pessoais', 'Preencha os dados com atenção. O DP vai conferir as informações antes de atualizar seu cadastro oficial.'],
-            ['Documentos', 'Envie PDF ou foto legível em JPG, JPEG, PNG ou WEBP. O limite por arquivo é 15 MB. Evite fotos cortadas, tremidas ou escuras.'],
-            ['Produção do dia', 'Registre Resolve e Check-up um paciente por vez, sempre com o nome completo. Apenas lançamentos vinculados com sucesso à Feegow entram nas metas.'],
-            ['Frente e verso', 'Quando o documento tiver frente e verso, coloque as duas partes no mesmo PDF ou na mesma imagem sempre que possível.'],
-            ['Correção', 'Se um documento for devolvido, veja o motivo informado, envie uma nova versão e mande novamente para revisão.'],
-            ['Privacidade', 'Seus dados serão usados apenas para cadastro, admissão, folha, benefícios e obrigações legais da empresa.'],
-            ['Suporte', 'Se continuar sem conseguir acessar, fale com o RH/Departamento Pessoal para confirmar o cadastro ou liberar uma nova senha inicial.'],
-          ].map(([title, body]) => (
-            <div key={title} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-              <p className="mt-1 text-sm text-slate-600">{body}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: EmployeePortalChecklistItem['status'] }) {
-  return (
-    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${documentStatusClassName[status]}`}>
-      {documentStatusLabel[status]}
-    </span>
-  );
-}
 
 export default function PortalColaboradorPage() {
   const [inviteLogin, setInviteLogin] = useState<LoginState>(() => {
@@ -248,16 +67,8 @@ export default function PortalColaboradorPage() {
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [savingProduction, setSavingProduction] = useState(false);
-  const [deletingProductionId, setDeletingProductionId] = useState<string | null>(null);
   const [consentLgpd, setConsentLgpd] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [productionForm, setProductionForm] = useState<ProductionFormState>({
-    id: null,
-    serviceDate: '',
-    entryType: 'RESOLVE',
-    patientNameRaw: '',
-  });
 
   const canEdit = !overview?.submission || ['DRAFT', 'CHANGES_REQUESTED'].includes(overview.submission.status);
   const showBankFields = overview?.employee.employmentRegime === 'PJ';
@@ -312,7 +123,7 @@ export default function PortalColaboradorPage() {
       );
       await loadMe();
     } catch (loginError: unknown) {
-      setError(getErrorMessage(loginError, 'Não foi possível validar seu acesso.'));
+      setError(getErrorMessage(loginError, 'Nao foi possivel validar seu acesso.'));
     } finally {
       setAuthenticating(false);
     }
@@ -335,7 +146,7 @@ export default function PortalColaboradorPage() {
       setNotice('Login realizado com sucesso.');
       await loadMe();
     } catch (loginError: unknown) {
-      setError(getErrorMessage(loginError, 'Não foi possível entrar com usuário e senha.'));
+      setError(getErrorMessage(loginError, 'Nao foi possivel entrar com usuario e senha.'));
     } finally {
       setAuthenticating(false);
     }
@@ -429,83 +240,6 @@ export default function PortalColaboradorPage() {
     }
   };
 
-  const resetProductionForm = (nextDate?: string) => {
-    setProductionForm({
-      id: null,
-      serviceDate: nextDate || overview?.production.editableDates?.[0] || '',
-      entryType: 'RESOLVE',
-      patientNameRaw: '',
-    });
-  };
-
-  const startEditingProduction = (entry: EmployeePortalProductionEntry) => {
-    setProductionForm({
-      id: entry.id,
-      serviceDate: entry.serviceDate,
-      entryType: entry.entryType,
-      patientNameRaw: entry.patientNameRaw,
-    });
-    setNotice('');
-    setError('');
-  };
-
-  const saveProductionEntry = async () => {
-    setSavingProduction(true);
-    setError('');
-    setNotice('');
-    try {
-      const isEditing = Boolean(productionForm.id);
-      const payload = await fetchJson<{ status: string; data: EmployeePortalOverview }>(
-        isEditing
-          ? `/api/production/entries/${encodeURIComponent(String(productionForm.id))}`
-          : '/api/production/entries',
-        {
-          method: isEditing ? 'PUT' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            serviceDate: productionForm.serviceDate || overview?.production.editableDates?.[0] || '',
-            entryType: productionForm.entryType,
-            patientNameRaw: productionForm.patientNameRaw,
-          }),
-        }
-      );
-      setOverview(payload.data);
-      setPersonal(personalFromOverview(payload.data));
-      resetProductionForm(payload.data.production.editableDates?.[0]);
-      setNotice(
-        isEditing
-          ? 'Lançamento atualizado com sucesso.'
-          : 'Lançamento registrado. Ele só contará para metas quando o vínculo com a Feegow for confirmado.'
-      );
-    } catch (productionError: unknown) {
-      setError(getErrorMessage(productionError, 'Falha ao salvar lançamento.'));
-    } finally {
-      setSavingProduction(false);
-    }
-  };
-
-  const deleteProductionEntry = async (entry: EmployeePortalProductionEntry) => {
-    setDeletingProductionId(entry.id);
-    setError('');
-    setNotice('');
-    try {
-      const payload = await fetchJson<{ status: string; data: EmployeePortalOverview }>(
-        `/api/production/entries/${encodeURIComponent(entry.id)}`,
-        { method: 'DELETE' }
-      );
-      setOverview(payload.data);
-      setPersonal(personalFromOverview(payload.data));
-      if (productionForm.id === entry.id) {
-        resetProductionForm(payload.data.production.editableDates?.[0]);
-      }
-      setNotice('Lançamento removido com sucesso.');
-    } catch (deleteError: unknown) {
-      setError(getErrorMessage(deleteError, 'Falha ao remover lançamento.'));
-    } finally {
-      setDeletingProductionId(null);
-    }
-  };
-
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
@@ -519,238 +253,42 @@ export default function PortalColaboradorPage() {
 
   if (!overview) {
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center p-5">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
-          <Image src="/logo-color.png" alt="Consultare" width={180} height={55} priority className="h-12 w-auto" />
-          <h1 className="mt-6 text-2xl font-bold text-slate-950">Portal do colaborador</h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Use o convite recebido do RH no primeiro acesso. Depois disso, entre com seu usuário e senha.
-          </p>
-
-          {error ? (
-            <div className="mt-4 flex gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-              <AlertCircle size={16} className="mt-0.5 shrink-0" />
-              {error}
-            </div>
-          ) : null}
-
-          <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-1">
-            <div className="grid grid-cols-2 gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginTab('invite');
-                  setError('');
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                  loginTab === 'invite'
-                    ? 'bg-white text-[#17407E] shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Primeiro acesso
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setLoginTab('credentials');
-                  setError('');
-                }}
-                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
-                  loginTab === 'credentials'
-                    ? 'bg-white text-[#17407E] shadow-sm'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Entrar
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-5">
-            {loginTab === 'invite' ? (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-[#17407E]">
-                  Use este modo apenas no primeiro acesso ao portal.
-                </div>
-                <label className="block">
-                  <span className={labelClassName}>CPF</span>
-                  <input
-                    value={inviteLogin.cpf}
-                    onChange={(event) => setInviteLogin((current) => ({ ...current, cpf: formatCpf(event.target.value) }))}
-                    className={inputClassName}
-                    placeholder="000.000.000-00"
-                  />
-                </label>
-                <label className="block">
-                  <span className={labelClassName}>Data de nascimento</span>
-                  <input
-                    type="date"
-                    value={inviteLogin.birthDate}
-                    onChange={(event) => setInviteLogin((current) => ({ ...current, birthDate: event.target.value }))}
-                    className={inputClassName}
-                  />
-                </label>
-                {!inviteLogin.token ? (
-                  <label className="block">
-                    <span className={labelClassName}>Código do convite</span>
-                    <input
-                      value={inviteLogin.token}
-                      onChange={(event) => setInviteLogin((current) => ({ ...current, token: event.target.value }))}
-                      className={inputClassName}
-                      placeholder="Cole o código recebido pelo RH"
-                    />
-                  </label>
-                ) : (
-                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-                    Convite identificado no link. Confira o CPF e a data de nascimento para continuar.
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={loginWithInvite}
-                  disabled={authenticating || !inviteLogin.token || !inviteLogin.cpf || !inviteLogin.birthDate}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
-                >
-                  {authenticating ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
-                  Continuar
-                </button>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                  Depois do primeiro acesso, use aqui o usuário e a senha liberados no portal.
-                </div>
-                <label className="block">
-                  <span className={labelClassName}>Usuário ou e-mail</span>
-                  <input
-                    value={credentialLogin.usernameOrEmail}
-                    onChange={(event) => setCredentialLogin((current) => ({ ...current, usernameOrEmail: event.target.value }))}
-                    className={inputClassName}
-                    placeholder="Seu usuário ou e-mail"
-                    autoComplete="username"
-                  />
-                </label>
-                <label className="block">
-                  <span className={labelClassName}>Senha</span>
-                  <input
-                    type="password"
-                    value={credentialLogin.password}
-                    onChange={(event) => setCredentialLogin((current) => ({ ...current, password: event.target.value }))}
-                    className={inputClassName}
-                    placeholder="Digite sua senha"
-                    autoComplete="current-password"
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={loginWithCredentials}
-                  disabled={authenticating || !credentialLogin.usernameOrEmail.trim() || !credentialLogin.password}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
-                >
-                  {authenticating ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
-                  Entrar
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setHelpOpen(true)}
-                  className="inline-flex items-center gap-2 text-sm font-semibold text-[#17407E]"
-                >
-                  <CircleHelp size={15} />
-                  Preciso de ajuda para acessar
-                </button>
-              </div>
-            )}
-          </div>
-
-          {loginTab === 'invite' ? (
-            <button
-              type="button"
-              onClick={() => setHelpOpen(true)}
-              className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#17407E]"
-            >
-              <CircleHelp size={15} />
-              Precisa de ajuda?
-            </button>
-          ) : null}
-        </div>
-        {helpOpen ? <HelpModal onClose={() => setHelpOpen(false)} /> : null}
-      </main>
+      <PortalLoginCard
+        error={error}
+        helpOpen={helpOpen}
+        authenticating={authenticating}
+        inviteLogin={inviteLogin}
+        credentialLogin={credentialLogin}
+        loginTab={loginTab}
+        onInviteChange={setInviteLogin}
+        onCredentialChange={setCredentialLogin}
+        onTabChange={(tab) => {
+          setLoginTab(tab);
+          setError('');
+        }}
+        onInviteSubmit={loginWithInvite}
+        onCredentialSubmit={loginWithCredentials}
+        onHelpOpen={() => setHelpOpen(true)}
+        onHelpClose={() => setHelpOpen(false)}
+      />
     );
   }
 
   const personalStatus = overview.submission?.personalStatus || 'DRAFT';
   const submissionStatus = overview.submission?.status || 'DRAFT';
-  const photoDocument = overview.checklist.find((item) => item.docType === 'FOTO_3X4')?.portalDocument || null;
-  const photoUrl = photoDocument?.mimeType.startsWith('image/')
-    ? `/api/submission/documents/${encodeURIComponent(photoDocument.id)}?inline=1`
-    : '';
-  const productionEditableDates = overview.production.editableDates;
-  const productionEntries = overview.production.entries;
 
   return (
-    <main className="mx-auto max-w-6xl p-4 sm:p-6">
-      <header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <Image src="/logo-color.png" alt="Consultare" width={165} height={50} priority className="h-11 w-auto" />
-            {photoUrl ? (
-              <Image
-                src={photoUrl}
-                alt={`Foto de ${overview.employee.fullName}`}
-                width={48}
-                height={48}
-                unoptimized
-                className="h-12 w-12 shrink-0 rounded-full border border-slate-200 object-cover shadow-sm"
-              />
-            ) : (
-              <div className="group relative flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-dashed border-slate-300 bg-slate-50 text-slate-400">
-                <UserRound size={22} aria-hidden="true" />
-                <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 w-48 -translate-x-1/2 rounded-lg bg-slate-900 px-3 py-2 text-center text-xs font-medium text-white opacity-0 shadow-lg transition group-hover:opacity-100">
-                  Envie a Foto 3x4 em Documentos.
-                </span>
-              </div>
-            )}
-            <div>
-              <h1 className="text-xl font-bold text-slate-950">Portal do colaborador</h1>
-              <p className="text-sm text-slate-500">Olá, {overview.employee.fullName.split(' ')[0] || overview.employee.fullName}</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={() => setHelpOpen(true)} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">
-              <CircleHelp size={15} />
-              Ajuda
-            </button>
-            <button type="button" onClick={logout} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">
-              <LogOut size={15} />
-              Sair
-            </button>
-          </div>
-        </div>
-        <div className="mt-5">
-          <div className="flex items-center justify-between text-xs font-semibold text-slate-500">
-            <span>Progresso documental</span>
-            <span>{progress}%</span>
-          </div>
-          <div className="mt-2 h-2 rounded-full bg-slate-100">
-            <div className="h-2 rounded-full bg-[#2AAE8B]" style={{ width: `${progress}%` }} />
-          </div>
-        </div>
-      </header>
-
-      {error ? (
-        <div className="mt-4 flex gap-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-          <AlertCircle size={16} className="mt-0.5 shrink-0" />
-          {error}
-        </div>
-      ) : null}
-      {notice ? (
-        <div className="mt-4 flex gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-          <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-          {notice}
-        </div>
-      ) : null}
-
+    <PortalShell
+      overview={overview}
+      progress={progress}
+      error={error}
+      notice={notice}
+      activeTab="cadastro"
+      helpOpen={helpOpen}
+      onHelpOpen={() => setHelpOpen(true)}
+      onHelpClose={() => setHelpOpen(false)}
+      onLogout={() => void logout()}
+    >
       <section className="mt-5 grid gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="text-xs font-semibold uppercase text-slate-500">Status</div>
@@ -759,203 +297,15 @@ export default function PortalColaboradorPage() {
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
           <div className="text-xs font-semibold uppercase text-slate-500">Documentos</div>
-          <div className="mt-2 text-lg font-bold text-slate-900">{overview.approvedCount}/{overview.checklist.length}</div>
+          <div className="mt-2 text-lg font-bold text-slate-900">
+            {overview.approvedCount}/{overview.checklist.length}
+          </div>
           <p className="mt-1 text-sm text-slate-500">Aprovados ou já existentes</p>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4">
-          <div className="text-xs font-semibold uppercase text-slate-500">Pendências</div>
+          <div className="text-xs font-semibold uppercase text-slate-500">Pendencias</div>
           <div className="mt-2 text-lg font-bold text-slate-900">{overview.pendingCount}</div>
-          <p className="mt-1 text-sm text-slate-500">{overview.rejectedCount} com correção solicitada</p>
-        </div>
-      </section>
-
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900">Produção do dia</h2>
-            <p className="text-sm text-slate-500">
-              Registre Resolve e Check-up um paciente por vez. Só lançamentos vinculados à Feegow entram nas metas.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
-              Pendências de vínculo: {overview.production.pendingMatchCount}
-            </div>
-            {productionForm.id ? (
-              <button
-                type="button"
-                onClick={() => resetProductionForm(productionEditableDates[0])}
-                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
-              >
-                <X size={14} />
-                Cancelar edição
-              </button>
-            ) : null}
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-4 lg:grid-cols-[320px,minmax(0,1fr)]">
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-              <Plus size={16} className="text-[#17407E]" />
-              {productionForm.id ? 'Editar lançamento' : 'Novo lançamento'}
-            </div>
-            <div className="mt-4 space-y-4">
-              <label className="block">
-                <span className={labelClassName}>Data do atendimento</span>
-                <select
-                  value={productionForm.serviceDate || productionEditableDates[0] || ''}
-                  onChange={(event) => setProductionForm((current) => ({ ...current, serviceDate: event.target.value }))}
-                  className={inputClassName}
-                  disabled={savingProduction}
-                >
-                  {productionEditableDates.map((date) => (
-                    <option key={date} value={date}>
-                      {formatDateBr(date)}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block">
-                <span className={labelClassName}>Tipo</span>
-                <select
-                  value={productionForm.entryType}
-                  onChange={(event) =>
-                    setProductionForm((current) => ({
-                      ...current,
-                      entryType: event.target.value as EmployeePortalProductionEntryType,
-                    }))
-                  }
-                  className={inputClassName}
-                  disabled={savingProduction}
-                >
-                  <option value="RESOLVE">Cartão Resolve</option>
-                  <option value="CHECKUP">Check-up</option>
-                </select>
-              </label>
-              <label className="block">
-                <span className={labelClassName}>Nome completo do paciente</span>
-                <input
-                  value={productionForm.patientNameRaw}
-                  onChange={(event) => setProductionForm((current) => ({ ...current, patientNameRaw: event.target.value }))}
-                  className={inputClassName}
-                  placeholder="Ex: Maria Aparecida Souza"
-                  disabled={savingProduction}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={saveProductionEntry}
-                disabled={
-                  savingProduction ||
-                  !(productionForm.serviceDate || productionEditableDates[0]) ||
-                  !productionForm.patientNameRaw.trim()
-                }
-                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {savingProduction ? <Loader2 size={16} className="animate-spin" /> : productionForm.id ? <Pencil size={16} /> : <Plus size={16} />}
-                {productionForm.id ? 'Salvar alterações' : 'Registrar atendimento'}
-              </button>
-              <p className="text-xs text-slate-500">
-                Você pode editar ou excluir apenas os lançamentos de hoje e ontem.
-              </p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              {([
-                ['Hoje', overview.production.today],
-                ['Ontem', overview.production.yesterday],
-              ] as const).map(([label, summary]) => (
-                <div key={String(label)} className="rounded-xl border border-slate-200 bg-white p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-                    <CalendarDays size={15} className="text-[#17407E]" />
-                    {label}
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <div className="text-xs font-semibold uppercase text-slate-500">Resolve</div>
-                      <div className="mt-1 text-lg font-bold text-slate-900">{summary.resolveCount}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase text-slate-500">Check-up</div>
-                      <div className="mt-1 text-lg font-bold text-slate-900">{summary.checkupCount}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase text-slate-500">Vinculados</div>
-                      <div className="mt-1 text-lg font-bold text-emerald-700">{summary.matchedCount}</div>
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold uppercase text-slate-500">Pendentes</div>
-                      <div className="mt-1 text-lg font-bold text-amber-700">{summary.pendingMatchCount}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="rounded-xl border border-slate-200 bg-white">
-              <div className="border-b border-slate-200 px-4 py-3">
-                <h3 className="text-sm font-semibold text-slate-800">Lançamentos recentes</h3>
-              </div>
-              <div className="divide-y divide-slate-100">
-                {productionEntries.length === 0 ? (
-                  <div className="px-4 py-6 text-sm text-slate-500">
-                    Nenhum lançamento registrado ainda.
-                  </div>
-                ) : (
-                  productionEntries.map((entry) => (
-                    <div key={entry.id} className="px-4 py-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-semibold text-slate-900">{entry.patientNameRaw}</span>
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">
-                              {productionTypeLabels[entry.entryType]}
-                            </span>
-                            <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${productionMatchStatusClasses[entry.matchStatus]}`}>
-                              {productionMatchStatusLabels[entry.matchStatus]}
-                            </span>
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
-                            <span>{formatDateBr(entry.serviceDate)}</span>
-                            {entry.teamSnapshot ? <span>Equipe: {entry.teamSnapshot}</span> : null}
-                            {entry.feegowPatientName ? (
-                              <span className="inline-flex items-center gap-1 text-emerald-700">
-                                <Link2 size={13} />
-                                {entry.feegowPatientName}
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => startEditingProduction(entry)}
-                            disabled={!entry.canEdit || savingProduction || deletingProductionId === entry.id}
-                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40"
-                          >
-                            <Pencil size={14} />
-                            Editar
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => deleteProductionEntry(entry)}
-                            disabled={!entry.canEdit || deletingProductionId === entry.id}
-                            className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 disabled:opacity-40"
-                          >
-                            {deletingProductionId === entry.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                            Excluir
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          <p className="mt-1 text-sm text-slate-500">{overview.rejectedCount} com correcao solicitada</p>
         </div>
       </section>
 
@@ -1214,8 +564,6 @@ export default function PortalColaboradorPage() {
           Enviar para revisão
         </button>
       </section>
-
-      {helpOpen ? <HelpModal onClose={() => setHelpOpen(false)} /> : null}
-    </main>
+    </PortalShell>
   );
 }

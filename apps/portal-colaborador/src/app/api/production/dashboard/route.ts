@@ -5,26 +5,26 @@ import {
   getEmployeePortalErrorMessage,
   getEmployeePortalErrorStatus,
 } from '@consultare/core/employee-portal/errors';
-import {
-  createPortalProductionEntry,
-  getEmployeePortalProductionDashboard,
-} from '@consultare/core/employee-portal/repository';
+import { getEmployeePortalProductionDashboard } from '@consultare/core/employee-portal/repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function POST(request: Request) {
+export async function GET(request: Request) {
   try {
     const db = getDbConnection();
     const session = await requireEmployeePortalSession(db, request);
-    const body = await request.json();
-    await createPortalProductionEntry(db, session.employeeId, body);
-    const data = await getEmployeePortalProductionDashboard(db, session.employeeId);
+    const url = new URL(request.url);
+    const data = await getEmployeePortalProductionDashboard(db, session.employeeId, {
+      serviceDate: url.searchParams.get('serviceDate') || undefined,
+      entryType: url.searchParams.get('entryType') || undefined,
+      matchStatus: url.searchParams.get('matchStatus') || undefined,
+    });
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
-    console.error('Erro ao criar lançamento de produção no portal:', error);
+    console.error('Erro ao carregar dashboard de produção do portal:', error);
     return NextResponse.json(
-      { error: getEmployeePortalErrorMessage(error, 'Erro interno ao criar lançamento.') },
+      { error: getEmployeePortalErrorMessage(error, 'Erro interno ao carregar produção.') },
       { status: getEmployeePortalErrorStatus(error) }
     );
   }

@@ -40,9 +40,12 @@ import type {
   EmployeePortalDocumentStatus,
   EmployeePortalInvite,
   EmployeePortalInviteStatus,
+  EmployeePortalProductionDashboard,
+  EmployeePortalProductionDashboardFilters,
   EmployeePortalProductionDaySummary,
   EmployeePortalProductionEntry,
   EmployeePortalProductionEntryType,
+  EmployeePortalProductionLast7DaysSummary,
   EmployeePortalProductionMatchStatus,
   EmployeePortalOverview,
   EmployeePortalPersonalData,
@@ -109,8 +112,36 @@ const getEditablePortalProductionDates = () => {
   return dates;
 };
 
+const getRecentPortalProductionDates = (days = 7) => {
+  const today = new Date();
+  const dates: string[] = [];
+  for (let offset = 0; offset < days; offset += 1) {
+    const current = new Date(today);
+    current.setDate(today.getDate() - offset);
+    dates.push(formatSaoPauloDate(current));
+  }
+  return dates;
+};
+
 const isWithinPortalProductionEditWindow = (serviceDate: string | null | undefined) =>
   Boolean(serviceDate && getEditablePortalProductionDates().includes(String(serviceDate).slice(0, 10)));
+
+const normalizePortalProductionEntryTypeFilter = (value: any): EmployeePortalProductionDashboardFilters['entryType'] => {
+  const normalized = upper(value);
+  return normalized === 'RESOLVE' || normalized === 'CHECKUP' ? normalized : 'ALL';
+};
+
+const normalizePortalProductionMatchStatusFilter = (value: any): EmployeePortalProductionDashboardFilters['matchStatus'] => {
+  const normalized = upper(value);
+  return ['MATCHED', 'NO_MATCH', 'MULTIPLE_MATCHES', 'PENDING_MATCH'].includes(normalized)
+    ? (normalized as EmployeePortalProductionDashboardFilters['matchStatus'])
+    : 'ALL';
+};
+
+const normalizePortalProductionServiceDateFilter = (value: any, availableDates: string[]) => {
+  const normalized = parseDate(value);
+  return normalized && availableDates.includes(normalized) ? normalized : null;
+};
 
 const normalizePhone = (value: any): string | null => {
   const digits = clean(value).replace(/\D/g, '').slice(0, 11);
@@ -569,6 +600,74 @@ const buildProductionDaySummary = (
     matchedCount: dayEntries.filter((entry) => entry.matchStatus === 'MATCHED').length,
     pendingMatchCount: dayEntries.filter((entry) => entry.matchStatus !== 'MATCHED').length,
     totalCount: dayEntries.length,
+  };
+};
+
+const buildProductionLast7DaysSummary = (
+  dates: string[],
+  entries: EmployeePortalProductionEntry[]
+): EmployeePortalProductionLast7DaysSummary => {
+  const periodEntries = entries.filter((entry) => dates.includes(entry.serviceDate));
+  return {
+    startDate: dates[dates.length - 1] || nowDate(),
+    endDate: dates[0] || nowDate(),
+    resolveMatchedCount: periodEntries.filter((entry) => entry.entryType === 'RESOLVE' && entry.matchStatus === 'MATCHED').length,
+    checkupMatchedCount: periodEntries.filter((entry) => entry.entryType === 'CHECKUP' && entry.matchStatus === 'MATCHED').length,
+    matchedCount: periodEntries.filter((entry) => entry.matchStatus === 'MATCHED').length,
+    pendingMatchCount: periodEntries.filter((entry) => entry.matchStatus !== 'MATCHED').length,
+    totalCount: periodEntries.length,
+  };
+};
+
+export const getEmployeePortalProductionDashboard = async (
+  db: DbInterface,
+  employeeId: string,
+  rawFilters?: {
+    serviceDate?: string | null;
+    entryType?: string | null;
+    matchStatus?: string | null;
+  }
+): Promise<EmployeePortalProductionDashboard> => {
+  await ensureEmployeePortalTables(db);
+  const employee = await getEmployeeById(db, employeeId);
+  if (!employee) throw new EmployeePortalError('Colaborador não encontrado.', 404);
+
+  const availableDates = getRecentPortalProductionDates(7);
+  const editableDates = getEditablePortalProductionDates();
+  const filters: EmployeePortalProductionDashboardFilters = {
+    serviceDate: normalizePortalProductionServiceDateFilter(rawFilters?.serviceDate, availableDates),
+    entryType: normalizePortalProductionEntryTypeFilter(rawFilters?.entryType),
+    matchStatus: normalizePortalProductionMatchStatusFilter(rawFilters?.matchStatus),
+  };
+
+  const placeholders = availableDates.map(() => '?').join(',');
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM employee_portal_production_entries
+    WHERE employee_id = ?
+      AND deleted_at IS NULL
+      AND service_date IN (${placeholders})
+    ORDER BY service_date DESC, created_at DESC
+    `,
+    [employeeId, ...availableDates]
+  );
+  const allEntries = rows.map(mapProductionEntry);
+  const entries = allEntries.filter((entry) => {
+    if (filters.serviceDate && entry.serviceDate !== filters.serviceDate) return false;
+    if (filters.entryType !== 'ALL' && entry.entryType !== filters.entryType) return false;
+    if (filters.matchStatus !== 'ALL' && entry.matchStatus !== filters.matchStatus) return false;
+    return true;
+  });
+
+  return {
+    today: buildProductionDaySummary(availableDates[0] || nowDate(), allEntries),
+    yesterday: buildProductionDaySummary(availableDates[1] || availableDates[0] || nowDate(), allEntries),
+    last7Days: buildProductionLast7DaysSummary(availableDates, allEntries),
+    filters,
+    editableDates,
+    availableDates,
+    entries,
   };
 };
 

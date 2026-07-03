@@ -6,6 +6,7 @@ import {
   getEmployeePortalErrorStatus,
 } from '@consultare/core/employee-portal/errors';
 import {
+  getEmployeePortalProductionDashboard,
   deletePortalProductionEntry,
   updatePortalProductionEntry,
 } from '@consultare/core/employee-portal/repository';
@@ -23,7 +24,8 @@ export async function PUT(request: Request, context: ParamsContext) {
     const session = await requireEmployeePortalSession(db, request);
     const body = await request.json();
     const { entryId } = await context.params;
-    const data = await updatePortalProductionEntry(db, session.employeeId, String(entryId || ''), body);
+    await updatePortalProductionEntry(db, session.employeeId, String(entryId || ''), body);
+    const data = await getEmployeePortalProductionDashboard(db, session.employeeId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
     console.error('Erro ao atualizar lançamento de produção no portal:', error);
@@ -39,7 +41,8 @@ export async function DELETE(request: Request, context: ParamsContext) {
     const db = getDbConnection();
     const session = await requireEmployeePortalSession(db, request);
     const { entryId } = await context.params;
-    const data = await deletePortalProductionEntry(db, session.employeeId, String(entryId || ''));
+    await deletePortalProductionEntry(db, session.employeeId, String(entryId || ''));
+    const data = await getEmployeePortalProductionDashboard(db, session.employeeId);
     return NextResponse.json({ status: 'success', data });
   } catch (error: unknown) {
     console.error('Erro ao excluir lançamento de produção no portal:', error);

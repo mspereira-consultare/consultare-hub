@@ -141,6 +141,32 @@ export type EmployeePortalProductionDaySummary = {
   totalCount: number;
 };
 
+export type EmployeePortalProductionDashboardFilters = {
+  serviceDate: string | null;
+  entryType: EmployeePortalProductionEntryType | 'ALL';
+  matchStatus: EmployeePortalProductionMatchStatus | 'ALL';
+};
+
+export type EmployeePortalProductionLast7DaysSummary = {
+  startDate: string;
+  endDate: string;
+  resolveMatchedCount: number;
+  checkupMatchedCount: number;
+  matchedCount: number;
+  pendingMatchCount: number;
+  totalCount: number;
+};
+
+export type EmployeePortalProductionDashboard = {
+  today: EmployeePortalProductionDaySummary;
+  yesterday: EmployeePortalProductionDaySummary;
+  last7Days: EmployeePortalProductionLast7DaysSummary;
+  filters: EmployeePortalProductionDashboardFilters;
+  editableDates: string[];
+  availableDates: string[];
+  entries: EmployeePortalProductionEntry[];
+};
+
 export type EmployeePortalOverview = {
   employee: Pick<
     EmployeeListItem,
