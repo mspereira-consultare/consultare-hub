@@ -31,6 +31,22 @@ type LoginState = {
   birthDate: string;
 };
 
+type CredentialLoginState = {
+  usernameOrEmail: string;
+  password: string;
+};
+
+type LoginTab = 'invite' | 'credentials';
+
+type AuthResponse = {
+  status: string;
+  data: {
+    expiresAt: string;
+    authMethod: 'INVITE' | 'CREDENTIALS';
+    credentialIssuedNow: boolean;
+  };
+};
+
 const inputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100 disabled:text-slate-500';
 const labelClassName = 'mb-1 block text-[11px] font-semibold uppercase text-slate-500';
@@ -144,12 +160,15 @@ function HelpModal({ onClose }: { onClose: () => void }) {
 
         <div className="mt-5 grid gap-3">
           {[
-            ['Acesso', 'Use o CPF e a data de nascimento informados ao RH. Se continuar aparecendo erro, peça ao RH para validar seu cadastro ou gerar um novo link.'],
+            ['Primeiro acesso', 'Use o link ou código do convite enviado pelo RH junto com seu CPF e data de nascimento. Esse passo é necessário apenas na primeira entrada.'],
+            ['Acessos seguintes', 'Depois da validação inicial, use seu usuário e senha. Se a senha já tiver sido exibida neste portal e você não a tiver mais, solicite uma nova ao RH/DP.'],
+            ['Dados de identificação', 'Digite o CPF apenas com os números ou no formato 000.000.000-00 e confirme a data de nascimento cadastrada pelo RH.'],
             ['Dados pessoais', 'Preencha os dados com atenção. O DP vai conferir as informações antes de atualizar seu cadastro oficial.'],
             ['Documentos', 'Envie PDF ou foto legível em JPG, JPEG, PNG ou WEBP. O limite por arquivo é 15 MB. Evite fotos cortadas, tremidas ou escuras.'],
             ['Frente e verso', 'Quando o documento tiver frente e verso, coloque as duas partes no mesmo PDF ou na mesma imagem sempre que possível.'],
             ['Correção', 'Se um documento for devolvido, veja o motivo informado, envie uma nova versão e mande novamente para revisão.'],
             ['Privacidade', 'Seus dados serão usados apenas para cadastro, admissão, folha, benefícios e obrigações legais da empresa.'],
+            ['Suporte', 'Se continuar sem conseguir acessar, fale com o RH/Departamento Pessoal para confirmar o cadastro ou liberar uma nova senha inicial.'],
           ].map(([title, body]) => (
             <div key={title} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
@@ -171,7 +190,7 @@ function StatusBadge({ status }: { status: EmployeePortalChecklistItem['status']
 }
 
 export default function PortalColaboradorPage() {
-  const [login, setLogin] = useState<LoginState>(() => {
+  const [inviteLogin, setInviteLogin] = useState<LoginState>(() => {
     if (typeof window === 'undefined') return { token: '', cpf: '', birthDate: '' };
     const params = new URLSearchParams(window.location.search);
     return {
@@ -179,6 +198,15 @@ export default function PortalColaboradorPage() {
       cpf: '',
       birthDate: '',
     };
+  });
+  const [credentialLogin, setCredentialLogin] = useState<CredentialLoginState>({
+    usernameOrEmail: '',
+    password: '',
+  });
+  const [loginTab, setLoginTab] = useState<LoginTab>(() => {
+    if (typeof window === 'undefined') return 'invite';
+    const params = new URLSearchParams(window.location.search);
+    return params.get('convite') || params.get('token') ? 'invite' : 'credentials';
   });
   const [overview, setOverview] = useState<EmployeePortalOverview | null>(null);
   const [personal, setPersonal] = useState<EmployeePortalPersonalData>({});
@@ -223,24 +251,52 @@ export default function PortalColaboradorPage() {
     return Math.round((done / overview.checklist.length) * 100);
   }, [overview]);
 
-  const loginPortal = async () => {
+  const loginWithInvite = async () => {
     setAuthenticating(true);
     setError('');
     setNotice('');
     try {
-      await fetchJson('/api/auth', {
+      const payload = await fetchJson<AuthResponse>('/api/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token: login.token,
-          cpf: digitsOnly(login.cpf),
-          birthDate: login.birthDate,
+          mode: 'invite',
+          token: inviteLogin.token,
+          cpf: digitsOnly(inviteLogin.cpf),
+          birthDate: inviteLogin.birthDate,
         }),
       });
-      setNotice('Acesso validado com sucesso.');
+      setNotice(
+        payload.data.credentialIssuedNow
+          ? 'Acesso validado. Seus próximos acessos poderão ser feitos com usuário e senha exibidos abaixo.'
+          : 'Acesso validado com sucesso.'
+      );
       await loadMe();
     } catch (loginError: unknown) {
       setError(getErrorMessage(loginError, 'Não foi possível validar seu acesso.'));
+    } finally {
+      setAuthenticating(false);
+    }
+  };
+
+  const loginWithCredentials = async () => {
+    setAuthenticating(true);
+    setError('');
+    setNotice('');
+    try {
+      await fetchJson<AuthResponse>('/api/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'credentials',
+          usernameOrEmail: credentialLogin.usernameOrEmail,
+          password: credentialLogin.password,
+        }),
+      });
+      setNotice('Login realizado com sucesso.');
+      await loadMe();
+    } catch (loginError: unknown) {
+      setError(getErrorMessage(loginError, 'Não foi possível entrar com usuário e senha.'));
     } finally {
       setAuthenticating(false);
     }
@@ -352,7 +408,7 @@ export default function PortalColaboradorPage() {
           <Image src="/logo-color.png" alt="Consultare" width={180} height={55} priority className="h-12 w-auto" />
           <h1 className="mt-6 text-2xl font-bold text-slate-950">Portal do colaborador</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Informe CPF e data de nascimento para acessar o envio de dados e documentos.
+            Use o convite recebido do RH no primeiro acesso. Depois disso, entre com seu usuário e senha.
           </p>
 
           {error ? (
@@ -362,55 +418,145 @@ export default function PortalColaboradorPage() {
             </div>
           ) : null}
 
-          <div className="mt-5 space-y-4">
-            <label className="block">
-              <span className={labelClassName}>CPF</span>
-              <input
-                value={login.cpf}
-                onChange={(event) => setLogin((current) => ({ ...current, cpf: formatCpf(event.target.value) }))}
-                className={inputClassName}
-                placeholder="000.000.000-00"
-              />
-            </label>
-            <label className="block">
-              <span className={labelClassName}>Data de nascimento</span>
-              <input
-                type="date"
-                value={login.birthDate}
-                onChange={(event) => setLogin((current) => ({ ...current, birthDate: event.target.value }))}
-                className={inputClassName}
-              />
-            </label>
-            {!login.token ? (
-              <label className="block">
-                <span className={labelClassName}>Código do convite</span>
-                <input
-                  value={login.token}
-                  onChange={(event) => setLogin((current) => ({ ...current, token: event.target.value }))}
-                  className={inputClassName}
-                  placeholder="Cole o código recebido pelo RH"
-                />
-              </label>
-            ) : null}
-            <button
-              type="button"
-              onClick={loginPortal}
-              disabled={authenticating || !login.token || !login.cpf || !login.birthDate}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
-            >
-              {authenticating ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
-              Continuar
-            </button>
+          <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <div className="grid grid-cols-2 gap-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginTab('invite');
+                  setError('');
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  loginTab === 'invite'
+                    ? 'bg-white text-[#17407E] shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Primeiro acesso
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginTab('credentials');
+                  setError('');
+                }}
+                className={`rounded-lg px-3 py-2 text-sm font-semibold transition ${
+                  loginTab === 'credentials'
+                    ? 'bg-white text-[#17407E] shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Entrar
+              </button>
+            </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setHelpOpen(true)}
-            className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#17407E]"
-          >
-            <CircleHelp size={15} />
-            Precisa de ajuda?
-          </button>
+          <div className="mt-5">
+            {loginTab === 'invite' ? (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-[#17407E]">
+                  Use este modo apenas no primeiro acesso ao portal.
+                </div>
+                <label className="block">
+                  <span className={labelClassName}>CPF</span>
+                  <input
+                    value={inviteLogin.cpf}
+                    onChange={(event) => setInviteLogin((current) => ({ ...current, cpf: formatCpf(event.target.value) }))}
+                    className={inputClassName}
+                    placeholder="000.000.000-00"
+                  />
+                </label>
+                <label className="block">
+                  <span className={labelClassName}>Data de nascimento</span>
+                  <input
+                    type="date"
+                    value={inviteLogin.birthDate}
+                    onChange={(event) => setInviteLogin((current) => ({ ...current, birthDate: event.target.value }))}
+                    className={inputClassName}
+                  />
+                </label>
+                {!inviteLogin.token ? (
+                  <label className="block">
+                    <span className={labelClassName}>Código do convite</span>
+                    <input
+                      value={inviteLogin.token}
+                      onChange={(event) => setInviteLogin((current) => ({ ...current, token: event.target.value }))}
+                      className={inputClassName}
+                      placeholder="Cole o código recebido pelo RH"
+                    />
+                  </label>
+                ) : (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+                    Convite identificado no link. Confira o CPF e a data de nascimento para continuar.
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={loginWithInvite}
+                  disabled={authenticating || !inviteLogin.token || !inviteLogin.cpf || !inviteLogin.birthDate}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {authenticating ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
+                  Continuar
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                  Depois do primeiro acesso, use aqui o usuário e a senha liberados no portal.
+                </div>
+                <label className="block">
+                  <span className={labelClassName}>Usuário ou e-mail</span>
+                  <input
+                    value={credentialLogin.usernameOrEmail}
+                    onChange={(event) => setCredentialLogin((current) => ({ ...current, usernameOrEmail: event.target.value }))}
+                    className={inputClassName}
+                    placeholder="Seu usuário ou e-mail"
+                    autoComplete="username"
+                  />
+                </label>
+                <label className="block">
+                  <span className={labelClassName}>Senha</span>
+                  <input
+                    type="password"
+                    value={credentialLogin.password}
+                    onChange={(event) => setCredentialLogin((current) => ({ ...current, password: event.target.value }))}
+                    className={inputClassName}
+                    placeholder="Digite sua senha"
+                    autoComplete="current-password"
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={loginWithCredentials}
+                  disabled={authenticating || !credentialLogin.usernameOrEmail.trim() || !credentialLogin.password}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                >
+                  {authenticating ? <Loader2 size={16} className="animate-spin" /> : <ChevronRight size={16} />}
+                  Entrar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHelpOpen(true)}
+                  className="inline-flex items-center gap-2 text-sm font-semibold text-[#17407E]"
+                >
+                  <CircleHelp size={15} />
+                  Preciso de ajuda para acessar
+                </button>
+              </div>
+            )}
+          </div>
+
+          {loginTab === 'invite' ? (
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#17407E]"
+            >
+              <CircleHelp size={15} />
+              Precisa de ajuda?
+            </button>
+          ) : null}
         </div>
         {helpOpen ? <HelpModal onClose={() => setHelpOpen(false)} /> : null}
       </main>
@@ -431,9 +577,12 @@ export default function PortalColaboradorPage() {
           <div className="flex items-center gap-3">
             <Image src="/logo-color.png" alt="Consultare" width={165} height={50} priority className="h-11 w-auto" />
             {photoUrl ? (
-              <img
+              <Image
                 src={photoUrl}
                 alt={`Foto de ${overview.employee.fullName}`}
+                width={48}
+                height={48}
+                unoptimized
                 className="h-12 w-12 shrink-0 rounded-full border border-slate-200 object-cover shadow-sm"
               />
             ) : (
@@ -506,10 +655,10 @@ export default function PortalColaboradorPage() {
         <section className="mt-5 rounded-2xl border border-[#17407E]/15 bg-gradient-to-r from-[#17407E]/5 via-white to-[#2AAE8B]/5 p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#17407E]">Acesso à intranet</p>
+              <p className="text-xs font-semibold uppercase tracking-wide text-[#17407E]">Acesso do colaborador</p>
               <h2 className="mt-1 text-lg font-bold text-slate-900">Seus dados de acesso já estão prontos</h2>
               <p className="mt-1 text-sm text-slate-600">
-                Use este usuário para entrar na intranet da Consultare. A senha inicial aparece apenas uma vez.
+                Use este usuário para seus próximos acessos neste portal e, futuramente, também na intranet da Consultare. A senha inicial aparece apenas uma vez.
               </p>
             </div>
             {overview.intranetAccess.status === 'PENDING_VIEW' ? (

@@ -2,6 +2,7 @@ import 'server-only';
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, randomUUID } from 'crypto';
+import { compare } from 'bcryptjs';
 import type { DbInterface } from '../db';
 import {
   EMPLOYEE_DOCUMENT_TYPE_MAP,
@@ -26,6 +27,7 @@ import {
   EMPLOYEE_PORTAL_SESSION_TTL_HOURS,
 } from './constants';
 import {
+  createOrRotatePortalCredential,
   ensureEmployeeUserAccount,
   getLatestPortalCredential,
   getLinkedUserByEmployeeId,
@@ -427,6 +429,20 @@ const listInvites = async (db: DbInterface, employeeId: string): Promise<Employe
   return rows.map((row) => mapInvite(row));
 };
 
+const getLatestInvite = async (db: DbInterface, employeeId: string): Promise<EmployeePortalInvite | null> => {
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM employee_portal_invites
+    WHERE employee_id = ?
+    ORDER BY created_at DESC
+    LIMIT 1
+    `,
+    [employeeId]
+  );
+  return rows[0] ? mapInvite(rows[0]) : null;
+};
+
 const getActiveInvite = async (
   db: DbInterface,
   employeeId: string,
@@ -644,7 +660,6 @@ export const getEmployeePortalOverview = async (
   const checklist = buildChecklist(employee, submission, documents, officialDocuments);
   const intranetBaseUrl = clean(process.env.INTRANET_BASE_URL) || clean(process.env.NEXT_PUBLIC_INTRANET_URL) || '/';
   const intranetAccess =
-    submission?.status === 'APPROVED' &&
     employee.status === 'ATIVO' &&
     linkedUser &&
     latestCredential &&
@@ -782,6 +797,92 @@ export const revokeEmployeePortalInvite = async (
   return getEmployeePortalOverview(db, employeeId);
 };
 
+const createPortalSession = async (
+  db: DbInterface,
+  employeeId: string,
+  inviteId: string,
+  context: { ipAddress?: string | null; userAgent?: string | null },
+  auditAction: string,
+  auditPayload: Record<string, any> | null = null
+) => {
+  const sessionToken = generatePortalToken();
+  const sessionHash = hashPortalToken(sessionToken);
+  const sessionId = randomUUID();
+  const now = NOW();
+  const expiresAt = addHoursIso(now, EMPLOYEE_PORTAL_SESSION_TTL_HOURS);
+
+  await db.execute(
+    `
+    INSERT INTO employee_portal_sessions (
+      id, employee_id, invite_id, session_hash, created_at, expires_at,
+      ip_address, user_agent
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [
+      sessionId,
+      employeeId,
+      inviteId,
+      sessionHash,
+      now,
+      expiresAt,
+      clean(context.ipAddress) || null,
+      clean(context.userAgent) || null,
+    ]
+  );
+
+  await insertAudit(db, auditAction, `portal:${employeeId}`, employeeId, {
+    ...(auditPayload || {}),
+    sessionId,
+  });
+
+  return {
+    sessionToken,
+    session: {
+      id: sessionId,
+      employeeId,
+      inviteId,
+      createdAt: now,
+      expiresAt,
+      revokedAt: null,
+      ipAddress: clean(context.ipAddress) || null,
+      userAgent: clean(context.userAgent) || null,
+    } satisfies EmployeePortalSession,
+  };
+};
+
+const ensurePortalCredentialAccess = async (
+  db: DbInterface,
+  employee: Awaited<ReturnType<typeof getEmployeeById>>,
+  actorUserId?: string | null
+) => {
+  if (!employee || employee.status !== 'ATIVO') {
+    return { credentialIssuedNow: false };
+  }
+
+  const ensured = await ensureEmployeeUserAccount(db, employee, {
+    actorUserId,
+    createInitialCredential: true,
+  });
+  const linkedUser = ensured.user || await getLinkedUserByEmployeeId(db, employee.id);
+  if (!linkedUser) {
+    return { credentialIssuedNow: false };
+  }
+
+  const latestCredential = await getLatestPortalCredential(db, employee.id);
+  if (!latestCredential || !['PENDING_VIEW', 'VIEWED'].includes(latestCredential.status)) {
+    await createOrRotatePortalCredential(
+      db,
+      employee.id,
+      linkedUser.id,
+      linkedUser.username,
+      actorUserId || null
+    );
+    return { credentialIssuedNow: true };
+  }
+
+  return { credentialIssuedNow: Boolean(ensured.createdCredential) };
+};
+
 const registerFailedInviteAttempt = async (db: DbInterface, invite: EmployeePortalInvite) => {
   const nextAttemptCount = invite.attemptCount + 1;
   const lockedUntil = nextAttemptCount >= EMPLOYEE_PORTAL_MAX_ATTEMPTS
@@ -832,28 +933,17 @@ export const authenticateEmployeePortal = async (
     throw genericError;
   }
 
-  const sessionToken = generatePortalToken();
-  const sessionHash = hashPortalToken(sessionToken);
-  const sessionId = randomUUID();
-  const expiresAt = addHoursIso(now, EMPLOYEE_PORTAL_SESSION_TTL_HOURS);
-
-  await db.execute(
-    `
-    INSERT INTO employee_portal_sessions (
-      id, employee_id, invite_id, session_hash, created_at, expires_at,
-      ip_address, user_agent
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `,
-    [
-      sessionId,
-      employee.id,
-      invite.id,
-      sessionHash,
-      now,
-      expiresAt,
-      clean(context.ipAddress) || null,
-      clean(context.userAgent) || null,
-    ]
+  const credentialProvisioning = await ensurePortalCredentialAccess(db, employee, `portal:${employee.id}`);
+  const session = await createPortalSession(
+    db,
+    employee.id,
+    invite.id,
+    context,
+    'EMPLOYEE_PORTAL_LOGIN_SUCCESS',
+    {
+      inviteId: invite.id,
+      credentialIssuedNow: credentialProvisioning.credentialIssuedNow,
+    }
   );
 
   await db.execute(
@@ -865,23 +955,100 @@ export const authenticateEmployeePortal = async (
     [now, invite.id]
   );
 
-  await insertAudit(db, 'EMPLOYEE_PORTAL_LOGIN_SUCCESS', `portal:${employee.id}`, employee.id, {
-    inviteId: invite.id,
-    sessionId,
-  });
+  return {
+    ...session,
+    authMethod: 'INVITE' as const,
+    credentialIssuedNow: credentialProvisioning.credentialIssuedNow,
+  };
+};
+
+export const authenticateEmployeePortalWithCredentials = async (
+  db: DbInterface,
+  payload: { usernameOrEmail: string; password: string },
+  context: { ipAddress?: string | null; userAgent?: string | null }
+) => {
+  await ensureEmployeePortalTables(db);
+  const identifier = clean(payload.usernameOrEmail).toLowerCase();
+  const password = String(payload.password || '');
+  if (!identifier || !password) {
+    throw new EmployeePortalError('Informe usuário e senha para continuar.', 400);
+  }
+
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM users
+    WHERE LOWER(COALESCE(username, '')) = ?
+       OR LOWER(COALESCE(email, '')) = ?
+    ORDER BY CASE WHEN LOWER(COALESCE(username, '')) = ? THEN 0 ELSE 1 END, created_at ASC
+    LIMIT 1
+    `,
+    [identifier, identifier, identifier]
+  );
+  const user = rows[0] || null;
+  const genericError = new EmployeePortalError('Usuário ou senha inválidos. Confira os dados ou fale com o RH.', 401);
+
+  if (!user) {
+    await insertAudit(db, 'EMPLOYEE_PORTAL_CREDENTIAL_LOGIN_FAILED', 'portal:credentials', null, {
+      reason: 'user_not_found',
+      identifier,
+    });
+    throw genericError;
+  }
+
+  const employeeId = clean(user.employee_id);
+  const storedHash = clean(user.password || user.password_hash);
+
+  if (!employeeId || upper(user.status || 'INATIVO') !== 'ATIVO' || !storedHash) {
+    await insertAudit(db, 'EMPLOYEE_PORTAL_CREDENTIAL_LOGIN_FAILED', `portal:user:${clean(user.id) || 'unknown'}`, employeeId || null, {
+      reason: !employeeId ? 'missing_employee_link' : (!storedHash ? 'missing_password_hash' : 'inactive_user'),
+      identifier,
+      userId: clean(user.id) || null,
+    });
+    throw genericError;
+  }
+
+  const passwordValid = await compare(password, storedHash);
+  if (!passwordValid) {
+    await insertAudit(db, 'EMPLOYEE_PORTAL_CREDENTIAL_LOGIN_FAILED', `portal:user:${clean(user.id)}`, employeeId, {
+      reason: 'invalid_password',
+      identifier,
+      userId: clean(user.id),
+    });
+    throw genericError;
+  }
+
+  const employee = await getEmployeeById(db, employeeId);
+  if (!employee) {
+    await insertAudit(db, 'EMPLOYEE_PORTAL_CREDENTIAL_LOGIN_FAILED', `portal:user:${clean(user.id)}`, employeeId, {
+      reason: 'employee_not_found',
+      identifier,
+      userId: clean(user.id),
+    });
+    throw genericError;
+  }
+
+  const latestInvite = await getLatestInvite(db, employeeId);
+  if (!latestInvite) {
+    throw new EmployeePortalError('Faça o primeiro acesso com CPF, data de nascimento e convite enviado pelo RH.', 401);
+  }
+
+  const session = await createPortalSession(
+    db,
+    employee.id,
+    latestInvite.id,
+    context,
+    'EMPLOYEE_PORTAL_CREDENTIAL_LOGIN_SUCCESS',
+    {
+      inviteId: latestInvite.id,
+      userId: clean(user.id),
+    }
+  );
 
   return {
-    sessionToken,
-    session: {
-      id: sessionId,
-      employeeId: employee.id,
-      inviteId: invite.id,
-      createdAt: now,
-      expiresAt,
-      revokedAt: null,
-      ipAddress: clean(context.ipAddress) || null,
-      userAgent: clean(context.userAgent) || null,
-    } satisfies EmployeePortalSession,
+    ...session,
+    authMethod: 'CREDENTIALS' as const,
+    credentialIssuedNow: false,
   };
 };
 

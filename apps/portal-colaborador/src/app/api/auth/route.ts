@@ -9,7 +9,10 @@ import {
   getEmployeePortalErrorMessage,
   getEmployeePortalErrorStatus,
 } from '@consultare/core/employee-portal/errors';
-import { authenticateEmployeePortal } from '@consultare/core/employee-portal/repository';
+import {
+  authenticateEmployeePortal,
+  authenticateEmployeePortalWithCredentials,
+} from '@consultare/core/employee-portal/repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -18,20 +21,33 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const db = getDbConnection();
-    const result = await authenticateEmployeePortal(
-      db,
-      {
-        token: String(body?.token || ''),
-        cpf: String(body?.cpf || ''),
-        birthDate: String(body?.birthDate || ''),
-      },
-      getPortalRequestContext(request)
-    );
+    const authMode = String(body?.mode || '').trim().toLowerCase();
+    const result =
+      authMode === 'credentials' || body?.usernameOrEmail || body?.password
+        ? await authenticateEmployeePortalWithCredentials(
+            db,
+            {
+              usernameOrEmail: String(body?.usernameOrEmail || ''),
+              password: String(body?.password || ''),
+            },
+            getPortalRequestContext(request)
+          )
+        : await authenticateEmployeePortal(
+            db,
+            {
+              token: String(body?.token || ''),
+              cpf: String(body?.cpf || ''),
+              birthDate: String(body?.birthDate || ''),
+            },
+            getPortalRequestContext(request)
+          );
 
     const response = NextResponse.json({
       status: 'success',
       data: {
         expiresAt: result.session.expiresAt,
+        authMethod: result.authMethod,
+        credentialIssuedNow: result.credentialIssuedNow,
       },
     });
 

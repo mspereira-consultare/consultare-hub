@@ -28,7 +28,7 @@ export const requireEmployeePortalSession = async (
   const token = getPortalSessionTokenFromRequest(request);
   const session = await getEmployeePortalSessionByToken(db, token);
   if (!session) {
-    throw new EmployeePortalError('Sessão expirada. Acesse novamente pelo link do portal.', 401);
+    throw new EmployeePortalError('Sessão expirada. Acesse novamente pelo portal do colaborador.', 401);
   }
   return session;
 };
