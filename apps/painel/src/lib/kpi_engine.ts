@@ -293,6 +293,35 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
     let cardSalesSecondFallbackQuery: string | null = null;
     let cardSalesSecondFallbackParams: any[] = [];
 
+    if (kpiId === 'portal_resolve_qty' || kpiId === 'portal_checkup_qty') {
+        const entryType = kpiId === 'portal_resolve_qty' ? 'RESOLVE' : 'CHECKUP';
+        query = `
+            SELECT service_date as d, COUNT(*) as val
+            FROM employee_portal_production_entries
+            WHERE deleted_at IS NULL
+              AND match_status = 'MATCHED'
+              AND entry_type = ?
+              AND service_date BETWEEN ? AND ?
+              ${collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '' ? "AND UPPER(TRIM(employee_name_snapshot)) = UPPER(TRIM(?))" : ""}
+              ${teamVal && teamVal !== 'all' && teamVal !== '' ? "AND UPPER(TRIM(team_snapshot)) = UPPER(TRIM(?))" : ""}
+            GROUP BY service_date
+            ORDER BY service_date
+        `;
+        queryParams = [entryType, startDate, endDate];
+        if (collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '') queryParams.push(collaboratorVal);
+        if (teamVal && teamVal !== 'all' && teamVal !== '') queryParams.push(teamVal);
+        try {
+            const rows = await db.query(query, queryParams);
+            return (rows || []).map((row: any) => ({
+                date: String(row?.d || '').slice(0, 10),
+                value: Number(row?.val || 0),
+            })).filter((item: KpiHistoryItem) => item.date);
+        } catch (error: any) {
+            if (String(error?.message || '').includes('no such table')) return [];
+            throw error;
+        }
+    }
+
     // Filtro de exclusão: Garante que dados de unidades do Cartão Resolve 
     // não apareçam nos KPIs de faturamento da Clínica.
     const clinicExclusion = "AND unidade NOT LIKE '%Card%' AND unidade NOT LIKE '%Resolve%'";

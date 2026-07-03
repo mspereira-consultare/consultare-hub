@@ -7,6 +7,7 @@ export const EMPLOYEE_PORTAL_SESSION_TTL_HOURS = 2;
 export const EMPLOYEE_PORTAL_MAX_ATTEMPTS = 5;
 export const EMPLOYEE_PORTAL_LOCK_MINUTES = 15;
 export const EMPLOYEE_PORTAL_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
+export const EMPLOYEE_PORTAL_PRODUCTION_EDIT_WINDOW_DAYS = 2;
 
 export const EMPLOYEE_PORTAL_ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
@@ -46,4 +47,3 @@ export const EMPLOYEE_PORTAL_PERSONAL_FIELDS = [
   'bankAccount',
   'pixKey',
 ] as const;
-

@@ -4,13 +4,18 @@ import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   AlertCircle,
+  CalendarDays,
   CheckCircle2,
   ChevronRight,
   CircleHelp,
   FileText,
+  Link2,
   Loader2,
   LogOut,
+  Pencil,
+  Plus,
   Send,
+  Trash2,
   Upload,
   UserRound,
   X,
@@ -23,6 +28,8 @@ import type {
   EmployeePortalChecklistItem,
   EmployeePortalOverview,
   EmployeePortalPersonalData,
+  EmployeePortalProductionEntry,
+  EmployeePortalProductionEntryType,
 } from '@consultare/core/employee-portal/types';
 
 type LoginState = {
@@ -47,9 +54,32 @@ type AuthResponse = {
   };
 };
 
+type ProductionFormState = {
+  id: string | null;
+  serviceDate: string;
+  entryType: EmployeePortalProductionEntryType;
+  patientNameRaw: string;
+};
+
 const inputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100 disabled:text-slate-500';
 const labelClassName = 'mb-1 block text-[11px] font-semibold uppercase text-slate-500';
+const productionTypeLabels: Record<EmployeePortalProductionEntryType, string> = {
+  RESOLVE: 'Cartão Resolve',
+  CHECKUP: 'Check-up',
+};
+const productionMatchStatusLabels = {
+  MATCHED: 'Vinculado',
+  NO_MATCH: 'Sem vínculo',
+  MULTIPLE_MATCHES: 'Múltiplos pacientes',
+  PENDING_MATCH: 'Aguardando vínculo',
+} as const;
+const productionMatchStatusClasses = {
+  MATCHED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  NO_MATCH: 'border-amber-200 bg-amber-50 text-amber-800',
+  MULTIPLE_MATCHES: 'border-rose-200 bg-rose-50 text-rose-700',
+  PENDING_MATCH: 'border-blue-200 bg-blue-50 text-[#17407E]',
+} as const;
 
 const documentStatusLabel: Record<EmployeePortalChecklistItem['status'], string> = {
   PENDING: 'Pendente',
@@ -165,6 +195,7 @@ function HelpModal({ onClose }: { onClose: () => void }) {
             ['Dados de identificação', 'Digite o CPF apenas com os números ou no formato 000.000.000-00 e confirme a data de nascimento cadastrada pelo RH.'],
             ['Dados pessoais', 'Preencha os dados com atenção. O DP vai conferir as informações antes de atualizar seu cadastro oficial.'],
             ['Documentos', 'Envie PDF ou foto legível em JPG, JPEG, PNG ou WEBP. O limite por arquivo é 15 MB. Evite fotos cortadas, tremidas ou escuras.'],
+            ['Produção do dia', 'Registre Resolve e Check-up um paciente por vez, sempre com o nome completo. Apenas lançamentos vinculados com sucesso à Feegow entram nas metas.'],
             ['Frente e verso', 'Quando o documento tiver frente e verso, coloque as duas partes no mesmo PDF ou na mesma imagem sempre que possível.'],
             ['Correção', 'Se um documento for devolvido, veja o motivo informado, envie uma nova versão e mande novamente para revisão.'],
             ['Privacidade', 'Seus dados serão usados apenas para cadastro, admissão, folha, benefícios e obrigações legais da empresa.'],
@@ -217,8 +248,16 @@ export default function PortalColaboradorPage() {
   const [savingPersonal, setSavingPersonal] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [savingProduction, setSavingProduction] = useState(false);
+  const [deletingProductionId, setDeletingProductionId] = useState<string | null>(null);
   const [consentLgpd, setConsentLgpd] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [productionForm, setProductionForm] = useState<ProductionFormState>({
+    id: null,
+    serviceDate: '',
+    entryType: 'RESOLVE',
+    patientNameRaw: '',
+  });
 
   const canEdit = !overview?.submission || ['DRAFT', 'CHANGES_REQUESTED'].includes(overview.submission.status);
   const showBankFields = overview?.employee.employmentRegime === 'PJ';
@@ -387,6 +426,83 @@ export default function PortalColaboradorPage() {
       setNotice('Credenciais confirmadas. A senha não ficará mais visível neste portal.');
     } catch (ackError: unknown) {
       setError(getErrorMessage(ackError, 'Falha ao confirmar a leitura das credenciais.'));
+    }
+  };
+
+  const resetProductionForm = (nextDate?: string) => {
+    setProductionForm({
+      id: null,
+      serviceDate: nextDate || overview?.production.editableDates?.[0] || '',
+      entryType: 'RESOLVE',
+      patientNameRaw: '',
+    });
+  };
+
+  const startEditingProduction = (entry: EmployeePortalProductionEntry) => {
+    setProductionForm({
+      id: entry.id,
+      serviceDate: entry.serviceDate,
+      entryType: entry.entryType,
+      patientNameRaw: entry.patientNameRaw,
+    });
+    setNotice('');
+    setError('');
+  };
+
+  const saveProductionEntry = async () => {
+    setSavingProduction(true);
+    setError('');
+    setNotice('');
+    try {
+      const isEditing = Boolean(productionForm.id);
+      const payload = await fetchJson<{ status: string; data: EmployeePortalOverview }>(
+        isEditing
+          ? `/api/production/entries/${encodeURIComponent(String(productionForm.id))}`
+          : '/api/production/entries',
+        {
+          method: isEditing ? 'PUT' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            serviceDate: productionForm.serviceDate || overview?.production.editableDates?.[0] || '',
+            entryType: productionForm.entryType,
+            patientNameRaw: productionForm.patientNameRaw,
+          }),
+        }
+      );
+      setOverview(payload.data);
+      setPersonal(personalFromOverview(payload.data));
+      resetProductionForm(payload.data.production.editableDates?.[0]);
+      setNotice(
+        isEditing
+          ? 'Lançamento atualizado com sucesso.'
+          : 'Lançamento registrado. Ele só contará para metas quando o vínculo com a Feegow for confirmado.'
+      );
+    } catch (productionError: unknown) {
+      setError(getErrorMessage(productionError, 'Falha ao salvar lançamento.'));
+    } finally {
+      setSavingProduction(false);
+    }
+  };
+
+  const deleteProductionEntry = async (entry: EmployeePortalProductionEntry) => {
+    setDeletingProductionId(entry.id);
+    setError('');
+    setNotice('');
+    try {
+      const payload = await fetchJson<{ status: string; data: EmployeePortalOverview }>(
+        `/api/production/entries/${encodeURIComponent(entry.id)}`,
+        { method: 'DELETE' }
+      );
+      setOverview(payload.data);
+      setPersonal(personalFromOverview(payload.data));
+      if (productionForm.id === entry.id) {
+        resetProductionForm(payload.data.production.editableDates?.[0]);
+      }
+      setNotice('Lançamento removido com sucesso.');
+    } catch (deleteError: unknown) {
+      setError(getErrorMessage(deleteError, 'Falha ao remover lançamento.'));
+    } finally {
+      setDeletingProductionId(null);
     }
   };
 
@@ -569,6 +685,8 @@ export default function PortalColaboradorPage() {
   const photoUrl = photoDocument?.mimeType.startsWith('image/')
     ? `/api/submission/documents/${encodeURIComponent(photoDocument.id)}?inline=1`
     : '';
+  const productionEditableDates = overview.production.editableDates;
+  const productionEntries = overview.production.entries;
 
   return (
     <main className="mx-auto max-w-6xl p-4 sm:p-6">
@@ -648,6 +766,196 @@ export default function PortalColaboradorPage() {
           <div className="text-xs font-semibold uppercase text-slate-500">Pendências</div>
           <div className="mt-2 text-lg font-bold text-slate-900">{overview.pendingCount}</div>
           <p className="mt-1 text-sm text-slate-500">{overview.rejectedCount} com correção solicitada</p>
+        </div>
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Produção do dia</h2>
+            <p className="text-sm text-slate-500">
+              Registre Resolve e Check-up um paciente por vez. Só lançamentos vinculados à Feegow entram nas metas.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+              Pendências de vínculo: {overview.production.pendingMatchCount}
+            </div>
+            {productionForm.id ? (
+              <button
+                type="button"
+                onClick={() => resetProductionForm(productionEditableDates[0])}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+              >
+                <X size={14} />
+                Cancelar edição
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-[320px,minmax(0,1fr)]">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <Plus size={16} className="text-[#17407E]" />
+              {productionForm.id ? 'Editar lançamento' : 'Novo lançamento'}
+            </div>
+            <div className="mt-4 space-y-4">
+              <label className="block">
+                <span className={labelClassName}>Data do atendimento</span>
+                <select
+                  value={productionForm.serviceDate || productionEditableDates[0] || ''}
+                  onChange={(event) => setProductionForm((current) => ({ ...current, serviceDate: event.target.value }))}
+                  className={inputClassName}
+                  disabled={savingProduction}
+                >
+                  {productionEditableDates.map((date) => (
+                    <option key={date} value={date}>
+                      {formatDateBr(date)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className={labelClassName}>Tipo</span>
+                <select
+                  value={productionForm.entryType}
+                  onChange={(event) =>
+                    setProductionForm((current) => ({
+                      ...current,
+                      entryType: event.target.value as EmployeePortalProductionEntryType,
+                    }))
+                  }
+                  className={inputClassName}
+                  disabled={savingProduction}
+                >
+                  <option value="RESOLVE">Cartão Resolve</option>
+                  <option value="CHECKUP">Check-up</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className={labelClassName}>Nome completo do paciente</span>
+                <input
+                  value={productionForm.patientNameRaw}
+                  onChange={(event) => setProductionForm((current) => ({ ...current, patientNameRaw: event.target.value }))}
+                  className={inputClassName}
+                  placeholder="Ex: Maria Aparecida Souza"
+                  disabled={savingProduction}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={saveProductionEntry}
+                disabled={
+                  savingProduction ||
+                  !(productionForm.serviceDate || productionEditableDates[0]) ||
+                  !productionForm.patientNameRaw.trim()
+                }
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {savingProduction ? <Loader2 size={16} className="animate-spin" /> : productionForm.id ? <Pencil size={16} /> : <Plus size={16} />}
+                {productionForm.id ? 'Salvar alterações' : 'Registrar atendimento'}
+              </button>
+              <p className="text-xs text-slate-500">
+                Você pode editar ou excluir apenas os lançamentos de hoje e ontem.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {([
+                ['Hoje', overview.production.today],
+                ['Ontem', overview.production.yesterday],
+              ] as const).map(([label, summary]) => (
+                <div key={String(label)} className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+                    <CalendarDays size={15} className="text-[#17407E]" />
+                    {label}
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <div className="text-xs font-semibold uppercase text-slate-500">Resolve</div>
+                      <div className="mt-1 text-lg font-bold text-slate-900">{summary.resolveCount}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase text-slate-500">Check-up</div>
+                      <div className="mt-1 text-lg font-bold text-slate-900">{summary.checkupCount}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase text-slate-500">Vinculados</div>
+                      <div className="mt-1 text-lg font-bold text-emerald-700">{summary.matchedCount}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs font-semibold uppercase text-slate-500">Pendentes</div>
+                      <div className="mt-1 text-lg font-bold text-amber-700">{summary.pendingMatchCount}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white">
+              <div className="border-b border-slate-200 px-4 py-3">
+                <h3 className="text-sm font-semibold text-slate-800">Lançamentos recentes</h3>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {productionEntries.length === 0 ? (
+                  <div className="px-4 py-6 text-sm text-slate-500">
+                    Nenhum lançamento registrado ainda.
+                  </div>
+                ) : (
+                  productionEntries.map((entry) => (
+                    <div key={entry.id} className="px-4 py-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-sm font-semibold text-slate-900">{entry.patientNameRaw}</span>
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600">
+                              {productionTypeLabels[entry.entryType]}
+                            </span>
+                            <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${productionMatchStatusClasses[entry.matchStatus]}`}>
+                              {productionMatchStatusLabels[entry.matchStatus]}
+                            </span>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-slate-500">
+                            <span>{formatDateBr(entry.serviceDate)}</span>
+                            {entry.teamSnapshot ? <span>Equipe: {entry.teamSnapshot}</span> : null}
+                            {entry.feegowPatientName ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-700">
+                                <Link2 size={13} />
+                                {entry.feegowPatientName}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => startEditingProduction(entry)}
+                            disabled={!entry.canEdit || savingProduction || deletingProductionId === entry.id}
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-40"
+                          >
+                            <Pencil size={14} />
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteProductionEntry(entry)}
+                            disabled={!entry.canEdit || deletingProductionId === entry.id}
+                            className="inline-flex items-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-700 disabled:opacity-40"
+                          >
+                            {deletingProductionId === entry.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                            Excluir
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 

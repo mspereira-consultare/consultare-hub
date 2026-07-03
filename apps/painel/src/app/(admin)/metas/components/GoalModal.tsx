@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { X, Save, HelpCircle, Filter, Database } from 'lucide-react';
 import { SECTORS, UNITS, PERIODICITY_OPTIONS, KPIS_AVAILABLE, Goal } from '../constants';
 
@@ -94,6 +94,13 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
     const [loadingEmployees, setLoadingEmployees] = useState(false);
     const [teams, setTeams] = useState<any[]>([]);
     const [loadingTeams, setLoadingTeams] = useState(false);
+    const isPortalProductionKpi = formData.linked_kpi_id === 'portal_resolve_qty' || formData.linked_kpi_id === 'portal_checkup_qty';
+    const collaboratorOptions = useMemo(() => {
+        if (isPortalProductionKpi) {
+            return employeeOptions.map((employee) => employee.fullName);
+        }
+        return professionals;
+    }, [employeeOptions, isPortalProductionKpi, professionals]);
 
     const unitOptions = clinicUnits.includes(RESOLVECARD_UNIT)
         ? clinicUnits
@@ -434,9 +441,9 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                     </span>
                                 </label>
 
-                                {loadingProfessionals ? (
+                                {(isPortalProductionKpi ? loadingEmployees : loadingProfessionals) ? (
                                     <div className="text-sm text-slate-400">Carregando colaboradores...</div>
-                                ) : professionals.length > 0 ? (
+                                ) : collaboratorOptions.length > 0 ? (
                                     <select
                                         className="w-full p-2.5 border border-blue-200 rounded-lg text-sm bg-white outline-none focus:ring-2 focus:ring-blue-500"
                                         value={(formData as any).collaborator ?? 'all'}
@@ -451,7 +458,7 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                         }}
                                     >
                                         <option value="all">Todos os Colaboradores (padrão)</option>
-                                        {professionals.map(p => <option key={p} value={p}>{p}</option>)}
+                                        {collaboratorOptions.map(p => <option key={p} value={p}>{p}</option>)}
                                     </select>
                                 ) : (
                                     <input 

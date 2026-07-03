@@ -19,6 +19,13 @@ export type EmployeePortalDocumentStatus =
   | 'REPLACED_BY_COLLABORATOR'
   | 'REMOVED_BY_COLLABORATOR';
 
+export type EmployeePortalProductionEntryType = 'RESOLVE' | 'CHECKUP';
+export type EmployeePortalProductionMatchStatus =
+  | 'PENDING_MATCH'
+  | 'MATCHED'
+  | 'MULTIPLE_MATCHES'
+  | 'NO_MATCH';
+
 export type EmployeePortalInvite = {
   id: string;
   employeeId: string;
@@ -107,6 +114,33 @@ export type EmployeePortalChecklistItem = {
   portalDocument: EmployeePortalSubmissionDocument | null;
 };
 
+export type EmployeePortalProductionEntry = {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  serviceDate: string;
+  entryType: EmployeePortalProductionEntryType;
+  patientNameRaw: string;
+  patientNameNormalized: string;
+  matchStatus: EmployeePortalProductionMatchStatus;
+  feegowPatientId: number | null;
+  feegowPatientName: string | null;
+  teamSnapshot: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  canEdit: boolean;
+};
+
+export type EmployeePortalProductionDaySummary = {
+  date: string;
+  resolveCount: number;
+  checkupCount: number;
+  matchedCount: number;
+  pendingMatchCount: number;
+  totalCount: number;
+};
+
 export type EmployeePortalOverview = {
   employee: Pick<
     EmployeeListItem,
@@ -147,6 +181,13 @@ export type EmployeePortalOverview = {
   pendingCount: number;
   rejectedCount: number;
   approvedCount: number;
+  production: {
+    entries: EmployeePortalProductionEntry[];
+    today: EmployeePortalProductionDaySummary;
+    yesterday: EmployeePortalProductionDaySummary;
+    pendingMatchCount: number;
+    editableDates: string[];
+  };
   intranetAccess: {
     credentialId: string;
     status: 'PENDING_VIEW' | 'VIEWED';

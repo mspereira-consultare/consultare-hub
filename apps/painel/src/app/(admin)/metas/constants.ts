@@ -62,6 +62,10 @@ export const KPIS_AVAILABLE = [
     { id: 'sales', label: 'Vendas totais (R$)', scope: 'CARD', supportsFilter: false },
     { id: 'sales_qty', label: 'Novas adesões (qtd.)', scope: 'CARD', supportsFilter: false },
     { id: 'churn_rate', label: 'Cancelados', scope: 'CARD', supportsFilter: false },
+    { id: 'portal_resolve_qty', label: 'Portal do colaborador: Resolve (qtd.)', scope: 'CARD', supportsFilter: false },
+
+    // Portal do colaborador
+    { id: 'portal_checkup_qty', label: 'Portal do colaborador: Check-up (qtd.)', scope: 'CLINIC', supportsFilter: false },
 
     // Digitais
     { id: 'whatsapp_queue', label: 'Fila WhatsApp', scope: 'ALL', supportsFilter: false },

@@ -24,6 +24,7 @@ import {
   EMPLOYEE_PORTAL_LOCK_MINUTES,
   EMPLOYEE_PORTAL_MAX_ATTEMPTS,
   EMPLOYEE_PORTAL_PERSONAL_FIELDS,
+  EMPLOYEE_PORTAL_PRODUCTION_EDIT_WINDOW_DAYS,
   EMPLOYEE_PORTAL_SESSION_TTL_HOURS,
 } from './constants';
 import {
@@ -39,6 +40,10 @@ import type {
   EmployeePortalDocumentStatus,
   EmployeePortalInvite,
   EmployeePortalInviteStatus,
+  EmployeePortalProductionDaySummary,
+  EmployeePortalProductionEntry,
+  EmployeePortalProductionEntryType,
+  EmployeePortalProductionMatchStatus,
   EmployeePortalOverview,
   EmployeePortalPersonalData,
   EmployeePortalPersonalStatus,
@@ -60,8 +65,10 @@ export class EmployeePortalError extends Error {
 let tablesEnsured = false;
 
 const NOW = () => new Date().toISOString();
+const nowDate = () => NOW().slice(0, 10);
 const clean = (value: any) => String(value ?? '').trim();
 const upper = (value: any) => clean(value).toUpperCase();
+const lower = (value: any) => clean(value).toLowerCase();
 const bool = (value: any) =>
   value === true ||
   value === 1 ||
@@ -69,6 +76,42 @@ const bool = (value: any) =>
   String(value ?? '').toLowerCase() === 'true';
 
 const normalizeCpf = (value: any) => clean(value).replace(/\D/g, '').slice(0, 11);
+const normalizePatientName = (value: any) =>
+  clean(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
+const formatSaoPauloDate = (date: Date) => {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const parts = formatter.formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value ?? '0000';
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
+  const day = parts.find((part) => part.type === 'day')?.value ?? '01';
+  return `${year}-${month}-${day}`;
+};
+
+const getEditablePortalProductionDates = () => {
+  const today = new Date();
+  const dates: string[] = [];
+  for (let offset = 0; offset < EMPLOYEE_PORTAL_PRODUCTION_EDIT_WINDOW_DAYS; offset += 1) {
+    const current = new Date(today);
+    current.setDate(today.getDate() - offset);
+    dates.push(formatSaoPauloDate(current));
+  }
+  return dates;
+};
+
+const isWithinPortalProductionEditWindow = (serviceDate: string | null | undefined) =>
+  Boolean(serviceDate && getEditablePortalProductionDates().includes(String(serviceDate).slice(0, 10)));
+
 const normalizePhone = (value: any): string | null => {
   const digits = clean(value).replace(/\D/g, '').slice(0, 11);
   if (!digits) return null;
@@ -289,9 +332,35 @@ export const ensureEmployeePortalTables = async (db: DbInterface) => {
     )
   `);
 
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS employee_portal_production_entries (
+      id VARCHAR(64) PRIMARY KEY,
+      employee_id VARCHAR(64) NOT NULL,
+      employee_name_snapshot VARCHAR(180) NOT NULL,
+      service_date DATE NOT NULL,
+      entry_type VARCHAR(20) NOT NULL,
+      patient_name_raw VARCHAR(180) NOT NULL,
+      patient_name_normalized VARCHAR(180) NOT NULL,
+      match_status VARCHAR(30) NOT NULL,
+      feegow_patient_id BIGINT NULL,
+      feegow_patient_name VARCHAR(180) NULL,
+      team_snapshot VARCHAR(120) NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT NULL
+    )
+  `);
+
   await safeAddColumn(db, `ALTER TABLE employee_portal_submissions ADD COLUMN personal_status VARCHAR(30) NOT NULL DEFAULT 'DRAFT'`);
   await safeAddColumn(db, `ALTER TABLE employee_portal_submissions ADD COLUMN personal_rejection_reason TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_portal_invites ADD COLUMN token_encrypted TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN employee_name_snapshot VARCHAR(180) NOT NULL DEFAULT ''`);
+  await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN patient_name_normalized VARCHAR(180) NOT NULL DEFAULT ''`);
+  await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN match_status VARCHAR(30) NOT NULL DEFAULT 'PENDING_MATCH'`);
+  await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN feegow_patient_id BIGINT NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN feegow_patient_name VARCHAR(180) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN team_snapshot VARCHAR(120) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN deleted_at TEXT NULL`);
 
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_invites_employee ON employee_portal_invites (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_invites_status ON employee_portal_invites (status)`);
@@ -299,6 +368,8 @@ export const ensureEmployeePortalTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_submissions_employee ON employee_portal_submissions (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_submission_documents_submission ON employee_portal_submission_documents (submission_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_submission_documents_employee ON employee_portal_submission_documents (employee_id)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_production_entries_employee_date ON employee_portal_production_entries (employee_id, service_date)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_production_entries_match_status ON employee_portal_production_entries (match_status, service_date)`);
 
   tablesEnsured = true;
 };
@@ -385,6 +456,24 @@ const mapSubmissionDocument = (row: any): EmployeePortalSubmissionDocument => ({
   updatedAt: clean(row.updated_at),
 });
 
+const mapProductionEntry = (row: any): EmployeePortalProductionEntry => ({
+  id: clean(row.id),
+  employeeId: clean(row.employee_id),
+  employeeName: clean(row.employee_name_snapshot),
+  serviceDate: parseDate(row.service_date) || clean(row.service_date),
+  entryType: upper(row.entry_type) as EmployeePortalProductionEntryType,
+  patientNameRaw: clean(row.patient_name_raw),
+  patientNameNormalized: clean(row.patient_name_normalized),
+  matchStatus: upper(row.match_status || 'PENDING_MATCH') as EmployeePortalProductionMatchStatus,
+  feegowPatientId: Number.isFinite(Number(row.feegow_patient_id)) ? Number(row.feegow_patient_id) : null,
+  feegowPatientName: clean(row.feegow_patient_name) || null,
+  teamSnapshot: clean(row.team_snapshot) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+  deletedAt: clean(row.deleted_at) || null,
+  canEdit: isWithinPortalProductionEditWindow(parseDate(row.service_date) || clean(row.service_date)) && !clean(row.deleted_at),
+});
+
 const getLatestSubmission = async (db: DbInterface, employeeId: string): Promise<EmployeePortalSubmission | null> => {
   const rows = await db.query(
     `
@@ -413,6 +502,163 @@ const listSubmissionDocuments = async (
     [submissionId]
   );
   return rows.map(mapSubmissionDocument);
+};
+
+const listRecentProductionEntries = async (
+  db: DbInterface,
+  employeeId: string
+): Promise<EmployeePortalProductionEntry[]> => {
+  const editableDates = getEditablePortalProductionDates();
+  const placeholders = editableDates.map(() => '?').join(',');
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM employee_portal_production_entries
+    WHERE employee_id = ?
+      AND deleted_at IS NULL
+      AND service_date IN (${placeholders})
+    ORDER BY service_date DESC, created_at DESC
+    `,
+    [employeeId, ...editableDates]
+  );
+  return rows.map(mapProductionEntry);
+};
+
+export const listEmployeePortalProductionEntries = async (
+  db: DbInterface,
+  employeeId: string,
+  options?: { limit?: number }
+) => {
+  await ensureEmployeePortalTables(db);
+  const limit = Math.max(1, Math.min(Number(options?.limit || 100), 500));
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM employee_portal_production_entries
+    WHERE employee_id = ? AND deleted_at IS NULL
+    ORDER BY service_date DESC, created_at DESC
+    LIMIT ${limit}
+    `,
+    [employeeId]
+  );
+  return rows.map(mapProductionEntry);
+};
+
+const getProductionEntryById = async (db: DbInterface, entryId: string, employeeId: string) => {
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM employee_portal_production_entries
+    WHERE id = ? AND employee_id = ? AND deleted_at IS NULL
+    LIMIT 1
+    `,
+    [entryId, employeeId]
+  );
+  return rows[0] ? mapProductionEntry(rows[0]) : null;
+};
+
+const buildProductionDaySummary = (
+  date: string,
+  entries: EmployeePortalProductionEntry[]
+): EmployeePortalProductionDaySummary => {
+  const dayEntries = entries.filter((entry) => entry.serviceDate === date);
+  return {
+    date,
+    resolveCount: dayEntries.filter((entry) => entry.entryType === 'RESOLVE' && entry.matchStatus === 'MATCHED').length,
+    checkupCount: dayEntries.filter((entry) => entry.entryType === 'CHECKUP' && entry.matchStatus === 'MATCHED').length,
+    matchedCount: dayEntries.filter((entry) => entry.matchStatus === 'MATCHED').length,
+    pendingMatchCount: dayEntries.filter((entry) => entry.matchStatus !== 'MATCHED').length,
+    totalCount: dayEntries.length,
+  };
+};
+
+const getPortalProductionTeamSnapshot = async (db: DbInterface, employee: any) => {
+  const rows = await db.query(
+    `
+    SELECT tm.name
+    FROM users u
+    INNER JOIN user_teams ut ON ut.user_id = u.id
+    INNER JOIN teams_master tm ON tm.id = ut.team_id
+    WHERE u.employee_id = ?
+    ORDER BY tm.name ASC
+    LIMIT 1
+    `,
+    [clean(employee?.id)]
+  );
+  return clean(rows?.[0]?.name) || clean(employee?.department) || clean(employee?.units?.[0]) || null;
+};
+
+const resolvePortalProductionMatch = async (db: DbInterface, patientName: string) => {
+  const normalized = normalizePatientName(patientName);
+  if (!normalized) {
+    return {
+      normalized,
+      matchStatus: 'NO_MATCH' as EmployeePortalProductionMatchStatus,
+      patientId: null,
+      patientName: null,
+    };
+  }
+
+  const raw = clean(patientName);
+  let rows = await db.query(
+    `
+    SELECT patient_id, nome, nome_social
+    FROM feegow_patients
+    WHERE UPPER(TRIM(COALESCE(nome, ''))) = UPPER(TRIM(?))
+       OR UPPER(TRIM(COALESCE(nome_social, ''))) = UPPER(TRIM(?))
+    LIMIT 20
+    `,
+    [raw, raw]
+  ).catch(() => []);
+
+  if (!rows.length) {
+    const tokens = normalized.split(' ').filter((token) => token.length >= 2).slice(0, 3);
+    if (tokens.length > 0) {
+      const where = tokens
+        .map(() => `(UPPER(COALESCE(nome, '')) LIKE UPPER(?) OR UPPER(COALESCE(nome_social, '')) LIKE UPPER(?))`)
+        .join(' AND ');
+      const params = tokens.flatMap((token) => [`%${token}%`, `%${token}%`]);
+      rows = await db.query(
+        `
+        SELECT patient_id, nome, nome_social
+        FROM feegow_patients
+        WHERE ${where}
+        LIMIT 50
+        `,
+        params
+      ).catch(() => []);
+    }
+  }
+
+  const exactMatches = (rows as any[]).filter((row) => {
+    const names = [row?.nome, row?.nome_social].map(normalizePatientName).filter(Boolean);
+    return names.includes(normalized);
+  });
+
+  if (exactMatches.length === 1) {
+    return {
+      normalized,
+      matchStatus: 'MATCHED' as EmployeePortalProductionMatchStatus,
+      patientId: Number(exactMatches[0].patient_id || 0) || null,
+      patientName: clean(exactMatches[0].nome) || clean(exactMatches[0].nome_social) || raw,
+    };
+  }
+
+  if (exactMatches.length > 1) {
+    return {
+      normalized,
+      matchStatus: 'MULTIPLE_MATCHES' as EmployeePortalProductionMatchStatus,
+      patientId: null,
+      patientName: null,
+    };
+  }
+
+  return {
+    normalized,
+    matchStatus: 'NO_MATCH' as EmployeePortalProductionMatchStatus,
+    patientId: null,
+    patientName: null,
+  };
 };
 
 const listInvites = async (db: DbInterface, employeeId: string): Promise<EmployeePortalInvite[]> => {
@@ -648,16 +894,20 @@ export const getEmployeePortalOverview = async (
   const employee = await getEmployeeById(db, employeeId);
   if (!employee) throw new EmployeePortalError('Colaborador não encontrado.', 404);
 
-  const [invites, submission, officialDocuments, linkedUser, latestCredential] = await Promise.all([
+  const [invites, submission, officialDocuments, linkedUser, latestCredential, productionEntries] = await Promise.all([
     listInvites(db, employeeId),
     getLatestSubmission(db, employeeId),
     listEmployeeDocuments(db, employeeId),
     getLinkedUserByEmployeeId(db, employeeId),
     getLatestPortalCredential(db, employeeId),
+    listRecentProductionEntries(db, employeeId),
   ]);
   const activeInvite = await getActiveInvite(db, employeeId, baseUrl);
   const documents = submission ? await listSubmissionDocuments(db, submission.id) : [];
   const checklist = buildChecklist(employee, submission, documents, officialDocuments);
+  const editableDates = getEditablePortalProductionDates();
+  const todaySummary = buildProductionDaySummary(editableDates[0] || nowDate(), productionEntries);
+  const yesterdaySummary = buildProductionDaySummary(editableDates[1] || editableDates[0] || nowDate(), productionEntries);
   const intranetBaseUrl = clean(process.env.INTRANET_BASE_URL) || clean(process.env.NEXT_PUBLIC_INTRANET_URL) || '/';
   const intranetAccess =
     employee.status === 'ATIVO' &&
@@ -714,6 +964,13 @@ export const getEmployeePortalOverview = async (
     pendingCount: checklist.filter((item) => item.status === 'PENDING' || item.status === 'DRAFT').length,
     rejectedCount: checklist.filter((item) => item.status === 'REJECTED').length,
     approvedCount: checklist.filter((item) => ['APPROVED', 'OFFICIAL'].includes(item.status)).length,
+    production: {
+      entries: productionEntries,
+      today: todaySummary,
+      yesterday: yesterdaySummary,
+      pendingMatchCount: productionEntries.filter((entry) => entry.matchStatus !== 'MATCHED').length,
+      editableDates,
+    },
     intranetAccess,
   };
 };
@@ -1227,6 +1484,195 @@ export const removePortalSubmissionDocument = async (
   await insertAudit(db, 'EMPLOYEE_PORTAL_DOCUMENT_REMOVED', `portal:${employeeId}`, employeeId, {
     documentId: document.id,
     docType: document.docType,
+  });
+  return getEmployeePortalOverview(db, employeeId);
+};
+
+const validatePortalProductionPayload = (payload: any) => {
+  const serviceDate = parseDate(payload?.serviceDate);
+  const entryType = upper(payload?.entryType) as EmployeePortalProductionEntryType;
+  const patientNameRaw = clean(payload?.patientNameRaw);
+
+  if (!serviceDate) throw new EmployeePortalError('Informe a data do atendimento.');
+  if (!isWithinPortalProductionEditWindow(serviceDate)) {
+    throw new EmployeePortalError('Só é possível registrar ou ajustar atendimentos de hoje e ontem.', 409);
+  }
+  if (!['RESOLVE', 'CHECKUP'].includes(entryType)) {
+    throw new EmployeePortalError('Tipo de atendimento inválido.');
+  }
+  if (!patientNameRaw || patientNameRaw.length < 6) {
+    throw new EmployeePortalError('Informe o nome completo do paciente.');
+  }
+
+  const patientNameNormalized = normalizePatientName(patientNameRaw);
+  if (!patientNameNormalized || patientNameNormalized.split(' ').length < 2) {
+    throw new EmployeePortalError('Informe nome e sobrenome do paciente.');
+  }
+
+  return {
+    serviceDate,
+    entryType,
+    patientNameRaw,
+    patientNameNormalized,
+  };
+};
+
+const ensurePortalProductionUniqueness = async (
+  db: DbInterface,
+  employeeId: string,
+  payload: ReturnType<typeof validatePortalProductionPayload>,
+  ignoredEntryId?: string | null
+) => {
+  const rows = await db.query(
+    `
+    SELECT id
+    FROM employee_portal_production_entries
+    WHERE employee_id = ?
+      AND service_date = ?
+      AND entry_type = ?
+      AND patient_name_normalized = ?
+      AND deleted_at IS NULL
+      AND (? IS NULL OR id <> ?)
+    LIMIT 1
+    `,
+    [
+      employeeId,
+      payload.serviceDate,
+      payload.entryType,
+      payload.patientNameNormalized,
+      ignoredEntryId || null,
+      ignoredEntryId || null,
+    ]
+  );
+  if (rows[0]) {
+    throw new EmployeePortalError('Já existe um lançamento igual para este paciente, data e tipo.', 409);
+  }
+};
+
+export const createPortalProductionEntry = async (
+  db: DbInterface,
+  employeeId: string,
+  payload: any
+) => {
+  await ensureEmployeePortalTables(db);
+  const employee = await getEmployeeById(db, employeeId);
+  if (!employee) throw new EmployeePortalError('Colaborador não encontrado.', 404);
+
+  const normalizedPayload = validatePortalProductionPayload(payload);
+  await ensurePortalProductionUniqueness(db, employeeId, normalizedPayload);
+  const match = await resolvePortalProductionMatch(db, normalizedPayload.patientNameRaw);
+  const teamSnapshot = await getPortalProductionTeamSnapshot(db, employee);
+  const now = NOW();
+  const id = randomUUID();
+
+  await db.execute(
+    `
+    INSERT INTO employee_portal_production_entries (
+      id, employee_id, employee_name_snapshot, service_date, entry_type, patient_name_raw,
+      patient_name_normalized, match_status, feegow_patient_id, feegow_patient_name,
+      team_snapshot, created_at, updated_at, deleted_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+    `,
+    [
+      id,
+      employeeId,
+      clean(employee.fullName),
+      normalizedPayload.serviceDate,
+      normalizedPayload.entryType,
+      normalizedPayload.patientNameRaw,
+      match.normalized || normalizedPayload.patientNameNormalized,
+      match.matchStatus,
+      match.patientId,
+      match.patientName,
+      teamSnapshot,
+      now,
+      now,
+    ]
+  );
+
+  await insertAudit(db, 'EMPLOYEE_PORTAL_PRODUCTION_ENTRY_CREATED', `portal:${employeeId}`, employeeId, {
+    entryId: id,
+    entryType: normalizedPayload.entryType,
+    serviceDate: normalizedPayload.serviceDate,
+    matchStatus: match.matchStatus,
+  });
+  return getEmployeePortalOverview(db, employeeId);
+};
+
+export const updatePortalProductionEntry = async (
+  db: DbInterface,
+  employeeId: string,
+  entryId: string,
+  payload: any
+) => {
+  await ensureEmployeePortalTables(db);
+  const existing = await getProductionEntryById(db, entryId, employeeId);
+  if (!existing) throw new EmployeePortalError('Lançamento não encontrado.', 404);
+  if (!existing.canEdit) throw new EmployeePortalError('Este lançamento não pode mais ser editado.', 409);
+
+  const employee = await getEmployeeById(db, employeeId);
+  if (!employee) throw new EmployeePortalError('Colaborador não encontrado.', 404);
+  const normalizedPayload = validatePortalProductionPayload(payload);
+  await ensurePortalProductionUniqueness(db, employeeId, normalizedPayload, entryId);
+  const match = await resolvePortalProductionMatch(db, normalizedPayload.patientNameRaw);
+  const teamSnapshot = await getPortalProductionTeamSnapshot(db, employee);
+  const now = NOW();
+
+  await db.execute(
+    `
+    UPDATE employee_portal_production_entries
+    SET employee_name_snapshot = ?, service_date = ?, entry_type = ?, patient_name_raw = ?,
+      patient_name_normalized = ?, match_status = ?, feegow_patient_id = ?, feegow_patient_name = ?,
+      team_snapshot = ?, updated_at = ?
+    WHERE id = ? AND employee_id = ?
+    `,
+    [
+      clean(employee.fullName),
+      normalizedPayload.serviceDate,
+      normalizedPayload.entryType,
+      normalizedPayload.patientNameRaw,
+      match.normalized || normalizedPayload.patientNameNormalized,
+      match.matchStatus,
+      match.patientId,
+      match.patientName,
+      teamSnapshot,
+      now,
+      entryId,
+      employeeId,
+    ]
+  );
+
+  await insertAudit(db, 'EMPLOYEE_PORTAL_PRODUCTION_ENTRY_UPDATED', `portal:${employeeId}`, employeeId, {
+    entryId,
+    entryType: normalizedPayload.entryType,
+    serviceDate: normalizedPayload.serviceDate,
+    matchStatus: match.matchStatus,
+  });
+  return getEmployeePortalOverview(db, employeeId);
+};
+
+export const deletePortalProductionEntry = async (
+  db: DbInterface,
+  employeeId: string,
+  entryId: string
+) => {
+  await ensureEmployeePortalTables(db);
+  const existing = await getProductionEntryById(db, entryId, employeeId);
+  if (!existing) throw new EmployeePortalError('Lançamento não encontrado.', 404);
+  if (!existing.canEdit) throw new EmployeePortalError('Este lançamento não pode mais ser excluído.', 409);
+
+  await db.execute(
+    `
+    UPDATE employee_portal_production_entries
+    SET deleted_at = ?, updated_at = ?
+    WHERE id = ? AND employee_id = ?
+    `,
+    [NOW(), NOW(), entryId, employeeId]
+  );
+  await insertAudit(db, 'EMPLOYEE_PORTAL_PRODUCTION_ENTRY_DELETED', `portal:${employeeId}`, employeeId, {
+    entryId,
+    serviceDate: existing.serviceDate,
+    entryType: existing.entryType,
   });
   return getEmployeePortalOverview(db, employeeId);
 };
