@@ -95,6 +95,66 @@ Integração com orquestrador:
 - `GET /api/admin/agenda-ocupacao/export?format=xlsx|pdf`
   - Exporta dados do snapshot (não consulta Feegow em tempo real).
 
+## Report semanal por e-mail
+
+O módulo também suporta um envio automático semanal com base no mesmo snapshot da página `/agenda-ocupacao`.
+
+Comportamento:
+
+- configuração via modal dentro da própria página;
+- destinatários vindos da base de colaboradores;
+- apenas colaboradores ativos com `corporate_email` entram como aptos;
+- envio toda quinta às `08:00` no fuso `America/Sao_Paulo`;
+- janela enviada: semana seguinte, de segunda a sábado;
+- antes de enviar, o processo atualiza o snapshot da ocupação para a mesma janela do e-mail.
+
+Endpoints administrativos:
+
+- `GET /api/admin/agenda-ocupacao/report/settings`
+- `PUT /api/admin/agenda-ocupacao/report/settings`
+- `GET /api/admin/agenda-ocupacao/report/eligibility`
+- `GET /api/admin/agenda-ocupacao/report/preview`
+- `GET /api/admin/agenda-ocupacao/report/runs`
+- `POST /api/admin/agenda-ocupacao/report/process`
+
+Persistência:
+
+- `agenda_occupancy_report_settings`
+- `agenda_occupancy_report_runs`
+- `agenda_occupancy_report_recipients`
+
+Heartbeat:
+
+- `system_status.service_name = agenda_occupancy_weekly_report`
+
+Worker dedicado para cron externo:
+
+- arquivo: `workers/worker_agenda_occupancy_weekly_report.py`
+- ele atualiza primeiro o snapshot semanal da ocupação e, na sequência, chama o endpoint interno do painel para processar o envio.
+
+Exemplo de comando para um cron no Railway:
+
+```bash
+python worker_agenda_occupancy_weekly_report.py
+```
+
+Agendamento sugerido no Railway:
+
+```text
+0 11 * * 4
+```
+
+Observação:
+
+- o Railway avalia cron em UTC; `11:00 UTC` corresponde a `08:00` em `America/Sao_Paulo`.
+
+Variáveis mínimas:
+
+- `AGENDA_OCCUPANCY_REPORT_CRON_SECRET`
+- `PAINEL_BASE_URL` ou `NEXTAUTH_URL`
+- credenciais já existentes do SendPulse
+- credenciais já existentes do Feegow
+
 ## Permissões
 
 Novo `PageKey`: `agenda_ocupacao`
