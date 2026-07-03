@@ -125,6 +125,7 @@ export type EmployeePortalProductionEntry = {
   matchStatus: EmployeePortalProductionMatchStatus;
   feegowPatientId: number | null;
   feegowPatientName: string | null;
+  unitSnapshot: string | null;
   teamSnapshot: string | null;
   createdAt: string;
   updatedAt: string;
@@ -165,6 +166,76 @@ export type EmployeePortalProductionDashboard = {
   editableDates: string[];
   availableDates: string[];
   entries: EmployeePortalProductionEntry[];
+};
+
+export type EmployeePortalProductionManagementFilters = {
+  startDate: string;
+  endDate: string;
+  employeeId: string;
+  team: string;
+  unit: string;
+  entryType: EmployeePortalProductionEntryType | 'ALL';
+  matchStatus: EmployeePortalProductionMatchStatus | 'ALL';
+  page: number;
+  pageSize: number;
+};
+
+export type EmployeePortalProductionManagementSummary = {
+  totalEntries: number;
+  matchedEntries: number;
+  resolveMatchedEntries: number;
+  checkupMatchedEntries: number;
+  pendingEntries: number;
+  matchRate: number;
+};
+
+export type EmployeePortalProductionManagementSeriesItem = {
+  date: string;
+  totalEntries: number;
+  matchedEntries: number;
+  resolveMatchedEntries: number;
+  checkupMatchedEntries: number;
+  pendingEntries: number;
+};
+
+export type EmployeePortalProductionManagementRankingItem = {
+  key: string;
+  employeeId: string | null;
+  employeeName: string | null;
+  unit: string | null;
+  team: string | null;
+  totalEntries: number;
+  matchedEntries: number;
+  resolveMatchedEntries: number;
+  checkupMatchedEntries: number;
+  pendingEntries: number;
+  matchRate: number;
+};
+
+export type EmployeePortalProductionManagementFilterOptions = {
+  employees: Array<{
+    value: string;
+    label: string;
+  }>;
+  teams: string[];
+  units: string[];
+};
+
+export type EmployeePortalProductionManagementData = {
+  generatedAt: string;
+  filters: EmployeePortalProductionManagementFilters;
+  summary: EmployeePortalProductionManagementSummary;
+  series: EmployeePortalProductionManagementSeriesItem[];
+  collaboratorRanking: EmployeePortalProductionManagementRankingItem[];
+  teamRanking: EmployeePortalProductionManagementRankingItem[];
+  entries: EmployeePortalProductionEntry[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  filterOptions: EmployeePortalProductionManagementFilterOptions;
 };
 
 export type EmployeePortalOverview = {

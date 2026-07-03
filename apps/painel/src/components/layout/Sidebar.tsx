@@ -269,6 +269,14 @@ const menuItems: MenuItem[] = [
     pageKey: "metas_dashboard",
   },
   {
+    href: "/portal-colaborador/producao-gerencial",
+    label: "Produção do Portal",
+    icon: BarChart3,
+    group: "INTELIGÊNCIA",
+    roles: ["ADMIN", "GESTOR"],
+    pageKey: "portal_colaborador_producao_gerencial",
+  },
+  {
     href: "/metas",
     label: "Gestão de Metas",
     icon: Settings2,

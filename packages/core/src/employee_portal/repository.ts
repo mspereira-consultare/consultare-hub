@@ -46,6 +46,12 @@ import type {
   EmployeePortalProductionEntry,
   EmployeePortalProductionEntryType,
   EmployeePortalProductionLast7DaysSummary,
+  EmployeePortalProductionManagementData,
+  EmployeePortalProductionManagementFilterOptions,
+  EmployeePortalProductionManagementFilters,
+  EmployeePortalProductionManagementRankingItem,
+  EmployeePortalProductionManagementSeriesItem,
+  EmployeePortalProductionManagementSummary,
   EmployeePortalProductionMatchStatus,
   EmployeePortalOverview,
   EmployeePortalPersonalData,
@@ -123,6 +129,11 @@ const getRecentPortalProductionDates = (days = 7) => {
   return dates;
 };
 
+const getMonthStartSaoPauloDate = () => {
+  const todayIso = formatSaoPauloDate(new Date());
+  return `${todayIso.slice(0, 7)}-01`;
+};
+
 const isWithinPortalProductionEditWindow = (serviceDate: string | null | undefined) =>
   Boolean(serviceDate && getEditablePortalProductionDates().includes(String(serviceDate).slice(0, 10)));
 
@@ -141,6 +152,22 @@ const normalizePortalProductionMatchStatusFilter = (value: any): EmployeePortalP
 const normalizePortalProductionServiceDateFilter = (value: any, availableDates: string[]) => {
   const normalized = parseDate(value);
   return normalized && availableDates.includes(normalized) ? normalized : null;
+};
+
+const normalizePortalProductionManagementEntryTypeFilter = (
+  value: any
+): EmployeePortalProductionManagementFilters['entryType'] => {
+  const normalized = upper(value);
+  return normalized === 'RESOLVE' || normalized === 'CHECKUP' ? normalized : 'ALL';
+};
+
+const normalizePortalProductionManagementMatchStatusFilter = (
+  value: any
+): EmployeePortalProductionManagementFilters['matchStatus'] => {
+  const normalized = upper(value);
+  return ['MATCHED', 'NO_MATCH', 'MULTIPLE_MATCHES', 'PENDING_MATCH'].includes(normalized)
+    ? (normalized as EmployeePortalProductionManagementFilters['matchStatus'])
+    : 'ALL';
 };
 
 const normalizePhone = (value: any): string | null => {
@@ -163,6 +190,12 @@ const parseDate = (value: any): string | null => {
   const br = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
   if (br) return `${br[3]}-${br[2]}-${br[1]}`;
   return null;
+};
+
+const parsePositiveInt = (value: any, fallback: number) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(1, Math.trunc(parsed));
 };
 
 const addDaysIso = (dateIso: string, days: number) => {
@@ -375,6 +408,7 @@ export const ensureEmployeePortalTables = async (db: DbInterface) => {
       match_status VARCHAR(30) NOT NULL,
       feegow_patient_id BIGINT NULL,
       feegow_patient_name VARCHAR(180) NULL,
+      unit_snapshot VARCHAR(120) NULL,
       team_snapshot VARCHAR(120) NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -390,6 +424,7 @@ export const ensureEmployeePortalTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN match_status VARCHAR(30) NOT NULL DEFAULT 'PENDING_MATCH'`);
   await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN feegow_patient_id BIGINT NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN feegow_patient_name VARCHAR(180) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN unit_snapshot VARCHAR(120) NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN team_snapshot VARCHAR(120) NULL`);
   await safeAddColumn(db, `ALTER TABLE employee_portal_production_entries ADD COLUMN deleted_at TEXT NULL`);
 
@@ -401,6 +436,22 @@ export const ensureEmployeePortalTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_submission_documents_employee ON employee_portal_submission_documents (employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_production_entries_employee_date ON employee_portal_production_entries (employee_id, service_date)`);
   await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_production_entries_match_status ON employee_portal_production_entries (match_status, service_date)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_production_entries_service_date ON employee_portal_production_entries (service_date)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_production_entries_type_date ON employee_portal_production_entries (entry_type, service_date)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_production_entries_team_date ON employee_portal_production_entries (team_snapshot, service_date)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_employee_portal_production_entries_unit_date ON employee_portal_production_entries (unit_snapshot, service_date)`);
+
+  await db.execute(
+    `
+    UPDATE employee_portal_production_entries ep
+    INNER JOIN employees e ON e.id = ep.employee_id
+    SET ep.unit_snapshot = JSON_UNQUOTE(JSON_EXTRACT(e.units_json, '$[0]'))
+    WHERE ep.deleted_at IS NULL
+      AND (ep.unit_snapshot IS NULL OR TRIM(ep.unit_snapshot) = '')
+      AND e.units_json IS NOT NULL
+      AND JSON_LENGTH(e.units_json) > 0
+    `
+  ).catch(() => null);
 
   tablesEnsured = true;
 };
@@ -498,6 +549,7 @@ const mapProductionEntry = (row: any): EmployeePortalProductionEntry => ({
   matchStatus: upper(row.match_status || 'PENDING_MATCH') as EmployeePortalProductionMatchStatus,
   feegowPatientId: Number.isFinite(Number(row.feegow_patient_id)) ? Number(row.feegow_patient_id) : null,
   feegowPatientName: clean(row.feegow_patient_name) || null,
+  unitSnapshot: clean(row.unit_snapshot) || null,
   teamSnapshot: clean(row.team_snapshot) || null,
   createdAt: clean(row.created_at),
   updatedAt: clean(row.updated_at),
@@ -671,6 +723,158 @@ export const getEmployeePortalProductionDashboard = async (
   };
 };
 
+export const getEmployeePortalProductionManagementData = async (
+  db: DbInterface,
+  rawFilters: Partial<EmployeePortalProductionManagementFilters> = {}
+): Promise<EmployeePortalProductionManagementData> => {
+  await ensureEmployeePortalTables(db);
+  const filters = normalizePortalProductionManagementFilters(rawFilters);
+  const where = buildPortalProductionManagementWhere(filters);
+  const offset = (filters.page - 1) * filters.pageSize;
+
+  const [summaryRows, seriesRows, collaboratorRows, teamRows, totalRows, entryRows, employeeOptionsRows, teamOptionRows, unitOptionRows] = await Promise.all([
+    db.query(
+      `
+      SELECT
+        COUNT(*) AS total_entries,
+        SUM(CASE WHEN match_status = 'MATCHED' THEN 1 ELSE 0 END) AS matched_entries,
+        SUM(CASE WHEN entry_type = 'RESOLVE' AND match_status = 'MATCHED' THEN 1 ELSE 0 END) AS resolve_matched_entries,
+        SUM(CASE WHEN entry_type = 'CHECKUP' AND match_status = 'MATCHED' THEN 1 ELSE 0 END) AS checkup_matched_entries,
+        SUM(CASE WHEN match_status <> 'MATCHED' THEN 1 ELSE 0 END) AS pending_entries
+      FROM employee_portal_production_entries
+      WHERE ${where.clause}
+      `,
+      where.params
+    ),
+    db.query(
+      `
+      SELECT
+        service_date,
+        COUNT(*) AS total_entries,
+        SUM(CASE WHEN match_status = 'MATCHED' THEN 1 ELSE 0 END) AS matched_entries,
+        SUM(CASE WHEN entry_type = 'RESOLVE' AND match_status = 'MATCHED' THEN 1 ELSE 0 END) AS resolve_matched_entries,
+        SUM(CASE WHEN entry_type = 'CHECKUP' AND match_status = 'MATCHED' THEN 1 ELSE 0 END) AS checkup_matched_entries,
+        SUM(CASE WHEN match_status <> 'MATCHED' THEN 1 ELSE 0 END) AS pending_entries
+      FROM employee_portal_production_entries
+      WHERE ${where.clause}
+      GROUP BY service_date
+      ORDER BY service_date ASC
+      `,
+      where.params
+    ),
+    db.query(
+      `
+      SELECT
+        employee_id,
+        MAX(employee_name_snapshot) AS employee_name,
+        MAX(unit_snapshot) AS unit_snapshot,
+        MAX(team_snapshot) AS team_snapshot,
+        COUNT(*) AS total_entries,
+        SUM(CASE WHEN match_status = 'MATCHED' THEN 1 ELSE 0 END) AS matched_entries,
+        SUM(CASE WHEN entry_type = 'RESOLVE' AND match_status = 'MATCHED' THEN 1 ELSE 0 END) AS resolve_matched_entries,
+        SUM(CASE WHEN entry_type = 'CHECKUP' AND match_status = 'MATCHED' THEN 1 ELSE 0 END) AS checkup_matched_entries,
+        SUM(CASE WHEN match_status <> 'MATCHED' THEN 1 ELSE 0 END) AS pending_entries
+      FROM employee_portal_production_entries
+      WHERE ${where.clause}
+      GROUP BY employee_id
+      ORDER BY matched_entries DESC, total_entries DESC, employee_name ASC
+      `,
+      where.params
+    ),
+    db.query(
+      `
+      SELECT
+        COALESCE(NULLIF(TRIM(team_snapshot), ''), 'Sem equipe') AS team,
+        COUNT(*) AS total_entries,
+        SUM(CASE WHEN match_status = 'MATCHED' THEN 1 ELSE 0 END) AS matched_entries,
+        SUM(CASE WHEN entry_type = 'RESOLVE' AND match_status = 'MATCHED' THEN 1 ELSE 0 END) AS resolve_matched_entries,
+        SUM(CASE WHEN entry_type = 'CHECKUP' AND match_status = 'MATCHED' THEN 1 ELSE 0 END) AS checkup_matched_entries,
+        SUM(CASE WHEN match_status <> 'MATCHED' THEN 1 ELSE 0 END) AS pending_entries
+      FROM employee_portal_production_entries
+      WHERE ${where.clause}
+      GROUP BY COALESCE(NULLIF(TRIM(team_snapshot), ''), 'Sem equipe')
+      ORDER BY matched_entries DESC, total_entries DESC, team ASC
+      `,
+      where.params
+    ),
+    db.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM employee_portal_production_entries
+      WHERE ${where.clause}
+      `,
+      where.params
+    ),
+    db.query(
+      `
+      SELECT *
+      FROM employee_portal_production_entries
+      WHERE ${where.clause}
+      ORDER BY service_date DESC, created_at DESC
+      LIMIT ${filters.pageSize}
+      OFFSET ${offset}
+      `,
+      where.params
+    ),
+    db.query(
+      `
+      SELECT employee_id AS value, MAX(employee_name_snapshot) AS label
+      FROM employee_portal_production_entries
+      WHERE deleted_at IS NULL
+      GROUP BY employee_id
+      ORDER BY label ASC
+      `
+    ),
+    db.query(
+      `
+      SELECT DISTINCT team_snapshot AS team
+      FROM employee_portal_production_entries
+      WHERE deleted_at IS NULL
+        AND team_snapshot IS NOT NULL
+        AND TRIM(team_snapshot) <> ''
+      ORDER BY team_snapshot ASC
+      `
+    ),
+    db.query(
+      `
+      SELECT DISTINCT unit_snapshot AS unit
+      FROM employee_portal_production_entries
+      WHERE deleted_at IS NULL
+        AND unit_snapshot IS NOT NULL
+        AND TRIM(unit_snapshot) <> ''
+      ORDER BY unit_snapshot ASC
+      `
+    ),
+  ]);
+
+  const total = Number(totalRows[0]?.total || 0);
+  const totalPages = Math.max(1, Math.ceil(total / filters.pageSize));
+  const filterOptions: EmployeePortalProductionManagementFilterOptions = {
+    employees: employeeOptionsRows
+      .map((row: any) => ({ value: clean(row.value), label: clean(row.label) }))
+      .filter((item: { value: string; label: string }) => item.value && item.label),
+    teams: teamOptionRows.map((row: any) => clean(row.team)).filter(Boolean),
+    units: unitOptionRows.map((row: any) => clean(row.unit)).filter(Boolean),
+  };
+
+  return {
+    generatedAt: NOW(),
+    filters,
+    summary: buildPortalProductionManagementSummary(summaryRows),
+    series: seriesRows.map(mapPortalProductionManagementSeriesItem),
+    collaboratorRanking: collaboratorRows.map((row: any) => mapPortalProductionManagementRankingItem(row, 'employee')),
+    teamRanking: teamRows.map((row: any) => mapPortalProductionManagementRankingItem(row, 'team')),
+    entries: entryRows.map(mapProductionEntry),
+    pagination: {
+      page: filters.page,
+      pageSize: filters.pageSize,
+      total,
+      totalPages,
+    },
+    filterOptions,
+  };
+};
+
 const getPortalProductionTeamSnapshot = async (db: DbInterface, employee: any) => {
   const rows = await db.query(
     `
@@ -685,6 +889,109 @@ const getPortalProductionTeamSnapshot = async (db: DbInterface, employee: any) =
     [clean(employee?.id)]
   );
   return clean(rows?.[0]?.name) || clean(employee?.department) || clean(employee?.units?.[0]) || null;
+};
+
+const getPortalProductionUnitSnapshot = (employee: any) => clean(employee?.units?.[0]) || null;
+
+const normalizePortalProductionManagementFilters = (
+  rawFilters: Partial<EmployeePortalProductionManagementFilters> = {}
+): EmployeePortalProductionManagementFilters => {
+  const today = nowDate();
+  const startDateRaw = parseDate(rawFilters.startDate) || getMonthStartSaoPauloDate();
+  const endDateRaw = parseDate(rawFilters.endDate) || today;
+  const [startDate, endDate] = startDateRaw <= endDateRaw
+    ? [startDateRaw, endDateRaw]
+    : [endDateRaw, startDateRaw];
+
+  return {
+    startDate,
+    endDate,
+    employeeId: clean(rawFilters.employeeId) || 'all',
+    team: clean(rawFilters.team) || 'all',
+    unit: clean(rawFilters.unit) || 'all',
+    entryType: normalizePortalProductionManagementEntryTypeFilter(rawFilters.entryType),
+    matchStatus: normalizePortalProductionManagementMatchStatusFilter(rawFilters.matchStatus),
+    page: parsePositiveInt(rawFilters.page, 1),
+    pageSize: Math.min(200, parsePositiveInt(rawFilters.pageSize, 50)),
+  };
+};
+
+const buildPortalProductionManagementWhere = (filters: EmployeePortalProductionManagementFilters) => {
+  const where: string[] = ['deleted_at IS NULL', 'service_date BETWEEN ? AND ?'];
+  const params: any[] = [filters.startDate, filters.endDate];
+
+  if (filters.employeeId !== 'all') {
+    where.push('employee_id = ?');
+    params.push(filters.employeeId);
+  }
+  if (filters.team !== 'all') {
+    where.push('UPPER(TRIM(COALESCE(team_snapshot, \'\'))) = UPPER(TRIM(?))');
+    params.push(filters.team);
+  }
+  if (filters.unit !== 'all') {
+    where.push('UPPER(TRIM(COALESCE(unit_snapshot, \'\'))) = UPPER(TRIM(?))');
+    params.push(filters.unit);
+  }
+  if (filters.entryType !== 'ALL') {
+    where.push('entry_type = ?');
+    params.push(filters.entryType);
+  }
+  if (filters.matchStatus !== 'ALL') {
+    where.push('match_status = ?');
+    params.push(filters.matchStatus);
+  }
+
+  return {
+    clause: where.join(' AND '),
+    params,
+  };
+};
+
+const buildPortalProductionManagementSummary = (rows: any[]): EmployeePortalProductionManagementSummary => {
+  const row = rows[0] || {};
+  const totalEntries = Number(row.total_entries || 0);
+  const matchedEntries = Number(row.matched_entries || 0);
+  const resolveMatchedEntries = Number(row.resolve_matched_entries || 0);
+  const checkupMatchedEntries = Number(row.checkup_matched_entries || 0);
+  const pendingEntries = Number(row.pending_entries || 0);
+  return {
+    totalEntries,
+    matchedEntries,
+    resolveMatchedEntries,
+    checkupMatchedEntries,
+    pendingEntries,
+    matchRate: totalEntries > 0 ? Number(((matchedEntries / totalEntries) * 100).toFixed(1)) : 0,
+  };
+};
+
+const mapPortalProductionManagementSeriesItem = (row: any): EmployeePortalProductionManagementSeriesItem => ({
+  date: parseDate(row.service_date) || clean(row.service_date),
+  totalEntries: Number(row.total_entries || 0),
+  matchedEntries: Number(row.matched_entries || 0),
+  resolveMatchedEntries: Number(row.resolve_matched_entries || 0),
+  checkupMatchedEntries: Number(row.checkup_matched_entries || 0),
+  pendingEntries: Number(row.pending_entries || 0),
+});
+
+const mapPortalProductionManagementRankingItem = (
+  row: any,
+  kind: 'employee' | 'team'
+): EmployeePortalProductionManagementRankingItem => {
+  const totalEntries = Number(row.total_entries || 0);
+  const matchedEntries = Number(row.matched_entries || 0);
+  return {
+    key: kind === 'employee' ? clean(row.employee_id) : clean(row.team) || 'SEM_EQUIPE',
+    employeeId: kind === 'employee' ? clean(row.employee_id) || null : null,
+    employeeName: kind === 'employee' ? clean(row.employee_name) || null : null,
+    unit: clean(row.unit_snapshot) || null,
+    team: clean(row.team) || clean(row.team_snapshot) || null,
+    totalEntries,
+    matchedEntries,
+    resolveMatchedEntries: Number(row.resolve_matched_entries || 0),
+    checkupMatchedEntries: Number(row.checkup_matched_entries || 0),
+    pendingEntries: Number(row.pending_entries || 0),
+    matchRate: totalEntries > 0 ? Number(((matchedEntries / totalEntries) * 100).toFixed(1)) : 0,
+  };
 };
 
 const resolvePortalProductionMatch = async (db: DbInterface, patientName: string) => {
@@ -1660,6 +1967,7 @@ export const createPortalProductionEntry = async (
   const normalizedPayload = validatePortalProductionPayload(payload);
   await ensurePortalProductionUniqueness(db, employeeId, normalizedPayload);
   const match = await resolvePortalProductionMatch(db, normalizedPayload.patientNameRaw);
+  const unitSnapshot = getPortalProductionUnitSnapshot(employee);
   const teamSnapshot = await getPortalProductionTeamSnapshot(db, employee);
   const now = NOW();
   const id = randomUUID();
@@ -1668,9 +1976,9 @@ export const createPortalProductionEntry = async (
     `
     INSERT INTO employee_portal_production_entries (
       id, employee_id, employee_name_snapshot, service_date, entry_type, patient_name_raw,
-      patient_name_normalized, match_status, feegow_patient_id, feegow_patient_name,
+      patient_name_normalized, match_status, feegow_patient_id, feegow_patient_name, unit_snapshot,
       team_snapshot, created_at, updated_at, deleted_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
     `,
     [
       id,
@@ -1683,6 +1991,7 @@ export const createPortalProductionEntry = async (
       match.matchStatus,
       match.patientId,
       match.patientName,
+      unitSnapshot,
       teamSnapshot,
       now,
       now,
@@ -1714,6 +2023,7 @@ export const updatePortalProductionEntry = async (
   const normalizedPayload = validatePortalProductionPayload(payload);
   await ensurePortalProductionUniqueness(db, employeeId, normalizedPayload, entryId);
   const match = await resolvePortalProductionMatch(db, normalizedPayload.patientNameRaw);
+  const unitSnapshot = getPortalProductionUnitSnapshot(employee);
   const teamSnapshot = await getPortalProductionTeamSnapshot(db, employee);
   const now = NOW();
 
@@ -1722,7 +2032,7 @@ export const updatePortalProductionEntry = async (
     UPDATE employee_portal_production_entries
     SET employee_name_snapshot = ?, service_date = ?, entry_type = ?, patient_name_raw = ?,
       patient_name_normalized = ?, match_status = ?, feegow_patient_id = ?, feegow_patient_name = ?,
-      team_snapshot = ?, updated_at = ?
+      unit_snapshot = ?, team_snapshot = ?, updated_at = ?
     WHERE id = ? AND employee_id = ?
     `,
     [
@@ -1734,6 +2044,7 @@ export const updatePortalProductionEntry = async (
       match.matchStatus,
       match.patientId,
       match.patientName,
+      unitSnapshot,
       teamSnapshot,
       now,
       entryId,
