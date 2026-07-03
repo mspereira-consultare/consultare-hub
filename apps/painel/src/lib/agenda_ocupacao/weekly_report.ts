@@ -1325,6 +1325,10 @@ const sendWeeklyReportEmail = async (
   attachments: SendAttachment[],
 ) => {
   const html = renderWeeklyReportHtml(preview);
+  const attachmentsBinary =
+    attachments.length > 0
+      ? Object.fromEntries(attachments.map((attachment) => [attachment.fileName, attachment.buffer.toString('base64')]))
+      : undefined;
   const response = await sendPulseRequest<{ result?: boolean; id?: string }>(`/smtp/emails`, {
     method: 'POST',
     body: JSON.stringify({
@@ -1350,11 +1354,7 @@ const sendWeeklyReportEmail = async (
               },
             }
           : {}),
-        attachments_binary: attachments.map((attachment) => ({
-          name: attachment.fileName,
-          type: attachment.contentType,
-          content: attachment.buffer.toString('base64'),
-        })),
+        ...(attachmentsBinary ? { attachments_binary: attachmentsBinary } : {}),
       },
     }),
   });
@@ -1586,9 +1586,18 @@ export const processAgendaOccupancyWeeklyReportRun = async (
       return mapRun((runRows?.[0] || {}) as Record<string, unknown>);
     });
 
+    if (run.sentCount <= 0) {
+      throw new AgendaOccupancyWeeklyReportValidationError(
+        run.failedCount > 0
+          ? `Nenhum e-mail foi enviado. ${run.failedCount} destinatário(s) falharam no provedor.`
+          : 'Nenhum e-mail foi enviado pelo provedor.',
+        502,
+      );
+    }
+
     await upsertSystemStatus(db, {
       serviceName: SYSTEM_STATUS_SERVICE,
-      status: 'COMPLETED',
+      status: run.failedCount > 0 ? 'WARNING' : 'COMPLETED',
       details: `run=${run.id} janela=${run.weekStartDate}..${run.weekEndDate} sent=${run.sentCount} failed=${run.failedCount}`,
     });
 

@@ -154,6 +154,13 @@ const formatDateTime = (value?: string | null) => {
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" });
 };
+const formatDate = (value?: string | null) => {
+  if (!value) return "-";
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00Z` : value;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+};
 
 const nextWeeklyWindowLabel = () => {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -474,8 +481,15 @@ export default function AgendaOcupacaoPage() {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload?.error || "Falha ao processar envio manual.");
+      const run = (payload?.data?.run || null) as WeeklyReportRunItem | null;
       await loadWeeklyReportAdmin();
-      setNotice("Disparo manual do report semanal iniciado com sucesso.");
+      if (run) {
+        setNotice(
+          `Disparo manual concluído. Enviados: ${run.sentCount} | Falhas: ${run.failedCount} | Ignorados: ${run.skippedCount}.`,
+        );
+      } else {
+        setNotice("Disparo manual do report semanal concluído.");
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Erro ao iniciar o envio manual.");
     } finally {
@@ -972,7 +986,7 @@ function WeeklyReportAdminModal({
                           <div className="text-xs text-slate-500">{formatDateTime(run.createdAt)}</div>
                         </div>
                         <div className="mt-1 text-xs text-slate-500">
-                          Janela {run.weekStartDate}..{run.weekEndDate} · enviados {run.sentCount} · falhas {run.failedCount}
+                          Janela {formatDate(run.weekStartDate)} a {formatDate(run.weekEndDate)} · enviados {run.sentCount} · falhas {run.failedCount}
                         </div>
                         {run.errorMessage ? <div className="mt-2 text-xs text-rose-600">{run.errorMessage}</div> : null}
                       </div>
