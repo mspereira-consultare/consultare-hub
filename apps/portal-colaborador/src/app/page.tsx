@@ -27,6 +27,7 @@ import {
   inputClassName,
   labelClassName,
   personalFromOverview,
+  writeEmployeePortalOverviewCache,
 } from '@/components/portal/shared';
 
 const submissionStatusLabel: Record<string, string> = {
@@ -79,10 +80,12 @@ export default function PortalColaboradorPage() {
     try {
       const payload = await fetchJson<{ status: string; data: EmployeePortalOverview }>('/api/me');
       setOverview(payload.data);
+      writeEmployeePortalOverviewCache(payload.data);
       setPersonal(personalFromOverview(payload.data));
       setConsentLgpd(Boolean(payload.data.submission?.consentLgpd));
     } catch {
       setOverview(null);
+      writeEmployeePortalOverviewCache(null);
     } finally {
       setLoading(false);
     }
@@ -155,6 +158,7 @@ export default function PortalColaboradorPage() {
   const logout = async () => {
     await fetchJson('/api/logout', { method: 'POST' }).catch(() => null);
     setOverview(null);
+    writeEmployeePortalOverviewCache(null);
     setNotice('');
     setError('');
   };
@@ -170,6 +174,7 @@ export default function PortalColaboradorPage() {
         body: JSON.stringify(personal),
       });
       setOverview(payload.data);
+      writeEmployeePortalOverviewCache(payload.data);
       setPersonal(personalFromOverview(payload.data));
       setNotice('Dados pessoais salvos como rascunho.');
     } catch (saveError: unknown) {
@@ -193,6 +198,7 @@ export default function PortalColaboradorPage() {
         body: formData,
       });
       setOverview(payload.data);
+      writeEmployeePortalOverviewCache(payload.data);
       setPersonal(personalFromOverview(payload.data));
       setNotice(`${item.label} enviado para o rascunho.`);
     } catch (uploadError: unknown) {
@@ -213,6 +219,7 @@ export default function PortalColaboradorPage() {
         body: JSON.stringify({ consentLgpd }),
       });
       setOverview(payload.data);
+      writeEmployeePortalOverviewCache(payload.data);
       setPersonal(personalFromOverview(payload.data));
       setNotice('Informações enviadas para revisão do DP.');
     } catch (submitError: unknown) {
@@ -233,6 +240,7 @@ export default function PortalColaboradorPage() {
         body: JSON.stringify({ credentialId: overview.intranetAccess.credentialId }),
       });
       setOverview(payload.data);
+      writeEmployeePortalOverviewCache(payload.data);
       setPersonal(personalFromOverview(payload.data));
       setNotice('Credenciais confirmadas. A senha não ficará mais visível neste portal.');
     } catch (ackError: unknown) {

@@ -34,6 +34,7 @@ export type AuthResponse = {
 export const inputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100 disabled:bg-slate-100 disabled:text-slate-500';
 export const labelClassName = 'mb-1 block text-[11px] font-semibold uppercase text-slate-500';
+const EMPLOYEE_PORTAL_OVERVIEW_CACHE_KEY = 'consultare:portal-colaborador:overview';
 
 const documentStatusLabel: Record<EmployeePortalChecklistItem['status'], string> = {
   PENDING: 'Pendente',
@@ -63,6 +64,30 @@ export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> 
   }
   return payload as T;
 }
+
+export const readEmployeePortalOverviewCache = (): EmployeePortalOverview | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.sessionStorage.getItem(EMPLOYEE_PORTAL_OVERVIEW_CACHE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as EmployeePortalOverview;
+  } catch {
+    return null;
+  }
+};
+
+export const writeEmployeePortalOverviewCache = (overview: EmployeePortalOverview | null) => {
+  if (typeof window === 'undefined') return;
+  try {
+    if (!overview) {
+      window.sessionStorage.removeItem(EMPLOYEE_PORTAL_OVERVIEW_CACHE_KEY);
+      return;
+    }
+    window.sessionStorage.setItem(EMPLOYEE_PORTAL_OVERVIEW_CACHE_KEY, JSON.stringify(overview));
+  } catch {
+    // Ignore cache failures in the browser.
+  }
+};
 
 export const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;

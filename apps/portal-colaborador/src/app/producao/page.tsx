@@ -15,6 +15,8 @@ import {
   getErrorMessage,
   inputClassName,
   labelClassName,
+  readEmployeePortalOverviewCache,
+  writeEmployeePortalOverviewCache,
 } from '@/components/portal/shared';
 
 type ProductionFormState = {
@@ -59,7 +61,7 @@ const createDashboardQuery = (filters: ProductionFiltersState) => {
 };
 
 export default function PortalColaboradorProducaoPage() {
-  const [overview, setOverview] = useState<EmployeePortalOverview | null>(null);
+  const [overview, setOverview] = useState<EmployeePortalOverview | null>(() => readEmployeePortalOverviewCache());
   const [dashboard, setDashboard] = useState<EmployeePortalProductionDashboard | null>(null);
   const [filters, setFilters] = useState<ProductionFiltersState>({
     serviceDate: '',
@@ -68,7 +70,8 @@ export default function PortalColaboradorProducaoPage() {
   });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loadingOverview, setLoadingOverview] = useState(() => !readEmployeePortalOverviewCache());
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
   const [savingProduction, setSavingProduction] = useState(false);
   const [deletingProductionId, setDeletingProductionId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -94,46 +97,84 @@ export default function PortalColaboradorProducaoPage() {
     });
   }, [dashboard?.editableDates]);
 
-  const loadDashboard = useCallback(async (nextFilters: ProductionFiltersState, options?: { preserveNotice?: boolean }) => {
-    const payload = await fetchJson<{ status: string; data: EmployeePortalProductionDashboard }>(createDashboardQuery(nextFilters));
-    setDashboard(payload.data);
+  const syncOverview = useCallback((nextOverview: EmployeePortalOverview) => {
+    setOverview(nextOverview);
+    writeEmployeePortalOverviewCache(nextOverview);
+  }, []);
+
+  const applyDashboard = useCallback((nextDashboard: EmployeePortalProductionDashboard, options?: { preserveNotice?: boolean }) => {
+    setDashboard(nextDashboard);
     setFilters({
-      serviceDate: payload.data.filters.serviceDate || '',
-      entryType: payload.data.filters.entryType,
-      matchStatus: payload.data.filters.matchStatus,
+      serviceDate: nextDashboard.filters.serviceDate || '',
+      entryType: nextDashboard.filters.entryType,
+      matchStatus: nextDashboard.filters.matchStatus,
     });
     if (!productionForm.id) {
-      resetProductionForm(payload.data.editableDates?.[0]);
+      setProductionForm({
+        id: null,
+        serviceDate: nextDashboard.editableDates?.[0] || '',
+        entryType: 'RESOLVE',
+        patientNameRaw: '',
+      });
     }
     if (!options?.preserveNotice) {
       setNotice('');
     }
-  }, [productionForm.id, resetProductionForm]);
+  }, [productionForm.id]);
+
+  const loadDashboard = useCallback(async (nextFilters: ProductionFiltersState, options?: { preserveNotice?: boolean }) => {
+    setLoadingDashboard(true);
+    try {
+      const payload = await fetchJson<{ status: string; data: EmployeePortalProductionDashboard }>(createDashboardQuery(nextFilters));
+      applyDashboard(payload.data, options);
+    } finally {
+      setLoadingDashboard(false);
+    }
+  }, [applyDashboard]);
 
   const loadPage = useCallback(async () => {
-    setLoading(true);
+    const hadOverview = Boolean(overview);
     setError('');
+    setLoadingOverview(!hadOverview);
+    setLoadingDashboard(true);
     try {
-      const [mePayload, dashboardPayload] = await Promise.all([
+      const [meResult, dashboardResult] = await Promise.allSettled([
         fetchJson<{ status: string; data: EmployeePortalOverview }>('/api/me'),
         fetchJson<{ status: string; data: EmployeePortalProductionDashboard }>('/api/production/dashboard'),
       ]);
-      setOverview(mePayload.data);
-      setDashboard(dashboardPayload.data);
-      setFilters({
-        serviceDate: dashboardPayload.data.filters.serviceDate || '',
-        entryType: dashboardPayload.data.filters.entryType,
-        matchStatus: dashboardPayload.data.filters.matchStatus,
-      });
-      resetProductionForm(dashboardPayload.data.editableDates?.[0]);
-    } catch {
-      if (typeof window !== 'undefined') {
-        window.location.href = '/';
+
+      if (meResult.status === 'fulfilled') {
+        syncOverview(meResult.value.data);
+      } else if (!hadOverview) {
+        writeEmployeePortalOverviewCache(null);
+      }
+
+      if (dashboardResult.status === 'fulfilled') {
+        applyDashboard(dashboardResult.value.data);
+      }
+
+      if (meResult.status === 'rejected' && dashboardResult.status === 'rejected') {
+        if (typeof window !== 'undefined') {
+          window.location.href = '/';
+        }
+        return;
+      }
+
+      if (meResult.status === 'rejected' && !hadOverview) {
+        if (typeof window !== 'undefined') {
+          window.location.href = '/';
+        }
+        return;
+      }
+
+      if (dashboardResult.status === 'rejected') {
+        setError(getErrorMessage(dashboardResult.reason, 'Não foi possível carregar a produção.'));
       }
     } finally {
-      setLoading(false);
+      setLoadingOverview(false);
+      setLoadingDashboard(false);
     }
-  }, [resetProductionForm]);
+  }, [applyDashboard, overview, syncOverview]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -144,6 +185,7 @@ export default function PortalColaboradorProducaoPage() {
 
   const logout = async () => {
     await fetchJson('/api/logout', { method: 'POST' }).catch(() => null);
+    writeEmployeePortalOverviewCache(null);
     if (typeof window !== 'undefined') {
       window.location.href = '/';
     }
@@ -180,12 +222,7 @@ export default function PortalColaboradorProducaoPage() {
           }),
         }
       );
-      setDashboard(payload.data);
-      setFilters({
-        serviceDate: payload.data.filters.serviceDate || '',
-        entryType: payload.data.filters.entryType,
-        matchStatus: payload.data.filters.matchStatus,
-      });
+      applyDashboard(payload.data);
       resetProductionForm(payload.data.editableDates?.[0]);
       setNotice(
         isEditing
@@ -208,12 +245,7 @@ export default function PortalColaboradorProducaoPage() {
         `/api/production/entries/${encodeURIComponent(entry.id)}`,
         { method: 'DELETE' }
       );
-      setDashboard(payload.data);
-      setFilters({
-        serviceDate: payload.data.filters.serviceDate || '',
-        entryType: payload.data.filters.entryType,
-        matchStatus: payload.data.filters.matchStatus,
-      });
+      applyDashboard(payload.data);
       if (productionForm.id === entry.id) {
         resetProductionForm(payload.data.editableDates?.[0]);
       }
@@ -225,15 +257,19 @@ export default function PortalColaboradorProducaoPage() {
     }
   };
 
-  if (loading || !overview || !dashboard) {
+  if (!overview && loadingOverview) {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
         <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600 shadow-sm">
           <Loader2 size={16} className="animate-spin" />
-          Carregando producao...
+          Carregando portal...
         </div>
       </main>
     );
+  }
+
+  if (!overview) {
+    return null;
   }
 
   return (
@@ -248,6 +284,37 @@ export default function PortalColaboradorProducaoPage() {
       onHelpClose={() => setHelpOpen(false)}
       onLogout={() => void logout()}
     >
+      {!dashboard ? (
+        <section className="mt-5 space-y-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <Loader2 size={16} className="animate-spin text-[#17407E]" />
+              Carregando sua produção...
+            </div>
+            <p className="mt-2 text-sm text-slate-500">
+              Estamos preparando seus lançamentos, resumo dos últimos 7 dias e filtros desta aba.
+            </p>
+            <div className="mt-5 grid gap-3 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, index) => (
+                <div key={index} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="h-4 w-24 animate-pulse rounded bg-slate-200" />
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    {Array.from({ length: 4 }).map((__, cardIndex) => (
+                      <div key={cardIndex}>
+                        <div className="h-3 w-20 animate-pulse rounded bg-slate-200" />
+                        <div className="mt-2 h-7 w-12 animate-pulse rounded bg-slate-200" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      {dashboard ? (
+        <>
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
@@ -256,6 +323,12 @@ export default function PortalColaboradorProducaoPage() {
               Registre Resolve e Check-up por paciente, acompanhe os vínculos da Feegow e veja o resumo da sua própria produção.
             </p>
           </div>
+          {loadingDashboard ? (
+            <div className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+              <Loader2 size={14} className="animate-spin text-[#17407E]" />
+              Atualizando dados...
+            </div>
+          ) : null}
           {productionForm.id ? (
             <button
               type="button"
@@ -547,6 +620,8 @@ export default function PortalColaboradorProducaoPage() {
           </div>
         </div>
       </section>
+        </>
+      ) : null}
     </PortalShell>
   );
 }
