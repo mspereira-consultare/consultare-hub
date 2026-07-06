@@ -165,6 +165,16 @@ def _to_millis_from_date(date_iso: str, end_of_day: bool = False) -> int:
     return int(base.timestamp() * 1000)
 
 
+def _date_range_iter(start_ms: int, end_ms: int):
+    start_dt = datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc)
+    end_dt = datetime.fromtimestamp(end_ms / 1000, tz=timezone.utc)
+    current = datetime(start_dt.year, start_dt.month, start_dt.day, tzinfo=timezone.utc)
+    last = datetime(end_dt.year, end_dt.month, end_dt.day, tzinfo=timezone.utc)
+    while current <= last:
+        yield current.date().isoformat()
+        current += timedelta(days=1)
+
+
 def _duration_minutes_from_range(start_date: Optional[str], end_date: Optional[str]) -> int:
     if not start_date:
         return 0
@@ -446,57 +456,60 @@ class SolidesClient:
         return items
 
     def get_daily_activity(self, employee_id: str, start_ms: int, end_ms: int) -> List[Dict[str, Any]]:
-        payload = self._request_json(
-            self.punch_base,
-            "/daily-activity",
-            {
-                "employeeId": employee_id,
-                "startDate": start_ms,
-                "endDate": end_ms,
-                "punchList": "true",
-                "adjustmentList": "true",
-                "pendingList": "true",
-                "showFired": "true",
-            },
-        )
-        if not isinstance(payload, list):
-            return []
-
         day_map: Dict[str, Dict[str, Any]] = {}
-        for employee_payload in payload:
-            for list_key, field_name in (
-                ("punchs", "records"),
-                ("adjustments", "adjustments"),
-                ("pendingPunchs", "pending_records"),
-            ):
-                for item in employee_payload.get(list_key) or []:
-                    date_iso = _parse_date(item.get("date"))
-                    if not date_iso:
-                        continue
-                    bucket = day_map.setdefault(
-                        date_iso,
-                        {
-                            "date": date_iso,
-                            "records": [],
-                            "adjustments": [],
-                            "pending_records": [],
-                            "pendingsCount": 0,
-                            "markings": item.get("markings"),
-                            "holiday": item.get("holiday"),
-                            "totalWorkedHoursInSeconds": item.get("totalWorkedHoursInSeconds"),
-                        },
-                    )
-                    values = item.get(field_name) or []
-                    if isinstance(values, list):
-                        bucket[field_name].extend(values)
-                    if list_key == "pendingPunchs":
-                        bucket["pendingsCount"] = max(bucket["pendingsCount"], _ensure_int(item.get("pendingsCount")))
-                    if item.get("markings") and not bucket.get("markings"):
-                        bucket["markings"] = item.get("markings")
-                    if item.get("holiday") is not None:
-                        bucket["holiday"] = item.get("holiday")
-                    if item.get("totalWorkedHoursInSeconds") is not None:
-                        bucket["totalWorkedHoursInSeconds"] = item.get("totalWorkedHoursInSeconds")
+        for day_iso in _date_range_iter(start_ms, end_ms):
+            day_start_ms = _to_millis_from_date(day_iso)
+            day_end_ms = _to_millis_from_date(day_iso, end_of_day=True)
+            payload = self._request_json(
+                self.punch_base,
+                "/daily-activity",
+                {
+                    "employeeId": employee_id,
+                    "startDate": day_start_ms,
+                    "endDate": day_end_ms,
+                    "punchList": "true",
+                    "adjustmentList": "true",
+                    "pendingList": "true",
+                    "showFired": "true",
+                },
+            )
+            if not isinstance(payload, list):
+                continue
+
+            for employee_payload in payload:
+                for list_key, field_name in (
+                    ("punchs", "records"),
+                    ("adjustments", "adjustments"),
+                    ("pendingPunchs", "pending_records"),
+                ):
+                    for item in employee_payload.get(list_key) or []:
+                        date_iso = _parse_date(item.get("date"))
+                        if not date_iso:
+                            continue
+                        bucket = day_map.setdefault(
+                            date_iso,
+                            {
+                                "date": date_iso,
+                                "records": [],
+                                "adjustments": [],
+                                "pending_records": [],
+                                "pendingsCount": 0,
+                                "markings": item.get("markings"),
+                                "holiday": item.get("holiday"),
+                                "totalWorkedHoursInSeconds": item.get("totalWorkedHoursInSeconds"),
+                            },
+                        )
+                        values = item.get(field_name) or []
+                        if isinstance(values, list):
+                            bucket[field_name].extend(values)
+                        if list_key == "pendingPunchs":
+                            bucket["pendingsCount"] = max(bucket["pendingsCount"], _ensure_int(item.get("pendingsCount")))
+                        if item.get("markings") and not bucket.get("markings"):
+                            bucket["markings"] = item.get("markings")
+                        if item.get("holiday") is not None:
+                            bucket["holiday"] = item.get("holiday")
+                        if item.get("totalWorkedHoursInSeconds") is not None:
+                            bucket["totalWorkedHoursInSeconds"] = item.get("totalWorkedHoursInSeconds")
 
         for bucket in day_map.values():
             if bucket.get("pending_records"):
