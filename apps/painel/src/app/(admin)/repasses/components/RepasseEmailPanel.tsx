@@ -7,6 +7,7 @@ import type {
   RepasseEmailJob,
   RepasseEmailRecipient,
   RepasseEmailRecipientSendStatus,
+  RepasseEmailValidationStatus,
 } from "@/lib/repasses/types";
 
 type RepasseEmailPanelProps = {
@@ -163,6 +164,9 @@ type EmailPreview = {
   recipient?: RepasseEmailRecipient;
 };
 
+type SendStatusFilter = "all" | RepasseEmailRecipientSendStatus;
+type ValidationStatusFilter = "all" | RepasseEmailValidationStatus;
+
 export function RepasseEmailPanel({
   periodRef,
   canView,
@@ -182,6 +186,9 @@ export function RepasseEmailPanel({
   const [enqueueing, setEnqueueing] = useState(false);
   const [actionByRecipient, setActionByRecipient] = useState<Record<string, boolean>>({});
   const [selectedRecipientIds, setSelectedRecipientIds] = useState<string[]>([]);
+  const [professionalFilter, setProfessionalFilter] = useState("");
+  const [sendStatusFilter, setSendStatusFilter] = useState<SendStatusFilter>("all");
+  const [validationStatusFilter, setValidationStatusFilter] = useState<ValidationStatusFilter>("all");
   const [preview, setPreview] = useState<EmailPreview | null>(null);
   const [previewLoadingId, setPreviewLoadingId] = useState("");
   const [notice, setNotice] = useState("");
@@ -197,9 +204,21 @@ export function RepasseEmailPanel({
     [recipients]
   );
 
+  const filteredRecipients = useMemo(() => {
+    const professionalTerm = professionalFilter.trim().toLowerCase();
+    return recipients.filter((recipient) => {
+      const matchesProfessional = !professionalTerm
+        || recipient.professionalName.toLowerCase().includes(professionalTerm)
+        || recipient.recipientEmail.toLowerCase().includes(professionalTerm);
+      const matchesSendStatus = sendStatusFilter === "all" || recipient.sendStatus === sendStatusFilter;
+      const matchesValidationStatus = validationStatusFilter === "all" || recipient.validationStatus === validationStatusFilter;
+      return matchesProfessional && matchesSendStatus && matchesValidationStatus;
+    });
+  }, [professionalFilter, recipients, sendStatusFilter, validationStatusFilter]);
+
   const dispatchableRecipientIds = useMemo(
-    () => recipients.filter((recipient) => dispatchableStatuses.includes(recipient.sendStatus)).map((recipient) => recipient.id),
-    [recipients]
+    () => filteredRecipients.filter((recipient) => dispatchableStatuses.includes(recipient.sendStatus)).map((recipient) => recipient.id),
+    [filteredRecipients]
   );
 
   const selectedDispatchableIds = useMemo(
@@ -208,6 +227,15 @@ export function RepasseEmailPanel({
   );
 
   const allDispatchableSelected = dispatchableRecipientIds.length > 0 && dispatchableRecipientIds.every((id) => selectedRecipientIds.includes(id));
+
+  const hasRecipientFilters = professionalFilter.trim() !== "" || sendStatusFilter !== "all" || validationStatusFilter !== "all";
+
+  const clearRecipientFilters = () => {
+    setProfessionalFilter("");
+    setSendStatusFilter("all");
+    setValidationStatusFilter("all");
+    setSelectedRecipientIds([]);
+  };
 
   const loadRecipients = useCallback(async (batchId: string) => {
     if (!canView || !batchId) {
@@ -594,7 +622,7 @@ export function RepasseEmailPanel({
               {allDispatchableSelected ? "Limpar seleção" : "Selecionar aptos"}
             </button>
             <span className="text-xs text-slate-500">
-              {selectedDispatchableIds.length} selecionado(s) de {dispatchableRecipientIds.length} apto(s), {readyCount} pronto(s)
+              {selectedDispatchableIds.length} selecionado(s) de {dispatchableRecipientIds.length} apto(s) visível(is), {readyCount} pronto(s) no lote
             </span>
           </div>
           <button
@@ -606,6 +634,75 @@ export function RepasseEmailPanel({
             {enqueueing ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
             Enviar selecionados ({selectedDispatchableIds.length})
           </button>
+        </div>
+
+        <div className="mb-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 lg:grid-cols-[minmax(220px,1fr)_180px_180px_auto] lg:items-end">
+          <label className="flex min-w-0 flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Profissional ou e-mail
+            <input
+              type="search"
+              value={professionalFilter}
+              onChange={(event) => {
+                setProfessionalFilter(event.target.value);
+                setSelectedRecipientIds([]);
+              }}
+              placeholder="Buscar na tabela"
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium normal-case tracking-normal text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Status de envio
+            <select
+              value={sendStatusFilter}
+              onChange={(event) => {
+                setSendStatusFilter(event.target.value as SendStatusFilter);
+                setSelectedRecipientIds([]);
+              }}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium normal-case tracking-normal text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="all">Todos</option>
+              <option value="READY">Pronto</option>
+              <option value="FAILED">Falhou</option>
+              <option value="SOFT_BOUNCE">Falha temporária</option>
+              <option value="HARD_BOUNCE">Não entregue</option>
+              <option value="DEFERRED">Aguardando</option>
+              <option value="ACCEPTED_PROVIDER">Enviado</option>
+              <option value="DELIVERED">Entregue</option>
+              <option value="QUEUED">Na fila</option>
+              <option value="SENDING">Enviando</option>
+              <option value="SKIPPED">Ignorado</option>
+              <option value="MANUAL_CONFIRMED">Confirmado</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+            Conferência
+            <select
+              value={validationStatusFilter}
+              onChange={(event) => {
+                setValidationStatusFilter(event.target.value as ValidationStatusFilter);
+                setSelectedRecipientIds([]);
+              }}
+              className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-medium normal-case tracking-normal text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+            >
+              <option value="all">Todas</option>
+              <option value="VALID">Válido</option>
+              <option value="WARNING">Atenção</option>
+              <option value="ERROR">Erro</option>
+            </select>
+          </label>
+          <div className="flex items-center gap-2 lg:justify-end">
+            <span className="text-xs text-slate-500">
+              {filteredRecipients.length} de {recipients.length} registro(s)
+            </span>
+            <button
+              type="button"
+              onClick={clearRecipientFilters}
+              disabled={!hasRecipientFilters}
+              className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              Limpar filtros
+            </button>
+          </div>
         </div>
 
         <div className="max-h-[560px] overflow-auto rounded-xl border border-slate-200">
@@ -649,8 +746,15 @@ export function RepasseEmailPanel({
                 </td>
               </tr>
             )}
+            {!loading && recipients.length > 0 && filteredRecipients.length === 0 && (
+              <tr>
+                <td colSpan={11} className="px-3 py-6 text-center text-slate-500">
+                  Nenhum destinatário encontrado para os filtros selecionados.
+                </td>
+              </tr>
+            )}
             {!loading &&
-              recipients.map((recipient) => {
+              filteredRecipients.map((recipient) => {
                 const busy = !!actionByRecipient[recipient.id];
                 const canRetry = resendStatuses.includes(recipient.sendStatus);
                 const canSelect = dispatchableStatuses.includes(recipient.sendStatus);
