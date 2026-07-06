@@ -329,6 +329,7 @@ const mapEmailRecipient = (row: any): RepasseEmailRecipient => ({
   lastProviderMessageId: clean(row.last_provider_message_id) || null,
   lastEventType: clean(row.last_event_type) || null,
   lastEventAt: clean(row.last_event_at) || null,
+  lastMessageError: clean(row.last_message_error) || clean(row.message_error) || null,
   manualConfirmedBy: clean(row.manual_confirmed_by) || null,
   manualConfirmedAt: clean(row.manual_confirmed_at) || null,
   createdAt: clean(row.created_at),
@@ -2646,21 +2647,22 @@ export const listRepasseEmailRecipients = async (
   await ensureRepasseEmailTables(db);
   const batchId = clean(filters.batchId);
   if (!batchId) throw new RepasseValidationError('Lote de e-mail invalido.');
-  const where: string[] = ['batch_id = ?'];
+  const where: string[] = ['r.batch_id = ?'];
   const params: any[] = [batchId];
   const status = clean(filters.status).toUpperCase();
   const limit = normalizeLimit(filters.limit, 500);
   await refreshRepasseEmailBatchReadiness(db, batchId);
   if (status && status !== 'ALL') {
-    where.push('send_status = ?');
+    where.push('r.send_status = ?');
     params.push(status);
   }
   const rows = await db.query(
     `
-    SELECT *
-    FROM repasse_email_recipients
+    SELECT r.*, m.error AS last_message_error
+    FROM repasse_email_recipients r
+    LEFT JOIN repasse_email_messages m ON m.id = r.last_message_id
     WHERE ${where.join(' AND ')}
-    ORDER BY professional_name ASC
+    ORDER BY r.professional_name ASC
     LIMIT ?
     `,
     [...params, limit]

@@ -119,6 +119,23 @@ const eventLabel = (event: string | null | undefined) => {
   return labels[normalized] || event || "-";
 };
 
+const isProviderLimitError = (error: string | null | undefined) =>
+  /quota|bandwidth|limit|limite|cota/i.test(String(error || ""));
+
+const recipientSendStatusLabel = (recipient: RepasseEmailRecipient) => {
+  if (recipient.sendStatus === "READY" && recipient.lastEventType === "failed") {
+    return "Pronto para reenviar";
+  }
+  return statusLabel(recipient.sendStatus);
+};
+
+const recipientLastEventLabel = (recipient: RepasseEmailRecipient) => {
+  if (recipient.lastEventType === "failed" && isProviderLimitError(recipient.lastMessageError)) {
+    return "Falhou por limite do provedor";
+  }
+  return eventLabel(recipient.lastEventType);
+};
+
 const statusClass = (status: string) => {
   const normalized = String(status || "").toUpperCase();
   if (["READY", "DELIVERED", "MANUAL_CONFIRMED", "COMPLETED", "VALID"].includes(normalized)) {
@@ -136,6 +153,12 @@ const statusClass = (status: string) => {
 const StatusPill = ({ value }: { value: string }) => (
   <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(value)}`}>
     {statusLabel(value)}
+  </span>
+);
+
+const RecipientSendStatusPill = ({ recipient }: { recipient: RepasseEmailRecipient }) => (
+  <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(recipient.sendStatus)}`}>
+    {recipientSendStatusLabel(recipient)}
   </span>
 );
 
@@ -818,11 +841,16 @@ export function RepasseEmailPanel({
                       </div>
                     </td>
                     <td className="px-2 py-2">
-                      <StatusPill value={recipient.sendStatus} />
+                      <RecipientSendStatusPill recipient={recipient} />
                     </td>
                     <td className="px-2 py-2 text-slate-600">
-                      {eventLabel(recipient.lastEventType)}
+                      {recipientLastEventLabel(recipient)}
                       {recipient.lastEventAt ? <span className="block text-[11px] text-slate-400">{formatDateTimeBr(recipient.lastEventAt)}</span> : null}
+                      {recipient.lastEventType === "failed" && recipient.lastMessageError ? (
+                        <span className="mt-1 block max-w-[220px] text-[11px] leading-snug text-slate-400">
+                          {isProviderLimitError(recipient.lastMessageError) ? "Tente reenviar quando o limite do SendPulse liberar." : recipient.lastMessageError}
+                        </span>
+                      ) : null}
                     </td>
                     <td className="px-2 py-2">
                       <div className="flex justify-end gap-1">

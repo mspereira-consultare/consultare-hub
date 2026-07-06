@@ -471,6 +471,7 @@ export type RepasseEmailRecipient = {
   lastProviderMessageId: string | null;
   lastEventType: string | null;
   lastEventAt: string | null;
+  lastMessageError: string | null;
   manualConfirmedBy: string | null;
   manualConfirmedAt: string | null;
   createdAt: string;
