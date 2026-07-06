@@ -73,6 +73,6 @@ export const config = {
      * 4. /favicon.ico, /sitemap.xml (arquivos públicos)
      * 5. Imagens estáticas
      */
-    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|logo-color.png|logo-white.png).*)",
   ],
 };
