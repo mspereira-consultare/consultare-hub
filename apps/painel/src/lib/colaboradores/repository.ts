@@ -35,7 +35,6 @@ import {
   computeDocumentProgress,
   computeMissingDocuments,
   getDocumentTypeLabel,
-  getTodayInSaoPauloIso,
 } from '@/lib/colaboradores/status';
 import type {
   Employee,
@@ -63,7 +62,6 @@ import type {
   EmployeeLockerAssignment,
   EmployeeLockerAssignmentInput,
   EmployeeRecessPeriod,
-  EmployeeRecessPeriodInput,
   EmployeeUniformItem,
   EmployeeUniformItemInput,
 } from '@/lib/colaboradores/types';
@@ -392,52 +390,6 @@ const mapLockerAssignment = (row: any): EmployeeLockerAssignment => ({
   updatedAt: clean(row.updated_at),
 });
 
-
-const addDays = (dateIso: string, days: number) => {
-  const date = new Date(`${dateIso}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
-  return date.toISOString().slice(0, 10);
-};
-
-const deriveRecessSituation = (balance: number, leaveDeadlineDate: string | null) => {
-  if (balance <= 0) return 'QUITADAS' as const;
-  const today = getTodayInSaoPauloIso();
-  if (leaveDeadlineDate && leaveDeadlineDate < today) return 'VENCIDAS' as const;
-  return 'EM_ABERTO' as const;
-};
-
-const mapRecessPeriod = (row: any): EmployeeRecessPeriod => {
-  const daysDue = parsePositiveInt(row.days_due, 0);
-  const daysPaid = parsePositiveInt(row.days_paid, 0);
-  const balance = Math.max(0, daysDue - daysPaid);
-  const vacationStartDate = parseDate(row.vacation_start_date);
-  const vacationDurationDays = parsePositiveInt(row.vacation_duration_days, 0);
-  const vacationEndDate = vacationStartDate && vacationDurationDays > 0
-    ? addDays(vacationStartDate, vacationDurationDays - 1)
-    : null;
-  const leaveDeadlineDate = parseDate(row.leave_deadline_date);
-  const situation = deriveRecessSituation(balance, leaveDeadlineDate);
-
-  return {
-    id: clean(row.id),
-    employeeId: clean(row.employee_id),
-    source: clean(row.source).toUpperCase() === 'SOLIDES' ? 'SOLIDES' : 'LOCAL',
-    acquisitionStartDate: parseDate(row.acquisition_start_date),
-    acquisitionEndDate: parseDate(row.acquisition_end_date),
-    daysDue,
-    daysPaid,
-    balance,
-    situation,
-    leaveDeadlineDate,
-    vacationStartDate,
-    vacationDurationDays,
-    vacationEndDate,
-    sellTenDays: bool(row.sell_ten_days),
-    thirteenthOnVacation: bool(row.thirteenth_on_vacation),
-    createdAt: clean(row.created_at),
-    updatedAt: clean(row.updated_at),
-  };
-};
 
 const buildIn = (values: string[]) => {
   if (values.length === 0) return { clause: '(NULL)', params: [] as string[] };
@@ -2445,82 +2397,48 @@ export const deleteEmployeeLockerAssignment = async (
   return listEmployeeLockerAssignments(db, employeeId);
 };
 
-const normalizeRecessInput = (payload: any): EmployeeRecessPeriodInput => {
-  const daysDue = parsePositiveInt(payload?.daysDue || payload?.days_due, 0);
-  const daysPaid = parsePositiveInt(payload?.daysPaid || payload?.days_paid, 0);
-  if (daysPaid > daysDue) {
-    throw new EmployeeValidationError('Dias quitados não podem ser maiores que os dias devidos.');
-  }
-  return {
-    acquisitionStartDate: parseDate(payload?.acquisitionStartDate || payload?.acquisition_start_date),
-    acquisitionEndDate: parseDate(payload?.acquisitionEndDate || payload?.acquisition_end_date),
-    daysDue,
-    daysPaid,
-    leaveDeadlineDate: parseDate(payload?.leaveDeadlineDate || payload?.leave_deadline_date),
-    vacationStartDate: parseDate(payload?.vacationStartDate || payload?.vacation_start_date),
-    vacationDurationDays: parsePositiveInt(payload?.vacationDurationDays || payload?.vacation_duration_days, 0),
-    sellTenDays: bool(payload?.sellTenDays || payload?.sell_ten_days),
-    thirteenthOnVacation: bool(payload?.thirteenthOnVacation || payload?.thirteenth_on_vacation),
-  };
-};
-
 export const listEmployeeRecessPeriods = async (db: DbInterface, employeeId: string): Promise<EmployeeRecessPeriod[]> => {
   await ensureEmployeesTables(db);
   await ensureEmployeeExists(db, employeeId);
 
-  const [vacationRows, legacyRows] = await Promise.all([
-    db.query(
-      `
-      SELECT id, employee_id, date_start, date_end, notes, created_at, updated_at
-      FROM payroll_occurrences
-      WHERE employee_id = ?
-        AND occurrence_type = 'FERIAS'
-      ORDER BY date_start DESC, created_at DESC
-      `,
-      [employeeId]
-    ),
-    db.query(
-      `
-      SELECT *
-      FROM employee_recess_periods
-      WHERE employee_id = ?
-      ORDER BY acquisition_start_date DESC, created_at DESC
-      `,
-      [employeeId]
-    ),
-  ]);
+  const vacationRows = await db.query(
+    `
+    SELECT id, employee_id, date_start, date_end, notes, created_at, updated_at
+    FROM payroll_occurrences
+    WHERE employee_id = ?
+      AND occurrence_type = 'FERIAS'
+    ORDER BY date_start DESC, created_at DESC
+    `,
+    [employeeId]
+  );
 
-  if (vacationRows.length > 0) {
-    return vacationRows.map((row: any) => {
-      const vacationStartDate = parseDate(row.date_start);
-      const vacationEndDate = parseDate(row.date_end) || vacationStartDate;
-      const vacationDurationDays =
-        vacationStartDate && vacationEndDate
-          ? Math.max(1, Math.floor((new Date(`${vacationEndDate}T00:00:00Z`).getTime() - new Date(`${vacationStartDate}T00:00:00Z`).getTime()) / 86400000) + 1)
-          : 0;
-      return {
-        id: clean(row.id),
-        employeeId,
-        source: 'SOLIDES',
-        acquisitionStartDate: null,
-        acquisitionEndDate: null,
-        daysDue: vacationDurationDays,
-        daysPaid: vacationDurationDays,
-        balance: 0,
-        situation: 'QUITADAS',
-        leaveDeadlineDate: null,
-        vacationStartDate,
-        vacationDurationDays,
-        vacationEndDate,
-        sellTenDays: false,
-        thirteenthOnVacation: false,
-        createdAt: clean(row.created_at),
-        updatedAt: clean(row.updated_at),
-      } satisfies EmployeeRecessPeriod;
-    });
-  }
-
-  return legacyRows.map(mapRecessPeriod);
+  return vacationRows.map((row: any) => {
+    const vacationStartDate = parseDate(row.date_start);
+    const vacationEndDate = parseDate(row.date_end) || vacationStartDate;
+    const vacationDurationDays =
+      vacationStartDate && vacationEndDate
+        ? Math.max(1, Math.floor((new Date(`${vacationEndDate}T00:00:00Z`).getTime() - new Date(`${vacationStartDate}T00:00:00Z`).getTime()) / 86400000) + 1)
+        : 0;
+    return {
+      id: clean(row.id),
+      employeeId,
+      source: 'SOLIDES',
+      acquisitionStartDate: null,
+      acquisitionEndDate: null,
+      daysDue: vacationDurationDays,
+      daysPaid: vacationDurationDays,
+      balance: 0,
+      situation: 'QUITADAS',
+      leaveDeadlineDate: null,
+      vacationStartDate,
+      vacationDurationDays,
+      vacationEndDate,
+      sellTenDays: false,
+      thirteenthOnVacation: false,
+      createdAt: clean(row.created_at),
+      updatedAt: clean(row.updated_at),
+    } satisfies EmployeeRecessPeriod;
+  });
 };
 
 export const saveEmployeeRecessPeriod = async (
@@ -2536,7 +2454,7 @@ export const saveEmployeeRecessPeriod = async (
   void actorUserId;
   void entryId;
   throw new EmployeeValidationError(
-    'O recesso/férias agora é sincronizado pela Sólides/Tangerino e está em modo somente leitura no painel.',
+    'As férias agora são sincronizadas pela Sólides e estão em modo somente leitura no painel.',
     409,
   );
 };
@@ -2552,7 +2470,7 @@ export const deleteEmployeeRecessPeriod = async (
   void entryId;
   void actorUserId;
   throw new EmployeeValidationError(
-    'O recesso/férias agora é sincronizado pela Sólides/Tangerino e está em modo somente leitura no painel.',
+    'As férias agora são sincronizadas pela Sólides e estão em modo somente leitura no painel.',
     409,
   );
 };

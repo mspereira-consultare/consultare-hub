@@ -179,18 +179,6 @@ type LockerFormState = {
   isActive: boolean;
 };
 
-type RecessFormState = {
-  acquisitionStartDate: string;
-  acquisitionEndDate: string;
-  daysDue: string;
-  daysPaid: string;
-  leaveDeadlineDate: string;
-  vacationStartDate: string;
-  vacationDurationDays: string;
-  sellTenDays: boolean;
-  thirteenthOnVacation: boolean;
-};
-
 type PendingUpload = {
   localId: string;
   file: File | null;
@@ -338,18 +326,6 @@ const emptyLockerForm = (): LockerFormState => ({
   isActive: true,
 });
 
-const emptyRecessForm = (): RecessFormState => ({
-  acquisitionStartDate: '',
-  acquisitionEndDate: '',
-  daysDue: '0',
-  daysPaid: '0',
-  leaveDeadlineDate: '',
-  vacationStartDate: '',
-  vacationDurationDays: '0',
-  sellTenDays: false,
-  thirteenthOnVacation: false,
-});
-
 const formatDateBr = (value: string | null | undefined) => {
   const raw = String(value || '').trim();
   const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -486,7 +462,7 @@ const getEmployeeStatusLabel = (status: EmployeeStatus) =>
   status === 'ATIVO' ? 'Ativo' : status === 'PRE_ADMISSAO' ? 'Pré-admissão' : 'Desligado';
 
 const recessReadOnlyMessage =
-  'Férias e recessos agora são sincronizados pela Sólides/Tangerino. Nesta fase o painel consulta esses dados, mas não cria nem edita lançamentos por aqui.';
+  'As férias agora são sincronizadas pela Sólides. Nesta fase o painel consulta esses dados, mas não cria nem edita lançamentos por aqui.';
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { cache: 'no-store', ...init });
@@ -594,9 +570,6 @@ export default function ColaboradoresPage() {
   const [lockerForm, setLockerForm] = useState<LockerFormState>(emptyLockerForm());
   const [lockerEditingId, setLockerEditingId] = useState<string | null>(null);
   const [lockerSaving, setLockerSaving] = useState(false);
-  const [recessForm, setRecessForm] = useState<RecessFormState>(emptyRecessForm());
-  const [recessEditingId, setRecessEditingId] = useState<string | null>(null);
-  const [recessSaving, setRecessSaving] = useState(false);
   const defaultListFilters = useMemo(() => emptyFilters(), []);
 
   const filtersApplied = useMemo(
@@ -744,8 +717,6 @@ export default function ColaboradoresPage() {
     setUniformEditingId(null);
     setLockerForm(emptyLockerForm());
     setLockerEditingId(null);
-    setRecessForm(emptyRecessForm());
-    setRecessEditingId(null);
     setModalError('');
     setModalNotice('');
     setModalTab('cadastro');
@@ -1041,49 +1012,6 @@ export default function ColaboradoresPage() {
       setModalNotice('Registro de armário removido.');
     } catch (lockerError: any) {
       setModalError(lockerError?.message || 'Falha ao remover armário.');
-    }
-  };
-
-  const submitRecess = async () => {
-    if (!currentEmployeeId) return;
-    setRecessSaving(true);
-    setModalError('');
-    try {
-      const payload = await fetchJson<{ status: string; data: EmployeeRecessPeriod[] }>(
-        recessEditingId
-          ? `/api/admin/colaboradores/${encodeURIComponent(currentEmployeeId)}/recessos/${encodeURIComponent(recessEditingId)}`
-          : `/api/admin/colaboradores/${encodeURIComponent(currentEmployeeId)}/recessos`,
-        {
-          method: recessEditingId ? 'PUT' : 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(recessForm),
-        }
-      );
-      setRecessItems(payload.data || []);
-      setRecessForm(emptyRecessForm());
-      setRecessEditingId(null);
-      setModalNotice('Período de recesso salvo com sucesso.');
-    } catch (recessError: any) {
-      console.error('Erro ao salvar recesso:', recessError);
-      setModalError(recessError?.message || 'Falha ao salvar recesso.');
-    } finally {
-      setRecessSaving(false);
-    }
-  };
-
-  const deleteRecess = async (entryId: string) => {
-    if (!currentEmployeeId || !canEdit) return;
-    try {
-      const payload = await fetchJson<{ status: string; data: EmployeeRecessPeriod[] }>(
-        `/api/admin/colaboradores/${encodeURIComponent(currentEmployeeId)}/recessos/${encodeURIComponent(entryId)}`,
-        { method: 'DELETE' }
-      );
-      setRecessItems(payload.data || []);
-      setRecessForm(emptyRecessForm());
-      setRecessEditingId(null);
-      setModalNotice('Período de recesso removido.');
-    } catch (recessError: any) {
-      setModalError(recessError?.message || 'Falha ao remover recesso.');
     }
   };
 
@@ -2190,7 +2118,7 @@ export default function ColaboradoresPage() {
 
                   {modalTab === 'recesso' ? (
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-[420px,1fr]">
-                      <SectionCard title="Férias sincronizadas" description="Consulta em modo leitura da base oficial da Sólides/Tangerino." icon={CalendarClock}>
+                      <SectionCard title="Férias sincronizadas" description="Consulta em modo leitura da base oficial da Sólides." icon={CalendarClock}>
                         <div className="space-y-3">
                           <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-4 text-sm text-[#17407E]">
                             {recessReadOnlyMessage}
@@ -2228,7 +2156,7 @@ export default function ColaboradoresPage() {
                                   <td className="px-2 py-2">{formatDateBr(item.leaveDeadlineDate)}</td>
                                   <td className="px-2 py-2">{formatDateBr(item.vacationStartDate)}<br /><span className="text-xs text-slate-500">Até {formatDateBr(item.vacationEndDate)}</span></td>
                                   <td className="px-2 py-2 text-xs text-slate-600">Venda 10 dias: {item.sellTenDays ? 'Sim' : 'Não'}<br />13º nas férias: {item.thirteenthOnVacation ? 'Sim' : 'Não'}</td>
-                                  <td className="px-2 py-2 text-xs text-slate-600">{item.source === 'SOLIDES' ? 'Sólides/Tangerino' : 'Legado local'}</td>
+                                  <td className="px-2 py-2 text-xs text-slate-600">Sólides</td>
                                 </tr>
                               ))}
                             </tbody>

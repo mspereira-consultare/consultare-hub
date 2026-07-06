@@ -45,7 +45,7 @@ const buildUrl = (base: string, path: string, query?: RequestParams['query']) =>
 const request = async <T>(module: SolidesModule, params: RequestParams): Promise<T> => {
   const token = resolveToken();
   if (!token) {
-    throw new SolidesClientError('Token da integração Sólides/Tangerino não configurado.');
+    throw new SolidesClientError('Token da integração Sólides não configurado.');
   }
 
   const response = await fetch(buildUrl(resolveBase(module), params.path, params.query), {
@@ -62,7 +62,7 @@ const request = async <T>(module: SolidesModule, params: RequestParams): Promise
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     throw new SolidesClientError(
-      String((payload as { message?: unknown; error?: unknown } | null)?.message || (payload as { error?: unknown } | null)?.error || 'Falha ao consultar Sólides/Tangerino.'),
+      String((payload as { message?: unknown; error?: unknown } | null)?.message || (payload as { error?: unknown } | null)?.error || 'Falha ao consultar Sólides.'),
       response.status,
     );
   }

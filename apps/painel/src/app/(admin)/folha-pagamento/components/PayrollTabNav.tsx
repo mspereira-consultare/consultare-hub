@@ -23,17 +23,27 @@ const tabs: Array<{ key: PayrollTabKey; label: string; helper: string; icon: typ
   { key: 'previa', label: 'Prévia da planilha', helper: 'Estrutura final do XLSX mensal do RH.', icon: LayoutTemplate },
 ];
 
+export const PAYROLL_POINT_TABS = tabs.filter((tab) =>
+  ['sincronizacao', 'controle_diario', 'banco_horas', 'ferias', 'assinaturas'].includes(tab.key),
+);
+
+export const PAYROLL_CLOSING_TABS = tabs.filter((tab) =>
+  ['fechamento', 'beneficios', 'previa'].includes(tab.key),
+);
+
 export function PayrollTabNav({
   activeTab,
   onChange,
+  tabs: visibleTabs = tabs,
 }: {
   activeTab: PayrollTabKey;
   onChange: (tab: PayrollTabKey) => void;
+  tabs?: Array<{ key: PayrollTabKey; label: string; helper: string; icon: typeof FileSpreadsheet }>;
 }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
       <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-        {tabs.map((tab) => {
+        {visibleTabs.map((tab) => {
           const active = activeTab === tab.key;
           const Icon = tab.icon;
           return (

@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import ssl
@@ -5,10 +6,11 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
 
 from database_manager import DatabaseManager
+from storage_s3 import upload_s3_object_bytes
 
 
 SERVICE_NAME = "payroll_point_sync"
@@ -16,7 +18,7 @@ STATUS_PENDING = "PENDING"
 STATUS_RUNNING = "RUNNING"
 STATUS_COMPLETED = "COMPLETED"
 STATUS_FAILED = "FAILED"
-SYNC_ACTOR = "system_sync_tangerino"
+SYNC_ACTOR = "system_sync_solides"
 HTTP_TIMEOUT_SEC = max(15, int(os.getenv("SOLIDES_SYNC_TIMEOUT_SEC", "45")))
 
 
@@ -45,6 +47,27 @@ def _safe_json(value: Any) -> Optional[str]:
         return json.dumps(value, ensure_ascii=False)
     except Exception:
         return None
+
+
+def _infer_extension_from_content_type(content_type: str) -> str:
+    normalized = _clean(content_type).lower()
+    if "pdf" in normalized:
+        return "pdf"
+    if "spreadsheetml" in normalized or "xlsx" in normalized:
+        return "xlsx"
+    if "excel" in normalized or "xls" in normalized:
+        return "xls"
+    if "zip" in normalized:
+        return "zip"
+    if "json" in normalized:
+        return "json"
+    return "bin"
+
+
+def _build_timesheet_storage_key(period_id: str, extension: str) -> str:
+    prefix = (_clean(os.getenv("AWS_S3_PREFIX")) or "folha-pagamento").strip("/")
+    stamp = _now_iso().replace(":", "-").replace(".", "-")
+    return f"{prefix}/{period_id}/ponto/{stamp}-espelho-solides.{extension}"
 
 
 def _normalize_cpf(value: Any) -> Optional[str]:
@@ -86,6 +109,16 @@ def _execute(db: DatabaseManager, sql: str, params=()):
         return result
     finally:
         conn.close()
+
+
+def _safe_execute(db: DatabaseManager, sql: str, params=()):
+    try:
+        _execute(db, sql, params)
+    except Exception as exc:
+        message = _clean(exc)
+        if "Duplicate column name" in message or "duplicate column name" in message:
+            return
+        raise
 
 
 def _parse_iso_datetime(value: Any) -> Optional[datetime]:
@@ -282,11 +315,51 @@ class SolidesClient:
         )
         if not self.token:
             raise SolidesApiError(
-                "Token da integração Sólides/Tangerino não encontrado. Configure TANGERINO_INTEGRATION_TOKEN ou SOLIDES_TANGERINO_INTEGRATION_TOKEN."
+                "Token da integração Sólides não encontrado. Configure TANGERINO_INTEGRATION_TOKEN ou SOLIDES_TANGERINO_INTEGRATION_TOKEN."
             )
         self.punch_base = _clean(os.getenv("TANGERINO_PUNCH_API_BASE")) or "https://api.tangerino.com.br/api/punch"
         self.employer_base = _clean(os.getenv("TANGERINO_EMPLOYER_API_BASE")) or "https://api.tangerino.com.br/api/employer"
+        self.reports_base = _clean(os.getenv("TANGERINO_REPORTS_API_BASE")) or "https://api.tangerino.com.br/api/time-sheet"
         self._ssl_context = ssl.create_default_context()
+
+    def _request_raw(
+        self,
+        base_url: str,
+        path: str,
+        params: Optional[Dict[str, Any]] = None,
+        absolute_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        query_params = {}
+        for key, value in (params or {}).items():
+            if value is None or value == "":
+                continue
+            query_params[key] = value
+        query = f"?{urlencode(query_params, doseq=True)}" if query_params else ""
+        url = absolute_url or f"{base_url.rstrip('/')}{path}{query}"
+        request = Request(
+            url,
+            headers={
+                "Authorization": f"Basic {self.token}",
+                "Accept": "*/*",
+                "User-Agent": "consultare-hub/solides-sync",
+            },
+            method="GET",
+        )
+        try:
+            with urlopen(request, timeout=HTTP_TIMEOUT_SEC, context=self._ssl_context) as response:
+                return {
+                    "url": url,
+                    "body": response.read(),
+                    "content_type": _clean(response.headers.get("Content-Type")),
+                    "content_disposition": _clean(response.headers.get("Content-Disposition")),
+                }
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", "ignore")
+            if exc.code == 404:
+                return {"url": url, "not_found": True, "body": body.encode("utf-8")}
+            raise SolidesApiError(f"Erro HTTP {exc.code} em {path or url}: {body[:300] or exc.reason}") from exc
+        except URLError as exc:
+            raise SolidesApiError(f"Falha de rede ao acessar {path or url}: {exc}") from exc
 
     def _paginate(self, path: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         items: List[Dict[str, Any]] = []
@@ -313,35 +386,13 @@ class SolidesClient:
         return items
 
     def _request_json(self, base_url: str, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
-        query_params = {}
-        for key, value in (params or {}).items():
-            if value is None or value == "":
-                continue
-            query_params[key] = value
-        query = f"?{urlencode(query_params, doseq=True)}" if query_params else ""
-        url = f"{base_url.rstrip('/')}{path}{query}"
-        request = Request(
-            url,
-            headers={
-                "Authorization": f"Basic {self.token}",
-                "Accept": "application/json",
-                "User-Agent": "consultare-hub/solides-sync",
-            },
-            method="GET",
-        )
-        try:
-            with urlopen(request, timeout=HTTP_TIMEOUT_SEC, context=self._ssl_context) as response:
-                content = response.read().decode("utf-8")
-                if not content:
-                    return None
-                return json.loads(content)
-        except HTTPError as exc:
-            body = exc.read().decode("utf-8", "ignore")
-            if exc.code == 404:
-                return None
-            raise SolidesApiError(f"Erro HTTP {exc.code} em {path}: {body[:300] or exc.reason}") from exc
-        except URLError as exc:
-            raise SolidesApiError(f"Falha de rede ao acessar {path}: {exc}") from exc
+        response = self._request_raw(base_url, path, params=params)
+        if response.get("not_found"):
+            return None
+        content = (response.get("body") or b"").decode("utf-8", "ignore")
+        if not content:
+            return None
+        return json.loads(content)
 
     def list_employees(self) -> List[Dict[str, Any]]:
         direct_items = self._paginate("/employee/find-all", {"showFired": 1})
@@ -489,8 +540,127 @@ class SolidesClient:
         payload = self._request_json(self.employer_base, "/employer/params")
         return payload if isinstance(payload, dict) else None
 
+    def fetch_timesheet_report(self, period_start: str, period_end: str) -> Optional[Dict[str, Any]]:
+        start_ms = _to_millis_from_date(period_start)
+        end_ms = _to_millis_from_date(period_end, end_of_day=True)
+        candidates = [
+            ("", {"startDate": start_ms, "endDate": end_ms}),
+            ("/report", {"startDate": start_ms, "endDate": end_ms}),
+            ("", {"initialDate": start_ms, "finalDate": end_ms}),
+            ("/report", {"initialDate": start_ms, "finalDate": end_ms}),
+            ("/time-sheet", {"startDate": start_ms, "endDate": end_ms}),
+            ("/time-sheet/report", {"startDate": start_ms, "endDate": end_ms}),
+        ]
+        errors: List[str] = []
+        for path, params in candidates:
+            try:
+                response = self._request_raw(self.reports_base, path, params=params)
+            except Exception as exc:
+                errors.append(str(exc))
+                continue
+            if response.get("not_found"):
+                errors.append(f"{path or '/'} 404")
+                continue
+            artifact = self._extract_artifact_response(response)
+            if artifact:
+                return artifact
+            errors.append(f"{path or '/'} respondeu sem artefato utilizável")
+        if errors:
+            raise SolidesApiError(" | ".join(errors[:4]))
+        return None
+
+    def _extract_artifact_response(self, response: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        body = response.get("body") or b""
+        content_type = _clean(response.get("content_type")) or "application/octet-stream"
+        content_disposition = _clean(response.get("content_disposition"))
+        if not body:
+            return None
+
+        if body.startswith(b"%PDF") or "pdf" in content_type.lower():
+            return {
+                "content": body,
+                "content_type": "application/pdf",
+                "file_name": self._resolve_file_name(content_disposition, "espelho-solides.pdf"),
+            }
+
+        if any(token in content_type.lower() for token in ("spreadsheet", "excel", "sheet", "zip", "octet-stream")):
+            extension = _infer_extension_from_content_type(content_type)
+            return {
+                "content": body,
+                "content_type": content_type,
+                "file_name": self._resolve_file_name(content_disposition, f"espelho-solides.{extension}"),
+            }
+
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except Exception:
+            return None
+        if not isinstance(payload, dict):
+            return None
+
+        direct_url = (
+            _clean(payload.get("url"))
+            or _clean(payload.get("downloadUrl"))
+            or _clean(payload.get("fileUrl"))
+            or _clean((payload.get("data") or {}).get("url") if isinstance(payload.get("data"), dict) else None)
+        )
+        if direct_url:
+            absolute_url = direct_url if bool(urlparse(direct_url).scheme) else f"{self.reports_base.rstrip('/')}/{direct_url.lstrip('/')}"
+            nested_response = self._request_raw(self.reports_base, "", absolute_url=absolute_url)
+            return self._extract_artifact_response(nested_response)
+
+        for key in ("base64", "contentBase64", "pdfBase64", "reportBase64", "fileBase64"):
+            encoded = payload.get(key)
+            if isinstance(encoded, str) and encoded.strip():
+                try:
+                    decoded = base64.b64decode(encoded)
+                except Exception:
+                    continue
+                extension = _infer_extension_from_content_type(content_type)
+                return {
+                    "content": decoded,
+                    "content_type": content_type if content_type != "application/octet-stream" else "application/pdf",
+                    "file_name": self._resolve_file_name(content_disposition, f"espelho-solides.{extension}"),
+                }
+        return None
+
+    def _resolve_file_name(self, content_disposition: str, fallback: str) -> str:
+        raw = _clean(content_disposition)
+        if "filename*=" in raw:
+            try:
+                return raw.split("filename*=", 1)[1].split("''", 1)[1].strip().strip('"')
+            except Exception:
+                pass
+        if "filename=" in raw:
+            try:
+                return raw.split("filename=", 1)[1].strip().strip('"')
+            except Exception:
+                pass
+        return fallback
+
 
 def _ensure_tables(db: DatabaseManager):
+    _execute(
+        db,
+        """
+        CREATE TABLE IF NOT EXISTS payroll_import_files (
+          id VARCHAR(64) PRIMARY KEY,
+          period_id VARCHAR(64) NOT NULL,
+          file_type VARCHAR(30) NOT NULL,
+          file_name VARCHAR(255) NOT NULL,
+          mime_type VARCHAR(120) NOT NULL,
+          size_bytes BIGINT NOT NULL,
+          storage_provider VARCHAR(30) NOT NULL,
+          storage_bucket VARCHAR(120) NULL,
+          storage_key VARCHAR(255) NOT NULL,
+          processing_status VARCHAR(20) NOT NULL,
+          processing_log LONGTEXT NULL,
+          uploaded_by VARCHAR(64) NULL,
+          created_at VARCHAR(32) NOT NULL,
+          processed_at VARCHAR(32) NULL
+        )
+        """,
+    )
     _execute(
         db,
         """
@@ -526,6 +696,10 @@ def _ensure_tables(db: DatabaseManager):
           created_at VARCHAR(32) NOT NULL
         )
         """,
+    )
+    _safe_execute(
+        db,
+        "ALTER TABLE payroll_point_daily ADD COLUMN pending_adjustments_count INTEGER NOT NULL DEFAULT 0",
     )
 
 
@@ -699,6 +873,7 @@ def _build_remote_employees_by_id(remote_items: List[Dict[str, Any]]) -> Dict[st
 
 def _build_adjustment_maps(adjustments: List[Dict[str, Any]]) -> Dict[str, Any]:
     by_date: Dict[str, List[Dict[str, Any]]] = {}
+    pending_by_date: Dict[str, int] = {}
     pending_count = 0
     for item in adjustments or []:
         status = _clean(item.get("status")).upper()
@@ -713,8 +888,10 @@ def _build_adjustment_maps(adjustments: List[Dict[str, Any]]) -> Dict[str, Any]:
         while current <= last:
             key = current.date().isoformat()
             by_date.setdefault(key, []).append(item)
+            if status == "PENDENTE":
+                pending_by_date[key] = pending_by_date.get(key, 0) + 1
             current += timedelta(days=1)
-    return {"by_date": by_date, "pending_count": pending_count}
+    return {"by_date": by_date, "pending_count": pending_count, "pending_by_date": pending_by_date}
 
 
 def _normalize_occurrence_type(adjustment: Dict[str, Any]) -> str:
@@ -777,8 +954,8 @@ def _replace_point_rows(db: DatabaseManager, period_id: str, point_rows: List[Di
               id, period_id, employee_id, solides_employee_id, employee_code, employee_name, employee_cpf, point_date,
               department, schedule_label, schedule_start, schedule_end, marks_json, raw_day_text,
               planned_minutes, worked_minutes, late_minutes, day_balance_minutes, break_minutes, expected_break_minutes, break_overrun_minutes,
-              absence_flag, inconsistency_flag, justification_text, source_file_id, source_payload_json, sync_run_id, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+              pending_adjustments_count, absence_flag, inconsistency_flag, justification_text, source_file_id, source_payload_json, sync_run_id, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
             """,
             (
                 row["id"],
@@ -802,6 +979,7 @@ def _replace_point_rows(db: DatabaseManager, period_id: str, point_rows: List[Di
                 row.get("break_minutes", 0),
                 row.get("expected_break_minutes", 0),
                 row.get("break_overrun_minutes", 0),
+                row.get("pending_adjustments_count", 0),
                 1 if row.get("absence_flag") else 0,
                 1 if row.get("inconsistency_flag") else 0,
                 row.get("justification_text"),
@@ -811,6 +989,58 @@ def _replace_point_rows(db: DatabaseManager, period_id: str, point_rows: List[Di
                 now,
             ),
         )
+
+
+def _persist_timesheet_artifact(
+    db: DatabaseManager,
+    period_id: str,
+    requested_by: str,
+    artifact: Dict[str, Any],
+):
+    content = artifact.get("content") or b""
+    if not content:
+        return None
+    content_type = _clean(artifact.get("content_type")) or "application/octet-stream"
+    extension = _infer_extension_from_content_type(content_type)
+    file_name = _clean(artifact.get("file_name")) or f"espelho-solides.{extension}"
+    storage_key = _build_timesheet_storage_key(period_id, extension)
+    upload = upload_s3_object_bytes(
+        storage_key,
+        content,
+        content_type,
+        metadata={"periodId": period_id, "fileType": "SYNC_TIMESHEET"},
+    )
+    now = _now_iso()
+    _execute(db, "DELETE FROM payroll_import_files WHERE period_id = ? AND file_type = 'SYNC_TIMESHEET'", (period_id,))
+    import_id = str(uuid.uuid4())
+    _execute(
+        db,
+        """
+        INSERT INTO payroll_import_files (
+          id, period_id, file_type, file_name, mime_type, size_bytes, storage_provider,
+          storage_bucket, storage_key, processing_status, processing_log, uploaded_by, created_at, processed_at
+        ) VALUES (?, ?, 'SYNC_TIMESHEET', ?, ?, ?, ?, ?, ?, 'COMPLETED', ?, ?, ?, ?)
+        """,
+        (
+            import_id,
+            period_id,
+            file_name,
+            content_type,
+            len(content),
+            upload.get("provider"),
+            upload.get("bucket"),
+            upload.get("key"),
+            "Espelho oficial sincronizado via API da Sólides.",
+            requested_by or SYNC_ACTOR,
+            now,
+            now,
+        ),
+    )
+    return {
+        "id": import_id,
+        "file_name": file_name,
+        "size_bytes": len(content),
+    }
 
 
 def _replace_hours_balances(db: DatabaseManager, period_id: str, items: List[Dict[str, Any]]):
@@ -938,6 +1168,7 @@ def _build_daily_rows_for_employee(
     local_employee: Optional[Dict[str, Any]],
     work_schedule: Optional[Dict[str, Any]],
     daily_activity: List[Dict[str, Any]],
+    adjustment_maps: Dict[str, Any],
     sync_run_id: Optional[str],
 ) -> List[Dict[str, Any]]:
     items: List[Dict[str, Any]] = []
@@ -996,6 +1227,7 @@ def _build_daily_rows_for_employee(
                 "break_minutes": break_minutes,
                 "expected_break_minutes": expected_break_minutes,
                 "break_overrun_minutes": max(0, break_minutes - expected_break_minutes),
+                "pending_adjustments_count": _ensure_int((adjustment_maps.get("pending_by_date") or {}).get(point_date), 0),
                 "absence_flag": absence_flag,
                 "inconsistency_flag": _ensure_int(activity.get("pendingsCount"), 0) > 0,
                 "justification_text": "; ".join(justifications) if justifications else None,
@@ -1016,7 +1248,7 @@ def _build_daily_rows_for_employee(
 def _process_job(db: DatabaseManager, job: Dict[str, Any]):
     client = SolidesClient()
     db.update_heartbeat(SERVICE_NAME, STATUS_RUNNING, f"job={job['id']} competencia={job['month_ref']}")
-    _mark_run_running(db, job.get("run_id"), "Sincronização com a API Sólides/Tangerino em andamento.")
+    _mark_run_running(db, job.get("run_id"), "Sincronização com a API da Sólides em andamento.")
 
     start_ms = _to_millis_from_date(job["period_start"])
     end_ms = _to_millis_from_date(job["period_end"], end_of_day=True)
@@ -1030,6 +1262,7 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
     hours_balance_rows: List[Dict[str, Any]] = []
     signature_rows: List[Dict[str, Any]] = []
     occurrence_rows: List[Dict[str, Any]] = []
+    sync_warnings: List[str] = []
 
     synchronized_employee_keys = set()
     unmatched_local_links = []
@@ -1054,6 +1287,8 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
 
         synchronized_employee_keys.add(linked_id)
         work_schedule = remote_employee.get("currentWorkSchedule") or {}
+        adjustments = client.get_adjustments(linked_id, start_ms, end_ms)
+        adjustment_maps = _build_adjustment_maps(adjustments)
 
         daily_activity = client.get_daily_activity(linked_id, start_ms, end_ms)
         point_rows.extend(
@@ -1064,6 +1299,7 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
                 local_employee,
                 work_schedule,
                 daily_activity,
+                adjustment_maps,
                 job.get("run_id"),
             )
         )
@@ -1084,8 +1320,7 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
                 }
             )
 
-        adjustments = client.get_adjustments(linked_id, start_ms, end_ms)
-        pending_adjustments += _build_adjustment_maps(adjustments)["pending_count"]
+        pending_adjustments += adjustment_maps["pending_count"]
         occurrence_rows.extend(_build_occurrence_rows(job["period_start"], job["period_end"], local_employee, adjustments))
 
         try:
@@ -1119,6 +1354,7 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
                 None,
                 work_schedule,
                 daily_activity,
+                {"pending_by_date": {}},
                 job.get("run_id"),
             )
         )
@@ -1127,6 +1363,14 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
     _replace_hours_balances(db, job["period_id"], hours_balance_rows)
     _replace_signatures(db, job["period_id"], signature_rows)
     _replace_period_occurrences(db, job["period_id"], occurrence_rows)
+    try:
+        timesheet_artifact = client.fetch_timesheet_report(job["period_start"], job["period_end"])
+        if timesheet_artifact:
+            persisted_artifact = _persist_timesheet_artifact(db, job["period_id"], job.get("requested_by") or SYNC_ACTOR, timesheet_artifact)
+            if persisted_artifact:
+                sync_warnings.append(f"Espelho oficial disponível: {persisted_artifact['file_name']}.")
+    except Exception as exc:
+        sync_warnings.append(f"Espelho oficial indisponível nesta execução: {exc}")
 
     remote_unmatched_keys = {
         f"{item.get('solides_employee_id')}::{item.get('employee_name')}::{item.get('employee_cpf')}"
@@ -1145,6 +1389,7 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
         details_parts.append(f"Vínculos Sólides sem retorno: {len(unmatched_local_links)} ({sample_names}).")
     if ged_signature_enabled is False:
         details_parts.append("Assinatura digital desabilitada no empregador; estado mantido apenas como informativo.")
+    details_parts.extend(sync_warnings[:2])
     details = " ".join(details_parts)
 
     _mark_job_done(db, job["id"], STATUS_COMPLETED)
@@ -1190,7 +1435,7 @@ def process_pending_payroll_point_sync_jobs_once() -> bool:
     try:
         _process_job(db, job)
     except Exception as exc:
-        error_message = str(exc or "Falha na sincronização da Sólides/Tangerino.")
+        error_message = str(exc or "Falha na sincronização da Sólides.")
         _mark_job_done(db, job["id"], STATUS_FAILED, error_message)
         _mark_run_done(db, job.get("run_id"), STATUS_FAILED, error_message)
         db.update_heartbeat(SERVICE_NAME, STATUS_FAILED, f"job={job['id']} erro={error_message}")

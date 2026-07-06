@@ -8,32 +8,23 @@ import { DEFAULT_PAYROLL_LINE_FILTERS } from '@/lib/payroll/filters';
 import type {
   PayrollBenefitRow,
   PayrollBenefitsSummary,
-  PayrollDailyControlRow,
-  PayrollHoursBalanceMonthly,
   PayrollLine,
   PayrollLineDetail,
   PayrollLineFilters,
   PayrollOptions,
   PayrollPeriodDetail,
   PayrollPreviewRow,
-  PayrollSignatureMonthly,
-  PayrollVacationRow,
 } from '@/lib/payroll/types';
 import { PayrollBenefitsPanel } from './components/PayrollBenefitsPanel';
 import { PayrollClosingTable } from './components/PayrollClosingTable';
-import { PayrollDailyPanel } from './components/PayrollDailyPanel';
 import { formatDateBr, formatMoney, statusLabelMap } from './components/formatters';
 import { PayrollHelpModal } from './components/PayrollHelpModal';
-import { PayrollHoursBalancePanel } from './components/PayrollHoursBalancePanel';
 import { PayrollLineDrawer } from './components/PayrollLineDrawer';
 import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
 import { PayrollPreviewTable } from './components/PayrollPreviewTable';
 import { PayrollReadinessPanel } from './components/PayrollReadinessPanel';
-import { PayrollSignaturesPanel } from './components/PayrollSignaturesPanel';
 import { PayrollSummaryCards } from './components/PayrollSummaryCards';
-import { PayrollSyncPanel } from './components/PayrollSyncPanel';
-import { PayrollTabNav, type PayrollTabKey } from './components/PayrollTabNav';
-import { PayrollVacationsPanel } from './components/PayrollVacationsPanel';
+import { PAYROLL_CLOSING_TABS, PayrollTabNav, type PayrollTabKey } from './components/PayrollTabNav';
 
 const emptyOptions: PayrollOptions = {
   periods: [],
@@ -82,13 +73,9 @@ export default function FolhaPagamentoPage() {
   const [benefitRows, setBenefitRows] = useState<PayrollBenefitRow[]>([]);
   const [benefitsSummary, setBenefitsSummary] = useState<PayrollBenefitsSummary | null>(null);
   const [previewRows, setPreviewRows] = useState<PayrollPreviewRow[]>([]);
-  const [dailyRows, setDailyRows] = useState<PayrollDailyControlRow[]>([]);
-  const [hoursBalanceRows, setHoursBalanceRows] = useState<PayrollHoursBalanceMonthly[]>([]);
-  const [vacationRows, setVacationRows] = useState<PayrollVacationRow[]>([]);
-  const [signatureRows, setSignatureRows] = useState<PayrollSignatureMonthly[]>([]);
   const [filters, setFilters] = useState<PayrollLineFilters>(DEFAULT_PAYROLL_LINE_FILTERS);
   const [filterOptions, setFilterOptions] = useState({ centersCost: [] as string[], units: [] as string[], contracts: [] as string[] });
-  const [activeTab, setActiveTab] = useState<PayrollTabKey>('sincronizacao');
+  const [activeTab, setActiveTab] = useState<PayrollTabKey>('fechamento');
   const [loading, setLoading] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState('');
@@ -97,7 +84,6 @@ export default function FolhaPagamentoPage() {
   const [newPeriodOpen, setNewPeriodOpen] = useState(false);
   const [creatingPeriod, setCreatingPeriod] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
-  const [syncingPoint, setSyncingPoint] = useState(false);
   const [selectedLine, setSelectedLine] = useState<PayrollLine | null>(null);
   const [lineDetail, setLineDetail] = useState<PayrollLineDetail | null>(null);
   const [lineDetailOpen, setLineDetailOpen] = useState(false);
@@ -151,7 +137,7 @@ export default function FolhaPagamentoPage() {
     setPreviewLoading(true);
     setError('');
     try {
-      const [benefitsPayload, detailPayload, linesPayload, previewPayload, dailyPayload, hoursBalancePayload, vacationsPayload, signaturesPayload] = await Promise.all([
+      const [benefitsPayload, detailPayload, linesPayload, previewPayload] = await Promise.all([
         fetchJson<{ status: string; data: { items: PayrollBenefitRow[]; summary: PayrollBenefitsSummary } }>(
           `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/benefits?${buildFilterQuery()}`,
         ),
@@ -162,18 +148,6 @@ export default function FolhaPagamentoPage() {
         fetchJson<{ status: string; data: { items: PayrollPreviewRow[] } }>(
           `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/preview?${buildFilterQuery()}`,
         ),
-        fetchJson<{ status: string; data: { items: PayrollDailyControlRow[] } }>(
-          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/daily?${buildFilterQuery()}`,
-        ),
-        fetchJson<{ status: string; data: { items: PayrollHoursBalanceMonthly[] } }>(
-          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/hours-balance?${buildFilterQuery()}`,
-        ),
-        fetchJson<{ status: string; data: { items: PayrollVacationRow[] } }>(
-          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/vacations?${buildFilterQuery()}`,
-        ),
-        fetchJson<{ status: string; data: { items: PayrollSignatureMonthly[] } }>(
-          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/signatures?${buildFilterQuery()}`,
-        ),
       ]);
 
       setBenefitRows(benefitsPayload.data?.items || []);
@@ -181,10 +155,6 @@ export default function FolhaPagamentoPage() {
       setDetail(detailPayload.data || emptyDetail);
       setLines(linesPayload.data?.items || []);
       setPreviewRows(previewPayload.data?.items || []);
-      setDailyRows(dailyPayload.data?.items || []);
-      setHoursBalanceRows(hoursBalancePayload.data?.items || []);
-      setVacationRows(vacationsPayload.data?.items || []);
-      setSignatureRows(signaturesPayload.data?.items || []);
       setFilterOptions({
         centersCost: linesPayload.data?.availableCentersCost || [],
         units: linesPayload.data?.availableUnits || [],
@@ -253,24 +223,6 @@ export default function FolhaPagamentoPage() {
     }
   };
 
-  const handlePointSync = async () => {
-    if (!selectedPeriodId) return;
-    setSyncingPoint(true);
-    setError('');
-    setSuccessMessage('');
-    try {
-      await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/sync-point`, {
-        method: 'POST',
-      });
-      await reloadAll();
-      setSuccessMessage('Sincronização enfileirada com sucesso.');
-    } catch (fetchError: any) {
-      setError(String(fetchError?.message || fetchError));
-    } finally {
-      setSyncingPoint(false);
-    }
-  };
-
   const openLineDetail = async (line: PayrollLine) => {
     setSelectedLine(line);
     setLineDetailOpen(true);
@@ -328,9 +280,9 @@ export default function FolhaPagamentoPage() {
               <Calculator size={20} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-800">Ponto e fechamento</h1>
+              <h1 className="text-xl font-bold text-slate-800">Fechamento da folha</h1>
               <p className="mt-1 text-xs text-slate-500">
-                Base oficial de ponto pela Sólides com cálculo operacional, benefícios, ajustes locais e exportação da competência no painel.
+                Fechamento mensal com base sincronizada da Sólides, cálculo operacional no painel, benefícios, ajustes locais e exportação da competência.
               </p>
             </div>
           </div>
@@ -487,20 +439,8 @@ export default function FolhaPagamentoPage() {
         </div>
       ) : null}
 
-      <PayrollTabNav activeTab={activeTab} onChange={setActiveTab} />
+      <PayrollTabNav activeTab={activeTab} onChange={setActiveTab} tabs={PAYROLL_CLOSING_TABS} />
 
-      {activeTab === 'sincronizacao' ? (
-        <PayrollSyncPanel
-          imports={detail?.imports || []}
-          syncRuns={detail?.syncRuns || []}
-          syncingPoint={syncingPoint}
-          onSyncPoint={handlePointSync}
-        />
-      ) : null}
-      {activeTab === 'controle_diario' ? <PayrollDailyPanel rows={dailyRows} loading={loading || previewLoading} /> : null}
-      {activeTab === 'banco_horas' ? <PayrollHoursBalancePanel rows={hoursBalanceRows} loading={loading || previewLoading} /> : null}
-      {activeTab === 'ferias' ? <PayrollVacationsPanel rows={vacationRows} loading={loading || previewLoading} /> : null}
-      {activeTab === 'assinaturas' ? <PayrollSignaturesPanel rows={signatureRows} loading={loading || previewLoading} /> : null}
       {activeTab === 'fechamento' ? <PayrollClosingTable rows={lines} loading={loading} onOpenDetail={openLineDetail} /> : null}
       {activeTab === 'beneficios' ? (
         <PayrollBenefitsPanel rows={benefitRows} summary={benefitsSummary} loading={loading || previewLoading} onOpenLine={openPreviewLine} />

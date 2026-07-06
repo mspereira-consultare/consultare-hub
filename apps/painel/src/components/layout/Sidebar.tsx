@@ -145,6 +145,14 @@ const menuItems: MenuItem[] = [
     pageKey: "colaboradores",
   },
   {
+    href: "/ponto",
+    label: "Ponto",
+    icon: Calendar,
+    group: "GESTÃO DE PESSOAS",
+    roles: ["ADMIN", "GESTOR", "OPERADOR"],
+    pageKey: "ponto",
+  },
+  {
     href: "/folha-pagamento",
     label: "Folha de Pagamento",
     icon: Calculator,

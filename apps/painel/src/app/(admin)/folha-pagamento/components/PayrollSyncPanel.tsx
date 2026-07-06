@@ -20,14 +20,20 @@ export function PayrollSyncPanel({
   syncRuns,
   syncingPoint,
   onSyncPoint,
+  canSync = true,
+  importDownloadBasePath = '/api/admin/ponto/imports',
 }: {
   imports: PayrollImportFile[];
   syncRuns: PayrollPointSyncRun[];
   syncingPoint: boolean;
   onSyncPoint: () => void;
+  canSync?: boolean;
+  importDownloadBasePath?: string;
 }) {
   const latestRun = syncRuns[0] || null;
-  const latestImport = imports[0] || null;
+  const latestTimesheet = imports.find((item) => item.fileType === 'SYNC_TIMESHEET') || null;
+  const legacyImports = imports.filter((item) => item.fileType !== 'SYNC_TIMESHEET');
+  const latestImport = legacyImports[0] || null;
 
   return (
     <div className="grid gap-4 xl:grid-cols-[360px,1fr]">
@@ -48,12 +54,35 @@ export function PayrollSyncPanel({
           <button
             type="button"
             onClick={onSyncPoint}
-            disabled={syncingPoint}
+            disabled={syncingPoint || !canSync}
             className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
             {syncingPoint ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
             Sincronizar competência
           </button>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Espelho oficial</div>
+          <div className="mt-2"><PayrollSourceBadge source="SOLIDES" /></div>
+          <div className="mt-1 text-xs leading-5 text-slate-600">
+            {latestTimesheet
+              ? `Último espelho disponível: ${latestTimesheet.fileName}.`
+              : 'Nenhum espelho oficial foi anexado nesta competência até o momento.'}
+          </div>
+          {latestTimesheet ? (
+            <button
+              type="button"
+              onClick={() => window.open(`${importDownloadBasePath}/${encodeURIComponent(latestTimesheet.id)}/download`, '_blank', 'noopener,noreferrer')}
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <DownloadCloud size={16} /> Baixar espelho
+            </button>
+          ) : (
+            <div className="mt-4 rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-xs text-slate-500">
+              A indisponibilidade do espelho não bloqueia a sincronização nem o fechamento.
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -132,11 +161,11 @@ export function PayrollSyncPanel({
         </section>
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h3 className="text-sm font-semibold text-slate-800">Histórico legado de arquivos</h3>
+          <h3 className="text-sm font-semibold text-slate-800">Artefatos da competência</h3>
           <div className="mt-3 space-y-3">
             {imports.length === 0 ? (
               <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-sm text-slate-500">
-                Nenhum artefato legado registrado nesta competência.
+                Nenhum artefato registrado nesta competência.
               </div>
             ) : (
               imports.map((item) => (
@@ -152,7 +181,7 @@ export function PayrollSyncPanel({
                   </div>
                   <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
                     <DownloadCloud size={12} />
-                    {item.fileType === 'SYNC_TIMESHEET' ? 'Espelho sincronizado' : 'Arquivo legado da competência'}
+                    {item.fileType === 'SYNC_TIMESHEET' ? 'Espelho oficial da Sólides' : 'Arquivo legado da competência'}
                   </div>
                 </div>
               ))

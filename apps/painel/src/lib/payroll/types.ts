@@ -105,6 +105,7 @@ export type PayrollPointDaily = {
   breakMinutes: number;
   expectedBreakMinutes: number;
   breakOverrunMinutes: number;
+  pendingAdjustmentsCount: number;
   absenceFlag: boolean;
   inconsistencyFlag: boolean;
   justificationText: string | null;

@@ -42,3 +42,30 @@ def download_s3_object_bytes(key: str, bucket: str | None = None) -> bytes:
     if body is None:
         raise RuntimeError("Arquivo nao encontrado no S3.")
     return body.read()
+
+
+def upload_s3_object_bytes(
+    key: str,
+    body: bytes,
+    content_type: str,
+    bucket: str | None = None,
+    metadata: dict[str, str] | None = None,
+) -> dict[str, str | None]:
+    resolved_bucket = str(bucket or get_default_bucket()).strip()
+    if not resolved_bucket:
+        raise S3ConfigError("Bucket S3 nao informado para upload.")
+
+    response = get_s3_client().put_object(
+        Bucket=resolved_bucket,
+        Key=key,
+        Body=body,
+        ContentType=content_type,
+        Metadata=metadata or {},
+    )
+    etag = response.get("ETag")
+    return {
+        "provider": "s3",
+        "bucket": resolved_bucket,
+        "key": key,
+        "etag": str(etag).replace('"', "") if etag else None,
+    }

@@ -30,7 +30,7 @@ export const PAYROLL_PERIOD_STATUSES: Array<{ value: PayrollPeriodStatus; label:
 
 export const PAYROLL_IMPORT_FILE_TYPES: Array<{ value: PayrollImportFileType; label: string }> = [
   { value: 'POINT_PDF', label: 'Relatório de ponto (PDF)' },
-  { value: 'SYNC_TIMESHEET', label: 'Espelho sincronizado da Sólides/Tangerino' },
+  { value: 'SYNC_TIMESHEET', label: 'Espelho sincronizado da Sólides' },
 ];
 
 export const PAYROLL_IMPORT_STATUSES: Array<{ value: PayrollImportStatus; label: string }> = [
