@@ -2175,6 +2175,13 @@ const escapeRepasseEmailHtml = (value: unknown) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
+const formatRepasseEmailProfessionalDisplayName = (value: string) => {
+  const parts = clean(value).split(/\s+/).filter(Boolean);
+  if (!parts.length) return 'profissional';
+  if (parts.length === 1) return parts[0];
+  return `${parts[0]} ${parts[parts.length - 1]}`;
+};
+
 const formatRepasseEmailBrl = (value: number) =>
   Number(value || 0).toLocaleString('pt-BR', {
     style: 'currency',
@@ -2222,11 +2229,12 @@ const buildRepasseEmailObservationsHtml = (observations: string | null) => {
 
 const renderRepasseEmailContent = (recipient: RepasseEmailRecipient) => {
   const professionalName = recipient.professionalName || 'profissional';
+  const professionalDisplayName = formatRepasseEmailProfessionalDisplayName(professionalName);
   const periodRef = recipient.periodRef || '-';
   const dueDateNf = recipient.dueDateNf || '-';
   const amountText = formatRepasseEmailBrl(recipient.amountValue);
   const hasAttachment = Boolean(recipient.storageKey && isAttachmentResolved(recipient.attachmentMatchStatus));
-  const escapedProfessionalName = escapeRepasseEmailHtml(professionalName);
+  const escapedProfessionalName = escapeRepasseEmailHtml(professionalDisplayName);
   const periodText = formatRepasseEmailPeriodBr(periodRef);
   const dueDateText = formatRepasseEmailDateBr(dueDateNf);
   const escapedPeriodRef = escapeRepasseEmailHtml(periodText);
@@ -2242,7 +2250,7 @@ const renderRepasseEmailContent = (recipient: RepasseEmailRecipient) => {
   const observationsHtml = buildRepasseEmailObservationsHtml(recipient.observations);
   const subject = `Fechamento Mensal ${periodText} - CONSULTARE`;
   const text = (
-    `Ola, ${professionalName}.\n\n` +
+    `Ola, ${professionalDisplayName}.\n\n` +
     `Esperamos que esteja bem. Segue o demonstrativo de atendimentos realizados no mes de ${periodText} na Clinica Consultare.\n` +
     `Valor final: ${amountText}.\n` +
     (recipient.observations ? `Observacoes: ${recipient.observations}.\n` : '') +

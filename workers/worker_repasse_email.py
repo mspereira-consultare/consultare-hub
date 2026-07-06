@@ -149,6 +149,15 @@ def _clean(value) -> str:
     return str(value or "").strip()
 
 
+def _professional_display_name(value: str) -> str:
+    parts = [part for part in re.split(r"\s+", _clean(value)) if part]
+    if not parts:
+        return "profissional"
+    if len(parts) == 1:
+        return parts[0]
+    return f"{parts[0]} {parts[-1]}"
+
+
 def _row_get(row, idx: int, key: str):
     if isinstance(row, dict):
         return row.get(key)
@@ -597,6 +606,7 @@ def _s3_get_pdf(bucket: str, key: str) -> bytes:
 
 def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, Dict]:
     professional_name = _clean(_row_get(recipient, 4, "professional_name"))
+    professional_display_name = _professional_display_name(professional_name)
     to_email = _clean(_row_get(recipient, 5, "recipient_email"))
     amount_value = _row_get(recipient, 6, "amount_value")
     due_date_nf = _clean(_row_get(recipient, 7, "due_date_nf"))
@@ -614,7 +624,7 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
     subject = f"Fechamento Mensal {period_text} - CONSULTARE"
     amount_text = _format_brl(amount_value)
     has_attachment = bool(pdf_bytes)
-    escaped_professional_name = html_lib.escape(professional_name)
+    escaped_professional_name = html_lib.escape(professional_display_name)
     escaped_period_ref = html_lib.escape(period_text)
     escaped_due_date_nf = html_lib.escape(due_date_text)
     escaped_amount_text = html_lib.escape(amount_text)
@@ -631,7 +641,7 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
         else ""
     )
     text = (
-        f"Ola, {professional_name}.\n\n"
+        f"Ola, {professional_display_name}.\n\n"
         f"Esperamos que esteja bem. Segue o demonstrativo de atendimentos realizados no mes de {period_text} na Clinica Consultare.\n"
         f"Valor final: {amount_text}.\n"
         + (f"Observacoes: {observations}.\n" if observations else "")
