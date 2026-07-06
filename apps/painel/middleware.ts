@@ -13,6 +13,10 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
 
+  if (pathname.startsWith('/api/webhooks/')) {
+    return NextResponse.next();
+  }
+
   // Liberamos apenas login e registro. Se não estiver logado, não passa daqui.
   if (pathname === '/login' || pathname === '/register') {
     return NextResponse.next();
