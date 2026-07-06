@@ -25,12 +25,14 @@ except ImportError:
 
 
 SERVICE_NAME = "repasse_email"
-PROVIDER = "mailersend"
+PROVIDER = (os.getenv("REPASSE_EMAIL_PROVIDER", "sendpulse").strip().lower() or "sendpulse")
+SENDPULSE_API_BASE_URL = "https://api.sendpulse.com"
 STATUS_PENDING = "PENDING"
 STATUS_RUNNING = "RUNNING"
 STATUS_COMPLETED = "COMPLETED"
 STATUS_PARTIAL = "PARTIAL"
 STATUS_FAILED = "FAILED"
+_SENDPULSE_TOKEN_CACHE: Dict[str, object] = {"token": "", "expires_at": 0.0}
 CONSULTARE_LOGO_WHITE_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAZAAAABkCAYAAACoy2Z3AAAAGXRFWHRTb2Z0d2FyZQBBZG9i"
     "ZSBJbWFnZVJlYWR5ccllPAAAFa5JREFUeNrsXe1127gSpX3yf9XB41YQpoLQFUSpIHQFkSuI"
@@ -149,6 +151,14 @@ def _clean(value) -> str:
     return str(value or "").strip()
 
 
+def _env_first(*names: str, default: str = "") -> str:
+    for name in names:
+        value = _clean(os.getenv(name))
+        if value:
+            return value
+    return default
+
+
 def _professional_display_name(value: str) -> str:
     parts = [part for part in re.split(r"\s+", _clean(value)) if part]
     if not parts:
@@ -227,6 +237,18 @@ def _resolve_logo_path() -> Path:
     if explicit:
         return Path(explicit)
     return Path(__file__).resolve().parents[1] / "apps" / "painel" / "public" / "logo-white.png"
+
+
+def _resolve_logo_src() -> str:
+    explicit = _clean(os.getenv("REPASSE_EMAIL_LOGO_URL"))
+    if explicit:
+        return explicit
+    base_url = _env_first("NEXTAUTH_URL", "AUTH_URL")
+    if base_url:
+        return base_url.rstrip("/") + "/logo-white.png"
+    if PROVIDER == "mailersend":
+        return "cid:consultare_logo"
+    return "https://painel-gerencial.consultare.com.br/logo-white.png"
 
 
 def _load_logo_attachment() -> Optional[Dict]:
@@ -613,11 +635,16 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
     file_name = _clean(_row_get(recipient, 14, "file_name")) or "repasse.pdf"
     observations = _clean(_row_get(recipient, 21, "observations"))
     period_ref = _clean(_row_get(recipient, 2, "period_ref"))
-    from_email = _clean(os.getenv("MAILERSEND_FROM_EMAIL"))
-    from_name = _clean(os.getenv("MAILERSEND_FROM_NAME", "Financeiro Consultare"))
-    reply_to = _clean(os.getenv("MAILERSEND_REPLY_TO_EMAIL"))
+    from_email = _env_first("REPASSE_EMAIL_FROM_EMAIL", "SENDPULSE_FROM_EMAIL", "MAILERSEND_FROM_EMAIL")
+    from_name = _env_first(
+        "REPASSE_EMAIL_FROM_NAME",
+        "SENDPULSE_FROM_NAME",
+        "MAILERSEND_FROM_NAME",
+        default="Financeiro Consultare",
+    )
+    reply_to = _env_first("REPASSE_EMAIL_REPLY_TO_EMAIL", "SENDPULSE_REPLY_TO_EMAIL", "MAILERSEND_REPLY_TO_EMAIL")
     if not from_email:
-        raise RuntimeError("MAILERSEND_FROM_EMAIL nao configurado.")
+        raise RuntimeError("Remetente do e-mail de repasse nao configurado.")
 
     period_text = _format_period_br(period_ref)
     due_date_text = _format_date_br(due_date_nf)
@@ -629,6 +656,7 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
     escaped_due_date_nf = html_lib.escape(due_date_text)
     escaped_amount_text = html_lib.escape(amount_text)
     escaped_subject = html_lib.escape(subject)
+    escaped_logo_src = html_lib.escape(_resolve_logo_src())
     observations_html = _build_observations_html(observations)
     attachment_text = (
         "O relatório detalhado está anexado a este e-mail em formato PDF para sua conferência."
@@ -686,7 +714,7 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
         <table class="main" width="100%">
             <tr>
                 <td class="header">
-                    <img src="cid:consultare_logo" alt="Consultare" class="logo">
+                    <img src="{escaped_logo_src}" alt="Consultare" class="logo">
                 </td>
             </tr>
             <tr>
@@ -726,46 +754,42 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
 </html>
     """.strip()
 
-    payload = {
+    email_payload = {
         "from": {"email": from_email, "name": from_name},
         "to": [{"email": to_email, "name": professional_name}],
         "subject": subject,
         "text": text,
-        "html": html_body,
-        "tags": ["repasses", "fechamento"],
+        "html": base64.b64encode(html_body.encode("utf-8")).decode("ascii"),
     }
-    attachments_payload: List[Dict] = []
+    attachments_binary: Dict[str, str] = {}
     attachments_audit: List[Dict] = []
-    logo_attachment = _load_logo_attachment()
-    if logo_attachment:
-        attachments_payload.append(logo_attachment)
-        attachments_audit.append(
-            {
-                "filename": logo_attachment["filename"],
-                "disposition": "inline",
-                "id": logo_attachment["id"],
-            }
-        )
+    if PROVIDER == "mailersend" and _resolve_logo_src() == "cid:consultare_logo":
+        logo_attachment = _load_logo_attachment()
+        if logo_attachment:
+            attachments_audit.append(
+                {
+                    "filename": logo_attachment["filename"],
+                    "disposition": "inline",
+                    "id": logo_attachment["id"],
+                }
+            )
     if pdf_bytes:
-        attachments_payload.append(
-            {
-                "content": base64.b64encode(pdf_bytes).decode("ascii"),
-                "filename": file_name,
-                "disposition": "attachment",
-            }
-        )
+        attachments_binary[file_name] = base64.b64encode(pdf_bytes).decode("ascii")
         attachments_audit.append({"filename": file_name, "disposition": "attachment", "size_bytes": len(pdf_bytes)})
-    if attachments_payload:
-        payload["attachments"] = attachments_payload
+    if attachments_binary:
+        email_payload["attachments_binary"] = attachments_binary
     if reply_to:
-        payload["reply_to"] = {"email": reply_to, "name": from_name}
-    bcc_emails = _parse_email_list(os.getenv("REPASSE_EMAIL_BCC") or os.getenv("MAILERSEND_BCC") or "")
+        email_payload["reply_to"] = {"email": reply_to, "name": from_name}
+    bcc_emails = _parse_email_list(os.getenv("REPASSE_EMAIL_BCC") or os.getenv("SENDPULSE_BCC") or "")
     bcc_emails = [email for email in bcc_emails if email.lower() != to_email.lower()]
     if bcc_emails:
-        payload["bcc"] = [{"email": email, "name": from_name} for email in bcc_emails[:10]]
+        email_payload["bcc"] = [{"email": email, "name": from_name} for email in bcc_emails[:10]]
 
-    audit_payload = dict(payload)
-    audit_payload["attachments"] = attachments_audit
+    payload = {"email": email_payload}
+    audit_email_payload = dict(email_payload)
+    audit_email_payload["html"] = html_body
+    audit_email_payload.pop("attachments_binary", None)
+    audit_payload = {"email": audit_email_payload, "attachments": attachments_audit}
     return payload, audit_payload
 
 
@@ -796,7 +820,7 @@ def _insert_message(db: "DatabaseManager", recipient, job_id: str, subject: str,
             message_id,
             PROVIDER,
             _clean(_row_get(recipient, 5, "recipient_email")),
-            _clean(os.getenv("MAILERSEND_FROM_EMAIL")),
+            _env_first("REPASSE_EMAIL_FROM_EMAIL", "SENDPULSE_FROM_EMAIL", "MAILERSEND_FROM_EMAIL"),
             subject,
             "repasse_fechamento_v1",
             _clean(_row_get(recipient, 8, "pdf_artifact_id")) or None,
@@ -809,33 +833,76 @@ def _insert_message(db: "DatabaseManager", recipient, job_id: str, subject: str,
     return message_id
 
 
-def _send_mailersend(payload: Dict, message_id: str) -> Tuple[str, Dict]:
+def _get_sendpulse_bearer_token() -> str:
+    static_token = _clean(os.getenv("SENDPULSE_API_TOKEN"))
+    if static_token:
+        return static_token
+
+    now = time.time()
+    cached_token = _clean(_SENDPULSE_TOKEN_CACHE.get("token"))
+    cached_expires_at = float(_SENDPULSE_TOKEN_CACHE.get("expires_at") or 0)
+    if cached_token and cached_expires_at > now + 60:
+        return cached_token
+
+    client_id = _clean(os.getenv("SENDPULSE_CLIENT_ID"))
+    client_secret = _clean(os.getenv("SENDPULSE_CLIENT_SECRET"))
+    if not client_id or not client_secret:
+        raise RuntimeError(
+            "Credenciais do SendPulse nao configuradas. Defina SENDPULSE_API_TOKEN ou SENDPULSE_CLIENT_ID/SENDPULSE_CLIENT_SECRET."
+        )
+
+    response = requests.post(
+        f"{SENDPULSE_API_BASE_URL}/oauth/access_token",
+        headers={"Content-Type": "application/json"},
+        json={
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+        },
+        timeout=30,
+    )
+    response_payload = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+    token = _clean(response_payload.get("access_token"))
+    if response.status_code >= 300 or not token:
+        raise RuntimeError(f"SendPulse auth retornou HTTP {response.status_code}: {response.text[:500]}")
+
+    expires_in = int(response_payload.get("expires_in") or 3600)
+    _SENDPULSE_TOKEN_CACHE["token"] = token
+    _SENDPULSE_TOKEN_CACHE["expires_at"] = now + max(300, expires_in - 60)
+    return token
+
+
+def _send_sendpulse(payload: Dict, message_id: str) -> Tuple[str, Dict]:
     if _is_dry_run():
         return f"dryrun-{message_id}", {"dry_run": True, "status_code": 202}
 
-    token = _clean(os.getenv("MAILERSEND_API_TOKEN"))
-    if not token:
-        raise RuntimeError("MAILERSEND_API_TOKEN nao configurado.")
+    if PROVIDER != "sendpulse":
+        raise RuntimeError(f"Provedor de e-mail de repasse nao suportado neste worker: {PROVIDER}")
 
     response = requests.post(
-        "https://api.mailersend.com/v1/email",
+        f"{SENDPULSE_API_BASE_URL}/smtp/emails",
         headers={
-            "Authorization": f"Bearer {token}",
+            "Authorization": f"Bearer {_get_sendpulse_bearer_token()}",
             "Content-Type": "application/json",
         },
         json=payload,
         timeout=30,
     )
+    try:
+        response_body = response.json()
+    except Exception:
+        response_body = {"raw": response.text[:2000]}
     response_payload = {
         "status_code": response.status_code,
-        "body": response.text[:2000],
-        "x_message_id": response.headers.get("x-message-id") or response.headers.get("X-Message-Id"),
+        "body": response_body,
     }
     if response.status_code >= 300:
-        raise RuntimeError(f"MailerSend retornou HTTP {response.status_code}: {response.text[:500]}")
-    provider_message_id = _clean(response_payload.get("x_message_id"))
+        raise RuntimeError(f"SendPulse retornou HTTP {response.status_code}: {response.text[:500]}")
+    if not response_body.get("result"):
+        raise RuntimeError(f"SendPulse nao confirmou o envio: {response.text[:500]}")
+    provider_message_id = _clean(response_body.get("id"))
     if not provider_message_id:
-        provider_message_id = f"mailersend-{message_id}"
+        provider_message_id = f"sendpulse-{message_id}"
     return provider_message_id, response_payload
 
 
@@ -891,10 +958,10 @@ def _send_recipient(db: "DatabaseManager", job_id: str, recipient) -> bool:
     storage_key = _clean(_row_get(recipient, 11, "storage_key"))
     pdf_bytes = _s3_get_pdf(storage_bucket, storage_key) if storage_key else None
     payload, audit_payload = _build_email_payload(recipient, pdf_bytes)
-    subject = _clean(payload.get("subject"))
+    subject = _clean((payload.get("email") or {}).get("subject"))
     message_id = _insert_message(db, recipient, job_id, subject, audit_payload)
     try:
-        provider_message_id, response_payload = _send_mailersend(payload, message_id)
+        provider_message_id, response_payload = _send_sendpulse(payload, message_id)
         _mark_message_result(
             db,
             message_id,

@@ -90,6 +90,7 @@ const statusLabel = (status: string | null | undefined) => {
     SKIPPED: "Ignorado",
     SOFT_BOUNCE: "Falha temporária",
     SPAM_COMPLAINT: "Marcado como spam",
+    UNSUBSCRIBED: "Descadastrado",
     VALID: "Válido",
     WARNING: "Atenção",
   };
@@ -105,8 +106,14 @@ const eventLabel = (event: string | null | undefined) => {
     "activity.sent": "Enviado",
     "activity.soft_bounced": "Falha temporária",
     "activity.spam_complaint": "Marcado como spam",
+    "clicked": "Clique registrado",
     "delivered": "Entregue",
     "failed": "Falhou",
+    "hard_bounces": "Não entregue",
+    "opened": "Aberto",
+    "soft_bounces": "Falha temporária",
+    "spam_by_user": "Marcado como spam",
+    "unsubscribed": "Descadastrado",
   };
   return labels[normalized] || event || "-";
 };
@@ -119,7 +126,7 @@ const statusClass = (status: string) => {
   if (["WARNING", "ACCEPTED_PROVIDER", "QUEUED", "SENDING", "RUNNING", "DEFERRED"].includes(normalized)) {
     return "border-amber-200 bg-amber-50 text-amber-700";
   }
-  if (["ERROR", "FAILED", "HARD_BOUNCE", "SPAM_COMPLAINT", "SOFT_BOUNCE", "SKIPPED"].includes(normalized)) {
+  if (["ERROR", "FAILED", "HARD_BOUNCE", "SPAM_COMPLAINT", "SOFT_BOUNCE", "SKIPPED", "UNSUBSCRIBED"].includes(normalized)) {
     return "border-rose-200 bg-rose-50 text-rose-700";
   }
   return "border-slate-200 bg-slate-50 text-slate-600";

@@ -388,6 +388,7 @@ export type RepasseEmailRecipientSendStatus =
   | 'SOFT_BOUNCE'
   | 'HARD_BOUNCE'
   | 'SPAM_COMPLAINT'
+  | 'UNSUBSCRIBED'
   | 'FAILED'
   | 'SKIPPED'
   | 'MANUAL_CONFIRMED';
@@ -411,11 +412,12 @@ export type RepasseEmailMessageStatus =
   | 'DEFERRED'
   | 'SOFT_BOUNCE'
   | 'HARD_BOUNCE'
-  | 'SPAM_COMPLAINT';
+  | 'SPAM_COMPLAINT'
+  | 'UNSUBSCRIBED';
 
 export type RepasseEmailEventProcessingStatus = 'PROCESSED' | 'DUPLICATE' | 'IGNORED' | 'FAILED';
 
-export type RepasseEmailSuppressionReason = 'HARD_BOUNCE' | 'SPAM_COMPLAINT' | 'MANUAL_BLOCK';
+export type RepasseEmailSuppressionReason = 'HARD_BOUNCE' | 'SPAM_COMPLAINT' | 'UNSUBSCRIBED' | 'MANUAL_BLOCK';
 
 export type RepasseEmailBatch = {
   id: string;

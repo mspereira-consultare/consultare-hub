@@ -1963,7 +1963,7 @@ const batchCountersSql = `
     COALESCE(SUM(CASE WHEN validation_status = 'ERROR' THEN 1 ELSE 0 END), 0) as error_count,
     COALESCE(SUM(CASE WHEN send_status = 'ACCEPTED_PROVIDER' THEN 1 ELSE 0 END), 0) as accepted_count,
     COALESCE(SUM(CASE WHEN send_status = 'DELIVERED' THEN 1 ELSE 0 END), 0) as delivered_count,
-    COALESCE(SUM(CASE WHEN send_status IN ('FAILED', 'SOFT_BOUNCE', 'HARD_BOUNCE', 'SPAM_COMPLAINT') THEN 1 ELSE 0 END), 0) as failed_count
+    COALESCE(SUM(CASE WHEN send_status IN ('FAILED', 'SOFT_BOUNCE', 'HARD_BOUNCE', 'SPAM_COMPLAINT', 'UNSUBSCRIBED') THEN 1 ELSE 0 END), 0) as failed_count
   FROM repasse_email_recipients
   WHERE batch_id = ?
 `;
@@ -3225,6 +3225,240 @@ export const processRepasseMailerSendWebhookEvent = async (
 
   const rows = await db.query(`SELECT * FROM repasse_email_events WHERE id = ? LIMIT 1`, [eventId]);
   return mapEmailEvent(rows[0]);
+};
+
+type RepasseSendPulseEventResolution = {
+  normalizedStatus: RepasseEmailRecipientSendStatus | string;
+  updateRecipientStatus: boolean;
+  suppressionReason?: 'HARD_BOUNCE' | 'SPAM_COMPLAINT' | 'UNSUBSCRIBED';
+};
+
+const normalizeSendPulseEventStatus = (eventType: string): RepasseSendPulseEventResolution | null => {
+  const normalized = clean(eventType).toLowerCase();
+  if (normalized === 'delivered') return { normalizedStatus: 'DELIVERED', updateRecipientStatus: true };
+  if (normalized === 'undelivered' || normalized === 'failed') return { normalizedStatus: 'FAILED', updateRecipientStatus: true };
+  if (normalized === 'soft_bounces') return { normalizedStatus: 'SOFT_BOUNCE', updateRecipientStatus: true };
+  if (normalized === 'hard_bounces') {
+    return { normalizedStatus: 'HARD_BOUNCE', updateRecipientStatus: true, suppressionReason: 'HARD_BOUNCE' };
+  }
+  if (normalized === 'spam' || normalized === 'spam_by_user') {
+    return { normalizedStatus: 'SPAM_COMPLAINT', updateRecipientStatus: true, suppressionReason: 'SPAM_COMPLAINT' };
+  }
+  if (normalized === 'unsubscribed') {
+    return { normalizedStatus: 'UNSUBSCRIBED', updateRecipientStatus: true, suppressionReason: 'UNSUBSCRIBED' };
+  }
+  if (normalized === 'opened') return { normalizedStatus: 'OPENED', updateRecipientStatus: false };
+  if (normalized === 'clicked') return { normalizedStatus: 'CLICKED', updateRecipientStatus: false };
+  return null;
+};
+
+const findRepasseSendPulseMessageForWebhook = async (
+  db: DbInterface,
+  providerMessageId: string | null,
+  recipientEmail: string | null,
+  subject: string | null
+) => {
+  if (providerMessageId) {
+    const messageRows = await db.query(
+      `
+      SELECT *
+      FROM repasse_email_messages
+      WHERE provider = 'sendpulse'
+        AND (provider_message_id = ? OR message_id = ?)
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [providerMessageId, providerMessageId]
+    );
+    if (messageRows[0]) return messageRows[0];
+  }
+
+  if (recipientEmail) {
+    const fallbackRows = await db.query(
+      `
+      SELECT *
+      FROM repasse_email_messages
+      WHERE provider = 'sendpulse'
+        AND LOWER(TRIM(to_email)) = LOWER(TRIM(?))
+        AND (? IS NULL OR subject = ?)
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [recipientEmail, subject, subject]
+    );
+    if (fallbackRows[0]) return fallbackRows[0];
+  }
+
+  return null;
+};
+
+export const processRepasseSendPulseWebhookEvent = async (
+  db: DbInterface,
+  payload: any
+): Promise<RepasseEmailEvent[]> => {
+  await ensureRepasseEmailTables(db);
+  const items = Array.isArray(payload) ? payload : Array.isArray(payload?.events) ? payload.events : [payload];
+  const processed: RepasseEmailEvent[] = [];
+
+  for (const item of items) {
+    const eventType = clean(item?.event || item?.type);
+    if (!eventType) continue;
+
+    const provider = 'sendpulse';
+    const providerMessageId = clean(item?.message_id || item?.email_id || item?.id) || null;
+    const recipientEmail = normalizeEmailAddress(item?.recipient || item?.email || item?.email_to);
+    const subject = clean(item?.subject) || null;
+    const timestamp = Number(item?.timestamp || 0);
+    const occurredAt = Number.isFinite(timestamp) && timestamp > 0 ? new Date(timestamp * 1000).toISOString() : null;
+    const providerEventId = clean(
+      item?.provider_event_id ||
+        item?.event_id ||
+        `${eventType}:${providerMessageId || recipientEmail || 'unknown'}:${clean(item?.timestamp || item?.date || nowIso())}`
+    ).slice(0, 180);
+
+    const existingRows = await db.query(
+      `
+      SELECT *
+      FROM repasse_email_events
+      WHERE provider = ?
+        AND provider_event_id = ?
+      LIMIT 1
+      `,
+      [provider, providerEventId]
+    );
+    if (existingRows.length) {
+      processed.push(mapEmailEvent(existingRows[0]));
+      continue;
+    }
+
+    const resolution = normalizeSendPulseEventStatus(eventType);
+    const messageRow = await findRepasseSendPulseMessageForWebhook(db, providerMessageId, recipientEmail, subject);
+    const messageToEmail = normalizeEmailAddress(messageRow?.to_email);
+    const isCopyRecipientEvent = Boolean(recipientEmail && messageToEmail && recipientEmail !== messageToEmail);
+    const messageId = clean(messageRow?.message_id) || null;
+    const recipientId = clean(messageRow?.recipient_id) || null;
+    const batchId = clean(messageRow?.batch_id) || null;
+    const now = nowIso();
+    const normalizedStatus = resolution?.normalizedStatus || 'IGNORED';
+    const processingStatus: RepasseEmailEventProcessingStatus =
+      resolution && messageRow && !isCopyRecipientEvent ? 'PROCESSED' : 'IGNORED';
+    const errorMessage = !resolution
+      ? 'Evento sem mapeamento operacional.'
+      : !messageRow
+        ? 'Mensagem de repasse não encontrada para o evento.'
+        : isCopyRecipientEvent
+          ? 'Evento de cópia interna/BCC; status do profissional preservado.'
+          : null;
+    const eventId = randomUUID();
+
+    await db.execute(
+      `
+      INSERT INTO repasse_email_events (
+        id, provider, provider_event_id, provider_message_id, message_id, recipient_id,
+        batch_id, event_type, normalized_status, payload_json, received_at, processed_at,
+        processing_status, error_message
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        eventId,
+        provider,
+        providerEventId,
+        providerMessageId,
+        messageId,
+        isCopyRecipientEvent ? null : recipientId,
+        batchId,
+        eventType,
+        normalizedStatus,
+        JSON.stringify(item),
+        now,
+        now,
+        processingStatus,
+        errorMessage,
+      ]
+    );
+
+    if (resolution && messageRow && !isCopyRecipientEvent) {
+      const eventAt = occurredAt || now;
+      if (resolution.updateRecipientStatus) {
+        await db.execute(
+          `
+          UPDATE repasse_email_messages
+          SET status = ?,
+              updated_at = ?
+          WHERE id = ?
+          `,
+          [resolution.normalizedStatus, now, clean(messageRow.id)]
+        );
+        await db.execute(
+          `
+          UPDATE repasse_email_recipients
+          SET send_status = ?,
+              last_provider_message_id = COALESCE(?, last_provider_message_id),
+              last_event_type = ?,
+              last_event_at = ?,
+              updated_at = ?
+          WHERE id = ?
+          `,
+          [resolution.normalizedStatus, providerMessageId || null, eventType, eventAt, now, recipientId]
+        );
+      } else {
+        await db.execute(
+          `
+          UPDATE repasse_email_recipients
+          SET last_provider_message_id = COALESCE(?, last_provider_message_id),
+              last_event_type = ?,
+              last_event_at = ?,
+              updated_at = ?
+          WHERE id = ?
+          `,
+          [providerMessageId || null, eventType, eventAt, now, recipientId]
+        );
+      }
+
+      if (resolution.suppressionReason) {
+        const recipientRows = await db.query(
+          `SELECT recipient_email FROM repasse_email_recipients WHERE id = ? LIMIT 1`,
+          [recipientId]
+        );
+        const email = normalizeEmailAddress((recipientRows[0] as any)?.recipient_email || recipientEmail);
+        if (email) {
+          await db.execute(
+            `
+            INSERT INTO repasse_email_suppressions (
+              id, email, reason, provider, source_event_id, created_at, created_by, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+              reason = ?,
+              provider = ?,
+              source_event_id = ?,
+              notes = ?
+            `,
+            [
+              randomUUID(),
+              email,
+              resolution.suppressionReason,
+              provider,
+              eventId,
+              now,
+              'sendpulse_webhook',
+              eventType,
+              resolution.suppressionReason,
+              provider,
+              eventId,
+              eventType,
+            ]
+          );
+        }
+      }
+
+      if (batchId) await updateRepasseEmailBatchCounters(db, batchId);
+    }
+
+    const rows = await db.query(`SELECT * FROM repasse_email_events WHERE id = ? LIMIT 1`, [eventId]);
+    if (rows[0]) processed.push(mapEmailEvent(rows[0]));
+  }
+
+  return processed;
 };
 
 export const listRepasseEmailEvents = async (
