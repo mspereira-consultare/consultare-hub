@@ -2670,7 +2670,7 @@ export const listRepasseEmailRecipients = async (
   const countRows = await db.query(
     `
     SELECT COUNT(*) as total
-    FROM repasse_email_recipients
+    FROM repasse_email_recipients r
     WHERE ${where.join(' AND ')}
     `,
     params
