@@ -35,6 +35,9 @@ import type {
   PayrollOptions,
   PayrollPeriod,
   PayrollPeriodDetail,
+  PayrollPointCoverage,
+  PayrollPointDateRange,
+  PayrollPointOverview,
   PayrollPeriodReadiness,
   PayrollPeriodSummary,
   PayrollPointDaily,
@@ -205,6 +208,31 @@ const overlapsDateRange = (targetDate: string, startDate: string | null, endDate
   if (!startDate) return false;
   const effectiveEnd = endDate || startDate;
   return targetDate >= startDate && targetDate <= effectiveEnd;
+};
+
+const shiftUtcDate = (dateIso: string, deltaDays: number) => {
+  const date = new Date(`${dateIso}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + deltaDays);
+  return date.toISOString().slice(0, 10);
+};
+
+const getOperationalMonthRefForDate = (dateIso: string) => {
+  const [yearRaw, monthRaw, dayRaw] = dateIso.split('-');
+  const year = Number(yearRaw);
+  const monthIndex = Number(monthRaw) - 1;
+  const day = Number(dayRaw);
+  const base = day >= 21 ? new Date(Date.UTC(year, monthIndex + 1, 1)) : new Date(Date.UTC(year, monthIndex, 1));
+  return `${base.getUTCFullYear()}-${String(base.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
+const listOperationalMonthRefsInRange = (startDate: string, endDate: string) => {
+  const refs = new Set<string>();
+  let cursor = startDate;
+  while (cursor <= endDate) {
+    refs.add(getOperationalMonthRefForDate(cursor));
+    cursor = shiftUtcDate(cursor, 1);
+  }
+  return Array.from(refs.values()).sort();
 };
 
 const safeAddColumn = async (db: DbInterface, sql: string) => {
@@ -935,10 +963,34 @@ const listOccurrencesRaw = async (db: DbInterface, periodId: string, employeeId?
   return rows.map(mapOccurrence);
 };
 
+const listOccurrencesByDateRangeRaw = async (db: DbInterface, startDate: string, endDate: string, employeeId?: string) => {
+  const rows = await db.query(
+    `SELECT * FROM payroll_occurrences
+     WHERE date_start <= ?
+       AND COALESCE(date_end, date_start) >= ?
+       ${employeeId ? 'AND employee_id = ?' : ''}
+     ORDER BY date_start ASC, created_at ASC`,
+    employeeId ? [endDate, startDate, employeeId] : [endDate, startDate],
+  );
+  return rows.map(mapOccurrence);
+};
+
 const listPointRowsRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
   const rows = await db.query(
     `SELECT * FROM payroll_point_daily WHERE period_id = ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY point_date ASC`,
     employeeId ? [periodId, employeeId] : [periodId],
+  );
+  return rows.map(mapPointDaily);
+};
+
+const listPointRowsByDateRangeRaw = async (db: DbInterface, startDate: string, endDate: string, employeeId?: string) => {
+  const rows = await db.query(
+    `SELECT * FROM payroll_point_daily
+     WHERE point_date >= ?
+       AND point_date <= ?
+       ${employeeId ? 'AND employee_id = ?' : ''}
+     ORDER BY point_date ASC`,
+    employeeId ? [startDate, endDate, employeeId] : [startDate, endDate],
   );
   return rows.map(mapPointDaily);
 };
@@ -951,10 +1003,38 @@ const listHoursBalanceRaw = async (db: DbInterface, periodId: string, employeeId
   return rows.map(mapHoursBalanceMonthly);
 };
 
+const listHoursBalanceByPeriodIdsRaw = async (db: DbInterface, periodIds: string[], employeeId?: string) => {
+  if (!periodIds.length) return [] as PayrollHoursBalanceMonthly[];
+  const placeholders = periodIds.map(() => '?').join(', ');
+  const params = employeeId ? [...periodIds, employeeId] : [...periodIds];
+  const rows = await db.query(
+    `SELECT * FROM payroll_hours_balance_monthly
+     WHERE period_id IN (${placeholders})
+       ${employeeId ? 'AND employee_id = ?' : ''}
+     ORDER BY employee_name ASC`,
+    params,
+  );
+  return rows.map(mapHoursBalanceMonthly);
+};
+
 const listSignaturesRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
   const rows = await db.query(
     `SELECT * FROM payroll_signature_monthly WHERE period_id = ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY employee_name ASC`,
     employeeId ? [periodId, employeeId] : [periodId],
+  );
+  return rows.map(mapSignatureMonthly);
+};
+
+const listSignaturesByPeriodIdsRaw = async (db: DbInterface, periodIds: string[], employeeId?: string) => {
+  if (!periodIds.length) return [] as PayrollSignatureMonthly[];
+  const placeholders = periodIds.map(() => '?').join(', ');
+  const params = employeeId ? [...periodIds, employeeId] : [...periodIds];
+  const rows = await db.query(
+    `SELECT * FROM payroll_signature_monthly
+     WHERE period_id IN (${placeholders})
+       ${employeeId ? 'AND employee_id = ?' : ''}
+     ORDER BY employee_name ASC`,
+    params,
   );
   return rows.map(mapSignatureMonthly);
 };
@@ -1460,6 +1540,72 @@ export const getPayrollPointHeartbeat = async (db: DbInterface): Promise<Payroll
     status: clean(row?.status) || 'UNKNOWN',
     lastRun: clean(row?.last_run) || null,
     details: clean(row?.details) || null,
+  };
+};
+
+const buildPayrollPointCoverage = (expectedMonthRefs: string[], syncedMonthRefs: string[]): PayrollPointCoverage => {
+  const coveredSet = new Set(syncedMonthRefs);
+  const coveredMonthRefs = expectedMonthRefs.filter((item) => coveredSet.has(item));
+  const missingMonthRefs = expectedMonthRefs.filter((item) => !coveredSet.has(item));
+  const coveredPeriods = coveredMonthRefs.length;
+  const totalPeriods = expectedMonthRefs.length;
+  const status =
+    coveredPeriods === 0 ? 'NONE' : coveredPeriods === totalPeriods ? 'FULL' : 'PARTIAL';
+  const message =
+    status === 'FULL'
+      ? 'A base sincronizada cobre todo o intervalo selecionado.'
+      : status === 'PARTIAL'
+        ? 'A base sincronizada cobre apenas parte do intervalo selecionado.'
+        : 'Não há sincronização concluída para o intervalo selecionado.';
+
+  return {
+    status,
+    totalPeriods,
+    coveredPeriods,
+    expectedMonthRefs,
+    coveredMonthRefs,
+    missingMonthRefs,
+    message,
+  };
+};
+
+export const getPayrollPointOverview = async (db: DbInterface, dateRange: PayrollPointDateRange): Promise<PayrollPointOverview> => {
+  await ensurePayrollTables(db);
+  const [periods, heartbeat] = await Promise.all([listPayrollPeriods(db), getPayrollPointHeartbeat(db)]);
+  const referenceMonthRef = getOperationalMonthRefForDate(dateRange.startDate);
+  const expectedMonthRefs = listOperationalMonthRefsInRange(dateRange.startDate, dateRange.endDate);
+  const periodByMonthRef = new Map(periods.map((period) => [period.monthRef, period] as const));
+  const overlappingPeriods = expectedMonthRefs.map((monthRef) => periodByMonthRef.get(monthRef) || null);
+  const syncTargetPeriod = periodByMonthRef.get(referenceMonthRef) || null;
+
+  const completedSyncRefs = new Set<string>();
+  await Promise.all(
+    overlappingPeriods
+      .filter((period): period is PayrollPeriod => Boolean(period))
+      .map(async (period) => {
+        const syncRuns = await listPointSyncRunsByPeriod(db, period.id);
+        if (syncRuns.some((item) => item.status === 'COMPLETED')) {
+          completedSyncRefs.add(period.monthRef);
+        }
+      }),
+  );
+
+  const coverage = buildPayrollPointCoverage(expectedMonthRefs, Array.from(completedSyncRefs.values()));
+  const alerts: string[] = [];
+  if (!syncTargetPeriod) {
+    alerts.push(`Nenhuma competência operacional foi encontrada para ${referenceMonthRef}.`);
+  }
+  if (coverage.status !== 'FULL') {
+    alerts.push(coverage.message);
+  }
+
+  return {
+    dateRange,
+    heartbeat,
+    referenceMonthRef,
+    syncTargetPeriod,
+    coverage,
+    alerts,
   };
 };
 
@@ -2101,33 +2247,61 @@ const matchesOperationalFilters = (row: PayrollOperationalEmployeeRow, filters: 
 const buildOperationalComparisonKey = (employeeId: string | null, employeeName: string, employeeCpf: string | null) =>
   employeeId || buildComparisonKey(employeeName, employeeCpf);
 
-const listPayrollOperationalEmployees = async (
-  db: DbInterface,
-  periodId: string,
-  filters: PayrollLineFilters,
-) => {
-  await ensurePayrollTables(db);
-  const period = await getPeriodOrThrow(db, periodId);
-  const [lines, employees, pointRows, hoursRows, signatureRows, occurrences] = await Promise.all([
-    listLinesRaw(db, periodId),
-    loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
-    listPointRowsRaw(db, periodId),
-    listHoursBalanceRaw(db, periodId),
-    listSignaturesRaw(db, periodId),
-    listOccurrencesRaw(db, periodId),
-  ]);
-
+const buildOperationalEmployeesCollection = ({
+  employees,
+  filters,
+  lines = [],
+  pointRows = [],
+  hoursRows = [],
+  signatureRows = [],
+  occurrences = [],
+}: {
+  employees: EmployeePayrollSource[];
+  filters: PayrollLineFilters;
+  lines?: PayrollLine[];
+  pointRows?: PayrollPointDaily[];
+  hoursRows?: PayrollHoursBalanceMonthly[];
+  signatureRows?: PayrollSignatureMonthly[];
+  occurrences?: PayrollOccurrence[];
+}) => {
   const items = new Map<string, PayrollOperationalEmployeeRow>();
-  const employeeNamesById = new Map<string, { name: string; cpf: string | null; centerCost: string | null; unitName: string | null; contractType: string | null }>();
+  const employeeDetailsById = new Map<string, { name: string; cpf: string | null; centerCost: string | null; unitName: string | null; contractType: string | null }>();
+  const employeeLookup = buildEmployeeLookupMaps(employees);
+
+  const resolveEmployeeContext = (employeeId: string | null, employeeName: string, employeeCpf: string | null) => {
+    if (employeeId) {
+      const byId = employeeDetailsById.get(employeeId);
+      if (byId) return byId;
+    }
+    const matched = findMatchingEmployeeForPointRow(employeeName, employeeCpf, employeeLookup);
+    if (!matched) return null;
+    return {
+      name: matched.fullName,
+      cpf: matched.cpf,
+      centerCost: matched.costCenter,
+      unitName: matched.units[0] || null,
+      contractType: matched.employmentRegime,
+    };
+  };
+
   const register = (row: PayrollOperationalEmployeeRow) => {
-    const key = buildOperationalComparisonKey(row.employeeId, row.employeeName, row.employeeCpf);
+    const resolved = resolveEmployeeContext(row.employeeId, row.employeeName, row.employeeCpf);
+    const candidate: PayrollOperationalEmployeeRow = {
+      ...row,
+      employeeName: resolved?.name || row.employeeName,
+      employeeCpf: resolved?.cpf || row.employeeCpf,
+      centerCost: row.centerCost || resolved?.centerCost || null,
+      unitName: row.unitName || resolved?.unitName || null,
+      contractType: row.contractType || resolved?.contractType || null,
+    };
+    const key = buildOperationalComparisonKey(candidate.employeeId, candidate.employeeName, candidate.employeeCpf);
     if (!key || items.has(key)) return;
-    items.set(key, row);
+    items.set(key, candidate);
   };
 
   for (const line of lines) {
     if (line.employeeId) {
-      employeeNamesById.set(line.employeeId, {
+      employeeDetailsById.set(line.employeeId, {
         name: line.employeeName,
         cpf: line.employeeCpf,
         centerCost: line.centerCost,
@@ -2148,7 +2322,7 @@ const listPayrollOperationalEmployees = async (
   }
 
   for (const employee of employees) {
-    employeeNamesById.set(employee.id, {
+    employeeDetailsById.set(employee.id, {
       name: employee.fullName,
       cpf: employee.cpf,
       centerCost: employee.costCenter,
@@ -2207,11 +2381,11 @@ const listPayrollOperationalEmployees = async (
   }
 
   for (const row of occurrences) {
-    const employeeSnapshot = row.employeeId ? employeeNamesById.get(row.employeeId) || null : null;
+    const employeeSnapshot = row.employeeId ? employeeDetailsById.get(row.employeeId) || null : null;
     register({
       key: row.id,
       employeeId: row.employeeId,
-      employeeName: employeeSnapshot?.name || row.employeeId,
+      employeeName: employeeSnapshot?.name || row.employeeId || 'Sem vínculo local',
       employeeCpf: employeeSnapshot?.cpf || null,
       centerCost: employeeSnapshot?.centerCost || null,
       unitName: employeeSnapshot?.unitName || null,
@@ -2220,10 +2394,63 @@ const listPayrollOperationalEmployees = async (
     });
   }
 
-  const filtered = Array.from(items.values()).filter((row) => matchesOperationalFilters(row, filters));
   return {
-    items: filtered.sort((left, right) => left.employeeName.localeCompare(right.employeeName, 'pt-BR', { sensitivity: 'base' })),
+    items: Array.from(items.values())
+      .filter((row) => matchesOperationalFilters(row, filters))
+      .sort((left, right) => left.employeeName.localeCompare(right.employeeName, 'pt-BR', { sensitivity: 'base' })),
   };
+};
+
+const listPayrollOperationalEmployees = async (
+  db: DbInterface,
+  periodId: string,
+  filters: PayrollLineFilters,
+) => {
+  await ensurePayrollTables(db);
+  const period = await getPeriodOrThrow(db, periodId);
+  const [lines, employees, pointRows, hoursRows, signatureRows, occurrences] = await Promise.all([
+    listLinesRaw(db, periodId),
+    loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
+    listPointRowsRaw(db, periodId),
+    listHoursBalanceRaw(db, periodId),
+    listSignaturesRaw(db, periodId),
+    listOccurrencesRaw(db, periodId),
+  ]);
+
+  return buildOperationalEmployeesCollection({
+    employees,
+    filters,
+    lines,
+    pointRows,
+    hoursRows,
+    signatureRows,
+    occurrences,
+  });
+};
+
+const listPayrollOperationalEmployeesByDateRange = async (
+  db: DbInterface,
+  dateRange: PayrollPointDateRange,
+  filters: PayrollLineFilters,
+  monthlyPeriodIds: string[],
+) => {
+  await ensurePayrollTables(db);
+  const [employees, pointRows, hoursRows, signatureRows, occurrences] = await Promise.all([
+    loadEmployeeRosterForPeriod(db, dateRange.startDate, dateRange.endDate),
+    listPointRowsByDateRangeRaw(db, dateRange.startDate, dateRange.endDate),
+    listHoursBalanceByPeriodIdsRaw(db, monthlyPeriodIds),
+    listSignaturesByPeriodIdsRaw(db, monthlyPeriodIds),
+    listOccurrencesByDateRangeRaw(db, dateRange.startDate, dateRange.endDate),
+  ]);
+
+  return buildOperationalEmployeesCollection({
+    employees,
+    filters,
+    pointRows,
+    hoursRows,
+    signatureRows,
+    occurrences,
+  });
 };
 
 export const listPayrollLines = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
@@ -2818,6 +3045,70 @@ export const listPayrollDailyControlRows = async (db: DbInterface, periodId: str
   return { items };
 };
 
+export const listPayrollDailyControlRowsByDateRange = async (db: DbInterface, dateRange: PayrollPointDateRange, filters: PayrollLineFilters) => {
+  await ensurePayrollTables(db);
+  const overview = await getPayrollPointOverview(db, dateRange);
+  const monthlyPeriodIds = overview.syncTargetPeriod ? [overview.syncTargetPeriod.id] : [];
+  const [operationalEmployees, pointRows] = await Promise.all([
+    listPayrollOperationalEmployeesByDateRange(db, dateRange, filters, monthlyPeriodIds),
+    listPointRowsByDateRangeRaw(db, dateRange.startDate, dateRange.endDate),
+  ]);
+
+  const pointMap = new Map<string, PayrollPointDaily[]>();
+  for (const row of pointRows) {
+    const keys = new Set<string>();
+    if (row.employeeId) keys.add(row.employeeId);
+    const comparisonKey = buildComparisonKey(row.employeeName, row.employeeCpf);
+    if (comparisonKey) keys.add(comparisonKey);
+    for (const key of keys) {
+      const list = pointMap.get(key) || [];
+      list.push(row);
+      pointMap.set(key, list);
+    }
+  }
+
+  const items: PayrollDailyControlRow[] = operationalEmployees.items.map((employee) => {
+    const rows = pointMap.get(employee.employeeId || '') || pointMap.get(buildComparisonKey(employee.employeeName, employee.employeeCpf)) || [];
+    const pointSources = uniqueSources(rows.map((row) => row.source));
+    const plannedMinutes = rows.reduce((sum, row) => sum + row.plannedMinutes, 0);
+    const workedMinutes = rows.reduce((sum, row) => sum + row.workedMinutes, 0);
+    const dayBalanceMinutes = rows.reduce((sum, row) => sum + row.dayBalanceMinutes, 0);
+    const lateMinutes = rows.reduce((sum, row) => sum + row.lateMinutes, 0);
+    const breakOverrunMinutes = rows.reduce((sum, row) => sum + row.breakOverrunMinutes, 0);
+    const absenceDays = rows.filter((row) => row.absenceFlag).length;
+    const workedDays = rows.filter((row) => row.workedMinutes > 0 || !row.absenceFlag).length;
+    const pendingAdjustments = rows.reduce((sum, row) => sum + row.pendingAdjustmentsCount, 0);
+    const status =
+      pendingAdjustments > 0 || breakOverrunMinutes > 0 || rows.some((row) => row.inconsistencyFlag)
+        ? 'ATENCAO'
+        : rows.length === 0
+          ? 'PENDENTE'
+          : 'OK';
+
+    return {
+      key: employee.key,
+      employeeId: employee.employeeId,
+      employeeName: employee.employeeName,
+      employeeCpf: employee.employeeCpf,
+      centerCost: employee.centerCost,
+      contractType: employee.contractType,
+      workedDays,
+      absenceDays,
+      lateMinutes,
+      plannedMinutes,
+      workedMinutes,
+      dayBalanceMinutes,
+      breakOverrunMinutes,
+      pendingAdjustments,
+      pointSource: pointSources[0] || (overview.coverage.coveredPeriods > 0 ? 'SOLIDES' : null),
+      employeeSource: 'PAINEL',
+      status,
+    };
+  });
+
+  return { items };
+};
+
 export const listPayrollHoursBalanceRows = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
   await ensurePayrollTables(db);
   await getPeriodOrThrow(db, periodId);
@@ -2846,6 +3137,20 @@ export const listPayrollHoursBalanceRows = async (db: DbInterface, periodId: str
   };
 };
 
+export const listPayrollHoursBalanceRowsByDateRange = async (db: DbInterface, dateRange: PayrollPointDateRange, filters: PayrollLineFilters) => {
+  await ensurePayrollTables(db);
+  const overview = await getPayrollPointOverview(db, dateRange);
+  const monthlyPeriodIds = overview.syncTargetPeriod ? [overview.syncTargetPeriod.id] : [];
+  const [operationalEmployees, rows] = await Promise.all([
+    listPayrollOperationalEmployeesByDateRange(db, dateRange, filters, monthlyPeriodIds),
+    listHoursBalanceByPeriodIdsRaw(db, monthlyPeriodIds),
+  ]);
+  const allowed = new Set(operationalEmployees.items.map((item) => buildOperationalComparisonKey(item.employeeId, item.employeeName, item.employeeCpf)));
+  return {
+    items: rows.filter((row) => allowed.has(buildOperationalComparisonKey(row.employeeId, row.employeeName, row.employeeCpf))),
+  };
+};
+
 export const listPayrollVacationRows = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
   await ensurePayrollTables(db);
   await getPeriodOrThrow(db, periodId);
@@ -2868,6 +3173,42 @@ export const listPayrollVacationRows = async (db: DbInterface, periodId: string,
       employeeId: occurrence.employeeId,
       employeeName: employee.employeeName,
       employeeCpf: employee.employeeCpf,
+      dateStart: occurrence.dateStart,
+      dateEnd: occurrence.dateEnd || occurrence.dateStart,
+      notes: occurrence.notes,
+      source: 'SOLIDES',
+    });
+  }
+
+  items.sort((left, right) => {
+    if (left.dateStart !== right.dateStart) return left.dateStart.localeCompare(right.dateStart);
+    return left.employeeName.localeCompare(right.employeeName, 'pt-BR', { sensitivity: 'base' });
+  });
+
+  return { items };
+};
+
+export const listPayrollVacationRowsByDateRange = async (db: DbInterface, dateRange: PayrollPointDateRange, filters: PayrollLineFilters) => {
+  await ensurePayrollTables(db);
+  const [operationalEmployees, occurrences] = await Promise.all([
+    listPayrollOperationalEmployeesByDateRange(db, dateRange, filters, []),
+    listOccurrencesByDateRangeRaw(db, dateRange.startDate, dateRange.endDate),
+  ]);
+  const operationalEmployeeById = new Map(
+    operationalEmployees.items
+      .filter((item) => item.employeeId)
+      .map((item) => [item.employeeId as string, item] as const),
+  );
+  const items: PayrollVacationRow[] = [];
+
+  for (const occurrence of occurrences.filter((item) => item.occurrenceType === 'FERIAS')) {
+    const matched = occurrence.employeeId ? operationalEmployeeById.get(occurrence.employeeId) || null : null;
+    if (!matched) continue;
+    items.push({
+      id: occurrence.id,
+      employeeId: occurrence.employeeId,
+      employeeName: matched.employeeName,
+      employeeCpf: matched.employeeCpf,
       dateStart: occurrence.dateStart,
       dateEnd: occurrence.dateEnd || occurrence.dateStart,
       notes: occurrence.notes,
@@ -2915,6 +3256,20 @@ export const listPayrollSignatureRows = async (db: DbInterface, periodId: string
         filters,
       );
     }),
+  };
+};
+
+export const listPayrollSignatureRowsByDateRange = async (db: DbInterface, dateRange: PayrollPointDateRange, filters: PayrollLineFilters) => {
+  await ensurePayrollTables(db);
+  const overview = await getPayrollPointOverview(db, dateRange);
+  const monthlyPeriodIds = overview.syncTargetPeriod ? [overview.syncTargetPeriod.id] : [];
+  const [operationalEmployees, rows] = await Promise.all([
+    listPayrollOperationalEmployeesByDateRange(db, dateRange, filters, monthlyPeriodIds),
+    listSignaturesByPeriodIdsRaw(db, monthlyPeriodIds),
+  ]);
+  const allowed = new Set(operationalEmployees.items.map((item) => buildOperationalComparisonKey(item.employeeId, item.employeeName, item.employeeCpf)));
+  return {
+    items: rows.filter((row) => allowed.has(buildOperationalComparisonKey(row.employeeId, row.employeeName, row.employeeCpf))),
   };
 };
 

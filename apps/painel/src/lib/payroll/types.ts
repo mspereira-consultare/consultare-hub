@@ -90,6 +90,32 @@ export type PayrollServiceHeartbeat = {
   details: string | null;
 };
 
+export type PayrollPointDateRange = {
+  startDate: string;
+  endDate: string;
+};
+
+export type PayrollPointCoverageStatus = 'FULL' | 'PARTIAL' | 'NONE';
+
+export type PayrollPointCoverage = {
+  status: PayrollPointCoverageStatus;
+  totalPeriods: number;
+  coveredPeriods: number;
+  expectedMonthRefs: string[];
+  coveredMonthRefs: string[];
+  missingMonthRefs: string[];
+  message: string;
+};
+
+export type PayrollPointOverview = {
+  dateRange: PayrollPointDateRange;
+  heartbeat: PayrollServiceHeartbeat;
+  referenceMonthRef: string;
+  syncTargetPeriod: PayrollPeriod | null;
+  coverage: PayrollPointCoverage;
+  alerts: string[];
+};
+
 export type PayrollPointDaily = {
   id: string;
   periodId: string;
