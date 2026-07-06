@@ -2,7 +2,7 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSession } from 'next-auth/react';
-import { Calendar, CircleHelp, RefreshCw } from 'lucide-react';
+import { Calendar, CircleHelp, Loader2, RefreshCw } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
 import { DEFAULT_PAYROLL_LINE_FILTERS } from '@/lib/payroll/filters';
 import type {
@@ -11,6 +11,7 @@ import type {
   PayrollLineFilters,
   PayrollOptions,
   PayrollPeriodDetail,
+  PayrollServiceHeartbeat,
   PayrollSignatureMonthly,
   PayrollVacationRow,
 } from '@/lib/payroll/types';
@@ -20,7 +21,6 @@ import { PayrollHelpModal } from '../folha-pagamento/components/PayrollHelpModal
 import { PayrollHoursBalancePanel } from '../folha-pagamento/components/PayrollHoursBalancePanel';
 import { PayrollReadinessPanel } from '../folha-pagamento/components/PayrollReadinessPanel';
 import { PayrollSignaturesPanel } from '../folha-pagamento/components/PayrollSignaturesPanel';
-import { PayrollSyncPanel } from '../folha-pagamento/components/PayrollSyncPanel';
 import { PAYROLL_POINT_TABS, PayrollTabNav, type PayrollTabKey } from '../folha-pagamento/components/PayrollTabNav';
 import { PayrollVacationsPanel } from '../folha-pagamento/components/PayrollVacationsPanel';
 
@@ -55,6 +55,30 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
+const emptyHeartbeat: PayrollServiceHeartbeat = {
+  serviceName: 'payroll_point_sync',
+  status: 'UNKNOWN',
+  lastRun: null,
+  details: null,
+};
+
+const isWorkerUpdating = (status: string | null | undefined) => ['RUNNING', 'PENDING'].includes(String(status || '').toUpperCase());
+
+const getHeartbeatTone = (status: string | null | undefined) => {
+  const normalized = String(status || '').toUpperCase();
+  if (normalized === 'COMPLETED' || normalized === 'HEALTHY') return 'bg-emerald-500';
+  if (normalized === 'FAILED' || normalized === 'ERROR') return 'bg-rose-500';
+  if (normalized === 'RUNNING' || normalized === 'PENDING') return 'bg-amber-500';
+  return 'bg-slate-300';
+};
+
+const formatDateTimeBr = (value: string | null | undefined) => {
+  if (!value) return 'Sem execução registrada';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('pt-BR');
+};
+
 export default function PontoPage() {
   const { data: session } = useSession();
   const role = String((session?.user as any)?.role || 'OPERADOR');
@@ -70,23 +94,25 @@ export default function PontoPage() {
   const [hoursBalanceRows, setHoursBalanceRows] = useState<PayrollHoursBalanceMonthly[]>([]);
   const [vacationRows, setVacationRows] = useState<PayrollVacationRow[]>([]);
   const [signatureRows, setSignatureRows] = useState<PayrollSignatureMonthly[]>([]);
+  const [heartbeat, setHeartbeat] = useState<PayrollServiceHeartbeat>(emptyHeartbeat);
   const [filters, setFilters] = useState<PayrollLineFilters>(DEFAULT_PAYROLL_LINE_FILTERS);
   const [filterOptions, setFilterOptions] = useState({ centersCost: [] as string[], units: [] as string[], contracts: [] as string[] });
-  const [activeTab, setActiveTab] = useState<PayrollTabKey>('sincronizacao');
+  const [activeTab, setActiveTab] = useState<PayrollTabKey>('controle_diario');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [syncingPoint, setSyncingPoint] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [refreshHovered, setRefreshHovered] = useState(false);
 
   const currentPeriod = useMemo(
     () => options.periods.find((item) => item.id === selectedPeriodId) || detail?.period || null,
     [detail?.period, options.periods, selectedPeriodId],
   );
   const hasPointSyncInProgress = useMemo(
-    () => (detail?.syncRuns || []).some((item) => ['PENDING', 'RUNNING'].includes(item.status)),
-    [detail?.syncRuns],
+    () => (detail?.syncRuns || []).some((item) => ['PENDING', 'RUNNING'].includes(item.status)) || isWorkerUpdating(heartbeat.status),
+    [detail?.syncRuns, heartbeat.status],
   );
 
   const buildFilterQuery = useCallback(() => {
@@ -112,7 +138,9 @@ export default function PontoPage() {
     setError('');
     try {
       const [detailPayload, dailyPayload, hoursBalancePayload, vacationsPayload, signaturesPayload] = await Promise.all([
-        fetchJson<{ status: string; data: PayrollPeriodDetail }>(`/api/admin/ponto/periods/${encodeURIComponent(selectedPeriodId)}`),
+        fetchJson<{ status: string; data: { detail: PayrollPeriodDetail; heartbeat: PayrollServiceHeartbeat } }>(
+          `/api/admin/ponto/periods/${encodeURIComponent(selectedPeriodId)}`,
+        ),
         fetchJson<{ status: string; data: { items: PayrollDailyControlRow[] } }>(
           `/api/admin/ponto/periods/${encodeURIComponent(selectedPeriodId)}/daily?${buildFilterQuery()}`,
         ),
@@ -127,13 +155,14 @@ export default function PontoPage() {
         ),
       ]);
 
-      setDetail(detailPayload.data || null);
+      setDetail(detailPayload.data?.detail || null);
+      setHeartbeat(detailPayload.data?.heartbeat || emptyHeartbeat);
       setDailyRows(dailyPayload.data?.items || []);
       setHoursBalanceRows(hoursBalancePayload.data?.items || []);
       setVacationRows(vacationsPayload.data?.items || []);
       setSignatureRows(signaturesPayload.data?.items || []);
       setFilterOptions({
-        centersCost: detailPayload.data?.summary ? options.centersCost : options.centersCost,
+        centersCost: detailPayload.data?.detail?.summary ? options.centersCost : options.centersCost,
         units: options.units,
         contracts: options.contractTypes,
       });
@@ -175,6 +204,9 @@ export default function PontoPage() {
     }
   };
 
+  const heartbeatLabel = hasPointSyncInProgress ? 'Sincronização em andamento' : 'Última sincronização';
+  const heartbeatTone = getHeartbeatTone(heartbeat.status);
+
   useEffect(() => {
     if (!selectedPeriodId || !hasPointSyncInProgress) return;
     const intervalId = window.setInterval(() => {
@@ -198,7 +230,7 @@ export default function PontoPage() {
             <div>
               <h1 className="text-xl font-bold text-slate-800">Ponto</h1>
               <p className="mt-1 text-xs text-slate-500">
-                Acompanhamento operacional da competência com sincronização da Sólides para ponto, banco de horas, férias, assinaturas e espelho oficial.
+                Acompanhamento operacional da competência com base sincronizada da Sólides para ponto, banco de horas, férias e assinaturas.
               </p>
             </div>
           </div>
@@ -211,9 +243,45 @@ export default function PontoPage() {
               <CircleHelp size={16} /> Fontes e regras
             </button>
             {canRefresh ? (
-              <button type="button" onClick={() => reloadAll()} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                <RefreshCw size={16} /> Atualizar
+              <button
+                type="button"
+                onClick={() => reloadAll()}
+                className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                <RefreshCw size={16} /> Recarregar tela
               </button>
+            ) : null}
+            {canEdit ? (
+              <div
+                className="relative"
+                onMouseEnter={() => setRefreshHovered(true)}
+                onMouseLeave={() => setRefreshHovered(false)}
+              >
+                <button
+                  type="button"
+                  onClick={handlePointSync}
+                  disabled={syncingPoint || !selectedPeriodId}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#123462] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {syncingPoint ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                  {syncingPoint ? 'Solicitando...' : 'Atualizar dados'}
+                </button>
+
+                {refreshHovered ? (
+                  <div className="absolute right-0 top-full z-20 mt-2 w-[320px] rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg">
+                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                      {heartbeatLabel}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2.5 w-2.5 rounded-full ${heartbeatTone} ${hasPointSyncInProgress ? 'animate-pulse' : ''}`} />
+                      <span className="text-sm font-medium text-slate-700">{formatDateTimeBr(heartbeat.lastRun)}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {hasPointSyncInProgress ? 'Sincronizando a competência em segundo plano.' : heartbeat.details || 'Acompanhe aqui a última execução do worker da Sólides.'}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
           </div>
         </div>
@@ -304,16 +372,6 @@ export default function PontoPage() {
 
       <PayrollTabNav activeTab={activeTab} onChange={setActiveTab} tabs={PAYROLL_POINT_TABS} />
 
-      {activeTab === 'sincronizacao' ? (
-        <PayrollSyncPanel
-          imports={detail?.imports || []}
-          syncRuns={detail?.syncRuns || []}
-          syncingPoint={syncingPoint}
-          onSyncPoint={handlePointSync}
-          canSync={canEdit}
-          importDownloadBasePath="/api/admin/ponto/imports"
-        />
-      ) : null}
       {activeTab === 'controle_diario' ? <PayrollDailyPanel rows={dailyRows} loading={loading} /> : null}
       {activeTab === 'banco_horas' ? <PayrollHoursBalancePanel rows={hoursBalanceRows} loading={loading} /> : null}
       {activeTab === 'ferias' ? <PayrollVacationsPanel rows={vacationRows} loading={loading} /> : null}

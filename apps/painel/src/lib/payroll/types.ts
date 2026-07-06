@@ -83,6 +83,13 @@ export type PayrollPointSyncRun = {
   createdAt: string;
 };
 
+export type PayrollServiceHeartbeat = {
+  serviceName: string;
+  status: string;
+  lastRun: string | null;
+  details: string | null;
+};
+
 export type PayrollPointDaily = {
   id: string;
   periodId: string;

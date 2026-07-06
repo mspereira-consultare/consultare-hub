@@ -46,6 +46,7 @@ import type {
   PayrollReadinessSeverity,
   PayrollReadinessStatus,
   PayrollRule,
+  PayrollServiceHeartbeat,
   PayrollSignatureMonthly,
   PayrollVacationRow,
 } from '@/lib/payroll/types';
@@ -1440,6 +1441,25 @@ export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string):
     syncRuns,
     summary,
     readiness: evaluatePayrollPeriodReadiness(period, imports, syncRuns, employees, pointRows, occurrenceRows, hoursBalances, signatures),
+  };
+};
+
+export const getPayrollPointHeartbeat = async (db: DbInterface): Promise<PayrollServiceHeartbeat> => {
+  const rows = await db.query(
+    `
+    SELECT service_name, status, last_run, details
+    FROM system_status
+    WHERE service_name = ?
+    LIMIT 1
+    `,
+    ['payroll_point_sync'],
+  );
+  const row = rows?.[0] as any;
+  return {
+    serviceName: clean(row?.service_name) || 'payroll_point_sync',
+    status: clean(row?.status) || 'UNKNOWN',
+    lastRun: clean(row?.last_run) || null,
+    details: clean(row?.details) || null,
   };
 };
 

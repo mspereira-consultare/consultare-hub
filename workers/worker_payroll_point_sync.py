@@ -855,14 +855,24 @@ def _load_local_employees(db: DatabaseManager, period_start: str, period_end: st
 def _build_local_lookup(local_employees: List[Dict[str, Any]]) -> Dict[str, Dict[str, Dict[str, Any]]]:
     by_solides_id: Dict[str, Dict[str, Any]] = {}
     by_external_id: Dict[str, Dict[str, Any]] = {}
+    by_cpf: Dict[str, Dict[str, Any]] = {}
+    duplicate_cpfs = set()
     for employee in local_employees:
         solids_id = _clean(employee.get("solides_employee_id"))
         external_id = _clean(employee.get("solides_external_id"))
+        cpf = _normalize_cpf(employee.get("cpf"))
         if solids_id and solids_id not in by_solides_id:
             by_solides_id[solids_id] = employee
         if external_id and external_id not in by_external_id:
             by_external_id[external_id] = employee
-    return {"by_solides_id": by_solides_id, "by_external_id": by_external_id}
+        if cpf:
+            if cpf in by_cpf:
+                duplicate_cpfs.add(cpf)
+            else:
+                by_cpf[cpf] = employee
+    for cpf in duplicate_cpfs:
+        by_cpf.pop(cpf, None)
+    return {"by_solides_id": by_solides_id, "by_external_id": by_external_id, "by_cpf": by_cpf}
 
 
 def _resolve_local_employee(remote_employee: Dict[str, Any], local_lookup: Dict[str, Dict[str, Dict[str, Any]]]) -> Optional[Dict[str, Any]]:
@@ -872,7 +882,53 @@ def _resolve_local_employee(remote_employee: Dict[str, Any], local_lookup: Dict[
     external_id = _clean(remote_employee.get("externalId"))
     if external_id and external_id in local_lookup["by_external_id"]:
         return local_lookup["by_external_id"][external_id]
+    cpf = _normalize_cpf(remote_employee.get("cpf"))
+    if cpf and cpf in local_lookup["by_cpf"]:
+        return local_lookup["by_cpf"][cpf]
     return None
+
+
+def _persist_local_employee_link(
+    db: DatabaseManager,
+    local_employee: Dict[str, Any],
+    remote_employee: Dict[str, Any],
+    local_lookup: Dict[str, Dict[str, Dict[str, Any]]],
+) -> bool:
+    local_employee_id = _clean(local_employee.get("id"))
+    remote_id = _clean(remote_employee.get("id"))
+    remote_external_id = _clean(remote_employee.get("externalId"))
+    if not local_employee_id or not remote_id:
+        return False
+
+    current_remote_id = _clean(local_employee.get("solides_employee_id"))
+    current_external_id = _clean(local_employee.get("solides_external_id"))
+    if current_remote_id == remote_id and current_external_id == remote_external_id:
+        return False
+
+    _execute(
+        db,
+        """
+        UPDATE employees
+        SET solides_employee_id = ?, solides_external_id = ?, updated_at = ?
+        WHERE id = ?
+        """,
+        (
+            remote_id,
+            remote_external_id or None,
+            _now_iso(),
+            local_employee_id,
+        ),
+    )
+
+    local_employee["solides_employee_id"] = remote_id
+    local_employee["solides_external_id"] = remote_external_id or None
+    local_lookup["by_solides_id"][remote_id] = local_employee
+    if remote_external_id:
+        local_lookup["by_external_id"][remote_external_id] = local_employee
+    cpf = _normalize_cpf(local_employee.get("cpf")) or _normalize_cpf(remote_employee.get("cpf"))
+    if cpf:
+        local_lookup["by_cpf"][cpf] = local_employee
+    return True
 
 
 def _build_remote_employees_by_id(remote_items: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
@@ -1270,6 +1326,13 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
 
     remote_employees = client.list_employees()
     remote_employees_by_id = _build_remote_employees_by_id(remote_employees)
+    auto_linked_employees = 0
+    for remote_employee in remote_employees:
+        local_employee = _resolve_local_employee(remote_employee, local_lookup)
+        if local_employee is None:
+            continue
+        if _persist_local_employee_link(db, local_employee, remote_employee, local_lookup):
+            auto_linked_employees += 1
 
     point_rows: List[Dict[str, Any]] = []
     hours_balance_rows: List[Dict[str, Any]] = []
@@ -1397,6 +1460,8 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
         f"{len(signature_rows)} registro(s) de assinatura.",
         f"{len(occurrence_rows)} ocorrência(s) sincronizada(s).",
     ]
+    if auto_linked_employees:
+        details_parts.append(f"{auto_linked_employees} vínculo(s) com a Sólides atualizado(s) automaticamente por CPF.")
     if unmatched_local_links:
         sample_names = ", ".join(item["full_name"] for item in unmatched_local_links[:5])
         details_parts.append(f"Vínculos Sólides sem retorno: {len(unmatched_local_links)} ({sample_names}).")

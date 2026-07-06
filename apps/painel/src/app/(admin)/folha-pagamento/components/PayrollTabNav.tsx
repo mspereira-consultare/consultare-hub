@@ -24,7 +24,7 @@ const tabs: Array<{ key: PayrollTabKey; label: string; helper: string; icon: typ
 ];
 
 export const PAYROLL_POINT_TABS = tabs.filter((tab) =>
-  ['sincronizacao', 'controle_diario', 'banco_horas', 'ferias', 'assinaturas'].includes(tab.key),
+  ['controle_diario', 'banco_horas', 'ferias', 'assinaturas'].includes(tab.key),
 );
 
 export const PAYROLL_CLOSING_TABS = tabs.filter((tab) =>
