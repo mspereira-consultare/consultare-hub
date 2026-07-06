@@ -782,14 +782,15 @@ def _build_email_payload(recipient, pdf_bytes: Optional[bytes]) -> Tuple[Dict, D
         email_payload["reply_to"] = {"email": reply_to, "name": from_name}
     bcc_emails = _parse_email_list(os.getenv("REPASSE_EMAIL_BCC") or os.getenv("SENDPULSE_BCC") or "")
     bcc_emails = [email for email in bcc_emails if email.lower() != to_email.lower()]
-    if bcc_emails:
-        email_payload["bcc"] = [{"email": email, "name": from_name} for email in bcc_emails[:10]]
+    internal_copy_to = [{"email": email, "name": from_name} for email in bcc_emails[:10]]
 
     payload = {"email": email_payload}
+    if internal_copy_to:
+        payload["_internal_copy_to"] = internal_copy_to
     audit_email_payload = dict(email_payload)
     audit_email_payload["html"] = html_body
     audit_email_payload.pop("attachments_binary", None)
-    audit_payload = {"email": audit_email_payload, "attachments": attachments_audit}
+    audit_payload = {"email": audit_email_payload, "attachments": attachments_audit, "internal_copy_to": internal_copy_to}
     return payload, audit_payload
 
 
@@ -872,13 +873,7 @@ def _get_sendpulse_bearer_token() -> str:
     return token
 
 
-def _send_sendpulse(payload: Dict, message_id: str) -> Tuple[str, Dict]:
-    if _is_dry_run():
-        return f"dryrun-{message_id}", {"dry_run": True, "status_code": 202}
-
-    if PROVIDER != "sendpulse":
-        raise RuntimeError(f"Provedor de e-mail de repasse nao suportado neste worker: {PROVIDER}")
-
+def _post_sendpulse_email(payload: Dict) -> Tuple[str, Dict]:
     response = requests.post(
         f"{SENDPULSE_API_BASE_URL}/smtp/emails",
         headers={
@@ -900,9 +895,41 @@ def _send_sendpulse(payload: Dict, message_id: str) -> Tuple[str, Dict]:
         raise RuntimeError(f"SendPulse retornou HTTP {response.status_code}: {response.text[:500]}")
     if not response_body.get("result"):
         raise RuntimeError(f"SendPulse nao confirmou o envio: {response.text[:500]}")
-    provider_message_id = _clean(response_body.get("id"))
+    return _clean(response_body.get("id")), response_payload
+
+
+def _send_sendpulse(payload: Dict, message_id: str) -> Tuple[str, Dict]:
+    if _is_dry_run():
+        return f"dryrun-{message_id}", {"dry_run": True, "status_code": 202}
+
+    if PROVIDER != "sendpulse":
+        raise RuntimeError(f"Provedor de e-mail de repasse nao suportado neste worker: {PROVIDER}")
+
+    email_payload = dict(payload.get("email") or {})
+    internal_copy_to = payload.get("_internal_copy_to") or []
+    provider_message_id, response_payload = _post_sendpulse_email({"email": email_payload})
     if not provider_message_id:
         provider_message_id = f"sendpulse-{message_id}"
+
+    if internal_copy_to:
+        copy_email_payload = dict(email_payload)
+        copy_email_payload["to"] = internal_copy_to
+        copy_email_payload.pop("bcc", None)
+        try:
+            copy_provider_message_id, copy_response_payload = _post_sendpulse_email({"email": copy_email_payload})
+            response_payload["internal_copy"] = {
+                "status": "sent",
+                "provider_message_id": copy_provider_message_id,
+                "recipients": internal_copy_to,
+                "response": copy_response_payload,
+            }
+        except Exception as exc:
+            response_payload["internal_copy"] = {
+                "status": "failed",
+                "recipients": internal_copy_to,
+                "error": str(exc),
+            }
+
     return provider_message_id, response_payload
 
 
