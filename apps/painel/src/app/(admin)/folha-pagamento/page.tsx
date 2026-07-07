@@ -1,6 +1,7 @@
 'use client';
 
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Calculator, CheckCircle2, CircleHelp, Download, Loader2, Plus, RefreshCw, SendHorizontal } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
@@ -67,6 +68,9 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export default function FolhaPagamentoPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { data: session } = useSession();
   const role = String((session?.user as any)?.role || 'OPERADOR');
   const permissions = (session?.user as any)?.permissions;
@@ -98,6 +102,7 @@ export default function FolhaPagamentoPage() {
   const [lineSaving, setLineSaving] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [refreshHovered, setRefreshHovered] = useState(false);
+  const requestedPeriodId = useMemo(() => String(searchParams.get('periodId') || '').trim(), [searchParams]);
 
   const currentPeriod = useMemo(
     () => options.periods.find((item) => item.id === selectedPeriodId) || detail?.period || null,
@@ -142,10 +147,20 @@ export default function FolhaPagamentoPage() {
     if (!canView) return;
     const payload = await fetchJson<{ status: string; data: PayrollOptions }>('/api/admin/folha-pagamento/options');
     setOptions(payload.data || emptyOptions);
-    if (!selectedPeriodId && payload.data?.periods?.[0]?.id) {
-      setSelectedPeriodId(payload.data.periods[0].id);
+    const availablePeriods = payload.data?.periods || [];
+    const persistedPeriodId =
+      typeof window !== 'undefined' ? String(window.localStorage.getItem('payroll:selected-period-id') || '').trim() : '';
+    const candidatePeriodId = selectedPeriodId || requestedPeriodId || persistedPeriodId;
+
+    if (candidatePeriodId && availablePeriods.some((period) => period.id === candidatePeriodId)) {
+      setSelectedPeriodId(candidatePeriodId);
+      return;
     }
-  }, [canView, selectedPeriodId]);
+
+    if (availablePeriods[0]?.id) {
+      setSelectedPeriodId(availablePeriods[0].id);
+    }
+  }, [canView, requestedPeriodId, selectedPeriodId]);
 
   const buildFilterQuery = useCallback(() => {
     const query = new URLSearchParams();
@@ -195,6 +210,26 @@ export default function FolhaPagamentoPage() {
   useEffect(() => {
     loadOptions().catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
   }, [loadOptions]);
+
+  useEffect(() => {
+    if (!requestedPeriodId || requestedPeriodId === selectedPeriodId) return;
+    if (options.periods.some((period) => period.id === requestedPeriodId)) {
+      setSelectedPeriodId(requestedPeriodId);
+    }
+  }, [options.periods, requestedPeriodId, selectedPeriodId]);
+
+  useEffect(() => {
+    if (!selectedPeriodId) return;
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('payroll:selected-period-id', selectedPeriodId);
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.get('periodId') === selectedPeriodId) return;
+    params.set('periodId', selectedPeriodId);
+    const nextQuery = params.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+  }, [pathname, router, searchParams, selectedPeriodId]);
 
   useEffect(() => {
     loadPeriod().catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
