@@ -14,6 +14,7 @@ import type {
   PayrollLineFilters,
   PayrollOptions,
   PayrollPeriodDetail,
+  PayrollPointSyncRun,
   PayrollPreviewRow,
 } from '@/lib/payroll/types';
 import { PayrollBenefitsPanel } from './components/PayrollBenefitsPanel';
@@ -105,6 +106,7 @@ export default function FolhaPagamentoPage() {
   const [lineSaving, setLineSaving] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [refreshHovered, setRefreshHovered] = useState(false);
+  const [visibleSyncRun, setVisibleSyncRun] = useState<PayrollPointSyncRun | null>(null);
   const requestedPeriodId = useMemo(() => String(searchParams.get('periodId') || '').trim(), [searchParams]);
   const hasVisiblePeriodData = detail !== null || lines.length > 0 || benefitRows.length > 0 || previewRows.length > 0;
 
@@ -141,6 +143,7 @@ export default function FolhaPagamentoPage() {
         ? latestCompletedSync.details || `${latestCompletedSync.synchronizedEmployees} colaborador(es) e ${latestCompletedSync.synchronizedDays} registro(s) diário(s) sincronizados.`
       : 'Ainda não há sincronização concluída da Sólides para esta competência.';
   const syncButtonDisabled = syncingPoint || hasPointPipelineInProgress || !selectedPeriodId;
+  const hasVisibleSyncProgress = syncingPoint || hasPointPipelineInProgress || String(visibleSyncRun?.status || '').toUpperCase() === 'FAILED';
   const generateActionTitle = hasPointPipelineInProgress
     ? 'Aguarde a conclusão da sincronização do ponto para gerar a folha.'
     : generationBlockedByReadiness
@@ -252,6 +255,17 @@ export default function FolhaPagamentoPage() {
   useEffect(() => {
     loadPeriod({ background: hasVisiblePeriodData }).catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
   }, [hasVisiblePeriodData, loadPeriod]);
+
+  useEffect(() => {
+    const runStatus = String(latestSyncRun?.status || '').toUpperCase();
+    if (latestSyncRun && ['PENDING', 'RUNNING', 'FAILED'].includes(runStatus)) {
+      setVisibleSyncRun(latestSyncRun);
+      return;
+    }
+    if (!syncingPoint && !hasPointPipelineInProgress) {
+      setVisibleSyncRun(null);
+    }
+  }, [hasPointPipelineInProgress, latestSyncRun, syncingPoint]);
 
   const reloadAll = async () => {
     await loadOptions();
@@ -523,8 +537,8 @@ export default function FolhaPagamentoPage() {
 
       {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-      {latestSyncRun && ['PENDING', 'RUNNING', 'FAILED'].includes(String(latestSyncRun.status || '').toUpperCase()) ? (
-        <PayrollSyncProgress run={latestSyncRun} scopeLabel="fechamento desta competência" />
+      {hasVisibleSyncProgress && visibleSyncRun ? (
+        <PayrollSyncProgress run={visibleSyncRun} scopeLabel="fechamento desta competência" className="min-h-[108px]" />
       ) : null}
 
       {readiness && approvalReadiness ? (

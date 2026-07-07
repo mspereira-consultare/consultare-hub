@@ -68,9 +68,11 @@ export const buildSyncProgressMeta = (run: SyncProgressLike | null | undefined) 
 export function PayrollSyncProgress({
   run,
   scopeLabel,
+  className = '',
 }: {
   run: SyncProgressLike;
   scopeLabel: string;
+  className?: string;
 }) {
   const normalizedStatus = String(run.status || '').toUpperCase();
   const progressPercent = resolveSyncProgressPercent(run);
@@ -91,7 +93,7 @@ export function PayrollSyncProgress({
         : 'bg-[#17407E]';
 
   return (
-    <div className={`rounded-xl border px-4 py-3 shadow-sm ${toneClass}`}>
+    <div className={`rounded-xl border px-4 py-3 shadow-sm ${toneClass} ${className}`}>
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">

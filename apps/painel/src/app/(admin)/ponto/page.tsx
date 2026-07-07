@@ -13,6 +13,7 @@ import type {
   PointOverview,
   PointServiceHeartbeat,
   PointSignatureMonthly,
+  PointSyncRun,
   PointVacationRow,
 } from '@/lib/point/types';
 import { DEFAULT_POINT_FILTERS } from '@/lib/point/filters';
@@ -154,8 +155,10 @@ export default function PontoPage() {
   const [syncingPoint, setSyncingPoint] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [refreshHovered, setRefreshHovered] = useState(false);
+  const [visibleSyncRun, setVisibleSyncRun] = useState<PointSyncRun | null>(null);
 
   const hasPointSyncInProgress = useMemo(() => isWorkerUpdating(overview.heartbeat.status), [overview.heartbeat.status]);
+  const hasVisibleSyncProgress = syncingPoint || hasPointSyncInProgress || String(visibleSyncRun?.status || '').toUpperCase() === 'FAILED';
 
   // Refs para callbacks assíncronos (polling / conclusão da sync) sempre lerem o estado atual.
   const appliedKeyRef = useRef(appliedKey);
@@ -168,6 +171,17 @@ export default function PontoPage() {
   useEffect(() => {
     activeTabRef.current = activeTab;
   }, [activeTab]);
+
+  useEffect(() => {
+    const runStatus = String(overview.latestRun?.status || '').toUpperCase();
+    if (overview.latestRun && ['PENDING', 'RUNNING', 'FAILED'].includes(runStatus)) {
+      setVisibleSyncRun(overview.latestRun);
+      return;
+    }
+    if (!syncingPoint && !hasPointSyncInProgress) {
+      setVisibleSyncRun(null);
+    }
+  }, [hasPointSyncInProgress, overview.latestRun, syncingPoint]);
 
   const loadOptions = useCallback(async () => {
     if (!canView) return;
@@ -466,8 +480,8 @@ export default function PontoPage() {
 
       {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
-      {overview.latestRun && ['PENDING', 'RUNNING', 'FAILED'].includes(String(overview.latestRun.status || '').toUpperCase()) ? (
-        <PayrollSyncProgress run={overview.latestRun} scopeLabel="ponto, férias, banco de horas e assinaturas" />
+      {hasVisibleSyncProgress && visibleSyncRun ? (
+        <PayrollSyncProgress run={visibleSyncRun} scopeLabel="ponto, férias, banco de horas e assinaturas" className="min-h-[108px]" />
       ) : null}
       {!error && overview.alerts.length > 0 ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
