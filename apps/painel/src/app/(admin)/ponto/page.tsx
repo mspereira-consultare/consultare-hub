@@ -16,7 +16,6 @@ import type {
   PayrollVacationRow,
 } from '@/lib/payroll/types';
 import { PayrollDailyPanel } from '../folha-pagamento/components/PayrollDailyPanel';
-import { formatDateBr } from '../folha-pagamento/components/formatters';
 import { PayrollHelpModal } from '../folha-pagamento/components/PayrollHelpModal';
 import { PayrollHoursBalancePanel } from '../folha-pagamento/components/PayrollHoursBalancePanel';
 import { PayrollSignaturesPanel } from '../folha-pagamento/components/PayrollSignaturesPanel';
@@ -104,18 +103,6 @@ const getDefaultDateRange = () => {
     startDate: formatLocalDate(start),
     endDate: formatLocalDate(now),
   };
-};
-
-const coverageToneMap: Record<PayrollPointOverview['coverage']['status'], string> = {
-  FULL: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  PARTIAL: 'border-amber-200 bg-amber-50 text-amber-700',
-  NONE: 'border-rose-200 bg-rose-50 text-rose-700',
-};
-
-const coverageLabelMap: Record<PayrollPointOverview['coverage']['status'], string> = {
-  FULL: 'Cobertura completa',
-  PARTIAL: 'Cobertura parcial',
-  NONE: 'Sem cobertura',
 };
 
 export default function PontoPage() {
@@ -235,7 +222,7 @@ export default function PontoPage() {
   const syncButtonDisabled = syncingPoint || !overview.syncTargetPeriod?.id;
   const syncHelperText = overview.syncTargetPeriod
     ? `Atualiza a competência operacional de ${formatMonthRef(overview.syncTargetPeriod.monthRef)}.`
-    : `Sem competência operacional cadastrada para ${formatMonthRef(overview.referenceMonthRef)}.`;
+    : `Botão bloqueado: não existe competência operacional cadastrada para ${formatMonthRef(overview.referenceMonthRef)}.`;
 
   useEffect(() => {
     if (!hasPointSyncInProgress) return;
@@ -348,45 +335,6 @@ export default function PontoPage() {
                     className={filterInputClassName}
                   />
                 </Field>
-                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Sync de referência</div>
-                  <div className="mt-2 text-sm font-semibold text-slate-800">{formatMonthRef(overview.referenceMonthRef)}</div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    {overview.syncTargetPeriod
-                      ? `${formatDateBr(overview.syncTargetPeriod.periodStart)} a ${formatDateBr(overview.syncTargetPeriod.periodEnd)}`
-                      : 'Sem competência mensal cadastrada para esse recorte.'}
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-3 px-6 pb-4 lg:grid-cols-3">
-                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Cobertura da base</div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${coverageToneMap[overview.coverage.status]}`}>
-                      {coverageLabelMap[overview.coverage.status]}
-                    </span>
-                    <span className="text-sm font-semibold text-slate-800">
-                      {overview.coverage.coveredPeriods}/{overview.coverage.totalPeriods} período(s)
-                    </span>
-                  </div>
-                  <div className="mt-1 text-xs text-slate-500">{overview.coverage.message}</div>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3 lg:col-span-2">
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Períodos mensais envolvidos</div>
-                  <div className="mt-2 text-sm font-semibold text-slate-800">
-                    {overview.coverage.expectedMonthRefs.length
-                      ? overview.coverage.expectedMonthRefs.map((item) => formatMonthRef(item)).join(' • ')
-                      : 'Nenhum período identificado'}
-                  </div>
-                  {overview.coverage.missingMonthRefs.length ? (
-                    <div className="mt-1 text-xs text-slate-500">
-                      Sem sync concluída: {overview.coverage.missingMonthRefs.map((item) => formatMonthRef(item)).join(', ')}
-                    </div>
-                  ) : (
-                    <div className="mt-1 text-xs text-slate-500">Todos os períodos necessários já têm sincronização concluída.</div>
-                  )}
-                </div>
               </div>
 
               <div className="grid gap-3 px-6 pb-6 md:grid-cols-2 xl:grid-cols-4">

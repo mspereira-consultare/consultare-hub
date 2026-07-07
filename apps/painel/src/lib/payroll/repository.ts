@@ -3054,6 +3054,10 @@ export const listPayrollDailyControlRowsByDateRange = async (db: DbInterface, da
     listPointRowsByDateRangeRaw(db, dateRange.startDate, dateRange.endDate),
   ]);
 
+  if (overview.coverage.coveredPeriods === 0 && pointRows.length === 0) {
+    return { items: [] as PayrollDailyControlRow[] };
+  }
+
   const pointMap = new Map<string, PayrollPointDaily[]>();
   for (const row of pointRows) {
     const keys = new Set<string>();
