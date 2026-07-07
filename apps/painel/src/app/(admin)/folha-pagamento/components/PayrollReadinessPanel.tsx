@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, CircleAlert } from 'lucide-react';
 import type { PayrollPeriodReadiness, PayrollReadinessIssue, PayrollReadinessStatus } from '@/lib/payroll/types';
 import { formatDateBr } from './formatters';
@@ -48,40 +48,99 @@ const formatSampleEmployee = (issue: PayrollReadinessIssue) =>
     .map((sample) => (sample.employeeCpf ? `${sample.employeeName} (${sample.employeeCpf})` : sample.employeeName))
     .join(', ');
 
+const mergeIssues = (issues: PayrollReadinessIssue[]) => {
+  const map = new Map<string, PayrollReadinessIssue>();
+
+  issues.forEach((issue) => {
+    const current = map.get(issue.code);
+    if (!current) {
+      map.set(issue.code, {
+        ...issue,
+        sampleEmployees: [...issue.sampleEmployees],
+        details: issue.details ? [...issue.details] : [],
+      });
+      return;
+    }
+
+    const sampleKeys = new Set(current.sampleEmployees.map((sample) => `${sample.employeeId || ''}:${sample.employeeCpf || ''}:${sample.employeeName}`));
+    issue.sampleEmployees.forEach((sample) => {
+      const key = `${sample.employeeId || ''}:${sample.employeeCpf || ''}:${sample.employeeName}`;
+      if (!sampleKeys.has(key)) {
+        current.sampleEmployees.push(sample);
+        sampleKeys.add(key);
+      }
+    });
+
+    const existingDetails = new Set((current.details || []).map((detail) => `${detail.date || ''}:${detail.reason || ''}:${detail.rawText || ''}:${detail.marks.join('|')}`));
+    (issue.details || []).forEach((detail) => {
+      const key = `${detail.date || ''}:${detail.reason || ''}:${detail.rawText || ''}:${detail.marks.join('|')}`;
+      if (!existingDetails.has(key)) {
+        current.details = [...(current.details || []), detail];
+        existingDetails.add(key);
+      }
+    });
+
+    current.count += issue.count;
+  });
+
+  return Array.from(map.values());
+};
+
+const resolveOverallStatus = (
+  generateReadiness: PayrollPeriodReadiness,
+  approvalReadiness: PayrollPeriodReadiness,
+): PayrollReadinessStatus => {
+  if (generateReadiness.status === 'BLOCKED' || approvalReadiness.status === 'BLOCKED') return 'BLOCKED';
+  if (generateReadiness.status === 'ATTENTION' || approvalReadiness.status === 'ATTENTION') return 'ATTENTION';
+  return 'READY';
+};
+
 export function PayrollReadinessPanel({
-  readiness,
+  generateReadiness,
+  approvalReadiness,
   title = 'Prontidão da competência',
 }: {
-  readiness: PayrollPeriodReadiness;
+  generateReadiness: PayrollPeriodReadiness;
+  approvalReadiness: PayrollPeriodReadiness;
   title?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
-  const statusConfig = readinessStatusMap[readiness.status];
-  const blockingIssues = readiness.issues.filter((issue) => issue.severity === 'BLOCKING');
-  const warningIssues = readiness.issues.filter((issue) => issue.severity === 'WARNING');
-  const hasIssues = readiness.issues.length > 0;
+  const mergedIssues = useMemo(
+    () => mergeIssues([...generateReadiness.issues, ...approvalReadiness.issues]),
+    [approvalReadiness.issues, generateReadiness.issues],
+  );
+  const overallStatus = resolveOverallStatus(generateReadiness, approvalReadiness);
+  const statusConfig = readinessStatusMap[overallStatus];
+  const blockingIssues = mergedIssues.filter((issue) => issue.severity === 'BLOCKING');
+  const warningIssues = mergedIssues.filter((issue) => issue.severity === 'WARNING');
+  const hasIssues = mergedIssues.length > 0;
+  const guidance = overallStatus === 'BLOCKED'
+    ? approvalReadiness.status === 'BLOCKED'
+      ? approvalReadiness.guidance
+      : generateReadiness.guidance
+    : overallStatus === 'ATTENTION'
+      ? approvalReadiness.status === 'ATTENTION'
+        ? approvalReadiness.guidance
+        : generateReadiness.guidance
+      : generateReadiness.guidance;
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <div className="flex flex-col gap-3 border-b border-slate-200 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex items-start gap-3">
           <div className={`rounded-full border p-2 ${statusConfig.iconTone}`}>
-            {readiness.status === 'READY' ? <CheckCircle2 size={18} /> : readiness.status === 'BLOCKED' ? <AlertTriangle size={18} /> : <CircleAlert size={18} />}
+            {overallStatus === 'READY' ? <CheckCircle2 size={16} /> : overallStatus === 'BLOCKED' ? <AlertTriangle size={16} /> : <CircleAlert size={16} />}
           </div>
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">{title}</div>
-            <div className="mt-1 text-sm font-semibold text-slate-800">{readiness.guidance}</div>
+            <div className="mt-1 text-sm font-semibold text-slate-800">{guidance}</div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusConfig.tone}`}>{statusConfig.label}</span>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-            {readiness.blockingCount} bloqueio(s)
-          </span>
-          <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
-            {readiness.warningCount} alerta(s)
-          </span>
+          <StatusChip label="Gerar" readiness={generateReadiness} />
+          <StatusChip label="Aprovar" readiness={approvalReadiness} />
           {hasIssues ? (
             <button
               type="button"
@@ -98,21 +157,19 @@ export function PayrollReadinessPanel({
 
       {expanded && hasIssues ? (
         <div className="grid gap-3 p-4 lg:grid-cols-2">
-          <IssueGroup
-            title="Bloqueios críticos"
-            emptyLabel="Nenhum bloqueio crítico identificado."
-            issues={blockingIssues}
-            severity="BLOCKING"
-          />
-          <IssueGroup
-            title="Alertas operacionais"
-            emptyLabel="Nenhum alerta operacional identificado."
-            issues={warningIssues}
-            severity="WARNING"
-          />
+          <IssueGroup title="Bloqueios críticos" emptyLabel="Nenhum bloqueio crítico identificado." issues={blockingIssues} severity="BLOCKING" />
+          <IssueGroup title="Alertas operacionais" emptyLabel="Nenhum alerta operacional identificado." issues={warningIssues} severity="WARNING" />
         </div>
       ) : null}
     </section>
+  );
+}
+
+function StatusChip({ label, readiness }: { label: string; readiness: PayrollPeriodReadiness }) {
+  return (
+    <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+      {label}: {readiness.blockingCount} bloqueio(s) · {readiness.warningCount} alerta(s)
+    </span>
   );
 }
 

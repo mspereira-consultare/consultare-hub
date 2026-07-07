@@ -39,7 +39,15 @@ const emptyOptions: PayrollOptions = {
 
 const emptyDetail: PayrollPeriodDetail | null = null;
 const filterInputClassName =
-  'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100';
+  'h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100';
+
+const getHeartbeatTone = (status: string | null | undefined) => {
+  const normalized = String(status || '').toUpperCase();
+  if (normalized === 'COMPLETED' || normalized === 'HEALTHY') return 'bg-emerald-500';
+  if (normalized === 'FAILED' || normalized === 'ERROR') return 'bg-rose-500';
+  if (normalized === 'RUNNING' || normalized === 'PENDING') return 'bg-amber-500';
+  return 'bg-slate-300';
+};
 
 const formatMonthRef = (monthRef: string) => {
   const [year, month] = String(monthRef || '').split('-');
@@ -89,6 +97,7 @@ export default function FolhaPagamentoPage() {
   const [lineDetailOpen, setLineDetailOpen] = useState(false);
   const [lineSaving, setLineSaving] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [refreshHovered, setRefreshHovered] = useState(false);
 
   const currentPeriod = useMemo(
     () => options.periods.find((item) => item.id === selectedPeriodId) || detail?.period || null,
@@ -107,6 +116,18 @@ export default function FolhaPagamentoPage() {
     () => (detail?.syncRuns || []).find((item) => item.status === 'COMPLETED') || null,
     [detail?.syncRuns],
   );
+  const latestSyncRun = useMemo(() => (detail?.syncRuns || [])[0] || null, [detail?.syncRuns]);
+  const latestSyncStatus = hasPointPipelineInProgress ? latestSyncRun?.status || 'RUNNING' : latestCompletedSync?.status || latestSyncRun?.status || 'UNKNOWN';
+  const syncHeartbeatLabel = hasPointPipelineInProgress ? 'Sincronização em andamento' : 'Última sincronização';
+  const syncHeartbeatTime = hasPointPipelineInProgress
+    ? latestSyncRun?.startedAt || latestSyncRun?.createdAt || latestCompletedSync?.finishedAt || null
+    : latestCompletedSync?.finishedAt || latestSyncRun?.finishedAt || latestSyncRun?.createdAt || null;
+  const syncHeartbeatTone = getHeartbeatTone(latestSyncStatus);
+  const syncHeartbeatDetails = hasPointPipelineInProgress
+    ? 'Sincronização da Sólides em andamento para atualizar a base usada no fechamento desta competência.'
+    : latestCompletedSync
+      ? latestCompletedSync.details || `${latestCompletedSync.synchronizedEmployees} colaborador(es) e ${latestCompletedSync.synchronizedDays} registro(s) diário(s) sincronizados.`
+      : 'Ainda não há sincronização concluída da Sólides para esta competência.';
   const generateActionTitle = hasPointPipelineInProgress
     ? 'Aguarde a conclusão da sincronização do ponto para gerar a folha.'
     : generationBlockedByReadiness
@@ -275,16 +296,16 @@ export default function FolhaPagamentoPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="flex flex-col gap-4 p-6 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-4 p-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="flex min-w-0 flex-1 items-start gap-3">
             <div className="rounded-xl bg-blue-900 p-3 text-white shadow-md">
-              <Calculator size={20} />
+              <Calculator size={18} />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-800">Fechamento da folha</h1>
-              <p className="mt-1 text-xs text-slate-500">
+              <h1 className="text-[1.75rem] font-bold leading-tight text-slate-800">Fechamento da folha</h1>
+              <p className="mt-1 max-w-3xl text-[13px] text-slate-500">
                 Fechamento mensal com base sincronizada da Sólides, cálculo operacional no painel, benefícios locais e revisão por exceções antes da aprovação.
               </p>
             </div>
@@ -293,26 +314,43 @@ export default function FolhaPagamentoPage() {
             <button
               type="button"
               onClick={() => setHelpOpen(true)}
-              className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50"
             >
               <CircleHelp size={16} /> Fontes e regras
             </button>
             {canRefresh ? (
-              <button type="button" onClick={() => reloadAll()} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                <RefreshCw size={16} /> Atualizar
-              </button>
+              <div className="relative" onMouseEnter={() => setRefreshHovered(true)} onMouseLeave={() => setRefreshHovered(false)}>
+                <button type="button" onClick={() => reloadAll()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                  <RefreshCw size={16} /> Atualizar dados
+                </button>
+                {refreshHovered ? (
+                  <div className="absolute right-0 top-full z-20 mt-2 w-[340px] rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg">
+                    <span className="mb-1 block text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                      {syncHeartbeatLabel}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2.5 w-2.5 rounded-full ${syncHeartbeatTone} ${hasPointPipelineInProgress ? 'animate-pulse' : ''}`} />
+                      <span className="text-sm font-medium text-slate-700">{formatDateTimeBr(syncHeartbeatTime)}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">{syncHeartbeatDetails}</p>
+                    <p className="mt-2 text-xs text-slate-500">
+                      Atualiza a leitura local da Sólides usada no fechamento, preservando o histórico já sincronizado da competência.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
             {selectedPeriodId ? (
               <button
                 type="button"
                 onClick={() => window.open(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/export?${buildFilterQuery()}`, '_blank', 'noopener,noreferrer')}
-                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700"
+                className="inline-flex h-10 items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 text-sm font-semibold text-emerald-700"
               >
                 <Download size={16} /> Exportar XLSX
               </button>
             ) : null}
             {canEdit ? (
-              <button type="button" onClick={() => setNewPeriodOpen(true)} className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white">
+              <button type="button" onClick={() => setNewPeriodOpen(true)} className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#17407E] px-3 text-sm font-semibold text-white">
                 <Plus size={16} /> Nova competência
               </button>
             ) : null}
@@ -320,10 +358,10 @@ export default function FolhaPagamentoPage() {
         </div>
 
         <div className="border-t border-slate-200 bg-slate-50/70">
-          <div className="flex items-center justify-between gap-3 px-6 py-4">
+          <div className="flex items-center justify-between gap-3 px-5 py-3.5">
             <div>
               <h2 className="text-sm font-semibold text-slate-800">Filtros da competência</h2>
-              <p className="mt-1 text-xs text-slate-500">Refine o recorte do fechamento, da memória de benefícios e da prévia por colaborador, centro de custo, unidade, regime contratual e status.</p>
+              <p className="mt-1 text-[12px] text-slate-500">Refine o recorte do fechamento, da memória de benefícios e da prévia por colaborador, centro de custo, unidade, regime contratual e status.</p>
             </div>
             <button type="button" onClick={() => setFiltersExpanded((value) => !value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
               {filtersExpanded ? 'Recolher filtros' : 'Expandir filtros'}
@@ -331,10 +369,10 @@ export default function FolhaPagamentoPage() {
           </div>
           {filtersExpanded ? (
             <>
-              <div className="grid gap-3 px-6 pb-4 lg:grid-cols-4">
+              <div className="grid gap-3 px-5 pb-3 lg:grid-cols-4">
                 <label className="block lg:col-span-2">
                   <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Competência</span>
-                  <select value={selectedPeriodId} onChange={(event) => setSelectedPeriodId(event.target.value)} className="h-11 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#17407E] focus:ring-2 focus:ring-blue-100">
+                  <select value={selectedPeriodId} onChange={(event) => setSelectedPeriodId(event.target.value)} className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-[#17407E] focus:ring-2 focus:ring-blue-100">
                     <option value="">Selecione uma competência</option>
                     {options.periods.map((period) => (
                       <option key={period.id} value={period.id}>
@@ -343,19 +381,19 @@ export default function FolhaPagamentoPage() {
                     ))}
                   </select>
                 </label>
-                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-2.5">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Status</div>
                   <div className="mt-2 text-sm font-semibold text-slate-800">{currentPeriod ? statusLabelMap[currentPeriod.status] || currentPeriod.status : 'Sem competência selecionada'}</div>
                   {currentPeriod ? <div className="mt-1 text-xs text-slate-500">Período operacional: {formatDateBr(currentPeriod.periodStart)} a {formatDateBr(currentPeriod.periodEnd)}</div> : null}
                 </div>
-                <div className="rounded-xl border border-slate-200 bg-white px-4 py-3">
+                <div className="rounded-xl border border-slate-200 bg-white px-4 py-2.5">
                   <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Regras da competência</div>
                   <div className="mt-2 text-sm font-semibold text-slate-800">{detail?.period.rules ? `${formatMoney(detail.period.rules.minWageAmount)} | atraso ${detail.period.rules.lateToleranceMinutes} min` : 'Carregue uma competência'}</div>
                   {detail?.period.rules ? <div className="mt-1 text-xs text-slate-500">Teto de VT: {detail.period.rules.vtDiscountCapPercent}% do salário básico</div> : null}
                 </div>
               </div>
 
-              <div className="grid gap-3 px-6 pb-6 md:grid-cols-2 xl:grid-cols-5">
+              <div className="grid gap-3 px-5 pb-4 md:grid-cols-2 xl:grid-cols-5">
                 <Field label="Buscar colaborador">
                   <input value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} className={filterInputClassName} placeholder="Nome ou CPF" />
                 </Field>
@@ -385,7 +423,7 @@ export default function FolhaPagamentoPage() {
                 </Field>
               </div>
 
-              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-6 py-4">
+              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-3">
                 <button type="button" onClick={() => setFilters(DEFAULT_PAYROLL_LINE_FILTERS)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
                   Limpar filtros
                 </button>
@@ -401,34 +439,11 @@ export default function FolhaPagamentoPage() {
       {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
-      {detail?.eligibilitySummary ? (
-        <section className="grid gap-4 md:grid-cols-3">
-          <MetricCard
-            title="Elegíveis para a folha"
-            value={String(detail.eligibilitySummary.totalEligibleEmployees)}
-            helper="CLT, estágio e demais regimes elegíveis nesta competência."
-          />
-          <MetricCard
-            title="Fora do fechamento"
-            value={String(detail.eligibilitySummary.totalExcludedEmployees)}
-            helper={`${detail.eligibilitySummary.excludedPjEmployees} colaborador(es) PJ excluído(s) por padrão do fechamento mensal.`}
-          />
-          <MetricCard
-            title="Última sincronização"
-            value={latestCompletedSync?.finishedAt ? formatDateTimeBr(latestCompletedSync.finishedAt) : 'Sem sync concluída'}
-            helper={
-              latestCompletedSync
-                ? `${latestCompletedSync.synchronizedEmployees} colaborador(es) e ${latestCompletedSync.synchronizedDays} registro(s) diário(s) sincronizados.`
-                : 'A competência depende de uma sincronização concluída da Sólides para gerar a folha.'
-            }
-          />
-        </section>
+      {readiness && approvalReadiness ? (
+        <PayrollReadinessPanel generateReadiness={readiness} approvalReadiness={approvalReadiness} />
       ) : null}
 
-      {readiness ? <PayrollReadinessPanel readiness={readiness} title="Prontidão para gerar" /> : null}
-      {approvalReadiness ? <PayrollReadinessPanel readiness={approvalReadiness} title="Prontidão para aprovar" /> : null}
-
-      <PayrollSummaryCards summary={detail?.summary || null} />
+      <PayrollSummaryCards summary={detail?.summary || null} eligibilitySummary={detail?.eligibilitySummary || null} />
 
       {hasPointPipelineInProgress ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -436,58 +451,60 @@ export default function FolhaPagamentoPage() {
         </div>
       ) : null}
 
-      {selectedPeriodId ? (
-        <div className="flex flex-wrap gap-2">
-          {canEdit ? (
-            <>
+      <PayrollTabNav
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        tabs={PAYROLL_CLOSING_TABS}
+        actions={selectedPeriodId && canEdit ? (
+          <>
+            <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-400">Ações da competência</div>
+            <div className="flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={() => runPeriodAction('generate')}
                 disabled={hasPointPipelineInProgress || generationBlockedByReadiness || actionLoading === 'generate'}
-                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium ${
+                className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium ${
                   hasPointPipelineInProgress || generationBlockedByReadiness
                     ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
                     : 'border-slate-200 bg-white text-slate-700'
                 }`}
                 title={generateActionTitle}
               >
-                {actionLoading === 'generate' ? <Loader2 size={16} className="animate-spin" /> : <Calculator size={16} />} Gerar folha
+                {actionLoading === 'generate' ? <Loader2 size={15} className="animate-spin" /> : <Calculator size={15} />} Gerar folha
               </button>
               <button
                 type="button"
                 onClick={() => runPeriodAction('approve')}
                 disabled={approvalBlockedByReadiness || actionLoading === 'approve'}
                 title={approveActionTitle}
-                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold ${
+                className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${
                   approvalBlockedByReadiness
                     ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
                     : 'border-emerald-200 bg-emerald-50 text-emerald-700'
                 }`}
               >
-                {actionLoading === 'approve' ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Aprovar
+                {actionLoading === 'approve' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Aprovar
               </button>
               <button
                 type="button"
                 onClick={() => runPeriodAction('mark-sent')}
                 disabled={markSentBlocked || actionLoading === 'mark-sent'}
                 title={markSentBlocked ? 'A competência precisa estar aprovada antes do envio.' : 'Marcar como enviada'}
-                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold ${
+                className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${
                   markSentBlocked
                     ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
                     : 'border-blue-200 bg-blue-50 text-[#17407E]'
                 }`}
               >
-                {actionLoading === 'mark-sent' ? <Loader2 size={16} className="animate-spin" /> : <SendHorizontal size={16} />} Marcar como enviada
+                {actionLoading === 'mark-sent' ? <Loader2 size={15} className="animate-spin" /> : <SendHorizontal size={15} />} Marcar como enviada
               </button>
-              <button type="button" onClick={() => runPeriodAction('reopen')} className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">
-                {actionLoading === 'reopen' ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Reabrir competência
+              <button type="button" onClick={() => runPeriodAction('reopen')} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-sm font-semibold text-amber-700">
+                {actionLoading === 'reopen' ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Reabrir competência
               </button>
-            </>
-          ) : null}
-        </div>
-      ) : null}
-
-      <PayrollTabNav activeTab={activeTab} onChange={setActiveTab} tabs={PAYROLL_CLOSING_TABS} />
+            </div>
+          </>
+        ) : null}
+      />
 
       {activeTab === 'fechamento' ? <PayrollClosingTable rows={lines} loading={loading} onOpenDetail={openLineDetail} /> : null}
       {activeTab === 'beneficios' ? (
@@ -508,15 +525,5 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">{label}</span>
       {children}
     </label>
-  );
-}
-
-function MetricCard({ title, value, helper }: { title: string; value: string; helper: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
-      <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</div>
-      <div className="mt-2 text-2xl font-bold text-slate-900">{value}</div>
-      <div className="mt-1 text-xs text-slate-500">{helper}</div>
-    </div>
   );
 }

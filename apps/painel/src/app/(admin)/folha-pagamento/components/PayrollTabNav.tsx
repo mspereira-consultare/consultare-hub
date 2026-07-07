@@ -1,5 +1,6 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { CalendarRange, FileSpreadsheet, LayoutTemplate, RefreshCw, Ticket, TimerReset, UserCheck } from 'lucide-react';
 
 export type PayrollTabKey =
@@ -35,14 +36,18 @@ export function PayrollTabNav({
   activeTab,
   onChange,
   tabs: visibleTabs = tabs,
+  actions,
 }: {
   activeTab: PayrollTabKey;
   onChange: (tab: PayrollTabKey) => void;
   tabs?: Array<{ key: PayrollTabKey; label: string; helper: string; icon: typeof FileSpreadsheet }>;
+  actions?: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+      {actions ? <div className="mb-3 flex flex-wrap items-center justify-between gap-2">{actions}</div> : null}
+
+      <div className="grid gap-2 md:grid-cols-3">
         {visibleTabs.map((tab) => {
           const active = activeTab === tab.key;
           const Icon = tab.icon;
@@ -52,16 +57,16 @@ export function PayrollTabNav({
               type="button"
               onClick={() => onChange(tab.key)}
               className={[
-                'rounded-lg border px-4 py-3 text-left transition',
+                'rounded-lg border px-4 py-2.5 text-left transition',
                 active
                   ? 'border-[#17407E] bg-[#17407E] text-white shadow-sm'
                   : 'border-transparent bg-slate-50 text-slate-700 hover:border-slate-200 hover:bg-white',
               ].join(' ')}
             >
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <Icon size={16} /> {tab.label}
+              <div className="flex items-center gap-2 text-[15px] font-semibold">
+                <Icon size={15} /> {tab.label}
               </div>
-              <div className={active ? 'mt-1 text-xs text-blue-100' : 'mt-1 text-xs text-slate-500'}>{tab.helper}</div>
+              <div className={active ? 'mt-0.5 text-[11px] text-blue-100' : 'mt-0.5 text-[11px] text-slate-500'}>{tab.helper}</div>
             </button>
           );
         })}
