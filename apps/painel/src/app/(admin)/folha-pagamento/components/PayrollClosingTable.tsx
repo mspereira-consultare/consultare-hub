@@ -18,7 +18,7 @@ export function PayrollClosingTable({
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <PayrollSectionHeader
         title="Fechamento operacional"
-        description="Clique na linha para abrir a memória de cálculo, o ponto do período e a prévia do XLSX."
+        description="Clique na linha para abrir a memória de cálculo, o ponto do período e a prévia do XLSX dos colaboradores elegíveis."
         countLabel={`${rows.length} linha(s)`}
         sources={['PAINEL', 'SOLIDES']}
         sourceNote="O cálculo é feito no Painel usando cadastros locais e insumos sincronizados da competência."
@@ -30,7 +30,7 @@ export function PayrollClosingTable({
             <tr>
               <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left">Colaborador</th>
               <th className="px-3 py-3 text-left">Centro de custo</th>
-              <th className="px-3 py-3 text-left">Contrato</th>
+              <th className="px-3 py-3 text-left">Regime</th>
               <th className="px-3 py-3 text-right">Salário</th>
               <th className="px-3 py-3 text-right">Insal.</th>
               <th className="px-3 py-3 text-center">Dias</th>

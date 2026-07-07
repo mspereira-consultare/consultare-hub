@@ -56,7 +56,7 @@ export function PayrollLineDrawer({
           <div>
             <h2 className="text-lg font-bold text-slate-900">{line.employeeName}</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Memória operacional da linha com insumos locais do painel, dados sincronizados do ponto e histórico preservado quando existir.
+              Memória operacional da linha com insumos locais do painel e dados sincronizados da Sólides para suportar a aprovação mensal.
             </p>
           </div>
           <button

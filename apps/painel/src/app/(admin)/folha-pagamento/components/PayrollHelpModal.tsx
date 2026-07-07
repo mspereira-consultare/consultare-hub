@@ -8,7 +8,7 @@ const sections = [
   {
     title: 'O que vem da Sólides',
     description:
-      'A integração é a fonte oficial para ponto diário, banco de horas, férias sincronizadas e pendências de assinatura. Esses dados entram no painel por sincronização, sem depender de upload manual para competências novas.',
+      'A integração é a fonte oficial para ponto diário, banco de horas, férias sincronizadas e pendências de assinatura. Esses dados entram no painel por sincronização e sustentam o fechamento mensal.',
     sources: ['SOLIDES'] as const,
   },
   {
@@ -18,16 +18,16 @@ const sections = [
     sources: ['PAINEL'] as const,
   },
   {
-    title: 'O que ainda pode aparecer como legado',
-    description:
-      'Competências antigas podem continuar exibindo artefatos importados e registros preservados para auditoria. Eles ficam visíveis para consulta, mas não representam o fluxo padrão da integração atual.',
-    sources: ['LEGADO'] as const,
-  },
-  {
     title: 'Quando a competência fica pronta',
     description:
-      'A competência fica apta para gerar folha quando a sincronização conclui sem bloqueios críticos de prontidão. Alertas operacionais continuam aparecendo para conferência, mas não substituem a revisão do fechamento, benefícios e prévia.',
+      'A competência fica apta para gerar folha quando a sincronização conclui sem bloqueios críticos. Depois disso, a equipe revisa exceções, benefícios e prévia antes de aprovar e enviar a competência.',
     sources: ['SOLIDES', 'PAINEL'] as const,
+  },
+  {
+    title: 'Quem fica fora do fechamento',
+    description:
+      'Nesta fase, colaboradores PJ ficam fora da folha mensal por padrão. O fechamento considera apenas os regimes elegíveis, sem misturar vínculos que não entram na folha operacional.',
+    sources: ['PAINEL'] as const,
   },
 ];
 
@@ -92,7 +92,7 @@ export function PayrollHelpModal({ open, onClose }: { open: boolean; onClose: ()
                 `Banco de horas` e `Assinaturas` são consultas da integração. `Benefícios` e `Prévia` continuam sendo memória operacional do painel.
               </div>
               <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs leading-5 text-slate-600">
-                Sempre que aparecer `Legado`, a tela está preservando histórico útil para auditoria e não o fluxo padrão da competência atual.
+                A aprovação mensal deve acontecer só depois que a sync estiver concluída e as exceções por colaborador forem revisadas.
               </div>
             </div>
           </div>

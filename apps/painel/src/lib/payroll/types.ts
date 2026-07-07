@@ -201,6 +201,8 @@ export type PayrollLine = {
   netOperational: number;
   lineStatus: PayrollLineStatus;
   payrollNotes: string | null;
+  payrollEligible: boolean;
+  exclusionReason: 'REGIME_PJ' | null;
   employeeSnapshotJson: string | null;
   calculationMemoryJson: string | null;
   createdAt: string;
@@ -389,12 +391,18 @@ export type PayrollPeriodSummary = {
   syncCompleted: number;
 };
 
+export type PayrollEligibilitySummary = {
+  totalOperationalEmployees: number;
+  totalEligibleEmployees: number;
+  totalExcludedEmployees: number;
+  excludedByContract: number;
+  excludedPjEmployees: number;
+};
+
 export type PayrollReadinessStatus = 'READY' | 'ATTENTION' | 'BLOCKED';
 export type PayrollReadinessSeverity = 'BLOCKING' | 'WARNING';
 export type PayrollReadinessIssueCode =
-  | 'NO_COMPLETED_POINT_IMPORT'
   | 'NO_COMPLETED_POINT_SYNC'
-  | 'POINT_ROWS_UNMATCHED'
   | 'EMPLOYEE_MISSING_SOLIDES_LINK'
   | 'SOLIDES_EMPLOYEE_UNMATCHED'
   | 'EMPLOYEE_MISSING_SALARY'
@@ -406,7 +414,12 @@ export type PayrollReadinessIssueCode =
   | 'POINT_INCONSISTENCY'
   | 'MISSING_COST_CENTER'
   | 'FALLBACK_SCHEDULE_DIVISOR'
-  | 'LATEST_IMPORT_FAILED_WITH_ACTIVE_BASE';
+  | 'MISSING_MEAL_VOUCHER_RULE'
+  | 'MISSING_TRANSPORT_VOUCHER_RULE'
+  | 'NO_GENERATED_LINES'
+  | 'LINES_PENDING_REVIEW'
+  | 'BENEFIT_PENDING_REGISTRATION'
+  | 'BENEFIT_OPERATIONAL_ATTENTION';
 
 export type PayrollReadinessEmployeeSample = {
   employeeId: string | null;
@@ -463,9 +476,11 @@ export type PayrollLineDetail = {
 export type PayrollPeriodDetail = {
   period: PayrollPeriod;
   summary: PayrollPeriodSummary;
+  eligibilitySummary: PayrollEligibilitySummary;
   imports: PayrollImportFile[];
   syncRuns: PayrollPointSyncRun[];
   readiness: PayrollPeriodReadiness;
+  approvalReadiness: PayrollPeriodReadiness;
 };
 
 export type PayrollCreatePeriodInput = {

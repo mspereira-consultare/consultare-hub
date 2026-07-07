@@ -95,7 +95,7 @@ export function PayrollBenefitsPanel({
       <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <PayrollSectionHeader
           title="Benefícios da competência"
-          description="Visão gerencial da competência: VR a comprar, VT pago em folha e descontos lançados na folha operacional."
+          description="Visão gerencial da competência para os colaboradores elegíveis: VR a comprar, VT pago em folha e descontos lançados na folha operacional."
           countLabel={`${rows.length} colaborador(es)`}
           sources={['PAINEL']}
           sourceNote="VR representa compra/carga. VT é pago em dinheiro na folha. Totalpass permanece como desconto em folha até confirmação da regra operacional."
@@ -208,7 +208,7 @@ export function PayrollBenefitsPanel({
               <tr>
                 <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left">Colaborador</th>
                 <th className="px-3 py-3 text-left">Centro de custo</th>
-                <th className="px-3 py-3 text-left">Contrato</th>
+                <th className="px-3 py-3 text-left">Regime</th>
                 <th className="px-3 py-3 text-center">Dias elegíveis</th>
                 <th className="px-3 py-3 text-right">VR / dia</th>
                 <th className="px-3 py-3 text-right">VR a comprar</th>

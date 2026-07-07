@@ -17,7 +17,7 @@ import type {
 } from '@/lib/payroll/types';
 import { PayrollBenefitsPanel } from './components/PayrollBenefitsPanel';
 import { PayrollClosingTable } from './components/PayrollClosingTable';
-import { formatDateBr, formatMoney, statusLabelMap } from './components/formatters';
+import { formatDateBr, formatDateTimeBr, formatMoney, statusLabelMap } from './components/formatters';
 import { PayrollHelpModal } from './components/PayrollHelpModal';
 import { PayrollLineDrawer } from './components/PayrollLineDrawer';
 import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
@@ -94,25 +94,28 @@ export default function FolhaPagamentoPage() {
     () => options.periods.find((item) => item.id === selectedPeriodId) || detail?.period || null,
     [detail?.period, options.periods, selectedPeriodId],
   );
-  const hasPointImportInProgress = useMemo(
-    () =>
-      (detail?.imports || []).some(
-        (item) => item.fileType === 'POINT_PDF' && ['PENDING', 'PROCESSING'].includes(item.processingStatus),
-      ),
-    [detail?.imports],
-  );
   const hasPointSyncInProgress = useMemo(
     () => (detail?.syncRuns || []).some((item) => ['PENDING', 'RUNNING'].includes(item.status)),
     [detail?.syncRuns],
   );
-  const hasPointPipelineInProgress = hasPointImportInProgress || hasPointSyncInProgress;
+  const hasPointPipelineInProgress = hasPointSyncInProgress;
   const readiness = detail?.readiness || null;
+  const approvalReadiness = detail?.approvalReadiness || null;
   const generationBlockedByReadiness = readiness?.status === 'BLOCKED';
+  const approvalBlockedByReadiness = approvalReadiness?.status === 'BLOCKED';
+  const latestCompletedSync = useMemo(
+    () => (detail?.syncRuns || []).find((item) => item.status === 'COMPLETED') || null,
+    [detail?.syncRuns],
+  );
   const generateActionTitle = hasPointPipelineInProgress
-    ? 'Aguarde a conclusão da sincronização/importação do ponto para gerar a folha.'
+    ? 'Aguarde a conclusão da sincronização do ponto para gerar a folha.'
     : generationBlockedByReadiness
       ? readiness?.guidance || 'Resolva os bloqueios críticos da competência antes de gerar a folha.'
       : 'Gerar folha';
+  const approveActionTitle = approvalBlockedByReadiness
+    ? approvalReadiness?.guidance || 'Resolva as pendências críticas antes de aprovar a folha.'
+    : 'Aprovar competência';
+  const markSentBlocked = currentPeriod?.status !== 'APROVADA';
 
   const loadOptions = useCallback(async () => {
     if (!canView) return;
@@ -282,7 +285,7 @@ export default function FolhaPagamentoPage() {
             <div>
               <h1 className="text-xl font-bold text-slate-800">Fechamento da folha</h1>
               <p className="mt-1 text-xs text-slate-500">
-                Fechamento mensal com base sincronizada da Sólides, cálculo operacional no painel, benefícios, ajustes locais e exportação da competência.
+                Fechamento mensal com base sincronizada da Sólides, cálculo operacional no painel, benefícios locais e revisão por exceções antes da aprovação.
               </p>
             </div>
           </div>
@@ -320,7 +323,7 @@ export default function FolhaPagamentoPage() {
           <div className="flex items-center justify-between gap-3 px-6 py-4">
             <div>
               <h2 className="text-sm font-semibold text-slate-800">Filtros da competência</h2>
-              <p className="mt-1 text-xs text-slate-500">Refine o recorte do fechamento, da memória de benefícios e da prévia por colaborador, centro de custo, unidade, contrato e status.</p>
+              <p className="mt-1 text-xs text-slate-500">Refine o recorte do fechamento, da memória de benefícios e da prévia por colaborador, centro de custo, unidade, regime contratual e status.</p>
             </div>
             <button type="button" onClick={() => setFiltersExpanded((value) => !value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700">
               {filtersExpanded ? 'Recolher filtros' : 'Expandir filtros'}
@@ -368,7 +371,7 @@ export default function FolhaPagamentoPage() {
                     {filterOptions.units.map((item) => <option key={item} value={item}>{item}</option>)}
                   </select>
                 </Field>
-                <Field label="Contrato">
+                <Field label="Regime contratual">
                   <select value={filters.contractType} onChange={(event) => setFilters((current) => ({ ...current, contractType: event.target.value }))} className={filterInputClassName}>
                     <option value="all">Todos</option>
                     {filterOptions.contracts.map((item) => <option key={item} value={item}>{item}</option>)}
@@ -398,13 +401,38 @@ export default function FolhaPagamentoPage() {
       {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
 
-      {readiness ? <PayrollReadinessPanel readiness={readiness} /> : null}
+      {detail?.eligibilitySummary ? (
+        <section className="grid gap-4 md:grid-cols-3">
+          <MetricCard
+            title="Elegíveis para a folha"
+            value={String(detail.eligibilitySummary.totalEligibleEmployees)}
+            helper="CLT, estágio e demais regimes elegíveis nesta competência."
+          />
+          <MetricCard
+            title="Fora do fechamento"
+            value={String(detail.eligibilitySummary.totalExcludedEmployees)}
+            helper={`${detail.eligibilitySummary.excludedPjEmployees} colaborador(es) PJ excluído(s) por padrão do fechamento mensal.`}
+          />
+          <MetricCard
+            title="Última sincronização"
+            value={latestCompletedSync?.finishedAt ? formatDateTimeBr(latestCompletedSync.finishedAt) : 'Sem sync concluída'}
+            helper={
+              latestCompletedSync
+                ? `${latestCompletedSync.synchronizedEmployees} colaborador(es) e ${latestCompletedSync.synchronizedDays} registro(s) diário(s) sincronizados.`
+                : 'A competência depende de uma sincronização concluída da Sólides para gerar a folha.'
+            }
+          />
+        </section>
+      ) : null}
+
+      {readiness ? <PayrollReadinessPanel readiness={readiness} title="Prontidão para gerar" /> : null}
+      {approvalReadiness ? <PayrollReadinessPanel readiness={approvalReadiness} title="Prontidão para aprovar" /> : null}
 
       <PayrollSummaryCards summary={detail?.summary || null} />
 
       {hasPointPipelineInProgress ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Há uma sincronização/importação de ponto em andamento nesta competência. A tela está atualizando automaticamente e a geração da folha ficará disponível após a conclusão.
+          Há uma sincronização de ponto em andamento nesta competência. A tela está atualizando automaticamente e a geração da folha ficará disponível após a conclusão.
         </div>
       ) : null}
 
@@ -425,10 +453,30 @@ export default function FolhaPagamentoPage() {
               >
                 {actionLoading === 'generate' ? <Loader2 size={16} className="animate-spin" /> : <Calculator size={16} />} Gerar folha
               </button>
-              <button type="button" onClick={() => runPeriodAction('approve')} className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">
+              <button
+                type="button"
+                onClick={() => runPeriodAction('approve')}
+                disabled={approvalBlockedByReadiness || actionLoading === 'approve'}
+                title={approveActionTitle}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold ${
+                  approvalBlockedByReadiness
+                    ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                }`}
+              >
                 {actionLoading === 'approve' ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />} Aprovar
               </button>
-              <button type="button" onClick={() => runPeriodAction('mark-sent')} className="inline-flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-[#17407E]">
+              <button
+                type="button"
+                onClick={() => runPeriodAction('mark-sent')}
+                disabled={markSentBlocked || actionLoading === 'mark-sent'}
+                title={markSentBlocked ? 'A competência precisa estar aprovada antes do envio.' : 'Marcar como enviada'}
+                className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold ${
+                  markSentBlocked
+                    ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                    : 'border-blue-200 bg-blue-50 text-[#17407E]'
+                }`}
+              >
                 {actionLoading === 'mark-sent' ? <Loader2 size={16} className="animate-spin" /> : <SendHorizontal size={16} />} Marcar como enviada
               </button>
               <button type="button" onClick={() => runPeriodAction('reopen')} className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-700">
@@ -460,5 +508,15 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
       <span className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">{label}</span>
       {children}
     </label>
+  );
+}
+
+function MetricCard({ title, value, helper }: { title: string; value: string; helper: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
+      <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">{title}</div>
+      <div className="mt-2 text-2xl font-bold text-slate-900">{value}</div>
+      <div className="mt-1 text-xs text-slate-500">{helper}</div>
+    </div>
   );
 }

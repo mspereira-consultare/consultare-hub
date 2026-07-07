@@ -1,5 +1,5 @@
 export type PayrollPeriodStatus = 'ABERTA' | 'EM_REVISAO' | 'APROVADA' | 'ENVIADA';
-export type PayrollImportFileType = 'POINT_PDF' | 'SYNC_TIMESHEET';
+export type PayrollImportFileType = 'SYNC_TIMESHEET';
 export type PayrollImportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 export type PayrollLineStatus = 'RASCUNHO' | 'EM_REVISAO' | 'APROVADO';
 export type PayrollTransportVoucherMode = 'PER_DAY' | 'MONTHLY_FIXED' | 'NONE';
@@ -29,7 +29,6 @@ export const PAYROLL_PERIOD_STATUSES: Array<{ value: PayrollPeriodStatus; label:
 ];
 
 export const PAYROLL_IMPORT_FILE_TYPES: Array<{ value: PayrollImportFileType; label: string }> = [
-  { value: 'POINT_PDF', label: 'Relatório de ponto (PDF)' },
   { value: 'SYNC_TIMESHEET', label: 'Espelho sincronizado da Sólides' },
 ];
 

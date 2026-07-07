@@ -9,10 +9,10 @@ export function PayrollVacationsPanel({ rows, loading }: { rows: PayrollVacation
   return (
     <PayrollTableShell
       title="Férias"
-      description="Ausências justificadas por férias sincronizadas da Sólides e, quando necessário, legado preservado para auditoria."
+      description="Ausências justificadas por férias sincronizadas da Sólides para conferência do fechamento mensal."
       countLabel={`${rows.length} registro(s)`}
-      sources={['SOLIDES', 'LEGADO']}
-      sourceNote="A linha mostra a origem efetiva de cada período exibido."
+      sources={['SOLIDES']}
+      sourceNote="A base ativa desta etapa vem da sincronização da Sólides."
     >
       <div className="overflow-x-auto">
         <table className="min-w-[900px] w-full text-sm">

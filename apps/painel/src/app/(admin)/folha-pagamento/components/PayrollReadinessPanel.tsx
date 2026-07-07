@@ -48,7 +48,13 @@ const formatSampleEmployee = (issue: PayrollReadinessIssue) =>
     .map((sample) => (sample.employeeCpf ? `${sample.employeeName} (${sample.employeeCpf})` : sample.employeeName))
     .join(', ');
 
-export function PayrollReadinessPanel({ readiness }: { readiness: PayrollPeriodReadiness }) {
+export function PayrollReadinessPanel({
+  readiness,
+  title = 'Prontidão da competência',
+}: {
+  readiness: PayrollPeriodReadiness;
+  title?: string;
+}) {
   const [expanded, setExpanded] = useState(false);
   const statusConfig = readinessStatusMap[readiness.status];
   const blockingIssues = readiness.issues.filter((issue) => issue.severity === 'BLOCKING');
@@ -63,7 +69,7 @@ export function PayrollReadinessPanel({ readiness }: { readiness: PayrollPeriodR
             {readiness.status === 'READY' ? <CheckCircle2 size={18} /> : readiness.status === 'BLOCKED' ? <AlertTriangle size={18} /> : <CircleAlert size={18} />}
           </div>
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">Prontidão da competência</div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-500">{title}</div>
             <div className="mt-1 text-sm font-semibold text-slate-800">{readiness.guidance}</div>
           </div>
         </div>

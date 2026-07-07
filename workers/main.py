@@ -111,7 +111,6 @@ try:
         process_pending_agenda_occupancy_jobs_once,
     )
     from worker_agendas_bloqueadas import process_pending_blocked_agendas_jobs_once
-    from worker_payroll_point_import import process_pending_payroll_point_jobs_once
     from worker_payroll_point_sync import process_pending_payroll_point_sync_jobs_once
     from worker_point_sync import process_pending_point_sync_jobs_once
     from worker_marketing_funnel_google import process_pending_marketing_funnel_jobs_once
@@ -271,7 +270,6 @@ KNOWN_ACTIONS = {
     'agenda_occupancy', # Ocupacao da agenda por especialidade
     'appointments_confirmation_snapshot', # Snapshot D+1 de confirmacao real
     'blocked_agendas', # Mapa de agendas bloqueadas
-    'payroll_point_import', # Importacao ass?ncrona do ponto da folha
     'payroll_point_sync', # Sincronizacao ass?ncrona do ponto da folha pela API
     'point_sync', # Sincronizacao ass?ncrona da base operacional de ponto
     'marketing_funnel', # Funil de Marketing (Google Ads + GA4)
@@ -352,10 +350,6 @@ ALIAS_ACTION_MAP = {
     'blocked_agendas': 'blocked_agendas',
     'agendas_bloqueadas': 'blocked_agendas',
     'agenda_bloqueada': 'blocked_agendas',
-    'payroll_point_import': 'payroll_point_import',
-    'folha_pagamento_ponto': 'payroll_point_import',
-    'folha_ponto_import': 'payroll_point_import',
-    'worker_payroll_point_import': 'payroll_point_import',
     'payroll_point_sync': 'payroll_point_sync',
     'folha_pagamento_sync': 'payroll_point_sync',
     'folha_ponto_sync': 'payroll_point_sync',
@@ -395,7 +389,6 @@ CANONICAL_NAME = {
     'agenda_occupancy': 'Agenda Ocupacao (Feegow API)',
     'appointments_confirmation_snapshot': 'Snapshot Confirmacao Agendamentos D+1',
     'blocked_agendas': 'Agendas Bloqueadas (Feegow API)',
-    'payroll_point_import': 'Folha de Pagamento - Importacao de Ponto',
     'payroll_point_sync': 'Folha de Pagamento - Sincronizacao de Ponto',
     'point_sync': 'Ponto - Sincronizacao de Base',
     'marketing_funnel': 'Marketing Funil (Google API)',
@@ -601,11 +594,6 @@ def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
             update_appointments_confirmation_snapshot()
         elif action == "blocked_agendas":
             process_pending_blocked_agendas_jobs_once()
-        elif action == "payroll_point_import":
-            drained = 0
-            while process_pending_payroll_point_jobs_once():
-                drained += 1
-            print(f"Folha de pagamento: jobs drenados={drained}")
         elif action == "payroll_point_sync":
             drained = 0
             while process_pending_payroll_point_sync_jobs_once():

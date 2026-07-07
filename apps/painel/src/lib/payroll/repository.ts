@@ -24,6 +24,7 @@ import type {
   PayrollBenefitsSummary,
   PayrollCreatePeriodInput,
   PayrollDailyControlRow,
+  PayrollEligibilitySummary,
   PayrollHoursBalanceMonthly,
   PayrollImportFile,
   PayrollLine,
@@ -78,6 +79,8 @@ const isMysqlProvider = () => {
 };
 const bool = (value: unknown) =>
   value === true || value === 1 || String(value || '').trim() === '1' || String(value || '').toLowerCase() === 'true';
+
+const isPayrollExcludedContractType = (value: unknown) => upper(value) === 'PJ';
 
 const uniqueSources = (sources: Array<PayrollDataSource | null | undefined>): PayrollDataSource[] => {
   const items = new Set<PayrollDataSource>();
@@ -461,6 +464,8 @@ const mapLine = (row: any): PayrollLine => ({
   netOperational: toNumber(row.net_operational),
   lineStatus: upper(row.line_status || 'RASCUNHO') as PayrollLineStatus,
   payrollNotes: clean(row.payroll_notes) || null,
+  payrollEligible: !isPayrollExcludedContractType(row.contract_type),
+  exclusionReason: isPayrollExcludedContractType(row.contract_type) ? 'REGIME_PJ' : null,
   employeeSnapshotJson: clean(row.employee_snapshot_json) || null,
   calculationMemoryJson: clean(row.calculation_memory_json) || null,
   createdAt: clean(row.created_at),
@@ -537,6 +542,24 @@ const buildEmployeeLookupMaps = (employees: EmployeePayrollSource[]): EmployeeLo
   return { byCpf, byName };
 };
 
+const isPayrollEligibleEmployee = (employee: Pick<EmployeePayrollSource, 'employmentRegime'>) =>
+  !isPayrollExcludedContractType(employee.employmentRegime);
+
+const isPayrollEligibleLine = (line: Pick<PayrollLine, 'contractType' | 'payrollEligible'>) =>
+  line.payrollEligible && !isPayrollExcludedContractType(line.contractType);
+
+const buildEligibilitySummary = (employees: EmployeePayrollSource[]): PayrollEligibilitySummary => {
+  const excludedByContract = employees.filter((employee) => !isPayrollEligibleEmployee(employee)).length;
+  const totalEligibleEmployees = employees.length - excludedByContract;
+  return {
+    totalOperationalEmployees: employees.length,
+    totalEligibleEmployees,
+    totalExcludedEmployees: excludedByContract,
+    excludedByContract,
+    excludedPjEmployees: excludedByContract,
+  };
+};
+
 const findMatchingEmployeeForPointRow = (
   employeeName: string,
   employeeCpf: string | null,
@@ -550,14 +573,17 @@ const findMatchingEmployeeForPointRow = (
   return lookup.byName.get(normalizeSearch(employeeName)) || null;
 };
 
-const buildSummaryFromLines = (lines: PayrollLine[], imports: PayrollImportFile[]): PayrollPeriodSummary => ({
-  totalLines: lines.length,
-  totalNet: roundMoney(lines.reduce((sum, line) => sum + line.netOperational, 0)),
-  totalDiscounts: roundMoney(lines.reduce((sum, line) => sum + line.totalDiscounts, 0)),
-  totalProvents: roundMoney(lines.reduce((sum, line) => sum + line.totalProvents, 0)),
-  importsCompleted: imports.filter((item) => item.processingStatus === 'COMPLETED').length,
-  syncCompleted: 0,
-});
+const buildSummaryFromLines = (lines: PayrollLine[], imports: PayrollImportFile[]): PayrollPeriodSummary => {
+  const eligibleLines = lines.filter((line) => isPayrollEligibleLine(line));
+  return {
+    totalLines: eligibleLines.length,
+    totalNet: roundMoney(eligibleLines.reduce((sum, line) => sum + line.netOperational, 0)),
+    totalDiscounts: roundMoney(eligibleLines.reduce((sum, line) => sum + line.totalDiscounts, 0)),
+    totalProvents: roundMoney(eligibleLines.reduce((sum, line) => sum + line.totalProvents, 0)),
+    importsCompleted: imports.filter((item) => item.fileType === 'SYNC_TIMESHEET' && item.processingStatus === 'COMPLETED').length,
+    syncCompleted: 0,
+  };
+};
 
 const parseScheduleMinutes = (scheduleStart: string | null, scheduleEnd: string | null, fallbackText: string | null) => {
   const parseTime = (value: string) => {
@@ -635,20 +661,6 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       uploaded_by VARCHAR(64) NULL,
       created_at VARCHAR(32) NOT NULL,
       processed_at VARCHAR(32) NULL
-    )
-  `);
-
-  await db.execute(`
-    CREATE TABLE IF NOT EXISTS payroll_point_import_jobs (
-      id VARCHAR(64) PRIMARY KEY,
-      period_id VARCHAR(64) NOT NULL,
-      import_file_id VARCHAR(64) NOT NULL,
-      status VARCHAR(20) NOT NULL,
-      requested_by VARCHAR(64) NULL,
-      error_message LONGTEXT NULL,
-      created_at VARCHAR(32) NOT NULL,
-      started_at VARCHAR(32) NULL,
-      finished_at VARCHAR(32) NULL
     )
   `);
 
@@ -852,9 +864,6 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await ensureMysqlColumnDefinition(db, 'payroll_periods', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_import_files', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_import_files', 'processed_at', 'VARCHAR(32) NULL');
-  await ensureMysqlColumnDefinition(db, 'payroll_point_import_jobs', 'created_at', 'VARCHAR(32) NOT NULL');
-  await ensureMysqlColumnDefinition(db, 'payroll_point_import_jobs', 'started_at', 'VARCHAR(32) NULL');
-  await ensureMysqlColumnDefinition(db, 'payroll_point_import_jobs', 'finished_at', 'VARCHAR(32) NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_sync_jobs', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_sync_jobs', 'started_at', 'VARCHAR(32) NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_sync_jobs', 'finished_at', 'VARCHAR(32) NULL');
@@ -893,9 +902,6 @@ export const ensurePayrollTables = async (db: DbInterface) => {
 
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_periods_month_ref ON payroll_periods (month_ref)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_import_files_period ON payroll_import_files (period_id, created_at)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_status ON payroll_point_import_jobs (status, created_at)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_period ON payroll_point_import_jobs (period_id, created_at)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_import_jobs_import_file ON payroll_point_import_jobs (import_file_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_jobs_status ON payroll_point_sync_jobs (status, created_at)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_jobs_period ON payroll_point_sync_jobs (period_id, created_at)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_sync_runs_period ON payroll_point_sync_runs (period_id, created_at)`);
@@ -1134,7 +1140,7 @@ export const getPayrollOptions = async (db: DbInterface): Promise<PayrollOptions
     periods,
     centersCost: centerRows.map((row: any) => clean(row.value)).filter(Boolean),
     units,
-    contractTypes: contractRows.map((row: any) => clean(row.value)).filter(Boolean),
+    contractTypes: contractRows.map((row: any) => clean(row.value)).filter((value) => value && !isPayrollExcludedContractType(value)),
     periodStatuses: PAYROLL_PERIOD_STATUSES,
     lineStatuses: PAYROLL_LINE_STATUSES,
     transportVoucherModes: PAYROLL_TRANSPORT_VOUCHER_MODES,
@@ -1208,7 +1214,7 @@ const buildReadinessGuidance = (status: PayrollReadinessStatus) => {
   if (status === 'ATTENTION') {
     return 'A competência pode ser gerada, mas há alertas operacionais para revisar. Após qualquer correção, use Gerar folha novamente.';
   }
-  return 'A competência está pronta para geração. Se houver ajuste posterior de cadastro ou importação, use Gerar folha novamente para recalcular.';
+  return 'A competência está pronta para geração. Se houver ajuste posterior de cadastro ou sincronização, use Gerar folha novamente para recalcular.';
 };
 
 const buildReadinessBlockingMessage = (readiness: PayrollPeriodReadiness) => {
@@ -1238,7 +1244,6 @@ const hasFullPeriodCoverageWithoutPoint = (
 
 const evaluatePayrollPeriodReadiness = (
   period: PayrollPeriod,
-  imports: PayrollImportFile[],
   syncRuns: PayrollPointSyncRun[],
   employees: EmployeePayrollSource[],
   pointRows: PayrollPointDaily[],
@@ -1247,14 +1252,10 @@ const evaluatePayrollPeriodReadiness = (
   signatures: PayrollSignatureMonthly[],
 ): PayrollPeriodReadiness => {
   const issues: PayrollReadinessIssue[] = [];
-  const pointImports = imports.filter((item) => item.fileType === 'POINT_PDF');
-  const activeImport = pointImports.find((item) => item.processingStatus === 'COMPLETED') || null;
-  const latestAttempt = pointImports[0] || null;
-  const hasCompletedPointImport = Boolean(activeImport);
   const latestCompletedSync = syncRuns.find((item) => item.status === 'COMPLETED') || null;
   const hasCompletedPointSync = Boolean(latestCompletedSync);
-  const hasPointBase = hasCompletedPointSync || hasCompletedPointImport || pointRows.length > 0;
-  const expectedSyncedEmployees = employees.filter((employee) => employee.employmentRegime !== 'PJ' || Boolean(employee.solidesEmployeeId));
+  const hasPointBase = hasCompletedPointSync || pointRows.length > 0;
+  const expectedSyncedEmployees = employees;
 
   const pointRowsByEmployee = new Map<string, PayrollPointDaily[]>();
   for (const row of pointRows) {
@@ -1272,7 +1273,7 @@ const evaluatePayrollPeriodReadiness = (
     occurrenceMap.set(key, list);
   }
 
-  if (!hasCompletedPointSync && !hasCompletedPointImport) {
+  if (!hasCompletedPointSync) {
     issues.push(
       createReadinessIssue({
         code: 'NO_COMPLETED_POINT_SYNC',
@@ -1305,12 +1306,10 @@ const evaluatePayrollPeriodReadiness = (
     const unmatchedSamples = uniqueEmployeeSamples(unmatchedPointRows.map(pointRowToReadinessSample));
     issues.push(
       createReadinessIssue({
-        code: hasCompletedPointSync ? 'SOLIDES_EMPLOYEE_UNMATCHED' : 'POINT_ROWS_UNMATCHED',
+        code: 'SOLIDES_EMPLOYEE_UNMATCHED',
         severity: 'BLOCKING',
-        title: hasCompletedPointSync ? 'Colaborador sincronizado sem vínculo local' : 'Ponto sem vínculo com cadastro',
-        description: hasCompletedPointSync
-          ? `${unmatchedSamples.length} colaborador(es) retornados pela Sólides ainda não foram vinculados ao cadastro local.`
-          : `${unmatchedSamples.length} colaborador(es) do relatório de ponto não foram vinculados ao cadastro de colaboradores.`,
+        title: 'Colaborador sincronizado sem vínculo local',
+        description: `${unmatchedSamples.length} colaborador(es) retornados pela Sólides ainda não foram vinculados ao cadastro local.`,
         count: unmatchedSamples.length,
         sampleEmployees: unmatchedSamples,
       }),
@@ -1344,7 +1343,7 @@ const evaluatePayrollPeriodReadiness = (
   }
 
   if (hasPointBase) {
-    const employeesWithoutPointRows = (hasCompletedPointSync ? expectedSyncedEmployees : employees).filter((employee) => {
+    const employeesWithoutPointRows = expectedSyncedEmployees.filter((employee) => {
       if (hasCompletedPointSync && !employee.solidesEmployeeId) return false;
       if ((pointRowsByEmployee.get(employee.id) || []).length > 0) return false;
       return !hasFullPeriodCoverageWithoutPoint(employee.id, period, occurrenceMap);
@@ -1406,18 +1405,6 @@ const evaluatePayrollPeriodReadiness = (
         description: `${fallbackScheduleEmployees.length} colaborador(es) usarão divisor padrão por falta de jornada identificável no cadastro ou no ponto.`,
         count: fallbackScheduleEmployees.length,
         sampleEmployees: fallbackScheduleEmployees.map(employeeToReadinessSample),
-      }),
-    );
-  }
-
-  if (latestAttempt && activeImport && latestAttempt.id !== activeImport.id && latestAttempt.processingStatus === 'FAILED') {
-    issues.push(
-      createReadinessIssue({
-        code: 'LATEST_IMPORT_FAILED_WITH_ACTIVE_BASE',
-        severity: 'WARNING',
-        title: 'Última tentativa falhou com base ativa preservada',
-        description: 'A tentativa mais recente falhou, mas a competência continua usando a última base de ponto concluída.',
-        count: 1,
       }),
     );
   }
@@ -1497,17 +1484,109 @@ const evaluatePayrollPeriodReadiness = (
   };
 };
 
+const evaluatePayrollApprovalReadiness = (
+  readiness: PayrollPeriodReadiness,
+  lines: PayrollLine[],
+  benefitRows: PayrollBenefitRow[],
+): PayrollPeriodReadiness => {
+  const issues = [...readiness.issues];
+
+  if (lines.length === 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'NO_GENERATED_LINES',
+        severity: 'BLOCKING',
+        title: 'Folha ainda não gerada',
+        description: 'Gere a folha da competência antes de aprovar o fechamento mensal.',
+        count: 1,
+      }),
+    );
+  }
+
+  const linesPendingReview = lines.filter((line) => line.lineStatus !== 'APROVADO');
+  if (linesPendingReview.length > 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'LINES_PENDING_REVIEW',
+        severity: 'BLOCKING',
+        title: 'Linhas ainda em revisão',
+        description: `${linesPendingReview.length} linha(s) da folha ainda exigem conferência antes da aprovação.`,
+        count: linesPendingReview.length,
+        sampleEmployees: linesPendingReview.map((line) => ({
+          employeeId: line.employeeId,
+          employeeName: line.employeeName,
+          employeeCpf: line.employeeCpf,
+        })),
+      }),
+    );
+  }
+
+  const pendingRegistration = benefitRows.filter((row) => row.status === 'PENDENTE_CADASTRO');
+  if (pendingRegistration.length > 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'BENEFIT_PENDING_REGISTRATION',
+        severity: 'BLOCKING',
+        title: 'Benefícios com pendência cadastral',
+        description: `${pendingRegistration.length} colaborador(es) elegíveis ainda possuem cadastro incompleto de benefícios para o fechamento.`,
+        count: pendingRegistration.length,
+        sampleEmployees: pendingRegistration.map((row) => ({
+          employeeId: row.employeeId,
+          employeeName: row.employeeName,
+          employeeCpf: row.employeeCpf,
+        })),
+      }),
+    );
+  }
+
+  const operationalAttention = benefitRows.filter((row) => row.status === 'ATENCAO');
+  if (operationalAttention.length > 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'BENEFIT_OPERATIONAL_ATTENTION',
+        severity: 'WARNING',
+        title: 'Benefícios com atenção operacional',
+        description: `${operationalAttention.length} colaborador(es) exigem revisão operacional de benefícios antes do envio final.`,
+        count: operationalAttention.length,
+        sampleEmployees: operationalAttention.map((row) => ({
+          employeeId: row.employeeId,
+          employeeName: row.employeeName,
+          employeeCpf: row.employeeCpf,
+        })),
+      }),
+    );
+  }
+
+  const blockingCount = issues.filter((issue) => issue.severity === 'BLOCKING').length;
+  const warningCount = issues.filter((issue) => issue.severity === 'WARNING').length;
+  const status: PayrollReadinessStatus = blockingCount > 0 ? 'BLOCKED' : warningCount > 0 ? 'ATTENTION' : 'READY';
+
+  return {
+    status,
+    blockingCount,
+    warningCount,
+    issues,
+    guidance:
+      status === 'BLOCKED'
+        ? 'Resolva as pendências críticas da competência antes de aprovar a folha.'
+        : status === 'ATTENTION'
+          ? 'A competência pode seguir para aprovação, mas ainda há alertas que merecem conferência final.'
+          : 'A competência está pronta para aprovação e envio.',
+  };
+};
+
 export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string): Promise<PayrollPeriodDetail> => {
   await ensurePayrollTables(db);
   const period = await getPeriodOrThrow(db, periodId);
-  const [imports, syncRuns, lines, employees, occurrenceRows] = await Promise.all([
+  const [imports, syncRuns, lines, allEmployees, eligibleEmployees, occurrenceRows] = await Promise.all([
     listImportsByPeriod(db, periodId),
     listPointSyncRunsByPeriod(db, periodId),
     listLinesRaw(db, periodId),
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
+    loadPayrollEligibleEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
     listOccurrencesRaw(db, periodId),
   ]);
-  await reconcilePointRowsEmployeeLinks(db, period.id, employees);
+  await reconcilePointRowsEmployeeLinks(db, period.id, allEmployees);
   const [pointRows, hoursBalances, signatures] = await Promise.all([
     listPointRowsRaw(db, periodId),
     listHoursBalanceRaw(db, periodId),
@@ -1515,12 +1594,23 @@ export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string):
   ]);
   const summary = buildSummaryFromLines(lines, imports);
   summary.syncCompleted = syncRuns.filter((item) => item.status === 'COMPLETED').length;
+  const filteredLines = lines.filter((line) => isPayrollEligibleLine(line));
+  const benefitRows = filteredLines.length ? (await listPayrollBenefitRows(db, periodId, {
+    search: '',
+    centerCost: 'all',
+    unit: 'all',
+    contractType: 'all',
+    lineStatus: 'all',
+  })).items : [];
+  const readiness = evaluatePayrollPeriodReadiness(period, syncRuns, eligibleEmployees, pointRows, occurrenceRows, hoursBalances, signatures);
   return {
     period,
+    eligibilitySummary: buildEligibilitySummary(allEmployees),
     imports,
     syncRuns,
     summary,
-    readiness: evaluatePayrollPeriodReadiness(period, imports, syncRuns, employees, pointRows, occurrenceRows, hoursBalances, signatures),
+    readiness,
+    approvalReadiness: evaluatePayrollApprovalReadiness(readiness, filteredLines, benefitRows),
   };
 };
 
@@ -1623,6 +1713,11 @@ const loadEmployeeRosterForPeriod = async (db: DbInterface, periodStart: string,
   return rows.map(mapEmployeePayrollSource);
 };
 
+const loadPayrollEligibleEmployeeRosterForPeriod = async (db: DbInterface, periodStart: string, periodEnd: string) => {
+  const employees = await loadEmployeeRosterForPeriod(db, periodStart, periodEnd);
+  return employees.filter((employee) => isPayrollEligibleEmployee(employee));
+};
+
 const reconcilePointRowsEmployeeLinks = async (
   db: DbInterface,
   periodId: string,
@@ -1705,37 +1800,6 @@ const createImportRecord = async (
   return id;
 };
 
-const createPointImportJob = async (
-  db: DbInterface,
-  params: {
-    periodId: string;
-    importFileId: string;
-    requestedBy: string;
-    initialStatus?: PayrollSyncJobStatus;
-    errorMessage?: string | null;
-  },
-) => {
-  const id = randomUUID();
-  const now = NOW();
-  const initialStatus = params.initialStatus || 'PENDING';
-  await db.execute(
-    `INSERT INTO payroll_point_import_jobs (id, period_id, import_file_id, status, requested_by, error_message, created_at, started_at, finished_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      id,
-      params.periodId,
-      params.importFileId,
-      initialStatus,
-      params.requestedBy,
-      params.errorMessage || null,
-      now,
-      initialStatus === 'RUNNING' ? now : null,
-      initialStatus === 'COMPLETED' || initialStatus === 'FAILED' ? now : null,
-    ],
-  );
-  return { id, status: initialStatus, createdAt: now };
-};
-
 const createPointSyncJob = async (
   db: DbInterface,
   params: {
@@ -1797,20 +1861,6 @@ const createPointSyncRun = async (
   return id;
 };
 
-const countPointImportsInProgress = async (db: DbInterface, periodId: string) => {
-  const rows = await db.query(
-    `SELECT COUNT(*) AS total
-     FROM payroll_import_files
-     WHERE period_id = ?
-       AND file_type = 'POINT_PDF'
-      AND processing_status IN ('PENDING', 'PROCESSING')`,
-    [periodId],
-  );
-  const firstRow = rows?.[0] as any;
-  if (!firstRow) return 0;
-  return Number(firstRow.total ?? firstRow.TOTAL ?? Object.values(firstRow)[0] ?? 0);
-};
-
 const countPointSyncJobsInProgress = async (db: DbInterface, periodId: string) => {
   const rows = await db.query(
     `SELECT COUNT(*) AS total
@@ -1822,40 +1872,6 @@ const countPointSyncJobsInProgress = async (db: DbInterface, periodId: string) =
   const firstRow = rows?.[0] as any;
   if (!firstRow) return 0;
   return Number(firstRow.total ?? firstRow.TOTAL ?? Object.values(firstRow)[0] ?? 0);
-};
-
-export const enqueuePayrollPointImport = async (
-  db: DbInterface,
-  params: {
-    periodId: string;
-    fileName: string;
-    mimeType: string;
-    sizeBytes: number;
-    storageProvider: string;
-    storageBucket: string | null;
-    storageKey: string;
-    uploadedBy: string;
-  },
-) => {
-  await ensurePayrollTables(db);
-  await getPeriodOrThrow(db, params.periodId);
-  const importId = await createImportRecord(db, {
-    ...params,
-    fileType: 'POINT_PDF',
-    initialStatus: 'PENDING',
-    initialLog: 'Arquivo enviado e enfileirado para processamento.',
-  });
-  const job = await createPointImportJob(db, {
-    periodId: params.periodId,
-    importFileId: importId,
-    requestedBy: params.uploadedBy,
-  });
-
-  const rows = await db.query(`SELECT * FROM payroll_import_files WHERE id = ? LIMIT 1`, [importId]);
-  return {
-    importFile: mapImportFile(rows[0]),
-    job,
-  };
 };
 
 export const enqueuePayrollPointSync = async (
@@ -1946,6 +1962,10 @@ const buildLineRecord = (
   const inconsistentPointRows = pointRowsInPeriod.filter((row) => row.inconsistencyFlag);
   const inconsistencyDetails = inconsistentPointRows.map(buildPointInconsistencyDetail).slice(0, 5);
   const inconsistencyCount = inconsistentPointRows.length;
+  const missingMealVoucherRule = daysWorked > 0 && Number(employee.mealVoucherPerDay || 0) <= 0;
+  const missingTransportVoucherRule =
+    (employee.transportVoucherMode === 'PER_DAY' && daysWorked > 0 && Number(employee.transportVoucherPerDay || 0) <= 0) ||
+    (employee.transportVoucherMode === 'MONTHLY_FIXED' && Number(employee.transportVoucherMonthlyFixed || 0) <= 0);
 
   const warnings: Array<{ code: string; message: string; details?: PayrollBenefitIssueDetail[] }> = [];
   if (!pointRowsInPeriod.length && !hasFullPeriodCoverageWithoutPoint()) {
@@ -1958,6 +1978,21 @@ const buildLineRecord = (
     warnings.push({
       code: 'MISSING_COST_CENTER',
       message: 'Centro de custo ausente no cadastro do colaborador.',
+    });
+  }
+  if (missingMealVoucherRule) {
+    warnings.push({
+      code: 'MISSING_MEAL_VOUCHER_RULE',
+      message: `VR por dia ausente ou zerado para ${daysWorked} dia(s) elegível(is) nesta competência.`,
+    });
+  }
+  if (missingTransportVoucherRule) {
+    warnings.push({
+      code: 'MISSING_TRANSPORT_VOUCHER_RULE',
+      message:
+        employee.transportVoucherMode === 'MONTHLY_FIXED'
+          ? 'VT mensal fixo ausente ou zerado no cadastro do colaborador.'
+          : `VT por dia ausente ou zerado para ${daysWorked} dia(s) elegível(is) nesta competência.`,
     });
   }
   if (scheduleMinutes === null) {
@@ -2027,8 +2062,10 @@ const buildLineRecord = (
     totalProvents,
     totalDiscounts,
     netOperational: roundMoney(totalProvents - totalDiscounts),
-    lineStatus: existingLine?.lineStatus || 'RASCUNHO',
+    lineStatus: warnings.length > 0 ? 'EM_REVISAO' : 'APROVADO',
     payrollNotes: existingLine?.payrollNotes || employee.payrollNotes || null,
+    payrollEligible: true,
+    exclusionReason: null,
     employeeSnapshotJson: safeJson({
       id: employee.id,
       fullName: employee.fullName,
@@ -2091,26 +2128,25 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
   const period = await getPeriodOrThrow(db, periodId);
   if (!period.rules) throw new PayrollValidationError('Regras da competência não encontradas.', 500);
 
-  const importsInProgress = await countPointImportsInProgress(db, period.id);
   const syncJobsInProgress = await countPointSyncJobsInProgress(db, period.id);
-  if (importsInProgress > 0 || syncJobsInProgress > 0) {
-    throw new PayrollValidationError('Ainda há importações de ponto pendentes ou em processamento nesta competência. Aguarde a conclusão antes de gerar a folha.', 409);
+  if (syncJobsInProgress > 0) {
+    throw new PayrollValidationError('Ainda há sincronizações de ponto pendentes ou em processamento nesta competência. Aguarde a conclusão antes de gerar a folha.', 409);
   }
 
-  const [employees, occurrenceRows, existingLines, syncRuns] = await Promise.all([
+  const [allEmployees, employees, occurrenceRows, existingLines, syncRuns] = await Promise.all([
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
+    loadPayrollEligibleEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
     listOccurrencesRaw(db, period.id),
     listLinesRaw(db, period.id),
     listPointSyncRunsByPeriod(db, period.id),
   ]);
-  const imports = await listImportsByPeriod(db, period.id);
-  await reconcilePointRowsEmployeeLinks(db, period.id, employees);
+  await reconcilePointRowsEmployeeLinks(db, period.id, allEmployees);
   const [pointRows, hoursBalances, signatures] = await Promise.all([
     listPointRowsRaw(db, period.id),
     listHoursBalanceRaw(db, period.id),
     listSignaturesRaw(db, period.id),
   ]);
-  const readiness = evaluatePayrollPeriodReadiness(period, imports, syncRuns, employees, pointRows, occurrenceRows, hoursBalances, signatures);
+  const readiness = evaluatePayrollPeriodReadiness(period, syncRuns, employees, pointRows, occurrenceRows, hoursBalances, signatures);
   if (readiness.status === 'BLOCKED') {
     throw new PayrollValidationError(buildReadinessBlockingMessage(readiness), 409);
   }
@@ -2456,7 +2492,7 @@ const listPayrollOperationalEmployeesByDateRange = async (
 export const listPayrollLines = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
   await ensurePayrollTables(db);
   await getPeriodOrThrow(db, periodId);
-  const lines = (await listLinesRaw(db, periodId)).filter((line) => matchesLineFilters(line, filters));
+  const lines = (await listLinesRaw(db, periodId)).filter((line) => isPayrollEligibleLine(line) && matchesLineFilters(line, filters));
   return {
     items: lines,
     availableCentersCost: Array.from(new Set(lines.map((line) => clean(line.centerCost)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })),
@@ -3416,10 +3452,22 @@ const updatePeriodStatus = async (
 };
 
 export const approvePayrollPeriod = async (db: DbInterface, periodId: string, actorUserId: string) =>
-  updatePeriodStatus(db, periodId, 'APROVADA', actorUserId, { approved_by: actorUserId, approved_at: NOW() });
+  (async () => {
+    const detail = await getPayrollPeriodDetail(db, periodId);
+    if (detail.approvalReadiness.status === 'BLOCKED') {
+      throw new PayrollValidationError(buildReadinessBlockingMessage(detail.approvalReadiness), 409);
+    }
+    return updatePeriodStatus(db, periodId, 'APROVADA', actorUserId, { approved_by: actorUserId, approved_at: NOW() });
+  })();
 
 export const markPayrollPeriodSent = async (db: DbInterface, periodId: string, actorUserId: string) =>
-  updatePeriodStatus(db, periodId, 'ENVIADA', actorUserId, { sent_at: NOW() });
+  (async () => {
+    const period = await getPeriodOrThrow(db, periodId);
+    if (period.status !== 'APROVADA') {
+      throw new PayrollValidationError('A competência precisa estar aprovada antes de ser marcada como enviada.', 409);
+    }
+    return updatePeriodStatus(db, periodId, 'ENVIADA', actorUserId, { sent_at: NOW() });
+  })();
 
 export const reopenPayrollPeriod = async (db: DbInterface, periodId: string, actorUserId: string) =>
   updatePeriodStatus(db, periodId, 'ABERTA', actorUserId, { reopened_at: NOW() });
