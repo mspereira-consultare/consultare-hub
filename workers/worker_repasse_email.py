@@ -7,7 +7,7 @@ import os
 import re
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -145,6 +145,18 @@ CONSULTARE_LOGO_WHITE_BASE64 = (
 
 def _now_iso() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _parse_iso(value) -> Optional[datetime]:
+    raw = _clean(value)[:19]
+    if not raw:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(raw, fmt)
+        except Exception:
+            continue
+    return None
 
 
 def _clean(value) -> str:
@@ -1011,11 +1023,95 @@ def _send_recipient(db: "DatabaseManager", job_id: str, recipient) -> bool:
         return False
 
 
+def _recover_stale_running_jobs(db: "DatabaseManager") -> int:
+    """Recupera jobs presos em RUNNING (worker morto no meio do envio).
+
+    Um job so sai de PENDING via este worker; uma vez em RUNNING, se o processo
+    morre, ninguem o retoma e os destinatarios ficam congelados em QUEUED --
+    sem nenhum caminho na UI que os reabilite. Aqui detectamos jobs RUNNING
+    parados ha mais de REPASSE_EMAIL_JOB_TIMEOUT_MIN minutos, marcamos o job como
+    FAILED e devolvemos seus destinatarios ainda em QUEUED para FAILED (que a UI
+    permite reenviar).
+    """
+    timeout_min = max(1, int(os.getenv("REPASSE_EMAIL_JOB_TIMEOUT_MIN", "30") or "30"))
+    cutoff = datetime.now() - timedelta(minutes=timeout_min)
+    rows = _query(
+        db,
+        """
+        SELECT id, batch_id, recipient_ids_json, started_at
+        FROM repasse_email_jobs
+        WHERE status = 'RUNNING'
+        """,
+    )
+    recovered = 0
+    for job in rows:
+        started_at = _parse_iso(_row_get(job, 3, "started_at"))
+        # started_at ausente => job quebrado; caso contrario so recupera se expirou.
+        if started_at is not None and started_at > cutoff:
+            continue
+
+        job_id = _clean(_row_get(job, 0, "id"))
+        batch_id = _clean(_row_get(job, 1, "batch_id"))
+        recipient_ids = _json_list(_row_get(job, 2, "recipient_ids_json"))
+        now = _now_iso()
+
+        if recipient_ids:
+            placeholders = ",".join(["?"] * len(recipient_ids))
+            _execute(
+                db,
+                f"""
+                UPDATE repasse_email_recipients
+                SET send_status = 'FAILED',
+                    last_event_type = 'job_timeout',
+                    last_event_at = ?,
+                    updated_at = ?
+                WHERE batch_id = ?
+                  AND send_status = 'QUEUED'
+                  AND id IN ({placeholders})
+                """,
+                tuple([now, now, batch_id] + recipient_ids),
+            )
+
+        _mark_job_finished(
+            db,
+            job_id,
+            STATUS_FAILED,
+            f"Job expirado apos {timeout_min}min em RUNNING; destinatarios em QUEUED devolvidos para FAILED.",
+        )
+        _update_batch_counters(db, batch_id)
+
+        # Se o lote ficou preso em SENDING por causa deste job, aterra num estado terminal coerente.
+        batch_rows = _query(
+            db,
+            "SELECT status, delivered_count, accepted_count FROM repasse_email_batches WHERE id = ? LIMIT 1",
+            (batch_id,),
+        )
+        if batch_rows:
+            batch_status = _clean(_row_get(batch_rows[0], 0, "status"))
+            if batch_status == "SENDING":
+                delivered = int(_row_get(batch_rows[0], 1, "delivered_count") or 0)
+                accepted = int(_row_get(batch_rows[0], 2, "accepted_count") or 0)
+                new_status = "PARTIAL" if (delivered + accepted) > 0 else "FAILED"
+                _execute(
+                    db,
+                    "UPDATE repasse_email_batches SET status = ?, finished_at = COALESCE(finished_at, ?), updated_at = ? WHERE id = ?",
+                    (new_status, now, now, batch_id),
+                )
+
+        recovered += 1
+        print(f"repasse_email: job {job_id} recuperado por timeout (batch={batch_id})")
+
+    if recovered:
+        _heartbeat(db, STATUS_COMPLETED, f"Recuperados {recovered} job(s) RUNNING expirados (timeout={timeout_min}min)")
+    return recovered
+
+
 def process_pending_repasse_email_jobs_once(max_jobs: int = 1, requested_by: str = "system_status") -> bool:
     if DatabaseManager is None:
         raise RuntimeError("DatabaseManager indisponivel.")
     db = DatabaseManager()
     _ensure_tables(db)
+    _recover_stale_running_jobs(db)
     processed_any = False
     max_jobs = max(1, int(max_jobs or 1))
     max_recipients = max(1, int(os.getenv("REPASSE_EMAIL_MAX_PER_RUN", "90") or "90"))
