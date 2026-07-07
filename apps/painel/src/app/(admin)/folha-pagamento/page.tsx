@@ -96,6 +96,7 @@ export default function FolhaPagamentoPage() {
   const [newPeriodOpen, setNewPeriodOpen] = useState(false);
   const [creatingPeriod, setCreatingPeriod] = useState(false);
   const [actionLoading, setActionLoading] = useState('');
+  const [syncingPoint, setSyncingPoint] = useState(false);
   const [selectedLine, setSelectedLine] = useState<PayrollLine | null>(null);
   const [lineDetail, setLineDetail] = useState<PayrollLineDetail | null>(null);
   const [lineDetailOpen, setLineDetailOpen] = useState(false);
@@ -130,9 +131,10 @@ export default function FolhaPagamentoPage() {
   const syncHeartbeatTone = getHeartbeatTone(latestSyncStatus);
   const syncHeartbeatDetails = hasPointPipelineInProgress
     ? 'Sincronização da Sólides em andamento para atualizar a base usada no fechamento desta competência.'
-    : latestCompletedSync
-      ? latestCompletedSync.details || `${latestCompletedSync.synchronizedEmployees} colaborador(es) e ${latestCompletedSync.synchronizedDays} registro(s) diário(s) sincronizados.`
+      : latestCompletedSync
+        ? latestCompletedSync.details || `${latestCompletedSync.synchronizedEmployees} colaborador(es) e ${latestCompletedSync.synchronizedDays} registro(s) diário(s) sincronizados.`
       : 'Ainda não há sincronização concluída da Sólides para esta competência.';
+  const syncButtonDisabled = syncingPoint || hasPointPipelineInProgress || !selectedPeriodId;
   const generateActionTitle = hasPointPipelineInProgress
     ? 'Aguarde a conclusão da sincronização do ponto para gerar a folha.'
     : generationBlockedByReadiness
@@ -239,6 +241,24 @@ export default function FolhaPagamentoPage() {
     await loadOptions();
     await loadPeriod();
   };
+
+  const handlePointSync = useCallback(async () => {
+    if (!selectedPeriodId) return;
+    setSyncingPoint(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/sync-point`, {
+        method: 'POST',
+      });
+      await loadPeriod();
+      setSuccessMessage('Sincronização da competência enfileirada com sucesso.');
+    } catch (fetchError: any) {
+      setError(String(fetchError?.message || fetchError));
+    } finally {
+      setSyncingPoint(false);
+    }
+  }, [loadPeriod, selectedPeriodId]);
 
   const handleCreatePeriod = async (payload: { monthRef: string; minWageAmount: string; lateToleranceMinutes: string; vtDiscountCapPercent: string }) => {
     setCreatingPeriod(true);
@@ -355,8 +375,13 @@ export default function FolhaPagamentoPage() {
             </button>
             {canRefresh ? (
               <div className="relative" onMouseEnter={() => setRefreshHovered(true)} onMouseLeave={() => setRefreshHovered(false)}>
-                <button type="button" onClick={() => reloadAll()} className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                  <RefreshCw size={16} /> Atualizar dados
+                <button
+                  type="button"
+                  onClick={handlePointSync}
+                  disabled={syncButtonDisabled}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {syncingPoint ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} {syncingPoint ? 'Solicitando...' : 'Atualizar dados'}
                 </button>
                 {refreshHovered ? (
                   <div className="absolute right-0 top-full z-20 mt-2 w-[340px] rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg">
