@@ -10,6 +10,17 @@ type NotificationToast = IntranetNotification & {
   toastKey: string;
 };
 
+type DynamicFaviconState = {
+  baseHref: string;
+  baseType: string;
+  link: HTMLLinkElement;
+  originalTitle: string;
+};
+
+const DYNAMIC_FAVICON_SELECTOR = 'link[data-dynamic-favicon="true"]';
+const MAX_TITLE_BADGE = 99;
+const MAX_FAVICON_BADGE = 9;
+
 const normalizeError = async (response: Response) => {
   try {
     const json = await response.json();
@@ -30,6 +41,77 @@ const formatRelativeTime = (value: string) => {
   if (hours < 24) return `${hours} h`;
   const days = Math.round(hours / 24);
   return `${days} d`;
+};
+
+const loadImage = (src: string) =>
+  new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new window.Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(`Falha ao carregar ícone base: ${src}`));
+    image.src = src;
+  });
+
+const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) => {
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.lineTo(x + width - radius, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+  ctx.lineTo(x + width, y + height - radius);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+  ctx.lineTo(x + radius, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+  ctx.lineTo(x, y + radius);
+  ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
+};
+
+const drawFallbackFaviconBase = (ctx: CanvasRenderingContext2D, size: number) => {
+  drawRoundedRect(ctx, 4, 4, size - 8, size - 8, 14);
+  ctx.fillStyle = '#17407E';
+  ctx.fill();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 34px system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('C', size / 2, size / 2 + 1);
+};
+
+const buildBadgedFavicon = async (baseHref: string, count: number) => {
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  try {
+    const image = await loadImage(baseHref);
+    ctx.drawImage(image, 0, 0, size, size);
+  } catch {
+    drawFallbackFaviconBase(ctx, size);
+  }
+
+  const badgeLabel = count > MAX_FAVICON_BADGE ? '9+' : String(count);
+  const badgeRadius = 16;
+  const badgeX = size - 18;
+  const badgeY = 18;
+
+  ctx.beginPath();
+  ctx.arc(badgeX, badgeY, badgeRadius, 0, Math.PI * 2);
+  ctx.fillStyle = '#dc2626';
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = badgeLabel.length > 1 ? 'bold 18px system-ui, sans-serif' : 'bold 22px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(badgeLabel, badgeX, badgeY + 1);
+
+  return canvas.toDataURL('image/png');
 };
 
 const playChatTone = async (contextRef: MutableRefObject<AudioContext | null>) => {
@@ -99,6 +181,7 @@ export function HeaderActionsClient({
   const toastTimersRef = useRef(new Map<string, number>());
   const desktopNotifiedIdsRef = useRef(new Set<string>());
   const desktopNotificationsRef = useRef(new Map<string, Notification>());
+  const dynamicFaviconRef = useRef<DynamicFaviconState | null>(null);
   const seenUnreadIdsRef = useRef(new Set((initialSummary.items || []).filter((item) => !item.isRead).map((item) => item.id)));
   const seenUnreadChatIdsRef = useRef(
     new Set((initialSummary.items || []).filter((item) => item.channel === 'chat' && !item.isRead).map((item) => item.id))
@@ -109,6 +192,7 @@ export function HeaderActionsClient({
   const notificationsSupported = isClient && 'Notification' in window;
   const notificationPermission: NotificationPermission = notificationsSupported ? window.Notification.permission : 'default';
   const unreadChatCount = summary.unreadByChannel?.chat || 0;
+  const faviconBadgeCount = unreadChatCount > 0 ? unreadChatCount : summary.unreadCount;
 
   const loadSummary = async () => {
     const response = await fetch('/api/notifications/summary', { cache: 'no-store' });
@@ -174,6 +258,7 @@ export function HeaderActionsClient({
   useEffect(() => {
     const toastTimers = toastTimersRef.current;
     const desktopNotifications = desktopNotificationsRef.current;
+    const faviconState = dynamicFaviconRef.current;
     return () => {
       for (const timerId of toastTimers.values()) {
         window.clearTimeout(timerId);
@@ -183,8 +268,72 @@ export function HeaderActionsClient({
         notification.close();
       }
       desktopNotifications.clear();
+      if (faviconState) {
+        faviconState.link.remove();
+        document.title = faviconState.originalTitle;
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (!isClient) return undefined;
+
+    const existingIcon =
+      document.querySelector<HTMLLinkElement>(`${DYNAMIC_FAVICON_SELECTOR}`) ||
+      document.querySelector<HTMLLinkElement>('link[rel="icon"]') ||
+      document.querySelector<HTMLLinkElement>('link[rel="shortcut icon"]') ||
+      document.querySelector<HTMLLinkElement>('link[rel*="icon"]');
+
+    const dynamicLink = document.createElement('link');
+    dynamicLink.rel = 'icon';
+    dynamicLink.type = existingIcon?.type || 'image/x-icon';
+    dynamicLink.href = existingIcon?.href || '/favicon.ico';
+    dynamicLink.dataset.dynamicFavicon = 'true';
+    document.head.appendChild(dynamicLink);
+
+    dynamicFaviconRef.current = {
+      baseHref: dynamicLink.href,
+      baseType: dynamicLink.type || 'image/x-icon',
+      link: dynamicLink,
+      originalTitle: document.title,
+    };
+
+    return () => {
+      dynamicLink.remove();
+      if (dynamicFaviconRef.current?.link === dynamicLink) {
+        document.title = dynamicFaviconRef.current.originalTitle;
+        dynamicFaviconRef.current = null;
+      }
+    };
+  }, [isClient]);
+
+  useEffect(() => {
+    if (!isClient) return undefined;
+    const faviconState = dynamicFaviconRef.current;
+    if (!faviconState) return undefined;
+
+    let cancelled = false;
+    const titleBadge = faviconBadgeCount > MAX_TITLE_BADGE ? `${MAX_TITLE_BADGE}+` : String(faviconBadgeCount);
+    document.title = faviconBadgeCount > 0 ? `(${titleBadge}) ${faviconState.originalTitle}` : faviconState.originalTitle;
+
+    const updateFavicon = async () => {
+      if (!faviconBadgeCount) {
+        faviconState.link.href = faviconState.baseHref;
+        faviconState.link.type = faviconState.baseType;
+        return;
+      }
+
+      const badgedHref = await buildBadgedFavicon(faviconState.baseHref, faviconBadgeCount);
+      if (cancelled || !badgedHref) return;
+      faviconState.link.href = badgedHref;
+      faviconState.link.type = 'image/png';
+    };
+
+    void updateFavicon();
+    return () => {
+      cancelled = true;
+    };
+  }, [faviconBadgeCount, isClient]);
 
   useEffect(() => {
     if (!open) return undefined;
