@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { Bell, Loader2, MessageCircle, X } from 'lucide-react';
 import type { IntranetNotification, IntranetNotificationSummary } from '@consultare/core/intranet/notifications';
 
@@ -159,17 +159,13 @@ export function HeaderActionsClient({
   initialSummary: IntranetNotificationSummary;
 }) {
   const router = useRouter();
-  const isClient = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false
-  );
   const [summary, setSummary] = useState(initialSummary);
   const [items, setItems] = useState<IntranetNotification[]>(initialSummary.items || []);
   const [open, setOpen] = useState(false);
   const [loadingDropdown, setLoadingDropdown] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [audioUnlocked, setAudioUnlocked] = useState(false);
+  const [browserReady, setBrowserReady] = useState(false);
   const [, forceNotificationPermissionRefresh] = useState(0);
   const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
   const [chatPulse, setChatPulse] = useState(false);
@@ -189,7 +185,7 @@ export function HeaderActionsClient({
   const lastUnreadChatCountRef = useRef(initialSummary.unreadByChannel?.chat || 0);
   const lastSoundAtRef = useRef(0);
 
-  const notificationsSupported = isClient && 'Notification' in window;
+  const notificationsSupported = browserReady && 'Notification' in window;
   const notificationPermission: NotificationPermission = notificationsSupported ? window.Notification.permission : 'default';
   const unreadChatCount = summary.unreadByChannel?.chat || 0;
   const faviconBadgeCount = unreadChatCount > 0 ? unreadChatCount : summary.unreadCount;
@@ -256,6 +252,13 @@ export function HeaderActionsClient({
   }, []);
 
   useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      setBrowserReady(true);
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, []);
+
+  useEffect(() => {
     const toastTimers = toastTimersRef.current;
     const desktopNotifications = desktopNotificationsRef.current;
     const faviconState = dynamicFaviconRef.current;
@@ -276,7 +279,7 @@ export function HeaderActionsClient({
   }, []);
 
   useEffect(() => {
-    if (!isClient) return undefined;
+    if (!browserReady) return undefined;
 
     const existingIcon =
       document.querySelector<HTMLLinkElement>(`${DYNAMIC_FAVICON_SELECTOR}`) ||
@@ -305,10 +308,10 @@ export function HeaderActionsClient({
         dynamicFaviconRef.current = null;
       }
     };
-  }, [isClient]);
+  }, [browserReady]);
 
   useEffect(() => {
-    if (!isClient) return undefined;
+    if (!browserReady) return undefined;
     const faviconState = dynamicFaviconRef.current;
     if (!faviconState) return undefined;
 
@@ -333,7 +336,7 @@ export function HeaderActionsClient({
     return () => {
       cancelled = true;
     };
-  }, [faviconBadgeCount, isClient]);
+  }, [browserReady, faviconBadgeCount]);
 
   useEffect(() => {
     if (!open) return undefined;
