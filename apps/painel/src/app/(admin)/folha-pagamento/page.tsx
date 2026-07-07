@@ -104,6 +104,7 @@ export default function FolhaPagamentoPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [refreshHovered, setRefreshHovered] = useState(false);
   const requestedPeriodId = useMemo(() => String(searchParams.get('periodId') || '').trim(), [searchParams]);
+  const hasVisiblePeriodData = detail !== null || lines.length > 0 || benefitRows.length > 0 || previewRows.length > 0;
 
   const currentPeriod = useMemo(
     () => options.periods.find((item) => item.id === selectedPeriodId) || detail?.period || null,
@@ -172,10 +173,12 @@ export default function FolhaPagamentoPage() {
     return query.toString();
   }, [filters]);
 
-  const loadPeriod = useCallback(async () => {
+  const loadPeriod = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
     if (!canView || !selectedPeriodId) return;
-    setLoading(true);
-    setPreviewLoading(true);
+    if (!background || !hasVisiblePeriodData) {
+      setLoading(true);
+      setPreviewLoading(true);
+    }
     setError('');
     try {
       const [benefitsPayload, detailPayload, linesPayload, previewPayload] = await Promise.all([
@@ -204,10 +207,12 @@ export default function FolhaPagamentoPage() {
     } catch (fetchError: any) {
       setError(String(fetchError?.message || fetchError));
     } finally {
-      setLoading(false);
-      setPreviewLoading(false);
+      if (!background || !hasVisiblePeriodData) {
+        setLoading(false);
+        setPreviewLoading(false);
+      }
     }
-  }, [buildFilterQuery, canView, selectedPeriodId]);
+  }, [benefitRows.length, buildFilterQuery, canView, detail, hasVisiblePeriodData, lines.length, previewRows.length, selectedPeriodId]);
 
   useEffect(() => {
     loadOptions().catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
@@ -234,12 +239,12 @@ export default function FolhaPagamentoPage() {
   }, [pathname, router, searchParams, selectedPeriodId]);
 
   useEffect(() => {
-    loadPeriod().catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
-  }, [loadPeriod]);
+    loadPeriod({ background: hasVisiblePeriodData }).catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
+  }, [hasVisiblePeriodData, loadPeriod]);
 
   const reloadAll = async () => {
     await loadOptions();
-    await loadPeriod();
+    await loadPeriod({ background: hasVisiblePeriodData });
   };
 
   const handlePointSync = useCallback(async () => {
@@ -251,7 +256,7 @@ export default function FolhaPagamentoPage() {
       await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/sync-point`, {
         method: 'POST',
       });
-      await loadPeriod();
+      await loadPeriod({ background: true });
       setSuccessMessage('Sincronização da competência enfileirada com sucesso.');
     } catch (fetchError: any) {
       setError(String(fetchError?.message || fetchError));
@@ -341,7 +346,7 @@ export default function FolhaPagamentoPage() {
   useEffect(() => {
     if (!selectedPeriodId || !hasPointPipelineInProgress) return;
     const intervalId = window.setInterval(() => {
-      loadPeriod().catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
+      loadPeriod({ background: true }).catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
     }, 8000);
     return () => window.clearInterval(intervalId);
   }, [hasPointPipelineInProgress, loadPeriod, selectedPeriodId]);
