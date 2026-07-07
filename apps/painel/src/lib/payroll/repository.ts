@@ -1621,7 +1621,7 @@ export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string):
     search: '',
     centerCost: 'all',
     unit: 'all',
-    contractType: 'all',
+    contractTypes: [],
     lineStatus: 'all',
   })).items : [];
   const readiness = evaluatePayrollPeriodReadiness(period, syncRuns, eligibleEmployees, pointRows, occurrenceRows, hoursBalances, signatures);
@@ -2263,7 +2263,7 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
     search: '',
     centerCost: 'all',
     unit: 'all',
-    contractType: 'all',
+    contractTypes: [],
     lineStatus: 'all',
   });
 };
@@ -2275,7 +2275,7 @@ const matchesLineFilters = (line: PayrollLine, filters: PayrollLineFilters) => {
   }
   if (filters.centerCost !== 'all' && clean(line.centerCost) !== clean(filters.centerCost)) return false;
   if (filters.unit !== 'all' && clean(line.unitName) !== clean(filters.unit)) return false;
-  if (filters.contractType !== 'all' && clean(line.contractType) !== clean(filters.contractType)) return false;
+  if (filters.contractTypes.length > 0 && !filters.contractTypes.some((item) => clean(line.contractType) === clean(item))) return false;
   if (filters.lineStatus !== 'all' && line.lineStatus !== filters.lineStatus) return false;
   return true;
 };
@@ -2298,7 +2298,7 @@ const matchesOperationalFilters = (row: PayrollOperationalEmployeeRow, filters: 
   }
   if (filters.centerCost !== 'all' && clean(row.centerCost) !== clean(filters.centerCost)) return false;
   if (filters.unit !== 'all' && clean(row.unitName) !== clean(filters.unit)) return false;
-  if (filters.contractType !== 'all' && clean(row.contractType) !== clean(filters.contractType)) return false;
+  if (filters.contractTypes.length > 0 && !filters.contractTypes.some((item) => clean(row.contractType) === clean(item))) return false;
   if (filters.lineStatus !== 'all' && row.lineStatus !== filters.lineStatus) return false;
   return true;
 };

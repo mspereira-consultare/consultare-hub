@@ -343,7 +343,7 @@ const matchesPointFilters = (
   }
   if (filters.centerCost !== 'all' && clean(row.centerCost) !== clean(filters.centerCost)) return false;
   if (filters.unit !== 'all' && clean(row.unitName) !== clean(filters.unit)) return false;
-  if (filters.contractType !== 'all' && clean(row.contractType) !== clean(filters.contractType)) return false;
+  if (filters.contractTypes.length > 0 && !filters.contractTypes.some((item) => clean(row.contractType) === clean(item))) return false;
   return true;
 };
 

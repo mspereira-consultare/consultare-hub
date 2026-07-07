@@ -6,7 +6,7 @@ export type PointFilters = {
   search: string;
   centerCost: string;
   unit: string;
-  contractType: string;
+  contractTypes: string[];
   lineStatus: string;
 };
 

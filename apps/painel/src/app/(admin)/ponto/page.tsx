@@ -17,6 +17,7 @@ import type {
 } from '@/lib/point/types';
 import { DEFAULT_POINT_FILTERS } from '@/lib/point/filters';
 import { PayrollDailyPanel } from '../folha-pagamento/components/PayrollDailyPanel';
+import { PayrollFilterMultiSelect } from '../folha-pagamento/components/PayrollFilterMultiSelect';
 import { PayrollHelpModal } from '../folha-pagamento/components/PayrollHelpModal';
 import { PayrollHoursBalancePanel } from '../folha-pagamento/components/PayrollHoursBalancePanel';
 import { PayrollSignaturesPanel } from '../folha-pagamento/components/PayrollSignaturesPanel';
@@ -111,6 +112,12 @@ const buildQueryString = (query: AppliedQuery) => {
   params.set('startDate', query.startDate);
   params.set('endDate', query.endDate);
   Object.entries(query.filters).forEach(([key, value]) => {
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (String(item || '').trim()) params.append(key === 'contractTypes' ? 'contractType' : key, String(item));
+      });
+      return;
+    }
     if (String(value || '').trim()) params.set(key, String(value));
   });
   return params.toString();
@@ -431,10 +438,12 @@ export default function PontoPage() {
                   </select>
                 </Field>
                 <Field label="Contrato">
-                  <select value={filters.contractType} onChange={(event) => setFilters((current) => ({ ...current, contractType: event.target.value }))} className={filterInputClassName}>
-                    <option value="all">Todos</option>
-                    {filterOptions.contracts.map((item) => <option key={item} value={item}>{item}</option>)}
-                  </select>
+                  <PayrollFilterMultiSelect
+                    options={filterOptions.contracts}
+                    value={filters.contractTypes}
+                    onChange={(contractTypes) => setFilters((current) => ({ ...current, contractTypes }))}
+                    allLabel="Todos"
+                  />
                 </Field>
               </div>
 

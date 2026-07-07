@@ -21,6 +21,7 @@ import { PayrollClosingTable } from './components/PayrollClosingTable';
 import { formatDateBr, formatDateTimeBr, formatMoney, statusLabelMap } from './components/formatters';
 import { PayrollHelpModal } from './components/PayrollHelpModal';
 import { PayrollLineDrawer } from './components/PayrollLineDrawer';
+import { PayrollFilterMultiSelect } from './components/PayrollFilterMultiSelect';
 import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
 import { PayrollPreviewTable } from './components/PayrollPreviewTable';
 import { PayrollReadinessPanel } from './components/PayrollReadinessPanel';
@@ -172,6 +173,12 @@ export default function FolhaPagamentoPage() {
   const buildFilterQuery = useCallback(() => {
     const query = new URLSearchParams();
     Object.entries(filters).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          if (String(item || '').trim()) query.append(key === 'contractTypes' ? 'contractType' : key, String(item));
+        });
+        return;
+      }
       if (String(value || '').trim()) query.set(key, String(value));
     });
     return query.toString();
@@ -486,10 +493,12 @@ export default function FolhaPagamentoPage() {
                   </select>
                 </Field>
                 <Field label="Regime contratual">
-                  <select value={filters.contractType} onChange={(event) => setFilters((current) => ({ ...current, contractType: event.target.value }))} className={filterInputClassName}>
-                    <option value="all">Todos</option>
-                    {filterOptions.contracts.map((item) => <option key={item} value={item}>{item}</option>)}
-                  </select>
+                  <PayrollFilterMultiSelect
+                    options={filterOptions.contracts}
+                    value={filters.contractTypes}
+                    onChange={(contractTypes) => setFilters((current) => ({ ...current, contractTypes }))}
+                    allLabel="Todos"
+                  />
                 </Field>
                 <Field label="Status da linha">
                   <select value={filters.lineStatus} onChange={(event) => setFilters((current) => ({ ...current, lineStatus: event.target.value }))} className={filterInputClassName}>
