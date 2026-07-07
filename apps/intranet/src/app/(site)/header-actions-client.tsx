@@ -17,6 +17,11 @@ type DynamicFaviconState = {
   originalTitle: string;
 };
 
+type PushConfigResponse = {
+  supported: boolean;
+  publicKey: string | null;
+};
+
 const DYNAMIC_FAVICON_SELECTOR = 'link[data-dynamic-favicon="true"]';
 const MAX_TITLE_BADGE = 99;
 const MAX_FAVICON_BADGE = 9;
@@ -114,6 +119,13 @@ const buildBadgedFavicon = async (baseHref: string, count: number) => {
   return canvas.toDataURL('image/png');
 };
 
+const urlBase64ToUint8Array = (value: string) => {
+  const padding = '='.repeat((4 - (value.length % 4)) % 4);
+  const base64 = `${value}${padding}`.replace(/-/g, '+').replace(/_/g, '/');
+  const raw = window.atob(base64);
+  return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+};
+
 const playChatTone = async (contextRef: MutableRefObject<AudioContext | null>) => {
   const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctx) return;
@@ -168,6 +180,8 @@ export function HeaderActionsClient({
   const [browserReady, setBrowserReady] = useState(false);
   const [, forceNotificationPermissionRefresh] = useState(0);
   const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
+  const [pushConfig, setPushConfig] = useState<PushConfigResponse>({ supported: false, publicKey: null });
+  const [pushSubscribed, setPushSubscribed] = useState(false);
   const [chatPulse, setChatPulse] = useState(false);
   const [bellPulse, setBellPulse] = useState(false);
   const [toasts, setToasts] = useState<NotificationToast[]>([]);
@@ -178,6 +192,7 @@ export function HeaderActionsClient({
   const desktopNotifiedIdsRef = useRef(new Set<string>());
   const desktopNotificationsRef = useRef(new Map<string, Notification>());
   const dynamicFaviconRef = useRef<DynamicFaviconState | null>(null);
+  const serviceWorkerRegistrationRef = useRef<ServiceWorkerRegistration | null>(null);
   const seenUnreadIdsRef = useRef(new Set((initialSummary.items || []).filter((item) => !item.isRead).map((item) => item.id)));
   const seenUnreadChatIdsRef = useRef(
     new Set((initialSummary.items || []).filter((item) => item.channel === 'chat' && !item.isRead).map((item) => item.id))
@@ -186,6 +201,7 @@ export function HeaderActionsClient({
   const lastSoundAtRef = useRef(0);
 
   const notificationsSupported = browserReady && 'Notification' in window;
+  const pushSupported = browserReady && notificationsSupported && 'serviceWorker' in navigator && 'PushManager' in window;
   const notificationPermission: NotificationPermission = notificationsSupported ? window.Notification.permission : 'default';
   const unreadChatCount = summary.unreadByChannel?.chat || 0;
   const faviconBadgeCount = unreadChatCount > 0 ? unreadChatCount : summary.unreadCount;
@@ -230,6 +246,16 @@ export function HeaderActionsClient({
       toastTimersRef.current.delete(toastKey);
     }
     setToasts((current) => current.filter((toast) => toast.toastKey !== toastKey));
+  }, []);
+
+  const syncPushSubscription = useCallback(async (subscription: PushSubscription) => {
+    const response = await fetch('/api/notifications/push/subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscription.toJSON()),
+    });
+    if (!response.ok) throw new Error(await normalizeError(response));
+    setPushSubscribed(true);
   }, []);
 
   useEffect(() => {
@@ -392,12 +418,74 @@ export function HeaderActionsClient({
   }, [closeDesktopNotification, markNotificationReadLocally, router]);
 
   useEffect(() => {
+    if (!browserReady || !pushSupported) return undefined;
+
+    let cancelled = false;
+
+    const onServiceWorkerMessage = (event: MessageEvent) => {
+      const messageType = String(event.data?.type || '');
+      const payload = event.data?.payload as { href?: string; notificationId?: string } | undefined;
+      if (messageType === 'intranet-push-click' && payload?.notificationId) {
+        const item = summary.items.find((entry) => entry.id === payload.notificationId) || items.find((entry) => entry.id === payload.notificationId);
+        if (item) {
+          void navigateToNotification(item);
+          return;
+        }
+        if (payload.href) {
+          router.push(payload.href);
+          router.refresh();
+        }
+      }
+    };
+
+    const bootstrapPush = async () => {
+      try {
+        const [configResponse, registration] = await Promise.all([
+          fetch('/api/notifications/push/config', { cache: 'no-store' }),
+          navigator.serviceWorker.register('/intranet-push-sw.js'),
+        ]);
+        if (!configResponse.ok) throw new Error(await normalizeError(configResponse));
+        const payload = await configResponse.json();
+        const nextConfig = (payload?.data || { supported: false, publicKey: null }) as PushConfigResponse;
+        if (cancelled) return;
+
+        serviceWorkerRegistrationRef.current = registration;
+        setPushConfig(nextConfig);
+
+        if (window.Notification.permission === 'granted') {
+          const existingSubscription = await registration.pushManager.getSubscription();
+          if (cancelled) return;
+          if (existingSubscription) {
+            setPushSubscribed(true);
+            if (nextConfig.publicKey) {
+              await syncPushSubscription(existingSubscription);
+            }
+          }
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Não foi possível preparar as notificações push.');
+        }
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', onServiceWorkerMessage);
+    void bootstrapPush();
+
+    return () => {
+      cancelled = true;
+      navigator.serviceWorker.removeEventListener('message', onServiceWorkerMessage);
+    };
+  }, [browserReady, items, navigateToNotification, pushSupported, router, summary.items, syncPushSubscription]);
+
+  useEffect(() => {
     let cancelled = false;
 
     const isBackgroundContext = () => document.visibilityState !== 'visible' || !document.hasFocus();
 
     const showDesktopNotification = (item: IntranetNotification) => {
       if (!notificationsSupported || notificationPermission !== 'granted') return;
+      if (pushSubscribed) return;
       if (!isBackgroundContext()) return;
       if (desktopNotifiedIdsRef.current.has(item.id)) return;
 
@@ -487,10 +575,13 @@ export function HeaderActionsClient({
       window.clearInterval(interval);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [audioUnlocked, closeDesktopNotification, dismissToast, navigateToNotification, notificationPermission, notificationsSupported, open]);
+  }, [audioUnlocked, closeDesktopNotification, dismissToast, navigateToNotification, notificationPermission, notificationsSupported, open, pushSubscribed]);
 
   const unreadItems = useMemo(() => items.filter((item) => !item.isRead), [items]);
-  const showNotificationPrompt = notificationsSupported && notificationPermission === 'default' && !notificationPromptDismissed;
+  const showNotificationPrompt =
+    notificationsSupported &&
+    !notificationPromptDismissed &&
+    (notificationPermission === 'default' || (notificationPermission === 'granted' && pushSupported && pushConfig.supported && !pushSubscribed));
 
   const openDropdown = async () => {
     setOpen((current) => !current);
@@ -508,13 +599,37 @@ export function HeaderActionsClient({
   };
 
   const requestDesktopNotificationPermission = async () => {
-    if (!notificationsSupported || notificationPermission !== 'default') return;
+    if (!notificationsSupported) return;
     try {
-      await window.Notification.requestPermission();
+      let nextPermission = notificationPermission;
+      if (notificationPermission === 'default') {
+        nextPermission = await window.Notification.requestPermission();
+      }
       forceNotificationPermissionRefresh((current) => current + 1);
       if (window.Notification.permission !== 'default') {
         setNotificationPromptDismissed(true);
       }
+      if (nextPermission !== 'granted') return;
+
+      if (!pushSupported) return;
+      if (!pushConfig.publicKey) {
+        throw new Error('Web push ainda não está configurado no servidor da intranet.');
+      }
+
+      const registration =
+        serviceWorkerRegistrationRef.current || (await navigator.serviceWorker.register('/intranet-push-sw.js'));
+      serviceWorkerRegistrationRef.current = registration;
+      const existingSubscription = await registration.pushManager.getSubscription();
+      if (existingSubscription) {
+        await syncPushSubscription(existingSubscription);
+        return;
+      }
+
+      const nextSubscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(pushConfig.publicKey),
+      });
+      await syncPushSubscription(nextSubscription);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Não foi possível ativar as notificações do navegador.');
     }
@@ -569,7 +684,7 @@ export function HeaderActionsClient({
                   onClick={() => void requestDesktopNotificationPermission()}
                   className="rounded-lg bg-[#17407E] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#123463]"
                 >
-                  Ativar alertas
+                  {notificationPermission === 'granted' ? 'Ativar push' : 'Ativar alertas'}
                 </button>
               </div>
             </div>
@@ -688,6 +803,26 @@ export function HeaderActionsClient({
                     Ativar alertas
                   </button>
                 ) : null}
+              </div>
+            ) : null}
+            {notificationsSupported && notificationPermission === 'granted' && pushSupported && pushConfig.supported && !pushSubscribed ? (
+              <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-3 text-xs text-slate-600">
+                <p className="font-semibold text-slate-800">Push ainda não ativado neste navegador</p>
+                <p className="mt-1 leading-5">
+                  Finalize a assinatura para receber avisos do chat mesmo com a aba fechada.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void requestDesktopNotificationPermission()}
+                  className="mt-3 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-700"
+                >
+                  Ativar push
+                </button>
+              </div>
+            ) : null}
+            {notificationsSupported && notificationPermission === 'granted' && pushSupported && pushSubscribed ? (
+              <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-3 text-xs text-emerald-900">
+                Alertas push ativos neste navegador.
               </div>
             ) : null}
           </div>

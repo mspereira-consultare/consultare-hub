@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import type { DbInterface } from '../db';
 
 type Row = Record<string, unknown>;
@@ -42,6 +42,15 @@ export type IntranetNotificationSummary = {
   items: IntranetNotification[];
 };
 
+export type IntranetPushSubscriptionInput = {
+  endpoint: string;
+  expirationTime?: number | null;
+  keys?: {
+    p256dh?: string;
+    auth?: string;
+  } | null;
+};
+
 export type IntranetNotificationCreateInput = {
   userId: string;
   channel: IntranetNotificationChannel;
@@ -63,6 +72,7 @@ type NotificationListOptions = {
 const clean = (value: unknown) => String(value ?? '').trim();
 const nullable = (value: unknown) => clean(value) || null;
 const nowIso = () => new Date().toISOString();
+const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const isMysql = () => {
   const provider = clean(process.env.DB_PROVIDER).toLowerCase();
   if (provider === 'mysql') return true;
@@ -111,6 +121,7 @@ const mapNotification = (row: Row): IntranetNotification => ({
 });
 
 let notificationsEnsured = false;
+let pushSubscriptionsEnsured = false;
 
 export const ensureIntranetNotificationTables = async (db: DbInterface) => {
   if (notificationsEnsured) return;
@@ -153,6 +164,243 @@ export const ensureIntranetNotificationTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_intranet_notifications_entity ON intranet_notifications (user_id, channel, entity_type, entity_id)`);
 
   notificationsEnsured = true;
+};
+
+const getPushConfig = () => {
+  const publicKey = clean(process.env.WEB_PUSH_VAPID_PUBLIC_KEY || process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY);
+  const privateKey = clean(process.env.WEB_PUSH_VAPID_PRIVATE_KEY);
+  const subject = clean(process.env.WEB_PUSH_VAPID_SUBJECT || process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'mailto:suporte@consultare.com.br');
+
+  return {
+    publicKey,
+    privateKey,
+    subject,
+    isConfigured: Boolean(publicKey && privateKey),
+    isClientReady: Boolean(publicKey),
+  };
+};
+
+const mapSubscriptionRow = (row: Row) => ({
+  id: clean(row.id),
+  userId: clean(row.user_id),
+  endpoint: clean(row.endpoint),
+  endpointHash: clean(row.endpoint_hash),
+  p256dh: clean(row.p256dh),
+  auth: clean(row.auth),
+  expirationTime: nullable(row.expiration_time),
+  userAgent: nullable(row.user_agent),
+});
+
+const ensureIntranetPushSubscriptionTable = async (db: DbInterface) => {
+  if (pushSubscriptionsEnsured) return;
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS intranet_push_subscriptions (
+      id VARCHAR(64) PRIMARY KEY,
+      user_id VARCHAR(64) NOT NULL,
+      endpoint TEXT NOT NULL,
+      endpoint_hash VARCHAR(64) NOT NULL,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      expiration_time VARCHAR(64) NULL,
+      user_agent VARCHAR(255) NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  await safeAddColumn(db, `ALTER TABLE intranet_push_subscriptions ADD COLUMN endpoint_hash VARCHAR(64) NOT NULL`);
+  await safeAddColumn(db, `ALTER TABLE intranet_push_subscriptions ADD COLUMN p256dh TEXT NOT NULL`);
+  await safeAddColumn(db, `ALTER TABLE intranet_push_subscriptions ADD COLUMN auth TEXT NOT NULL`);
+  await safeAddColumn(db, `ALTER TABLE intranet_push_subscriptions ADD COLUMN expiration_time VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE intranet_push_subscriptions ADD COLUMN user_agent VARCHAR(255) NULL`);
+  await safeAddColumn(db, `ALTER TABLE intranet_push_subscriptions ADD COLUMN created_at TEXT NOT NULL`);
+  await safeAddColumn(db, `ALTER TABLE intranet_push_subscriptions ADD COLUMN updated_at TEXT NOT NULL`);
+
+  await safeCreateIndex(
+    db,
+    `CREATE UNIQUE INDEX idx_intranet_push_subscriptions_user_endpoint ON intranet_push_subscriptions (user_id, endpoint_hash)`
+  );
+  await safeCreateIndex(db, `CREATE INDEX idx_intranet_push_subscriptions_user ON intranet_push_subscriptions (user_id)`);
+
+  pushSubscriptionsEnsured = true;
+};
+
+export const getIntranetPushPublicConfig = () => {
+  const config = getPushConfig();
+  return {
+    supported: config.isClientReady,
+    publicKey: config.publicKey || null,
+  };
+};
+
+export const upsertIntranetPushSubscription = async (
+  db: DbInterface,
+  userIdRaw: unknown,
+  subscription: IntranetPushSubscriptionInput,
+  userAgentRaw?: unknown
+) => {
+  await ensureIntranetPushSubscriptionTable(db);
+  const userId = clean(userIdRaw);
+  const endpoint = clean(subscription?.endpoint);
+  const p256dh = clean(subscription?.keys?.p256dh);
+  const auth = clean(subscription?.keys?.auth);
+  if (!userId || !endpoint || !p256dh || !auth) {
+    throw new Error('Assinatura push inválida.');
+  }
+
+  const endpointHash = sha256(endpoint);
+  const expirationTime =
+    subscription.expirationTime === null || typeof subscription.expirationTime === 'undefined'
+      ? null
+      : String(subscription.expirationTime);
+  const userAgent = nullable(userAgentRaw);
+  const now = nowIso();
+
+  const existingRows = await db.query(
+    `SELECT * FROM intranet_push_subscriptions WHERE user_id = ? AND endpoint_hash = ? LIMIT 1`,
+    [userId, endpointHash]
+  );
+  const existing = existingRows[0] as Row | undefined;
+
+  if (existing) {
+    await db.execute(
+      `
+      UPDATE intranet_push_subscriptions
+      SET endpoint = ?, p256dh = ?, auth = ?, expiration_time = ?, user_agent = ?, updated_at = ?
+      WHERE user_id = ? AND endpoint_hash = ?
+      `,
+      [endpoint, p256dh, auth, expirationTime, userAgent, now, userId, endpointHash]
+    );
+    return {
+      ...mapSubscriptionRow(existing),
+      endpoint,
+      endpointHash,
+      p256dh,
+      auth,
+      expirationTime,
+      userAgent,
+    };
+  }
+
+  const item = {
+    id: randomUUID(),
+    userId,
+    endpoint,
+    endpointHash,
+    p256dh,
+    auth,
+    expirationTime,
+    userAgent,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await db.execute(
+    `
+    INSERT INTO intranet_push_subscriptions (
+      id, user_id, endpoint, endpoint_hash, p256dh, auth, expiration_time, user_agent, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    [item.id, item.userId, item.endpoint, item.endpointHash, item.p256dh, item.auth, item.expirationTime, item.userAgent, item.createdAt, item.updatedAt]
+  );
+
+  return item;
+};
+
+export const removeIntranetPushSubscription = async (db: DbInterface, userIdRaw: unknown, endpointRaw: unknown) => {
+  await ensureIntranetPushSubscriptionTable(db);
+  const userId = clean(userIdRaw);
+  const endpoint = clean(endpointRaw);
+  if (!userId || !endpoint) return { removed: 0 };
+  const result = await db.execute(
+    `DELETE FROM intranet_push_subscriptions WHERE user_id = ? AND endpoint_hash = ?`,
+    [userId, sha256(endpoint)]
+  );
+  return { removed: Number((result as { affectedRows?: number })?.affectedRows || 0) };
+};
+
+const removeIntranetPushSubscriptionByHash = async (db: DbInterface, endpointHashRaw: unknown) => {
+  await ensureIntranetPushSubscriptionTable(db);
+  const endpointHash = clean(endpointHashRaw);
+  if (!endpointHash) return;
+  await db.execute(`DELETE FROM intranet_push_subscriptions WHERE endpoint_hash = ?`, [endpointHash]);
+};
+
+export const sendIntranetPushNotifications = async (db: DbInterface, items: IntranetNotification[]) => {
+  await ensureIntranetPushSubscriptionTable(db);
+  const config = getPushConfig();
+  if (!config.isConfigured || !items.length) {
+    return { attempted: 0, sent: 0, removed: 0, skipped: items.length };
+  }
+
+  const userIds = Array.from(new Set(items.map((item) => clean(item.userId)).filter(Boolean)));
+  if (!userIds.length) return { attempted: 0, sent: 0, removed: 0, skipped: items.length };
+
+  const placeholders = userIds.map(() => '?').join(', ');
+  const rows = await db.query(
+    `SELECT * FROM intranet_push_subscriptions WHERE user_id IN (${placeholders})`,
+    userIds
+  );
+  const subscriptionsByUser = new Map<string, ReturnType<typeof mapSubscriptionRow>[]>();
+  for (const row of rows as Row[]) {
+    const mapped = mapSubscriptionRow(row);
+    const current = subscriptionsByUser.get(mapped.userId) || [];
+    current.push(mapped);
+    subscriptionsByUser.set(mapped.userId, current);
+  }
+
+  const webPushModule = await import('web-push');
+  const webPush = (webPushModule.default || webPushModule) as typeof import('web-push');
+  webPush.setVapidDetails(config.subject, config.publicKey, config.privateKey);
+
+  let attempted = 0;
+  let sent = 0;
+  let removed = 0;
+
+  for (const item of items) {
+    const subscriptions = subscriptionsByUser.get(item.userId) || [];
+    for (const subscription of subscriptions) {
+      attempted += 1;
+      try {
+        await webPush.sendNotification(
+          {
+            endpoint: subscription.endpoint,
+            expirationTime: subscription.expirationTime ? Number(subscription.expirationTime) : null,
+            keys: {
+              p256dh: subscription.p256dh,
+              auth: subscription.auth,
+            },
+          },
+          JSON.stringify({
+            title: item.title,
+            body: item.body,
+            tag: item.id,
+            icon: '/favicon.ico',
+            badge: '/favicon.ico',
+            data: {
+              href: item.href,
+              notificationId: item.id,
+              channel: item.channel,
+              entityType: item.entityType,
+              entityId: item.entityId,
+            },
+          })
+        );
+        sent += 1;
+      } catch (error: unknown) {
+        const statusCode = Number((error as { statusCode?: number })?.statusCode || 0);
+        if (statusCode === 404 || statusCode === 410) {
+          await removeIntranetPushSubscriptionByHash(db, subscription.endpointHash);
+          removed += 1;
+          continue;
+        }
+        console.error('Erro ao enviar web push da intranet:', error);
+      }
+    }
+  }
+
+  return { attempted, sent, removed, skipped: 0 };
 };
 
 export const createIntranetNotification = async (db: DbInterface, input: IntranetNotificationCreateInput) => {

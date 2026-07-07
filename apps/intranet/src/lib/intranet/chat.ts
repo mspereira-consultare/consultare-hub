@@ -2,7 +2,7 @@ import 'server-only';
 
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@consultare/core/db';
-import { createIntranetNotifications, markIntranetNotificationsReadByEntity } from '@consultare/core/intranet/notifications';
+import { createIntranetNotifications, markIntranetNotificationsReadByEntity, sendIntranetPushNotifications } from '@consultare/core/intranet/notifications';
 import { hasPermission } from '@consultare/core/permissions';
 import { loadUserPermissionMatrix } from '@consultare/core/permissions-server';
 
@@ -738,7 +738,7 @@ export const sendChatMessage = async (db: DbInterface, user: ChatUserContext, co
       : clean(conversationRow?.name) || 'Conversa';
 
   try {
-    await createIntranetNotifications(
+    const createdNotifications = await createIntranetNotifications(
       db,
       members
         .filter((member) => member.userId !== user.id)
@@ -755,6 +755,12 @@ export const sendChatMessage = async (db: DbInterface, user: ChatUserContext, co
           dedupeKey: `chat-message:${id}:${member.userId}`,
         }))
     );
+    if (createdNotifications.length) {
+      await sendIntranetPushNotifications(
+        db,
+        createdNotifications.filter((item) => item.eventType === 'chat_message_received')
+      );
+    }
   } catch (error) {
     console.error('Erro ao criar notificações do chat:', error);
   }

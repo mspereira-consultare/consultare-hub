@@ -47,6 +47,13 @@ export type PointSyncRun = {
   sourceLabel: string;
   windowStart: string;
   windowEnd: string;
+  totalEmployees: number;
+  processedEmployees: number;
+  processedDays: number;
+  currentStage: string | null;
+  progressPercent: number | null;
+  lastProgressAt: string | null;
+  estimatedRemainingSeconds: number | null;
   synchronizedEmployees: number;
   synchronizedDays: number;
   unmatchedEmployees: number;

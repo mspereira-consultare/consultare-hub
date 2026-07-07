@@ -20,6 +20,7 @@ import { PayrollDailyPanel } from '../folha-pagamento/components/PayrollDailyPan
 import { PayrollHelpModal } from '../folha-pagamento/components/PayrollHelpModal';
 import { PayrollHoursBalancePanel } from '../folha-pagamento/components/PayrollHoursBalancePanel';
 import { PayrollSignaturesPanel } from '../folha-pagamento/components/PayrollSignaturesPanel';
+import { buildSyncProgressMeta, formatSyncEstimatedTime, getSyncStageLabel, PayrollSyncProgress } from '../folha-pagamento/components/PayrollSyncProgress';
 import { PAYROLL_POINT_TABS, PayrollTabNav, type PayrollTabKey } from '../folha-pagamento/components/PayrollTabNav';
 import { PayrollVacationsPanel } from '../folha-pagamento/components/PayrollVacationsPanel';
 
@@ -297,6 +298,9 @@ export default function PontoPage() {
   const heartbeatTone = getHeartbeatTone(overview.heartbeat.status);
   const syncButtonDisabled = syncingPoint || hasPointSyncInProgress;
   const syncHelperText = 'Atualiza os últimos 30 dias da Sólides e preserva o histórico já sincronizado no painel.';
+  const syncStageLabel = getSyncStageLabel(overview.latestRun?.currentStage);
+  const syncMetaLabel = buildSyncProgressMeta(overview.latestRun);
+  const syncEstimatedLabel = formatSyncEstimatedTime(overview.latestRun?.estimatedRemainingSeconds);
 
   if (!canView) {
     return <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">Você não possui permissão para acessar o módulo de ponto.</div>;
@@ -346,8 +350,8 @@ export default function PontoPage() {
                   disabled={syncButtonDisabled}
                   className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#123462] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {syncingPoint ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                  {syncingPoint ? 'Solicitando...' : 'Atualizar dados'}
+                  {syncingPoint || hasPointSyncInProgress ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+                  {syncingPoint ? 'Solicitando...' : hasPointSyncInProgress ? 'Sincronizando...' : 'Atualizar dados'}
                 </button>
 
                 {refreshHovered ? (
@@ -359,6 +363,13 @@ export default function PontoPage() {
                       <span className={`h-2.5 w-2.5 rounded-full ${heartbeatTone} ${hasPointSyncInProgress ? 'animate-pulse' : ''}`} />
                       <span className="text-sm font-medium text-slate-700">{formatDateTimeBr(overview.heartbeat.lastRun)}</span>
                     </div>
+                    {hasPointSyncInProgress ? (
+                      <p className="mt-1 text-xs font-medium text-slate-600">
+                        {syncStageLabel}
+                        {syncMetaLabel ? ` · ${syncMetaLabel}` : ''}
+                        {syncEstimatedLabel ? ` · ${syncEstimatedLabel}` : ''}
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-xs text-slate-500">
                       {hasPointSyncInProgress
                         ? 'Sincronizando a janela móvel dos últimos 30 dias em segundo plano.'
@@ -446,6 +457,9 @@ export default function PontoPage() {
 
       {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+      {overview.latestRun && ['PENDING', 'RUNNING', 'FAILED'].includes(String(overview.latestRun.status || '').toUpperCase()) ? (
+        <PayrollSyncProgress run={overview.latestRun} scopeLabel="ponto, férias, banco de horas e assinaturas" />
+      ) : null}
       {!error && overview.alerts.length > 0 ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           {overview.alerts.map((item) => (

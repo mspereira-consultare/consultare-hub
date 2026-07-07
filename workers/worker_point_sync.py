@@ -35,6 +35,11 @@ STATUS_COMPLETED = "COMPLETED"
 STATUS_FAILED = "FAILED"
 SYNC_ACTOR = "system_sync_solides_point"
 MAX_SYNC_WORKERS = max(2, int(os.getenv("POINT_SYNC_MAX_WORKERS", os.getenv("SOLIDES_SYNC_MAX_WORKERS", "6"))))
+STAGE_DISCOVERING_EMPLOYEES = "DISCOVERING_EMPLOYEES"
+STAGE_SYNCING_DAILY_ACTIVITY = "SYNCING_DAILY_ACTIVITY"
+STAGE_SYNCING_BALANCES_AND_SIGNATURES = "SYNCING_BALANCES_AND_SIGNATURES"
+STAGE_PERSISTING_DATA = "PERSISTING_DATA"
+STAGE_FINALIZING = "FINALIZING"
 
 
 def _build_artifact_storage_key(window_start: str, window_end: str, extension: str) -> str:
@@ -54,6 +59,53 @@ def _bulk_execute(db: DatabaseManager, statements: List[Tuple[str, Tuple[Any, ..
             conn.commit()
     finally:
         conn.close()
+
+
+def _safe_execute(db: DatabaseManager, sql: str, params=()):
+    try:
+        _execute(db, sql, params)
+    except Exception as exc:
+        message = _clean(exc)
+        if "Duplicate column name" in message or "duplicate column name" in message:
+            return
+        raise
+
+
+def _get_progress_stage_weight_bounds(stage: Optional[str]) -> Tuple[float, float]:
+    bounds = {
+        STAGE_DISCOVERING_EMPLOYEES: (0.02, 0.10),
+        STAGE_SYNCING_DAILY_ACTIVITY: (0.10, 0.78),
+        STAGE_SYNCING_BALANCES_AND_SIGNATURES: (0.78, 0.90),
+        STAGE_PERSISTING_DATA: (0.90, 0.98),
+        STAGE_FINALIZING: (0.98, 1.00),
+    }
+    return bounds.get(_clean(stage), (0.0, 1.0))
+
+
+def _compute_progress_percent(stage: Optional[str], processed_employees: int, total_employees: int) -> float:
+    stage_key = _clean(stage)
+    if stage_key == STAGE_FINALIZING:
+        return 100.0
+    start_weight, end_weight = _get_progress_stage_weight_bounds(stage_key)
+    if total_employees <= 0:
+        return round(start_weight * 100, 2)
+    ratio = min(1.0, max(0.0, processed_employees / float(total_employees)))
+    return round((start_weight + ((end_weight - start_weight) * ratio)) * 100, 2)
+
+
+def _estimate_remaining_seconds(started_at: Optional[str], processed_employees: int, total_employees: int) -> Optional[int]:
+    if processed_employees <= 1 or total_employees <= processed_employees:
+        return None
+    started_dt = datetime.fromisoformat(str(started_at).replace("Z", "+00:00")) if started_at else None
+    if started_dt is None:
+        return None
+    elapsed = (datetime.now(timezone.utc) - started_dt).total_seconds()
+    if elapsed <= 0:
+        return None
+    average_per_employee = elapsed / float(processed_employees)
+    remaining_employees = max(0, total_employees - processed_employees)
+    estimate = int(round(average_per_employee * remaining_employees))
+    return estimate if estimate > 0 else None
 
 
 def _ensure_tables(db: DatabaseManager):
@@ -83,6 +135,13 @@ def _ensure_tables(db: DatabaseManager):
           source_label VARCHAR(120) NOT NULL,
           window_start DATE NOT NULL,
           window_end DATE NOT NULL,
+          total_employees INTEGER NOT NULL DEFAULT 0,
+          processed_employees INTEGER NOT NULL DEFAULT 0,
+          processed_days INTEGER NOT NULL DEFAULT 0,
+          current_stage VARCHAR(40) NULL,
+          progress_percent DECIMAL(5,2) NULL,
+          last_progress_at VARCHAR(32) NULL,
+          estimated_remaining_seconds INTEGER NULL,
           synchronized_employees INTEGER NOT NULL DEFAULT 0,
           synchronized_days INTEGER NOT NULL DEFAULT 0,
           unmatched_employees INTEGER NOT NULL DEFAULT 0,
@@ -214,6 +273,13 @@ def _ensure_tables(db: DatabaseManager):
         )
         """,
     )
+    _safe_execute(db, "ALTER TABLE point_sync_runs ADD COLUMN total_employees INTEGER NOT NULL DEFAULT 0")
+    _safe_execute(db, "ALTER TABLE point_sync_runs ADD COLUMN processed_employees INTEGER NOT NULL DEFAULT 0")
+    _safe_execute(db, "ALTER TABLE point_sync_runs ADD COLUMN processed_days INTEGER NOT NULL DEFAULT 0")
+    _safe_execute(db, "ALTER TABLE point_sync_runs ADD COLUMN current_stage VARCHAR(40) NULL")
+    _safe_execute(db, "ALTER TABLE point_sync_runs ADD COLUMN progress_percent DECIMAL(5,2) NULL")
+    _safe_execute(db, "ALTER TABLE point_sync_runs ADD COLUMN last_progress_at VARCHAR(32) NULL")
+    _safe_execute(db, "ALTER TABLE point_sync_runs ADD COLUMN estimated_remaining_seconds INTEGER NULL")
 
 
 def _get_pending_job(db: DatabaseManager) -> Optional[Dict[str, Any]]:
@@ -277,8 +343,62 @@ def _mark_run_running(db: DatabaseManager, run_id: Optional[str], details: Optio
     now = _now_iso()
     _execute(
         db,
-        "UPDATE point_sync_runs SET status = ?, details = ?, started_at = ?, finished_at = NULL WHERE id = ?",
-        (STATUS_RUNNING, details, now, run_id),
+        """
+        UPDATE point_sync_runs
+        SET status = ?, details = ?, started_at = ?, finished_at = NULL,
+            current_stage = ?, progress_percent = 0, last_progress_at = ?, estimated_remaining_seconds = NULL
+        WHERE id = ?
+        """,
+        (STATUS_RUNNING, details, now, STAGE_DISCOVERING_EMPLOYEES, now, run_id),
+    )
+
+
+def _update_run_progress(
+    db: DatabaseManager,
+    run_id: Optional[str],
+    started_at: Optional[str],
+    stage: str,
+    details: Optional[str],
+    total_employees: int,
+    processed_employees: int,
+    processed_days: int,
+    synchronized_employees: int = 0,
+    synchronized_days: int = 0,
+    unmatched_employees: int = 0,
+    pending_adjustments: int = 0,
+    pending_signatures: int = 0,
+):
+    if not run_id:
+        return
+    now = _now_iso()
+    progress_percent = _compute_progress_percent(stage, processed_employees, total_employees)
+    estimated_remaining_seconds = _estimate_remaining_seconds(started_at, processed_employees, total_employees)
+    _execute(
+        db,
+        """
+        UPDATE point_sync_runs
+        SET details = ?, total_employees = ?, processed_employees = ?, processed_days = ?,
+            current_stage = ?, progress_percent = ?, last_progress_at = ?, estimated_remaining_seconds = ?,
+            synchronized_employees = ?, synchronized_days = ?, unmatched_employees = ?,
+            pending_adjustments = ?, pending_signatures = ?
+        WHERE id = ?
+        """,
+        (
+            details,
+            total_employees,
+            processed_employees,
+            processed_days,
+            stage,
+            progress_percent,
+            now,
+            estimated_remaining_seconds,
+            synchronized_employees,
+            synchronized_days,
+            unmatched_employees,
+            pending_adjustments,
+            pending_signatures,
+            run_id,
+        ),
     )
 
 
@@ -292,17 +412,25 @@ def _mark_run_done(
     unmatched_employees: int = 0,
     pending_adjustments: int = 0,
     pending_signatures: int = 0,
+    total_employees: Optional[int] = None,
+    processed_employees: Optional[int] = None,
+    processed_days: Optional[int] = None,
 ):
     if not run_id:
         return
     now = _now_iso()
+    final_progress = 100.0 if status == STATUS_COMPLETED else None
     _execute(
         db,
         """
         UPDATE point_sync_runs
         SET status = ?, details = ?, synchronized_employees = ?, synchronized_days = ?,
             unmatched_employees = ?, pending_adjustments = ?, pending_signatures = ?,
-            finished_at = ?
+            total_employees = COALESCE(?, total_employees),
+            processed_employees = COALESCE(?, processed_employees),
+            processed_days = COALESCE(?, processed_days),
+            current_stage = ?, progress_percent = COALESCE(?, progress_percent),
+            last_progress_at = ?, estimated_remaining_seconds = NULL, finished_at = ?
         WHERE id = ?
         """,
         (
@@ -313,6 +441,12 @@ def _mark_run_done(
             unmatched_employees,
             pending_adjustments,
             pending_signatures,
+            total_employees,
+            processed_employees,
+            processed_days,
+            STAGE_FINALIZING if status == STATUS_COMPLETED else None,
+            final_progress,
+            now,
             now,
             run_id,
         ),
@@ -711,8 +845,19 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
     client = SolidesClient()
     window_start = job["window_start"]
     window_end = job["window_end"]
+    started_at = _now_iso()
     db.update_heartbeat(SERVICE_NAME, STATUS_RUNNING, f"job={job['id']} janela={window_start}..{window_end}")
     _mark_run_running(db, job.get("run_id"), "Sincronização da base de ponto com a API da Sólides em andamento.")
+    _update_run_progress(
+        db,
+        job.get("run_id"),
+        started_at,
+        STAGE_DISCOVERING_EMPLOYEES,
+        "Carregando colaboradores, escalas e vínculos da Sólides.",
+        0,
+        0,
+        0,
+    )
 
     start_ms = _to_millis_from_date(window_start)
     end_ms = _to_millis_from_date(window_end, end_of_day=True)
@@ -742,6 +887,7 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
     unmatched_local_links = []
     pending_adjustments = 0
     pending_signatures = 0
+    processed_employees = 0
 
     ged_signature_enabled = None
     try:
@@ -765,6 +911,18 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
         synchronized_employee_keys.add(linked_id)
         linked_sync_inputs.append((remote_employee, local_employee, work_schedule))
 
+    total_employees = len(linked_sync_inputs)
+    _update_run_progress(
+        db,
+        job.get("run_id"),
+        started_at,
+        STAGE_SYNCING_DAILY_ACTIVITY,
+        f"Sincronizando ponto diário de 0 de {total_employees} colaborador(es).",
+        total_employees,
+        0,
+        0,
+    )
+
     with ThreadPoolExecutor(max_workers=MAX_SYNC_WORKERS) as executor:
         future_map = {
             executor.submit(_sync_linked_employee, job, remote_employee, local_employee, work_schedule, month_windows): (remote_employee, local_employee)
@@ -783,6 +941,22 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
             signature_rows.extend(result["signature_rows"])
             pending_adjustments += result["pending_adjustments"]
             pending_signatures += result["pending_signatures"]
+            processed_employees += 1
+            _update_run_progress(
+                db,
+                job.get("run_id"),
+                started_at,
+                STAGE_SYNCING_DAILY_ACTIVITY,
+                f"Sincronizando ponto diário de {processed_employees} de {total_employees} colaborador(es).",
+                total_employees,
+                processed_employees,
+                len(point_rows),
+                synchronized_employees=processed_employees,
+                synchronized_days=len(point_rows),
+                unmatched_employees=len(unmatched_local_links),
+                pending_adjustments=pending_adjustments,
+                pending_signatures=pending_signatures,
+            )
 
     unmatched_remote_inputs = []
     for remote_employee in remote_employees:
@@ -797,6 +971,21 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
         work_schedule = work_schedules.get(schedule_id) if schedule_id else None
         unmatched_remote_inputs.append((remote_employee, work_schedule))
 
+    _update_run_progress(
+        db,
+        job.get("run_id"),
+        started_at,
+        STAGE_SYNCING_BALANCES_AND_SIGNATURES,
+        "Consolidando banco de horas, assinaturas e registros sem vínculo local.",
+        total_employees,
+        processed_employees,
+        len(point_rows),
+        synchronized_employees=processed_employees,
+        synchronized_days=len(point_rows),
+        unmatched_employees=len(unmatched_local_links),
+        pending_adjustments=pending_adjustments,
+        pending_signatures=pending_signatures,
+    )
     if unmatched_remote_inputs:
         with ThreadPoolExecutor(max_workers=MAX_SYNC_WORKERS) as executor:
             future_map = {
@@ -811,6 +1000,21 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
                     raise RuntimeError(f"Falha ao sincronizar colaborador sem vínculo {_clean(remote_employee.get('id'))} ({_clean(remote_employee.get('name'))}): {exc}") from exc
                 point_rows.extend(rows)
 
+    _update_run_progress(
+        db,
+        job.get("run_id"),
+        started_at,
+        STAGE_PERSISTING_DATA,
+        "Persistindo os dados sincronizados no painel.",
+        total_employees,
+        processed_employees,
+        len(point_rows),
+        synchronized_employees=processed_employees,
+        synchronized_days=len(point_rows),
+        unmatched_employees=len(unmatched_local_links),
+        pending_adjustments=pending_adjustments,
+        pending_signatures=pending_signatures,
+    )
     _replace_point_rows(db, window_start, window_end, point_rows)
     _replace_hours_balance(db, month_refs, hours_balance_rows)
     _replace_signatures(db, month_refs, signature_rows)
@@ -854,6 +1058,21 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
     details_parts.extend(sync_warnings[:2])
     details = " ".join(details_parts)
 
+    _update_run_progress(
+        db,
+        job.get("run_id"),
+        started_at,
+        STAGE_FINALIZING,
+        "Finalizando a sincronização da base de ponto.",
+        total_employees,
+        processed_employees,
+        len(point_rows),
+        synchronized_employees=processed_employees,
+        synchronized_days=len(point_rows),
+        unmatched_employees=unmatched_count,
+        pending_adjustments=pending_adjustments,
+        pending_signatures=pending_signatures,
+    )
     _mark_job_done(db, job["id"], STATUS_COMPLETED)
     _mark_run_done(
         db,
@@ -865,6 +1084,9 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
         unmatched_employees=unmatched_count,
         pending_adjustments=pending_adjustments,
         pending_signatures=pending_signatures,
+        total_employees=total_employees,
+        processed_employees=processed_employees,
+        processed_days=len(point_rows),
     )
     db.update_heartbeat(
         SERVICE_NAME,

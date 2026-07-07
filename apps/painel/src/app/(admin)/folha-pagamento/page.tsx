@@ -25,6 +25,7 @@ import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
 import { PayrollPreviewTable } from './components/PayrollPreviewTable';
 import { PayrollReadinessPanel } from './components/PayrollReadinessPanel';
 import { PayrollSummaryCards } from './components/PayrollSummaryCards';
+import { buildSyncProgressMeta, formatSyncEstimatedTime, getSyncStageLabel, PayrollSyncProgress } from './components/PayrollSyncProgress';
 import { PAYROLL_CLOSING_TABS, PayrollTabNav, type PayrollTabKey } from './components/PayrollTabNav';
 
 const emptyOptions: PayrollOptions = {
@@ -130,6 +131,9 @@ export default function FolhaPagamentoPage() {
     ? latestSyncRun?.startedAt || latestSyncRun?.createdAt || latestCompletedSync?.finishedAt || null
     : latestCompletedSync?.finishedAt || latestSyncRun?.finishedAt || latestSyncRun?.createdAt || null;
   const syncHeartbeatTone = getHeartbeatTone(latestSyncStatus);
+  const syncStageLabel = getSyncStageLabel(latestSyncRun?.currentStage);
+  const syncMetaLabel = buildSyncProgressMeta(latestSyncRun);
+  const syncEstimatedLabel = formatSyncEstimatedTime(latestSyncRun?.estimatedRemainingSeconds);
   const syncHeartbeatDetails = hasPointPipelineInProgress
     ? 'Sincronização da Sólides em andamento para atualizar a base usada no fechamento desta competência.'
       : latestCompletedSync
@@ -386,7 +390,7 @@ export default function FolhaPagamentoPage() {
                   disabled={syncButtonDisabled}
                   className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 px-3 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {syncingPoint ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} {syncingPoint ? 'Solicitando...' : 'Atualizar dados'}
+                  {syncingPoint || hasPointPipelineInProgress ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} {syncingPoint ? 'Solicitando...' : hasPointPipelineInProgress ? 'Sincronizando...' : 'Atualizar dados'}
                 </button>
                 {refreshHovered ? (
                   <div className="absolute right-0 top-full z-20 mt-2 w-[340px] rounded-xl border border-slate-200 bg-white p-3 text-left shadow-lg">
@@ -397,6 +401,13 @@ export default function FolhaPagamentoPage() {
                       <span className={`h-2.5 w-2.5 rounded-full ${syncHeartbeatTone} ${hasPointPipelineInProgress ? 'animate-pulse' : ''}`} />
                       <span className="text-sm font-medium text-slate-700">{formatDateTimeBr(syncHeartbeatTime)}</span>
                     </div>
+                    {hasPointPipelineInProgress ? (
+                      <p className="mt-1 text-xs font-medium text-slate-600">
+                        {syncStageLabel}
+                        {syncMetaLabel ? ` · ${syncMetaLabel}` : ''}
+                        {syncEstimatedLabel ? ` · ${syncEstimatedLabel}` : ''}
+                      </p>
+                    ) : null}
                     <p className="mt-1 text-xs text-slate-500">{syncHeartbeatDetails}</p>
                     <p className="mt-2 text-xs text-slate-500">
                       Atualiza a leitura local da Sólides usada no fechamento, preservando o histórico já sincronizado da competência.
@@ -503,18 +514,15 @@ export default function FolhaPagamentoPage() {
 
       {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+      {latestSyncRun && ['PENDING', 'RUNNING', 'FAILED'].includes(String(latestSyncRun.status || '').toUpperCase()) ? (
+        <PayrollSyncProgress run={latestSyncRun} scopeLabel="fechamento desta competência" />
+      ) : null}
 
       {readiness && approvalReadiness ? (
         <PayrollReadinessPanel generateReadiness={readiness} approvalReadiness={approvalReadiness} />
       ) : null}
 
       <PayrollSummaryCards summary={detail?.summary || null} eligibilitySummary={detail?.eligibilitySummary || null} />
-
-      {hasPointPipelineInProgress ? (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Há uma sincronização de ponto em andamento nesta competência. A tela está atualizando automaticamente e a geração da folha ficará disponível após a conclusão.
-        </div>
-      ) : null}
 
       <PayrollTabNav
         activeTab={activeTab}

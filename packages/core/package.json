@@ -10,6 +10,7 @@
     "./equipment-work-orders": "./src/equipment_work_orders.ts",
     "./intranet/catalog": "./src/intranet/catalog.ts",
     "./intranet/chatbot": "./src/intranet/chatbot.ts",
+    "./intranet/notifications": "./src/intranet/notifications.ts",
     "./intranet/repository": "./src/intranet/repository.ts",
     "./permissions": "./src/permissions.ts",
     "./permissions-server": "./src/permissions_server.ts",
@@ -39,10 +40,12 @@
     "bcryptjs": "^3.0.3",
     "dotenv": "^17.2.3",
     "mysql2": "^3.16.3",
-    "server-only": "^0.0.1"
+    "server-only": "^0.0.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/node": "^20.19.27",
+    "@types/web-push": "^3.6.4",
     "typescript": "^5.9.3"
   }
 }

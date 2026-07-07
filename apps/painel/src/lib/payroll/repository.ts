@@ -366,6 +366,13 @@ const mapPointSyncRun = (row: any): PayrollPointSyncRun => ({
   jobId: clean(row.job_id) || null,
   status: upper(row.status) as PayrollSyncJobStatus,
   sourceLabel: clean(row.source_label) || 'API Sólides',
+  totalEmployees: Number(row.total_employees || 0),
+  processedEmployees: Number(row.processed_employees || 0),
+  processedDays: Number(row.processed_days || 0),
+  currentStage: clean(row.current_stage) || null,
+  progressPercent: row.progress_percent === null || row.progress_percent === undefined || row.progress_percent === '' ? null : Number(row.progress_percent),
+  lastProgressAt: clean(row.last_progress_at) || null,
+  estimatedRemainingSeconds: row.estimated_remaining_seconds === null || row.estimated_remaining_seconds === undefined || row.estimated_remaining_seconds === '' ? null : Number(row.estimated_remaining_seconds),
   synchronizedEmployees: Number(row.synchronized_employees || 0),
   synchronizedDays: Number(row.synchronized_days || 0),
   unmatchedEmployees: Number(row.unmatched_employees || 0),
@@ -684,6 +691,13 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       job_id VARCHAR(64) NULL,
       status VARCHAR(20) NOT NULL,
       source_label VARCHAR(120) NOT NULL,
+      total_employees INTEGER NOT NULL DEFAULT 0,
+      processed_employees INTEGER NOT NULL DEFAULT 0,
+      processed_days INTEGER NOT NULL DEFAULT 0,
+      current_stage VARCHAR(40) NULL,
+      progress_percent DECIMAL(5,2) NULL,
+      last_progress_at VARCHAR(32) NULL,
+      estimated_remaining_seconds INTEGER NULL,
       synchronized_employees INTEGER NOT NULL DEFAULT 0,
       synchronized_days INTEGER NOT NULL DEFAULT 0,
       unmatched_employees INTEGER NOT NULL DEFAULT 0,
@@ -870,6 +884,7 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await ensureMysqlColumnDefinition(db, 'payroll_point_sync_runs', 'started_at', 'VARCHAR(32) NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_sync_runs', 'finished_at', 'VARCHAR(32) NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_sync_runs', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_point_sync_runs', 'last_progress_at', 'VARCHAR(32) NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_daily', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_point_daily', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_hours_balance_monthly', 'created_at', 'VARCHAR(32) NOT NULL');
@@ -899,6 +914,13 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN pending_adjustments_count INTEGER NOT NULL DEFAULT 0`);
   await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN source_payload_json LONGTEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN sync_run_id VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_sync_runs ADD COLUMN total_employees INTEGER NOT NULL DEFAULT 0`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_sync_runs ADD COLUMN processed_employees INTEGER NOT NULL DEFAULT 0`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_sync_runs ADD COLUMN processed_days INTEGER NOT NULL DEFAULT 0`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_sync_runs ADD COLUMN current_stage VARCHAR(40) NULL`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_sync_runs ADD COLUMN progress_percent DECIMAL(5,2) NULL`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_sync_runs ADD COLUMN last_progress_at VARCHAR(32) NULL`);
+  await safeAddColumn(db, `ALTER TABLE payroll_point_sync_runs ADD COLUMN estimated_remaining_seconds INTEGER NULL`);
 
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_periods_month_ref ON payroll_periods (month_ref)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_import_files_period ON payroll_import_files (period_id, created_at)`);
@@ -1843,9 +1865,10 @@ const createPointSyncRun = async (
   const now = NOW();
   await db.execute(
     `INSERT INTO payroll_point_sync_runs (
-      id, period_id, job_id, status, source_label, synchronized_employees, synchronized_days,
+      id, period_id, job_id, status, source_label, total_employees, processed_employees, processed_days,
+      current_stage, progress_percent, last_progress_at, estimated_remaining_seconds, synchronized_employees, synchronized_days,
       unmatched_employees, pending_adjustments, pending_signatures, details, started_at, finished_at, created_at
-    ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, 0, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, 0, 0, 0, NULL, NULL, NULL, NULL, 0, 0, 0, 0, 0, ?, ?, ?, ?)`,
     [
       id,
       params.periodId,
