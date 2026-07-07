@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requirePayrollPermission } from '@/lib/payroll/auth';
-import { parsePayrollLineFilters, parsePayrollPointDateRange } from '@/lib/payroll/filters';
-import { listPayrollVacationRowsByDateRange } from '@/lib/payroll/repository';
+import { parsePointDateRange, parsePointFilters } from '@/lib/point/filters';
+import { listPointVacationRowsByDateRange } from '@/lib/point/repository';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -11,10 +11,10 @@ export async function GET(request: Request) {
     const auth = await requirePayrollPermission('view', 'ponto');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
     const { searchParams } = new URL(request.url);
-    const data = await listPayrollVacationRowsByDateRange(
+    const data = await listPointVacationRowsByDateRange(
       auth.db,
-      parsePayrollPointDateRange(searchParams),
-      parsePayrollLineFilters(searchParams),
+      parsePointDateRange(searchParams),
+      parsePointFilters(searchParams),
     );
     return NextResponse.json({ status: 'success', data });
   } catch (error: any) {

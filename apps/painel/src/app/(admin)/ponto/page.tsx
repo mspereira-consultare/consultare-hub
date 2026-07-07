@@ -4,17 +4,17 @@ import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react
 import { useSession } from 'next-auth/react';
 import { Calendar, CircleHelp, Loader2, RefreshCw } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
-import { DEFAULT_PAYROLL_LINE_FILTERS } from '@/lib/payroll/filters';
 import type {
-  PayrollDailyControlRow,
-  PayrollHoursBalanceMonthly,
-  PayrollLineFilters,
-  PayrollOptions,
-  PayrollPointOverview,
-  PayrollServiceHeartbeat,
-  PayrollSignatureMonthly,
-  PayrollVacationRow,
-} from '@/lib/payroll/types';
+  PointDailyControlRow,
+  PointFilters,
+  PointHoursBalanceMonthly,
+  PointOptions,
+  PointOverview,
+  PointServiceHeartbeat,
+  PointSignatureMonthly,
+  PointVacationRow,
+} from '@/lib/point/types';
+import { DEFAULT_POINT_FILTERS } from '@/lib/point/filters';
 import { PayrollDailyPanel } from '../folha-pagamento/components/PayrollDailyPanel';
 import { PayrollHelpModal } from '../folha-pagamento/components/PayrollHelpModal';
 import { PayrollHoursBalancePanel } from '../folha-pagamento/components/PayrollHoursBalancePanel';
@@ -22,27 +22,14 @@ import { PayrollSignaturesPanel } from '../folha-pagamento/components/PayrollSig
 import { PAYROLL_POINT_TABS, PayrollTabNav, type PayrollTabKey } from '../folha-pagamento/components/PayrollTabNav';
 import { PayrollVacationsPanel } from '../folha-pagamento/components/PayrollVacationsPanel';
 
-const emptyOptions: PayrollOptions = {
-  periods: [],
+const emptyOptions: PointOptions = {
   centersCost: [],
   units: [],
   contractTypes: [],
-  periodStatuses: [],
-  lineStatuses: [],
-  transportVoucherModes: [],
-  occurrenceTypes: [],
 };
 
 const filterInputClassName =
   'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none transition focus:border-[#17407E] focus:ring-2 focus:ring-blue-100';
-
-const formatMonthRef = (monthRef: string) => {
-  const [year, month] = String(monthRef || '').split('-');
-  const monthIndex = Number(month || 0) - 1;
-  if (!year || monthIndex < 0) return monthRef;
-  const date = new Date(Date.UTC(Number(year), monthIndex, 1));
-  return date.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-};
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, cache: 'no-store' });
@@ -53,27 +40,19 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   return payload as T;
 }
 
-const emptyHeartbeat: PayrollServiceHeartbeat = {
-  serviceName: 'payroll_point_sync',
+const emptyHeartbeat: PointServiceHeartbeat = {
+  serviceName: 'point_sync',
   status: 'UNKNOWN',
   lastRun: null,
   details: null,
 };
 
-const emptyOverview: PayrollPointOverview = {
+const emptyOverview: PointOverview = {
   dateRange: { startDate: '', endDate: '' },
   heartbeat: emptyHeartbeat,
-  referenceMonthRef: '',
-  syncTargetPeriod: null,
-  coverage: {
-    status: 'NONE',
-    totalPeriods: 0,
-    coveredPeriods: 0,
-    expectedMonthRefs: [],
-    coveredMonthRefs: [],
-    missingMonthRefs: [],
-    message: 'Nenhuma sincronização disponível.',
-  },
+  syncWindow: null,
+  latestRun: null,
+  latestArtifact: null,
   alerts: [],
 };
 
@@ -114,16 +93,16 @@ export default function PontoPage() {
   const canRefresh = hasPermission(permissions, 'ponto', 'refresh', role);
 
   const defaultDateRange = useMemo(() => getDefaultDateRange(), []);
-  const [options, setOptions] = useState<PayrollOptions>(emptyOptions);
-  const [overview, setOverview] = useState<PayrollPointOverview>({
+  const [options, setOptions] = useState<PointOptions>(emptyOptions);
+  const [overview, setOverview] = useState<PointOverview>({
     ...emptyOverview,
     dateRange: defaultDateRange,
   });
-  const [dailyRows, setDailyRows] = useState<PayrollDailyControlRow[]>([]);
-  const [hoursBalanceRows, setHoursBalanceRows] = useState<PayrollHoursBalanceMonthly[]>([]);
-  const [vacationRows, setVacationRows] = useState<PayrollVacationRow[]>([]);
-  const [signatureRows, setSignatureRows] = useState<PayrollSignatureMonthly[]>([]);
-  const [filters, setFilters] = useState<PayrollLineFilters>(DEFAULT_PAYROLL_LINE_FILTERS);
+  const [dailyRows, setDailyRows] = useState<PointDailyControlRow[]>([]);
+  const [hoursBalanceRows, setHoursBalanceRows] = useState<PointHoursBalanceMonthly[]>([]);
+  const [vacationRows, setVacationRows] = useState<PointVacationRow[]>([]);
+  const [signatureRows, setSignatureRows] = useState<PointSignatureMonthly[]>([]);
+  const [filters, setFilters] = useState<PointFilters>(DEFAULT_POINT_FILTERS);
   const [filterOptions, setFilterOptions] = useState({ centersCost: [] as string[], units: [] as string[], contracts: [] as string[] });
   const [activeTab, setActiveTab] = useState<PayrollTabKey>('controle_diario');
   const [loading, setLoading] = useState(true);
@@ -151,7 +130,7 @@ export default function PontoPage() {
 
   const loadOptions = useCallback(async () => {
     if (!canView) return;
-    const payload = await fetchJson<{ status: string; data: PayrollOptions }>('/api/admin/ponto/options');
+    const payload = await fetchJson<{ status: string; data: PointOptions }>('/api/admin/ponto/options');
     setOptions(payload.data || emptyOptions);
     setFilterOptions({
       centersCost: payload.data?.centersCost || [],
@@ -167,11 +146,11 @@ export default function PontoPage() {
     try {
       const query = buildFilterQuery();
       const [overviewPayload, dailyPayload, hoursBalancePayload, vacationsPayload, signaturesPayload] = await Promise.all([
-        fetchJson<{ status: string; data: PayrollPointOverview }>(`/api/admin/ponto/overview?${query}`),
-        fetchJson<{ status: string; data: { items: PayrollDailyControlRow[] } }>(`/api/admin/ponto/daily?${query}`),
-        fetchJson<{ status: string; data: { items: PayrollHoursBalanceMonthly[] } }>(`/api/admin/ponto/hours-balance?${query}`),
-        fetchJson<{ status: string; data: { items: PayrollVacationRow[] } }>(`/api/admin/ponto/vacations?${query}`),
-        fetchJson<{ status: string; data: { items: PayrollSignatureMonthly[] } }>(`/api/admin/ponto/signatures?${query}`),
+        fetchJson<{ status: string; data: PointOverview }>(`/api/admin/ponto/overview?${query}`),
+        fetchJson<{ status: string; data: { items: PointDailyControlRow[] } }>(`/api/admin/ponto/daily?${query}`),
+        fetchJson<{ status: string; data: { items: PointHoursBalanceMonthly[] } }>(`/api/admin/ponto/hours-balance?${query}`),
+        fetchJson<{ status: string; data: { items: PointVacationRow[] } }>(`/api/admin/ponto/vacations?${query}`),
+        fetchJson<{ status: string; data: { items: PointSignatureMonthly[] } }>(`/api/admin/ponto/signatures?${query}`),
       ]);
 
       setOverview(overviewPayload.data || { ...emptyOverview, dateRange: defaultDateRange });
@@ -200,16 +179,15 @@ export default function PontoPage() {
   };
 
   const handlePointSync = async () => {
-    if (!overview.syncTargetPeriod?.id) return;
     setSyncingPoint(true);
     setError('');
     setSuccessMessage('');
     try {
-      await fetchJson(`/api/admin/ponto/periods/${encodeURIComponent(overview.syncTargetPeriod.id)}/sync`, {
+      const response = await fetchJson<{ status: string; data: { window: { startDate: string; endDate: string } } }>(`/api/admin/ponto/sync`, {
         method: 'POST',
       });
       await loadPontoData();
-      setSuccessMessage(`Sincronização enfileirada para ${formatMonthRef(overview.syncTargetPeriod.monthRef)}.`);
+      setSuccessMessage(`Sincronização enfileirada para a janela ${response.data.window.startDate} a ${response.data.window.endDate}.`);
     } catch (fetchError: any) {
       setError(String(fetchError?.message || fetchError));
     } finally {
@@ -219,10 +197,8 @@ export default function PontoPage() {
 
   const heartbeatLabel = hasPointSyncInProgress ? 'Sincronização em andamento' : 'Última sincronização';
   const heartbeatTone = getHeartbeatTone(overview.heartbeat.status);
-  const syncButtonDisabled = syncingPoint || !overview.syncTargetPeriod?.id;
-  const syncHelperText = overview.syncTargetPeriod
-    ? `Atualiza a competência operacional de ${formatMonthRef(overview.syncTargetPeriod.monthRef)}.`
-    : `Botão bloqueado: não existe competência operacional cadastrada para ${formatMonthRef(overview.referenceMonthRef)}.`;
+  const syncButtonDisabled = syncingPoint || hasPointSyncInProgress;
+  const syncHelperText = 'Atualiza os últimos 30 dias da Sólides e preserva o histórico já sincronizado no painel.';
 
   useEffect(() => {
     if (!hasPointSyncInProgress) return;
@@ -247,7 +223,7 @@ export default function PontoPage() {
             <div>
               <h1 className="text-xl font-bold text-slate-800">Ponto</h1>
               <p className="mt-1 text-xs text-slate-500">
-                Acompanhamento operacional por data com leitura da base sincronizada da Sólides. A sincronização continua mensal no backend.
+                Acompanhamento operacional por data com leitura da base sincronizada da Sólides.
               </p>
             </div>
           </div>
@@ -295,7 +271,7 @@ export default function PontoPage() {
                     </div>
                     <p className="mt-1 text-xs text-slate-500">
                       {hasPointSyncInProgress
-                        ? 'Sincronizando a competência mensal de referência em segundo plano.'
+                        ? 'Sincronizando a janela móvel dos últimos 30 dias em segundo plano.'
                         : overview.heartbeat.details || 'Acompanhe aqui a última execução do worker da Sólides.'}
                     </p>
                     <p className="mt-2 text-xs text-slate-500">{syncHelperText}</p>
@@ -365,7 +341,7 @@ export default function PontoPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setFilters(DEFAULT_PAYROLL_LINE_FILTERS);
+                    setFilters(DEFAULT_POINT_FILTERS);
                     setOverview((current) => ({ ...current, dateRange: defaultDateRange }));
                   }}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700"

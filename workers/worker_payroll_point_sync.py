@@ -155,6 +155,11 @@ def _parse_date(value: Any) -> Optional[str]:
     raw = _clean(value)
     if len(raw) >= 10 and raw[4:5] == "-" and raw[7:8] == "-":
         return raw[:10]
+    if len(raw) >= 10 and raw[2:3] == "/" and raw[5:6] == "/":
+        try:
+            return datetime.strptime(raw[:10], "%d/%m/%Y").date().isoformat()
+        except Exception:
+            return None
     return None
 
 
@@ -405,9 +410,12 @@ class SolidesClient:
         return json.loads(content)
 
     def list_employees(self) -> List[Dict[str, Any]]:
-        direct_items = self._paginate("/employee/find-all", {"showFired": 1})
-        if direct_items:
-            return direct_items
+        direct_items = self._paginate("/employee/find-all", {"page": 0, "size": 200})
+        direct_by_id: Dict[str, Dict[str, Any]] = {}
+        for item in direct_items or []:
+            item_id = _clean(item.get("id"))
+            if item_id:
+                direct_by_id[item_id] = item
 
         electronic_watch_items = self._request_json(
             self.employer_base,
@@ -415,37 +423,53 @@ class SolidesClient:
             {"page": 0, "size": 1000},
         ) or []
         if not isinstance(electronic_watch_items, list):
-            return []
+            return list(direct_by_id.values())
 
-        items: List[Dict[str, Any]] = []
+        merged_items: List[Dict[str, Any]] = []
         seen_ids = set()
         for base_item in electronic_watch_items:
             tangerino_id = _clean(base_item.get("code") or base_item.get("id"))
             if not tangerino_id:
                 continue
-            detail = self._request_json(
-                self.employer_base,
-                "/employee/find",
-                {"tangerinoId": tangerino_id},
-            ) or {}
-            if not isinstance(detail, dict):
-                detail = {}
+
+            direct_item = direct_by_id.get(tangerino_id)
+            detail = direct_item or {}
+            if not detail:
+                try:
+                    payload = self._request_json(
+                        self.employer_base,
+                        "/employee/find",
+                        {"tangerinoId": tangerino_id},
+                    ) or {}
+                    if isinstance(payload, dict):
+                        detail = payload
+                except Exception:
+                    detail = {}
 
             merged = dict(base_item)
-            merged.update(detail)
-            merged["id"] = detail.get("id") or base_item.get("code") or base_item.get("id")
-            merged["externalId"] = detail.get("externalId") if detail.get("externalId") not in (None, "") else base_item.get("externalId")
-            merged["cpf"] = detail.get("cpf") or base_item.get("cpf")
-            merged["name"] = detail.get("name") or base_item.get("name")
-            merged["fired"] = detail.get("fired") if detail.get("fired") is not None else _normalize_bool(base_item.get("demitido"))
-            merged["_employee_source"] = "electronic-watch+employee-find"
+            if isinstance(detail, dict):
+                merged.update(detail)
+            merged["id"] = (detail or {}).get("id") or base_item.get("code") or base_item.get("id")
+            merged["externalId"] = (detail or {}).get("externalId") if (detail or {}).get("externalId") not in (None, "") else base_item.get("externalId")
+            merged["cpf"] = (detail or {}).get("cpf") or base_item.get("cpf")
+            merged["name"] = (detail or {}).get("name") or base_item.get("name")
+            merged["fired"] = (detail or {}).get("fired") if (detail or {}).get("fired") is not None else _normalize_bool(base_item.get("demitido"))
+            merged["_employee_source"] = "employee-find-all+electronic-watch"
 
             merged_id = _clean(merged.get("id"))
             if not merged_id or merged_id in seen_ids:
                 continue
             seen_ids.add(merged_id)
-            items.append(merged)
-        return items
+            merged_items.append(merged)
+
+        for item_id, item in direct_by_id.items():
+            if item_id in seen_ids:
+                continue
+            seen_ids.add(item_id)
+            copy_item = dict(item)
+            copy_item["_employee_source"] = "employee-find-all"
+            merged_items.append(copy_item)
+        return merged_items
 
     def list_work_schedules(self) -> Dict[str, Dict[str, Any]]:
         items: Dict[str, Dict[str, Any]] = {}
@@ -1323,6 +1347,7 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
     end_ms = _to_millis_from_date(job["period_end"], end_of_day=True)
     local_employees = _load_local_employees(db, job["period_start"], job["period_end"])
     local_lookup = _build_local_lookup(local_employees)
+    work_schedules = client.list_work_schedules()
 
     remote_employees = client.list_employees()
     remote_employees_by_id = _build_remote_employees_by_id(remote_employees)
@@ -1362,7 +1387,9 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
             continue
 
         synchronized_employee_keys.add(linked_id)
-        work_schedule = remote_employee.get("currentWorkSchedule") or {}
+        schedule_ref = remote_employee.get("currentWorkSchedule") or {}
+        schedule_id = _clean(schedule_ref.get("id"))
+        work_schedule = work_schedules.get(schedule_id) if schedule_id else None
         adjustments = client.get_adjustments(linked_id, start_ms, end_ms)
         adjustment_maps = _build_adjustment_maps(adjustments)
 
@@ -1421,7 +1448,9 @@ def _process_job(db: DatabaseManager, job: Dict[str, Any]):
         daily_activity = client.get_daily_activity(remote_id, start_ms, end_ms)
         if not daily_activity:
             continue
-        work_schedule = remote_employee.get("currentWorkSchedule") or {}
+        schedule_ref = remote_employee.get("currentWorkSchedule") or {}
+        schedule_id = _clean(schedule_ref.get("id"))
+        work_schedule = work_schedules.get(schedule_id) if schedule_id else None
         point_rows.extend(
             _build_daily_rows_for_employee(
                 job["period_start"],

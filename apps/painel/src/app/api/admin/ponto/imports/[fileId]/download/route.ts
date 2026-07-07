@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { Readable } from 'stream';
 import { requirePayrollPermission } from '@/lib/payroll/auth';
-import { getPayrollImportFileById } from '@/lib/payroll/repository';
+import { getPointArtifactById } from '@/lib/point/repository';
 import { getStorageProviderByName } from '@/lib/storage';
 
 type ParamsContext = {
@@ -19,7 +19,7 @@ export async function GET(request: Request, context: ParamsContext) {
     const { fileId } = await context.params;
     const { searchParams } = new URL(request.url);
     const inline = searchParams.get('inline') === '1';
-    const file = await getPayrollImportFileById(auth.db, String(fileId || ''));
+    const file = await getPointArtifactById(auth.db, String(fileId || ''));
     if (!file) return NextResponse.json({ error: 'Arquivo não encontrado.' }, { status: 404 });
 
     const provider = getStorageProviderByName(file.storageProvider);
