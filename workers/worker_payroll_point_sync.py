@@ -116,6 +116,19 @@ def _execute(db: DatabaseManager, sql: str, params=()):
         conn.close()
 
 
+def _bulk_execute(db: DatabaseManager, statements: List[Tuple[str, Tuple[Any, ...]]]):
+    if not statements:
+        return
+    conn = db.get_connection()
+    try:
+        for sql, params in statements:
+            conn.execute(sql, params)
+        if not db.use_turso:
+            conn.commit()
+    finally:
+        conn.close()
+
+
 def _safe_execute(db: DatabaseManager, sql: str, params=()):
     try:
         _execute(db, sql, params)
@@ -1148,15 +1161,15 @@ def _normalize_occurrence_type(adjustment: Dict[str, Any]) -> str:
 
 
 def _replace_period_occurrences(db: DatabaseManager, period_id: str, occurrence_rows: List[Dict[str, Any]]):
-    _execute(
-        db,
-        "DELETE FROM payroll_occurrences WHERE period_id = ? AND created_by = ?",
-        (period_id, SYNC_ACTOR),
-    )
     now = _now_iso()
+    statements: List[Tuple[str, Tuple[Any, ...]]] = [
+        (
+            "DELETE FROM payroll_occurrences WHERE period_id = ? AND created_by = ?",
+            (period_id, SYNC_ACTOR),
+        )
+    ]
     for item in occurrence_rows:
-        _execute(
-            db,
+        statements.append((
             """
             INSERT INTO payroll_occurrences (
               id, period_id, employee_id, occurrence_type, date_start, date_end, effect_code, notes,
@@ -1178,15 +1191,17 @@ def _replace_period_occurrences(db: DatabaseManager, period_id: str, occurrence_
                 now,
                 now,
             ),
-        )
+        ))
+    _bulk_execute(db, statements)
 
 
 def _replace_point_rows(db: DatabaseManager, period_id: str, point_rows: List[Dict[str, Any]]):
-    _execute(db, "DELETE FROM payroll_point_daily WHERE period_id = ?", (period_id,))
     now = _now_iso()
+    statements: List[Tuple[str, Tuple[Any, ...]]] = [
+        ("DELETE FROM payroll_point_daily WHERE period_id = ?", (period_id,))
+    ]
     for row in point_rows:
-        _execute(
-            db,
+        statements.append((
             """
             INSERT INTO payroll_point_daily (
               id, period_id, employee_id, solides_employee_id, employee_code, employee_name, employee_cpf, point_date,
@@ -1226,7 +1241,8 @@ def _replace_point_rows(db: DatabaseManager, period_id: str, point_rows: List[Di
                 now,
                 now,
             ),
-        )
+        ))
+    _bulk_execute(db, statements)
 
 
 def _persist_timesheet_artifact(
@@ -1282,11 +1298,12 @@ def _persist_timesheet_artifact(
 
 
 def _replace_hours_balances(db: DatabaseManager, period_id: str, items: List[Dict[str, Any]]):
-    _execute(db, "DELETE FROM payroll_hours_balance_monthly WHERE period_id = ?", (period_id,))
     now = _now_iso()
+    statements: List[Tuple[str, Tuple[Any, ...]]] = [
+        ("DELETE FROM payroll_hours_balance_monthly WHERE period_id = ?", (period_id,))
+    ]
     for item in items:
-        _execute(
-            db,
+        statements.append((
             """
             INSERT INTO payroll_hours_balance_monthly (
               id, period_id, employee_id, solides_employee_id, employee_name, employee_cpf,
@@ -1307,15 +1324,17 @@ def _replace_hours_balances(db: DatabaseManager, period_id: str, items: List[Dic
                 now,
                 now,
             ),
-        )
+        ))
+    _bulk_execute(db, statements)
 
 
 def _replace_signatures(db: DatabaseManager, period_id: str, items: List[Dict[str, Any]]):
-    _execute(db, "DELETE FROM payroll_signature_monthly WHERE period_id = ?", (period_id,))
     now = _now_iso()
+    statements: List[Tuple[str, Tuple[Any, ...]]] = [
+        ("DELETE FROM payroll_signature_monthly WHERE period_id = ?", (period_id,))
+    ]
     for item in items:
-        _execute(
-            db,
+        statements.append((
             """
             INSERT INTO payroll_signature_monthly (
               id, period_id, employee_id, solides_employee_id, employee_name, employee_cpf,
@@ -1340,7 +1359,8 @@ def _replace_signatures(db: DatabaseManager, period_id: str, items: List[Dict[st
                 now,
                 now,
             ),
-        )
+        ))
+    _bulk_execute(db, statements)
 
 
 def _build_signature_row(period_start: str, period_end: str, remote_employee: Dict[str, Any], local_employee: Optional[Dict[str, Any]], payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
