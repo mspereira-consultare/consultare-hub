@@ -181,19 +181,6 @@ export default function FolhaPagamentoPage() {
     if (!canView) return;
     const payload = await fetchJson<{ status: string; data: PayrollOptions }>('/api/admin/folha-pagamento/options');
     setOptions(payload.data || emptyOptions);
-    const availablePeriods = payload.data?.periods || [];
-    const persistedPeriodId =
-      typeof window !== 'undefined' ? String(window.localStorage.getItem('payroll:selected-period-id') || '').trim() : '';
-    const candidatePeriodId = selectedPeriodIdRef.current || requestedPeriodId || persistedPeriodId;
-
-    if (candidatePeriodId && availablePeriods.some((period) => period.id === candidatePeriodId)) {
-      setSelectedPeriodId((current) => (current === candidatePeriodId ? current : candidatePeriodId));
-      return;
-    }
-
-    if (availablePeriods[0]?.id) {
-      setSelectedPeriodId((current) => (current === availablePeriods[0].id ? current : availablePeriods[0].id));
-    }
   }, [canView, requestedPeriodId]);
 
   const buildFilterQuery = useCallback(() => {
@@ -267,8 +254,30 @@ export default function FolhaPagamentoPage() {
   );
 
   useEffect(() => {
-    loadOptions().catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
+    loadOptions().catch((fetchError) => {
+      setLoading(false);
+      setPreviewLoading(false);
+      setError(String((fetchError as Error)?.message || fetchError));
+    });
   }, [loadOptions]);
+
+  useEffect(() => {
+    if (!options.periods.length) {
+      setLoading(false);
+      setPreviewLoading(false);
+      return;
+    }
+
+    const persistedPeriodId =
+      typeof window !== 'undefined' ? String(window.localStorage.getItem('payroll:selected-period-id') || '').trim() : '';
+    const candidatePeriodId = requestedPeriodId || selectedPeriodIdRef.current || persistedPeriodId;
+    const resolvedPeriodId =
+      (candidatePeriodId && options.periods.some((period) => period.id === candidatePeriodId) ? candidatePeriodId : '') || options.periods[0]?.id || '';
+
+    if (resolvedPeriodId && resolvedPeriodId !== selectedPeriodIdRef.current) {
+      setSelectedPeriodId(resolvedPeriodId);
+    }
+  }, [options.periods, requestedPeriodId]);
 
   useEffect(() => {
     if (!requestedPeriodId) return;

@@ -8,6 +8,10 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlparse
 from urllib.request import Request, urlopen
+try:
+    from zoneinfo import ZoneInfo
+except Exception:  # pragma: no cover - fallback for older Python runtimes
+    ZoneInfo = None
 
 from database_manager import DatabaseManager
 from storage_s3 import upload_s3_object_bytes
@@ -25,6 +29,7 @@ STAGE_SYNCING_DAILY_ACTIVITY = "SYNCING_DAILY_ACTIVITY"
 STAGE_SYNCING_BALANCES_AND_SIGNATURES = "SYNCING_BALANCES_AND_SIGNATURES"
 STAGE_PERSISTING_DATA = "PERSISTING_DATA"
 STAGE_FINALIZING = "FINALIZING"
+WORK_TZ = ZoneInfo("America/Sao_Paulo") if ZoneInfo is not None else timezone(timedelta(hours=-3))
 
 
 def _now_iso() -> str:
@@ -186,6 +191,14 @@ def _to_millis_from_date(date_iso: str, end_of_day: bool = False) -> int:
     if end_of_day:
         base = base + timedelta(days=1) - timedelta(milliseconds=1)
     return int(base.timestamp() * 1000)
+
+
+def _to_millis_from_work_date(date_iso: str, end_of_day: bool = False) -> int:
+    base = datetime.strptime(date_iso, "%Y-%m-%d")
+    if end_of_day:
+        base = base.replace(hour=23, minute=59, second=59, microsecond=999000)
+    localized = base.replace(tzinfo=WORK_TZ)
+    return int(localized.timestamp() * 1000)
 
 
 def _date_range_iter(start_ms: int, end_ms: int):
@@ -537,8 +550,11 @@ class SolidesClient:
     def get_daily_activity(self, employee_id: str, start_ms: int, end_ms: int) -> List[Dict[str, Any]]:
         day_map: Dict[str, Dict[str, Any]] = {}
         for day_iso in _date_range_iter(start_ms, end_ms):
-            day_start_ms = _to_millis_from_date(day_iso)
-            day_end_ms = _to_millis_from_date(day_iso, end_of_day=True)
+            # O endpoint /daily-activity aceita apenas um único dia por chamada e
+            # interpreta os milissegundos no fuso operacional do colaborador.
+            # Usar UTC aqui fazia alguns dias extrapolarem o limite "maior que 1 dia".
+            day_start_ms = _to_millis_from_work_date(day_iso)
+            day_end_ms = _to_millis_from_work_date(day_iso, end_of_day=True)
             payload = self._request_json(
                 self.punch_base,
                 "/daily-activity",
