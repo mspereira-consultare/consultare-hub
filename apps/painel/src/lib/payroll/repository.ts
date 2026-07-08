@@ -532,6 +532,7 @@ type EmployeePayrollSource = {
   jobTitle: string | null;
   costCenter: string | null;
   units: string[];
+  status: string;
   employmentRegime: string;
   salaryAmount: number;
   insalubrityPercent: number;
@@ -563,6 +564,7 @@ const mapEmployeePayrollSource = (row: any): EmployeePayrollSource => ({
   jobTitle: clean(row.job_title) || null,
   costCenter: clean(row.cost_center) || null,
   units: parseUnitsJson(row.units_json),
+  status: upper(row.status || ''),
   employmentRegime: upper(row.employment_regime || 'CLT'),
   salaryAmount: toNumber(row.salary_amount),
   insalubrityPercent: toNumber(row.insalubrity_percent),
@@ -592,22 +594,42 @@ const buildEmployeeLookupMaps = (employees: EmployeePayrollSource[]): EmployeeLo
   return { byCpf, byName };
 };
 
-const isPayrollEligibleEmployee = (employee: Pick<EmployeePayrollSource, 'employmentRegime'>) =>
-  !isPayrollExcludedContractType(employee.employmentRegime);
+const isEmployeeActiveInPanel = (employee: Pick<EmployeePayrollSource, 'status'>) => employee.status === 'ATIVO';
+
+const isPayrollEligibleEmployee = (employee: Pick<EmployeePayrollSource, 'employmentRegime' | 'status'>) =>
+  isEmployeeActiveInPanel(employee) && !isPayrollExcludedContractType(employee.employmentRegime);
 
 const isPayrollEligibleLine = (line: Pick<PayrollLine, 'contractType' | 'payrollEligible'>) =>
   line.payrollEligible && !isPayrollExcludedContractType(line.contractType);
 
 const buildEligibilitySummary = (employees: EmployeePayrollSource[]): PayrollEligibilitySummary => {
-  const excludedByContract = employees.filter((employee) => !isPayrollEligibleEmployee(employee)).length;
-  const totalEligibleEmployees = employees.length - excludedByContract;
+  const excludedByPanelStatus = employees.filter((employee) => employee.status !== 'ATIVO').length;
+  const excludedByContract = employees.filter((employee) => employee.status === 'ATIVO' && isPayrollExcludedContractType(employee.employmentRegime)).length;
+  const totalEligibleEmployees = employees.filter((employee) => isPayrollEligibleEmployee(employee)).length;
   return {
     totalOperationalEmployees: employees.length,
     totalEligibleEmployees,
-    totalExcludedEmployees: excludedByContract,
+    totalExcludedEmployees: excludedByPanelStatus + excludedByContract,
     excludedByContract,
     excludedPjEmployees: excludedByContract,
+    excludedByPanelStatus,
   };
+};
+
+const filterLinesByCurrentEligibility = (lines: PayrollLine[], employees: EmployeePayrollSource[]) => {
+  const eligibleEmployeeIds = new Set(
+    employees
+      .filter((employee) => isPayrollEligibleEmployee(employee))
+      .map((employee) => employee.id),
+  );
+  const employeeLookup = buildEmployeeLookupMaps(employees);
+
+  return lines.filter((line) => {
+    if (!isPayrollEligibleLine(line)) return false;
+    if (line.employeeId) return eligibleEmployeeIds.has(line.employeeId);
+    const matched = findMatchingEmployeeForPointRow(line.employeeName, line.employeeCpf, employeeLookup);
+    return Boolean(matched && isPayrollEligibleEmployee(matched));
+  });
 };
 
 const findMatchingEmployeeForPointRow = (
@@ -623,8 +645,12 @@ const findMatchingEmployeeForPointRow = (
   return lookup.byName.get(normalizeSearch(employeeName)) || null;
 };
 
-const buildSummaryFromLines = (lines: PayrollLine[], imports: PayrollImportFile[]): PayrollPeriodSummary => {
-  const eligibleLines = lines.filter((line) => isPayrollEligibleLine(line));
+const buildSummaryFromLines = (
+  lines: PayrollLine[],
+  imports: PayrollImportFile[],
+  employees: EmployeePayrollSource[],
+): PayrollPeriodSummary => {
+  const eligibleLines = filterLinesByCurrentEligibility(lines, employees);
   return {
     totalLines: eligibleLines.length,
     totalNet: roundMoney(eligibleLines.reduce((sum, line) => sum + line.netOperational, 0)),
@@ -2193,9 +2219,9 @@ export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string):
     listHoursBalanceRaw(db, periodId),
     listSignaturesRaw(db, periodId),
   ]);
-  const summary = buildSummaryFromLines(lines, imports);
+  const summary = buildSummaryFromLines(lines, imports, allEmployees);
   summary.syncCompleted = syncRuns.filter((item) => item.status === 'COMPLETED').length;
-  const filteredLines = lines.filter((line) => isPayrollEligibleLine(line));
+  const filteredLines = filterLinesByCurrentEligibility(lines, allEmployees);
   const benefitRows = filteredLines.length ? (await listPayrollBenefitRows(db, periodId, {
     search: '',
     centerCost: 'all',
@@ -3076,8 +3102,12 @@ const listPayrollOperationalEmployeesByDateRange = async (
 
 export const listPayrollLines = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
   await ensurePayrollTables(db);
-  await getPeriodOrThrow(db, periodId);
-  const lines = (await listLinesRaw(db, periodId)).filter((line) => isPayrollEligibleLine(line) && matchesLineFilters(line, filters));
+  const period = await getPeriodOrThrow(db, periodId);
+  const [rawLines, employees] = await Promise.all([
+    listLinesRaw(db, periodId),
+    loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
+  ]);
+  const lines = filterLinesByCurrentEligibility(rawLines, employees).filter((line) => matchesLineFilters(line, filters));
   return {
     items: lines,
     availableCentersCost: Array.from(new Set(lines.map((line) => clean(line.centerCost)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })),

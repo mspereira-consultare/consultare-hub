@@ -35,7 +35,7 @@ export function PayrollSummaryCards({
           : formatMoney((data as any)[card.key] || 0);
         const helper = card.key === 'totalLines'
           ? eligibilitySummary
-            ? `${eligibilitySummary.totalOperationalEmployees} colaborador(es) operacionais. ${eligibilitySummary.excludedPjEmployees} PJ fora da folha.`
+            ? `${eligibilitySummary.totalOperationalEmployees} colaborador(es) no recorte. ${eligibilitySummary.excludedPjEmployees} PJ e ${eligibilitySummary.excludedByPanelStatus} fora por status no painel.`
             : 'Base elegível do fechamento mensal.'
           : card.helper;
         const toneClass = card.tone === 'emerald'

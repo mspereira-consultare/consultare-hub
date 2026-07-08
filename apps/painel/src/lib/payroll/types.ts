@@ -407,6 +407,7 @@ export type PayrollEligibilitySummary = {
   totalExcludedEmployees: number;
   excludedByContract: number;
   excludedPjEmployees: number;
+  excludedByPanelStatus: number;
 };
 
 export type PayrollPendingDataCode = 'MISSING_SALARY' | 'MISSING_SOLIDES_LINK';
