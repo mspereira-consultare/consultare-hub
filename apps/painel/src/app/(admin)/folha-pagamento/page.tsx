@@ -3,7 +3,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Calculator, CheckCircle2, CircleHelp, Download, Loader2, Plus, RefreshCw, SendHorizontal } from 'lucide-react';
+import { Calculator, CheckCircle2, CircleHelp, Download, Loader2, Plus, RefreshCw } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
 import { DEFAULT_PAYROLL_LINE_FILTERS } from '@/lib/payroll/filters';
 import type {
@@ -175,8 +175,6 @@ export default function FolhaPagamentoPage() {
   const approveActionTitle = approvalBlockedByReadiness
     ? approvalReadiness?.guidance || 'Resolva as pendências críticas antes de aprovar a folha.'
     : 'Aprovar competência';
-  const markSentBlocked = currentPeriod?.status !== 'APROVADA';
-
   useEffect(() => {
     selectedPeriodIdRef.current = selectedPeriodId;
   }, [selectedPeriodId]);
@@ -686,19 +684,6 @@ export default function FolhaPagamentoPage() {
                 }`}
               >
                 {actionLoading === 'approve' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Aprovar
-              </button>
-              <button
-                type="button"
-                onClick={() => runPeriodAction('mark-sent')}
-                disabled={markSentBlocked || actionLoading === 'mark-sent'}
-                title={markSentBlocked ? 'A competência precisa estar aprovada antes do envio.' : 'Marcar como enviada'}
-                className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${
-                  markSentBlocked
-                    ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
-                    : 'border-blue-200 bg-blue-50 text-[#17407E]'
-                }`}
-              >
-                {actionLoading === 'mark-sent' ? <Loader2 size={15} className="animate-spin" /> : <SendHorizontal size={15} />} Marcar como enviada
               </button>
               <button type="button" onClick={() => runPeriodAction('reopen')} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-sm font-semibold text-amber-700">
                 {actionLoading === 'reopen' ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Reabrir competência

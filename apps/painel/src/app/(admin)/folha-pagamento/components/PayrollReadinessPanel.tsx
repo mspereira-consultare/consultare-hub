@@ -52,9 +52,10 @@ const mergeIssues = (issues: PayrollReadinessIssue[]) => {
   const map = new Map<string, PayrollReadinessIssue>();
 
   issues.forEach((issue) => {
-    const current = map.get(issue.code);
+    const issueKey = `${issue.severity}:${issue.code}:${issue.title}`;
+    const current = map.get(issueKey);
     if (!current) {
-      map.set(issue.code, {
+      map.set(issueKey, {
         ...issue,
         sampleEmployees: [...issue.sampleEmployees],
         details: issue.details ? [...issue.details] : [],
@@ -80,7 +81,7 @@ const mergeIssues = (issues: PayrollReadinessIssue[]) => {
       }
     });
 
-    current.count += issue.count;
+    current.count = Math.max(current.count, issue.count);
   });
 
   return Array.from(map.values());
