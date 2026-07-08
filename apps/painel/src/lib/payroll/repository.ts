@@ -35,6 +35,7 @@ import type {
   PayrollOccurrence,
   PayrollOccurrenceInput,
   PayrollOptions,
+  PayrollPendingDataCode,
   PayrollPeriod,
   PayrollPeriodDetail,
   PayrollPointCoverage,
@@ -65,8 +66,25 @@ export class PayrollValidationError extends Error {
   }
 }
 
+export class PayrollPendingGenerationConfirmationError extends PayrollValidationError {
+  code: string;
+  data: {
+    pendingEmployeesCount: number;
+    pendingCodes: PayrollPendingDataCode[];
+    sampleEmployees: PayrollReadinessEmployeeSample[];
+  };
+
+  constructor(data: { pendingEmployeesCount: number; pendingCodes: PayrollPendingDataCode[]; sampleEmployees: PayrollReadinessEmployeeSample[] }) {
+    super(`Existem ${data.pendingEmployeesCount} colaborador(es) com informações pendentes. Deseja seguir com a geração parcial da folha?`, 409);
+    this.code = 'PAYROLL_PENDING_CONFIRMATION';
+    this.data = data;
+  }
+}
+
 let tablesEnsured = false;
 const JUSTIFIED_OCCURRENCE_TYPES = new Set<PayrollOccurrenceType>(['ATESTADO', 'DECLARACAO', 'AJUSTE_BATIDA', 'AUSENCIA_AUTORIZADA', 'FERIAS']);
+const GENERATION_CONFIRMABLE_ISSUE_CODES = new Set<PayrollReadinessIssueCode>(['EMPLOYEE_MISSING_SALARY', 'EMPLOYEE_MISSING_SOLIDES_LINK']);
+const LINE_PENDING_DATA_CODES = new Set<PayrollPendingDataCode>(['MISSING_SALARY', 'MISSING_SOLIDES_LINK']);
 
 const NOW = () => new Date().toISOString();
 const clean = (value: unknown) => String(value ?? '').trim();
@@ -199,6 +217,9 @@ const parseJsonList = (value: unknown) => {
   }
 };
 
+const parsePendingDataCodes = (value: unknown) =>
+  parseJsonList(value).filter((item): item is PayrollPendingDataCode => LINE_PENDING_DATA_CODES.has(item as PayrollPendingDataCode));
+
 const safeJson = (value: unknown) => {
   try {
     return JSON.stringify(value);
@@ -206,6 +227,8 @@ const safeJson = (value: unknown) => {
     return '{}';
   }
 };
+
+const lineHasPendingData = (line: Pick<PayrollLine, 'pendingDataCodes'>, code: PayrollPendingDataCode) => line.pendingDataCodes.includes(code);
 
 const truncateText = (value: string | null | undefined, maxLength = 220) => {
   const text = clean(value);
@@ -490,6 +513,7 @@ const mapLine = (row: any): PayrollLine => ({
   netOperational: toNumber(row.net_operational),
   lineStatus: upper(row.line_status || 'RASCUNHO') as PayrollLineStatus,
   payrollNotes: clean(row.payroll_notes) || null,
+  pendingDataCodes: parsePendingDataCodes(row.pending_data_codes_json),
   payrollEligible: !isPayrollExcludedContractType(row.contract_type),
   exclusionReason: isPayrollExcludedContractType(row.contract_type) ? 'REGIME_PJ' : null,
   employeeSnapshotJson: clean(row.employee_snapshot_json) || null,
@@ -856,6 +880,7 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       net_operational DECIMAL(12,2) NOT NULL DEFAULT 0,
       line_status VARCHAR(20) NOT NULL DEFAULT 'RASCUNHO',
       payroll_notes LONGTEXT NULL,
+      pending_data_codes_json LONGTEXT NULL,
       employee_snapshot_json LONGTEXT NULL,
       calculation_memory_json LONGTEXT NULL,
       comparison_status VARCHAR(20) NOT NULL DEFAULT 'SEM_BASE',
@@ -940,6 +965,7 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE payroll_point_sync_runs ADD COLUMN progress_percent DECIMAL(5,2) NULL`);
   await safeAddColumn(db, `ALTER TABLE payroll_point_sync_runs ADD COLUMN last_progress_at VARCHAR(32) NULL`);
   await safeAddColumn(db, `ALTER TABLE payroll_point_sync_runs ADD COLUMN estimated_remaining_seconds INTEGER NULL`);
+  await safeAddColumn(db, `ALTER TABLE payroll_lines ADD COLUMN pending_data_codes_json LONGTEXT NULL`);
 
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_periods_month_ref ON payroll_periods (month_ref)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_import_files_period ON payroll_import_files (period_id, created_at)`);
@@ -1739,6 +1765,32 @@ const createReadinessIssue = (params: {
   details: (params.details || []).slice(0, 5),
 });
 
+const getConfirmableGenerationIssues = (readiness: PayrollPeriodReadiness) =>
+  readiness.issues.filter((issue) => GENERATION_CONFIRMABLE_ISSUE_CODES.has(issue.code));
+
+const buildPendingGenerationConfirmation = (issues: PayrollReadinessIssue[]) => {
+  const sampleMap = new Map<string, PayrollReadinessEmployeeSample>();
+  const pendingCodes = new Set<PayrollPendingDataCode>();
+  let pendingEmployeesCount = 0;
+
+  for (const issue of issues) {
+    pendingEmployeesCount += issue.count;
+    if (issue.code === 'EMPLOYEE_MISSING_SALARY') pendingCodes.add('MISSING_SALARY');
+    if (issue.code === 'EMPLOYEE_MISSING_SOLIDES_LINK') pendingCodes.add('MISSING_SOLIDES_LINK');
+    for (const sample of issue.sampleEmployees) {
+      const key = buildReadinessSampleKey(sample);
+      if (!key || sampleMap.has(key)) continue;
+      sampleMap.set(key, sample);
+    }
+  }
+
+  return {
+    pendingEmployeesCount,
+    pendingCodes: Array.from(pendingCodes),
+    sampleEmployees: Array.from(sampleMap.values()).slice(0, 5),
+  };
+};
+
 const buildReadinessGuidance = (status: PayrollReadinessStatus) => {
   if (status === 'BLOCKED') {
     return 'Resolva os bloqueios críticos abaixo e use Gerar folha novamente para recalcular a competência.';
@@ -1823,9 +1875,9 @@ const evaluatePayrollPeriodReadiness = (
       issues.push(
         createReadinessIssue({
           code: 'EMPLOYEE_MISSING_SOLIDES_LINK',
-          severity: 'BLOCKING',
+          severity: 'WARNING',
           title: 'Cadastro sem vínculo Sólides',
-          description: `${missingSolidesLink.length} colaborador(es) exigem vínculo com a Sólides para sincronizar ponto nesta competência.`,
+          description: `${missingSolidesLink.length} colaborador(es) elegíveis estão sem vínculo Sólides. A folha poderá ser gerada parcialmente, mas a aprovação continuará bloqueada até regularização.`,
           count: missingSolidesLink.length,
           sampleEmployees: missingSolidesLink.map(employeeToReadinessSample),
         }),
@@ -1862,16 +1914,16 @@ const evaluatePayrollPeriodReadiness = (
 
   const employeesMissingSalary = employees.filter((employee) => employee.salaryAmount <= 0);
   if (employeesMissingSalary.length > 0) {
-    issues.push(
-      createReadinessIssue({
-        code: 'EMPLOYEE_MISSING_SALARY',
-        severity: 'BLOCKING',
-        title: 'Cadastro sem salário base',
-        description: `${employeesMissingSalary.length} colaborador(es) ativo(s) estão com salário base ausente ou zerado para esta competência.`,
-        count: employeesMissingSalary.length,
-        sampleEmployees: employeesMissingSalary.map(employeeToReadinessSample),
-      }),
-    );
+      issues.push(
+        createReadinessIssue({
+          code: 'EMPLOYEE_MISSING_SALARY',
+          severity: 'WARNING',
+          title: 'Cadastro sem salário base',
+          description: `${employeesMissingSalary.length} colaborador(es) elegíveis estão com salário base ausente ou zerado. A folha poderá ser gerada parcialmente, mas a aprovação continuará bloqueada até regularização.`,
+          count: employeesMissingSalary.length,
+          sampleEmployees: employeesMissingSalary.map(employeeToReadinessSample),
+        }),
+      );
   }
 
   if (hasPointBase) {
@@ -2035,7 +2087,25 @@ const evaluatePayrollApprovalReadiness = (
     );
   }
 
-  const linesPendingReview = lines.filter((line) => line.lineStatus !== 'APROVADO');
+  const linesPendingRegistration = lines.filter((line) => line.lineStatus === 'PENDENTE_CADASTRO' || line.pendingDataCodes.length > 0);
+  if (linesPendingRegistration.length > 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'LINES_PENDING_REVIEW',
+        severity: 'BLOCKING',
+        title: 'Linhas com pendência cadastral',
+        description: `${linesPendingRegistration.length} linha(s) ainda dependem de salário base e/ou vínculo Sólides antes da aprovação final.`,
+        count: linesPendingRegistration.length,
+        sampleEmployees: linesPendingRegistration.map((line) => ({
+          employeeId: line.employeeId,
+          employeeName: line.employeeName,
+          employeeCpf: line.employeeCpf,
+        })),
+      }),
+    );
+  }
+
+  const linesPendingReview = lines.filter((line) => line.lineStatus !== 'APROVADO' && line.lineStatus !== 'PENDENTE_CADASTRO');
   if (linesPendingReview.length > 0) {
     issues.push(
       createReadinessIssue({
@@ -2407,7 +2477,12 @@ const buildLineRecord = (
   occurrences: PayrollOccurrence[],
   existingLine: PayrollLine | null,
 ): PayrollLine => {
-  const pointRowsInPeriod = pointRows.filter((item) => item.pointDate >= period.periodStart && item.pointDate <= period.periodEnd);
+  const pendingDataCodes: PayrollPendingDataCode[] = [];
+  if (employee.salaryAmount <= 0) pendingDataCodes.push('MISSING_SALARY');
+  if (!employee.solidesEmployeeId) pendingDataCodes.push('MISSING_SOLIDES_LINK');
+
+  const rawPointRowsInPeriod = pointRows.filter((item) => item.pointDate >= period.periodStart && item.pointDate <= period.periodEnd);
+  const pointRowsInPeriod = lineHasPendingData({ pendingDataCodes }, 'MISSING_SOLIDES_LINK') ? [] : rawPointRowsInPeriod;
 
   const getOccurrenceForDate = (pointDate: string) =>
     occurrences.find((item) => overlapsDateRange(pointDate, item.dateStart, item.dateEnd || item.dateStart));
@@ -2501,28 +2576,31 @@ const buildLineRecord = (
     });
   }
 
-  const absenceDiscount = roundMoney((employee.salaryAmount / 30) * absencesCount);
-  const lateDiscount = roundMoney((salaryHour * lateMinutes) / 60);
-  const insalubrityAmount = roundMoney((rules.minWageAmount * employee.insalubrityPercent) / 100);
+  const hasPendingRegistration = pendingDataCodes.length > 0;
+  const absenceDiscount = hasPendingRegistration ? 0 : roundMoney((employee.salaryAmount / 30) * absencesCount);
+  const lateDiscount = hasPendingRegistration ? 0 : roundMoney((salaryHour * lateMinutes) / 60);
+  const insalubrityAmount = hasPendingRegistration ? 0 : roundMoney((rules.minWageAmount * employee.insalubrityPercent) / 100);
 
   let vtProvisioned = 0;
-  if (employee.transportVoucherMode === 'MONTHLY_FIXED') {
+  if (!hasPendingRegistration && employee.transportVoucherMode === 'MONTHLY_FIXED') {
     vtProvisioned = employee.transportVoucherMonthlyFixed;
-  } else if (employee.transportVoucherMode === 'PER_DAY') {
+  } else if (!hasPendingRegistration && employee.transportVoucherMode === 'PER_DAY') {
     vtProvisioned = employee.transportVoucherPerDay * daysWorked;
   }
   vtProvisioned = roundMoney(vtProvisioned);
 
-  const vtDiscountCap = roundMoney(employee.salaryAmount * (rules.vtDiscountCapPercent / 100));
-  const vtDiscount = employee.employmentRegime === 'ESTAGIO' ? 0 : roundMoney(Math.min(vtProvisioned, vtDiscountCap));
-  const totalpassDiscount = roundMoney(employee.totalpassDiscountFixed || 0);
-  const otherFixedDiscount = roundMoney(employee.otherFixedDiscountAmount || 0);
+  const vtDiscountCap = hasPendingRegistration ? 0 : roundMoney(employee.salaryAmount * (rules.vtDiscountCapPercent / 100));
+  const vtDiscount = hasPendingRegistration ? 0 : employee.employmentRegime === 'ESTAGIO' ? 0 : roundMoney(Math.min(vtProvisioned, vtDiscountCap));
+  const totalpassDiscount = hasPendingRegistration ? 0 : roundMoney(employee.totalpassDiscountFixed || 0);
+  const otherFixedDiscount = hasPendingRegistration ? 0 : roundMoney(employee.otherFixedDiscountAmount || 0);
   const adjustmentsAmount = roundMoney(existingLine?.adjustmentsAmount || 0);
 
-  let totalProvents = employee.salaryAmount + insalubrityAmount;
-  let totalDiscounts = absenceDiscount + lateDiscount + vtDiscount + totalpassDiscount + otherFixedDiscount;
-  if (adjustmentsAmount >= 0) totalProvents += adjustmentsAmount;
-  else totalDiscounts += Math.abs(adjustmentsAmount);
+  let totalProvents = hasPendingRegistration ? 0 : employee.salaryAmount + insalubrityAmount;
+  let totalDiscounts = hasPendingRegistration ? 0 : absenceDiscount + lateDiscount + vtDiscount + totalpassDiscount + otherFixedDiscount;
+  if (!hasPendingRegistration) {
+    if (adjustmentsAmount >= 0) totalProvents += adjustmentsAmount;
+    else totalDiscounts += Math.abs(adjustmentsAmount);
+  }
 
   totalProvents = roundMoney(totalProvents);
   totalDiscounts = roundMoney(totalDiscounts);
@@ -2554,8 +2632,9 @@ const buildLineRecord = (
     totalProvents,
     totalDiscounts,
     netOperational: roundMoney(totalProvents - totalDiscounts),
-    lineStatus: warnings.length > 0 ? 'EM_REVISAO' : 'APROVADO',
+    lineStatus: hasPendingRegistration ? 'PENDENTE_CADASTRO' : warnings.length > 0 ? 'EM_REVISAO' : 'APROVADO',
     payrollNotes: existingLine?.payrollNotes || employee.payrollNotes || null,
+    pendingDataCodes,
     payrollEligible: true,
     exclusionReason: null,
     employeeSnapshotJson: safeJson({
@@ -2578,11 +2657,14 @@ const buildLineRecord = (
       otherFixedDiscountDescription: employee.otherFixedDiscountDescription,
       payrollNotes: employee.payrollNotes,
       workSchedule: employee.workSchedule,
+      pendingDataCodes,
     }),
     calculationMemoryJson: safeJson({
+      calculationMode: hasPendingRegistration ? 'PARTIAL_PENDING' : 'COMPLETE',
       competence: period.monthRef,
       periodStart: period.periodStart,
       periodEnd: period.periodEnd,
+      pendingDataCodes,
       rules: {
         minWageAmount: rules.minWageAmount,
         lateToleranceMinutes: rules.lateToleranceMinutes,
@@ -2615,7 +2697,13 @@ const buildLineRecord = (
   return draftLine;
 };
 
-export const generatePayrollPeriod = async (db: DbInterface, periodId: string) => {
+export const generatePayrollPeriod = async (
+  db: DbInterface,
+  periodId: string,
+  options: {
+    allowPendingEmployees?: boolean;
+  } = {},
+) => {
   await ensurePayrollTables(db);
   const period = await getPeriodOrThrow(db, periodId);
   if (!period.rules) throw new PayrollValidationError('Regras da competência não encontradas.', 500);
@@ -2638,8 +2726,13 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
     listSignaturesRaw(db, period.id),
   ]);
   const readiness = evaluatePayrollPeriodReadiness(period, syncRuns, employees, pointRows, occurrenceRows, hoursBalances, signatures);
-  if (readiness.status === 'BLOCKED') {
+  const hardBlockingIssues = readiness.issues.filter((issue) => issue.severity === 'BLOCKING');
+  const confirmableIssues = getConfirmableGenerationIssues(readiness);
+  if (hardBlockingIssues.length > 0) {
     throw new PayrollValidationError(buildReadinessBlockingMessage(readiness), 409);
+  }
+  if (confirmableIssues.length > 0 && !options.allowPendingEmployees) {
+    throw new PayrollPendingGenerationConfirmationError(buildPendingGenerationConfirmation(confirmableIssues));
   }
 
   const pointMap = new Map<string, PayrollPointDaily[]>();
@@ -2683,9 +2776,9 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
         contract_type, salary_base, insalubrity_percent, insalubrity_amount, days_worked, absences_count,
         absence_discount, late_minutes, late_discount, vt_provisioned, vt_discount, totalpass_discount,
         other_fixed_discount, other_fixed_discount_description, adjustments_amount, adjustments_notes,
-        total_provents, total_discounts, net_operational, line_status, payroll_notes,
+        total_provents, total_discounts, net_operational, line_status, payroll_notes, pending_data_codes_json,
         employee_snapshot_json, calculation_memory_json, comparison_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         line.id,
         line.periodId,
@@ -2716,9 +2809,10 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
         line.netOperational,
         line.lineStatus,
         line.payrollNotes,
+        safeJson(line.pendingDataCodes),
         line.employeeSnapshotJson,
         line.calculationMemoryJson,
-        'SEM_BASE',
+        line.pendingDataCodes.length ? 'PENDENTE_DADOS' : 'SEM_BASE',
         line.createdAt,
         line.updatedAt,
       ],
@@ -3118,8 +3212,17 @@ const buildOccurrenceSummary = (occurrence: PayrollOccurrence) => {
   return [label, dateLabel ? `(${dateLabel})` : '', notes ? `- ${notes}` : ''].filter(Boolean).join(' ');
 };
 
+const buildPendingObservation = (line: PayrollLine) => {
+  const notes = line.pendingDataCodes.map((code) => {
+    if (code === 'MISSING_SALARY') return 'PENDÊNCIA: salário base não informado no painel';
+    if (code === 'MISSING_SOLIDES_LINK') return 'PENDÊNCIA: colaborador sem vínculo Sólides';
+    return null;
+  }).filter(Boolean) as string[];
+  return notes;
+};
+
 const buildPreviewObservation = (line: PayrollLine, occurrences: PayrollOccurrence[]) => {
-  const parts: string[] = [];
+  const parts: string[] = [...buildPendingObservation(line)];
   if (clean(line.payrollNotes)) parts.push(clean(line.payrollNotes));
   if (clean(line.adjustmentsNotes)) parts.push(`Ajuste: ${clean(line.adjustmentsNotes)}`);
   if (clean(line.otherFixedDiscountDescription)) parts.push(`Desconto: ${clean(line.otherFixedDiscountDescription)}`);
@@ -3221,6 +3324,8 @@ const buildPayrollPreviewRow = (
   occurrences: PayrollOccurrence[],
 ): PayrollPreviewRow => {
   const snapshot = parsePayrollLineSnapshot(line.employeeSnapshotJson);
+  const missingSalary = lineHasPendingData(line, 'MISSING_SALARY');
+  const missingSolidesLink = lineHasPendingData(line, 'MISSING_SOLIDES_LINK');
   const email = clean(snapshot.email) || employeeFallback?.email || null;
   const roleName = clean(snapshot.jobTitle) || employeeFallback?.jobTitle || null;
   const centerCost = clean(snapshot.costCenter) || employeeFallback?.costCenter || line.centerCost || null;
@@ -3241,14 +3346,16 @@ const buildPayrollPreviewRow = (
     centerCost,
     roleName,
     contractType,
-    salaryBase: roundMoney(line.salaryBase),
-    insalubrityValue,
+    salaryBase: missingSalary ? null : roundMoney(line.salaryBase),
+    insalubrityValue: missingSalary ? null : insalubrityValue,
     vtPerDay,
-    vtMonth: nullableSheetMoney(line.vtProvisioned),
-    vtDiscount: nullableSheetMoney(line.vtDiscount),
-    otherDiscounts: nullableSheetMoney(line.otherFixedDiscount),
-    totalpassDiscount: nullableSheetMoney(line.totalpassDiscount),
+    vtMonth: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.vtProvisioned),
+    vtDiscount: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.vtDiscount),
+    otherDiscounts: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.otherFixedDiscount),
+    totalpassDiscount: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.totalpassDiscount),
     observation: buildPreviewObservation(line, occurrences),
+    pendingDataCodes: line.pendingDataCodes,
+    approvalBlocked: line.lineStatus === 'PENDENTE_CADASTRO' || line.pendingDataCodes.length > 0,
   };
 };
 
@@ -3852,7 +3959,9 @@ export const patchPayrollLine = async (db: DbInterface, lineId: string, input: P
   const nextAdjustmentsAmount = toNullableNumber(input.adjustmentsAmount) ?? detail.line.adjustmentsAmount;
   const nextAdjustmentsNotes = clean(input.adjustmentsNotes) || detail.line.adjustmentsNotes || null;
   const nextPayrollNotes = clean(input.payrollNotes) || detail.line.payrollNotes || null;
-  const nextLineStatus = (clean(input.lineStatus) || detail.line.lineStatus) as PayrollLineStatus;
+  const nextLineStatus = detail.line.pendingDataCodes.length
+    ? 'PENDENTE_CADASTRO'
+    : ((clean(input.lineStatus) || detail.line.lineStatus) as PayrollLineStatus);
 
   let totalProvents = detail.line.salaryBase + detail.line.insalubrityAmount;
   let totalDiscounts = detail.line.absenceDiscount + detail.line.lateDiscount + detail.line.vtDiscount + detail.line.totalpassDiscount + detail.line.otherFixedDiscount;
@@ -3861,6 +3970,7 @@ export const patchPayrollLine = async (db: DbInterface, lineId: string, input: P
 
   const currentMemory = detail.line.calculationMemoryJson ? JSON.parse(detail.line.calculationMemoryJson) : {};
   currentMemory.adjustments = { amount: nextAdjustmentsAmount, notes: nextAdjustmentsNotes };
+  currentMemory.pendingDataCodes = detail.line.pendingDataCodes;
 
   await db.execute(
     `UPDATE payroll_lines

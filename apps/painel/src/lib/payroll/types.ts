@@ -208,6 +208,7 @@ export type PayrollLine = {
   netOperational: number;
   lineStatus: PayrollLineStatus;
   payrollNotes: string | null;
+  pendingDataCodes: PayrollPendingDataCode[];
   payrollEligible: boolean;
   exclusionReason: 'REGIME_PJ' | null;
   employeeSnapshotJson: string | null;
@@ -225,7 +226,7 @@ export type PayrollPreviewRow = {
   centerCost: string | null;
   roleName: string | null;
   contractType: string | null;
-  salaryBase: number;
+  salaryBase: number | null;
   insalubrityValue: number | null;
   vtPerDay: number | null;
   vtMonth: number | null;
@@ -233,6 +234,8 @@ export type PayrollPreviewRow = {
   otherDiscounts: number | null;
   totalpassDiscount: number | null;
   observation: string | null;
+  pendingDataCodes: PayrollPendingDataCode[];
+  approvalBlocked: boolean;
 };
 
 export type PayrollDailyControlStatus = 'OK' | 'ATENCAO' | 'PENDENTE';
@@ -405,6 +408,8 @@ export type PayrollEligibilitySummary = {
   excludedByContract: number;
   excludedPjEmployees: number;
 };
+
+export type PayrollPendingDataCode = 'MISSING_SALARY' | 'MISSING_SOLIDES_LINK';
 
 export type PayrollReadinessStatus = 'READY' | 'ATTENTION' | 'BLOCKED';
 export type PayrollReadinessSeverity = 'BLOCKING' | 'WARNING';

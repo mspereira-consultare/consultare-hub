@@ -1,7 +1,7 @@
 export type PayrollPeriodStatus = 'ABERTA' | 'EM_REVISAO' | 'APROVADA' | 'ENVIADA';
 export type PayrollImportFileType = 'SYNC_TIMESHEET';
 export type PayrollImportStatus = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-export type PayrollLineStatus = 'RASCUNHO' | 'EM_REVISAO' | 'APROVADO';
+export type PayrollLineStatus = 'RASCUNHO' | 'EM_REVISAO' | 'PENDENTE_CADASTRO' | 'APROVADO';
 export type PayrollTransportVoucherMode = 'PER_DAY' | 'MONTHLY_FIXED' | 'NONE';
 export type PayrollSyncJobStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED';
 export type PayrollSignatureStatus =
@@ -42,6 +42,7 @@ export const PAYROLL_IMPORT_STATUSES: Array<{ value: PayrollImportStatus; label:
 export const PAYROLL_LINE_STATUSES: Array<{ value: PayrollLineStatus; label: string }> = [
   { value: 'RASCUNHO', label: 'Rascunho' },
   { value: 'EM_REVISAO', label: 'Em revisão' },
+  { value: 'PENDENTE_CADASTRO', label: 'Pendência cadastral' },
   { value: 'APROVADO', label: 'Aprovado' },
 ];
 

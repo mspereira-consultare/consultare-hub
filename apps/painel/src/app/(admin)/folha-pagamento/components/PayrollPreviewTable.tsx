@@ -74,7 +74,7 @@ export function PayrollPreviewTable({
                   <td className="px-3 py-3 text-slate-700">{row.centerCost || '-'}</td>
                   <td className="px-3 py-3 text-slate-700">{row.roleName || '-'}</td>
                   <td className="px-3 py-3 text-slate-700">{row.contractType || '-'}</td>
-                  <td className="px-3 py-3 text-right">{formatMoney(row.salaryBase)}</td>
+                  <td className="px-3 py-3 text-right">{row.salaryBase === null ? '-' : formatMoney(row.salaryBase)}</td>
                   <td className="px-3 py-3 text-center">{formatSheetInsalubrity(row.insalubrityValue)}</td>
                   <td className="px-3 py-3 text-right">{row.vtPerDay === null ? '-' : formatMoney(row.vtPerDay)}</td>
                   <td className="px-3 py-3 text-right">{row.vtMonth === null ? '-' : formatMoney(row.vtMonth)}</td>

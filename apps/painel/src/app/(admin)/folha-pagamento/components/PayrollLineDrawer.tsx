@@ -2,7 +2,7 @@
 
 import { Loader2, X } from 'lucide-react';
 import type { PayrollDataSource, PayrollLine, PayrollLineDetail } from '@/lib/payroll/types';
-import { formatDateBr, formatMoney, formatSheetInsalubrity } from './formatters';
+import { formatDateBr, formatMoney, formatSheetInsalubrity, pendingDataCodeDescriptionMap, pendingDataCodeLabelMap, statusLabelMap } from './formatters';
 import { PayrollSourceBadge } from './PayrollSourceBadge';
 
 type DraftState = {
@@ -39,6 +39,7 @@ export function PayrollLineDrawer({
     lineStatus: current.lineStatus,
   };
   const preview = detail?.previewRow || null;
+  const hasPendingRegistration = current.pendingDataCodes.length > 0;
   const detailSources: PayrollLineDetail['sources'] = detail?.sources || {
     adjustments: ['PAINEL'],
     preview: ['PAINEL'],
@@ -70,10 +71,26 @@ export function PayrollLineDrawer({
 
         <div className="space-y-6 px-6 py-6">
           <section className="grid gap-4 md:grid-cols-3">
-            <Stat label="Salário base" value={formatMoney(current.salaryBase)} />
-            <Stat label="Proventos" value={formatMoney(current.totalProvents)} />
-            <Stat label="Líquido operacional" value={formatMoney(current.netOperational)} />
+            <Stat label="Salário base" value={current.pendingDataCodes.includes('MISSING_SALARY') ? '-' : formatMoney(current.salaryBase)} />
+            <Stat label="Proventos" value={hasPendingRegistration ? '-' : formatMoney(current.totalProvents)} />
+            <Stat label="Líquido operacional" value={hasPendingRegistration ? '-' : formatMoney(current.netOperational)} />
           </section>
+
+          {hasPendingRegistration ? (
+            <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="font-semibold">Linha gerada com pendência cadastral</div>
+              <div className="mt-1 text-amber-800">
+                Esta linha entrou na geração parcial da folha, mas continua bloqueando aprovação e envio até a regularização dos dados.
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {current.pendingDataCodes.map((code) => (
+                  <span key={code} className="rounded-full border border-amber-300 bg-white px-2 py-1 text-xs font-medium text-amber-800">
+                    {pendingDataCodeLabelMap[code]}
+                  </span>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           <section className="grid gap-4 md:grid-cols-2">
             <Card title="Ajustes manuais" sources={detailSources.adjustments}>
@@ -92,12 +109,23 @@ export function PayrollLineDrawer({
                 </div>
                 <div>
                   <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Status da linha</label>
-                  <select defaultValue={draft.lineStatus} disabled={!canEdit || saving} id="payroll-line-status" className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm">
+                  <select
+                    defaultValue={draft.lineStatus}
+                    disabled={!canEdit || saving || hasPendingRegistration}
+                    id="payroll-line-status"
+                    className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                  >
                     <option value="RASCUNHO">Rascunho</option>
                     <option value="EM_REVISAO">Em revisão</option>
+                    <option value="PENDENTE_CADASTRO">Pendência cadastral</option>
                     <option value="APROVADO">Aprovado</option>
                   </select>
                 </div>
+                {hasPendingRegistration ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    O status fica travado em {statusLabelMap.PENDENTE_CADASTRO.toLowerCase()} até resolver as pendências desta linha.
+                  </div>
+                ) : null}
                 {canEdit ? (
                   <button
                     type="button"
@@ -125,10 +153,28 @@ export function PayrollLineDrawer({
                   <Info label="Função" value={preview.roleName || '-'} />
                   <Info label="Centro de custo" value={preview.centerCost || '-'} />
                   <Info label="Contrato" value={preview.contractType || '-'} />
+                  <Info label="Salário base" value={preview.salaryBase === null ? '-' : formatMoney(preview.salaryBase)} />
                   <Info label="VT a.d" value={preview.vtPerDay === null ? '-' : formatMoney(preview.vtPerDay)} />
                   <Info label="VT a.m" value={preview.vtMonth === null ? '-' : formatMoney(preview.vtMonth)} />
                   <Info label="D.V.T." value={preview.vtDiscount === null ? '-' : formatMoney(preview.vtDiscount)} />
                   <Info label="Insalubridade" value={formatSheetInsalubrity(preview.insalubrityValue)} />
+                  {preview.pendingDataCodes.length ? (
+                    <div className="sm:col-span-2">
+                      <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Pendências da linha</div>
+                      <div className="flex flex-wrap gap-2">
+                        {preview.pendingDataCodes.map((code) => (
+                          <span key={code} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
+                            {pendingDataCodeLabelMap[code]}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="mt-2 space-y-1 text-xs text-slate-600">
+                        {preview.pendingDataCodes.map((code) => (
+                          <div key={`${code}-description`}>{pendingDataCodeDescriptionMap[code]}</div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="sm:col-span-2">
                     <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Observação</div>
                     <div className="rounded-lg bg-slate-50 px-3 py-2 text-slate-700">{preview.observation || '-'}</div>

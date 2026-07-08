@@ -23,6 +23,7 @@ import { formatDateBr, formatDateTimeBr, formatMoney, statusLabelMap } from './c
 import { PayrollHelpModal } from './components/PayrollHelpModal';
 import { PayrollLineDrawer } from './components/PayrollLineDrawer';
 import { PayrollFilterMultiSelect } from './components/PayrollFilterMultiSelect';
+import { PayrollGenerateConfirmationModal } from './components/PayrollGenerateConfirmationModal';
 import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
 import { PayrollPreviewTable } from './components/PayrollPreviewTable';
 import { PayrollReadinessPanel } from './components/PayrollReadinessPanel';
@@ -65,10 +66,24 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, { ...init, cache: 'no-store' });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(String((payload as any)?.error || 'Falha ao carregar dados.'));
+    const error = new Error(String((payload as any)?.error || 'Falha ao carregar dados.')) as Error & {
+      status?: number;
+      code?: string;
+      data?: unknown;
+    };
+    error.status = response.status;
+    error.code = String((payload as any)?.code || '');
+    error.data = (payload as any)?.data;
+    throw error;
   }
   return payload as T;
 }
+
+type PayrollGenerateConfirmationState = {
+  pendingEmployeesCount: number;
+  pendingCodes: string[];
+  sampleEmployees: Array<{ employeeId: string | null; employeeName: string; employeeCpf: string | null }>;
+};
 
 export default function FolhaPagamentoPage() {
   const router = useRouter();
@@ -108,6 +123,7 @@ export default function FolhaPagamentoPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [refreshHovered, setRefreshHovered] = useState(false);
   const [visibleSyncRun, setVisibleSyncRun] = useState<PayrollPointSyncRun | null>(null);
+  const [generateConfirmation, setGenerateConfirmation] = useState<PayrollGenerateConfirmationState | null>(null);
   const selectedPeriodIdRef = useRef('');
   const displayedPeriodIdRef = useRef('');
   const hasVisiblePeriodDataRef = useRef(false);
@@ -371,8 +387,41 @@ export default function FolhaPagamentoPage() {
     }
   };
 
+  const executeGenerateAction = async (allowPendingEmployees = false) => {
+    if (!selectedPeriodId) return;
+    setActionLoading('generate');
+    setError('');
+    setSuccessMessage('');
+    try {
+      await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allowPendingEmployees }),
+      });
+      setGenerateConfirmation(null);
+      await reloadAll();
+      setSuccessMessage(
+        allowPendingEmployees
+          ? 'Folha gerada com pendências cadastrais sinalizadas para revisão antes da aprovação.'
+          : 'Folha gerada com sucesso.',
+      );
+    } catch (fetchError: any) {
+      if (!allowPendingEmployees && fetchError?.code === 'PAYROLL_PENDING_CONFIRMATION' && fetchError?.data) {
+        setGenerateConfirmation(fetchError.data as PayrollGenerateConfirmationState);
+        return;
+      }
+      setError(String(fetchError?.message || fetchError));
+    } finally {
+      setActionLoading('');
+    }
+  };
+
   const runPeriodAction = async (path: string, successMessage?: string) => {
     if (!selectedPeriodId) return;
+    if (path === 'generate') {
+      await executeGenerateAction(false);
+      return;
+    }
     setActionLoading(path);
     setError('');
     setSuccessMessage('');
@@ -666,6 +715,13 @@ export default function FolhaPagamentoPage() {
       {activeTab === 'previa' ? <PayrollPreviewTable rows={previewRows} loading={loading || previewLoading} onOpenLine={openPreviewLine} /> : null}
 
       <PayrollNewPeriodModal open={newPeriodOpen} saving={creatingPeriod} onClose={() => setNewPeriodOpen(false)} onSubmit={handleCreatePeriod} />
+      <PayrollGenerateConfirmationModal
+        open={Boolean(generateConfirmation)}
+        pending={generateConfirmation}
+        saving={actionLoading === 'generate'}
+        onClose={() => setGenerateConfirmation(null)}
+        onConfirm={() => executeGenerateAction(true)}
+      />
       <PayrollHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
       <PayrollLineDrawer line={selectedLine} detail={lineDetail} open={lineDetailOpen} canEdit={canEdit} saving={lineSaving} onClose={() => setLineDetailOpen(false)} onSave={handleSaveLine} />
     </div>

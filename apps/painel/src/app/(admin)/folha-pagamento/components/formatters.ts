@@ -40,12 +40,23 @@ export const formatSheetInsalubrity = (value: number | null | undefined) => {
   }).format(Number(value));
 };
 
+export const pendingDataCodeLabelMap: Record<string, string> = {
+  MISSING_SALARY: 'Salário base ausente',
+  MISSING_SOLIDES_LINK: 'Sem vínculo Sólides',
+};
+
+export const pendingDataCodeDescriptionMap: Record<string, string> = {
+  MISSING_SALARY: 'salário base não informado no painel',
+  MISSING_SOLIDES_LINK: 'colaborador sem vínculo Sólides',
+};
+
 export const statusLabelMap: Record<string, string> = {
   ABERTA: 'Aberta',
   EM_REVISAO: 'Em revisão',
   APROVADA: 'Aprovada',
   ENVIADA: 'Enviada',
   RASCUNHO: 'Rascunho',
+  PENDENTE_CADASTRO: 'Pendência cadastral',
   PENDING: 'Pendente',
   PROCESSING: 'Processando',
   RUNNING: 'Em execução',

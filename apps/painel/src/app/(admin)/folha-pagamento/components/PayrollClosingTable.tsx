@@ -5,6 +5,33 @@ import type { PayrollLine } from '@/lib/payroll/types';
 import { formatMoney, statusLabelMap } from './formatters';
 import { PayrollSectionHeader } from './PayrollSectionHeader';
 
+const hasPendingCode = (line: PayrollLine, code: 'MISSING_SALARY' | 'MISSING_SOLIDES_LINK') =>
+  line.pendingDataCodes.includes(code);
+
+const renderMoneyCell = (
+  line: PayrollLine,
+  value: number,
+  options?: {
+    blankWhenMissingSalary?: boolean;
+    blankWhenMissingSolidesLink?: boolean;
+  },
+) => {
+  if (options?.blankWhenMissingSalary && hasPendingCode(line, 'MISSING_SALARY')) return '-';
+  if (options?.blankWhenMissingSolidesLink && hasPendingCode(line, 'MISSING_SOLIDES_LINK')) return '-';
+  return formatMoney(value);
+};
+
+const renderCountCell = (
+  line: PayrollLine,
+  value: number,
+  options?: {
+    blankWhenMissingSolidesLink?: boolean;
+  },
+) => {
+  if (options?.blankWhenMissingSolidesLink && hasPendingCode(line, 'MISSING_SOLIDES_LINK')) return '-';
+  return String(value);
+};
+
 export function PayrollClosingTable({
   rows,
   loading,
@@ -77,20 +104,24 @@ export function PayrollClosingTable({
                   </td>
                   <td className="px-3 py-3">{line.centerCost || '-'}</td>
                   <td className="px-3 py-3">{line.contractType || '-'}</td>
-                  <td className="px-3 py-3 text-right">{formatMoney(line.salaryBase)}</td>
-                  <td className="px-3 py-3 text-right">{formatMoney(line.insalubrityAmount)}</td>
-                  <td className="px-3 py-3 text-center">{line.daysWorked}</td>
-                  <td className="px-3 py-3 text-center">{line.absencesCount}</td>
-                  <td className="px-3 py-3 text-center">{line.lateMinutes}</td>
-                  <td className="px-3 py-3 text-right">{formatMoney(line.vtProvisioned)}</td>
-                  <td className="px-3 py-3 text-right">{formatMoney(line.vtDiscount)}</td>
-                  <td className="px-3 py-3 text-right">{formatMoney(line.totalpassDiscount)}</td>
-                  <td className="px-3 py-3 text-right">{formatMoney(line.otherFixedDiscount)}</td>
-                  <td className="px-3 py-3 text-right font-semibold text-slate-900">{formatMoney(line.totalProvents)}</td>
-                  <td className="px-3 py-3 text-right font-semibold text-slate-900">{formatMoney(line.totalDiscounts)}</td>
-                  <td className="px-3 py-3 text-right font-bold text-[#17407E]">{formatMoney(line.netOperational)}</td>
+                  <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.salaryBase, { blankWhenMissingSalary: true })}</td>
+                  <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.insalubrityAmount, { blankWhenMissingSalary: true })}</td>
+                  <td className="px-3 py-3 text-center">{renderCountCell(line, line.daysWorked, { blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-center">{renderCountCell(line, line.absencesCount, { blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-center">{renderCountCell(line, line.lateMinutes, { blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.vtProvisioned, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.vtDiscount, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.totalpassDiscount, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.otherFixedDiscount, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-right font-semibold text-slate-900">{renderMoneyCell(line, line.totalProvents, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-right font-semibold text-slate-900">{renderMoneyCell(line, line.totalDiscounts, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-right font-bold text-[#17407E]">{renderMoneyCell(line, line.netOperational, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3">
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium text-slate-700">
+                    <span
+                      className={`rounded-full px-2 py-1 text-xs font-medium ${
+                        line.lineStatus === 'PENDENTE_CADASTRO' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'
+                      }`}
+                    >
                       {statusLabelMap[line.lineStatus] || line.lineStatus}
                     </span>
                   </td>
