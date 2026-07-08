@@ -27,7 +27,7 @@ import { PayrollNewPeriodModal } from './components/PayrollNewPeriodModal';
 import { PayrollPreviewTable } from './components/PayrollPreviewTable';
 import { PayrollReadinessPanel } from './components/PayrollReadinessPanel';
 import { PayrollSummaryCards } from './components/PayrollSummaryCards';
-import { buildSyncProgressMeta, formatSyncEstimatedTime, getSyncStageLabel, PayrollSyncProgress } from './components/PayrollSyncProgress';
+import { buildSyncProgressMeta, getSyncStageLabel, PayrollSyncProgress, useSyncEstimatedLabel } from './components/PayrollSyncProgress';
 import { PAYROLL_CLOSING_TABS, PayrollTabNav, type PayrollTabKey } from './components/PayrollTabNav';
 
 const emptyOptions: PayrollOptions = {
@@ -136,7 +136,7 @@ export default function FolhaPagamentoPage() {
   const syncHeartbeatTone = getHeartbeatTone(latestSyncStatus);
   const syncStageLabel = getSyncStageLabel(latestSyncRun?.currentStage);
   const syncMetaLabel = buildSyncProgressMeta(latestSyncRun);
-  const syncEstimatedLabel = formatSyncEstimatedTime(latestSyncRun?.estimatedRemainingSeconds);
+  const syncEstimatedLabel = useSyncEstimatedLabel(latestSyncRun);
   const syncHeartbeatDetails = hasPointPipelineInProgress
     ? 'Sincronização da Sólides em andamento para atualizar a base usada no fechamento desta competência.'
       : latestCompletedSync

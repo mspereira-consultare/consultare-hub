@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
+
 type SyncProgressLike = {
   status: string;
   totalEmployees?: number | null;
@@ -50,6 +52,39 @@ export const formatSyncEstimatedTime = (seconds: number | null | undefined) => {
   return restMinutes ? `~${hours}h ${restMinutes}min restantes` : `~${hours}h restantes`;
 };
 
+export const resolveSyncEstimatedSeconds = (run: SyncProgressLike | null | undefined, nowMs = Date.now()) => {
+  if (!run) return null;
+  const estimated = typeof run.estimatedRemainingSeconds === 'number' && Number.isFinite(run.estimatedRemainingSeconds)
+    ? Math.max(0, Math.round(run.estimatedRemainingSeconds))
+    : null;
+  if (estimated === null) return null;
+  const lastProgressAtMs = run.lastProgressAt ? new Date(run.lastProgressAt).getTime() : Number.NaN;
+  if (!Number.isFinite(lastProgressAtMs)) return estimated;
+  const elapsedSeconds = Math.max(0, Math.floor((nowMs - lastProgressAtMs) / 1000));
+  return Math.max(0, estimated - elapsedSeconds);
+};
+
+export const useSyncEstimatedLabel = (run: SyncProgressLike | null | undefined) => {
+  const shouldTick =
+    Boolean(run) &&
+    ['PENDING', 'RUNNING'].includes(String(run?.status || '').toUpperCase()) &&
+    typeof run?.estimatedRemainingSeconds === 'number' &&
+    Number.isFinite(run.estimatedRemainingSeconds);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (!shouldTick) return;
+    setNowMs(Date.now());
+    const intervalId = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(intervalId);
+  }, [shouldTick, run?.lastProgressAt, run?.estimatedRemainingSeconds]);
+
+  return useMemo(
+    () => formatSyncEstimatedTime(resolveSyncEstimatedSeconds(run, nowMs)),
+    [nowMs, run],
+  );
+};
+
 export const buildSyncProgressMeta = (run: SyncProgressLike | null | undefined) => {
   if (!run) return null;
   const total = Number(run.totalEmployees || 0);
@@ -78,7 +113,7 @@ export function PayrollSyncProgress({
   const progressPercent = resolveSyncProgressPercent(run);
   const stageLabel = getSyncStageLabel(run.currentStage);
   const metaLabel = buildSyncProgressMeta(run);
-  const estimatedLabel = formatSyncEstimatedTime(run.estimatedRemainingSeconds);
+  const estimatedLabel = useSyncEstimatedLabel(run);
   const toneClass =
     normalizedStatus === 'FAILED'
       ? 'border-rose-200 bg-rose-50'

@@ -22,7 +22,7 @@ import { PayrollFilterMultiSelect } from '../folha-pagamento/components/PayrollF
 import { PayrollHelpModal } from '../folha-pagamento/components/PayrollHelpModal';
 import { PayrollHoursBalancePanel } from '../folha-pagamento/components/PayrollHoursBalancePanel';
 import { PayrollSignaturesPanel } from '../folha-pagamento/components/PayrollSignaturesPanel';
-import { buildSyncProgressMeta, formatSyncEstimatedTime, getSyncStageLabel, PayrollSyncProgress } from '../folha-pagamento/components/PayrollSyncProgress';
+import { buildSyncProgressMeta, getSyncStageLabel, PayrollSyncProgress, useSyncEstimatedLabel } from '../folha-pagamento/components/PayrollSyncProgress';
 import { PAYROLL_POINT_TABS, PayrollTabNav, type PayrollTabKey } from '../folha-pagamento/components/PayrollTabNav';
 import { PayrollVacationsPanel } from '../folha-pagamento/components/PayrollVacationsPanel';
 
@@ -321,7 +321,7 @@ export default function PontoPage() {
   const syncHelperText = 'Atualiza os últimos 30 dias da Sólides e preserva o histórico já sincronizado no painel.';
   const syncStageLabel = getSyncStageLabel(overview.latestRun?.currentStage);
   const syncMetaLabel = buildSyncProgressMeta(overview.latestRun);
-  const syncEstimatedLabel = formatSyncEstimatedTime(overview.latestRun?.estimatedRemainingSeconds);
+  const syncEstimatedLabel = useSyncEstimatedLabel(overview.latestRun);
 
   if (!canView) {
     return <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">Você não possui permissão para acessar o módulo de ponto.</div>;
