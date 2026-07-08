@@ -11,7 +11,7 @@ let tursoClient: ReturnType<typeof createClient> | null = null;
 let mysqlPool: Pool | null = null;
 let envBootstrapped = false;
 
-function ensureServerEnv() {
+export function ensureServerEnv() {
   if (envBootstrapped) return;
   envBootstrapped = true;
 

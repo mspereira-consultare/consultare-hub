@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'crypto';
-import type { DbInterface } from '../db';
+import { ensureServerEnv, type DbInterface } from '../db';
 
 type Row = Record<string, unknown>;
 
@@ -74,6 +74,7 @@ const nullable = (value: unknown) => clean(value) || null;
 const nowIso = () => new Date().toISOString();
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const isMysql = () => {
+  ensureServerEnv();
   const provider = clean(process.env.DB_PROVIDER).toLowerCase();
   if (provider === 'mysql') return true;
   if (provider === 'turso') return false;
@@ -167,6 +168,7 @@ export const ensureIntranetNotificationTables = async (db: DbInterface) => {
 };
 
 const getPushConfig = () => {
+  ensureServerEnv();
   const publicKey = clean(process.env.WEB_PUSH_VAPID_PUBLIC_KEY || process.env.NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY);
   const privateKey = clean(process.env.WEB_PUSH_VAPID_PRIVATE_KEY);
   const subject = clean(process.env.WEB_PUSH_VAPID_SUBJECT || process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || 'mailto:suporte@consultare.com.br');

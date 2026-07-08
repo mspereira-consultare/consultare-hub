@@ -9,14 +9,13 @@ self.addEventListener('push', (event) => {
 
   event.waitUntil((async () => {
     const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const hasVisibleClient = clientList.some((client) => client.visibilityState === 'visible' || client.focused);
+    const hasFocusedVisibleClient = clientList.some((client) => client.visibilityState === 'visible' && client.focused === true);
 
-    if (hasVisibleClient) {
-      for (const client of clientList) {
-        client.postMessage({ type: 'intranet-push-received', payload });
-      }
-      return;
+    for (const client of clientList) {
+      client.postMessage({ type: 'intranet-push-received', payload });
     }
+
+    if (hasFocusedVisibleClient) return;
 
     await self.registration.showNotification(payload.title || 'Nova notificação', {
       body: payload.body || '',

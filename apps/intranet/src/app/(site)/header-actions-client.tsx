@@ -249,6 +249,15 @@ export function HeaderActionsClient({
     setToasts((current) => current.filter((toast) => toast.toastKey !== toastKey));
   }, []);
 
+  const loadPushConfig = useCallback(async () => {
+    const response = await fetch('/api/notifications/push/config', { cache: 'no-store' });
+    if (!response.ok) throw new Error(await normalizeError(response));
+    const payload = await response.json();
+    const nextConfig = (payload?.data || { supported: false, publicKey: null }) as PushConfigResponse;
+    setPushConfig(nextConfig);
+    return nextConfig;
+  }, []);
+
   const syncPushSubscription = useCallback(async (subscription: PushSubscription) => {
     const response = await fetch('/api/notifications/push/subscribe', {
       method: 'POST',
@@ -427,6 +436,17 @@ export function HeaderActionsClient({
     const onServiceWorkerMessage = (event: MessageEvent) => {
       const messageType = String(event.data?.type || '');
       const payload = event.data?.payload as { href?: string; notificationId?: string } | undefined;
+      if (messageType === 'intranet-push-received') {
+        void loadSummary()
+          .then((next) => {
+            setSummary(next);
+            if (!open) setItems(next.items || []);
+          })
+          .catch(() => {
+            // polling normal continua cobrindo esse caso
+          });
+        return;
+      }
       if (messageType === 'intranet-push-click' && payload?.notificationId) {
         const item = summary.items.find((entry) => entry.id === payload.notificationId) || items.find((entry) => entry.id === payload.notificationId);
         if (item) {
@@ -442,31 +462,36 @@ export function HeaderActionsClient({
 
     const bootstrapPush = async () => {
       try {
-        const [configResponse, registration] = await Promise.all([
-          fetch('/api/notifications/push/config', { cache: 'no-store' }),
-          navigator.serviceWorker.register('/intranet-push-sw.js'),
-        ]);
-        if (!configResponse.ok) throw new Error(await normalizeError(configResponse));
-        const payload = await configResponse.json();
-        const nextConfig = (payload?.data || { supported: false, publicKey: null }) as PushConfigResponse;
+        const [nextConfig, registration] = await Promise.all([loadPushConfig(), navigator.serviceWorker.register('/intranet-push-sw.js')]);
         if (cancelled) return;
 
         serviceWorkerRegistrationRef.current = registration;
-        setPushConfig(nextConfig);
 
         if (window.Notification.permission === 'granted') {
-          const existingSubscription = await registration.pushManager.getSubscription();
+          let activeSubscription = await registration.pushManager.getSubscription();
           if (cancelled) return;
-          if (existingSubscription) {
-            if (nextConfig.publicKey) {
-              await syncPushSubscription(existingSubscription);
-            } else {
-              setPushSubscribed(false);
-              setPushStatusMessage('O navegador tem permissão, mas o push do servidor ainda não está configurado.');
+          if (nextConfig.publicKey) {
+            if (!activeSubscription) {
+              try {
+                activeSubscription = await registration.pushManager.subscribe({
+                  userVisibleOnly: true,
+                  applicationServerKey: urlBase64ToUint8Array(nextConfig.publicKey),
+                });
+              } catch {
+                if (!cancelled) {
+                  setPushSubscribed(false);
+                  setPushStatusMessage('Permissão concedida, mas o navegador ainda não concluiu a assinatura push automaticamente.');
+                }
+              }
             }
-          } else {
-            setPushSubscribed(false);
+            if (activeSubscription) {
+              await syncPushSubscription(activeSubscription);
+              return;
+            }
+          } else if (activeSubscription) {
+            setPushStatusMessage('O navegador tem permissão, mas o push do servidor ainda não está configurado.');
           }
+          setPushSubscribed(false);
         } else {
           setPushSubscribed(false);
         }
@@ -485,7 +510,7 @@ export function HeaderActionsClient({
       cancelled = true;
       navigator.serviceWorker.removeEventListener('message', onServiceWorkerMessage);
     };
-  }, [browserReady, items, navigateToNotification, pushSupported, router, summary.items, syncPushSubscription]);
+  }, [browserReady, items, loadPushConfig, navigateToNotification, open, pushSupported, router, summary.items, syncPushSubscription]);
 
   useEffect(() => {
     let cancelled = false;
@@ -621,7 +646,8 @@ export function HeaderActionsClient({
       if (nextPermission !== 'granted') return;
 
       if (!pushSupported) return;
-      if (!pushConfig.publicKey) {
+      const nextConfig = pushConfig.publicKey ? pushConfig : await loadPushConfig();
+      if (!nextConfig.publicKey) {
         setPushSubscribed(false);
         setPushStatusMessage('Permissão concedida, mas o servidor ainda está sem configuração VAPID.');
         throw new Error('Web push ainda não está configurado no servidor da intranet.');
@@ -638,7 +664,7 @@ export function HeaderActionsClient({
 
       const nextSubscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(pushConfig.publicKey),
+        applicationServerKey: urlBase64ToUint8Array(nextConfig.publicKey),
       });
       await syncPushSubscription(nextSubscription);
     } catch (err: unknown) {
