@@ -2,6 +2,7 @@ import base64
 import json
 import os
 import ssl
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -201,6 +202,23 @@ def _to_millis_from_work_date(date_iso: str, end_of_day: bool = False) -> int:
     return int(localized.timestamp() * 1000)
 
 
+def _to_millis_from_work_time(
+    date_iso: str,
+    hour: int,
+    minute: int = 0,
+    second: int = 0,
+    millisecond: int = 0,
+) -> int:
+    localized = datetime.strptime(date_iso, "%Y-%m-%d").replace(
+        hour=hour,
+        minute=minute,
+        second=second,
+        microsecond=millisecond * 1000,
+        tzinfo=WORK_TZ,
+    )
+    return int(localized.timestamp() * 1000)
+
+
 def _date_range_iter(start_ms: int, end_ms: int):
     start_dt = datetime.fromtimestamp(start_ms / 1000, tz=timezone.utc)
     end_dt = datetime.fromtimestamp(end_ms / 1000, tz=timezone.utc)
@@ -238,6 +256,33 @@ def _ms_of_day_to_minutes(value: Any) -> Optional[int]:
     if total_ms < 0:
         return None
     return total_ms // 60000
+
+
+def _build_daily_activity_item_key(item: Any) -> str:
+    if not isinstance(item, dict):
+        return _safe_json(item) or _clean(item)
+
+    key_parts: List[str] = []
+    item_id = _clean(item.get("id") or item.get("code"))
+    if item_id:
+        key_parts.append(f"id:{item_id}")
+
+    for field_name in ("date", "startDate", "startDateLong", "endDate", "endDateLong", "status", "type", "reason", "markings"):
+        value = _clean(item.get(field_name))
+        if value:
+            key_parts.append(f"{field_name}:{value}")
+
+    return "|".join(key_parts) or (_safe_json(item) or _clean(item))
+
+
+def _append_unique_daily_bucket_item(bucket: Dict[str, Any], field_name: str, item: Dict[str, Any]):
+    seen_map = bucket.setdefault("_seen_keys", {})
+    seen_keys = seen_map.setdefault(field_name, set())
+    item_key = _build_daily_activity_item_key(item)
+    if item_key in seen_keys:
+        return
+    seen_keys.add(item_key)
+    bucket[field_name].append(item)
 
 
 def _minutes_between(start: Optional[int], end: Optional[int]) -> int:
@@ -547,29 +592,79 @@ class SolidesClient:
                 items[item_id] = item
         return items
 
+    def _request_daily_activity_payload(
+        self,
+        employee_id: str,
+        start_ms: int,
+        end_ms: int,
+    ) -> List[Dict[str, Any]]:
+        payload = self._request_json(
+            self.punch_base,
+            "/daily-activity",
+            {
+                "employeeId": employee_id,
+                "startDate": start_ms,
+                "endDate": end_ms,
+                "punchList": "true",
+                "adjustmentList": "true",
+                "pendingList": "true",
+                "showFired": "true",
+            },
+        )
+        return payload if isinstance(payload, list) else []
+
+    def _get_daily_activity_for_day(self, employee_id: str, day_iso: str) -> List[Dict[str, Any]]:
+        primary_start_ms = _to_millis_from_work_date(day_iso)
+        primary_end_ms = _to_millis_from_work_date(day_iso, end_of_day=True)
+        retryable_message = "A data não pode ser maior que 1 dia"
+        last_error: Optional[Exception] = None
+
+        for attempt in range(1, 3):
+            try:
+                return self._request_daily_activity_payload(employee_id, primary_start_ms, primary_end_ms)
+            except SolidesApiError as exc:
+                last_error = exc
+                if retryable_message not in str(exc) or attempt >= 2:
+                    break
+                time.sleep(0.25 * attempt)
+
+        if last_error is None or retryable_message not in str(last_error):
+            raise last_error or SolidesApiError(f"Falha desconhecida ao consultar /daily-activity de {employee_id} em {day_iso}.")
+
+        fallback_windows = [
+            ("local-morning", _to_millis_from_work_time(day_iso, 0, 0, 0, 0), _to_millis_from_work_time(day_iso, 11, 59, 59, 999)),
+            ("local-afternoon", _to_millis_from_work_time(day_iso, 12, 0, 0, 0), _to_millis_from_work_time(day_iso, 23, 59, 59, 999)),
+        ]
+        merged_payload: List[Dict[str, Any]] = []
+        fallback_errors: List[str] = []
+
+        for label, start_ms, end_ms in fallback_windows:
+            try:
+                merged_payload.extend(self._request_daily_activity_payload(employee_id, start_ms, end_ms))
+            except SolidesApiError as fallback_exc:
+                fallback_errors.append(f"{label}: {fallback_exc}")
+
+        if merged_payload:
+            print(
+                f"[solides] fallback aplicado em /daily-activity para colaborador {employee_id} no dia {day_iso} "
+                f"apos erro primario: {last_error}"
+            )
+            return merged_payload
+
+        fallback_details = "; ".join(fallback_errors) or "nenhuma resposta valida no fallback"
+        raise SolidesApiError(
+            f"Erro ao consultar /daily-activity do colaborador {employee_id} no dia {day_iso}. "
+            f"Tentativa principal: {last_error}. Fallback: {fallback_details}"
+        )
+
     def get_daily_activity(self, employee_id: str, start_ms: int, end_ms: int) -> List[Dict[str, Any]]:
         day_map: Dict[str, Dict[str, Any]] = {}
         for day_iso in _date_range_iter(start_ms, end_ms):
             # O endpoint /daily-activity aceita apenas um único dia por chamada e
             # interpreta os milissegundos no fuso operacional do colaborador.
-            # Usar UTC aqui fazia alguns dias extrapolarem o limite "maior que 1 dia".
-            day_start_ms = _to_millis_from_work_date(day_iso)
-            day_end_ms = _to_millis_from_work_date(day_iso, end_of_day=True)
-            payload = self._request_json(
-                self.punch_base,
-                "/daily-activity",
-                {
-                    "employeeId": employee_id,
-                    "startDate": day_start_ms,
-                    "endDate": day_end_ms,
-                    "punchList": "true",
-                    "adjustmentList": "true",
-                    "pendingList": "true",
-                    "showFired": "true",
-                },
-            )
-            if not isinstance(payload, list):
-                continue
+            # Mantemos a janela diária em horário local e aplicamos retry com
+            # fallback em meio período quando a API oscila com erro de faixa.
+            payload = self._get_daily_activity_for_day(employee_id, day_iso)
 
             for employee_payload in payload:
                 for list_key, field_name in (
@@ -596,7 +691,8 @@ class SolidesClient:
                         )
                         values = item.get(field_name) or []
                         if isinstance(values, list):
-                            bucket[field_name].extend(values)
+                            for value in values:
+                                _append_unique_daily_bucket_item(bucket, field_name, value)
                         if list_key == "pendingPunchs":
                             bucket["pendingsCount"] = max(bucket["pendingsCount"], _ensure_int(item.get("pendingsCount")))
                         if item.get("markings") and not bucket.get("markings"):
@@ -609,6 +705,7 @@ class SolidesClient:
         for bucket in day_map.values():
             if bucket.get("pending_records"):
                 bucket["pendingsCount"] = max(bucket["pendingsCount"], len(bucket["pending_records"]))
+            bucket.pop("_seen_keys", None)
         return list(day_map.values())
 
     def get_hours_balance(self, employee_id: Optional[str], external_id: Optional[str], start_ms: int, end_ms: int) -> Optional[Dict[str, Any]]:
