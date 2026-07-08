@@ -112,6 +112,7 @@ export default function FolhaPagamentoPage() {
   const displayedPeriodIdRef = useRef('');
   const hasVisiblePeriodDataRef = useRef(false);
   const requestIdRef = useRef(0);
+  const lastObservedUrlPeriodIdRef = useRef('');
   const requestedPeriodId = useMemo(() => String(searchParams.get('periodId') || '').trim(), [searchParams]);
   const hasVisiblePeriodData = detail !== null || lines.length > 0 || benefitRows.length > 0 || previewRows.length > 0;
 
@@ -171,6 +172,10 @@ export default function FolhaPagamentoPage() {
   useEffect(() => {
     hasVisiblePeriodDataRef.current = hasVisiblePeriodData;
   }, [hasVisiblePeriodData]);
+
+  useEffect(() => {
+    lastObservedUrlPeriodIdRef.current = requestedPeriodId;
+  }, []);
 
   const loadOptions = useCallback(async () => {
     if (!canView) return;
@@ -266,11 +271,14 @@ export default function FolhaPagamentoPage() {
   }, [loadOptions]);
 
   useEffect(() => {
-    if (!requestedPeriodId || requestedPeriodId === selectedPeriodId) return;
+    if (!requestedPeriodId) return;
+    if (requestedPeriodId === lastObservedUrlPeriodIdRef.current) return;
+    lastObservedUrlPeriodIdRef.current = requestedPeriodId;
+    if (requestedPeriodId === selectedPeriodIdRef.current) return;
     if (options.periods.some((period) => period.id === requestedPeriodId)) {
       setSelectedPeriodId(requestedPeriodId);
     }
-  }, [options.periods, requestedPeriodId, selectedPeriodId]);
+  }, [options.periods, requestedPeriodId]);
 
   useEffect(() => {
     if (!selectedPeriodId) return;
