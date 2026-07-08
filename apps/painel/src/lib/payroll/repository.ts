@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import { ensureEmployeesTables } from '@/lib/colaboradores/repository';
+import { ensurePointTables, getPointHeartbeat } from '@/lib/point/repository';
 import {
   DEFAULT_PAYROLL_RULES,
   PAYROLL_LINE_STATUSES,
@@ -151,6 +152,11 @@ const normalizeSearch = (value: unknown) =>
 const buildComparisonKey = (employeeName: string, employeeCpf: string | null) => employeeCpf || normalizeSearch(employeeName);
 const roundMoney = (value: number) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
 
+const toMonthRef = (dateIso: string | null | undefined) => {
+  const normalized = parseDate(dateIso || '');
+  return normalized ? normalized.slice(0, 7) : null;
+};
+
 const normalizeMonthRef = (value: unknown) => {
   const raw = clean(value);
   if (!/^\d{4}-\d{2}$/.test(raw)) {
@@ -234,6 +240,19 @@ const listOperationalMonthRefsInRange = (startDate: string, endDate: string) => 
   while (cursor <= endDate) {
     refs.add(getOperationalMonthRefForDate(cursor));
     cursor = shiftUtcDate(cursor, 1);
+  }
+  return Array.from(refs.values()).sort();
+};
+
+const listCalendarMonthRefsInRange = (startDate: string, endDate: string) => {
+  const refs = new Set<string>();
+  let cursor = `${startDate.slice(0, 7)}-01`;
+  const last = `${endDate.slice(0, 7)}-01`;
+  while (cursor <= last) {
+    refs.add(cursor.slice(0, 7));
+    const [yearRaw, monthRaw] = cursor.slice(0, 7).split('-');
+    const next = new Date(Date.UTC(Number(yearRaw), Number(monthRaw), 1));
+    cursor = next.toISOString().slice(0, 10);
   }
   return Array.from(refs.values()).sort();
 };
@@ -972,7 +991,7 @@ const listImportsByPeriod = async (db: DbInterface, periodId: string) => {
   return rows.map(mapImportFile);
 };
 
-const listPointSyncRunsByPeriod = async (db: DbInterface, periodId: string) => {
+const listLegacyPointSyncRunsByPeriod = async (db: DbInterface, periodId: string) => {
   const rows = await db.query(`SELECT * FROM payroll_point_sync_runs WHERE period_id = ? ORDER BY created_at DESC`, [periodId]);
   return rows.map(mapPointSyncRun);
 };
@@ -983,7 +1002,7 @@ const listLinesRaw = async (db: DbInterface, periodId: string) => {
 };
 
 
-const listOccurrencesRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
+const listLegacyOccurrencesRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
   const rows = await db.query(
     `SELECT * FROM payroll_occurrences WHERE period_id = ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY date_start ASC, created_at ASC`,
     employeeId ? [periodId, employeeId] : [periodId],
@@ -991,7 +1010,7 @@ const listOccurrencesRaw = async (db: DbInterface, periodId: string, employeeId?
   return rows.map(mapOccurrence);
 };
 
-const listOccurrencesByDateRangeRaw = async (db: DbInterface, startDate: string, endDate: string, employeeId?: string) => {
+const listLegacyOccurrencesByDateRangeRaw = async (db: DbInterface, startDate: string, endDate: string, employeeId?: string) => {
   const rows = await db.query(
     `SELECT * FROM payroll_occurrences
      WHERE date_start <= ?
@@ -1003,7 +1022,7 @@ const listOccurrencesByDateRangeRaw = async (db: DbInterface, startDate: string,
   return rows.map(mapOccurrence);
 };
 
-const listPointRowsRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
+const listLegacyPointRowsRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
   const rows = await db.query(
     `SELECT * FROM payroll_point_daily WHERE period_id = ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY point_date ASC`,
     employeeId ? [periodId, employeeId] : [periodId],
@@ -1011,7 +1030,7 @@ const listPointRowsRaw = async (db: DbInterface, periodId: string, employeeId?: 
   return rows.map(mapPointDaily);
 };
 
-const listPointRowsByDateRangeRaw = async (db: DbInterface, startDate: string, endDate: string, employeeId?: string) => {
+const listLegacyPointRowsByDateRangeRaw = async (db: DbInterface, startDate: string, endDate: string, employeeId?: string) => {
   const rows = await db.query(
     `SELECT * FROM payroll_point_daily
      WHERE point_date >= ?
@@ -1023,7 +1042,7 @@ const listPointRowsByDateRangeRaw = async (db: DbInterface, startDate: string, e
   return rows.map(mapPointDaily);
 };
 
-const listHoursBalanceRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
+const listLegacyHoursBalanceRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
   const rows = await db.query(
     `SELECT * FROM payroll_hours_balance_monthly WHERE period_id = ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY employee_name ASC`,
     employeeId ? [periodId, employeeId] : [periodId],
@@ -1031,7 +1050,7 @@ const listHoursBalanceRaw = async (db: DbInterface, periodId: string, employeeId
   return rows.map(mapHoursBalanceMonthly);
 };
 
-const listHoursBalanceByPeriodIdsRaw = async (db: DbInterface, periodIds: string[], employeeId?: string) => {
+const listLegacyHoursBalanceByPeriodIdsRaw = async (db: DbInterface, periodIds: string[], employeeId?: string) => {
   if (!periodIds.length) return [] as PayrollHoursBalanceMonthly[];
   const placeholders = periodIds.map(() => '?').join(', ');
   const params = employeeId ? [...periodIds, employeeId] : [...periodIds];
@@ -1045,7 +1064,7 @@ const listHoursBalanceByPeriodIdsRaw = async (db: DbInterface, periodIds: string
   return rows.map(mapHoursBalanceMonthly);
 };
 
-const listSignaturesRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
+const listLegacySignaturesRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
   const rows = await db.query(
     `SELECT * FROM payroll_signature_monthly WHERE period_id = ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY employee_name ASC`,
     employeeId ? [periodId, employeeId] : [periodId],
@@ -1053,7 +1072,7 @@ const listSignaturesRaw = async (db: DbInterface, periodId: string, employeeId?:
   return rows.map(mapSignatureMonthly);
 };
 
-const listSignaturesByPeriodIdsRaw = async (db: DbInterface, periodIds: string[], employeeId?: string) => {
+const listLegacySignaturesByPeriodIdsRaw = async (db: DbInterface, periodIds: string[], employeeId?: string) => {
   if (!periodIds.length) return [] as PayrollSignatureMonthly[];
   const placeholders = periodIds.map(() => '?').join(', ');
   const params = employeeId ? [...periodIds, employeeId] : [...periodIds];
@@ -1065,6 +1084,497 @@ const listSignaturesByPeriodIdsRaw = async (db: DbInterface, periodIds: string[]
     params,
   );
   return rows.map(mapSignatureMonthly);
+};
+
+const buildPointComparisonKey = (employeeId: string | null, employeeName: string, employeeCpf: string | null) =>
+  employeeId || buildComparisonKey(employeeName, employeeCpf);
+
+const buildLegacyBackfillRunId = (periodId: string) => `legacy-backfill:${periodId}`.slice(0, 64);
+const buildLegacyBackfillRowId = (prefix: string, sourceId: string) => `${prefix}:${sourceId}`.slice(0, 64);
+
+const mapUnifiedPointSyncRun = (row: any, periodId: string): PayrollPointSyncRun => ({
+  id: clean(row.id),
+  periodId,
+  jobId: clean(row.job_id) || null,
+  status: upper(row.status) as PayrollSyncJobStatus,
+  sourceLabel: clean(row.source_label) || 'API Sólides',
+  totalEmployees: Number(row.total_employees || 0),
+  processedEmployees: Number(row.processed_employees || 0),
+  processedDays: Number(row.processed_days || 0),
+  currentStage: clean(row.current_stage) || null,
+  progressPercent: row.progress_percent === null || row.progress_percent === undefined || row.progress_percent === '' ? null : Number(row.progress_percent),
+  lastProgressAt: clean(row.last_progress_at) || null,
+  estimatedRemainingSeconds:
+    row.estimated_remaining_seconds === null || row.estimated_remaining_seconds === undefined || row.estimated_remaining_seconds === ''
+      ? null
+      : Number(row.estimated_remaining_seconds),
+  synchronizedEmployees: Number(row.synchronized_employees || 0),
+  synchronizedDays: Number(row.synchronized_days || 0),
+  unmatchedEmployees: Number(row.unmatched_employees || 0),
+  pendingAdjustments: Number(row.pending_adjustments || 0),
+  pendingSignatures: Number(row.pending_signatures || 0),
+  details: clean(row.details) || null,
+  startedAt: clean(row.started_at) || null,
+  finishedAt: clean(row.finished_at) || null,
+  createdAt: clean(row.created_at),
+});
+
+const mapUnifiedPointDaily = (row: any, periodId: string): PayrollPointDaily => ({
+  id: clean(row.id),
+  periodId,
+  employeeId: clean(row.employee_id) || null,
+  solidesEmployeeId: clean(row.solides_employee_id) || null,
+  employeeCode: clean(row.employee_code) || null,
+  employeeName: clean(row.employee_name),
+  employeeCpf: normalizeCpf(row.employee_cpf),
+  pointDate: parseDate(row.point_date) || '',
+  department: clean(row.department) || null,
+  scheduleLabel: clean(row.schedule_label) || null,
+  scheduleStart: clean(row.schedule_start) || null,
+  scheduleEnd: clean(row.schedule_end) || null,
+  marks: parseJsonList(row.marks_json),
+  rawDayText: clean(row.raw_day_text) || null,
+  plannedMinutes: Number(row.planned_minutes || 0),
+  workedMinutes: Number(row.worked_minutes || 0),
+  lateMinutes: Number(row.late_minutes || 0),
+  dayBalanceMinutes: Number(row.day_balance_minutes || 0),
+  breakMinutes: Number(row.break_minutes || 0),
+  expectedBreakMinutes: Number(row.expected_break_minutes || 0),
+  breakOverrunMinutes: Number(row.break_overrun_minutes || 0),
+  pendingAdjustmentsCount: Number(row.pending_adjustments_count || 0),
+  absenceFlag: bool(row.absence_flag),
+  inconsistencyFlag: bool(row.inconsistency_flag),
+  justificationText: clean(row.justification_text) || null,
+  sourceFileId: null,
+  sourcePayloadJson: clean(row.source_payload_json) || null,
+  syncRunId: clean(row.last_sync_run_id) || null,
+  source: clean(row.last_sync_run_id).startsWith('legacy-backfill:') ? 'LEGADO' : 'SOLIDES',
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const mapUnifiedHoursBalance = (row: any, periodId: string): PayrollHoursBalanceMonthly => ({
+  id: clean(row.id),
+  periodId,
+  employeeId: clean(row.employee_id) || null,
+  solidesEmployeeId: clean(row.solides_employee_id) || null,
+  employeeName: clean(row.employee_name),
+  employeeCpf: normalizeCpf(row.employee_cpf),
+  balanceMinutes: Number(row.balance_minutes || 0),
+  referenceStart: parseDate(row.reference_start),
+  referenceEnd: parseDate(row.reference_end),
+  sourcePayloadJson: clean(row.source_payload_json) || null,
+  source: 'SOLIDES',
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const mapUnifiedSignature = (row: any, periodId: string): PayrollSignatureMonthly => ({
+  id: clean(row.id),
+  periodId,
+  employeeId: clean(row.employee_id) || null,
+  solidesEmployeeId: clean(row.solides_employee_id) || null,
+  employeeName: clean(row.employee_name),
+  employeeCpf: normalizeCpf(row.employee_cpf),
+  status: upper(row.status || 'SEM_PENDENCIA') as PayrollSignatureStatus,
+  documentType: clean(row.document_type) || null,
+  documentDate: parseDate(row.document_date),
+  startDate: parseDate(row.start_date),
+  endDate: parseDate(row.end_date),
+  signedAt: clean(row.signed_at) || null,
+  message: clean(row.message) || null,
+  sourcePayloadJson: clean(row.source_payload_json) || null,
+  source: 'SOLIDES',
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const mapUnifiedOccurrence = (row: any, periodId: string): PayrollOccurrence => ({
+  id: clean(row.id),
+  periodId,
+  employeeId: clean(row.employee_id),
+  occurrenceType: upper(row.occurrence_type) as PayrollOccurrenceType,
+  dateStart: parseDate(row.date_start) || '',
+  dateEnd: parseDate(row.date_end) || parseDate(row.date_start) || '',
+  effectCode: clean(row.effect_code) || null,
+  notes: clean(row.notes) || null,
+  storageProvider: null,
+  storageBucket: null,
+  storageKey: null,
+  originalName: null,
+  mimeType: null,
+  sizeBytes: null,
+  createdBy: null,
+  updatedBy: null,
+  source: clean(row.last_sync_run_id).startsWith('legacy-backfill:') ? 'LEGADO' : 'SOLIDES',
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const getUnifiedCoverageSnapshot = async (db: DbInterface, period: PayrollPeriod) => {
+  await ensurePointTables(db);
+  const monthRefs = listCalendarMonthRefsInRange(period.periodStart, period.periodEnd);
+  const monthPlaceholders = monthRefs.map(() => '?').join(', ');
+  const [runRows, dailyRows, occurrenceRows, balanceRows, signatureRows] = await Promise.all([
+    db.query(
+      `SELECT COUNT(*) AS total FROM point_sync_runs WHERE status = 'COMPLETED' AND window_start <= ? AND window_end >= ?`,
+      [period.periodEnd, period.periodStart],
+    ),
+    db.query(`SELECT COUNT(*) AS total FROM point_daily WHERE point_date >= ? AND point_date <= ?`, [period.periodStart, period.periodEnd]),
+    db.query(
+      `SELECT COUNT(*) AS total FROM point_occurrences WHERE date_start <= ? AND COALESCE(date_end, date_start) >= ?`,
+      [period.periodEnd, period.periodStart],
+    ),
+    monthRefs.length
+      ? db.query(`SELECT COUNT(*) AS total FROM point_hours_balance_monthly WHERE reference_month IN (${monthPlaceholders})`, monthRefs)
+      : Promise.resolve([{ total: 0 }]),
+    monthRefs.length
+      ? db.query(`SELECT COUNT(*) AS total FROM point_signature_monthly WHERE reference_month IN (${monthPlaceholders})`, monthRefs)
+      : Promise.resolve([{ total: 0 }]),
+  ]);
+
+  const completedRuns = Number((runRows?.[0] as any)?.total || 0);
+  const pointRows = Number((dailyRows?.[0] as any)?.total || 0);
+  const occurrences = Number((occurrenceRows?.[0] as any)?.total || 0);
+  const hoursBalances = Number((balanceRows?.[0] as any)?.total || 0);
+  const signatures = Number((signatureRows?.[0] as any)?.total || 0);
+
+  return {
+    completedRuns,
+    pointRows,
+    occurrences,
+    hoursBalances,
+    signatures,
+    hasCoverage: completedRuns > 0 || pointRows > 0 || occurrences > 0 || hoursBalances > 0 || signatures > 0,
+  };
+};
+
+const getLegacyCoverageSnapshot = async (db: DbInterface, periodId: string) => {
+  const [runRows, dailyRows, occurrenceRows, balanceRows, signatureRows] = await Promise.all([
+    db.query(`SELECT COUNT(*) AS total FROM payroll_point_sync_runs WHERE period_id = ? AND status = 'COMPLETED'`, [periodId]),
+    db.query(`SELECT COUNT(*) AS total FROM payroll_point_daily WHERE period_id = ?`, [periodId]),
+    db.query(`SELECT COUNT(*) AS total FROM payroll_occurrences WHERE period_id = ?`, [periodId]),
+    db.query(`SELECT COUNT(*) AS total FROM payroll_hours_balance_monthly WHERE period_id = ?`, [periodId]),
+    db.query(`SELECT COUNT(*) AS total FROM payroll_signature_monthly WHERE period_id = ?`, [periodId]),
+  ]);
+
+  const completedRuns = Number((runRows?.[0] as any)?.total || 0);
+  const pointRows = Number((dailyRows?.[0] as any)?.total || 0);
+  const occurrences = Number((occurrenceRows?.[0] as any)?.total || 0);
+  const hoursBalances = Number((balanceRows?.[0] as any)?.total || 0);
+  const signatures = Number((signatureRows?.[0] as any)?.total || 0);
+
+  return {
+    completedRuns,
+    pointRows,
+    occurrences,
+    hoursBalances,
+    signatures,
+    hasCoverage: completedRuns > 0 || pointRows > 0 || occurrences > 0 || hoursBalances > 0 || signatures > 0,
+  };
+};
+
+const backfillLegacyPointBaseForPeriod = async (db: DbInterface, period: PayrollPeriod) => {
+  const marker = buildLegacyBackfillRunId(period.id);
+  const employees = await loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd);
+  const employeeById = new Map(employees.map((employee) => [employee.id, employee] as const));
+  const [legacyPointRows, legacyOccurrences, legacyHoursBalances, legacySignatures] = await Promise.all([
+    listLegacyPointRowsRaw(db, period.id),
+    listLegacyOccurrencesRaw(db, period.id),
+    listLegacyHoursBalanceRaw(db, period.id),
+    listLegacySignaturesRaw(db, period.id),
+  ]);
+
+  if (!legacyPointRows.length && !legacyOccurrences.length && !legacyHoursBalances.length && !legacySignatures.length) {
+    return false;
+  }
+
+  await ensurePointTables(db);
+  await db.execute(`DELETE FROM point_daily WHERE last_sync_run_id = ?`, [marker]);
+  await db.execute(`DELETE FROM point_occurrences WHERE last_sync_run_id = ?`, [marker]);
+  await db.execute(`DELETE FROM point_hours_balance_monthly WHERE last_sync_run_id = ?`, [marker]);
+  await db.execute(`DELETE FROM point_signature_monthly WHERE last_sync_run_id = ?`, [marker]);
+
+  for (const row of legacyPointRows) {
+    await db.execute(
+      `INSERT INTO point_daily (
+        id, employee_id, solides_employee_id, employee_code, employee_name, employee_cpf, point_date, department,
+        schedule_label, schedule_start, schedule_end, marks_json, raw_day_text, planned_minutes, worked_minutes,
+        late_minutes, day_balance_minutes, break_minutes, expected_break_minutes, break_overrun_minutes,
+        pending_adjustments_count, absence_flag, inconsistency_flag, justification_text, source_payload_json, last_sync_run_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        buildLegacyBackfillRowId('legacy-daily', row.id),
+        row.employeeId,
+        row.solidesEmployeeId,
+        row.employeeCode,
+        row.employeeName,
+        row.employeeCpf,
+        row.pointDate,
+        row.department,
+        row.scheduleLabel,
+        row.scheduleStart,
+        row.scheduleEnd,
+        safeJson(row.marks || []),
+        row.rawDayText,
+        row.plannedMinutes,
+        row.workedMinutes,
+        row.lateMinutes,
+        row.dayBalanceMinutes,
+        row.breakMinutes,
+        row.expectedBreakMinutes,
+        row.breakOverrunMinutes,
+        row.pendingAdjustmentsCount,
+        row.absenceFlag ? 1 : 0,
+        row.inconsistencyFlag ? 1 : 0,
+        row.justificationText,
+        safeJson({ legacyPeriodId: period.id, legacyRowId: row.id, source: row.source }),
+        marker,
+        row.createdAt || NOW(),
+        row.updatedAt || NOW(),
+      ],
+    );
+  }
+
+  for (const row of legacyOccurrences) {
+    const employee = employeeById.get(row.employeeId) || null;
+    await db.execute(
+      `INSERT INTO point_occurrences (
+        id, employee_id, solides_employee_id, employee_name, employee_cpf, occurrence_type, date_start, date_end,
+        effect_code, notes, source_payload_json, last_sync_run_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        buildLegacyBackfillRowId('legacy-occ', row.id),
+        row.employeeId,
+        employee?.solidesEmployeeId || null,
+        employee?.fullName || row.employeeId,
+        employee?.cpf || null,
+        row.occurrenceType,
+        row.dateStart,
+        row.dateEnd,
+        row.effectCode,
+        row.notes,
+        safeJson({ legacyPeriodId: period.id, legacyRowId: row.id, source: row.source }),
+        marker,
+        row.createdAt || NOW(),
+        row.updatedAt || NOW(),
+      ],
+    );
+  }
+
+  for (const row of legacyHoursBalances) {
+    const referenceMonth = toMonthRef(row.referenceEnd || row.referenceStart || period.periodEnd) || period.monthRef;
+    await db.execute(
+      `INSERT INTO point_hours_balance_monthly (
+        id, reference_month, employee_id, solides_employee_id, employee_name, employee_cpf, balance_minutes,
+        reference_start, reference_end, source_payload_json, last_sync_run_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        buildLegacyBackfillRowId('legacy-hours', row.id),
+        referenceMonth,
+        row.employeeId,
+        row.solidesEmployeeId,
+        row.employeeName,
+        row.employeeCpf,
+        row.balanceMinutes,
+        row.referenceStart,
+        row.referenceEnd,
+        safeJson({ legacyPeriodId: period.id, legacyRowId: row.id }),
+        marker,
+        row.createdAt || NOW(),
+        row.updatedAt || NOW(),
+      ],
+    );
+  }
+
+  for (const row of legacySignatures) {
+    const referenceMonth = toMonthRef(row.endDate || row.startDate || period.periodEnd) || period.monthRef;
+    await db.execute(
+      `INSERT INTO point_signature_monthly (
+        id, reference_month, employee_id, solides_employee_id, employee_name, employee_cpf, status, document_type,
+        document_date, start_date, end_date, signed_at, message, source_payload_json, last_sync_run_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        buildLegacyBackfillRowId('legacy-sign', row.id),
+        referenceMonth,
+        row.employeeId,
+        row.solidesEmployeeId,
+        row.employeeName,
+        row.employeeCpf,
+        row.status,
+        row.documentType,
+        row.documentDate,
+        row.startDate,
+        row.endDate,
+        row.signedAt,
+        row.message,
+        safeJson({ legacyPeriodId: period.id, legacyRowId: row.id }),
+        marker,
+        row.createdAt || NOW(),
+        row.updatedAt || NOW(),
+      ],
+    );
+  }
+
+  return true;
+};
+
+const ensurePointBaseReadyForPeriod = async (db: DbInterface, period: PayrollPeriod) => {
+  const pointCoverage = await getUnifiedCoverageSnapshot(db, period);
+  if (pointCoverage.hasCoverage) return { mode: 'POINT' as const, pointCoverage, legacyCoverage: null };
+
+  const legacyCoverage = await getLegacyCoverageSnapshot(db, period.id);
+  if (!legacyCoverage.hasCoverage) {
+    return { mode: 'NONE' as const, pointCoverage, legacyCoverage };
+  }
+
+  await backfillLegacyPointBaseForPeriod(db, period);
+  const refreshedCoverage = await getUnifiedCoverageSnapshot(db, period);
+  return { mode: refreshedCoverage.hasCoverage ? ('POINT' as const) : ('LEGACY' as const), pointCoverage: refreshedCoverage, legacyCoverage };
+};
+
+const listPointSyncRunsByPeriod = async (db: DbInterface, periodId: string) => {
+  const period = await getPeriodOrThrow(db, periodId);
+  await ensurePointBaseReadyForPeriod(db, period);
+  await ensurePointTables(db);
+  const rows = await db.query(
+    `SELECT * FROM point_sync_runs WHERE window_start <= ? AND window_end >= ? ORDER BY created_at DESC`,
+    [period.periodEnd, period.periodStart],
+  );
+  if (rows.length) return rows.map((row: any) => mapUnifiedPointSyncRun(row, period.id));
+  return listLegacyPointSyncRunsByPeriod(db, periodId);
+};
+
+const listPointRowsRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
+  const period = await getPeriodOrThrow(db, periodId);
+  const state = await ensurePointBaseReadyForPeriod(db, period);
+  if (state.mode === 'NONE') return [] as PayrollPointDaily[];
+  await ensurePointTables(db);
+  const rows = await db.query(
+    `SELECT * FROM point_daily WHERE point_date >= ? AND point_date <= ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY point_date ASC`,
+    employeeId ? [period.periodStart, period.periodEnd, employeeId] : [period.periodStart, period.periodEnd],
+  );
+  if (rows.length || state.mode === 'POINT') {
+    return rows.map((row: any) => mapUnifiedPointDaily(row, period.id));
+  }
+  return listLegacyPointRowsRaw(db, periodId, employeeId);
+};
+
+const listOccurrencesRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
+  const period = await getPeriodOrThrow(db, periodId);
+  const state = await ensurePointBaseReadyForPeriod(db, period);
+  if (state.mode === 'NONE') return [] as PayrollOccurrence[];
+  await ensurePointTables(db);
+  const rows = await db.query(
+    `SELECT * FROM point_occurrences WHERE date_start <= ? AND COALESCE(date_end, date_start) >= ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY date_start ASC, created_at ASC`,
+    employeeId ? [period.periodEnd, period.periodStart, employeeId] : [period.periodEnd, period.periodStart],
+  );
+  const filtered = rows.filter((row: any) => clean(row.employee_id));
+  if (filtered.length || state.mode === 'POINT') {
+    return filtered.map((row: any) => mapUnifiedOccurrence(row, period.id));
+  }
+  return listLegacyOccurrencesRaw(db, periodId, employeeId);
+};
+
+const listHoursBalanceRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
+  const period = await getPeriodOrThrow(db, periodId);
+  const state = await ensurePointBaseReadyForPeriod(db, period);
+  if (state.mode === 'NONE') return [] as PayrollHoursBalanceMonthly[];
+  const monthRefs = listCalendarMonthRefsInRange(period.periodStart, period.periodEnd);
+  if (!monthRefs.length) return [] as PayrollHoursBalanceMonthly[];
+  await ensurePointTables(db);
+  const placeholders = monthRefs.map(() => '?').join(', ');
+  const params = employeeId ? [...monthRefs, employeeId] : [...monthRefs];
+  const rows = await db.query(
+    `SELECT * FROM point_hours_balance_monthly WHERE reference_month IN (${placeholders}) ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY employee_name ASC`,
+    params,
+  );
+  if (rows.length || state.mode === 'POINT') {
+    return rows.map((row: any) => mapUnifiedHoursBalance(row, period.id));
+  }
+  return listLegacyHoursBalanceRaw(db, periodId, employeeId);
+};
+
+const listHoursBalanceByPeriodIdsRaw = async (db: DbInterface, periodIds: string[], employeeId?: string) => {
+  if (!periodIds.length) return [] as PayrollHoursBalanceMonthly[];
+  const periods = await Promise.all(periodIds.map((periodId) => getPeriodOrThrow(db, periodId)));
+  const monthRefs = Array.from(new Set(periods.flatMap((period) => listCalendarMonthRefsInRange(period.periodStart, period.periodEnd))));
+  if (!monthRefs.length) return [] as PayrollHoursBalanceMonthly[];
+  await ensurePointTables(db);
+  const placeholders = monthRefs.map(() => '?').join(', ');
+  const params = employeeId ? [...monthRefs, employeeId] : [...monthRefs];
+  const rows = await db.query(
+    `SELECT * FROM point_hours_balance_monthly WHERE reference_month IN (${placeholders}) ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY employee_name ASC`,
+    params,
+  );
+  if (rows.length) {
+    const periodByMonth = new Map(periods.map((period) => [period.monthRef, period.id] as const));
+    return rows.map((row: any) => mapUnifiedHoursBalance(row, periodByMonth.get(clean(row.reference_month)) || periods[0].id));
+  }
+  return listLegacyHoursBalanceByPeriodIdsRaw(db, periodIds, employeeId);
+};
+
+const listSignaturesRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
+  const period = await getPeriodOrThrow(db, periodId);
+  const state = await ensurePointBaseReadyForPeriod(db, period);
+  if (state.mode === 'NONE') return [] as PayrollSignatureMonthly[];
+  const monthRefs = listCalendarMonthRefsInRange(period.periodStart, period.periodEnd);
+  if (!monthRefs.length) return [] as PayrollSignatureMonthly[];
+  await ensurePointTables(db);
+  const placeholders = monthRefs.map(() => '?').join(', ');
+  const params = employeeId ? [...monthRefs, employeeId] : [...monthRefs];
+  const rows = await db.query(
+    `SELECT * FROM point_signature_monthly WHERE reference_month IN (${placeholders}) ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY employee_name ASC`,
+    params,
+  );
+  if (rows.length || state.mode === 'POINT') {
+    return rows.map((row: any) => mapUnifiedSignature(row, period.id));
+  }
+  return listLegacySignaturesRaw(db, periodId, employeeId);
+};
+
+const listSignaturesByPeriodIdsRaw = async (db: DbInterface, periodIds: string[], employeeId?: string) => {
+  if (!periodIds.length) return [] as PayrollSignatureMonthly[];
+  const periods = await Promise.all(periodIds.map((periodId) => getPeriodOrThrow(db, periodId)));
+  const monthRefs = Array.from(new Set(periods.flatMap((period) => listCalendarMonthRefsInRange(period.periodStart, period.periodEnd))));
+  if (!monthRefs.length) return [] as PayrollSignatureMonthly[];
+  await ensurePointTables(db);
+  const placeholders = monthRefs.map(() => '?').join(', ');
+  const params = employeeId ? [...monthRefs, employeeId] : [...monthRefs];
+  const rows = await db.query(
+    `SELECT * FROM point_signature_monthly WHERE reference_month IN (${placeholders}) ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY employee_name ASC`,
+    params,
+  );
+  if (rows.length) {
+    const periodByMonth = new Map(periods.map((period) => [period.monthRef, period.id] as const));
+    return rows.map((row: any) => mapUnifiedSignature(row, periodByMonth.get(clean(row.reference_month)) || periods[0].id));
+  }
+  return listLegacySignaturesByPeriodIdsRaw(db, periodIds, employeeId);
+};
+
+const listPointRowsByDateRangeRaw = async (db: DbInterface, startDate: string, endDate: string, employeeId?: string) => {
+  await ensurePointTables(db);
+  const rows = await db.query(
+    `SELECT * FROM point_daily WHERE point_date >= ? AND point_date <= ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY point_date ASC`,
+    employeeId ? [startDate, endDate, employeeId] : [startDate, endDate],
+  );
+  if (rows.length) {
+    return rows.map((row: any) => mapUnifiedPointDaily(row, getOperationalMonthRefForDate(parseDate(row.point_date) || startDate)));
+  }
+  return listLegacyPointRowsByDateRangeRaw(db, startDate, endDate, employeeId);
+};
+
+const listOccurrencesByDateRangeRaw = async (db: DbInterface, startDate: string, endDate: string, employeeId?: string) => {
+  await ensurePointTables(db);
+  const rows = await db.query(
+    `SELECT * FROM point_occurrences WHERE date_start <= ? AND COALESCE(date_end, date_start) >= ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY date_start ASC, created_at ASC`,
+    employeeId ? [endDate, startDate, employeeId] : [endDate, startDate],
+  );
+  const filtered = rows.filter((row: any) => clean(row.employee_id));
+  if (filtered.length) {
+    return filtered.map((row: any) => mapUnifiedOccurrence(row, getOperationalMonthRefForDate(parseDate(row.date_start) || startDate)));
+  }
+  return listLegacyOccurrencesByDateRangeRaw(db, startDate, endDate, employeeId);
 };
 
 const getLatestRuleSeed = async (db: DbInterface) => {
@@ -1608,7 +2118,6 @@ export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string):
     loadPayrollEligibleEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
     listOccurrencesRaw(db, periodId),
   ]);
-  await reconcilePointRowsEmployeeLinks(db, period.id, allEmployees);
   const [pointRows, hoursBalances, signatures] = await Promise.all([
     listPointRowsRaw(db, periodId),
     listHoursBalanceRaw(db, periodId),
@@ -1637,21 +2146,12 @@ export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string):
 };
 
 export const getPayrollPointHeartbeat = async (db: DbInterface): Promise<PayrollServiceHeartbeat> => {
-  const rows = await db.query(
-    `
-    SELECT service_name, status, last_run, details
-    FROM system_status
-    WHERE service_name = ?
-    LIMIT 1
-    `,
-    ['payroll_point_sync'],
-  );
-  const row = rows?.[0] as any;
+  const heartbeat = await getPointHeartbeat(db);
   return {
-    serviceName: clean(row?.service_name) || 'payroll_point_sync',
-    status: clean(row?.status) || 'UNKNOWN',
-    lastRun: clean(row?.last_run) || null,
-    details: clean(row?.details) || null,
+    serviceName: heartbeat.serviceName || 'point_sync',
+    status: heartbeat.status || 'UNKNOWN',
+    lastRun: heartbeat.lastRun || null,
+    details: heartbeat.details || null,
   };
 };
 
@@ -1689,7 +2189,6 @@ export const getPayrollPointOverview = async (db: DbInterface, dateRange: Payrol
   const periodByMonthRef = new Map(periods.map((period) => [period.monthRef, period] as const));
   const overlappingPeriods = expectedMonthRefs.map((monthRef) => periodByMonthRef.get(monthRef) || null);
   const syncTargetPeriod = periodByMonthRef.get(referenceMonthRef) || null;
-
   const completedSyncRefs = new Set<string>();
   await Promise.all(
     overlappingPeriods
@@ -1885,49 +2384,19 @@ const createPointSyncRun = async (
 };
 
 const countPointSyncJobsInProgress = async (db: DbInterface, periodId: string) => {
+  const period = await getPeriodOrThrow(db, periodId);
+  await ensurePointTables(db);
   const rows = await db.query(
     `SELECT COUNT(*) AS total
-     FROM payroll_point_sync_jobs
-     WHERE period_id = ?
+     FROM point_sync_jobs
+     WHERE window_start <= ?
+       AND window_end >= ?
        AND status IN ('PENDING', 'RUNNING')`,
-    [periodId],
+    [period.periodEnd, period.periodStart],
   );
   const firstRow = rows?.[0] as any;
   if (!firstRow) return 0;
   return Number(firstRow.total ?? firstRow.TOTAL ?? Object.values(firstRow)[0] ?? 0);
-};
-
-export const enqueuePayrollPointSync = async (
-  db: DbInterface,
-  params: {
-    periodId: string;
-    requestedBy: string;
-  },
-) => {
-  await ensurePayrollTables(db);
-  await getPeriodOrThrow(db, params.periodId);
-  const running = await countPointSyncJobsInProgress(db, params.periodId);
-  if (running > 0) {
-    throw new PayrollValidationError('Já existe uma sincronização de ponto em andamento para esta competência.', 409);
-  }
-
-  const job = await createPointSyncJob(db, {
-    periodId: params.periodId,
-    requestedBy: params.requestedBy,
-  });
-  const runId = await createPointSyncRun(db, {
-    periodId: params.periodId,
-    jobId: job.id,
-    status: 'PENDING',
-    details: 'Sincronização aguardando execução pelo worker.',
-  });
-
-  const runRows = await db.query(`SELECT * FROM payroll_point_sync_runs WHERE id = ? LIMIT 1`, [runId]);
-
-  return {
-    job,
-    run: mapPointSyncRun(runRows[0]),
-  };
 };
 
 const buildLineRecord = (
@@ -2163,7 +2632,6 @@ export const generatePayrollPeriod = async (db: DbInterface, periodId: string) =
     listLinesRaw(db, period.id),
     listPointSyncRunsByPeriod(db, period.id),
   ]);
-  await reconcilePointRowsEmployeeLinks(db, period.id, allEmployees);
   const [pointRows, hoursBalances, signatures] = await Promise.all([
     listPointRowsRaw(db, period.id),
     listHoursBalanceRaw(db, period.id),

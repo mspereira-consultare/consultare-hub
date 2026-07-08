@@ -134,6 +134,23 @@ const buildLastThirtyDaysWindow = () => {
   return { startDate, endDate };
 };
 
+const normalizeSyncWindow = (window?: Partial<PointDateRange> | null): PointDateRange => {
+  if (!window?.startDate && !window?.endDate) {
+    return buildLastThirtyDaysWindow();
+  }
+
+  const startDate = parseDate(window?.startDate || '');
+  const endDate = parseDate(window?.endDate || '');
+  if (!startDate || !endDate) {
+    throw new PointValidationError('Janela de sincronização inválida. Informe data inicial e final em formato ISO.');
+  }
+  if (endDate < startDate) {
+    throw new PointValidationError('A data final da sincronização não pode ser menor que a data inicial.');
+  }
+
+  return { startDate, endDate };
+};
+
 const diffDaysInclusive = (startDate: string, endDate: string) => {
   const start = new Date(`${startDate}T00:00:00.000Z`);
   const end = new Date(`${endDate}T00:00:00.000Z`);
@@ -382,7 +399,7 @@ const resolveEmployeeForRow = (
   return null;
 };
 
-const ensurePointTables = async (db: DbInterface) => {
+export const ensurePointTables = async (db: DbInterface) => {
   if (tablesEnsured) return;
   await ensureEmployeesTables(db);
 
@@ -904,7 +921,13 @@ export const listPointVacationRowsByDateRange = async (db: DbInterface, dateRang
   return { items };
 };
 
-export const enqueuePointSync = async (db: DbInterface, requestedBy: string) => {
+export const enqueuePointSync = async (
+  db: DbInterface,
+  params: {
+    requestedBy: string;
+    window?: Partial<PointDateRange> | null;
+  },
+) => {
   await ensurePointTables(db);
   return runInTransaction(db, async (tx) => {
     const blockingRows = await tx.query(
@@ -915,7 +938,7 @@ export const enqueuePointSync = async (db: DbInterface, requestedBy: string) => 
     }
 
     const now = NOW();
-    const { startDate, endDate } = buildLastThirtyDaysWindow();
+    const { startDate, endDate } = normalizeSyncWindow(params.window);
     const jobId = randomUUID();
     const runId = randomUUID();
 
@@ -924,7 +947,7 @@ export const enqueuePointSync = async (db: DbInterface, requestedBy: string) => 
       INSERT INTO point_sync_jobs (id, window_start, window_end, status, requested_by, error_message, created_at, started_at, finished_at)
       VALUES (?, ?, ?, 'PENDING', ?, NULL, ?, NULL, NULL)
       `,
-      [jobId, startDate, endDate, requestedBy, now],
+      [jobId, startDate, endDate, params.requestedBy, now],
     );
 
     await tx.execute(
@@ -945,7 +968,7 @@ export const enqueuePointSync = async (db: DbInterface, requestedBy: string) => 
         windowStart: startDate,
         windowEnd: endDate,
         status: 'PENDING' as PayrollSyncJobStatus,
-        requestedBy,
+        requestedBy: params.requestedBy,
         errorMessage: null,
         createdAt: now,
         startedAt: null,

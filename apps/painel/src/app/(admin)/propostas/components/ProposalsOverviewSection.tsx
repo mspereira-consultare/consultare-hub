@@ -140,12 +140,12 @@ export function ProposalsOverviewSection({
           <div className="lg:col-span-2">
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
               <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 gap-4 flex-col sm:flex-row">
-                <h2 className="font-bold text-slate-800">Ranking profissional</h2>
+                <h2 className="font-bold text-slate-800">Ranking por nome</h2>
                 <div className="relative w-full sm:w-64">
                   <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="Filtrar profissional..."
+                    placeholder="Filtrar colaborador ou profissional..."
                     value={searchTerm}
                     onChange={(event) => onSearchTermChange(event.target.value)}
                     className="pl-9 pr-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:ring-1 focus:ring-blue-500 outline-none w-full"
@@ -162,7 +162,7 @@ export function ProposalsOverviewSection({
                           onClick={() => onToggleSort('professional_name')}
                           className="inline-flex items-center gap-1 hover:text-slate-700"
                         >
-                          Profissional <span>{sortIndicator('professional_name')}</span>
+                          Nome <span>{sortIndicator('professional_name')}</span>
                         </button>
                       </th>
                       <th className="px-4 py-3 text-right">
@@ -223,7 +223,20 @@ export function ProposalsOverviewSection({
                         key={`${seller.professional_name || 'sistema'}-${index}`}
                         className="hover:bg-slate-50 transition-colors"
                       >
-                        <td className="px-4 py-3 font-medium text-slate-700">{seller.professional_name || 'Sistema'}</td>
+                        <td className="px-4 py-3 font-medium text-slate-700">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{seller.professional_name || 'Sistema'}</span>
+                            <span
+                              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                seller.actorType === 'COLLABORATOR'
+                                  ? 'bg-amber-50 text-amber-700'
+                                  : 'bg-blue-50 text-blue-700'
+                              }`}
+                            >
+                              {seller.actorType === 'COLLABORATOR' ? 'Colaborador' : 'Profissional'}
+                            </span>
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-right text-slate-600">{toNumber(seller.qtd)}</td>
                         <td className="px-4 py-3 text-right text-emerald-600 font-semibold">{toNumber(seller.qtd_executado)}</td>
                         <td className="px-4 py-3 text-right text-slate-700 font-semibold">
@@ -250,7 +263,7 @@ export function ProposalsOverviewSection({
                   </tbody>
                 </table>
                 {sellerData.length === 0 ? (
-                  <p className="text-center text-slate-400 py-6 text-sm">Nenhum profissional encontrado.</p>
+                  <p className="text-center text-slate-400 py-6 text-sm">Nenhum colaborador ou profissional encontrado.</p>
                 ) : null}
               </div>
             </div>

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getDbConnection } from '@/lib/db';
 import { withCache, buildCacheKey, invalidateCache } from '@/lib/api_cache';
-import { ensureProposalsSupportTables } from '@/lib/proposals/repository';
-import { AWAITING_CLIENT_APPROVAL_STATUS } from '@/lib/proposals/constants';
+import { ensureProposalsSupportTables, normalizeProposalFilters } from '@/lib/proposals/repository';
+import { AWAITING_CLIENT_APPROVAL_STATUS, PROPOSAL_WON_STATUSES } from '@/lib/proposals/constants';
 import { requirePropostasGerencialPermission, requirePropostasPermission } from '@/lib/proposals/auth';
 import { upsertSystemStatus } from '@/lib/system_status_repository';
 
@@ -10,37 +10,203 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 const CACHE_TTL_MS = 30 * 60 * 1000;
-const WON_STATUSES = ['executada', 'aprovada pelo cliente', 'ganho', 'realizado', 'concluido', 'pago'];
 const REJECTED_STATUS = 'Rejeitada pelo cliente';
 const APPROVED_STATUS = 'Aprovada pelo cliente';
+
+type ActorTypeFilter = 'all' | 'collaborator' | 'professional';
+type ProposalActorType = 'COLLABORATOR' | 'PROFESSIONAL';
+
+type AggregateRow = {
+  professional_name: string | null;
+  unit_name: string | null;
+  status: string | null;
+  qtd: number;
+  valor: number;
+  actorType: ProposalActorType;
+};
+
+type ProposalAggregateDbRow = {
+  professional_name?: string | null;
+  unit_name?: string | null;
+  status?: string | null;
+  qtd?: number | string | null;
+  valor?: number | string | null;
+};
+
+type NameRow = {
+  full_name?: string | null;
+  name?: string | null;
+};
+
+type HeartbeatRow = {
+  status?: string | null;
+  last_run?: string | null;
+  details?: string | null;
+};
+
+type SellerAggregate = {
+  professional_name: string | null;
+  qtd: number;
+  valor: number;
+  qtd_executado: number;
+  valor_executado: number;
+  actorType: ProposalActorType;
+};
 
 function parseNumber(value: unknown) {
   const num = Number(value);
   return Number.isFinite(num) ? num : 0;
 }
 
-function buildBaseWhere(
-  startDate: string,
-  endDate: string,
-  unitFilter: string | null,
-  statusFilter: string | null,
-  includeStatus = true,
-) {
-  let where = 'WHERE date BETWEEN ? AND ?';
-  const params: any[] = [startDate, endDate];
+const clean = (value: unknown) => String(value ?? '').trim();
+const lower = (value: unknown) => clean(value).toLowerCase();
+const normalizeNameKey = (value: unknown) =>
+  clean(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '')
+    .toLowerCase();
 
-  if (unitFilter && unitFilter !== 'all') {
-    where += ' AND UPPER(TRIM(unit_name)) = UPPER(TRIM(?))';
-    params.push(unitFilter);
+const normalizeActorTypeFilter = (value: string | null): ActorTypeFilter => {
+  const normalized = lower(value);
+  if (normalized === 'collaborator' || normalized === 'professional') return normalized;
+  return 'all';
+};
+
+const toActorType = (
+  professionalName: string | null,
+  collaboratorNames: Set<string>,
+  professionalNames: Set<string>,
+): ProposalActorType => {
+  const normalized = normalizeNameKey(professionalName);
+  if (normalized && collaboratorNames.has(normalized)) return 'COLLABORATOR';
+  if (normalized && professionalNames.has(normalized)) return 'PROFESSIONAL';
+  return 'PROFESSIONAL';
+};
+
+const actorTypeMatches = (value: ProposalActorType, filter: ActorTypeFilter) => {
+  if (filter === 'all') return true;
+  if (filter === 'collaborator') return value === 'COLLABORATOR';
+  return value === 'PROFESSIONAL';
+};
+
+const isWonStatus = (status: string | null) => PROPOSAL_WON_STATUSES.includes(lower(status) as (typeof PROPOSAL_WON_STATUSES)[number]);
+const isApprovedStatus = (status: string | null) => lower(status) === lower(APPROVED_STATUS);
+const isRejectedStatus = (status: string | null) => lower(status) === lower(REJECTED_STATUS);
+const isAwaitingClientApprovalStatus = (status: string | null) => lower(status) === lower(AWAITING_CLIENT_APPROVAL_STATUS);
+
+const filterAggregates = (
+  rows: AggregateRow[],
+  filters: {
+    actorType: ActorTypeFilter;
+    unit?: string;
+    status?: string;
+  },
+) => {
+  const unitFilter = lower(filters.unit || 'all');
+  const statusFilter = lower(filters.status || 'all');
+
+  return rows.filter((row) => {
+    if (!actorTypeMatches(row.actorType, filters.actorType)) return false;
+    if (unitFilter !== 'all' && lower(row.unit_name) !== unitFilter) return false;
+    if (statusFilter !== 'all' && lower(row.status) !== statusFilter) return false;
+    return true;
+  });
+};
+
+const buildSummary = (rows: AggregateRow[]) => {
+  let qtd = 0;
+  let valor = 0;
+  let wonQtd = 0;
+  let wonValue = 0;
+  let awaitingClientApprovalQtd = 0;
+  let awaitingClientApprovalValue = 0;
+  let approvedByClientQtd = 0;
+  let approvedByClientValue = 0;
+  let rejectedByClientQtd = 0;
+  let rejectedByClientValue = 0;
+
+  for (const row of rows) {
+    qtd += row.qtd;
+    valor += row.valor;
+
+    if (isWonStatus(row.status)) {
+      wonQtd += row.qtd;
+      wonValue += row.valor;
+    }
+    if (isAwaitingClientApprovalStatus(row.status)) {
+      awaitingClientApprovalQtd += row.qtd;
+      awaitingClientApprovalValue += row.valor;
+    }
+    if (isApprovedStatus(row.status)) {
+      approvedByClientQtd += row.qtd;
+      approvedByClientValue += row.valor;
+    }
+    if (isRejectedStatus(row.status)) {
+      rejectedByClientQtd += row.qtd;
+      rejectedByClientValue += row.valor;
+    }
   }
 
-  if (includeStatus && statusFilter && statusFilter !== 'all') {
-    where += " AND LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?))";
-    params.push(statusFilter);
+  return {
+    qtd,
+    valor,
+    wonValue,
+    wonQtd,
+    lostValue: rejectedByClientValue,
+    conversionRate: valor > 0 ? (wonValue / valor) * 100 : 0,
+    awaitingClientApprovalQtd,
+    awaitingClientApprovalValue,
+    approvedByClientQtd,
+    approvedByClientValue,
+    rejectedByClientQtd,
+    rejectedByClientValue,
+  };
+};
+
+const buildSellerRows = (rows: AggregateRow[]): SellerAggregate[] => {
+  const grouped = new Map<string, SellerAggregate>();
+
+  for (const row of rows) {
+    const key = `${row.actorType}::${clean(row.professional_name) || '__system__'}`;
+    const current = grouped.get(key) || {
+      professional_name: clean(row.professional_name) || null,
+      qtd: 0,
+      valor: 0,
+      qtd_executado: 0,
+      valor_executado: 0,
+      actorType: row.actorType,
+    };
+
+    current.qtd += row.qtd;
+    current.valor += row.valor;
+    if (isWonStatus(row.status)) {
+      current.qtd_executado += row.qtd;
+      current.valor_executado += row.valor;
+    }
+
+    grouped.set(key, current);
   }
 
-  return { where, params };
-}
+  return Array.from(grouped.values()).sort((left, right) => right.valor - left.valor);
+};
+
+const uniqueSorted = (values: string[]) => Array.from(new Set(values.filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+const getErrorStatus = (error: unknown) => {
+  if (typeof error === 'object' && error !== null && 'status' in error) {
+    const status = Number((error as { status?: unknown }).status);
+    if (Number.isFinite(status)) return status;
+  }
+  return 500;
+};
+
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error !== null && 'message' in error) {
+    const message = String((error as { message?: unknown }).message || '').trim();
+    if (message) return message;
+  }
+  return fallback;
+};
 
 export async function GET(request: Request) {
   try {
@@ -52,129 +218,91 @@ export async function GET(request: Request) {
     const cacheKey = buildCacheKey('admin', request.url);
     const cached = await withCache(cacheKey, CACHE_TTL_MS, async () => {
       const { searchParams } = new URL(request.url);
-      const startDate = searchParams.get('startDate') || new Date().toISOString().split('T')[0];
-      const endDate = searchParams.get('endDate') || startDate;
-      const unitFilter = searchParams.get('unit');
-      const statusFilter = searchParams.get('status') || 'all';
+      const filters = normalizeProposalFilters(searchParams);
+      const actorTypeFilter = normalizeActorTypeFilter(searchParams.get('actorType'));
 
       const db = getDbConnection();
       await ensureProposalsSupportTables(db);
 
-      const summaryBase = buildBaseWhere(startDate, endDate, unitFilter, statusFilter, true);
-      const wonInSql = WON_STATUSES.map(() => '?').join(',');
-      const summaryRows = await db.query(
-        `
-          SELECT
-            COUNT(*) as qtd,
-            COALESCE(SUM(total_value), 0) as valor,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) IN (${wonInSql}) THEN 1 ELSE 0 END), 0) as won_qtd,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) IN (${wonInSql}) THEN total_value ELSE 0 END), 0) as won_value,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN 1 ELSE 0 END), 0) as awaiting_client_approval_qtd,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN total_value ELSE 0 END), 0) as awaiting_client_approval_value,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN 1 ELSE 0 END), 0) as approved_by_client_qtd,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN total_value ELSE 0 END), 0) as approved_by_client_value,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN 1 ELSE 0 END), 0) as rejected_by_client_qtd,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) = LOWER(TRIM(?)) THEN total_value ELSE 0 END), 0) as rejected_by_client_value
-          FROM feegow_proposals
-          ${summaryBase.where}
-        `,
-        [
-          ...WON_STATUSES,
-          ...WON_STATUSES,
-          AWAITING_CLIENT_APPROVAL_STATUS,
-          AWAITING_CLIENT_APPROVAL_STATUS,
-          APPROVED_STATUS,
-          APPROVED_STATUS,
-          REJECTED_STATUS,
-          REJECTED_STATUS,
-          ...summaryBase.params,
-        ],
-      );
+      const [aggregateRows, employeeRows, professionalRows, statusRows] = await Promise.all([
+        db.query(
+          `
+            SELECT
+              TRIM(COALESCE(professional_name, '')) AS professional_name,
+              TRIM(COALESCE(unit_name, '')) AS unit_name,
+              TRIM(COALESCE(status, '')) AS status,
+              COUNT(*) AS qtd,
+              COALESCE(SUM(total_value), 0) AS valor
+            FROM feegow_proposals
+            WHERE date BETWEEN ? AND ?
+            GROUP BY professional_name, unit_name, status
+          `,
+          [filters.startDate, filters.endDate],
+        ),
+        db.query(`SELECT full_name FROM employees`),
+        db.query(`SELECT name FROM professionals`),
+        db.query(`
+          SELECT status, last_run, details
+          FROM system_status
+          WHERE service_name = 'comercial'
+        `),
+      ]);
 
-      const rawSummary = summaryRows[0] || {};
-      const summary = {
-        qtd: parseNumber((rawSummary as any).qtd),
-        valor: parseNumber((rawSummary as any).valor),
-        wonValue: parseNumber((rawSummary as any).won_value),
-        wonQtd: parseNumber((rawSummary as any).won_qtd),
-        awaitingClientApprovalQtd: parseNumber((rawSummary as any).awaiting_client_approval_qtd),
-        awaitingClientApprovalValue: parseNumber((rawSummary as any).awaiting_client_approval_value),
-        approvedByClientQtd: parseNumber((rawSummary as any).approved_by_client_qtd),
-        approvedByClientValue: parseNumber((rawSummary as any).approved_by_client_value),
-        rejectedByClientQtd: parseNumber((rawSummary as any).rejected_by_client_qtd),
-        rejectedByClientValue: parseNumber((rawSummary as any).rejected_by_client_value),
-        lostValue: parseNumber((rawSummary as any).rejected_by_client_value),
-      };
+      const collaboratorNames = new Set((employeeRows as NameRow[]).map((row) => normalizeNameKey(row?.full_name)).filter(Boolean));
+      const professionalNames = new Set((professionalRows as NameRow[]).map((row) => normalizeNameKey(row?.name)).filter(Boolean));
 
-      const unitBase = buildBaseWhere(startDate, endDate, unitFilter, statusFilter, true);
-      const byUnit = await db.query(
-        `
-          SELECT
-            unit_name,
-            status,
-            COUNT(*) as qtd,
-            COALESCE(SUM(total_value), 0) as valor
-          FROM feegow_proposals
-          ${unitBase.where}
-          GROUP BY unit_name, status
-          ORDER BY unit_name, valor DESC
-        `,
-        unitBase.params,
-      );
+      const classifiedRows = (aggregateRows as ProposalAggregateDbRow[]).map((row) => {
+        const professionalName = clean(row?.professional_name) || null;
+        return {
+          professional_name: professionalName,
+          unit_name: clean(row?.unit_name) || null,
+          status: clean(row?.status) || null,
+          qtd: parseNumber(row?.qtd),
+          valor: parseNumber(row?.valor),
+          actorType: toActorType(professionalName, collaboratorNames, professionalNames),
+        } satisfies AggregateRow;
+      });
 
-      const proposerBase = buildBaseWhere(startDate, endDate, unitFilter, statusFilter, true);
-      const byProposer = await db.query(
-        `
-          SELECT
-            professional_name,
-            COUNT(*) as qtd,
-            COALESCE(SUM(total_value), 0) as valor,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) IN (${wonInSql}) THEN 1 ELSE 0 END), 0) as qtd_executado,
-            COALESCE(SUM(CASE WHEN LOWER(TRIM(COALESCE(status, ''))) IN (${wonInSql}) THEN total_value ELSE 0 END), 0) as valor_executado
-          FROM feegow_proposals
-          ${proposerBase.where}
-          GROUP BY professional_name
-          ORDER BY valor DESC
-        `,
-        [...WON_STATUSES, ...WON_STATUSES, ...proposerBase.params],
-      );
+      const rowsForUnits = filterAggregates(classifiedRows, {
+        actorType: actorTypeFilter,
+        status: filters.status,
+      });
+      const rowsForStatuses = filterAggregates(classifiedRows, {
+        actorType: actorTypeFilter,
+        unit: filters.unit,
+      });
+      const filteredRows = filterAggregates(classifiedRows, {
+        actorType: actorTypeFilter,
+        unit: filters.unit,
+        status: filters.status,
+      });
 
-      const availableStatusesBase = buildBaseWhere(startDate, endDate, unitFilter, null, false);
-      const availableStatusesRows = await db.query(
-        `
-          SELECT DISTINCT TRIM(status) as status
-          FROM feegow_proposals
-          ${availableStatusesBase.where}
-            AND status IS NOT NULL
-            AND TRIM(status) <> ''
-          ORDER BY status
-        `,
-        availableStatusesBase.params,
-      );
-      const availableStatuses = availableStatusesRows
-        .map((row: any) => String(row?.status || '').trim())
-        .filter(Boolean);
-
-      const statusResult = await db.query(`
-        SELECT status, last_run, details
-        FROM system_status
-        WHERE service_name = 'comercial'
-      `);
-      const heartbeat = statusResult[0] || { status: 'UNKNOWN', last_run: null, details: '' };
+      const availableUnits = uniqueSorted(rowsForUnits.map((row) => clean(row.unit_name)));
+      const availableStatuses = uniqueSorted(rowsForStatuses.map((row) => clean(row.status)));
+      const byUnit = filteredRows.map((row) => ({
+        unit_name: row.unit_name,
+        status: row.status,
+        qtd: row.qtd,
+        valor: row.valor,
+      }));
+      const byProposer = buildSellerRows(filteredRows);
+      const summary = buildSummary(filteredRows);
+      const heartbeat = ((statusRows[0] as HeartbeatRow | undefined) || { status: 'UNKNOWN', last_run: null, details: '' });
 
       return {
         summary,
         byUnit,
         byProposer,
+        availableUnits,
         availableStatuses,
         heartbeat,
       };
     });
 
     return NextResponse.json(cached);
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Erro API Propostas:', error);
-    return NextResponse.json({ error: error?.message || 'Erro ao carregar propostas.' }, { status: error?.status || 500 });
+    return NextResponse.json({ error: getErrorMessage(error, 'Erro ao carregar propostas.') }, { status: getErrorStatus(error) });
   }
 }
 
@@ -196,7 +324,7 @@ export async function POST() {
     });
     invalidateCache('admin:');
     return NextResponse.json({ success: true, message: 'Atualização solicitada' });
-  } catch (error: any) {
-    return NextResponse.json({ error: error?.message || 'Erro ao solicitar atualização.' }, { status: error?.status || 500 });
+  } catch (error: unknown) {
+    return NextResponse.json({ error: getErrorMessage(error, 'Erro ao solicitar atualização.') }, { status: getErrorStatus(error) });
   }
 }

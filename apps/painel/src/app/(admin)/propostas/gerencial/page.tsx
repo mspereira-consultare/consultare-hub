@@ -1,7 +1,7 @@
 'use client';
 
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { hasPermission } from '@/lib/permissions';
 import { AWAITING_CLIENT_APPROVAL_STATUS } from '@/lib/proposals/constants';
@@ -9,6 +9,8 @@ import { ProposalsFiltersPanel } from '../components/ProposalsFiltersPanel';
 import { ProposalsOverviewSection } from '../components/ProposalsOverviewSection';
 import { toNumber } from '../components/formatters';
 import type { GroupedUnit, SellerRow, SortKey, Summary, UnitRow } from '../components/types';
+
+type ActorTypeFilter = 'all' | 'collaborator' | 'professional';
 
 const EMPTY_SUMMARY: Summary = {
   qtd: 0,
@@ -44,6 +46,7 @@ const normalizeFetchError = (error: unknown, fallback: string) => {
 function PropostasGerencialPageContent() {
   const { data: session } = useSession();
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
 
   const initialDateRange = useMemo(() => {
@@ -57,6 +60,10 @@ function PropostasGerencialPageContent() {
   }, [searchParams]);
   const initialUnit = useMemo(() => String(searchParams.get('unit') || 'all').trim() || 'all', [searchParams]);
   const initialStatus = useMemo(() => String(searchParams.get('status') || 'all').trim() || 'all', [searchParams]);
+  const initialActorType = useMemo<ActorTypeFilter>(() => {
+    const value = String(searchParams.get('actorType') || 'all').trim().toLowerCase();
+    return value === 'collaborator' || value === 'professional' ? value : 'all';
+  }, [searchParams]);
 
   const role = String((session?.user as any)?.role || 'OPERADOR');
   const permissions = (session?.user as any)?.permissions;
@@ -68,6 +75,7 @@ function PropostasGerencialPageContent() {
   const [dateRange, setDateRange] = useState(initialDateRange);
   const [selectedUnit, setSelectedUnit] = useState(initialUnit);
   const [selectedStatus, setSelectedStatus] = useState(initialStatus);
+  const [selectedActorType, setSelectedActorType] = useState<ActorTypeFilter>(initialActorType);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: 'asc' | 'desc' }>({
@@ -111,6 +119,7 @@ function PropostasGerencialPageContent() {
           endDate: dateRange.end,
           unit: selectedUnit,
           status: selectedStatus,
+          actorType: selectedActorType,
         });
         if (options?.forceFresh) params.set('refresh', Date.now().toString());
 
@@ -122,6 +131,16 @@ function PropostasGerencialPageContent() {
 
         processUnitData((payload.byUnit || []) as UnitRow[]);
         setSellerData((payload.byProposer || []) as SellerRow[]);
+        setAvailableUnits(
+          Array.isArray(payload.availableUnits)
+            ? payload.availableUnits.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+            : [],
+        );
+        setAvailableStatuses(
+          Array.isArray(payload.availableStatuses)
+            ? payload.availableStatuses.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+            : [],
+        );
 
         const rawSummary = payload.summary || {};
         setSummary({
@@ -156,47 +175,12 @@ function PropostasGerencialPageContent() {
         }
       }
     },
-    [canView, dateRange.end, dateRange.start, selectedStatus, selectedUnit],
+    [canView, dateRange.end, dateRange.start, selectedActorType, selectedStatus, selectedUnit],
   );
-
-  const fetchOptions = useCallback(async () => {
-    if (!canView) return;
-    try {
-      const params = new URLSearchParams({
-        startDate: dateRange.start,
-        endDate: dateRange.end,
-        unit: selectedUnit,
-        status: selectedStatus,
-      });
-      const response = await fetch(`/api/admin/propostas/options?${params.toString()}`, { cache: 'no-store' });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(String(payload?.error || 'Falha ao carregar filtros de propostas.'));
-      }
-
-      setAvailableUnits(
-        Array.isArray(payload?.data?.availableUnits)
-          ? payload.data.availableUnits.map((item: unknown) => String(item || '').trim()).filter(Boolean)
-          : [],
-      );
-      setAvailableStatuses(
-        Array.isArray(payload?.data?.availableStatuses)
-          ? payload.data.availableStatuses.map((item: unknown) => String(item || '').trim()).filter(Boolean)
-          : [],
-      );
-    } catch (fetchError) {
-      console.error('Erro ao carregar filtros gerenciais de propostas:', fetchError);
-      setError((current) => current || normalizeFetchError(fetchError, 'Erro ao carregar filtros de propostas.'));
-    }
-  }, [canView, dateRange.end, dateRange.start, selectedStatus, selectedUnit]);
 
   useEffect(() => {
     void fetchData();
   }, [fetchData]);
-
-  useEffect(() => {
-    void fetchOptions();
-  }, [fetchOptions]);
 
   useEffect(() => {
     return () => {
@@ -244,6 +228,18 @@ function PropostasGerencialPageContent() {
     if (availableStatuses.includes(selectedStatus)) return;
     setSelectedStatus('all');
   }, [availableStatuses, selectedStatus]);
+
+  useEffect(() => {
+    if (!pathname) return;
+    const params = new URLSearchParams({
+      startDate: dateRange.start,
+      endDate: dateRange.end,
+      unit: selectedUnit,
+      status: selectedStatus,
+      actorType: selectedActorType,
+    });
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }, [dateRange.end, dateRange.start, pathname, router, selectedActorType, selectedStatus, selectedUnit]);
 
   const filteredSellers = useMemo(
     () =>
@@ -350,9 +346,24 @@ function PropostasGerencialPageContent() {
         availableUnits={availableUnits}
         availableStatuses={availableStatuses}
         filtersExpanded={filtersExpanded}
+        hasActiveFilters={selectedUnit !== 'all' || selectedStatus !== 'all' || selectedActorType !== 'all'}
         heartbeat={heartbeat}
         isUpdating={isUpdating}
         canRefresh={canRefresh}
+        extraFilters={
+          <div>
+            <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Categoria</label>
+            <select
+              value={selectedActorType}
+              onChange={(event) => setSelectedActorType(event.target.value as ActorTypeFilter)}
+              className="w-full cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500"
+            >
+              <option value="all">Todos</option>
+              <option value="collaborator">Colaboradores</option>
+              <option value="professional">Profissionais</option>
+            </select>
+          </div>
+        }
         onChangeDateRange={setDateRange}
         onChangeUnit={setSelectedUnit}
         onChangeStatus={setSelectedStatus}
@@ -361,6 +372,7 @@ function PropostasGerencialPageContent() {
         onResetFilters={() => {
           setSelectedUnit('all');
           setSelectedStatus('all');
+          setSelectedActorType('all');
         }}
       />
 

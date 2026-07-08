@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Calculator, CheckCircle2, CircleHelp, Download, Loader2, Plus, RefreshCw, SendHorizontal } from 'lucide-react';
@@ -83,6 +83,7 @@ export default function FolhaPagamentoPage() {
 
   const [options, setOptions] = useState<PayrollOptions>(emptyOptions);
   const [selectedPeriodId, setSelectedPeriodId] = useState('');
+  const [displayedPeriodId, setDisplayedPeriodId] = useState('');
   const [detail, setDetail] = useState<PayrollPeriodDetail | null>(emptyDetail);
   const [lines, setLines] = useState<PayrollLine[]>([]);
   const [benefitRows, setBenefitRows] = useState<PayrollBenefitRow[]>([]);
@@ -107,6 +108,10 @@ export default function FolhaPagamentoPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [refreshHovered, setRefreshHovered] = useState(false);
   const [visibleSyncRun, setVisibleSyncRun] = useState<PayrollPointSyncRun | null>(null);
+  const selectedPeriodIdRef = useRef('');
+  const displayedPeriodIdRef = useRef('');
+  const hasVisiblePeriodDataRef = useRef(false);
+  const requestIdRef = useRef(0);
   const requestedPeriodId = useMemo(() => String(searchParams.get('periodId') || '').trim(), [searchParams]);
   const hasVisiblePeriodData = detail !== null || lines.length > 0 || benefitRows.length > 0 || previewRows.length > 0;
 
@@ -144,6 +149,7 @@ export default function FolhaPagamentoPage() {
       : 'Ainda não há sincronização concluída da Sólides para esta competência.';
   const syncButtonDisabled = syncingPoint || hasPointPipelineInProgress || !selectedPeriodId;
   const hasVisibleSyncProgress = syncingPoint || hasPointPipelineInProgress || String(visibleSyncRun?.status || '').toUpperCase() === 'FAILED';
+  const isSwitchingPeriod = Boolean(selectedPeriodId && displayedPeriodId && selectedPeriodId !== displayedPeriodId);
   const generateActionTitle = hasPointPipelineInProgress
     ? 'Aguarde a conclusão da sincronização do ponto para gerar a folha.'
     : generationBlockedByReadiness
@@ -154,6 +160,18 @@ export default function FolhaPagamentoPage() {
     : 'Aprovar competência';
   const markSentBlocked = currentPeriod?.status !== 'APROVADA';
 
+  useEffect(() => {
+    selectedPeriodIdRef.current = selectedPeriodId;
+  }, [selectedPeriodId]);
+
+  useEffect(() => {
+    displayedPeriodIdRef.current = displayedPeriodId;
+  }, [displayedPeriodId]);
+
+  useEffect(() => {
+    hasVisiblePeriodDataRef.current = hasVisiblePeriodData;
+  }, [hasVisiblePeriodData]);
+
   const loadOptions = useCallback(async () => {
     if (!canView) return;
     const payload = await fetchJson<{ status: string; data: PayrollOptions }>('/api/admin/folha-pagamento/options');
@@ -161,17 +179,17 @@ export default function FolhaPagamentoPage() {
     const availablePeriods = payload.data?.periods || [];
     const persistedPeriodId =
       typeof window !== 'undefined' ? String(window.localStorage.getItem('payroll:selected-period-id') || '').trim() : '';
-    const candidatePeriodId = selectedPeriodId || requestedPeriodId || persistedPeriodId;
+    const candidatePeriodId = selectedPeriodIdRef.current || requestedPeriodId || persistedPeriodId;
 
     if (candidatePeriodId && availablePeriods.some((period) => period.id === candidatePeriodId)) {
-      setSelectedPeriodId(candidatePeriodId);
+      setSelectedPeriodId((current) => (current === candidatePeriodId ? current : candidatePeriodId));
       return;
     }
 
     if (availablePeriods[0]?.id) {
-      setSelectedPeriodId(availablePeriods[0].id);
+      setSelectedPeriodId((current) => (current === availablePeriods[0].id ? current : availablePeriods[0].id));
     }
-  }, [canView, requestedPeriodId, selectedPeriodId]);
+  }, [canView, requestedPeriodId]);
 
   const buildFilterQuery = useCallback(() => {
     const query = new URLSearchParams();
@@ -187,9 +205,11 @@ export default function FolhaPagamentoPage() {
     return query.toString();
   }, [filters]);
 
-  const loadPeriod = useCallback(async ({ background = false }: { background?: boolean } = {}) => {
-    if (!canView || !selectedPeriodId) return;
-    if (!background || !hasVisiblePeriodData) {
+  const fetchPeriodData = useCallback(async (periodId: string, { background = false }: { background?: boolean } = {}) => {
+    if (!canView || !periodId) return;
+    const requestId = ++requestIdRef.current;
+    const preserveCurrentScreen = background && displayedPeriodIdRef.current === periodId && hasVisiblePeriodDataRef.current;
+    if (!preserveCurrentScreen) {
       setLoading(true);
       setPreviewLoading(true);
     }
@@ -197,36 +217,49 @@ export default function FolhaPagamentoPage() {
     try {
       const [benefitsPayload, detailPayload, linesPayload, previewPayload] = await Promise.all([
         fetchJson<{ status: string; data: { items: PayrollBenefitRow[]; summary: PayrollBenefitsSummary } }>(
-          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/benefits?${buildFilterQuery()}`,
+          `/api/admin/folha-pagamento/periods/${encodeURIComponent(periodId)}/benefits?${buildFilterQuery()}`,
         ),
-        fetchJson<{ status: string; data: PayrollPeriodDetail }>(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}`),
+        fetchJson<{ status: string; data: PayrollPeriodDetail }>(`/api/admin/folha-pagamento/periods/${encodeURIComponent(periodId)}`),
         fetchJson<{ status: string; data: { items: PayrollLine[]; availableCentersCost: string[]; availableUnits: string[]; availableContracts: string[] } }>(
-          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/lines?${buildFilterQuery()}`,
+          `/api/admin/folha-pagamento/periods/${encodeURIComponent(periodId)}/lines?${buildFilterQuery()}`,
         ),
         fetchJson<{ status: string; data: { items: PayrollPreviewRow[] } }>(
-          `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/preview?${buildFilterQuery()}`,
+          `/api/admin/folha-pagamento/periods/${encodeURIComponent(periodId)}/preview?${buildFilterQuery()}`,
         ),
       ]);
+
+      if (requestId !== requestIdRef.current) return;
 
       setBenefitRows(benefitsPayload.data?.items || []);
       setBenefitsSummary(benefitsPayload.data?.summary || null);
       setDetail(detailPayload.data || emptyDetail);
       setLines(linesPayload.data?.items || []);
       setPreviewRows(previewPayload.data?.items || []);
+      setDisplayedPeriodId(periodId);
       setFilterOptions({
         centersCost: linesPayload.data?.availableCentersCost || [],
         units: linesPayload.data?.availableUnits || [],
         contracts: linesPayload.data?.availableContracts || [],
       });
     } catch (fetchError: any) {
+      if (requestId !== requestIdRef.current) return;
       setError(String(fetchError?.message || fetchError));
     } finally {
-      if (!background || !hasVisiblePeriodData) {
+      if (requestId !== requestIdRef.current) return;
+      if (!preserveCurrentScreen) {
         setLoading(false);
         setPreviewLoading(false);
       }
     }
-  }, [benefitRows.length, buildFilterQuery, canView, detail, hasVisiblePeriodData, lines.length, previewRows.length, selectedPeriodId]);
+  }, [buildFilterQuery, canView]);
+
+  const loadPeriod = useCallback(
+    async ({ background = false, periodId = selectedPeriodIdRef.current }: { background?: boolean; periodId?: string } = {}) => {
+      if (!periodId) return;
+      await fetchPeriodData(periodId, { background });
+    },
+    [fetchPeriodData],
+  );
 
   useEffect(() => {
     loadOptions().catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
@@ -253,8 +286,11 @@ export default function FolhaPagamentoPage() {
   }, [pathname, router, searchParams, selectedPeriodId]);
 
   useEffect(() => {
-    loadPeriod({ background: hasVisiblePeriodData }).catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
-  }, [hasVisiblePeriodData, loadPeriod]);
+    if (!selectedPeriodId) return;
+    loadPeriod({ background: hasVisiblePeriodDataRef.current, periodId: selectedPeriodId }).catch((fetchError) =>
+      setError(String((fetchError as Error)?.message || fetchError)),
+    );
+  }, [loadPeriod, selectedPeriodId]);
 
   useEffect(() => {
     const runStatus = String(latestSyncRun?.status || '').toUpperCase();
@@ -269,7 +305,9 @@ export default function FolhaPagamentoPage() {
 
   const reloadAll = async () => {
     await loadOptions();
-    await loadPeriod({ background: hasVisiblePeriodData });
+    if (selectedPeriodIdRef.current) {
+      await loadPeriod({ background: true, periodId: selectedPeriodIdRef.current });
+    }
   };
 
   const handlePointSync = useCallback(async () => {
@@ -281,7 +319,7 @@ export default function FolhaPagamentoPage() {
       await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/sync-point`, {
         method: 'POST',
       });
-      await loadPeriod({ background: true });
+      await loadPeriod({ background: true, periodId: selectedPeriodId });
       setSuccessMessage('Sincronização da competência enfileirada com sucesso.');
     } catch (fetchError: any) {
       setError(String(fetchError?.message || fetchError));
@@ -360,7 +398,7 @@ export default function FolhaPagamentoPage() {
         body: JSON.stringify(draft),
       });
       setLineDetail(payload.data || null);
-      await loadPeriod();
+      await loadPeriod({ periodId: selectedPeriodIdRef.current });
     } catch (fetchError: any) {
       setError(String(fetchError?.message || fetchError));
     } finally {
@@ -369,12 +407,13 @@ export default function FolhaPagamentoPage() {
   };
 
   useEffect(() => {
-    if (!selectedPeriodId || !hasPointPipelineInProgress) return;
+    if (!selectedPeriodId || !displayedPeriodId || selectedPeriodId !== displayedPeriodId) return;
+    if (!hasPointPipelineInProgress) return;
     const intervalId = window.setInterval(() => {
-      loadPeriod({ background: true }).catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
+      loadPeriod({ background: true, periodId: selectedPeriodId }).catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError)));
     }, 8000);
     return () => window.clearInterval(intervalId);
-  }, [hasPointPipelineInProgress, loadPeriod, selectedPeriodId]);
+  }, [displayedPeriodId, hasPointPipelineInProgress, loadPeriod, selectedPeriodId]);
 
   if (!canView) {
     return <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">Você não possui permissão para acessar a folha de pagamento.</div>;
@@ -537,6 +576,7 @@ export default function FolhaPagamentoPage() {
 
       {successMessage ? <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+      {isSwitchingPeriod ? <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-xs text-blue-700">Carregando a competência selecionada sem limpar os dados atuais.</div> : null}
       {hasVisibleSyncProgress && visibleSyncRun ? (
         <PayrollSyncProgress run={visibleSyncRun} scopeLabel="fechamento desta competência" className="min-h-[108px]" />
       ) : null}

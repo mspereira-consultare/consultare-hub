@@ -6,12 +6,24 @@ import { upsertSystemStatus } from '@/lib/system_status_repository';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const auth = await requirePayrollPermission('edit', 'ponto');
     if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status });
+    const payload = await request
+      .json()
+      .catch(() => ({} as { startDate?: string; endDate?: string }));
 
-    const data = await enqueuePointSync(auth.db, auth.userId);
+    const data = await enqueuePointSync(auth.db, {
+      requestedBy: auth.userId,
+      window:
+        payload?.startDate || payload?.endDate
+          ? {
+              startDate: payload?.startDate,
+              endDate: payload?.endDate,
+            }
+          : undefined,
+    });
     await upsertSystemStatus(auth.db, {
       serviceName: 'point_sync',
       status: 'PENDING',

@@ -8,6 +8,8 @@ export type SortKey =
   | 'ticket_medio'
   | 'ticket_exec';
 
+export type ProposalActorType = 'COLLABORATOR' | 'PROFESSIONAL';
+
 export type Summary = {
   qtd: number;
   valor: number;
@@ -36,6 +38,7 @@ export type SellerRow = {
   valor: number;
   qtd_executado: number;
   valor_executado: number;
+  actorType: ProposalActorType;
 };
 
 export type GroupedUnit = {
