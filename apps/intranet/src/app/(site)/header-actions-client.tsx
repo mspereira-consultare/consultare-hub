@@ -182,6 +182,7 @@ export function HeaderActionsClient({
   const [notificationPromptDismissed, setNotificationPromptDismissed] = useState(false);
   const [pushConfig, setPushConfig] = useState<PushConfigResponse>({ supported: false, publicKey: null });
   const [pushSubscribed, setPushSubscribed] = useState(false);
+  const [pushStatusMessage, setPushStatusMessage] = useState<string | null>(null);
   const [chatPulse, setChatPulse] = useState(false);
   const [bellPulse, setBellPulse] = useState(false);
   const [toasts, setToasts] = useState<NotificationToast[]>([]);
@@ -256,6 +257,7 @@ export function HeaderActionsClient({
     });
     if (!response.ok) throw new Error(await normalizeError(response));
     setPushSubscribed(true);
+    setPushStatusMessage('Alertas push ativos neste navegador.');
   }, []);
 
   useEffect(() => {
@@ -456,14 +458,21 @@ export function HeaderActionsClient({
           const existingSubscription = await registration.pushManager.getSubscription();
           if (cancelled) return;
           if (existingSubscription) {
-            setPushSubscribed(true);
             if (nextConfig.publicKey) {
               await syncPushSubscription(existingSubscription);
+            } else {
+              setPushSubscribed(false);
+              setPushStatusMessage('O navegador tem permissão, mas o push do servidor ainda não está configurado.');
             }
+          } else {
+            setPushSubscribed(false);
           }
+        } else {
+          setPushSubscribed(false);
         }
       } catch (err: unknown) {
         if (!cancelled) {
+          setPushSubscribed(false);
           setError(err instanceof Error ? err.message : 'Não foi possível preparar as notificações push.');
         }
       }
@@ -613,6 +622,8 @@ export function HeaderActionsClient({
 
       if (!pushSupported) return;
       if (!pushConfig.publicKey) {
+        setPushSubscribed(false);
+        setPushStatusMessage('Permissão concedida, mas o servidor ainda está sem configuração VAPID.');
         throw new Error('Web push ainda não está configurado no servidor da intranet.');
       }
 
@@ -631,6 +642,7 @@ export function HeaderActionsClient({
       });
       await syncPushSubscription(nextSubscription);
     } catch (err: unknown) {
+      setPushSubscribed(false);
       setError(err instanceof Error ? err.message : 'Não foi possível ativar as notificações do navegador.');
     }
   };
@@ -820,9 +832,19 @@ export function HeaderActionsClient({
                 </button>
               </div>
             ) : null}
+            {notificationsSupported && notificationPermission === 'granted' && pushSupported && !pushConfig.supported ? (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-xs text-amber-900">
+                O navegador já tem permissão, mas o servidor ainda não expôs as chaves VAPID. Enquanto isso, o alerta continua pelo fallback da intranet quando a aba estiver aberta em segundo plano.
+              </div>
+            ) : null}
             {notificationsSupported && notificationPermission === 'granted' && pushSupported && pushSubscribed ? (
               <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-3 text-xs text-emerald-900">
-                Alertas push ativos neste navegador.
+                {pushStatusMessage || 'Alertas push ativos neste navegador.'}
+              </div>
+            ) : null}
+            {notificationsSupported && notificationPermission === 'granted' && pushSupported && !pushSubscribed && pushStatusMessage ? (
+              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-3 text-xs text-amber-900">
+                {pushStatusMessage}
               </div>
             ) : null}
           </div>
