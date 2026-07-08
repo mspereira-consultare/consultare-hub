@@ -126,6 +126,14 @@ const urlBase64ToUint8Array = (value: string) => {
   return Uint8Array.from(raw, (char) => char.charCodeAt(0));
 };
 
+const uint8ArraysEqual = (left: Uint8Array, right: Uint8Array) => {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+};
+
 const playChatTone = async (contextRef: MutableRefObject<AudioContext | null>) => {
   const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
   if (!Ctx) return;
@@ -268,6 +276,49 @@ export function HeaderActionsClient({
     setPushSubscribed(true);
     setPushStatusMessage('Alertas push ativos neste navegador.');
   }, []);
+
+  const unregisterPushSubscription = useCallback(async (endpoint: string) => {
+    const response = await fetch('/api/notifications/push/unsubscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ endpoint }),
+    });
+    if (!response.ok) throw new Error(await normalizeError(response));
+  }, []);
+
+  const ensurePushSubscription = useCallback(
+    async (registration: ServiceWorkerRegistration, publicKey: string) => {
+      const expectedKey = urlBase64ToUint8Array(publicKey);
+      let subscription = await registration.pushManager.getSubscription();
+
+      if (subscription) {
+        const currentKeyBuffer = subscription.options?.applicationServerKey;
+        const currentKey = currentKeyBuffer ? new Uint8Array(currentKeyBuffer) : null;
+        const usesCurrentKey = currentKey ? uint8ArraysEqual(currentKey, expectedKey) : false;
+
+        if (!usesCurrentKey) {
+          try {
+            await unregisterPushSubscription(subscription.endpoint);
+          } catch {
+            // Se o backend já não tiver a assinatura, seguimos com a renovação local.
+          }
+          await subscription.unsubscribe().catch(() => false);
+          subscription = null;
+        }
+      }
+
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: expectedKey,
+        });
+      }
+
+      await syncPushSubscription(subscription);
+      return subscription;
+    },
+    [syncPushSubscription, unregisterPushSubscription]
+  );
 
   useEffect(() => {
     const unlock = () => {
@@ -471,21 +522,15 @@ export function HeaderActionsClient({
           let activeSubscription = await registration.pushManager.getSubscription();
           if (cancelled) return;
           if (nextConfig.publicKey) {
-            if (!activeSubscription) {
-              try {
-                activeSubscription = await registration.pushManager.subscribe({
-                  userVisibleOnly: true,
-                  applicationServerKey: urlBase64ToUint8Array(nextConfig.publicKey),
-                });
-              } catch {
-                if (!cancelled) {
-                  setPushSubscribed(false);
-                  setPushStatusMessage('Permissão concedida, mas o navegador ainda não concluiu a assinatura push automaticamente.');
-                }
+            try {
+              activeSubscription = await ensurePushSubscription(registration, nextConfig.publicKey);
+            } catch {
+              if (!cancelled) {
+                setPushSubscribed(false);
+                setPushStatusMessage('Permissão concedida, mas o navegador ainda não concluiu a assinatura push automaticamente.');
               }
             }
             if (activeSubscription) {
-              await syncPushSubscription(activeSubscription);
               return;
             }
           } else if (activeSubscription) {
@@ -510,7 +555,7 @@ export function HeaderActionsClient({
       cancelled = true;
       navigator.serviceWorker.removeEventListener('message', onServiceWorkerMessage);
     };
-  }, [browserReady, items, loadPushConfig, navigateToNotification, open, pushSupported, router, summary.items, syncPushSubscription]);
+  }, [browserReady, ensurePushSubscription, items, loadPushConfig, navigateToNotification, open, pushSupported, router, summary.items, syncPushSubscription]);
 
   useEffect(() => {
     let cancelled = false;
@@ -656,17 +701,7 @@ export function HeaderActionsClient({
       const registration =
         serviceWorkerRegistrationRef.current || (await navigator.serviceWorker.register('/intranet-push-sw.js'));
       serviceWorkerRegistrationRef.current = registration;
-      const existingSubscription = await registration.pushManager.getSubscription();
-      if (existingSubscription) {
-        await syncPushSubscription(existingSubscription);
-        return;
-      }
-
-      const nextSubscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(nextConfig.publicKey),
-      });
-      await syncPushSubscription(nextSubscription);
+      await ensurePushSubscription(registration, nextConfig.publicKey);
     } catch (err: unknown) {
       setPushSubscribed(false);
       setError(err instanceof Error ? err.message : 'Não foi possível ativar as notificações do navegador.');

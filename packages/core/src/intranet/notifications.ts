@@ -392,12 +392,17 @@ export const sendIntranetPushNotifications = async (db: DbInterface, items: Intr
         sent += 1;
       } catch (error: unknown) {
         const statusCode = Number((error as { statusCode?: number })?.statusCode || 0);
-        if (statusCode === 404 || statusCode === 410) {
+        if ([400, 401, 403, 404, 410].includes(statusCode)) {
           await removeIntranetPushSubscriptionByHash(db, subscription.endpointHash);
           removed += 1;
           continue;
         }
-        console.error('Erro ao enviar web push da intranet:', error);
+        console.error('Erro ao enviar web push da intranet:', {
+          statusCode,
+          endpointHash: subscription.endpointHash,
+          message: String((error as { message?: string })?.message || error),
+          body: (error as { body?: unknown })?.body,
+        });
       }
     }
   }
