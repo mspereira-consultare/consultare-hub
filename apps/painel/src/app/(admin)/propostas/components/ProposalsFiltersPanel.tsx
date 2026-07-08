@@ -13,6 +13,7 @@ type Props = {
   filtersExpanded: boolean;
   hasActiveFilters?: boolean;
   extraFilters?: ReactNode;
+  inlineExtraFilters?: boolean;
   heartbeat?: { status?: string; last_run?: string | null } | null;
   isUpdating?: boolean;
   canRefresh?: boolean;
@@ -35,6 +36,7 @@ export function ProposalsFiltersPanel({
   filtersExpanded,
   hasActiveFilters = selectedUnit !== 'all' || selectedStatus !== 'all',
   extraFilters,
+  inlineExtraFilters = false,
   heartbeat,
   isUpdating = false,
   canRefresh = false,
@@ -97,7 +99,13 @@ export function ProposalsFiltersPanel({
 
       {filtersExpanded && (
         <div className="border-t border-slate-100 p-6">
-          <div className="grid grid-cols-1 items-end gap-4 lg:grid-cols-3">
+          <div
+            className={
+              inlineExtraFilters
+                ? 'grid grid-cols-1 items-end gap-4 xl:grid-cols-[minmax(320px,1.35fr)_minmax(170px,0.55fr)_minmax(260px,1fr)_minmax(180px,0.55fr)]'
+                : 'grid grid-cols-1 items-end gap-4 lg:grid-cols-3'
+            }
+          >
             <div>
               <label className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
                 <Calendar size={14} />
@@ -154,10 +162,10 @@ export function ProposalsFiltersPanel({
                 ))}
               </select>
             </div>
-
+            {inlineExtraFilters ? extraFilters : null}
           </div>
 
-          {extraFilters ? <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">{extraFilters}</div> : null}
+          {extraFilters && !inlineExtraFilters ? <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">{extraFilters}</div> : null}
 
           {hasActiveFilters ? (
             <div className="mt-4 flex justify-end">

@@ -347,6 +347,7 @@ function PropostasGerencialPageContent() {
         availableStatuses={availableStatuses}
         filtersExpanded={filtersExpanded}
         hasActiveFilters={selectedUnit !== 'all' || selectedStatus !== 'all' || selectedActorType !== 'all'}
+        inlineExtraFilters
         heartbeat={heartbeat}
         isUpdating={isUpdating}
         canRefresh={canRefresh}
