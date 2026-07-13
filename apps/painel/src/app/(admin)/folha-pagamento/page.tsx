@@ -174,8 +174,13 @@ export default function FolhaPagamentoPage() {
     : generationBlockedByReadiness
       ? readiness?.guidance || 'Resolva os bloqueios críticos da competência antes de gerar a folha.'
       : 'Gerar folha';
+  const approvalBlockedHasLineIssues = Boolean(
+    approvalReadiness?.issues?.some((issue) => issue.code === 'LINES_PENDING_REVIEW'),
+  );
   const approveActionTitle = approvalBlockedByReadiness
-    ? approvalReadiness?.guidance || 'Resolva as pendências críticas antes de aprovar a folha.'
+    ? approvalBlockedHasLineIssues
+      ? 'Todos os colaboradores elegíveis precisam estar aprovados individualmente para fechar a competência. Resolva as linhas em revisão ou com pendências antes de continuar.'
+      : approvalReadiness?.guidance || 'Resolva as pendências críticas antes de aprovar a folha.'
     : 'Aprovar competência';
   useEffect(() => {
     selectedPeriodIdRef.current = selectedPeriodId;
@@ -864,19 +869,20 @@ export default function FolhaPagamentoPage() {
               >
                 {actionLoading === 'generate' ? <Loader2 size={15} className="animate-spin" /> : <Calculator size={15} />} Gerar folha
               </button>
-              <button
-                type="button"
-                onClick={() => runPeriodAction('approve')}
-                disabled={approvalBlockedByReadiness || actionLoading === 'approve'}
-                title={approveActionTitle}
-                className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${
-                  approvalBlockedByReadiness
-                    ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
-                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                }`}
-              >
-                {actionLoading === 'approve' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Aprovar competência
-              </button>
+              <div title={approvalBlockedByReadiness ? approveActionTitle : undefined}>
+                <button
+                  type="button"
+                  onClick={() => runPeriodAction('approve')}
+                  disabled={approvalBlockedByReadiness || actionLoading === 'approve'}
+                  className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${
+                    approvalBlockedByReadiness
+                      ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  }`}
+                >
+                  {actionLoading === 'approve' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Aprovar competência
+                </button>
+              </div>
               <button type="button" onClick={() => runPeriodAction('reopen')} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-sm font-semibold text-amber-700">
                 {actionLoading === 'reopen' ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Reabrir competência
               </button>
