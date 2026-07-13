@@ -3,7 +3,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Calculator, CheckCircle2, CircleHelp, Download, Loader2, Plus, RefreshCw } from 'lucide-react';
+import { Calculator, CheckCircle2, CircleHelp, Download, Loader2, Plus, RefreshCw, Trash2 } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
 import { DEFAULT_PAYROLL_LINE_FILTERS } from '@/lib/payroll/filters';
 import type {
@@ -107,6 +107,7 @@ export default function FolhaPagamentoPage() {
   const [filters, setFilters] = useState<PayrollLineFilters>(DEFAULT_PAYROLL_LINE_FILTERS);
   const [filterOptions, setFilterOptions] = useState({ centersCost: [] as string[], units: [] as string[], contracts: [] as string[] });
   const [activeTab, setActiveTab] = useState<PayrollTabKey>('fechamento');
+  const [optionsLoaded, setOptionsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState('');
@@ -120,6 +121,7 @@ export default function FolhaPagamentoPage() {
   const [lineDetail, setLineDetail] = useState<PayrollLineDetail | null>(null);
   const [lineDetailOpen, setLineDetailOpen] = useState(false);
   const [lineSaving, setLineSaving] = useState(false);
+  const [selectedLineIds, setSelectedLineIds] = useState<string[]>([]);
   const [helpOpen, setHelpOpen] = useState(false);
   const [refreshHovered, setRefreshHovered] = useState(false);
   const [visibleSyncRun, setVisibleSyncRun] = useState<PayrollPointSyncRun | null>(null);
@@ -195,7 +197,22 @@ export default function FolhaPagamentoPage() {
     if (!canView) return;
     const payload = await fetchJson<{ status: string; data: PayrollOptions }>('/api/admin/folha-pagamento/options');
     setOptions(payload.data || emptyOptions);
+    setOptionsLoaded(true);
   }, [canView, requestedPeriodId]);
+
+  const resetVisiblePeriodState = useCallback(() => {
+    setDetail(emptyDetail);
+    setLines([]);
+    setBenefitRows([]);
+    setBenefitsSummary(null);
+    setPreviewRows([]);
+    setFilterOptions({ centersCost: [], units: [], contracts: [] });
+    setDisplayedPeriodId('');
+    setSelectedLine(null);
+    setLineDetail(null);
+    setLineDetailOpen(false);
+    setSelectedLineIds([]);
+  }, []);
 
   const buildFilterQuery = useCallback(() => {
     const query = new URLSearchParams();
@@ -276,7 +293,19 @@ export default function FolhaPagamentoPage() {
   }, [loadOptions]);
 
   useEffect(() => {
+    if (!optionsLoaded) return;
     if (!options.periods.length) {
+      setSelectedPeriodId('');
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem('payroll:selected-period-id');
+      }
+      const params = new URLSearchParams(searchParams.toString());
+      if (params.has('periodId')) {
+        params.delete('periodId');
+        const nextQuery = params.toString();
+        router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+      }
+      resetVisiblePeriodState();
       setLoading(false);
       setPreviewLoading(false);
       return;
@@ -291,7 +320,7 @@ export default function FolhaPagamentoPage() {
     if (resolvedPeriodId && resolvedPeriodId !== selectedPeriodIdRef.current) {
       setSelectedPeriodId(resolvedPeriodId);
     }
-  }, [options.periods, requestedPeriodId]);
+  }, [options.periods, optionsLoaded, pathname, requestedPeriodId, resetVisiblePeriodState, router, searchParams]);
 
   useEffect(() => {
     if (!requestedPeriodId) return;
@@ -315,6 +344,10 @@ export default function FolhaPagamentoPage() {
     const nextQuery = params.toString();
     router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
   }, [pathname, router, searchParams, selectedPeriodId]);
+
+  useEffect(() => {
+    setSelectedLineIds([]);
+  }, [selectedPeriodId, filters.centerCost, filters.contractTypes, filters.lineStatus, filters.search, filters.unit]);
 
   useEffect(() => {
     if (!selectedPeriodId) return;
@@ -385,6 +418,17 @@ export default function FolhaPagamentoPage() {
     }
   };
 
+  const handleToggleLine = useCallback((lineId: string, checked: boolean) => {
+    setSelectedLineIds((current) => {
+      if (checked) return current.includes(lineId) ? current : [...current, lineId];
+      return current.filter((item) => item !== lineId);
+    });
+  }, []);
+
+  const handleToggleAllLines = useCallback((checked: boolean) => {
+    setSelectedLineIds(checked ? lines.map((line) => line.id) : []);
+  }, [lines]);
+
   const executeGenerateAction = async (allowPendingEmployees = false) => {
     if (!selectedPeriodId) return;
     setActionLoading('generate');
@@ -427,6 +471,74 @@ export default function FolhaPagamentoPage() {
       await fetchJson(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/${path}`, { method: 'POST' });
       await reloadAll();
       if (successMessage) setSuccessMessage(successMessage);
+    } catch (fetchError: any) {
+      setError(String(fetchError?.message || fetchError));
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const handleRecalculateSelected = async () => {
+    if (!selectedPeriodId || selectedLineIds.length === 0) return;
+    setActionLoading('recalculate-selected');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const payload = await fetchJson<{
+        status: string;
+        data: {
+          updatedLineIds: string[];
+          skipped: Array<{ lineId: string; employeeName: string; reason: string }>;
+        };
+      }>(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/recalculate-lines`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lineIds: selectedLineIds }),
+      });
+      await reloadAll();
+      setSelectedLineIds([]);
+      const updatedCount = payload.data?.updatedLineIds?.length || 0;
+      const skippedCount = payload.data?.skipped?.length || 0;
+      setSuccessMessage(
+        skippedCount > 0
+          ? `${updatedCount} linha(s) recalculada(s). ${skippedCount} item(ns) ignorado(s) por não pertencer(em) mais à base elegível atual.`
+          : `${updatedCount} linha(s) recalculada(s) com sucesso.`,
+      );
+    } catch (fetchError: any) {
+      setError(String(fetchError?.message || fetchError));
+    } finally {
+      setActionLoading('');
+    }
+  };
+
+  const handleDeletePeriod = async () => {
+    if (!selectedPeriodId) return;
+    const periodLabel = currentPeriod ? `${formatMonthRef(currentPeriod.monthRef)} | ${formatDateBr(currentPeriod.periodStart)} a ${formatDateBr(currentPeriod.periodEnd)}` : 'esta competência';
+    const confirmed = window.confirm(
+      `Excluir ${periodLabel}?\n\nIsso removerá os dados locais da folha desta competência. A base compartilhada de ponto da Sólides será preservada.`,
+    );
+    if (!confirmed) return;
+
+    setActionLoading('delete');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const payload = await fetchJson<{ status: string; data: { deletedPeriodId: string; nextPeriodId: string | null } }>(
+        `/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}`,
+        { method: 'DELETE' },
+      );
+      await loadOptions();
+      if (payload.data?.nextPeriodId) {
+        setSelectedPeriodId(payload.data.nextPeriodId);
+      } else {
+        resetVisiblePeriodState();
+        setSelectedPeriodId('');
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete('periodId');
+        const nextQuery = params.toString();
+        router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname, { scroll: false });
+      }
+      setSuccessMessage('Competência excluída com sucesso.');
     } catch (fetchError: any) {
       setError(String(fetchError?.message || fetchError));
     } finally {
@@ -657,8 +769,35 @@ export default function FolhaPagamentoPage() {
         tabs={PAYROLL_CLOSING_TABS}
         actions={selectedPeriodId && canEdit ? (
           <>
-            <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-400">Ações da competência</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="text-[11px] font-medium uppercase tracking-[0.2em] text-slate-400">Ações da competência</div>
+              {activeTab === 'fechamento' && selectedLineIds.length > 0 ? (
+                <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
+                  {selectedLineIds.length} selecionada(s)
+                </span>
+              ) : null}
+            </div>
             <div className="flex flex-wrap gap-2">
+              {activeTab === 'fechamento' ? (
+                <button
+                  type="button"
+                  onClick={handleRecalculateSelected}
+                  disabled={selectedLineIds.length === 0 || actionLoading === 'recalculate-selected' || hasPointPipelineInProgress}
+                  className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium ${
+                    selectedLineIds.length === 0 || hasPointPipelineInProgress
+                      ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                      : 'border-blue-200 bg-blue-50 text-blue-700'
+                  }`}
+                  title={
+                    hasPointPipelineInProgress
+                      ? 'Aguarde a conclusão da sincronização da competência antes de recalcular linhas específicas.'
+                      : 'Recalcular somente as linhas selecionadas usando a base já sincronizada e o cadastro local atual.'
+                  }
+                >
+                  {actionLoading === 'recalculate-selected' ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />}
+                  Recalcular selecionados
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => runPeriodAction('generate')}
@@ -688,12 +827,41 @@ export default function FolhaPagamentoPage() {
               <button type="button" onClick={() => runPeriodAction('reopen')} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-sm font-semibold text-amber-700">
                 {actionLoading === 'reopen' ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Reabrir competência
               </button>
+              <button
+                type="button"
+                onClick={handleDeletePeriod}
+                disabled={actionLoading === 'delete' || hasPointPipelineInProgress || currentPeriod?.status === 'ENVIADA'}
+                title={
+                  currentPeriod?.status === 'ENVIADA'
+                    ? 'Competências enviadas não podem ser excluídas.'
+                    : hasPointPipelineInProgress
+                      ? 'Aguarde a conclusão da sincronização da competência antes de excluí-la.'
+                      : 'Excluir competência'
+                }
+                className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-semibold ${
+                  currentPeriod?.status === 'ENVIADA' || hasPointPipelineInProgress
+                    ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                    : 'border-rose-200 bg-rose-50 text-rose-700'
+                }`}
+              >
+                {actionLoading === 'delete' ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+                Excluir competência
+              </button>
             </div>
           </>
         ) : null}
       />
 
-      {activeTab === 'fechamento' ? <PayrollClosingTable rows={lines} loading={loading} onOpenDetail={openLineDetail} /> : null}
+      {activeTab === 'fechamento' ? (
+        <PayrollClosingTable
+          rows={lines}
+          loading={loading}
+          onOpenDetail={openLineDetail}
+          selectedLineIds={selectedLineIds}
+          onToggleLine={handleToggleLine}
+          onToggleAll={handleToggleAllLines}
+        />
+      ) : null}
       {activeTab === 'beneficios' ? (
         <PayrollBenefitsPanel rows={benefitRows} summary={benefitsSummary} loading={loading || previewLoading} onOpenLine={openPreviewLine} />
       ) : null}

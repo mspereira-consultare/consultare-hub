@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import type { DbInterface } from '@/lib/db';
+import { runInTransaction, type DbInterface } from '@/lib/db';
 import { ensureEmployeesTables } from '@/lib/colaboradores/repository';
 import { ensurePointTables, getPointHeartbeat } from '@/lib/point/repository';
 import {
@@ -2723,22 +2723,62 @@ const buildLineRecord = (
   return draftLine;
 };
 
-export const generatePayrollPeriod = async (
-  db: DbInterface,
-  periodId: string,
-  options: {
-    allowPendingEmployees?: boolean;
-  } = {},
-) => {
-  await ensurePayrollTables(db);
-  const period = await getPeriodOrThrow(db, periodId);
-  if (!period.rules) throw new PayrollValidationError('Regras da competência não encontradas.', 500);
+const persistPayrollLineRecord = async (db: DbInterface, line: PayrollLine) => {
+  await db.execute(
+    `INSERT INTO payroll_lines (
+      id, period_id, employee_id, comparison_key, employee_name, employee_cpf, center_cost, unit_name,
+      contract_type, salary_base, insalubrity_percent, insalubrity_amount, days_worked, absences_count,
+      absence_discount, late_minutes, late_discount, vt_provisioned, vt_discount, totalpass_discount,
+      other_fixed_discount, other_fixed_discount_description, adjustments_amount, adjustments_notes,
+      total_provents, total_discounts, net_operational, line_status, payroll_notes, pending_data_codes_json,
+      employee_snapshot_json, calculation_memory_json, comparison_status, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      line.id,
+      line.periodId,
+      line.employeeId,
+      buildComparisonKey(line.employeeName, line.employeeCpf),
+      line.employeeName,
+      line.employeeCpf,
+      line.centerCost,
+      line.unitName,
+      line.contractType,
+      line.salaryBase,
+      line.insalubrityPercent,
+      line.insalubrityAmount,
+      line.daysWorked,
+      line.absencesCount,
+      line.absenceDiscount,
+      line.lateMinutes,
+      line.lateDiscount,
+      line.vtProvisioned,
+      line.vtDiscount,
+      line.totalpassDiscount,
+      line.otherFixedDiscount,
+      line.otherFixedDiscountDescription,
+      line.adjustmentsAmount,
+      line.adjustmentsNotes,
+      line.totalProvents,
+      line.totalDiscounts,
+      line.netOperational,
+      line.lineStatus,
+      line.payrollNotes,
+      safeJson(line.pendingDataCodes),
+      line.employeeSnapshotJson,
+      line.calculationMemoryJson,
+      line.pendingDataCodes.length ? 'PENDENTE_DADOS' : 'SEM_BASE',
+      line.createdAt,
+      line.updatedAt,
+    ],
+  );
+};
 
-  const syncJobsInProgress = await countPointSyncJobsInProgress(db, period.id);
-  if (syncJobsInProgress > 0) {
-    throw new PayrollValidationError('Ainda há sincronizações de ponto pendentes ou em processamento nesta competência. Aguarde a conclusão antes de gerar a folha.', 409);
-  }
+const overwritePayrollLineRecord = async (db: DbInterface, line: PayrollLine) => {
+  await db.execute(`DELETE FROM payroll_lines WHERE id = ?`, [line.id]);
+  await persistPayrollLineRecord(db, line);
+};
 
+const loadPayrollGenerationContext = async (db: DbInterface, period: PayrollPeriod) => {
   const [allEmployees, employees, occurrenceRows, existingLines, syncRuns] = await Promise.all([
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
     loadPayrollEligibleEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
@@ -2752,14 +2792,6 @@ export const generatePayrollPeriod = async (
     listSignaturesRaw(db, period.id),
   ]);
   const readiness = evaluatePayrollPeriodReadiness(period, syncRuns, employees, pointRows, occurrenceRows, hoursBalances, signatures);
-  const hardBlockingIssues = readiness.issues.filter((issue) => issue.severity === 'BLOCKING');
-  const confirmableIssues = getConfirmableGenerationIssues(readiness);
-  if (hardBlockingIssues.length > 0) {
-    throw new PayrollValidationError(buildReadinessBlockingMessage(readiness), 409);
-  }
-  if (confirmableIssues.length > 0 && !options.allowPendingEmployees) {
-    throw new PayrollPendingGenerationConfirmationError(buildPendingGenerationConfirmation(confirmableIssues));
-  }
 
   const pointMap = new Map<string, PayrollPointDaily[]>();
   for (const row of pointRows) {
@@ -2782,6 +2814,59 @@ export const generatePayrollPeriod = async (
     if (!existingMap.has(key)) existingMap.set(key, line);
   }
 
+  return {
+    allEmployees,
+    employees,
+    occurrenceRows,
+    existingLines,
+    syncRuns,
+    pointRows,
+    hoursBalances,
+    signatures,
+    readiness,
+    pointMap,
+    occurrenceMap,
+    existingMap,
+  };
+};
+
+export const generatePayrollPeriod = async (
+  db: DbInterface,
+  periodId: string,
+  options: {
+    allowPendingEmployees?: boolean;
+  } = {},
+) => {
+  await ensurePayrollTables(db);
+  const period = await getPeriodOrThrow(db, periodId);
+  if (!period.rules) throw new PayrollValidationError('Regras da competência não encontradas.', 500);
+
+  const syncJobsInProgress = await countPointSyncJobsInProgress(db, period.id);
+  if (syncJobsInProgress > 0) {
+    throw new PayrollValidationError('Ainda há sincronizações de ponto pendentes ou em processamento nesta competência. Aguarde a conclusão antes de gerar a folha.', 409);
+  }
+
+  const {
+    employees,
+    occurrenceRows,
+    pointRows,
+    hoursBalances,
+    signatures,
+    syncRuns,
+    readiness,
+    pointMap,
+    occurrenceMap,
+    existingMap,
+  } = await loadPayrollGenerationContext(db, period);
+  const hardBlockingIssues = readiness.issues.filter((issue) => issue.severity === 'BLOCKING');
+  const confirmableIssues = getConfirmableGenerationIssues(readiness);
+  if (hardBlockingIssues.length > 0) {
+    throw new PayrollValidationError(buildReadinessBlockingMessage(readiness), 409);
+  }
+  if (confirmableIssues.length > 0 && !options.allowPendingEmployees) {
+    throw new PayrollPendingGenerationConfirmationError(buildPendingGenerationConfirmation(confirmableIssues));
+  }
+
   const generatedLines = employees.map((employee) =>
     buildLineRecord(
       employee,
@@ -2796,53 +2881,7 @@ export const generatePayrollPeriod = async (
   await db.execute(`DELETE FROM payroll_lines WHERE period_id = ?`, [period.id]);
 
   for (const line of generatedLines) {
-    await db.execute(
-      `INSERT INTO payroll_lines (
-        id, period_id, employee_id, comparison_key, employee_name, employee_cpf, center_cost, unit_name,
-        contract_type, salary_base, insalubrity_percent, insalubrity_amount, days_worked, absences_count,
-        absence_discount, late_minutes, late_discount, vt_provisioned, vt_discount, totalpass_discount,
-        other_fixed_discount, other_fixed_discount_description, adjustments_amount, adjustments_notes,
-        total_provents, total_discounts, net_operational, line_status, payroll_notes, pending_data_codes_json,
-        employee_snapshot_json, calculation_memory_json, comparison_status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        line.id,
-        line.periodId,
-        line.employeeId,
-        buildComparisonKey(line.employeeName, line.employeeCpf),
-        line.employeeName,
-        line.employeeCpf,
-        line.centerCost,
-        line.unitName,
-        line.contractType,
-        line.salaryBase,
-        line.insalubrityPercent,
-        line.insalubrityAmount,
-        line.daysWorked,
-        line.absencesCount,
-        line.absenceDiscount,
-        line.lateMinutes,
-        line.lateDiscount,
-        line.vtProvisioned,
-        line.vtDiscount,
-        line.totalpassDiscount,
-        line.otherFixedDiscount,
-        line.otherFixedDiscountDescription,
-        line.adjustmentsAmount,
-        line.adjustmentsNotes,
-        line.totalProvents,
-        line.totalDiscounts,
-        line.netOperational,
-        line.lineStatus,
-        line.payrollNotes,
-        safeJson(line.pendingDataCodes),
-        line.employeeSnapshotJson,
-        line.calculationMemoryJson,
-        line.pendingDataCodes.length ? 'PENDENTE_DADOS' : 'SEM_BASE',
-        line.createdAt,
-        line.updatedAt,
-      ],
-    );
+    await persistPayrollLineRecord(db, line);
   }
 
   await db.execute(`UPDATE payroll_periods SET status = ?, updated_at = ? WHERE id = ?`, ['EM_REVISAO', NOW(), period.id]);
@@ -2853,6 +2892,120 @@ export const generatePayrollPeriod = async (
     unit: 'all',
     contractTypes: [],
     lineStatus: 'all',
+  });
+};
+
+export const recalculatePayrollPeriodLines = async (db: DbInterface, periodId: string, lineIds: string[]) => {
+  await ensurePayrollTables(db);
+  const normalizedLineIds = Array.from(new Set(lineIds.map((item) => clean(item)).filter(Boolean)));
+  if (!normalizedLineIds.length) {
+    throw new PayrollValidationError('Selecione ao menos uma linha para recalcular.', 400);
+  }
+
+  return runInTransaction(db, async (txDb) => {
+    const period = await getPeriodOrThrow(txDb, periodId);
+    if (!period.rules) throw new PayrollValidationError('Regras da competência não encontradas.', 500);
+
+    const syncJobsInProgress = await countPointSyncJobsInProgress(txDb, period.id);
+    if (syncJobsInProgress > 0) {
+      throw new PayrollValidationError('Ainda há sincronizações de ponto pendentes ou em processamento nesta competência. Aguarde a conclusão antes de recalcular as linhas.', 409);
+    }
+
+    const rows = await txDb.query(
+      `SELECT * FROM payroll_lines WHERE period_id = ? AND id IN (${normalizedLineIds.map(() => '?').join(', ')}) ORDER BY employee_name ASC`,
+      [period.id, ...normalizedLineIds],
+    );
+    const selectedLines = rows.map(mapLine);
+
+    const {
+      employees,
+      occurrenceMap,
+      pointMap,
+    } = await loadPayrollGenerationContext(txDb, period);
+
+    const employeeLookup = new Map<string, EmployeePayrollSource>();
+    for (const employee of employees) {
+      employeeLookup.set(employee.id, employee);
+      employeeLookup.set(buildComparisonKey(employee.fullName, employee.cpf), employee);
+    }
+
+    const updatedLineIds: string[] = [];
+    const skipped: Array<{ lineId: string; employeeName: string; reason: string }> = [];
+
+    const requestedIds = new Set(normalizedLineIds);
+    for (const line of selectedLines) {
+      const employeeKey = line.employeeId || buildComparisonKey(line.employeeName, line.employeeCpf);
+      const employee = employeeLookup.get(employeeKey);
+      if (!employee) {
+        skipped.push({
+          lineId: line.id,
+          employeeName: line.employeeName,
+          reason: 'Colaborador não faz mais parte da base elegível atual da competência.',
+        });
+        continue;
+      }
+
+      const nextLine = buildLineRecord(
+        employee,
+        period,
+        period.rules,
+        pointMap.get(employee.id) || pointMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || [],
+        occurrenceMap.get(employee.id) || [],
+        line,
+      );
+      await overwritePayrollLineRecord(txDb, nextLine);
+      updatedLineIds.push(nextLine.id);
+      requestedIds.delete(nextLine.id);
+    }
+
+    for (const lineId of requestedIds) {
+      skipped.push({
+        lineId,
+        employeeName: '',
+        reason: 'Linha não encontrada na competência atual.',
+      });
+    }
+
+    return {
+      updatedLineIds,
+      skipped,
+    };
+  });
+};
+
+export const deletePayrollPeriod = async (db: DbInterface, periodId: string) => {
+  await ensurePayrollTables(db);
+
+  return runInTransaction(db, async (txDb) => {
+    const period = await getPeriodOrThrow(txDb, periodId);
+    if (period.status === 'ENVIADA') {
+      throw new PayrollValidationError('Competências enviadas não podem ser excluídas.', 409);
+    }
+
+    const syncJobsInProgress = await countPointSyncJobsInProgress(txDb, period.id);
+    if (syncJobsInProgress > 0) {
+      throw new PayrollValidationError('Não é possível excluir a competência enquanto houver sincronização da Sólides em andamento para esta janela.', 409);
+    }
+
+    await txDb.execute(`DELETE FROM payroll_lines WHERE period_id = ?`, [period.id]);
+    await txDb.execute(`DELETE FROM payroll_occurrences WHERE period_id = ?`, [period.id]);
+    await txDb.execute(`DELETE FROM payroll_reference_rows WHERE period_id = ?`, [period.id]);
+    await txDb.execute(`DELETE FROM payroll_import_files WHERE period_id = ?`, [period.id]);
+    await txDb.execute(`DELETE FROM payroll_point_daily WHERE period_id = ?`, [period.id]);
+    await txDb.execute(`DELETE FROM payroll_hours_balance_monthly WHERE period_id = ?`, [period.id]);
+    await txDb.execute(`DELETE FROM payroll_signature_monthly WHERE period_id = ?`, [period.id]);
+    await txDb.execute(`DELETE FROM payroll_point_sync_runs WHERE period_id = ?`, [period.id]);
+    await txDb.execute(`DELETE FROM payroll_point_sync_jobs WHERE period_id = ?`, [period.id]);
+    await txDb.execute(`DELETE FROM payroll_periods WHERE id = ?`, [period.id]);
+    if (period.ruleId) {
+      await txDb.execute(`DELETE FROM payroll_rules WHERE id = ?`, [period.ruleId]);
+    }
+
+    const remaining = await listPayrollPeriods(txDb);
+    return {
+      deletedPeriodId: period.id,
+      nextPeriodId: remaining[0]?.id || null,
+    };
   });
 };
 

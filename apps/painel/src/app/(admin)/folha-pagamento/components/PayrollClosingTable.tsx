@@ -36,11 +36,19 @@ export function PayrollClosingTable({
   rows,
   loading,
   onOpenDetail,
+  selectedLineIds,
+  onToggleLine,
+  onToggleAll,
 }: {
   rows: PayrollLine[];
   loading: boolean;
   onOpenDetail: (line: PayrollLine) => void;
+  selectedLineIds: string[];
+  onToggleLine: (lineId: string, checked: boolean) => void;
+  onToggleAll: (checked: boolean) => void;
 }) {
+  const allVisibleSelected = rows.length > 0 && rows.every((row) => selectedLineIds.includes(row.id));
+
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
       <PayrollSectionHeader
@@ -55,7 +63,18 @@ export function PayrollClosingTable({
         <table className="min-w-[1280px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr>
-              <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left">Colaborador</th>
+              <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    aria-label="Selecionar todas as linhas visíveis"
+                    onChange={(event) => onToggleAll(event.target.checked)}
+                    className="h-4 w-4 rounded border-slate-300 text-[#17407E] focus:ring-[#17407E]"
+                  />
+                  <span>Colaborador</span>
+                </div>
+              </th>
               <th className="px-3 py-3 text-left">Centro de custo</th>
               <th className="px-3 py-3 text-left">Regime</th>
               <th className="px-3 py-3 text-right">Salário</th>
@@ -95,6 +114,16 @@ export function PayrollClosingTable({
                 >
                   <td className="sticky left-0 z-[1] bg-white px-4 py-3">
                     <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedLineIds.includes(line.id)}
+                          aria-label={`Selecionar ${line.employeeName}`}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => onToggleLine(line.id, event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-[#17407E] focus:ring-[#17407E]"
+                        />
+                      </div>
                       <div>
                         <div className="font-semibold text-slate-900">{line.employeeName}</div>
                         <div className="text-xs text-slate-500">{line.employeeCpf || 'CPF não informado'}</div>

@@ -1,6 +1,6 @@
 'use client';
 
-import { Loader2, X } from 'lucide-react';
+import { CircleHelp, Loader2, X } from 'lucide-react';
 import type { PayrollDataSource, PayrollLine, PayrollLineDetail } from '@/lib/payroll/types';
 import { formatDateBr, formatMoney, formatSheetInsalubrity, pendingDataCodeDescriptionMap, pendingDataCodeLabelMap, statusLabelMap } from './formatters';
 import { PayrollSourceBadge } from './PayrollSourceBadge';
@@ -57,7 +57,7 @@ export function PayrollLineDrawer({
           <div>
             <h2 className="text-lg font-bold text-slate-900">{line.employeeName}</h2>
             <p className="mt-1 text-sm text-slate-500">
-              Memória operacional da linha com insumos locais do painel e dados sincronizados da Sólides para suportar a aprovação mensal.
+              Revise aqui o cálculo da linha, os dados sincronizados da Sólides e os ajustes manuais que impactam o total deste colaborador.
             </p>
           </div>
           <button
@@ -96,7 +96,15 @@ export function PayrollLineDrawer({
             <Card title="Ajustes manuais" sources={detailSources.adjustments}>
               <div className="space-y-3">
                 <div>
-                  <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Valor do ajuste</label>
+                  <label className="mb-1 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+                    <span>Valor do ajuste</span>
+                    <span className="group relative inline-flex items-center">
+                      <CircleHelp size={13} className="text-slate-400" />
+                      <span className="pointer-events-none absolute left-0 top-full z-20 mt-2 hidden w-72 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] normal-case tracking-normal text-slate-600 shadow-lg group-hover:block">
+                        Valor positivo acrescenta aos proventos. Valor negativo aumenta os descontos. Este campo ajusta o cálculo atual da linha e não substitui manualmente o valor final integral do pagamento.
+                      </span>
+                    </span>
+                  </label>
                   <input defaultValue={draft.adjustmentsAmount} disabled={!canEdit || saving} id="payroll-adjustments-amount" className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" />
                 </div>
                 <div>
