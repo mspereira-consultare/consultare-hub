@@ -2973,6 +2973,60 @@ export const recalculatePayrollPeriodLines = async (db: DbInterface, periodId: s
   });
 };
 
+export const approvePayrollPeriodLines = async (db: DbInterface, periodId: string, lineIds: string[]) => {
+  await ensurePayrollTables(db);
+  const normalizedLineIds = Array.from(new Set(lineIds.map((item) => clean(item)).filter(Boolean)));
+  if (!normalizedLineIds.length) {
+    throw new PayrollValidationError('Selecione ao menos uma linha para aprovar.', 400);
+  }
+
+  return runInTransaction(db, async (txDb) => {
+    await getPeriodOrThrow(txDb, periodId);
+    const rows = await txDb.query(
+      `SELECT * FROM payroll_lines WHERE period_id = ? AND id IN (${normalizedLineIds.map(() => '?').join(', ')}) ORDER BY employee_name ASC`,
+      [periodId, ...normalizedLineIds],
+    );
+    const selectedLines = rows.map(mapLine);
+
+    const updatedLineIds: string[] = [];
+    const skipped: Array<{ lineId: string; employeeName: string; reason: string }> = [];
+    const requestedIds = new Set(normalizedLineIds);
+
+    for (const line of selectedLines) {
+      requestedIds.delete(line.id);
+      if (line.lineStatus === 'PENDENTE_CADASTRO' || line.pendingDataCodes.length > 0) {
+        skipped.push({
+          lineId: line.id,
+          employeeName: line.employeeName,
+          reason: 'Linha com pendência cadastral não pode ser aprovada em lote.',
+        });
+        continue;
+      }
+
+      await txDb.execute(
+        `UPDATE payroll_lines
+         SET line_status = ?, updated_at = ?
+         WHERE id = ?`,
+        ['APROVADO', NOW(), line.id],
+      );
+      updatedLineIds.push(line.id);
+    }
+
+    for (const lineId of requestedIds) {
+      skipped.push({
+        lineId,
+        employeeName: '',
+        reason: 'Linha não encontrada na competência atual.',
+      });
+    }
+
+    return {
+      updatedLineIds,
+      skipped,
+    };
+  });
+};
+
 export const deletePayrollPeriod = async (db: DbInterface, periodId: string) => {
   await ensurePayrollTables(db);
 

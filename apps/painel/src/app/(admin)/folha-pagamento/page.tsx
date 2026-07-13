@@ -511,6 +511,39 @@ export default function FolhaPagamentoPage() {
     }
   };
 
+  const handleApproveSelected = async () => {
+    if (!selectedPeriodId || selectedLineIds.length === 0) return;
+    setActionLoading('approve-selected');
+    setError('');
+    setSuccessMessage('');
+    try {
+      const payload = await fetchJson<{
+        status: string;
+        data: {
+          updatedLineIds: string[];
+          skipped: Array<{ lineId: string; employeeName: string; reason: string }>;
+        };
+      }>(`/api/admin/folha-pagamento/periods/${encodeURIComponent(selectedPeriodId)}/approve-lines`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lineIds: selectedLineIds }),
+      });
+      await reloadAll();
+      setSelectedLineIds([]);
+      const updatedCount = payload.data?.updatedLineIds?.length || 0;
+      const skippedCount = payload.data?.skipped?.length || 0;
+      setSuccessMessage(
+        skippedCount > 0
+          ? `${updatedCount} linha(s) aprovada(s). ${skippedCount} item(ns) não puderam ser aprovados.`
+          : `${updatedCount} linha(s) aprovada(s) com sucesso.`,
+      );
+    } catch (fetchError: any) {
+      setError(String(fetchError?.message || fetchError));
+    } finally {
+      setActionLoading('');
+    }
+  };
+
   const handleDeletePeriod = async () => {
     if (!selectedPeriodId) return;
     const periodLabel = currentPeriod ? `${formatMonthRef(currentPeriod.monthRef)} | ${formatDateBr(currentPeriod.periodStart)} a ${formatDateBr(currentPeriod.periodEnd)}` : 'esta competência';
@@ -781,6 +814,26 @@ export default function FolhaPagamentoPage() {
               {activeTab === 'fechamento' ? (
                 <button
                   type="button"
+                  onClick={handleApproveSelected}
+                  disabled={selectedLineIds.length === 0 || actionLoading === 'approve-selected' || hasPointPipelineInProgress}
+                  className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium ${
+                    selectedLineIds.length === 0 || hasPointPipelineInProgress
+                      ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                      : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                  }`}
+                  title={
+                    hasPointPipelineInProgress
+                      ? 'Aguarde a conclusão da sincronização da competência antes de aprovar linhas específicas.'
+                      : 'Aprovar somente as linhas selecionadas para liberar a aprovação da competência.'
+                  }
+                >
+                  {actionLoading === 'approve-selected' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+                  Aprovar selecionados
+                </button>
+              ) : null}
+              {activeTab === 'fechamento' ? (
+                <button
+                  type="button"
                   onClick={handleRecalculateSelected}
                   disabled={selectedLineIds.length === 0 || actionLoading === 'recalculate-selected' || hasPointPipelineInProgress}
                   className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-sm font-medium ${
@@ -822,7 +875,7 @@ export default function FolhaPagamentoPage() {
                     : 'border-emerald-200 bg-emerald-50 text-emerald-700'
                 }`}
               >
-                {actionLoading === 'approve' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Aprovar
+                {actionLoading === 'approve' ? <Loader2 size={15} className="animate-spin" /> : <CheckCircle2 size={15} />} Aprovar competência
               </button>
               <button type="button" onClick={() => runPeriodAction('reopen')} className="inline-flex h-9 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-sm font-semibold text-amber-700">
                 {actionLoading === 'reopen' ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Reabrir competência
