@@ -32,6 +32,7 @@ markdown_extensions:
 
 nav:
   - Início: index.md
+  - Guia Operacional da Folha: 16-guia-operacional-folha-pagamento.md
   - Banco MySQL:
       - Base do Banco: database/README.md
       - Visao Geral do Schema: database/01-visao-geral-do-schema-mysql.md
