@@ -3,6 +3,7 @@ import json
 import os
 import ssl
 import time
+import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -49,6 +50,15 @@ def _row_get(row, key: str, index: int = 0):
 
 def _clean(value: Any) -> str:
     return str(value or "").strip()
+
+
+def _normalize_match_text(value: Any) -> str:
+    return (
+        unicodedata.normalize("NFD", _clean(value))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .upper()
+    )
 
 
 def _safe_json(value: Any) -> Optional[str]:
@@ -1259,9 +1269,17 @@ def _build_adjustment_maps(adjustments: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _normalize_occurrence_type(adjustment: Dict[str, Any]) -> str:
-    reason = _clean(adjustment.get("reason")).upper()
-    adjustment_type = _clean(adjustment.get("type")).upper()
-    combined = f"{adjustment_type} {reason}"
+    combined = " ".join(
+        filter(
+            None,
+            [
+                _normalize_match_text(adjustment.get("type")),
+                _normalize_match_text(adjustment.get("reason")),
+                _normalize_match_text(adjustment.get("adjustmentReason")),
+                _normalize_match_text(adjustment.get("justification")),
+            ],
+        )
+    )
     if "FER" in combined:
         return "FERIAS"
     if "ATEST" in combined:

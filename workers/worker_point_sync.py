@@ -1,4 +1,5 @@
 import os
+import unicodedata
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -69,6 +70,15 @@ def _safe_execute(db: DatabaseManager, sql: str, params=()):
         if "Duplicate column name" in message or "duplicate column name" in message:
             return
         raise
+
+
+def _normalize_match_text(value: Any) -> str:
+    return (
+        unicodedata.normalize("NFD", _clean(value))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .upper()
+    )
 
 
 def _get_progress_stage_weight_bounds(stage: Optional[str]) -> Tuple[float, float]:
@@ -802,7 +812,17 @@ def _build_occurrence_rows(
             continue
         if start_date > window_end:
             continue
-        combined = f"{_clean(adjustment.get('type')).upper()} {_clean(adjustment.get('reason')).upper()}"
+        combined = " ".join(
+            filter(
+                None,
+                [
+                    _normalize_match_text(adjustment.get("type")),
+                    _normalize_match_text(adjustment.get("reason")),
+                    _normalize_match_text(adjustment.get("adjustmentReason")),
+                    _normalize_match_text(adjustment.get("justification")),
+                ],
+            )
+        )
         if "FER" in combined:
             occurrence_type = "FERIAS"
         elif "ATEST" in combined:

@@ -2671,13 +2671,14 @@ const buildLineRecord = (
     const justified = Boolean(occurrence && JUSTIFIED_OCCURRENCE_TYPES.has(occurrence.occurrenceType));
     const forcedAbsence = Boolean(occurrence && occurrence.occurrenceType === 'FALTA_INJUSTIFICADA');
     const isAbsence = forcedAbsence || (row.absenceFlag && !justified);
+    const hasPlannedJourney = Number(row.plannedMinutes || 0) > 0;
 
     if (isAbsence) {
       absencesCount += 1;
       continue;
     }
 
-    if (row.workedMinutes > 0 || justified) {
+    if (row.workedMinutes > 0 || (justified && hasPlannedJourney)) {
       daysWorked += 1;
       workedMinutesTotal += Number(row.workedMinutes || 0);
     }
