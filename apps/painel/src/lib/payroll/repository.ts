@@ -2294,14 +2294,40 @@ export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string):
   const summary = buildSummaryFromLines(lines, imports, allEmployees);
   summary.syncCompleted = syncRuns.filter((item) => item.status === 'COMPLETED').length;
   const filteredLines = enrichPayrollLines(filterLinesByCurrentEligibility(lines, allEmployees), allEmployees);
-  const benefitRows = filteredLines.length ? (await listPayrollBenefitRows(db, periodId, {
-    search: '',
-    centerCost: 'all',
-    unit: 'all',
-    contractTypes: [],
-    lineStatus: 'all',
-  })).items : [];
+  let benefitRows: PayrollBenefitRow[] = [];
+  let benefitRowsLoadWarning: string | null = null;
+  if (filteredLines.length) {
+    try {
+      benefitRows = (await listPayrollBenefitRows(db, periodId, {
+        search: '',
+        centerCost: 'all',
+        unit: 'all',
+        contractTypes: [],
+        lineStatus: 'all',
+      })).items;
+    } catch (error) {
+      benefitRowsLoadWarning = error instanceof Error ? error.message : 'Não foi possível carregar a memória de benefícios desta competência.';
+      console.error('Erro ao carregar memória de benefícios para detalhar a competência da folha:', error);
+    }
+  }
   const readiness = evaluatePayrollPeriodReadiness(period, syncRuns, eligibleEmployees, pointRows, occurrenceRows, hoursBalances, signatures);
+  const approvalReadiness = evaluatePayrollApprovalReadiness(readiness, filteredLines, benefitRows);
+  if (benefitRowsLoadWarning) {
+    approvalReadiness.issues.push(
+      createReadinessIssue({
+        code: 'BENEFIT_OPERATIONAL_ATTENTION',
+        severity: 'WARNING',
+        title: 'Memória de benefícios indisponível',
+        description: 'A competência foi carregada, mas a memória de benefícios não pôde ser montada nesta tentativa. Recarregue a página para tentar novamente.',
+        count: 1,
+      }),
+    );
+    approvalReadiness.warningCount += 1;
+    if (approvalReadiness.status === 'READY') {
+      approvalReadiness.status = 'ATTENTION';
+      approvalReadiness.guidance = 'A competência foi carregada, mas ainda há alertas operacionais para revisar.';
+    }
+  }
   return {
     period,
     eligibilitySummary: buildEligibilitySummary(allEmployees),
@@ -2309,7 +2335,7 @@ export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string):
     syncRuns,
     summary,
     readiness,
-    approvalReadiness: evaluatePayrollApprovalReadiness(readiness, filteredLines, benefitRows),
+    approvalReadiness,
   };
 };
 

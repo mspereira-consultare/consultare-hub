@@ -245,13 +245,15 @@ export default function FolhaPagamentoPage() {
     }
     setError('');
     try {
-      const [benefitsPayload, detailPayload, linesPayload, previewPayload] = await Promise.all([
-        fetchJson<{ status: string; data: { items: PayrollBenefitRow[]; summary: PayrollBenefitsSummary } }>(
-          `/api/admin/folha-pagamento/periods/${encodeURIComponent(periodId)}/benefits?${buildFilterQuery()}`,
-        ),
+      const [detailPayload, linesPayload] = await Promise.all([
         fetchJson<{ status: string; data: PayrollPeriodDetail }>(`/api/admin/folha-pagamento/periods/${encodeURIComponent(periodId)}`),
         fetchJson<{ status: string; data: { items: PayrollLine[]; availableCentersCost: string[]; availableUnits: string[]; availableContracts: string[] } }>(
           `/api/admin/folha-pagamento/periods/${encodeURIComponent(periodId)}/lines?${buildFilterQuery()}`,
+        ),
+      ]);
+      const [benefitsResult, previewResult] = await Promise.allSettled([
+        fetchJson<{ status: string; data: { items: PayrollBenefitRow[]; summary: PayrollBenefitsSummary } }>(
+          `/api/admin/folha-pagamento/periods/${encodeURIComponent(periodId)}/benefits?${buildFilterQuery()}`,
         ),
         fetchJson<{ status: string; data: { items: PayrollPreviewRow[] } }>(
           `/api/admin/folha-pagamento/periods/${encodeURIComponent(periodId)}/preview?${buildFilterQuery()}`,
@@ -260,17 +262,36 @@ export default function FolhaPagamentoPage() {
 
       if (requestId !== requestIdRef.current) return;
 
-      setBenefitRows(benefitsPayload.data?.items || []);
-      setBenefitsSummary(benefitsPayload.data?.summary || null);
       setDetail(detailPayload.data || emptyDetail);
       setLines(linesPayload.data?.items || []);
-      setPreviewRows(previewPayload.data?.items || []);
       setDisplayedPeriodId(periodId);
       setFilterOptions({
         centersCost: linesPayload.data?.availableCentersCost || [],
         units: linesPayload.data?.availableUnits || [],
         contracts: linesPayload.data?.availableContracts || [],
       });
+
+      const softErrors: string[] = [];
+
+      if (benefitsResult.status === 'fulfilled') {
+        setBenefitRows(benefitsResult.value.data?.items || []);
+        setBenefitsSummary(benefitsResult.value.data?.summary || null);
+      } else {
+        setBenefitRows([]);
+        setBenefitsSummary(null);
+        softErrors.push(String(benefitsResult.reason?.message || 'Não foi possível carregar a aba de benefícios nesta tentativa.'));
+      }
+
+      if (previewResult.status === 'fulfilled') {
+        setPreviewRows(previewResult.value.data?.items || []);
+      } else {
+        setPreviewRows([]);
+        softErrors.push(String(previewResult.reason?.message || 'Não foi possível carregar a prévia da planilha nesta tentativa.'));
+      }
+
+      if (softErrors.length > 0) {
+        setError(softErrors.join(' '));
+      }
     } catch (fetchError: any) {
       if (requestId !== requestIdRef.current) return;
       setError(String(fetchError?.message || fetchError));
