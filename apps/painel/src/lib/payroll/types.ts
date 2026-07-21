@@ -209,6 +209,8 @@ export type PayrollLine = {
   lineStatus: PayrollLineStatus;
   payrollNotes: string | null;
   pendingDataCodes: PayrollPendingDataCode[];
+  staleCalculationCodes: PayrollLineStaleCode[];
+  requiresRecalculation: boolean;
   payrollEligible: boolean;
   exclusionReason: 'REGIME_PJ' | null;
   employeeSnapshotJson: string | null;
@@ -235,6 +237,8 @@ export type PayrollPreviewRow = {
   totalpassDiscount: number | null;
   observation: string | null;
   pendingDataCodes: PayrollPendingDataCode[];
+  staleCalculationCodes: PayrollLineStaleCode[];
+  requiresRecalculation: boolean;
   approvalBlocked: boolean;
 };
 
@@ -411,6 +415,7 @@ export type PayrollEligibilitySummary = {
 };
 
 export type PayrollPendingDataCode = 'MISSING_SALARY' | 'MISSING_SOLIDES_LINK';
+export type PayrollLineStaleCode = 'VT_RULE_UPDATED_AFTER_GENERATION';
 
 export type PayrollReadinessStatus = 'READY' | 'ATTENTION' | 'BLOCKED';
 export type PayrollReadinessSeverity = 'BLOCKING' | 'WARNING';
@@ -432,7 +437,8 @@ export type PayrollReadinessIssueCode =
   | 'NO_GENERATED_LINES'
   | 'LINES_PENDING_REVIEW'
   | 'BENEFIT_PENDING_REGISTRATION'
-  | 'BENEFIT_OPERATIONAL_ATTENTION';
+  | 'BENEFIT_OPERATIONAL_ATTENTION'
+  | 'BENEFIT_RULES_UPDATED_AFTER_GENERATION';
 
 export type PayrollReadinessEmployeeSample = {
   employeeId: string | null;

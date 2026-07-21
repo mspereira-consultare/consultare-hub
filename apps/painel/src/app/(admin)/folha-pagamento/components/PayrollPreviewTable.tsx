@@ -3,6 +3,7 @@
 import { ChevronRight } from 'lucide-react';
 import type { PayrollPreviewRow } from '@/lib/payroll/types';
 import { formatMoney, formatSheetInsalubrity } from './formatters';
+import { PayrollColumnTooltip } from './PayrollColumnTooltip';
 import { PayrollSectionHeader } from './PayrollSectionHeader';
 
 export function PayrollPreviewTable({
@@ -27,20 +28,20 @@ export function PayrollPreviewTable({
         <table className="min-w-[1520px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr>
-              <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left">Nome funcionário</th>
-              <th className="px-3 py-3 text-left">E-mail</th>
-              <th className="px-3 py-3 text-left">CPF</th>
-              <th className="px-3 py-3 text-left">Centro de custo</th>
-              <th className="px-3 py-3 text-left">Função</th>
-              <th className="px-3 py-3 text-left">Contrato</th>
-              <th className="px-3 py-3 text-right">Salário Base</th>
-              <th className="px-3 py-3 text-center">Insalubridade</th>
-              <th className="px-3 py-3 text-right">VT por dia</th>
-              <th className="px-3 py-3 text-right">VT total no mês</th>
-              <th className="px-3 py-3 text-right">D.V.T.</th>
-              <th className="px-3 py-3 text-right">Outros Descontos</th>
-              <th className="px-3 py-3 text-right">Desconto Totalpass</th>
-              <th className="px-3 py-3 text-left">Observação</th>
+              <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left"><PayrollColumnTooltip label="Nome funcionário" description="Nome que será exportado na planilha operacional." source="Painel" /></th>
+              <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="E-mail" description="E-mail atual do colaborador para conferência na planilha." source="Painel" /></th>
+              <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="CPF" description="CPF do colaborador usado para identificação na planilha." source="Painel" /></th>
+              <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Centro de custo" description="Centro de custo atual do colaborador." source="Painel" /></th>
+              <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Função" description="Cargo ou função atual do colaborador." source="Painel" /></th>
+              <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Contrato" description="Regime contratual do colaborador." source="Painel" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Salário Base" description="Salário base levado para a linha exportada." source="Painel" align="right" /></th>
+              <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Insalubridade" description="Percentual ou valor equivalente de insalubridade exportado na linha." source="Painel + cálculo da folha" align="center" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT por dia" description="Valor diário atual do cadastro do colaborador." source="Painel" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT total no mês" description="Total de VT calculado para a competência." source="Painel + cálculo da folha" formula="Mensal fixo do cadastro ou VT por dia x dias elegíveis" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="D.V.T." description="Desconto efetivo de VT exportado na planilha." source="Cálculo da folha" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Outros Descontos" description="Outros descontos fixos cadastrados para o colaborador." source="Painel" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Desconto Totalpass" description="Desconto fixo de Totalpass da competência." source="Painel" align="right" /></th>
+              <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Observação" description="Observações, pendências e ocorrências que ajudam na revisão final da linha." source="Painel + cálculo da folha" /></th>
             </tr>
           </thead>
           <tbody>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { ChevronRight, CircleAlert, Landmark, TrainFront, Wallet, X } from 'lucide-react';
 import type { PayrollBenefitRow, PayrollBenefitsSummary } from '@/lib/payroll/types';
 import { formatDateBr, formatMoney } from './formatters';
+import { PayrollColumnTooltip } from './PayrollColumnTooltip';
 import { PayrollSectionHeader } from './PayrollSectionHeader';
 
 const transportVoucherModeLabelMap: Record<string, string> = {
@@ -158,12 +159,12 @@ export function PayrollBenefitsPanel({
           <table className="min-w-[760px] w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
               <tr>
-                <th className="px-4 py-3 text-left">Centro de custo</th>
-                <th className="px-3 py-3 text-center">Colab.</th>
-                <th className="px-3 py-3 text-right">VR a comprar</th>
-                <th className="px-3 py-3 text-right">VT pago em folha</th>
-                <th className="px-3 py-3 text-right">Descontos em folha</th>
-                <th className="px-3 py-3 text-center">Pendências</th>
+                <th className="px-4 py-3 text-left"><PayrollColumnTooltip label="Centro de custo" description="Agrupamento gerencial dos benefícios por centro de custo." source="Painel" /></th>
+                <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Colab." description="Quantidade de colaboradores elegíveis nesse centro de custo." source="Cálculo da folha" align="center" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VR a comprar" description="Total estimado para compra ou carga de vale-refeição." source="Painel + cálculo da folha" formula="VR por dia x dias elegíveis" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT pago em folha" description="Total de VT provisionado para pagamento em dinheiro na competência." source="Painel + cálculo da folha" formula="Mensal fixo ou VT por dia x dias elegíveis" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Descontos em folha" description="Soma dos descontos de benefícios lançados na folha." source="Cálculo da folha" formula="D.V.T. + Totalpass + outros descontos fixos" align="right" /></th>
+                <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Pendências" description="Quantidade de colaboradores com cadastro incompleto nesse centro de custo." source="Painel" align="center" /></th>
               </tr>
             </thead>
             <tbody>
@@ -206,21 +207,21 @@ export function PayrollBenefitsPanel({
           <table className="min-w-[1660px] w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
               <tr>
-                <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left">Colaborador</th>
-                <th className="px-3 py-3 text-left">Centro de custo</th>
-                <th className="px-3 py-3 text-left">Regime</th>
-                <th className="px-3 py-3 text-center">Dias elegíveis</th>
-                <th className="px-3 py-3 text-right">VR / dia</th>
-                <th className="px-3 py-3 text-right">VR a comprar</th>
-                <th className="px-3 py-3 text-left">Modo VT</th>
-                <th className="px-3 py-3 text-right">VT por dia</th>
-                <th className="px-3 py-3 text-right">VT total no mês</th>
-                <th className="px-3 py-3 text-right">VT pago em folha</th>
-                <th className="px-3 py-3 text-right">D.V.T.</th>
-                <th className="px-3 py-3 text-right">Desconto Totalpass</th>
-                <th className="px-3 py-3 text-right">Outros desc.</th>
-                <th className="px-3 py-3 text-right">Total desc.</th>
-                <th className="w-[250px] px-3 py-3 text-left">Status e pendências</th>
+                <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left"><PayrollColumnTooltip label="Colaborador" description="Memória mensal de benefícios por colaborador elegível." source="Painel + cálculo da folha" /></th>
+                <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Centro de custo" description="Centro de custo atual do colaborador." source="Painel" /></th>
+                <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Regime" description="Regime contratual atual do colaborador." source="Painel" /></th>
+                <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias elegíveis" description="Dias da competência usados para cálculo de benefícios." source="Sólides + cálculo da folha" align="center" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VR / dia" description="Valor diário de vale-refeição cadastrado para o colaborador." source="Painel" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VR a comprar" description="Total de VR estimado para compra ou carga." source="Painel + cálculo da folha" formula="VR por dia x dias elegíveis" align="right" /></th>
+                <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Modo VT" description="Define se o VT do colaborador é mensal fixo ou por dia trabalhado." source="Painel" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT por dia" description="Valor diário atual do cadastro do colaborador." source="Painel" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT total no mês" description="Valor total de VT provisionado na competência." source="Painel + cálculo da folha" formula="Mensal fixo do cadastro ou VT por dia x dias elegíveis" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT pago em folha" description="Mesmo valor do VT provisionado para pagamento em dinheiro junto à folha." source="Cálculo da folha" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="D.V.T." description="Desconto efetivo de vale-transporte aplicado na folha." source="Cálculo da folha" formula="Menor valor entre VT provisionado e teto percentual da competência" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Desconto Totalpass" description="Desconto fixo de Totalpass lançado na linha." source="Painel" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Outros desc." description="Outros descontos fixos cadastrados para o colaborador." source="Painel" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Total desc." description="Total de descontos de benefícios na competência." source="Cálculo da folha" align="right" /></th>
+                <th className="w-[250px] px-3 py-3 text-left"><PayrollColumnTooltip label="Status e pendências" description="Mostra se a memória mensal está pronta, exige atenção ou possui cadastro incompleto." source="Painel + cálculo da folha" /></th>
               </tr>
             </thead>
             <tbody>

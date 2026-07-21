@@ -31,6 +31,7 @@ import type {
   PayrollLine,
   PayrollLineDetail,
   PayrollLineFilters,
+  PayrollLineStaleCode,
   PayrollLinePatchInput,
   PayrollOccurrence,
   PayrollOccurrenceInput,
@@ -229,6 +230,8 @@ const safeJson = (value: unknown) => {
 };
 
 const lineHasPendingData = (line: Pick<PayrollLine, 'pendingDataCodes'>, code: PayrollPendingDataCode) => line.pendingDataCodes.includes(code);
+const sameMoney = (left: number | null | undefined, right: number | null | undefined) =>
+  roundMoney(Number(left || 0)) === roundMoney(Number(right || 0));
 
 const truncateText = (value: string | null | undefined, maxLength = 220) => {
   const text = clean(value);
@@ -514,6 +517,8 @@ const mapLine = (row: any): PayrollLine => ({
   lineStatus: upper(row.line_status || 'RASCUNHO') as PayrollLineStatus,
   payrollNotes: clean(row.payroll_notes) || null,
   pendingDataCodes: parsePendingDataCodes(row.pending_data_codes_json),
+  staleCalculationCodes: [],
+  requiresRecalculation: false,
   payrollEligible: !isPayrollExcludedContractType(row.contract_type),
   exclusionReason: isPayrollExcludedContractType(row.contract_type) ? 'REGIME_PJ' : null,
   employeeSnapshotJson: clean(row.employee_snapshot_json) || null,
@@ -594,6 +599,17 @@ const buildEmployeeLookupMaps = (employees: EmployeePayrollSource[]): EmployeeLo
   return { byCpf, byName };
 };
 
+const buildEmployeeCurrentLookup = (employees: EmployeePayrollSource[]) => {
+  const lookup = new Map<string, EmployeePayrollSource>();
+
+  for (const employee of employees) {
+    lookup.set(employee.id, employee);
+    lookup.set(buildComparisonKey(employee.fullName, employee.cpf), employee);
+  }
+
+  return lookup;
+};
+
 const isEmployeeActiveInPanel = (employee: Pick<EmployeePayrollSource, 'status'>) => employee.status === 'ATIVO';
 
 const isPayrollEligibleEmployee = (employee: Pick<EmployeePayrollSource, 'employmentRegime' | 'status'>) =>
@@ -629,6 +645,44 @@ const filterLinesByCurrentEligibility = (lines: PayrollLine[], employees: Employ
     if (line.employeeId) return eligibleEmployeeIds.has(line.employeeId);
     const matched = findMatchingEmployeeForPointRow(line.employeeName, line.employeeCpf, employeeLookup);
     return Boolean(matched && isPayrollEligibleEmployee(matched));
+  });
+};
+
+const resolveStaleCalculationCodes = (
+  line: PayrollLine,
+  employee: EmployeePayrollSource | null,
+): PayrollLineStaleCode[] => {
+  if (!employee || line.pendingDataCodes.length > 0) return [];
+
+  const snapshot = parsePayrollLineSnapshot(line.employeeSnapshotJson);
+  const snapshotMode = clean(snapshot.transportVoucherMode)
+    ? (upper(snapshot.transportVoucherMode) as PayrollTransportVoucherMode)
+    : null;
+  const currentMode = employee.transportVoucherMode;
+  const snapshotPerDay = toNullableNumber(snapshot.transportVoucherPerDay);
+  const snapshotMonthlyFixed = toNullableNumber(snapshot.transportVoucherMonthlyFixed);
+
+  const changedMode = snapshotMode !== currentMode;
+  const changedPerDay = !sameMoney(snapshotPerDay, employee.transportVoucherPerDay);
+  const changedMonthlyFixed = !sameMoney(snapshotMonthlyFixed, employee.transportVoucherMonthlyFixed);
+
+  return changedMode || changedPerDay || changedMonthlyFixed ? ['VT_RULE_UPDATED_AFTER_GENERATION'] : [];
+};
+
+const enrichPayrollLine = (line: PayrollLine, employee: EmployeePayrollSource | null): PayrollLine => {
+  const staleCalculationCodes = resolveStaleCalculationCodes(line, employee);
+  return {
+    ...line,
+    staleCalculationCodes,
+    requiresRecalculation: staleCalculationCodes.length > 0,
+  };
+};
+
+const enrichPayrollLines = (lines: PayrollLine[], employees: EmployeePayrollSource[]) => {
+  const employeeLookup = buildEmployeeCurrentLookup(employees);
+  return lines.map((line) => {
+    const employeeKey = line.employeeId || buildComparisonKey(line.employeeName, line.employeeCpf);
+    return enrichPayrollLine(line, employeeLookup.get(employeeKey) || null);
   });
 };
 
@@ -2131,6 +2185,24 @@ const evaluatePayrollApprovalReadiness = (
     );
   }
 
+  const staleLines = lines.filter((line) => line.requiresRecalculation);
+  if (staleLines.length > 0) {
+    issues.push(
+      createReadinessIssue({
+        code: 'BENEFIT_RULES_UPDATED_AFTER_GENERATION',
+        severity: 'BLOCKING',
+        title: 'Linhas exigem recálculo antes da aprovação',
+        description: `${staleLines.length} linha(s) ficaram desatualizadas após mudança no cadastro de VT. Recalcule essas linhas antes de aprovar a competência.`,
+        count: staleLines.length,
+        sampleEmployees: staleLines.map((line) => ({
+          employeeId: line.employeeId,
+          employeeName: line.employeeName,
+          employeeCpf: line.employeeCpf,
+        })),
+      }),
+    );
+  }
+
   const linesPendingReview = lines.filter((line) => line.lineStatus !== 'APROVADO' && line.lineStatus !== 'PENDENTE_CADASTRO');
   if (linesPendingReview.length > 0) {
     issues.push(
@@ -2221,7 +2293,7 @@ export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string):
   ]);
   const summary = buildSummaryFromLines(lines, imports, allEmployees);
   summary.syncCompleted = syncRuns.filter((item) => item.status === 'COMPLETED').length;
-  const filteredLines = filterLinesByCurrentEligibility(lines, allEmployees);
+  const filteredLines = enrichPayrollLines(filterLinesByCurrentEligibility(lines, allEmployees), allEmployees);
   const benefitRows = filteredLines.length ? (await listPayrollBenefitRows(db, periodId, {
     search: '',
     centerCost: 'all',
@@ -2495,6 +2567,46 @@ const countPointSyncJobsInProgress = async (db: DbInterface, periodId: string) =
   return Number(firstRow.total ?? firstRow.TOTAL ?? Object.values(firstRow)[0] ?? 0);
 };
 
+const computeTransportVoucherValues = (
+  employee: EmployeePayrollSource,
+  rules: PayrollRule,
+  daysEligible: number,
+  hasPendingRegistration: boolean,
+) => {
+  const transportVoucherModeApplied = employee.transportVoucherMode;
+  const transportVoucherPerDayApplied = roundMoney(employee.transportVoucherPerDay || 0);
+  const transportVoucherMonthlyFixedApplied = roundMoney(employee.transportVoucherMonthlyFixed || 0);
+  const transportVoucherEligibleDays = Math.max(0, Number(daysEligible || 0));
+
+  let transportVoucherProvisioned = 0;
+  if (!hasPendingRegistration && transportVoucherModeApplied === 'MONTHLY_FIXED') {
+    transportVoucherProvisioned = transportVoucherMonthlyFixedApplied;
+  } else if (!hasPendingRegistration && transportVoucherModeApplied === 'PER_DAY') {
+    transportVoucherProvisioned = transportVoucherPerDayApplied * transportVoucherEligibleDays;
+  }
+
+  transportVoucherProvisioned = roundMoney(transportVoucherProvisioned);
+
+  const transportVoucherDiscountCap = hasPendingRegistration
+    ? 0
+    : roundMoney(employee.salaryAmount * (rules.vtDiscountCapPercent / 100));
+  const transportVoucherDiscountApplied = hasPendingRegistration
+    ? 0
+    : employee.employmentRegime === 'ESTAGIO'
+      ? 0
+      : roundMoney(Math.min(transportVoucherProvisioned, transportVoucherDiscountCap));
+
+  return {
+    transportVoucherModeApplied,
+    transportVoucherPerDayApplied,
+    transportVoucherMonthlyFixedApplied,
+    transportVoucherEligibleDays,
+    transportVoucherProvisioned,
+    transportVoucherDiscountCap,
+    transportVoucherDiscountApplied,
+  };
+};
+
 const buildLineRecord = (
   employee: EmployeePayrollSource,
   period: PayrollPeriod,
@@ -2606,17 +2718,18 @@ const buildLineRecord = (
   const absenceDiscount = hasPendingRegistration ? 0 : roundMoney((employee.salaryAmount / 30) * absencesCount);
   const lateDiscount = hasPendingRegistration ? 0 : roundMoney((salaryHour * lateMinutes) / 60);
   const insalubrityAmount = hasPendingRegistration ? 0 : roundMoney((rules.minWageAmount * employee.insalubrityPercent) / 100);
-
-  let vtProvisioned = 0;
-  if (!hasPendingRegistration && employee.transportVoucherMode === 'MONTHLY_FIXED') {
-    vtProvisioned = employee.transportVoucherMonthlyFixed;
-  } else if (!hasPendingRegistration && employee.transportVoucherMode === 'PER_DAY') {
-    vtProvisioned = employee.transportVoucherPerDay * daysWorked;
-  }
-  vtProvisioned = roundMoney(vtProvisioned);
-
-  const vtDiscountCap = hasPendingRegistration ? 0 : roundMoney(employee.salaryAmount * (rules.vtDiscountCapPercent / 100));
-  const vtDiscount = hasPendingRegistration ? 0 : employee.employmentRegime === 'ESTAGIO' ? 0 : roundMoney(Math.min(vtProvisioned, vtDiscountCap));
+  const {
+    transportVoucherModeApplied,
+    transportVoucherPerDayApplied,
+    transportVoucherMonthlyFixedApplied,
+    transportVoucherEligibleDays,
+    transportVoucherProvisioned,
+    transportVoucherDiscountCap,
+    transportVoucherDiscountApplied,
+  } = computeTransportVoucherValues(employee, rules, daysWorked, hasPendingRegistration);
+  const vtProvisioned = transportVoucherProvisioned;
+  const vtDiscountCap = transportVoucherDiscountCap;
+  const vtDiscount = transportVoucherDiscountApplied;
   const totalpassDiscount = hasPendingRegistration ? 0 : roundMoney(employee.totalpassDiscountFixed || 0);
   const otherFixedDiscount = hasPendingRegistration ? 0 : roundMoney(employee.otherFixedDiscountAmount || 0);
   const adjustmentsAmount = roundMoney(existingLine?.adjustmentsAmount || 0);
@@ -2661,6 +2774,8 @@ const buildLineRecord = (
     lineStatus: hasPendingRegistration ? 'PENDENTE_CADASTRO' : warnings.length > 0 ? 'EM_REVISAO' : 'APROVADO',
     payrollNotes: existingLine?.payrollNotes || employee.payrollNotes || null,
     pendingDataCodes,
+    staleCalculationCodes: [],
+    requiresRecalculation: false,
     payrollEligible: true,
     exclusionReason: null,
     employeeSnapshotJson: safeJson({
@@ -2713,6 +2828,15 @@ const buildLineRecord = (
         totalpassDiscount,
         otherFixedDiscount,
         adjustmentsAmount,
+      },
+      transportVoucher: {
+        transportVoucherModeApplied,
+        transportVoucherPerDayApplied,
+        transportVoucherMonthlyFixedApplied,
+        transportVoucherEligibleDays,
+        transportVoucherProvisioned,
+        transportVoucherDiscountCap,
+        transportVoucherDiscountApplied,
       },
       warnings,
     }),
@@ -2981,12 +3105,13 @@ export const approvePayrollPeriodLines = async (db: DbInterface, periodId: strin
   }
 
   return runInTransaction(db, async (txDb) => {
-    await getPeriodOrThrow(txDb, periodId);
+    const period = await getPeriodOrThrow(txDb, periodId);
     const rows = await txDb.query(
       `SELECT * FROM payroll_lines WHERE period_id = ? AND id IN (${normalizedLineIds.map(() => '?').join(', ')}) ORDER BY employee_name ASC`,
       [periodId, ...normalizedLineIds],
     );
-    const selectedLines = rows.map(mapLine);
+    const employees = await loadEmployeeRosterForPeriod(txDb, period.periodStart, period.periodEnd);
+    const selectedLines = enrichPayrollLines(rows.map(mapLine), employees);
 
     const updatedLineIds: string[] = [];
     const skipped: Array<{ lineId: string; employeeName: string; reason: string }> = [];
@@ -2999,6 +3124,14 @@ export const approvePayrollPeriodLines = async (db: DbInterface, periodId: strin
           lineId: line.id,
           employeeName: line.employeeName,
           reason: 'Linha com pendência cadastral não pode ser aprovada em lote.',
+        });
+        continue;
+      }
+      if (line.requiresRecalculation) {
+        skipped.push({
+          lineId: line.id,
+          employeeName: line.employeeName,
+          reason: 'Linha exige recálculo porque o cadastro de VT foi alterado após a geração.',
         });
         continue;
       }
@@ -3314,7 +3447,7 @@ export const listPayrollLines = async (db: DbInterface, periodId: string, filter
     listLinesRaw(db, periodId),
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
   ]);
-  const lines = filterLinesByCurrentEligibility(rawLines, employees).filter((line) => matchesLineFilters(line, filters));
+  const lines = enrichPayrollLines(filterLinesByCurrentEligibility(rawLines, employees), employees).filter((line) => matchesLineFilters(line, filters));
   return {
     items: lines,
     availableCentersCost: Array.from(new Set(lines.map((line) => clean(line.centerCost)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })),
@@ -3592,7 +3725,9 @@ const buildPayrollPreviewRow = (
     totalpassDiscount: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.totalpassDiscount),
     observation: buildPreviewObservation(line, occurrences),
     pendingDataCodes: line.pendingDataCodes,
-    approvalBlocked: line.lineStatus === 'PENDENTE_CADASTRO' || line.pendingDataCodes.length > 0,
+    staleCalculationCodes: line.staleCalculationCodes,
+    requiresRecalculation: line.requiresRecalculation,
+    approvalBlocked: line.lineStatus === 'PENDENTE_CADASTRO' || line.pendingDataCodes.length > 0 || line.requiresRecalculation,
   };
 };
 
@@ -4152,14 +4287,19 @@ export const getPayrollLineDetail = async (db: DbInterface, lineId: string): Pro
   await ensurePayrollTables(db);
   const rows = await db.query(`SELECT * FROM payroll_lines WHERE id = ? LIMIT 1`, [lineId]);
   if (!rows[0]) throw new PayrollValidationError('Linha da folha não encontrada.', 404);
-  const line = mapLine(rows[0]);
-  const [pointDays, occurrences, employeeMap, hoursBalanceRows, signatureRows] = await Promise.all([
-    listPointRowsRaw(db, line.periodId, line.employeeId || undefined),
-    line.employeeId ? listOccurrencesRaw(db, line.periodId, line.employeeId) : Promise.resolve([]),
-    line.employeeId ? loadEmployeePreviewMap(db, [line.employeeId]) : Promise.resolve(new Map<string, PayrollEmployeePreviewSource>()),
-    line.employeeId ? listHoursBalanceRaw(db, line.periodId, line.employeeId) : Promise.resolve([]),
-    line.employeeId ? listSignaturesRaw(db, line.periodId, line.employeeId) : Promise.resolve([]),
+  const rawLine = mapLine(rows[0]);
+  const period = await getPeriodOrThrow(db, rawLine.periodId);
+  const [pointDays, occurrences, employeeMap, currentEmployees, hoursBalanceRows, signatureRows] = await Promise.all([
+    listPointRowsRaw(db, rawLine.periodId, rawLine.employeeId || undefined),
+    rawLine.employeeId ? listOccurrencesRaw(db, rawLine.periodId, rawLine.employeeId) : Promise.resolve([]),
+    rawLine.employeeId ? loadEmployeePreviewMap(db, [rawLine.employeeId]) : Promise.resolve(new Map<string, PayrollEmployeePreviewSource>()),
+    loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
+    rawLine.employeeId ? listHoursBalanceRaw(db, rawLine.periodId, rawLine.employeeId) : Promise.resolve([]),
+    rawLine.employeeId ? listSignaturesRaw(db, rawLine.periodId, rawLine.employeeId) : Promise.resolve([]),
   ]);
+  const currentEmployeeLookup = buildEmployeeCurrentLookup(currentEmployees);
+  const employeeKey = rawLine.employeeId || buildComparisonKey(rawLine.employeeName, rawLine.employeeCpf);
+  const line = enrichPayrollLine(rawLine, currentEmployeeLookup.get(employeeKey) || null);
 
   const previewRow = buildPayrollPreviewRow(
     line,
@@ -4199,6 +4339,9 @@ export const patchPayrollLine = async (db: DbInterface, lineId: string, input: P
   const nextLineStatus = detail.line.pendingDataCodes.length
     ? 'PENDENTE_CADASTRO'
     : ((clean(input.lineStatus) || detail.line.lineStatus) as PayrollLineStatus);
+  if (nextLineStatus === 'APROVADO' && detail.line.requiresRecalculation) {
+    throw new PayrollValidationError('Esta linha exige recálculo porque o cadastro de VT mudou após a geração. Recalcule a linha antes de aprovar.', 409);
+  }
 
   let totalProvents = detail.line.salaryBase + detail.line.insalubrityAmount;
   let totalDiscounts = detail.line.absenceDiscount + detail.line.lateDiscount + detail.line.vtDiscount + detail.line.totalpassDiscount + detail.line.otherFixedDiscount;

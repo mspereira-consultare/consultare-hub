@@ -3,6 +3,7 @@
 import { ChevronRight } from 'lucide-react';
 import type { PayrollLine } from '@/lib/payroll/types';
 import { formatMoney, statusLabelMap } from './formatters';
+import { PayrollColumnTooltip } from './PayrollColumnTooltip';
 import { PayrollSectionHeader } from './PayrollSectionHeader';
 
 const hasPendingCode = (line: PayrollLine, code: 'MISSING_SALARY' | 'MISSING_SOLIDES_LINK') =>
@@ -72,24 +73,28 @@ export function PayrollClosingTable({
                     onChange={(event) => onToggleAll(event.target.checked)}
                     className="h-4 w-4 rounded border-slate-300 text-[#17407E] focus:ring-[#17407E]"
                   />
-                  <span>Colaborador</span>
+                  <PayrollColumnTooltip
+                    label="Colaborador"
+                    description="Linha individual do fechamento mensal. Clique para abrir o detalhe, revisar o cálculo e salvar ajustes."
+                    source="Painel + cálculo da folha"
+                  />
                 </div>
               </th>
-              <th className="px-3 py-3 text-left">Centro de custo</th>
-              <th className="px-3 py-3 text-left">Regime</th>
-              <th className="px-3 py-3 text-right">Salário</th>
-              <th className="px-3 py-3 text-right">Insal.</th>
-              <th className="px-3 py-3 text-center">Dias</th>
-              <th className="px-3 py-3 text-center">Faltas</th>
-              <th className="px-3 py-3 text-center">Atrasos (min)</th>
-              <th className="px-3 py-3 text-right">VT</th>
-              <th className="px-3 py-3 text-right">D.V.T.</th>
-              <th className="px-3 py-3 text-right">Totalpass</th>
-              <th className="px-3 py-3 text-right">Outros</th>
-              <th className="px-3 py-3 text-right">Proventos</th>
-              <th className="px-3 py-3 text-right">Descontos</th>
-              <th className="px-3 py-3 text-right">Líquido</th>
-              <th className="px-3 py-3 text-left">Status</th>
+              <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Centro de custo" description="Centro de custo atual do colaborador usado para agrupamento e conferência gerencial." source="Painel" /></th>
+              <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Regime" description="Regime contratual do colaborador. Apenas não-PJ e ativos entram no fechamento." source="Painel" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Salário" description="Salário base considerado na linha da folha." source="Painel" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Insal." description="Valor de insalubridade aplicado na competência." source="Painel + cálculo da folha" formula="Percentual cadastrado x salário mínimo da regra da competência" align="right" /></th>
+              <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias" description="Dias elegíveis usados para compor benefícios e cálculo operacional da linha." source="Sólides + cálculo da folha" formula="Dias trabalhados ou justificados dentro da competência" align="center" /></th>
+              <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Faltas" description="Quantidade de faltas consideradas no recorte da competência." source="Sólides + cálculo da folha" align="center" /></th>
+              <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Atrasos (min)" description="Minutos de atraso considerados após aplicar a tolerância da regra da competência." source="Sólides + cálculo da folha" align="center" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT" description="Valor total de vale-transporte provisionado na competência." source="Painel + cálculo da folha" formula="Mensal fixo do cadastro ou valor por dia x dias elegíveis" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="D.V.T." description="Desconto efetivo de vale-transporte aplicado em folha." source="Cálculo da folha" formula="Menor valor entre VT provisionado e teto percentual da competência" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Totalpass" description="Desconto fixo de Totalpass aplicado na linha." source="Painel" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Outros" description="Outros descontos fixos cadastrados para o colaborador." source="Painel" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Proventos" description="Total positivo da linha antes dos descontos." source="Cálculo da folha" formula="Salário base + insalubridade + ajustes positivos" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Descontos" description="Total de descontos aplicados na linha." source="Cálculo da folha" formula="Faltas + atrasos + D.V.T. + Totalpass + outros descontos + ajustes negativos" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Líquido" description="Resultado operacional da linha após somar proventos e subtrair descontos." source="Cálculo da folha" align="right" /></th>
+              <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Status" description="Situação atual da linha no fluxo de revisão e aprovação." source="Painel" /></th>
             </tr>
           </thead>
           <tbody>
@@ -127,6 +132,9 @@ export function PayrollClosingTable({
                       <div>
                         <div className="font-semibold text-slate-900">{line.employeeName}</div>
                         <div className="text-xs text-slate-500">{line.employeeCpf || 'CPF não informado'}</div>
+                        {line.requiresRecalculation ? (
+                          <div className="mt-1 text-[11px] font-medium text-amber-700">VT alterado. Recalcule a linha.</div>
+                        ) : null}
                       </div>
                       <ChevronRight size={16} className="text-slate-400" />
                     </div>
@@ -146,13 +154,20 @@ export function PayrollClosingTable({
                   <td className="px-3 py-3 text-right font-semibold text-slate-900">{renderMoneyCell(line, line.totalDiscounts, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-right font-bold text-[#17407E]">{renderMoneyCell(line, line.netOperational, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3">
-                    <span
-                      className={`rounded-full px-2 py-1 text-xs font-medium ${
-                        line.lineStatus === 'PENDENTE_CADASTRO' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'
-                      }`}
-                    >
-                      {statusLabelMap[line.lineStatus] || line.lineStatus}
-                    </span>
+                    <div className="flex flex-col items-start gap-1">
+                      <span
+                        className={`rounded-full px-2 py-1 text-xs font-medium ${
+                          line.lineStatus === 'PENDENTE_CADASTRO' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        {statusLabelMap[line.lineStatus] || line.lineStatus}
+                      </span>
+                      {line.requiresRecalculation ? (
+                        <span className="rounded-full bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700">
+                          Recalcular
+                        </span>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))

@@ -175,11 +175,13 @@ export default function FolhaPagamentoPage() {
       ? readiness?.guidance || 'Resolva os bloqueios críticos da competência antes de gerar a folha.'
       : 'Gerar folha';
   const approvalBlockedHasLineIssues = Boolean(
-    approvalReadiness?.issues?.some((issue) => issue.code === 'LINES_PENDING_REVIEW'),
+    approvalReadiness?.issues?.some((issue) =>
+      issue.code === 'LINES_PENDING_REVIEW' || issue.code === 'BENEFIT_RULES_UPDATED_AFTER_GENERATION',
+    ),
   );
   const approveActionTitle = approvalBlockedByReadiness
     ? approvalBlockedHasLineIssues
-      ? 'Todos os colaboradores elegíveis precisam estar aprovados individualmente para fechar a competência. Resolva as linhas em revisão ou com pendências antes de continuar.'
+      ? 'Todos os colaboradores elegíveis precisam estar aprovados individualmente para fechar a competência. Resolva as linhas em revisão, pendências cadastrais ou linhas que exigem recálculo antes de continuar.'
       : approvalReadiness?.guidance || 'Resolva as pendências críticas antes de aprovar a folha.'
     : 'Aprovar competência';
   useEffect(() => {

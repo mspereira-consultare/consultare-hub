@@ -3,6 +3,7 @@
 import { CircleHelp, Loader2, X } from 'lucide-react';
 import type { PayrollDataSource, PayrollLine, PayrollLineDetail } from '@/lib/payroll/types';
 import { formatDateBr, formatMoney, formatSheetInsalubrity, pendingDataCodeDescriptionMap, pendingDataCodeLabelMap, statusLabelMap } from './formatters';
+import { PayrollColumnTooltip } from './PayrollColumnTooltip';
 import { PayrollSourceBadge } from './PayrollSourceBadge';
 
 type DraftState = {
@@ -88,6 +89,15 @@ export function PayrollLineDrawer({
                     {pendingDataCodeLabelMap[code]}
                   </span>
                 ))}
+              </div>
+            </section>
+          ) : null}
+
+          {current.requiresRecalculation ? (
+            <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="font-semibold">Linha desatualizada após mudança no VT</div>
+              <div className="mt-1 text-amber-800">
+                O cadastro de vale-transporte deste colaborador mudou depois que a linha foi gerada. Use <strong>Recalcular selecionados</strong> ou gere a folha novamente antes de aprovar esta linha.
               </div>
             </section>
           ) : null}
@@ -256,13 +266,13 @@ export function PayrollLineDrawer({
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-500">
                   <tr>
-                    <th className="px-3 py-2 text-left">Data</th>
-                    <th className="px-3 py-2 text-left">Marcações</th>
-                    <th className="px-3 py-2 text-center">Trabalhado</th>
-                    <th className="px-3 py-2 text-center">Atraso (min)</th>
-                    <th className="px-3 py-2 text-center">Saldo do dia</th>
-                    <th className="px-3 py-2 text-center">Pausa excedida</th>
-                    <th className="px-3 py-2 text-left">Observação</th>
+                    <th className="px-3 py-2 text-left"><PayrollColumnTooltip label="Data" description="Dia da competência analisado no ponto." source="Sólides" /></th>
+                    <th className="px-3 py-2 text-left"><PayrollColumnTooltip label="Marcações" description="Batidas registradas no dia para o colaborador." source="Sólides" /></th>
+                    <th className="px-3 py-2 text-center"><PayrollColumnTooltip label="Trabalhado" description="Minutos trabalhados registrados no dia." source="Sólides" align="center" /></th>
+                    <th className="px-3 py-2 text-center"><PayrollColumnTooltip label="Atraso (min)" description="Minutos de atraso apontados no dia antes da consolidação da competência." source="Sólides" align="center" /></th>
+                    <th className="px-3 py-2 text-center"><PayrollColumnTooltip label="Saldo do dia" description="Saldo diário de minutos em relação à jornada prevista." source="Sólides" align="center" /></th>
+                    <th className="px-3 py-2 text-center"><PayrollColumnTooltip label="Pausa excedida" description="Minutos de pausa acima do esperado no dia." source="Sólides" align="center" /></th>
+                    <th className="px-3 py-2 text-left"><PayrollColumnTooltip label="Observação" description="Justificativas, ausências ou observações trazidas do ponto sincronizado." source="Sólides" /></th>
                   </tr>
                 </thead>
                 <tbody>
