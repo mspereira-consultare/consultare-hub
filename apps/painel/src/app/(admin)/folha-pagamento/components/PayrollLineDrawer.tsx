@@ -162,10 +162,15 @@ export function PayrollLineDrawer({
                   <Info label="Centro de custo" value={preview.centerCost || '-'} />
                   <Info label="Contrato" value={preview.contractType || '-'} />
                   <Info label="Salário base" value={preview.salaryBase === null ? '-' : formatMoney(preview.salaryBase)} />
-                  <Info label="VT a.d" value={preview.vtPerDay === null ? '-' : formatMoney(preview.vtPerDay)} />
-                  <Info label="VT a.m" value={preview.vtMonth === null ? '-' : formatMoney(preview.vtMonth)} />
+                  <Info label="VT por dia" value={preview.vtPerDay === null ? '-' : formatMoney(preview.vtPerDay)} />
+                  <Info label="VT total no mês" value={preview.vtMonth === null ? '-' : formatMoney(preview.vtMonth)} />
                   <Info label="D.V.T." value={preview.vtDiscount === null ? '-' : formatMoney(preview.vtDiscount)} />
                   <Info label="Insalubridade" value={formatSheetInsalubrity(preview.insalubrityValue)} />
+                  <div className="sm:col-span-2">
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+                      `VT por dia` mostra o valor atual cadastrado no colaborador. `VT total no mês` mostra o total calculado para esta competência com base nos dias elegíveis da folha.
+                    </div>
+                  </div>
                   {preview.pendingDataCodes.length ? (
                     <div className="sm:col-span-2">
                       <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Pendências da linha</div>

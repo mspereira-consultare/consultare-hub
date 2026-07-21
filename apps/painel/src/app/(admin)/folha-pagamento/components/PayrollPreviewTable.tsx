@@ -35,8 +35,8 @@ export function PayrollPreviewTable({
               <th className="px-3 py-3 text-left">Contrato</th>
               <th className="px-3 py-3 text-right">Salário Base</th>
               <th className="px-3 py-3 text-center">Insalubridade</th>
-              <th className="px-3 py-3 text-right">VT a.d</th>
-              <th className="px-3 py-3 text-right">VT a.m</th>
+              <th className="px-3 py-3 text-right">VT por dia</th>
+              <th className="px-3 py-3 text-right">VT total no mês</th>
               <th className="px-3 py-3 text-right">D.V.T.</th>
               <th className="px-3 py-3 text-right">Outros Descontos</th>
               <th className="px-3 py-3 text-right">Desconto Totalpass</th>

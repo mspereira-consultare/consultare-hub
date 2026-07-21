@@ -214,7 +214,7 @@ export function PayrollBenefitsPanel({
                 <th className="px-3 py-3 text-right">VR a comprar</th>
                 <th className="px-3 py-3 text-left">Modo VT</th>
                 <th className="px-3 py-3 text-right">VT por dia</th>
-                <th className="px-3 py-3 text-right">VT mensal</th>
+                <th className="px-3 py-3 text-right">VT total no mês</th>
                 <th className="px-3 py-3 text-right">VT pago em folha</th>
                 <th className="px-3 py-3 text-right">D.V.T.</th>
                 <th className="px-3 py-3 text-right">Desconto Totalpass</th>
