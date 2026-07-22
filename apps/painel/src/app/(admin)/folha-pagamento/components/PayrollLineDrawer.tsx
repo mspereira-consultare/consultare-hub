@@ -343,7 +343,7 @@ export function PayrollLineDrawer({
               `Dias considerados` afetam o salário da linha. `Dias abon./just.` continuam valendo para o salário, mas não entram automaticamente no cálculo de VT e VR.
             </div>
             <div className="max-h-64 overflow-auto">
-              <table className="w-full text-sm">
+              <table className="min-w-[980px] w-full text-sm">
                 <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-500">
                   <tr>
                     <th className="px-3 py-2 text-left"><PayrollColumnTooltip label="Data" description="Dia da competência analisado no ponto." source="Sólides" /></th>

@@ -18,13 +18,13 @@ export function PayrollHoursBalancePanel({ rows, loading }: { rows: PayrollHours
       sources={['SOLIDES']}
     >
       <div className="overflow-x-auto">
-        <table className="min-w-[900px] w-full text-sm">
+        <table className="min-w-[980px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">Colaborador</th>
-              <th className="px-4 py-3">CPF</th>
-              <th className="px-4 py-3">Saldo</th>
-              <th className="px-4 py-3">Referência</th>
+              <th className="px-4 py-3 whitespace-nowrap">Colaborador</th>
+              <th className="px-4 py-3 whitespace-nowrap">CPF</th>
+              <th className="px-4 py-3 whitespace-nowrap">Saldo</th>
+              <th className="px-4 py-3 whitespace-nowrap">Referência</th>
             </tr>
           </thead>
           <tbody>

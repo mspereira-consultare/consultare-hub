@@ -23,8 +23,8 @@ export function PayrollColumnTooltip({
         : 'left-0';
 
   return (
-    <span className={`inline-flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
-      <span>{label}</span>
+    <span className={`inline-flex items-center gap-1 whitespace-nowrap ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : 'justify-start'}`}>
+      <span className="shrink-0 whitespace-nowrap">{label}</span>
       <span className="group relative inline-flex items-center">
         <CircleHelp size={12} className="text-slate-400 transition-colors group-hover:text-slate-600" />
         <span

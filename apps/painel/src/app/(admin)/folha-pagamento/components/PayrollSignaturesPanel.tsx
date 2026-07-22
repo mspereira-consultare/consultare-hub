@@ -23,15 +23,15 @@ export function PayrollSignaturesPanel({ rows, loading }: { rows: PayrollSignatu
       sources={['SOLIDES']}
     >
       <div className="overflow-x-auto">
-        <table className="min-w-[1100px] w-full text-sm">
+        <table className="min-w-[1260px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">Colaborador</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Documento</th>
-              <th className="px-4 py-3">Vigência</th>
-              <th className="px-4 py-3">Assinado em</th>
-              <th className="px-4 py-3">Mensagem</th>
+              <th className="px-4 py-3 whitespace-nowrap">Colaborador</th>
+              <th className="px-4 py-3 whitespace-nowrap">Status</th>
+              <th className="px-4 py-3 whitespace-nowrap">Documento</th>
+              <th className="px-4 py-3 whitespace-nowrap">Vigência</th>
+              <th className="px-4 py-3 whitespace-nowrap">Assinado em</th>
+              <th className="px-4 py-3 whitespace-nowrap">Mensagem</th>
             </tr>
           </thead>
           <tbody>

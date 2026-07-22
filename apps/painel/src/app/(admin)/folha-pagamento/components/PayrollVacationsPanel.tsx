@@ -15,13 +15,13 @@ export function PayrollVacationsPanel({ rows, loading }: { rows: PayrollVacation
       sourceNote="A base ativa desta etapa vem da sincronização da Sólides."
     >
       <div className="overflow-x-auto">
-        <table className="min-w-[900px] w-full text-sm">
+        <table className="min-w-[980px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">Colaborador</th>
-              <th className="px-4 py-3">Período</th>
-              <th className="px-4 py-3">Origem</th>
-              <th className="px-4 py-3">Observações</th>
+              <th className="px-4 py-3 whitespace-nowrap">Colaborador</th>
+              <th className="px-4 py-3 whitespace-nowrap">Período</th>
+              <th className="px-4 py-3 whitespace-nowrap">Origem</th>
+              <th className="px-4 py-3 whitespace-nowrap">Observações</th>
             </tr>
           </thead>
           <tbody>

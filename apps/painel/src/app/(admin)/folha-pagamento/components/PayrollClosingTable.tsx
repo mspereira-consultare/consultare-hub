@@ -61,10 +61,10 @@ export function PayrollClosingTable({
         className="border-b border-slate-200 px-4 py-3"
       />
       <div className="max-h-[560px] overflow-auto">
-        <table className="min-w-[1280px] w-full text-sm">
+        <table className="min-w-[1880px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr>
-              <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left">
+              <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left whitespace-nowrap">
                 <div className="flex items-center gap-3">
                   <input
                     type="checkbox"
@@ -80,10 +80,10 @@ export function PayrollClosingTable({
                   />
                 </div>
               </th>
-              <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Centro de custo" description="Centro de custo atual do colaborador usado para agrupamento e conferência gerencial." source="Painel" /></th>
-              <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Regime" description="Regime contratual do colaborador. Apenas não-PJ e ativos entram no fechamento." source="Painel" /></th>
-              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Salário" description="Salário base considerado na linha da folha." source="Painel" /></th>
-              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Insal." description="Valor de insalubridade aplicado na competência." source="Painel + cálculo da folha" formula="Percentual cadastrado x salário mínimo da regra da competência" align="right" /></th>
+              <th className="px-3 py-3 text-left whitespace-nowrap"><PayrollColumnTooltip label="Centro de custo" description="Centro de custo atual do colaborador usado para agrupamento e conferência gerencial." source="Painel" /></th>
+              <th className="px-3 py-3 text-left whitespace-nowrap"><PayrollColumnTooltip label="Regime" description="Regime contratual do colaborador. Apenas não-PJ e ativos entram no fechamento." source="Painel" /></th>
+              <th className="px-3 py-3 text-right whitespace-nowrap"><PayrollColumnTooltip label="Salário" description="Salário base considerado na linha da folha." source="Painel" /></th>
+              <th className="px-3 py-3 text-right whitespace-nowrap"><PayrollColumnTooltip label="Insal." description="Valor de insalubridade aplicado na competência." source="Painel + cálculo da folha" formula="Percentual cadastrado x salário mínimo da regra da competência" align="right" /></th>
               <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias trabalhados" description="Dias em que o colaborador realmente trabalhou e teve minutos trabalhados registrados no ponto. Este número não inclui folgas abonadas, férias nem outras justificativas sem trabalho efetivo." source="Sólides + cálculo da folha" formula="Conta somente dias com trabalho efetivo registrado" align="center" /></th>
               <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias abon./just." description="Dias sem trabalho efetivo que foram aceitos pela folha como justificados ou abonados. Eles continuam contando para o salário, mas não entram automaticamente no cálculo de VT e VR." source="Sólides + cálculo da folha" formula="Conta apenas dias justificados/abonados que não viram falta" align="center" /></th>
               <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias considerados" description="Total de dias que a folha usou para pagar a linha salarial desta competência. Aqui entram os dias realmente trabalhados e também os dias abonados ou justificados aceitos no fechamento." source="Sólides + cálculo da folha" formula="Dias trabalhados + dias abonados/justificados" align="center" /></th>

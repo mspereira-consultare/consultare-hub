@@ -30,23 +30,23 @@ export function PayrollDailyPanel({
       sourceNote="Métricas de ponto vêm da Sólides; vínculo, centro de custo e contrato continuam vindo do Painel."
     >
       <div className="overflow-x-auto">
-        <table className="min-w-[1260px] w-full text-sm">
+        <table className="min-w-[1460px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">Colaborador</th>
-              <th className="px-4 py-3">Centro de custo</th>
-              <th className="px-4 py-3">Contrato</th>
-              <th className="px-4 py-3 text-center">Dias trabalhados</th>
-              <th className="px-4 py-3 text-center">Faltas</th>
-              <th className="px-4 py-3 text-center">Atraso</th>
-              <th className="px-4 py-3 text-center">Planejado</th>
-              <th className="px-4 py-3 text-center">Trabalhado</th>
-              <th className="px-4 py-3 text-center">Saldo</th>
-              <th className="px-4 py-3 text-center">Pausa excedida</th>
-              <th className="px-4 py-3 text-center">Pendências</th>
-              <th className="px-4 py-3 text-center">Origem do ponto</th>
-              <th className="px-4 py-3">Status</th>
-              {canAdjust ? <th className="px-4 py-3 text-right">Ajustes</th> : null}
+              <th className="px-4 py-3 whitespace-nowrap">Colaborador</th>
+              <th className="px-4 py-3 whitespace-nowrap">Centro de custo</th>
+              <th className="px-4 py-3 whitespace-nowrap">Contrato</th>
+              <th className="px-4 py-3 text-center whitespace-nowrap">Dias trabalhados</th>
+              <th className="px-4 py-3 text-center whitespace-nowrap">Faltas</th>
+              <th className="px-4 py-3 text-center whitespace-nowrap">Atraso</th>
+              <th className="px-4 py-3 text-center whitespace-nowrap">Planejado</th>
+              <th className="px-4 py-3 text-center whitespace-nowrap">Trabalhado</th>
+              <th className="px-4 py-3 text-center whitespace-nowrap">Saldo</th>
+              <th className="px-4 py-3 text-center whitespace-nowrap">Pausa excedida</th>
+              <th className="px-4 py-3 text-center whitespace-nowrap">Pendências</th>
+              <th className="px-4 py-3 text-center whitespace-nowrap">Origem do ponto</th>
+              <th className="px-4 py-3 whitespace-nowrap">Status</th>
+              {canAdjust ? <th className="px-4 py-3 text-right whitespace-nowrap">Ajustes</th> : null}
             </tr>
           </thead>
           <tbody>

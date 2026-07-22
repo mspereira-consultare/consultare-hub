@@ -25,10 +25,10 @@ export function PayrollPreviewTable({
         className="border-b border-slate-200 px-4 py-3"
       />
       <div className="max-h-[560px] overflow-auto">
-        <table className="min-w-[1520px] w-full text-sm">
+        <table className="min-w-[1740px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr>
-              <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left"><PayrollColumnTooltip label="Nome funcionário" description="Nome que será exportado na planilha operacional." source="Painel" /></th>
+              <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left whitespace-nowrap"><PayrollColumnTooltip label="Nome funcionário" description="Nome que será exportado na planilha operacional." source="Painel" /></th>
               <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="E-mail" description="E-mail atual do colaborador para conferência na planilha." source="Painel" /></th>
               <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="CPF" description="CPF do colaborador usado para identificação na planilha." source="Painel" /></th>
               <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Centro de custo" description="Centro de custo atual do colaborador." source="Painel" /></th>

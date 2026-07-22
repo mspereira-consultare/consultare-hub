@@ -156,7 +156,7 @@ export function PayrollBenefitsPanel({
           <p className="mt-1 text-xs text-slate-500">Resumo para conferência gerencial antes de acionar compra/carga de VR e fechamento da folha.</p>
         </div>
         <div className="overflow-auto">
-          <table className="min-w-[760px] w-full text-sm">
+          <table className="min-w-[980px] w-full text-sm">
             <thead className="bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
               <tr>
                 <th className="px-4 py-3 text-left"><PayrollColumnTooltip label="Centro de custo" description="Agrupamento gerencial dos benefícios por centro de custo." source="Painel" /></th>
@@ -204,10 +204,10 @@ export function PayrollBenefitsPanel({
         </div>
 
         <div className="max-h-[560px] overflow-auto">
-          <table className="min-w-[1660px] w-full text-sm">
+          <table className="min-w-[1840px] w-full text-sm">
             <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
               <tr>
-                <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left"><PayrollColumnTooltip label="Colaborador" description="Memória mensal de benefícios por colaborador elegível." source="Painel + cálculo da folha" /></th>
+                <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left whitespace-nowrap"><PayrollColumnTooltip label="Colaborador" description="Memória mensal de benefícios por colaborador elegível." source="Painel + cálculo da folha" /></th>
                 <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Centro de custo" description="Centro de custo atual do colaborador." source="Painel" /></th>
                 <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Regime" description="Regime contratual atual do colaborador." source="Painel" /></th>
                 <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias elegíveis" description="Dias que contam para benefícios nesta competência. Por padrão, esta coluna considera apenas dias com trabalho efetivo; dias apenas abonados ou justificados não entram automaticamente em VT e VR." source="Sólides + cálculo da folha" formula="Dias efetivamente trabalhados válidos para benefício" align="center" /></th>
@@ -221,7 +221,7 @@ export function PayrollBenefitsPanel({
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Desconto Totalpass" description="Desconto fixo de Totalpass lançado na linha." source="Painel" align="right" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Outros desc." description="Outros descontos fixos cadastrados para o colaborador." source="Painel" align="right" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Total desc." description="Total de descontos de benefícios na competência." source="Cálculo da folha" align="right" /></th>
-                <th className="w-[250px] px-3 py-3 text-left"><PayrollColumnTooltip label="Status e pendências" description="Mostra se a memória mensal está pronta, exige atenção ou possui cadastro incompleto." source="Painel + cálculo da folha" /></th>
+                <th className="w-[280px] px-3 py-3 text-left whitespace-nowrap"><PayrollColumnTooltip label="Status e pendências" description="Mostra se a memória mensal está pronta, exige atenção ou possui cadastro incompleto." source="Painel + cálculo da folha" /></th>
               </tr>
             </thead>
             <tbody>
