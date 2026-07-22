@@ -41,13 +41,16 @@ export function PayrollLineDrawer({
   };
   const preview = detail?.previewRow || null;
   const hasPendingRegistration = current.pendingDataCodes.length > 0;
+  const pointAdjustmentHref = current.employeeId && detail?.periodDateRange
+    ? `/ponto?startDate=${encodeURIComponent(detail.periodDateRange.startDate)}&endDate=${encodeURIComponent(detail.periodDateRange.endDate)}&employeeId=${encodeURIComponent(current.employeeId)}&adjustments=1`
+    : null;
   const detailSources: PayrollLineDetail['sources'] = detail?.sources || {
     adjustments: ['PAINEL'],
     preview: ['PAINEL'],
     hoursBalance: ['SOLIDES'],
     signature: ['SOLIDES'],
     pointDays: ['SOLIDES'],
-    occurrences: ['PAINEL'],
+    occurrences: ['SOLIDES'],
     calculationMemory: ['PAINEL'],
   };
 
@@ -95,10 +98,20 @@ export function PayrollLineDrawer({
 
           {current.requiresRecalculation ? (
             <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-              <div className="font-semibold">Linha desatualizada após mudança no VT</div>
+              <div className="font-semibold">Linha desatualizada após mudança na base operacional</div>
               <div className="mt-1 text-amber-800">
-                O cadastro de vale-transporte deste colaborador mudou depois que a linha foi gerada. Use <strong>Recalcular selecionados</strong> ou gere a folha novamente antes de aprovar esta linha.
+                O cadastro de VT e/ou a base sincronizada do ponto deste colaborador mudaram depois que a linha foi gerada. Use <strong>Recalcular selecionados</strong> ou gere a folha novamente antes de aprovar esta linha.
               </div>
+              {pointAdjustmentHref ? (
+                <div className="mt-3">
+                  <a
+                    href={pointAdjustmentHref}
+                    className="inline-flex rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                  >
+                    Abrir ajustes no ponto
+                  </a>
+                </div>
+              ) : null}
             </section>
           ) : null}
 
@@ -239,7 +252,7 @@ export function PayrollLineDrawer({
             </Card>
           </section>
 
-          <Card title="Ocorrências da competência" sources={detailSources.occurrences} sourceNote="Férias sincronizadas aparecem como integração; demais lançamentos desta fase continuam locais do painel.">
+          <Card title="Ocorrências da competência" sources={detailSources.occurrences} sourceNote="As ocorrências vêm da Sólides e podem receber reclassificação operacional local sem alterar o dado bruto sincronizado.">
             {detail?.occurrences?.length ? (
               <div className="space-y-2">
                 {detail.occurrences.map((occurrence) => (
@@ -247,12 +260,26 @@ export function PayrollLineDrawer({
                     <div className="flex flex-wrap items-center gap-2">
                       <strong>{occurrence.occurrenceType}</strong>
                       <PayrollSourceBadge source={occurrence.source} />
+                      {occurrence.hasOverride ? (
+                        <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-medium text-blue-700">
+                          Ajuste local
+                        </span>
+                      ) : null}
                     </div>
                     <div className="mt-2">
                       {formatDateBr(occurrence.dateStart)}
                       {occurrence.dateEnd && occurrence.dateEnd !== occurrence.dateStart ? ` a ${formatDateBr(occurrence.dateEnd)}` : ''}
                       {occurrence.notes ? ` · ${occurrence.notes}` : ''}
                     </div>
+                    {occurrence.hasOverride ? (
+                      <div className="mt-2 text-xs text-blue-700">
+                        {occurrence.overrideSummary || 'Ajuste operacional aplicado'}
+                        {occurrence.originalOccurrenceType && occurrence.effectiveOccurrenceType && occurrence.originalOccurrenceType !== occurrence.effectiveOccurrenceType
+                          ? ` · ${occurrence.originalOccurrenceType} → ${occurrence.effectiveOccurrenceType}`
+                          : ''}
+                        {occurrence.orphaned ? ' · sem base sincronizada atual' : ''}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
@@ -284,7 +311,12 @@ export function PayrollLineDrawer({
                       <td className="px-3 py-2 text-center">{day.lateMinutes} min</td>
                       <td className="px-3 py-2 text-center">{day.dayBalanceMinutes} min</td>
                       <td className="px-3 py-2 text-center">{day.breakOverrunMinutes} min</td>
-                      <td className="px-3 py-2 text-slate-600">{day.justificationText || (day.absenceFlag ? 'Falta apontada no relatório' : '-')}</td>
+                      <td className="px-3 py-2 text-slate-600">
+                        <div>{day.justificationText || ((day.effectiveAbsence ?? day.absenceFlag) ? 'Falta apontada no relatório' : '-')}</div>
+                        {day.hasOverride ? (
+                          <div className="mt-1 text-[11px] text-blue-700">{day.overrideSummary || 'Ajuste operacional aplicado'}</div>
+                        ) : null}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

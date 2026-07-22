@@ -1,4 +1,6 @@
 import type { PayrollSignatureStatus, PayrollSyncJobStatus } from '@/lib/payroll/constants';
+import type { PayrollOccurrenceType } from '@/lib/payroll/constants';
+import type { PointEligibilityMode, PointOverrideEligibility } from '@/lib/point/effective';
 
 export type PointDataSource = 'SOLIDES' | 'PAINEL';
 
@@ -138,6 +140,8 @@ export type PointDailyControlRow = {
   dayBalanceMinutes: number;
   breakOverrunMinutes: number;
   pendingAdjustments: number;
+  hasOverride: boolean;
+  overrideSummary: string | null;
   pointSource: Extract<PointDataSource, 'SOLIDES'> | null;
   employeeSource: Extract<PointDataSource, 'PAINEL'>;
   status: PointDailyControlStatus;
@@ -186,8 +190,141 @@ export type PointVacationRow = {
   employeeId: string | null;
   employeeName: string;
   employeeCpf: string | null;
+  originalOccurrenceType: PayrollOccurrenceType;
+  effectiveOccurrenceType: PayrollOccurrenceType | null;
+  hasOverride: boolean;
+  overrideSummary: string | null;
   dateStart: string;
   dateEnd: string;
   notes: string | null;
   source: 'SOLIDES';
 };
+
+export type PointOccurrenceOverride = {
+  id: string;
+  occurrenceId: string;
+  employeeId: string | null;
+  employeeName: string;
+  employeeCpf: string | null;
+  originalOccurrenceType: PayrollOccurrenceType | null;
+  originalDateStart: string | null;
+  originalDateEnd: string | null;
+  overrideOccurrenceType: PayrollOccurrenceType | null;
+  ignored: boolean;
+  notes: string | null;
+  sourceSnapshotJson: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PointDayOverride = {
+  id: string;
+  employeeId: string;
+  pointDate: string;
+  payrollDayMode: PointEligibilityMode;
+  vtDayMode: PointEligibilityMode;
+  vrDayMode: PointEligibilityMode;
+  notes: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type PointOccurrenceAdjustmentRow = {
+  id: string;
+  employeeId: string | null;
+  solidesEmployeeId: string | null;
+  employeeName: string;
+  employeeCpf: string | null;
+  dateStart: string;
+  dateEnd: string;
+  notes: string | null;
+  originalOccurrenceType: PayrollOccurrenceType;
+  effectiveOccurrenceType: PayrollOccurrenceType | null;
+  ignored: boolean;
+  hasOverride: boolean;
+  overrideSummary: string | null;
+  overrideId: string | null;
+  overrideNotes: string | null;
+  overrideUpdatedAt: string | null;
+  orphaned: boolean;
+};
+
+export type PointDailyAdjustmentRow = PointDailyRecord & {
+  occurrenceId: string | null;
+  originalOccurrenceType: PayrollOccurrenceType | null;
+  effectiveOccurrenceType: PayrollOccurrenceType | null;
+  occurrenceNotes: string | null;
+  occurrenceOverrideId: string | null;
+  dayOverrideId: string | null;
+  payrollDayMode: PointEligibilityMode;
+  vtDayMode: PointEligibilityMode;
+  vrDayMode: PointEligibilityMode;
+  dayOverrideNotes: string | null;
+  effectiveEligibility: PointOverrideEligibility;
+  effectiveWorkedMinutes: number;
+  effectivePlannedMinutes: number;
+  effectiveLateMinutes: number;
+  effectiveDayBalanceMinutes: number;
+  effectiveBreakOverrunMinutes: number;
+  hasOverride: boolean;
+  overrideSummary: string | null;
+  latestOverrideAt: string | null;
+};
+
+export type PointEmployeeAdjustmentDetail = {
+  employee: {
+    employeeId: string | null;
+    solidesEmployeeId: string | null;
+    employeeName: string;
+    employeeCpf: string | null;
+    centerCost: string | null;
+    unitName: string | null;
+    contractType: string | null;
+  };
+  dateRange: PointDateRange;
+  dailyRows: PointDailyAdjustmentRow[];
+  occurrenceRows: PointOccurrenceAdjustmentRow[];
+  overrideSummary: {
+    dayOverrides: number;
+    occurrenceOverrides: number;
+    hasOverrides: boolean;
+  };
+};
+
+export type PointOccurrenceOverrideInput = {
+  overrideOccurrenceType?: PayrollOccurrenceType | null;
+  ignored?: boolean | null;
+  notes?: string | null;
+};
+
+export type PointDayOverrideInput = {
+  employeeId: string;
+  pointDate: string;
+  payrollDayMode?: PointEligibilityMode | null;
+  vtDayMode?: PointEligibilityMode | null;
+  vrDayMode?: PointEligibilityMode | null;
+  notes?: string | null;
+};
+
+export type PointBulkOverrideInput =
+  | {
+      target: 'DAY';
+      action: 'APPLY' | 'CLEAR';
+      items: Array<{ employeeId: string; pointDate: string }>;
+      payrollDayMode?: PointEligibilityMode | null;
+      vtDayMode?: PointEligibilityMode | null;
+      vrDayMode?: PointEligibilityMode | null;
+      notes?: string | null;
+    }
+  | {
+      target: 'OCCURRENCE';
+      action: 'APPLY' | 'CLEAR';
+      occurrenceIds: string[];
+      overrideOccurrenceType?: PayrollOccurrenceType | null;
+      ignored?: boolean | null;
+      notes?: string | null;
+    };

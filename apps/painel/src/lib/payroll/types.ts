@@ -153,6 +153,21 @@ export type PayrollPointDaily = {
   sourcePayloadJson: string | null;
   syncRunId: string | null;
   source: PayrollDataSource;
+  occurrenceId?: string | null;
+  originalOccurrenceType?: PayrollOccurrenceType | null;
+  effectiveOccurrenceType?: PayrollOccurrenceType | null;
+  occurrenceOverrideId?: string | null;
+  dayOverrideId?: string | null;
+  payrollDayMode?: 'DEFAULT' | 'INCLUDE' | 'EXCLUDE';
+  vtDayMode?: 'DEFAULT' | 'INCLUDE' | 'EXCLUDE';
+  vrDayMode?: 'DEFAULT' | 'INCLUDE' | 'EXCLUDE';
+  effectivePayrollDay?: boolean;
+  effectiveVtDay?: boolean;
+  effectiveVrDay?: boolean;
+  effectiveAbsence?: boolean;
+  hasOverride?: boolean;
+  overrideSummary?: string | null;
+  latestOverrideAt?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -175,6 +190,15 @@ export type PayrollOccurrence = {
   createdBy: string | null;
   updatedBy: string | null;
   source: PayrollDataSource;
+  originalOccurrenceType?: PayrollOccurrenceType;
+  effectiveOccurrenceType?: PayrollOccurrenceType | null;
+  ignored?: boolean;
+  hasOverride?: boolean;
+  overrideId?: string | null;
+  overrideNotes?: string | null;
+  overrideSummary?: string | null;
+  overrideUpdatedAt?: string | null;
+  orphaned?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -259,6 +283,8 @@ export type PayrollDailyControlRow = {
   dayBalanceMinutes: number;
   breakOverrunMinutes: number;
   pendingAdjustments: number;
+  hasOverride: boolean;
+  overrideSummary: string | null;
   pointSource: PayrollDataSource | null;
   employeeSource: Extract<PayrollDataSource, 'PAINEL'>;
   status: PayrollDailyControlStatus;
@@ -305,6 +331,10 @@ export type PayrollVacationRow = {
   employeeId: string | null;
   employeeName: string;
   employeeCpf: string | null;
+  originalOccurrenceType?: PayrollOccurrenceType | null;
+  effectiveOccurrenceType?: PayrollOccurrenceType | null;
+  hasOverride?: boolean;
+  overrideSummary?: string | null;
   dateStart: string;
   dateEnd: string;
   notes: string | null;
@@ -415,7 +445,7 @@ export type PayrollEligibilitySummary = {
 };
 
 export type PayrollPendingDataCode = 'MISSING_SALARY' | 'MISSING_SOLIDES_LINK';
-export type PayrollLineStaleCode = 'VT_RULE_UPDATED_AFTER_GENERATION';
+export type PayrollLineStaleCode = 'VT_RULE_UPDATED_AFTER_GENERATION' | 'POINT_OVERRIDE_UPDATED_AFTER_GENERATION';
 
 export type PayrollReadinessStatus = 'READY' | 'ATTENTION' | 'BLOCKED';
 export type PayrollReadinessSeverity = 'BLOCKING' | 'WARNING';
@@ -484,6 +514,7 @@ export type PayrollLineDetailSources = {
 
 export type PayrollLineDetail = {
   line: PayrollLine;
+  periodDateRange: PayrollPointDateRange;
   pointDays: PayrollPointDaily[];
   occurrences: PayrollOccurrence[];
   previewRow: PayrollPreviewRow | null;

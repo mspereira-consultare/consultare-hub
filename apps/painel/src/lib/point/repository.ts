@@ -2,14 +2,34 @@ import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
 import { runInTransaction } from '@/lib/db';
 import { ensureEmployeesTables } from '@/lib/colaboradores/repository';
+import {
+  buildDayOverrideLookup,
+  buildOccurrenceOverrideLookup,
+  buildPointEmployeeKey,
+  type EffectiveResolvedOccurrence,
+  findPrimaryOccurrenceForDate,
+  resolveEffectiveDay,
+  resolveEffectiveOccurrence,
+  resolveOrphanedOccurrenceOverride,
+  type PointDayOverrideLike,
+  type PointOccurrenceOverrideLike,
+} from '@/lib/point/effective';
 import type { PayrollOccurrenceType, PayrollSignatureStatus, PayrollSyncJobStatus } from '@/lib/payroll/constants';
 import type {
   PointArtifact,
+  PointBulkOverrideInput,
   PointDailyControlRow,
+  PointDailyAdjustmentRow,
+  PointDayOverride,
+  PointDayOverrideInput,
   PointDailyRecord,
   PointDateRange,
+  PointEmployeeAdjustmentDetail,
   PointFilters,
   PointHoursBalanceMonthly,
+  PointOccurrenceAdjustmentRow,
+  PointOccurrenceOverride,
+  PointOccurrenceOverrideInput,
   PointOptions,
   PointOverview,
   PointServiceHeartbeat,
@@ -330,6 +350,45 @@ const mapPointOccurrence = (row: any): PointOccurrenceRecord => ({
   notes: clean(row.notes) || null,
 });
 
+const normalizeEligibilityMode = (value: unknown) => {
+  const normalized = upper(value);
+  if (normalized === 'INCLUDE' || normalized === 'EXCLUDE') return normalized;
+  return 'DEFAULT';
+};
+
+const mapPointOccurrenceOverride = (row: any): PointOccurrenceOverride => ({
+  id: clean(row.id),
+  occurrenceId: clean(row.occurrence_id),
+  employeeId: clean(row.employee_id) || null,
+  employeeName: clean(row.employee_name),
+  employeeCpf: normalizeCpf(row.employee_cpf),
+  originalOccurrenceType: clean(row.original_occurrence_type) ? (upper(row.original_occurrence_type) as PayrollOccurrenceType) : null,
+  originalDateStart: parseDate(row.original_date_start),
+  originalDateEnd: parseDate(row.original_date_end),
+  overrideOccurrenceType: clean(row.override_occurrence_type) ? (upper(row.override_occurrence_type) as PayrollOccurrenceType) : null,
+  ignored: bool(row.ignored),
+  notes: clean(row.notes) || null,
+  sourceSnapshotJson: clean(row.source_snapshot_json) || null,
+  createdBy: clean(row.created_by) || null,
+  updatedBy: clean(row.updated_by) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
+const mapPointDayOverride = (row: any): PointDayOverride => ({
+  id: clean(row.id),
+  employeeId: clean(row.employee_id),
+  pointDate: parseDate(row.point_date) || '',
+  payrollDayMode: normalizeEligibilityMode(row.payroll_day_mode),
+  vtDayMode: normalizeEligibilityMode(row.vt_day_mode),
+  vrDayMode: normalizeEligibilityMode(row.vr_day_mode),
+  notes: clean(row.notes) || null,
+  createdBy: clean(row.created_by) || null,
+  updatedBy: clean(row.updated_by) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
 const buildComparisonKey = (employeeName: string, employeeCpf: string | null) => employeeCpf || normalizeSearch(employeeName);
 
 const buildOperationalKey = ({
@@ -497,6 +556,45 @@ export const ensurePointTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS point_occurrence_overrides (
+      id VARCHAR(64) PRIMARY KEY,
+      occurrence_id VARCHAR(64) NOT NULL,
+      employee_id VARCHAR(64) NULL,
+      employee_name VARCHAR(180) NOT NULL,
+      employee_cpf VARCHAR(14) NULL,
+      original_occurrence_type VARCHAR(30) NULL,
+      original_date_start DATE NULL,
+      original_date_end DATE NULL,
+      override_occurrence_type VARCHAR(30) NULL,
+      ignored INTEGER NOT NULL DEFAULT 0,
+      notes TEXT NULL,
+      source_snapshot_json LONGTEXT NULL,
+      created_by VARCHAR(64) NULL,
+      updated_by VARCHAR(64) NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(occurrence_id)
+    )
+  `);
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS point_day_overrides (
+      id VARCHAR(64) PRIMARY KEY,
+      employee_id VARCHAR(64) NOT NULL,
+      point_date DATE NOT NULL,
+      payroll_day_mode VARCHAR(10) NOT NULL DEFAULT 'DEFAULT',
+      vt_day_mode VARCHAR(10) NOT NULL DEFAULT 'DEFAULT',
+      vr_day_mode VARCHAR(10) NOT NULL DEFAULT 'DEFAULT',
+      notes TEXT NULL,
+      created_by VARCHAR(64) NULL,
+      updated_by VARCHAR(64) NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      UNIQUE(employee_id, point_date)
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS point_hours_balance_monthly (
       id VARCHAR(64) PRIMARY KEY,
       reference_month VARCHAR(7) NOT NULL,
@@ -560,6 +658,8 @@ export const ensurePointTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_point_daily_solides ON point_daily (solides_employee_id, point_date)`);
   await safeCreateIndex(db, `CREATE INDEX idx_point_occurrences_date ON point_occurrences (date_start, date_end)`);
   await safeCreateIndex(db, `CREATE INDEX idx_point_occurrences_employee ON point_occurrences (employee_id, date_start)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_point_occurrence_overrides_employee ON point_occurrence_overrides (employee_id, original_date_start)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_point_day_overrides_employee ON point_day_overrides (employee_id, point_date)`);
   await safeCreateIndex(db, `CREATE INDEX idx_point_hours_balance_ref ON point_hours_balance_monthly (reference_month, employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_point_signature_ref ON point_signature_monthly (reference_month, employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_point_artifacts_created ON point_artifacts (created_at)`);
@@ -571,6 +671,28 @@ export const ensurePointTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE point_occurrences ADD COLUMN employee_cpf VARCHAR(14) NULL`);
   await safeAddColumn(db, `ALTER TABLE point_occurrences ADD COLUMN source_payload_json LONGTEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE point_occurrences ADD COLUMN last_sync_run_id VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN employee_id VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN employee_name VARCHAR(180) NOT NULL DEFAULT ''`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN employee_cpf VARCHAR(14) NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN original_occurrence_type VARCHAR(30) NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN original_date_start DATE NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN original_date_end DATE NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN override_occurrence_type VARCHAR(30) NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN ignored INTEGER NOT NULL DEFAULT 0`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN notes TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN source_snapshot_json LONGTEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN created_by VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN updated_by VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`);
+  await safeAddColumn(db, `ALTER TABLE point_occurrence_overrides ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`);
+  await safeAddColumn(db, `ALTER TABLE point_day_overrides ADD COLUMN payroll_day_mode VARCHAR(10) NOT NULL DEFAULT 'DEFAULT'`);
+  await safeAddColumn(db, `ALTER TABLE point_day_overrides ADD COLUMN vt_day_mode VARCHAR(10) NOT NULL DEFAULT 'DEFAULT'`);
+  await safeAddColumn(db, `ALTER TABLE point_day_overrides ADD COLUMN vr_day_mode VARCHAR(10) NOT NULL DEFAULT 'DEFAULT'`);
+  await safeAddColumn(db, `ALTER TABLE point_day_overrides ADD COLUMN notes TEXT NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_day_overrides ADD COLUMN created_by VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_day_overrides ADD COLUMN updated_by VARCHAR(64) NULL`);
+  await safeAddColumn(db, `ALTER TABLE point_day_overrides ADD COLUMN created_at TEXT NOT NULL DEFAULT ''`);
+  await safeAddColumn(db, `ALTER TABLE point_day_overrides ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''`);
   await safeAddColumn(db, `ALTER TABLE point_hours_balance_monthly ADD COLUMN last_sync_run_id VARCHAR(64) NULL`);
   await safeAddColumn(db, `ALTER TABLE point_signature_monthly ADD COLUMN last_sync_run_id VARCHAR(64) NULL`);
   await safeAddColumn(db, `ALTER TABLE point_artifacts ADD COLUMN sync_run_id VARCHAR(64) NULL`);
@@ -628,6 +750,84 @@ const listPointOccurrenceRecordsRaw = async (db: DbInterface, dateRange: PointDa
     [dateRange.endDate, dateRange.startDate],
   );
   return rows.map(mapPointOccurrence);
+};
+
+const listPointOccurrenceOverridesRaw = async (db: DbInterface, dateRange: PointDateRange, employeeId?: string) => {
+  await ensurePointTables(db);
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM point_occurrence_overrides
+    WHERE (
+      (original_date_start IS NOT NULL AND original_date_start <= ? AND COALESCE(original_date_end, original_date_start) >= ?)
+      OR original_date_start IS NULL
+    )
+      ${employeeId ? 'AND employee_id = ?' : ''}
+    ORDER BY COALESCE(original_date_start, created_at) ASC, employee_name ASC
+    `,
+    employeeId ? [dateRange.endDate, dateRange.startDate, employeeId] : [dateRange.endDate, dateRange.startDate],
+  );
+  return rows.map(mapPointOccurrenceOverride);
+};
+
+const listPointDayOverridesRaw = async (db: DbInterface, dateRange: PointDateRange, employeeId?: string) => {
+  await ensurePointTables(db);
+  const rows = await db.query(
+    `
+    SELECT *
+    FROM point_day_overrides
+    WHERE point_date >= ?
+      AND point_date <= ?
+      ${employeeId ? 'AND employee_id = ?' : ''}
+    ORDER BY point_date ASC
+    `,
+    employeeId ? [dateRange.startDate, dateRange.endDate, employeeId] : [dateRange.startDate, dateRange.endDate],
+  );
+  return rows.map(mapPointDayOverride);
+};
+
+const buildEffectiveOccurrenceRows = (
+  rows: PointOccurrenceRecord[],
+  overrides: PointOccurrenceOverride[],
+): EffectiveResolvedOccurrence[] => {
+  const overrideLookup = buildOccurrenceOverrideLookup(overrides as PointOccurrenceOverrideLike[]);
+  const items: EffectiveResolvedOccurrence[] = rows.map((row) => resolveEffectiveOccurrence(row, overrideLookup.get(row.id) || null));
+  const existingIds = new Set(rows.map((row) => row.id));
+  for (const override of overrides) {
+    if (existingIds.has(override.occurrenceId)) continue;
+    items.push(resolveOrphanedOccurrenceOverride(override as PointOccurrenceOverrideLike));
+  }
+  return items.sort((left, right) => {
+    if (left.dateStart !== right.dateStart) return left.dateStart.localeCompare(right.dateStart);
+    return left.employeeName.localeCompare(right.employeeName, 'pt-BR', { sensitivity: 'base' });
+  });
+};
+
+const buildEffectiveDailyRows = (
+  rows: PointDailyRecord[],
+  occurrences: EffectiveResolvedOccurrence[],
+  dayOverrides: PointDayOverride[],
+): PointDailyAdjustmentRow[] => {
+  const occurrenceByEmployee = new Map<string, EffectiveResolvedOccurrence[]>();
+  for (const occurrence of occurrences) {
+    const key = buildPointEmployeeKey(occurrence);
+    const list = occurrenceByEmployee.get(key) || [];
+    list.push(occurrence);
+    occurrenceByEmployee.set(key, list);
+  }
+  const dayOverrideLookup = buildDayOverrideLookup(dayOverrides as PointDayOverrideLike[]);
+
+  return rows.map((row) => {
+    const employeeKey = buildPointEmployeeKey(row);
+    const pointDate = row.pointDate;
+    const dayOccurrenceList = occurrenceByEmployee.get(employeeKey) || [];
+    const primaryOccurrence = findPrimaryOccurrenceForDate(pointDate, dayOccurrenceList);
+    const dayOverride =
+      row.employeeId
+        ? (dayOverrideLookup.get(`${row.employeeId}:${pointDate}`) || null)
+        : null;
+    return resolveEffectiveDay(row, primaryOccurrence, dayOverride);
+  });
 };
 
 const listPointHoursBalanceRaw = async (db: DbInterface, referenceMonth: string) => {
@@ -746,12 +946,12 @@ export const getPointOverview = async (db: DbInterface, dateRange: PointDateRang
 };
 
 const buildDailyDisplayRows = (
-  pointRows: PointDailyRecord[],
+  pointRows: PointDailyAdjustmentRow[],
   employees: PointEmployeeRosterRow[],
   filters: PointFilters,
 ) => {
   const lookup = buildEmployeeLookupMaps(employees);
-  const grouped = new Map<string, { base: PointDailyRecord; rows: PointDailyRecord[]; employee: PointEmployeeRosterRow | null }>();
+  const grouped = new Map<string, { base: PointDailyAdjustmentRow; rows: PointDailyAdjustmentRow[]; employee: PointEmployeeRosterRow | null }>();
 
   for (const row of pointRows) {
     const key = buildOperationalKey(row);
@@ -775,14 +975,16 @@ const buildDailyDisplayRows = (
     const unitName = item.employee?.units[0] || null;
     if (!matchesPointFilters({ employeeName, employeeCpf, centerCost, unitName, contractType }, filters)) continue;
 
-    const plannedMinutes = item.rows.reduce((sum, row) => sum + row.plannedMinutes, 0);
-    const workedMinutes = item.rows.reduce((sum, row) => sum + row.workedMinutes, 0);
-    const dayBalanceMinutes = item.rows.reduce((sum, row) => sum + row.dayBalanceMinutes, 0);
-    const lateMinutes = item.rows.reduce((sum, row) => sum + row.lateMinutes, 0);
-    const breakOverrunMinutes = item.rows.reduce((sum, row) => sum + row.breakOverrunMinutes, 0);
-    const absenceDays = item.rows.filter((row) => row.absenceFlag).length;
-    const workedDays = item.rows.filter((row) => row.workedMinutes > 0 || !row.absenceFlag).length;
+    const plannedMinutes = item.rows.reduce((sum, row) => sum + row.effectivePlannedMinutes, 0);
+    const workedMinutes = item.rows.reduce((sum, row) => sum + row.effectiveWorkedMinutes, 0);
+    const dayBalanceMinutes = item.rows.reduce((sum, row) => sum + row.effectiveDayBalanceMinutes, 0);
+    const lateMinutes = item.rows.reduce((sum, row) => sum + row.effectiveLateMinutes, 0);
+    const breakOverrunMinutes = item.rows.reduce((sum, row) => sum + row.effectiveBreakOverrunMinutes, 0);
+    const absenceDays = item.rows.filter((row) => row.effectiveEligibility.absence).length;
+    const workedDays = item.rows.filter((row) => row.effectiveEligibility.payrollDay).length;
     const pendingAdjustments = item.rows.reduce((sum, row) => sum + row.pendingAdjustmentsCount, 0);
+    const hasOverride = item.rows.some((row) => row.hasOverride);
+    const overrideSummaries = Array.from(new Set(item.rows.map((row) => row.overrideSummary).filter(Boolean)));
     const status =
       pendingAdjustments > 0 || breakOverrunMinutes > 0 || item.rows.some((row) => row.inconsistencyFlag)
         ? 'ATENCAO'
@@ -810,6 +1012,8 @@ const buildDailyDisplayRows = (
       dayBalanceMinutes,
       breakOverrunMinutes,
       pendingAdjustments,
+      hasOverride,
+      overrideSummary: overrideSummaries[0] || null,
       pointSource: 'SOLIDES',
       employeeSource: 'PAINEL',
       status,
@@ -859,9 +1063,37 @@ const buildMonthlyDisplayRows = <TRow extends { employeeId: string | null; solid
 
 export const listPointDailyControlRowsByDateRange = async (db: DbInterface, dateRange: PointDateRange, filters: PointFilters) => {
   await ensurePointTables(db);
-  const [pointRows, employees] = await Promise.all([listPointDailyRecordsRaw(db, dateRange), loadEmployeeRosterForRange(db, dateRange)]);
-  if (!pointRows.length) return { items: [] as PointDailyControlRow[] };
-  return { items: buildDailyDisplayRows(pointRows, employees, filters) };
+  const [effectivePointRows, employees] = await Promise.all([
+    listPointDailyAdjustmentRowsByDateRange(db, dateRange),
+    loadEmployeeRosterForRange(db, dateRange),
+  ]);
+  if (!effectivePointRows.length) return { items: [] as PointDailyControlRow[] };
+  return { items: buildDailyDisplayRows(effectivePointRows, employees, filters) };
+};
+
+export const listPointDailyAdjustmentRowsByDateRange = async (db: DbInterface, dateRange: PointDateRange, employeeId?: string) => {
+  await ensurePointTables(db);
+  const [pointRows, occurrenceRows, dayOverrides, occurrenceOverrides] = await Promise.all([
+    listPointDailyRecordsRaw(db, dateRange),
+    listPointOccurrenceRecordsRaw(db, dateRange),
+    listPointDayOverridesRaw(db, dateRange, employeeId),
+    listPointOccurrenceOverridesRaw(db, dateRange, employeeId),
+  ]);
+  const filteredPointRows = employeeId ? pointRows.filter((row) => row.employeeId === employeeId) : pointRows;
+  const filteredOccurrenceRows = employeeId ? occurrenceRows.filter((row) => row.employeeId === employeeId) : occurrenceRows;
+  const effectiveOccurrences = buildEffectiveOccurrenceRows(filteredOccurrenceRows, occurrenceOverrides);
+  return buildEffectiveDailyRows(filteredPointRows, effectiveOccurrences, dayOverrides)
+    .sort((left, right) => left.pointDate.localeCompare(right.pointDate));
+};
+
+export const listPointOccurrenceAdjustmentRowsByDateRange = async (db: DbInterface, dateRange: PointDateRange, employeeId?: string) => {
+  await ensurePointTables(db);
+  const [rows, overrides] = await Promise.all([
+    listPointOccurrenceRecordsRaw(db, dateRange),
+    listPointOccurrenceOverridesRaw(db, dateRange, employeeId),
+  ]);
+  const filteredRows = employeeId ? rows.filter((row) => row.employeeId === employeeId) : rows;
+  return buildEffectiveOccurrenceRows(filteredRows, overrides);
 };
 
 export const listPointHoursBalanceRowsByDateRange = async (db: DbInterface, dateRange: PointDateRange, filters: PointFilters) => {
@@ -880,10 +1112,13 @@ export const listPointSignatureRowsByDateRange = async (db: DbInterface, dateRan
 
 export const listPointVacationRowsByDateRange = async (db: DbInterface, dateRange: PointDateRange, filters: PointFilters) => {
   await ensurePointTables(db);
-  const [rows, employees] = await Promise.all([listPointOccurrenceRecordsRaw(db, dateRange), loadEmployeeRosterForRange(db, dateRange)]);
+  const [effectiveRows, employees] = await Promise.all([
+    listPointOccurrenceAdjustmentRowsByDateRange(db, dateRange),
+    loadEmployeeRosterForRange(db, dateRange),
+  ]);
   const lookup = buildEmployeeLookupMaps(employees);
-  const items: PointVacationRow[] = rows
-    .filter((row) => row.occurrenceType === 'FERIAS')
+  const items: PointVacationRow[] = effectiveRows
+    .filter((row) => row.effectiveOccurrenceType === 'FERIAS')
     .map((row) => {
       const employee = resolveEmployeeForRow(row, lookup);
       return {
@@ -894,6 +1129,10 @@ export const listPointVacationRowsByDateRange = async (db: DbInterface, dateRang
         centerCost: employee?.costCenter || null,
         unitName: employee?.units[0] || null,
         contractType: employee?.employmentRegime || null,
+        originalOccurrenceType: row.originalOccurrenceType,
+        effectiveOccurrenceType: row.effectiveOccurrenceType,
+        hasOverride: row.hasOverride,
+        overrideSummary: row.overrideSummary,
         dateStart: row.dateStart,
         dateEnd: row.dateEnd,
         notes: row.notes,
@@ -919,6 +1158,426 @@ export const listPointVacationRowsByDateRange = async (db: DbInterface, dateRang
     });
 
   return { items };
+};
+
+export const getPointEmployeeAdjustmentDetail = async (
+  db: DbInterface,
+  params: { employeeId: string; dateRange: PointDateRange },
+): Promise<PointEmployeeAdjustmentDetail> => {
+  await ensurePointTables(db);
+  const employeeId = clean(params.employeeId);
+  if (!employeeId) throw new PointValidationError('Colaborador inválido para editar ajustes operacionais.', 400);
+
+  const [employees, dailyRows, occurrenceRows, dayOverrides, occurrenceOverrides] = await Promise.all([
+    loadEmployeeRosterForRange(db, params.dateRange),
+    listPointDailyRecordsRaw(db, params.dateRange),
+    listPointOccurrenceRecordsRaw(db, params.dateRange),
+    listPointDayOverridesRaw(db, params.dateRange, employeeId),
+    listPointOccurrenceOverridesRaw(db, params.dateRange, employeeId),
+  ]);
+
+  const lookup = buildEmployeeLookupMaps(employees);
+  const employee = lookup.byId.get(employeeId) || null;
+  const filteredDailyRows = dailyRows.filter((row) => row.employeeId === employeeId);
+  const filteredOccurrenceRows = occurrenceRows.filter((row) => row.employeeId === employeeId);
+  const effectiveOccurrences = buildEffectiveOccurrenceRows(filteredOccurrenceRows, occurrenceOverrides);
+  const effectiveDailyRows = buildEffectiveDailyRows(filteredDailyRows, effectiveOccurrences, dayOverrides)
+    .sort((left, right) => left.pointDate.localeCompare(right.pointDate));
+
+  const baseName = employee?.fullName || effectiveDailyRows[0]?.employeeName || effectiveOccurrences[0]?.employeeName || 'Colaborador';
+  const baseCpf = employee?.cpf || effectiveDailyRows[0]?.employeeCpf || effectiveOccurrences[0]?.employeeCpf || null;
+
+  return {
+    employee: {
+      employeeId,
+      solidesEmployeeId: employee?.solidesEmployeeId || effectiveDailyRows[0]?.solidesEmployeeId || effectiveOccurrences[0]?.solidesEmployeeId || null,
+      employeeName: baseName,
+      employeeCpf: baseCpf,
+      centerCost: employee?.costCenter || null,
+      unitName: employee?.units[0] || null,
+      contractType: employee?.employmentRegime || null,
+    },
+    dateRange: params.dateRange,
+    dailyRows: effectiveDailyRows,
+    occurrenceRows: effectiveOccurrences,
+    overrideSummary: {
+      dayOverrides: dayOverrides.length,
+      occurrenceOverrides: occurrenceOverrides.length,
+      hasOverrides: dayOverrides.length > 0 || occurrenceOverrides.length > 0,
+    },
+  };
+};
+
+const serializeOccurrenceSnapshot = (occurrence: PointOccurrenceRecord) =>
+  JSON.stringify({
+    id: occurrence.id,
+    employeeId: occurrence.employeeId,
+    solidesEmployeeId: occurrence.solidesEmployeeId,
+    employeeName: occurrence.employeeName,
+    employeeCpf: occurrence.employeeCpf,
+    occurrenceType: occurrence.occurrenceType,
+    dateStart: occurrence.dateStart,
+    dateEnd: occurrence.dateEnd,
+    notes: occurrence.notes,
+  });
+
+const getPointOccurrenceOrThrow = async (db: DbInterface, occurrenceId: string) => {
+  const rows = await db.query(`SELECT * FROM point_occurrences WHERE id = ? LIMIT 1`, [occurrenceId]);
+  if (!rows[0]) throw new PointValidationError('Ocorrência sincronizada não encontrada.', 404);
+  return mapPointOccurrence(rows[0]);
+};
+
+const getPointDayOrThrow = async (db: DbInterface, employeeId: string, pointDate: string) => {
+  const rows = await db.query(
+    `SELECT * FROM point_daily WHERE employee_id = ? AND point_date = ? LIMIT 1`,
+    [employeeId, pointDate],
+  );
+  if (!rows[0]) throw new PointValidationError('Dia sincronizado não encontrado para este colaborador.', 404);
+  return mapPointDailyRecord(rows[0]);
+};
+
+const getPointOccurrenceOverrideByOccurrenceId = async (db: DbInterface, occurrenceId: string) => {
+  const rows = await db.query(`SELECT * FROM point_occurrence_overrides WHERE occurrence_id = ? LIMIT 1`, [occurrenceId]);
+  return rows[0] ? mapPointOccurrenceOverride(rows[0]) : null;
+};
+
+const getPointDayOverrideByIdentity = async (db: DbInterface, employeeId: string, pointDate: string) => {
+  const rows = await db.query(`SELECT * FROM point_day_overrides WHERE employee_id = ? AND point_date = ? LIMIT 1`, [employeeId, pointDate]);
+  return rows[0] ? mapPointDayOverride(rows[0]) : null;
+};
+
+const normalizePointDateOrThrow = (value: unknown) => {
+  const pointDate = parseDate(value);
+  if (!pointDate) throw new PointValidationError('Data do ajuste inválida.', 400);
+  return pointDate;
+};
+
+const normalizeOccurrenceOverrideInput = (input: PointOccurrenceOverrideInput) => {
+  const overrideOccurrenceType = clean(input.overrideOccurrenceType)
+    ? (upper(input.overrideOccurrenceType) as PayrollOccurrenceType)
+    : null;
+  return {
+    overrideOccurrenceType,
+    ignored: Boolean(input.ignored),
+    notes: clean(input.notes) || null,
+  };
+};
+
+const normalizeDayOverrideInput = (input: PointDayOverrideInput) => ({
+  employeeId: clean(input.employeeId),
+  pointDate: normalizePointDateOrThrow(input.pointDate),
+  payrollDayMode: normalizeEligibilityMode(input.payrollDayMode),
+  vtDayMode: normalizeEligibilityMode(input.vtDayMode),
+  vrDayMode: normalizeEligibilityMode(input.vrDayMode),
+  notes: clean(input.notes) || null,
+});
+
+export const upsertPointOccurrenceOverride = async (
+  db: DbInterface,
+  occurrenceId: string,
+  input: PointOccurrenceOverrideInput,
+  actorUserId: string,
+) => {
+  await ensurePointTables(db);
+  const normalizedOccurrenceId = clean(occurrenceId);
+  if (!normalizedOccurrenceId) throw new PointValidationError('Ocorrência inválida para ajuste.', 400);
+  const occurrence = await getPointOccurrenceOrThrow(db, normalizedOccurrenceId);
+  const normalized = normalizeOccurrenceOverrideInput(input);
+  const now = NOW();
+  const current = await getPointOccurrenceOverrideByOccurrenceId(db, normalizedOccurrenceId);
+
+  if (current) {
+    await db.execute(
+      `
+      UPDATE point_occurrence_overrides
+      SET employee_id = ?, employee_name = ?, employee_cpf = ?, original_occurrence_type = ?, original_date_start = ?, original_date_end = ?,
+          override_occurrence_type = ?, ignored = ?, notes = ?, source_snapshot_json = ?, updated_by = ?, updated_at = ?
+      WHERE occurrence_id = ?
+      `,
+      [
+        occurrence.employeeId,
+        occurrence.employeeName,
+        occurrence.employeeCpf,
+        occurrence.occurrenceType,
+        occurrence.dateStart,
+        occurrence.dateEnd,
+        normalized.overrideOccurrenceType,
+        normalized.ignored ? 1 : 0,
+        normalized.notes,
+        serializeOccurrenceSnapshot(occurrence),
+        actorUserId,
+        now,
+        normalizedOccurrenceId,
+      ],
+    );
+  } else {
+    await db.execute(
+      `
+      INSERT INTO point_occurrence_overrides (
+        id, occurrence_id, employee_id, employee_name, employee_cpf, original_occurrence_type, original_date_start, original_date_end,
+        override_occurrence_type, ignored, notes, source_snapshot_json, created_by, updated_by, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        randomUUID(),
+        normalizedOccurrenceId,
+        occurrence.employeeId,
+        occurrence.employeeName,
+        occurrence.employeeCpf,
+        occurrence.occurrenceType,
+        occurrence.dateStart,
+        occurrence.dateEnd,
+        normalized.overrideOccurrenceType,
+        normalized.ignored ? 1 : 0,
+        normalized.notes,
+        serializeOccurrenceSnapshot(occurrence),
+        actorUserId,
+        actorUserId,
+        now,
+        now,
+      ],
+    );
+  }
+
+  const updated = await getPointOccurrenceOverrideByOccurrenceId(db, normalizedOccurrenceId);
+  if (!updated) throw new PointValidationError('Falha ao persistir override da ocorrência.', 500);
+  return updated;
+};
+
+export const deletePointOccurrenceOverride = async (db: DbInterface, occurrenceId: string) => {
+  await ensurePointTables(db);
+  const normalizedOccurrenceId = clean(occurrenceId);
+  if (!normalizedOccurrenceId) throw new PointValidationError('Ocorrência inválida para exclusão do ajuste.', 400);
+  await db.execute(`DELETE FROM point_occurrence_overrides WHERE occurrence_id = ?`, [normalizedOccurrenceId]);
+  return { occurrenceId: normalizedOccurrenceId };
+};
+
+export const createPointDayOverride = async (db: DbInterface, input: PointDayOverrideInput, actorUserId: string) => {
+  await ensurePointTables(db);
+  const normalized = normalizeDayOverrideInput(input);
+  if (!normalized.employeeId) throw new PointValidationError('Colaborador inválido para ajuste diário.', 400);
+  await getPointDayOrThrow(db, normalized.employeeId, normalized.pointDate);
+  const current = await getPointDayOverrideByIdentity(db, normalized.employeeId, normalized.pointDate);
+  const now = NOW();
+
+  if (current) {
+    await db.execute(
+      `
+      UPDATE point_day_overrides
+      SET payroll_day_mode = ?, vt_day_mode = ?, vr_day_mode = ?, notes = ?, updated_by = ?, updated_at = ?
+      WHERE id = ?
+      `,
+      [
+        normalized.payrollDayMode,
+        normalized.vtDayMode,
+        normalized.vrDayMode,
+        normalized.notes,
+        actorUserId,
+        now,
+        current.id,
+      ],
+    );
+  } else {
+    await db.execute(
+      `
+      INSERT INTO point_day_overrides (
+        id, employee_id, point_date, payroll_day_mode, vt_day_mode, vr_day_mode, notes, created_by, updated_by, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        randomUUID(),
+        normalized.employeeId,
+        normalized.pointDate,
+        normalized.payrollDayMode,
+        normalized.vtDayMode,
+        normalized.vrDayMode,
+        normalized.notes,
+        actorUserId,
+        actorUserId,
+        now,
+        now,
+      ],
+    );
+  }
+
+  const updated = await getPointDayOverrideByIdentity(db, normalized.employeeId, normalized.pointDate);
+  if (!updated) throw new PointValidationError('Falha ao persistir override diário.', 500);
+  return updated;
+};
+
+export const updatePointDayOverride = async (db: DbInterface, overrideId: string, input: Partial<PointDayOverrideInput>, actorUserId: string) => {
+  await ensurePointTables(db);
+  const normalizedId = clean(overrideId);
+  if (!normalizedId) throw new PointValidationError('Override diário inválido.', 400);
+  const rows = await db.query(`SELECT * FROM point_day_overrides WHERE id = ? LIMIT 1`, [normalizedId]);
+  if (!rows[0]) throw new PointValidationError('Override diário não encontrado.', 404);
+  const current = mapPointDayOverride(rows[0]);
+  const next = normalizeDayOverrideInput({
+    employeeId: current.employeeId,
+    pointDate: current.pointDate,
+    payrollDayMode: input.payrollDayMode ?? current.payrollDayMode,
+    vtDayMode: input.vtDayMode ?? current.vtDayMode,
+    vrDayMode: input.vrDayMode ?? current.vrDayMode,
+    notes: input.notes ?? current.notes,
+  });
+  await db.execute(
+    `
+    UPDATE point_day_overrides
+    SET payroll_day_mode = ?, vt_day_mode = ?, vr_day_mode = ?, notes = ?, updated_by = ?, updated_at = ?
+    WHERE id = ?
+    `,
+    [next.payrollDayMode, next.vtDayMode, next.vrDayMode, next.notes, actorUserId, NOW(), normalizedId],
+  );
+  const updatedRows = await db.query(`SELECT * FROM point_day_overrides WHERE id = ? LIMIT 1`, [normalizedId]);
+  return mapPointDayOverride(updatedRows[0]);
+};
+
+export const deletePointDayOverride = async (db: DbInterface, overrideId: string) => {
+  await ensurePointTables(db);
+  const normalizedId = clean(overrideId);
+  if (!normalizedId) throw new PointValidationError('Override diário inválido para exclusão.', 400);
+  await db.execute(`DELETE FROM point_day_overrides WHERE id = ?`, [normalizedId]);
+  return { overrideId: normalizedId };
+};
+
+export const applyPointOverrideBulk = async (db: DbInterface, input: PointBulkOverrideInput, actorUserId: string) => {
+  await ensurePointTables(db);
+  if (input.target === 'DAY') {
+    const items = Array.isArray(input.items) ? input.items : [];
+    let applied = 0;
+    let ignored = 0;
+    const reasons: string[] = [];
+    for (const item of items) {
+      const employeeId = clean(item.employeeId);
+      const pointDate = clean(item.pointDate);
+      try {
+        if (input.action === 'CLEAR') {
+          const current = await getPointDayOverrideByIdentity(db, employeeId, normalizePointDateOrThrow(pointDate));
+          if (current) {
+            await db.execute(`DELETE FROM point_day_overrides WHERE id = ?`, [current.id]);
+            applied += 1;
+          } else {
+            ignored += 1;
+          }
+        } else {
+          await createPointDayOverride(
+            db,
+            {
+              employeeId: item.employeeId,
+              pointDate: item.pointDate,
+              payrollDayMode: input.payrollDayMode,
+              vtDayMode: input.vtDayMode,
+              vrDayMode: input.vrDayMode,
+              notes: input.notes,
+            },
+            actorUserId,
+          );
+          applied += 1;
+        }
+      } catch (error: any) {
+        ignored += 1;
+        reasons.push(`${employeeId || 'sem-colaborador'} ${pointDate || 'sem-data'}: ${String(error?.message || error)}`);
+      }
+    }
+    return {
+      totalRequested: items.length,
+      totalApplied: applied,
+      totalIgnored: ignored,
+      reasons,
+    };
+  }
+
+  const occurrenceIds = Array.isArray(input.occurrenceIds) ? input.occurrenceIds.map((item) => clean(item)).filter(Boolean) : [];
+  let applied = 0;
+  let ignored = 0;
+  const reasons: string[] = [];
+  for (const occurrenceId of occurrenceIds) {
+    try {
+      if (input.action === 'CLEAR') {
+        await db.execute(`DELETE FROM point_occurrence_overrides WHERE occurrence_id = ?`, [occurrenceId]);
+      } else {
+        await upsertPointOccurrenceOverride(
+          db,
+          occurrenceId,
+          {
+            overrideOccurrenceType: input.overrideOccurrenceType,
+            ignored: input.ignored,
+            notes: input.notes,
+          },
+          actorUserId,
+        );
+      }
+      applied += 1;
+    } catch (error: any) {
+      ignored += 1;
+      reasons.push(`${occurrenceId}: ${String(error?.message || error)}`);
+    }
+  }
+
+  return {
+    totalRequested: occurrenceIds.length,
+    totalApplied: applied,
+    totalIgnored: ignored,
+    reasons,
+  };
+};
+
+export const getPointLatestOverrideByEmployeeForDateRange = async (db: DbInterface, dateRange: PointDateRange) => {
+  await ensurePointTables(db);
+  const [dailyRows, occurrenceRows, dayOverrideRows, occurrenceOverrideRows] = await Promise.all([
+    db.query(
+      `
+      SELECT employee_id, MAX(updated_at) AS latest_at
+      FROM point_daily
+      WHERE point_date >= ?
+        AND point_date <= ?
+        AND employee_id IS NOT NULL
+      GROUP BY employee_id
+      `,
+      [dateRange.startDate, dateRange.endDate],
+    ),
+    db.query(
+      `
+      SELECT employee_id, MAX(updated_at) AS latest_at
+      FROM point_occurrences
+      WHERE date_start <= ?
+        AND COALESCE(date_end, date_start) >= ?
+        AND employee_id IS NOT NULL
+      GROUP BY employee_id
+      `,
+      [dateRange.endDate, dateRange.startDate],
+    ),
+    db.query(
+      `
+      SELECT employee_id, MAX(updated_at) AS latest_at
+      FROM point_day_overrides
+      WHERE point_date >= ?
+        AND point_date <= ?
+      GROUP BY employee_id
+      `,
+      [dateRange.startDate, dateRange.endDate],
+    ),
+    db.query(
+      `
+      SELECT employee_id, MAX(updated_at) AS latest_at
+      FROM point_occurrence_overrides
+      WHERE original_date_start <= ?
+        AND COALESCE(original_date_end, original_date_start) >= ?
+      GROUP BY employee_id
+      `,
+      [dateRange.endDate, dateRange.startDate],
+    ),
+  ]);
+
+  const map = new Map<string, string>();
+  for (const row of [...dailyRows, ...occurrenceRows, ...dayOverrideRows, ...occurrenceOverrideRows] as any[]) {
+    const employeeId = clean(row.employee_id);
+    const latestAt = clean(row.latest_at);
+    if (!employeeId || !latestAt) continue;
+    const current = map.get(employeeId);
+    if (!current || latestAt > current) map.set(employeeId, latestAt);
+  }
+  return map;
 };
 
 export const enqueuePointSync = async (

@@ -10,7 +10,17 @@ const statusTone: Record<string, string> = {
   PENDENTE: 'border-rose-200 bg-rose-50 text-rose-700',
 };
 
-export function PayrollDailyPanel({ rows, loading }: { rows: PayrollDailyControlRow[]; loading: boolean }) {
+export function PayrollDailyPanel({
+  rows,
+  loading,
+  canAdjust = false,
+  onOpenAdjustments,
+}: {
+  rows: PayrollDailyControlRow[];
+  loading: boolean;
+  canAdjust?: boolean;
+  onOpenAdjustments?: (row: PayrollDailyControlRow) => void;
+}) {
   return (
     <PayrollTableShell
       title="Controle diário"
@@ -20,7 +30,7 @@ export function PayrollDailyPanel({ rows, loading }: { rows: PayrollDailyControl
       sourceNote="Métricas de ponto vêm da Sólides; vínculo, centro de custo e contrato continuam vindo do Painel."
     >
       <div className="overflow-x-auto">
-        <table className="min-w-[1180px] w-full text-sm">
+        <table className="min-w-[1260px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
             <tr>
               <th className="px-4 py-3">Colaborador</th>
@@ -36,18 +46,22 @@ export function PayrollDailyPanel({ rows, loading }: { rows: PayrollDailyControl
               <th className="px-4 py-3 text-center">Pendências</th>
               <th className="px-4 py-3 text-center">Origem do ponto</th>
               <th className="px-4 py-3">Status</th>
+              {canAdjust ? <th className="px-4 py-3 text-right">Ajustes</th> : null}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={13} className="px-4 py-10 text-center text-slate-500">Carregando controle diário...</td></tr>
+              <tr><td colSpan={canAdjust ? 14 : 13} className="px-4 py-10 text-center text-slate-500">Carregando controle diário...</td></tr>
             ) : rows.length === 0 ? (
-              <tr><td colSpan={13} className="px-4 py-10 text-center text-slate-500">Nenhum registro diário encontrado para os filtros atuais.</td></tr>
+              <tr><td colSpan={canAdjust ? 14 : 13} className="px-4 py-10 text-center text-slate-500">Nenhum registro diário encontrado para os filtros atuais.</td></tr>
             ) : rows.map((row) => (
               <tr key={row.key} className="border-t border-slate-100">
                 <td className="px-4 py-3">
                   <div className="font-semibold text-slate-800">{row.employeeName}</div>
                   <div className="mt-1 text-xs text-slate-500">{row.employeeCpf || '-'}</div>
+                  {row.hasOverride ? (
+                    <div className="mt-1 text-[11px] font-medium text-blue-700">{row.overrideSummary || 'Ajuste operacional aplicado'}</div>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3">{row.centerCost || '-'}</td>
                 <td className="px-4 py-3">{row.contractType || '-'}</td>
@@ -65,6 +79,22 @@ export function PayrollDailyPanel({ rows, loading }: { rows: PayrollDailyControl
                     {row.status}
                   </span>
                 </td>
+                {canAdjust ? (
+                  <td className="px-4 py-3 text-right">
+                    <button
+                      type="button"
+                      onClick={() => onOpenAdjustments?.(row)}
+                      disabled={!row.employeeId}
+                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
+                        row.employeeId
+                          ? 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                          : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+                      }`}
+                    >
+                      Ajustar
+                    </button>
+                  </td>
+                ) : null}
               </tr>
             ))}
           </tbody>

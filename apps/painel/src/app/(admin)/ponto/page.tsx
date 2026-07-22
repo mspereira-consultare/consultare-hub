@@ -2,13 +2,17 @@
 
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
+import { useSearchParams } from 'next/navigation';
 import { Calendar, CircleHelp, Loader2, RefreshCw } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
 import type {
   PointDailyControlRow,
+  PointDailyAdjustmentRow,
   PointDateRange,
+  PointEmployeeAdjustmentDetail,
   PointFilters,
   PointHoursBalanceMonthly,
+  PointOccurrenceAdjustmentRow,
   PointOptions,
   PointOverview,
   PointServiceHeartbeat,
@@ -25,6 +29,7 @@ import { PayrollSignaturesPanel } from '../folha-pagamento/components/PayrollSig
 import { buildSyncProgressMeta, getSyncStageLabel, PayrollSyncProgress, useSyncEstimatedLabel } from '../folha-pagamento/components/PayrollSyncProgress';
 import { PAYROLL_POINT_TABS, PayrollTabNav, type PayrollTabKey } from '../folha-pagamento/components/PayrollTabNav';
 import { PayrollVacationsPanel } from '../folha-pagamento/components/PayrollVacationsPanel';
+import { PointAdjustmentsModal } from './components/PointAdjustmentsModal';
 
 const emptyOptions: PointOptions = {
   centersCost: [],
@@ -126,6 +131,7 @@ const buildQueryString = (query: AppliedQuery) => {
 
 export default function PontoPage() {
   const { data: session } = useSession();
+  const searchParams = useSearchParams();
   const role = String((session?.user as any)?.role || 'OPERADOR');
   const permissions = (session?.user as any)?.permissions;
   const canView = hasPermission(permissions, 'ponto', 'view', role);
@@ -133,15 +139,24 @@ export default function PontoPage() {
   const canRefresh = hasPermission(permissions, 'ponto', 'refresh', role);
 
   const defaultDateRange = useMemo(() => getDefaultDateRange(), []);
+  const initialSearch = String(searchParams.get('search') || '').trim();
+  const initialEmployeeId = String(searchParams.get('employeeId') || '').trim();
+  const initialStartDate = String(searchParams.get('startDate') || '').trim();
+  const initialEndDate = String(searchParams.get('endDate') || '').trim();
+  const initialOpenAdjustments = searchParams.get('adjustments') === '1';
+  const initialDateRange = useMemo<PointDateRange>(() => ({
+    startDate: /^\d{4}-\d{2}-\d{2}$/.test(initialStartDate) ? initialStartDate : defaultDateRange.startDate,
+    endDate: /^\d{4}-\d{2}-\d{2}$/.test(initialEndDate) ? initialEndDate : defaultDateRange.endDate,
+  }), [defaultDateRange.endDate, defaultDateRange.startDate, initialEndDate, initialStartDate]);
   const defaultQuery = useMemo<AppliedQuery>(
-    () => ({ startDate: defaultDateRange.startDate, endDate: defaultDateRange.endDate, filters: DEFAULT_POINT_FILTERS }),
-    [defaultDateRange],
+    () => ({ startDate: initialDateRange.startDate, endDate: initialDateRange.endDate, filters: { ...DEFAULT_POINT_FILTERS, search: initialSearch } }),
+    [initialDateRange.endDate, initialDateRange.startDate, initialSearch],
   );
 
   const [options, setOptions] = useState<PointOptions>(emptyOptions);
   const [filterOptions, setFilterOptions] = useState({ centersCost: [] as string[], units: [] as string[], contracts: [] as string[] });
-  const [dateRange, setDateRange] = useState<PointDateRange>(defaultDateRange);
-  const [filters, setFilters] = useState<PointFilters>(DEFAULT_POINT_FILTERS);
+  const [dateRange, setDateRange] = useState<PointDateRange>(initialDateRange);
+  const [filters, setFilters] = useState<PointFilters>({ ...DEFAULT_POINT_FILTERS, search: initialSearch });
   const [appliedQuery, setAppliedQuery] = useState<AppliedQuery>(defaultQuery);
   const appliedKey = useMemo(() => JSON.stringify(appliedQuery), [appliedQuery]);
 
@@ -156,6 +171,15 @@ export default function PontoPage() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [refreshHovered, setRefreshHovered] = useState(false);
   const [visibleSyncRun, setVisibleSyncRun] = useState<PointSyncRun | null>(null);
+  const [adjustmentsOpen, setAdjustmentsOpen] = useState(false);
+  const [adjustmentEmployeeId, setAdjustmentEmployeeId] = useState(initialEmployeeId);
+  const [adjustmentDetail, setAdjustmentDetail] = useState<PointEmployeeAdjustmentDetail | null>(null);
+  const [adjustmentLoading, setAdjustmentLoading] = useState(false);
+  const [adjustmentSaving, setAdjustmentSaving] = useState(false);
+  const [adjustmentError, setAdjustmentError] = useState('');
+  const [adjustmentSuccessMessage, setAdjustmentSuccessMessage] = useState('');
+  const [selectedDayKeys, setSelectedDayKeys] = useState<string[]>([]);
+  const [selectedOccurrenceIds, setSelectedOccurrenceIds] = useState<string[]>([]);
 
   const hasPointSyncInProgress = useMemo(() => isWorkerUpdating(overview.heartbeat.status), [overview.heartbeat.status]);
   const hasVisibleSyncProgress = syncingPoint || hasPointSyncInProgress || String(visibleSyncRun?.status || '').toUpperCase() === 'FAILED';
@@ -254,8 +278,8 @@ export default function PontoPage() {
   const clearFilters = useCallback(() => {
     setFilters(DEFAULT_POINT_FILTERS);
     setDateRange(defaultDateRange);
-    setAppliedQuery(defaultQuery);
-  }, [defaultDateRange, defaultQuery]);
+    setAppliedQuery({ startDate: defaultDateRange.startDate, endDate: defaultDateRange.endDate, filters: DEFAULT_POINT_FILTERS });
+  }, [defaultDateRange]);
 
   // "Recarregar tela": revalida opções, overview e a aba ativa (invalidando o cache).
   const reloadAll = useCallback(async () => {
@@ -266,6 +290,221 @@ export default function PontoPage() {
       loadOverview(appliedQueryRef.current).catch((fetchError) => setError(String((fetchError as Error)?.message || fetchError))),
     ]);
   }, [loadOptions, loadOverview]);
+
+  const reloadCurrentTab = useCallback(async () => {
+    const tab = activeTabRef.current as DataTabKey;
+    const endpoint = TAB_ENDPOINTS[tab];
+    if (!endpoint) return;
+    const payload = await fetchJson<{ status: string; data: { items: unknown[] } }>(`${endpoint}?${buildQueryString(appliedQueryRef.current)}`);
+    setCache((prev) => ({
+      key: appliedKeyRef.current,
+      data: {
+        ...(prev.key === appliedKeyRef.current ? prev.data : {}),
+        [tab]: payload.data?.items || [],
+      },
+    }));
+  }, []);
+
+  const loadAdjustmentDetail = useCallback(async (employeeId: string) => {
+    if (!employeeId) return;
+    setAdjustmentEmployeeId(employeeId);
+    setAdjustmentsOpen(true);
+    setAdjustmentLoading(true);
+    setAdjustmentError('');
+    setAdjustmentSuccessMessage('');
+    setSelectedDayKeys([]);
+    setSelectedOccurrenceIds([]);
+    try {
+      const payload = await fetchJson<{ status: string; data: PointEmployeeAdjustmentDetail }>(
+        `/api/admin/ponto/employees/${encodeURIComponent(employeeId)}/adjustments?startDate=${encodeURIComponent(appliedQueryRef.current.startDate)}&endDate=${encodeURIComponent(appliedQueryRef.current.endDate)}`,
+      );
+      setAdjustmentDetail(payload.data || null);
+    } catch (fetchError: any) {
+      setAdjustmentError(String(fetchError?.message || fetchError));
+    } finally {
+      setAdjustmentLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!canView || !initialOpenAdjustments || !initialEmployeeId) return;
+    loadAdjustmentDetail(initialEmployeeId).catch((fetchError) => setAdjustmentError(String((fetchError as Error)?.message || fetchError)));
+  }, [canView, initialEmployeeId, initialOpenAdjustments, loadAdjustmentDetail]);
+
+  const refreshAdjustmentsAndRows = useCallback(async () => {
+    await Promise.all([
+      adjustmentEmployeeId ? loadAdjustmentDetail(adjustmentEmployeeId) : Promise.resolve(),
+      reloadCurrentTab(),
+      loadOverview(appliedQueryRef.current),
+    ]);
+  }, [adjustmentEmployeeId, loadAdjustmentDetail, loadOverview, reloadCurrentTab]);
+
+  const mutateAdjustment = useCallback(async (action: () => Promise<void>, successMessageText: string) => {
+    setAdjustmentSaving(true);
+    setAdjustmentError('');
+    setAdjustmentSuccessMessage('');
+    try {
+      await action();
+      await refreshAdjustmentsAndRows();
+      setAdjustmentSuccessMessage(successMessageText);
+    } catch (fetchError: any) {
+      setAdjustmentError(String(fetchError?.message || fetchError));
+    } finally {
+      setAdjustmentSaving(false);
+    }
+  }, [refreshAdjustmentsAndRows]);
+
+  const handleSaveDayOverride = useCallback(async (row: PointDailyAdjustmentRow) => {
+    const payload = {
+      employeeId: row.employeeId,
+      pointDate: row.pointDate,
+      payrollDayMode: row.payrollDayMode,
+      vtDayMode: row.vtDayMode,
+      vrDayMode: row.vrDayMode,
+      notes: row.dayOverrideNotes || null,
+    };
+    const isNoOp = payload.payrollDayMode === 'DEFAULT' && payload.vtDayMode === 'DEFAULT' && payload.vrDayMode === 'DEFAULT' && !String(payload.notes || '').trim();
+    if (isNoOp && row.dayOverrideId) {
+      await mutateAdjustment(async () => {
+        await fetchJson(`/api/admin/ponto/day-overrides/${encodeURIComponent(row.dayOverrideId!)}`, { method: 'DELETE' });
+      }, 'Ajuste diário removido.');
+      return;
+    }
+    if (isNoOp) {
+      setAdjustmentError('Selecione ao menos uma mudança de regra diária para salvar este ajuste.');
+      return;
+    }
+    await mutateAdjustment(async () => {
+      await fetchJson('/api/admin/ponto/day-overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }, 'Ajuste diário salvo com sucesso.');
+  }, [mutateAdjustment]);
+
+  const handleClearDayOverride = useCallback(async (row: PointDailyAdjustmentRow) => {
+    if (!row.dayOverrideId) return;
+    await mutateAdjustment(async () => {
+      await fetchJson(`/api/admin/ponto/day-overrides/${encodeURIComponent(row.dayOverrideId!)}`, { method: 'DELETE' });
+    }, 'Ajuste diário removido.');
+  }, [mutateAdjustment]);
+
+  const handleSaveOccurrenceOverride = useCallback(async (row: PointOccurrenceAdjustmentRow) => {
+    const notes = String(row.overrideNotes || '').trim();
+    const effectiveType = row.effectiveOccurrenceType || row.originalOccurrenceType;
+    const isNoOp = effectiveType === row.originalOccurrenceType && !row.ignored && !notes;
+    if (isNoOp && row.hasOverride) {
+      await mutateAdjustment(async () => {
+        await fetchJson(`/api/admin/ponto/occurrences/${encodeURIComponent(row.id)}/override`, { method: 'DELETE' });
+      }, 'Ajuste de ocorrência removido.');
+      return;
+    }
+    if (isNoOp) {
+      setAdjustmentError('Escolha uma reclassificação, marque como ignorada ou informe uma observação para salvar esta ocorrência.');
+      return;
+    }
+    await mutateAdjustment(async () => {
+      await fetchJson(`/api/admin/ponto/occurrences/${encodeURIComponent(row.id)}/override`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          overrideOccurrenceType: effectiveType,
+          ignored: row.ignored,
+          notes,
+        }),
+      });
+    }, 'Override de ocorrência salvo com sucesso.');
+  }, [mutateAdjustment]);
+
+  const handleClearOccurrenceOverride = useCallback(async (row: PointOccurrenceAdjustmentRow) => {
+    if (!row.hasOverride) return;
+    await mutateAdjustment(async () => {
+      await fetchJson(`/api/admin/ponto/occurrences/${encodeURIComponent(row.id)}/override`, { method: 'DELETE' });
+    }, 'Override de ocorrência removido.');
+  }, [mutateAdjustment]);
+
+  const handleApplyBulkDay = useCallback(async () => {
+    const items = (adjustmentDetail?.dailyRows || []).filter((row) => selectedDayKeys.includes(row.id));
+    if (!items.length) return;
+    const payrollDayMode = String(window.prompt('Modo para FOLHA (DEFAULT, INCLUDE ou EXCLUDE):', 'DEFAULT') || '').trim().toUpperCase();
+    if (!['DEFAULT', 'INCLUDE', 'EXCLUDE'].includes(payrollDayMode)) return;
+    const vtDayMode = String(window.prompt('Modo para VT (DEFAULT, INCLUDE ou EXCLUDE):', 'DEFAULT') || '').trim().toUpperCase();
+    if (!['DEFAULT', 'INCLUDE', 'EXCLUDE'].includes(vtDayMode)) return;
+    const vrDayMode = String(window.prompt('Modo para VR (DEFAULT, INCLUDE ou EXCLUDE):', 'DEFAULT') || '').trim().toUpperCase();
+    if (!['DEFAULT', 'INCLUDE', 'EXCLUDE'].includes(vrDayMode)) return;
+    const notes = window.prompt('Observação opcional para os dias selecionados:', '') || '';
+    await mutateAdjustment(async () => {
+      await fetchJson('/api/admin/ponto/day-overrides/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'DAY',
+          action: 'APPLY',
+          items: items.map((row) => ({ employeeId: row.employeeId, pointDate: row.pointDate })),
+          payrollDayMode,
+          vtDayMode,
+          vrDayMode,
+          notes,
+        }),
+      });
+    }, 'Ajuste diário em lote aplicado.');
+  }, [adjustmentDetail?.dailyRows, mutateAdjustment, selectedDayKeys]);
+
+  const handleClearBulkDay = useCallback(async () => {
+    const items = (adjustmentDetail?.dailyRows || []).filter((row) => selectedDayKeys.includes(row.id));
+    if (!items.length) return;
+    await mutateAdjustment(async () => {
+      await fetchJson('/api/admin/ponto/day-overrides/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'DAY',
+          action: 'CLEAR',
+          items: items.map((row) => ({ employeeId: row.employeeId, pointDate: row.pointDate })),
+        }),
+      });
+    }, 'Overrides diários selecionados foram removidos.');
+  }, [adjustmentDetail?.dailyRows, mutateAdjustment, selectedDayKeys]);
+
+  const handleApplyBulkOccurrence = useCallback(async () => {
+    const rows = (adjustmentDetail?.occurrenceRows || []).filter((row) => selectedOccurrenceIds.includes(row.id));
+    if (!rows.length) return;
+    const overrideOccurrenceType = String(window.prompt('Tipo efetivo para as ocorrências selecionadas:', rows[0]?.effectiveOccurrenceType || rows[0]?.originalOccurrenceType || 'AJUSTE_BATIDA') || '').trim().toUpperCase();
+    if (!overrideOccurrenceType) return;
+    const ignored = window.confirm('Deseja ignorar essas ocorrências no cálculo local? Clique em OK para ignorar ou Cancelar para apenas reclassificar.');
+    const notes = window.prompt('Observação opcional para as ocorrências selecionadas:', '') || '';
+    await mutateAdjustment(async () => {
+      await fetchJson('/api/admin/ponto/day-overrides/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'OCCURRENCE',
+          action: 'APPLY',
+          occurrenceIds: rows.map((row) => row.id),
+          overrideOccurrenceType,
+          ignored,
+          notes,
+        }),
+      });
+    }, 'Reclassificação em lote aplicada.');
+  }, [adjustmentDetail?.occurrenceRows, mutateAdjustment, selectedOccurrenceIds]);
+
+  const handleClearBulkOccurrence = useCallback(async () => {
+    const rows = (adjustmentDetail?.occurrenceRows || []).filter((row) => selectedOccurrenceIds.includes(row.id));
+    if (!rows.length) return;
+    await mutateAdjustment(async () => {
+      await fetchJson('/api/admin/ponto/day-overrides/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: 'OCCURRENCE',
+          action: 'CLEAR',
+          occurrenceIds: rows.map((row) => row.id),
+        }),
+      });
+    }, 'Overrides de ocorrência removidos.');
+  }, [adjustmentDetail?.occurrenceRows, mutateAdjustment, selectedOccurrenceIds]);
 
   const handlePointSync = useCallback(async () => {
     setSyncingPoint(true);
@@ -283,6 +522,14 @@ export default function PontoPage() {
       setSyncingPoint(false);
     }
   }, [loadOverview]);
+
+  const handleToggleDay = useCallback((key: string, checked: boolean) => {
+    setSelectedDayKeys((current) => checked ? Array.from(new Set([...current, key])) : current.filter((item) => item !== key));
+  }, []);
+
+  const handleToggleOccurrence = useCallback((occurrenceId: string, checked: boolean) => {
+    setSelectedOccurrenceIds((current) => checked ? Array.from(new Set([...current, occurrenceId])) : current.filter((item) => item !== occurrenceId));
+  }, []);
 
   // Enquanto a sync roda, apenas o heartbeat é reconsultado (leve, não repinta as tabelas).
   useEffect(() => {
@@ -493,12 +740,40 @@ export default function PontoPage() {
 
       <PayrollTabNav activeTab={activeTab} onChange={setActiveTab} tabs={PAYROLL_POINT_TABS} />
 
-      {activeTab === 'controle_diario' ? <PayrollDailyPanel rows={(currentRows as PointDailyControlRow[]) || []} loading={activeLoading} /> : null}
+      {activeTab === 'controle_diario' ? (
+        <PayrollDailyPanel
+          rows={(currentRows as PointDailyControlRow[]) || []}
+          loading={activeLoading}
+          canAdjust={canEdit}
+          onOpenAdjustments={(row) => row.employeeId ? loadAdjustmentDetail(row.employeeId) : undefined}
+        />
+      ) : null}
       {activeTab === 'banco_horas' ? <PayrollHoursBalancePanel rows={(currentRows as PointHoursBalanceMonthly[]) || []} loading={activeLoading} /> : null}
       {activeTab === 'ferias' ? <PayrollVacationsPanel rows={(currentRows as PointVacationRow[]) || []} loading={activeLoading} /> : null}
       {activeTab === 'assinaturas' ? <PayrollSignaturesPanel rows={(currentRows as PointSignatureMonthly[]) || []} loading={activeLoading} /> : null}
 
       <PayrollHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+      <PointAdjustmentsModal
+        open={adjustmentsOpen}
+        loading={adjustmentLoading}
+        saving={adjustmentSaving}
+        detail={adjustmentDetail}
+        error={adjustmentError}
+        successMessage={adjustmentSuccessMessage}
+        selectedDayKeys={selectedDayKeys}
+        selectedOccurrenceIds={selectedOccurrenceIds}
+        onToggleDay={handleToggleDay}
+        onToggleOccurrence={handleToggleOccurrence}
+        onClose={() => setAdjustmentsOpen(false)}
+        onSaveDay={handleSaveDayOverride}
+        onClearDay={handleClearDayOverride}
+        onSaveOccurrence={handleSaveOccurrenceOverride}
+        onClearOccurrence={handleClearOccurrenceOverride}
+        onApplyBulkDay={handleApplyBulkDay}
+        onClearBulkDay={handleClearBulkDay}
+        onApplyBulkOccurrence={handleApplyBulkOccurrence}
+        onClearBulkOccurrence={handleClearBulkOccurrence}
+      />
     </div>
   );
 }

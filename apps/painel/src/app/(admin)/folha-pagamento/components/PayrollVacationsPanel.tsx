@@ -37,7 +37,17 @@ export function PayrollVacationsPanel({ rows, loading }: { rows: PayrollVacation
                 </td>
                 <td className="px-4 py-3">{formatDateBr(row.dateStart)} a {formatDateBr(row.dateEnd)}</td>
                 <td className="px-4 py-3"><PayrollSourceBadge source={row.source} /></td>
-                <td className="px-4 py-3">{row.notes || '-'}</td>
+                <td className="px-4 py-3">
+                  <div>{row.notes || '-'}</div>
+                  {row.hasOverride ? (
+                    <div className="mt-2 text-xs text-blue-700">
+                      {row.overrideSummary || 'Ajuste operacional aplicado'}
+                      {row.originalOccurrenceType && row.effectiveOccurrenceType && row.originalOccurrenceType !== row.effectiveOccurrenceType
+                        ? ` · ${row.originalOccurrenceType} → ${row.effectiveOccurrenceType}`
+                        : ''}
+                    </div>
+                  ) : null}
+                </td>
               </tr>
             ))}
           </tbody>

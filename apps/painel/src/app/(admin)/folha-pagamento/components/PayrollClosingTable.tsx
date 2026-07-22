@@ -133,7 +133,7 @@ export function PayrollClosingTable({
                         <div className="font-semibold text-slate-900">{line.employeeName}</div>
                         <div className="text-xs text-slate-500">{line.employeeCpf || 'CPF não informado'}</div>
                         {line.requiresRecalculation ? (
-                          <div className="mt-1 text-[11px] font-medium text-amber-700">VT alterado. Recalcule a linha.</div>
+                          <div className="mt-1 text-[11px] font-medium text-amber-700">Base operacional alterada. Recalcule a linha.</div>
                         ) : null}
                       </div>
                       <ChevronRight size={16} className="text-slate-400" />
