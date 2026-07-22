@@ -10,6 +10,7 @@ export interface DbInterface {
 let tursoClient: ReturnType<typeof createClient> | null = null;
 let mysqlPool: Pool | null = null;
 let envBootstrapped = false;
+const runtimeSchemaBootstrapCache = new Set<string>();
 
 function ensureServerEnv() {
   if (envBootstrapped) return;
@@ -274,4 +275,64 @@ export const runInTransaction = async <T>(db: DbInterface, work: (txDb: DbInterf
     return db.withTransaction(work);
   }
   return work(db);
+};
+
+export const ensureRuntimeSchemaBootstrap = async (
+  db: DbInterface,
+  markerKey: string,
+  bootstrap: () => Promise<void>,
+) => {
+  if (runtimeSchemaBootstrapCache.has(markerKey)) return;
+
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS runtime_schema_markers (
+      marker_key VARCHAR(120) PRIMARY KEY,
+      updated_at VARCHAR(32) NOT NULL
+    )
+  `);
+
+  const loadMarker = async () => {
+    const rows = await db.query(`SELECT marker_key FROM runtime_schema_markers WHERE marker_key = ? LIMIT 1`, [markerKey]);
+    return Boolean(rows?.[0]);
+  };
+
+  if (await loadMarker()) {
+    runtimeSchemaBootstrapCache.add(markerKey);
+    return;
+  }
+
+  const lockName = `runtime_schema:${markerKey}`;
+  let lockAcquired = false;
+
+  try {
+    if (resolveProvider() === 'mysql') {
+      try {
+        const rows = await db.query(`SELECT GET_LOCK(?, 30) AS acquired`, [lockName]);
+        const firstRow = rows?.[0] as any;
+        lockAcquired = Number(firstRow?.acquired || 0) === 1;
+      } catch {
+        lockAcquired = false;
+      }
+    }
+
+    if (await loadMarker()) {
+      runtimeSchemaBootstrapCache.add(markerKey);
+      return;
+    }
+
+    await bootstrap();
+    await db.execute(
+      `INSERT OR REPLACE INTO runtime_schema_markers (marker_key, updated_at) VALUES (?, ?)`,
+      [markerKey, new Date().toISOString()],
+    );
+    runtimeSchemaBootstrapCache.add(markerKey);
+  } finally {
+    if (lockAcquired && resolveProvider() === 'mysql') {
+      try {
+        await db.query(`SELECT RELEASE_LOCK(?)`, [lockName]);
+      } catch {
+        // ignora falhas de release para não mascarar o bootstrap concluído
+      }
+    }
+  }
 };

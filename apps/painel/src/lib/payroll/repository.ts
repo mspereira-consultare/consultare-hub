@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { runInTransaction, type DbInterface } from '@/lib/db';
+import { ensureRuntimeSchemaBootstrap, runInTransaction, type DbInterface } from '@/lib/db';
 import { ensureEmployeesTables } from '@/lib/colaboradores/repository';
 import {
   ensurePointTables,
@@ -89,6 +89,7 @@ export class PayrollPendingGenerationConfirmationError extends PayrollValidation
 }
 
 let tablesEnsured = false;
+const PAYROLL_SCHEMA_MARKER = 'payroll_schema_v1';
 const JUSTIFIED_OCCURRENCE_TYPES = new Set<PayrollOccurrenceType>(['ATESTADO', 'DECLARACAO', 'AJUSTE_BATIDA', 'AUSENCIA_AUTORIZADA', 'FERIAS']);
 const GENERATION_CONFIRMABLE_ISSUE_CODES = new Set<PayrollReadinessIssueCode>(['EMPLOYEE_MISSING_SALARY', 'EMPLOYEE_MISSING_SOLIDES_LINK']);
 const LINE_PENDING_DATA_CODES = new Set<PayrollPendingDataCode>(['MISSING_SALARY', 'MISSING_SOLIDES_LINK']);
@@ -767,6 +768,7 @@ export const ensurePayrollTables = async (db: DbInterface) => {
 
   await ensureEmployeesTables(db);
 
+  await ensureRuntimeSchemaBootstrap(db, PAYROLL_SCHEMA_MARKER, async () => {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS payroll_rules (
       id VARCHAR(64) PRIMARY KEY,
@@ -1084,6 +1086,7 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_lines_period ON payroll_lines (period_id, employee_name)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_hours_balance_period ON payroll_hours_balance_monthly (period_id, employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_signature_period ON payroll_signature_monthly (period_id, employee_id)`);
+  });
 
   tablesEnsured = true;
 };

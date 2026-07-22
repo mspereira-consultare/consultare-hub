@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import type { DbInterface } from '@/lib/db';
-import { runInTransaction } from '@/lib/db';
+import { ensureRuntimeSchemaBootstrap, runInTransaction } from '@/lib/db';
 import { ensureEmployeesTables } from '@/lib/colaboradores/repository';
 import {
   buildDayOverrideLookup,
@@ -48,6 +48,7 @@ export class PointValidationError extends Error {
 }
 
 let tablesEnsured = false;
+const POINT_SCHEMA_MARKER = 'point_schema_v1';
 
 const NOW = () => new Date().toISOString();
 const clean = (value: unknown) => String(value ?? '').trim();
@@ -462,6 +463,7 @@ export const ensurePointTables = async (db: DbInterface) => {
   if (tablesEnsured) return;
   await ensureEmployeesTables(db);
 
+  await ensureRuntimeSchemaBootstrap(db, POINT_SCHEMA_MARKER, async () => {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS point_sync_jobs (
       id VARCHAR(64) PRIMARY KEY,
@@ -703,6 +705,7 @@ export const ensurePointTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE point_sync_runs ADD COLUMN progress_percent DECIMAL(5,2) NULL`);
   await safeAddColumn(db, `ALTER TABLE point_sync_runs ADD COLUMN last_progress_at TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE point_sync_runs ADD COLUMN estimated_remaining_seconds INTEGER NULL`);
+  });
 
   tablesEnsured = true;
 };

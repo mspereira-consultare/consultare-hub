@@ -1,6 +1,6 @@
 
 import { randomUUID } from 'crypto';
-import { runInTransaction, type DbInterface } from '@/lib/db';
+import { ensureRuntimeSchemaBootstrap, runInTransaction, type DbInterface } from '@/lib/db';
 import { ensureEmployeeUserAccount, ensureUserAccountColumns } from '@consultare/core/user-accounts';
 import { calculateKpi } from '@/lib/kpi_engine';
 import { ensureQmsTrainingTables } from '@/lib/qms/trainings_repository';
@@ -76,6 +76,7 @@ export class EmployeeValidationError extends Error {
 }
 
 let tablesEnsured = false;
+const EMPLOYEES_SCHEMA_MARKER = 'colaboradores_schema_v1';
 
 const NOW = () => new Date().toISOString();
 const TODAY_SAO_PAULO = () => {
@@ -807,6 +808,7 @@ const mergeEmployee = (employee: Employee, documents: EmployeeDocument[]): Emplo
 export const ensureEmployeesTables = async (db: DbInterface) => {
   if (tablesEnsured) return;
 
+  await ensureRuntimeSchemaBootstrap(db, EMPLOYEES_SCHEMA_MARKER, async () => {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS employees (
       id VARCHAR(64) PRIMARY KEY,
@@ -1085,6 +1087,7 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
 
   await seedEmployeeCatalogFromEmployees(db);
   await syncEmployeeCatalogIdsOnEmployees(db);
+  });
 
   tablesEnsured = true;
 };
