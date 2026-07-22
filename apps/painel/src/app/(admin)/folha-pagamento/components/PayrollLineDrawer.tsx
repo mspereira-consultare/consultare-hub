@@ -25,6 +25,38 @@ const buildPointDayObservation = (day: NonNullable<PayrollLineDetail['pointDays'
   return parts.length ? parts.join(' · ') : '-';
 };
 
+const JUSTIFIED_POINT_TYPES = new Set(['ATESTADO', 'DECLARACAO', 'AJUSTE_BATIDA', 'AUSENCIA_AUTORIZADA', 'FERIAS']);
+
+const buildPointDayBreakdown = (detail: PayrollLineDetail | null, line: PayrollLine) => {
+  const pointDays = detail?.pointDays || [];
+  const occurrences = detail?.occurrences || [];
+
+  let actualWorkedDays = 0;
+  let justifiedDays = 0;
+
+  for (const day of pointDays) {
+    const occurrence = occurrences.find((item) => day.pointDate >= item.dateStart && day.pointDate <= (item.dateEnd || item.dateStart));
+    const justifiedByOccurrence = occurrence ? JUSTIFIED_POINT_TYPES.has(occurrence.occurrenceType) : false;
+    const justifiedByDay = Boolean(day.justificationText?.trim());
+    const effectiveAbsence = day.effectiveAbsence ?? day.absenceFlag;
+    const effectivePayrollDay =
+      typeof day.effectivePayrollDay === 'boolean'
+        ? day.effectivePayrollDay
+        : (!effectiveAbsence && (day.workedMinutes > 0 || ((justifiedByOccurrence || justifiedByDay) && day.plannedMinutes > 0)));
+
+    if (!effectivePayrollDay) continue;
+
+    if (day.workedMinutes > 0) actualWorkedDays += 1;
+    else if (justifiedByOccurrence || justifiedByDay) justifiedDays += 1;
+  }
+
+  return {
+    consideredDays: line.daysWorked,
+    actualWorkedDays: detail ? actualWorkedDays : (line.actualWorkedDays ?? line.daysWorked),
+    justifiedDays: detail ? justifiedDays : (line.justifiedDays ?? 0),
+  };
+};
+
 export function PayrollLineDrawer({
   line,
   detail,
@@ -53,6 +85,7 @@ export function PayrollLineDrawer({
   };
   const preview = detail?.previewRow || null;
   const hasPendingRegistration = current.pendingDataCodes.length > 0;
+  const pointDayBreakdown = buildPointDayBreakdown(detail, current);
   const pointAdjustmentHref = current.employeeId && detail?.periodDateRange
     ? `/ponto?startDate=${encodeURIComponent(detail.periodDateRange.startDate)}&endDate=${encodeURIComponent(detail.periodDateRange.endDate)}&employeeId=${encodeURIComponent(current.employeeId)}&adjustments=1`
     : null;
@@ -203,7 +236,7 @@ export function PayrollLineDrawer({
                   <Info label="Insalubridade" value={formatSheetInsalubrity(preview.insalubrityValue)} />
                   <div className="sm:col-span-2">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
-                      `VT por dia` mostra o valor atual cadastrado no colaborador. `VT total no mês` mostra o total calculado para esta competência com base nos dias elegíveis da folha.
+                      `VT por dia` mostra o valor atual cadastrado no colaborador. `VT total no mês` mostra o total calculado para esta competência com base apenas nos dias elegíveis de benefício. Dias apenas abonados ou justificados continuam contando para salário, mas não entram automaticamente em VT e VR.
                     </div>
                   </div>
                   {preview.pendingDataCodes.length ? (
@@ -301,6 +334,14 @@ export function PayrollLineDrawer({
           </Card>
 
           <Card title="Ponto do período" sources={detailSources.pointDays}>
+            <div className="mb-4 grid gap-3 sm:grid-cols-3">
+              <Info label="Dias trabalhados" value={String(pointDayBreakdown.actualWorkedDays)} />
+              <Info label="Dias abon./just." value={String(pointDayBreakdown.justifiedDays)} />
+              <Info label="Dias considerados" value={String(pointDayBreakdown.consideredDays)} />
+            </div>
+            <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">
+              `Dias considerados` afetam o salário da linha. `Dias abon./just.` continuam valendo para o salário, mas não entram automaticamente no cálculo de VT e VR.
+            </div>
             <div className="max-h-64 overflow-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 bg-slate-50 text-xs uppercase tracking-[0.16em] text-slate-500">

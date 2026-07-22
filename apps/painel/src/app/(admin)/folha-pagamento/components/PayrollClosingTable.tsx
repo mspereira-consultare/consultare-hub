@@ -84,11 +84,13 @@ export function PayrollClosingTable({
               <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Regime" description="Regime contratual do colaborador. Apenas não-PJ e ativos entram no fechamento." source="Painel" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Salário" description="Salário base considerado na linha da folha." source="Painel" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Insal." description="Valor de insalubridade aplicado na competência." source="Painel + cálculo da folha" formula="Percentual cadastrado x salário mínimo da regra da competência" align="right" /></th>
-              <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias" description="Dias elegíveis usados para compor benefícios e cálculo operacional da linha." source="Sólides + cálculo da folha" formula="Dias trabalhados ou justificados dentro da competência" align="center" /></th>
+              <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias trabalhados" description="Dias em que o colaborador realmente trabalhou e teve minutos trabalhados registrados no ponto. Este número não inclui folgas abonadas, férias nem outras justificativas sem trabalho efetivo." source="Sólides + cálculo da folha" formula="Conta somente dias com trabalho efetivo registrado" align="center" /></th>
+              <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias abon./just." description="Dias sem trabalho efetivo que foram aceitos pela folha como justificados ou abonados. Eles continuam contando para o salário, mas não entram automaticamente no cálculo de VT e VR." source="Sólides + cálculo da folha" formula="Conta apenas dias justificados/abonados que não viram falta" align="center" /></th>
+              <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias considerados" description="Total de dias que a folha usou para pagar a linha salarial desta competência. Aqui entram os dias realmente trabalhados e também os dias abonados ou justificados aceitos no fechamento." source="Sólides + cálculo da folha" formula="Dias trabalhados + dias abonados/justificados" align="center" /></th>
               <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Faltas" description="Quantidade de faltas consideradas no recorte da competência." source="Sólides + cálculo da folha" align="center" /></th>
               <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Atrasos (min)" description="Minutos de atraso considerados após aplicar a tolerância da regra da competência." source="Sólides + cálculo da folha" align="center" /></th>
-              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT" description="Valor total de vale-transporte provisionado na competência." source="Painel + cálculo da folha" formula="Mensal fixo do cadastro ou valor por dia x dias elegíveis" align="right" /></th>
-              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="D.V.T." description="Desconto efetivo de vale-transporte aplicado em folha." source="Cálculo da folha" formula="Menor valor entre VT provisionado e teto percentual da competência" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT" description="Valor total de vale-transporte provisionado na competência. Dias apenas abonados ou justificados não entram nesse total por padrão." source="Painel + cálculo da folha" formula="Mensal fixo do cadastro ou valor por dia x dias elegíveis de benefício" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="D.V.T." description="Desconto efetivo de vale-transporte aplicado em folha. Ele é calculado sobre o VT provisionado, que por padrão considera somente dias elegíveis de benefício." source="Cálculo da folha" formula="Menor valor entre VT provisionado e teto percentual da competência" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Totalpass" description="Desconto fixo de Totalpass aplicado na linha." source="Painel" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Outros" description="Outros descontos fixos cadastrados para o colaborador." source="Painel" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Proventos" description="Total positivo da linha antes dos descontos." source="Cálculo da folha" formula="Salário base + insalubridade + ajustes positivos" align="right" /></th>
@@ -100,13 +102,13 @@ export function PayrollClosingTable({
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={16} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={18} className="px-4 py-16 text-center text-slate-500">
                   Carregando linhas da folha...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={16} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={18} className="px-4 py-16 text-center text-slate-500">
                   Nenhuma linha gerada para a competência atual.
                 </td>
               </tr>
@@ -143,6 +145,8 @@ export function PayrollClosingTable({
                   <td className="px-3 py-3">{line.contractType || '-'}</td>
                   <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.salaryBase, { blankWhenMissingSalary: true })}</td>
                   <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.insalubrityAmount, { blankWhenMissingSalary: true })}</td>
+                  <td className="px-3 py-3 text-center">{renderCountCell(line, line.actualWorkedDays ?? line.daysWorked, { blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-center">{renderCountCell(line, line.justifiedDays ?? 0, { blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-center">{renderCountCell(line, line.daysWorked, { blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-center">{renderCountCell(line, line.absencesCount, { blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-center">{renderCountCell(line, line.lateMinutes, { blankWhenMissingSolidesLink: true })}</td>

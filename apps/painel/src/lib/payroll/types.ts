@@ -216,6 +216,8 @@ export type PayrollLine = {
   insalubrityPercent: number;
   insalubrityAmount: number;
   daysWorked: number;
+  actualWorkedDays: number | null;
+  justifiedDays: number | null;
   absencesCount: number;
   absenceDiscount: number;
   lateMinutes: number;

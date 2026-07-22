@@ -200,7 +200,7 @@ export function PayrollBenefitsPanel({
       <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-4 py-3">
           <h3 className="text-sm font-semibold text-slate-800">Memória mensal por colaborador</h3>
-          <p className="mt-1 text-xs text-slate-500">Dias elegíveis vêm do fechamento já consolidado da competência. Após corrigir cadastro ou ponto, use Gerar folha novamente.</p>
+          <p className="mt-1 text-xs text-slate-500">Dias elegíveis desta aba representam apenas os dias que contam para benefícios. Dias só abonados ou justificados continuam no salário, mas não entram automaticamente em VT e VR.</p>
         </div>
 
         <div className="max-h-[560px] overflow-auto">
@@ -210,13 +210,13 @@ export function PayrollBenefitsPanel({
                 <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left"><PayrollColumnTooltip label="Colaborador" description="Memória mensal de benefícios por colaborador elegível." source="Painel + cálculo da folha" /></th>
                 <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Centro de custo" description="Centro de custo atual do colaborador." source="Painel" /></th>
                 <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Regime" description="Regime contratual atual do colaborador." source="Painel" /></th>
-                <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias elegíveis" description="Dias da competência usados para cálculo de benefícios." source="Sólides + cálculo da folha" align="center" /></th>
+                <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias elegíveis" description="Dias que contam para benefícios nesta competência. Por padrão, esta coluna considera apenas dias com trabalho efetivo; dias apenas abonados ou justificados não entram automaticamente em VT e VR." source="Sólides + cálculo da folha" formula="Dias efetivamente trabalhados válidos para benefício" align="center" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VR / dia" description="Valor diário de vale-refeição cadastrado para o colaborador." source="Painel" align="right" /></th>
-                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VR a comprar" description="Total de VR estimado para compra ou carga." source="Painel + cálculo da folha" formula="VR por dia x dias elegíveis" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VR a comprar" description="Total de VR estimado para compra ou carga. Dias só abonados ou justificados não entram automaticamente nesse cálculo." source="Painel + cálculo da folha" formula="VR por dia x dias elegíveis de benefício" align="right" /></th>
                 <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Modo VT" description="Define se o VT do colaborador é mensal fixo ou por dia trabalhado." source="Painel" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT por dia" description="Valor diário atual do cadastro do colaborador." source="Painel" align="right" /></th>
-                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT total no mês" description="Valor total de VT provisionado na competência." source="Painel + cálculo da folha" formula="Mensal fixo do cadastro ou VT por dia x dias elegíveis" align="right" /></th>
-                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT pago em folha" description="Mesmo valor do VT provisionado para pagamento em dinheiro junto à folha." source="Cálculo da folha" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT total no mês" description="Valor total de VT provisionado na competência. Dias só abonados ou justificados não entram automaticamente nesse total." source="Painel + cálculo da folha" formula="Mensal fixo do cadastro ou VT por dia x dias elegíveis de benefício" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT pago em folha" description="Valor de VT provisionado para pagamento em dinheiro junto à folha, respeitando apenas os dias elegíveis de benefício." source="Cálculo da folha" align="right" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="D.V.T." description="Desconto efetivo de vale-transporte aplicado na folha." source="Cálculo da folha" formula="Menor valor entre VT provisionado e teto percentual da competência" align="right" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Desconto Totalpass" description="Desconto fixo de Totalpass lançado na linha." source="Painel" align="right" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Outros desc." description="Outros descontos fixos cadastrados para o colaborador." source="Painel" align="right" /></th>

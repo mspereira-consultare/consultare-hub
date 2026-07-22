@@ -252,6 +252,9 @@ const overlapsDateRange = (targetDate: string, startDate: string | null, endDate
   return targetDate >= startDate && targetDate <= effectiveEnd;
 };
 
+const findPayrollOccurrenceForDate = (occurrences: PayrollOccurrence[], targetDate: string) =>
+  occurrences.find((occurrence) => overlapsDateRange(targetDate, occurrence.dateStart, occurrence.dateEnd)) || null;
+
 const resolveEmployeeActiveWindow = (
   employee: Pick<EmployeePayrollSource, 'admissionDate' | 'terminationDate'>,
   period: Pick<PayrollPeriod, 'periodStart' | 'periodEnd'>,
@@ -262,6 +265,60 @@ const resolveEmployeeActiveWindow = (
     startDate,
     endDate,
     hasActiveRange: startDate <= endDate,
+  };
+};
+
+const summarizePayrollDayBreakdown = ({
+  rows,
+  occurrences,
+  employee,
+  period,
+}: {
+  rows: PayrollPointDaily[];
+  occurrences: PayrollOccurrence[];
+  employee: Pick<EmployeePayrollSource, 'admissionDate' | 'terminationDate'>;
+  period: Pick<PayrollPeriod, 'periodStart' | 'periodEnd'>;
+}) => {
+  const activeWindow = resolveEmployeeActiveWindow(employee, period);
+  if (!activeWindow.hasActiveRange) {
+    return {
+      consideredDays: 0,
+      actualWorkedDays: 0,
+      justifiedDays: 0,
+    };
+  }
+
+  let consideredDays = 0;
+  let actualWorkedDays = 0;
+  let justifiedDays = 0;
+
+  for (const row of rows) {
+    if (row.pointDate < activeWindow.startDate || row.pointDate > activeWindow.endDate) continue;
+    const occurrence = findPayrollOccurrenceForDate(occurrences, row.pointDate);
+    const justified = Boolean(occurrence && JUSTIFIED_OCCURRENCE_TYPES.has(occurrence.occurrenceType));
+    const forcedAbsence = Boolean(occurrence && occurrence.occurrenceType === 'FALTA_INJUSTIFICADA');
+    const hasPlannedJourney = Number(row.plannedMinutes || 0) > 0;
+    const effectiveAbsence =
+      typeof row.effectiveAbsence === 'boolean' ? row.effectiveAbsence : forcedAbsence || (row.absenceFlag && !justified);
+    const effectivePayrollDay =
+      typeof row.effectivePayrollDay === 'boolean'
+        ? row.effectivePayrollDay
+        : (!effectiveAbsence && (row.workedMinutes > 0 || (justified && hasPlannedJourney)));
+
+    if (!effectivePayrollDay) continue;
+
+    consideredDays += 1;
+    if (Number(row.workedMinutes || 0) > 0) {
+      actualWorkedDays += 1;
+    } else if (justified) {
+      justifiedDays += 1;
+    }
+  }
+
+  return {
+    consideredDays,
+    actualWorkedDays,
+    justifiedDays,
   };
 };
 
@@ -507,45 +564,58 @@ const mapOccurrence = (row: any): PayrollOccurrence => ({
   updatedAt: clean(row.updated_at),
 });
 
-const mapLine = (row: any): PayrollLine => ({
-  id: clean(row.id),
-  periodId: clean(row.period_id),
-  employeeId: clean(row.employee_id) || null,
-  employeeName: clean(row.employee_name),
-  employeeCpf: normalizeCpf(row.employee_cpf),
-  centerCost: clean(row.center_cost) || null,
-  unitName: clean(row.unit_name) || null,
-  contractType: clean(row.contract_type) || null,
-  salaryBase: toNumber(row.salary_base),
-  insalubrityPercent: toNumber(row.insalubrity_percent),
-  insalubrityAmount: toNumber(row.insalubrity_amount),
-  daysWorked: Number(row.days_worked || 0),
-  absencesCount: Number(row.absences_count || 0),
-  absenceDiscount: toNumber(row.absence_discount),
-  lateMinutes: Number(row.late_minutes || 0),
-  lateDiscount: toNumber(row.late_discount),
-  vtProvisioned: toNumber(row.vt_provisioned),
-  vtDiscount: toNumber(row.vt_discount),
-  totalpassDiscount: toNumber(row.totalpass_discount),
-  otherFixedDiscount: toNumber(row.other_fixed_discount),
-  otherFixedDiscountDescription: clean(row.other_fixed_discount_description) || null,
-  adjustmentsAmount: toNumber(row.adjustments_amount),
-  adjustmentsNotes: clean(row.adjustments_notes) || null,
-  totalProvents: toNumber(row.total_provents),
-  totalDiscounts: toNumber(row.total_discounts),
-  netOperational: toNumber(row.net_operational),
-  lineStatus: upper(row.line_status || 'RASCUNHO') as PayrollLineStatus,
-  payrollNotes: clean(row.payroll_notes) || null,
-  pendingDataCodes: parsePendingDataCodes(row.pending_data_codes_json),
-  staleCalculationCodes: [],
-  requiresRecalculation: false,
-  payrollEligible: !isPayrollExcludedContractType(row.contract_type),
-  exclusionReason: isPayrollExcludedContractType(row.contract_type) ? 'REGIME_PJ' : null,
-  employeeSnapshotJson: clean(row.employee_snapshot_json) || null,
-  calculationMemoryJson: clean(row.calculation_memory_json) || null,
-  createdAt: clean(row.created_at),
-  updatedAt: clean(row.updated_at),
-});
+const mapLine = (row: any): PayrollLine => {
+  const calculationMemory = parsePayrollCalculationMemory(row.calculation_memory_json);
+  const metrics = calculationMemory?.metrics && typeof calculationMemory.metrics === 'object' ? calculationMemory.metrics : {};
+
+  return {
+    id: clean(row.id),
+    periodId: clean(row.period_id),
+    employeeId: clean(row.employee_id) || null,
+    employeeName: clean(row.employee_name),
+    employeeCpf: normalizeCpf(row.employee_cpf),
+    centerCost: clean(row.center_cost) || null,
+    unitName: clean(row.unit_name) || null,
+    contractType: clean(row.contract_type) || null,
+    salaryBase: toNumber(row.salary_base),
+    insalubrityPercent: toNumber(row.insalubrity_percent),
+    insalubrityAmount: toNumber(row.insalubrity_amount),
+    daysWorked: Number(row.days_worked || 0),
+    actualWorkedDays:
+      metrics.actualWorkedDays === undefined || metrics.actualWorkedDays === null
+        ? null
+        : Number(metrics.actualWorkedDays || 0),
+    justifiedDays:
+      metrics.justifiedDays === undefined || metrics.justifiedDays === null
+        ? null
+        : Number(metrics.justifiedDays || 0),
+    absencesCount: Number(row.absences_count || 0),
+    absenceDiscount: toNumber(row.absence_discount),
+    lateMinutes: Number(row.late_minutes || 0),
+    lateDiscount: toNumber(row.late_discount),
+    vtProvisioned: toNumber(row.vt_provisioned),
+    vtDiscount: toNumber(row.vt_discount),
+    totalpassDiscount: toNumber(row.totalpass_discount),
+    otherFixedDiscount: toNumber(row.other_fixed_discount),
+    otherFixedDiscountDescription: clean(row.other_fixed_discount_description) || null,
+    adjustmentsAmount: toNumber(row.adjustments_amount),
+    adjustmentsNotes: clean(row.adjustments_notes) || null,
+    totalProvents: toNumber(row.total_provents),
+    totalDiscounts: toNumber(row.total_discounts),
+    netOperational: toNumber(row.net_operational),
+    lineStatus: upper(row.line_status || 'RASCUNHO') as PayrollLineStatus,
+    payrollNotes: clean(row.payroll_notes) || null,
+    pendingDataCodes: parsePendingDataCodes(row.pending_data_codes_json),
+    staleCalculationCodes: [],
+    requiresRecalculation: false,
+    payrollEligible: !isPayrollExcludedContractType(row.contract_type),
+    exclusionReason: isPayrollExcludedContractType(row.contract_type) ? 'REGIME_PJ' : null,
+    employeeSnapshotJson: clean(row.employee_snapshot_json) || null,
+    calculationMemoryJson: clean(row.calculation_memory_json) || null,
+    createdAt: clean(row.created_at),
+    updatedAt: clean(row.updated_at),
+  };
+};
 
 type EmployeePayrollSource = {
   id: string;
@@ -2796,6 +2866,8 @@ const buildLineRecord = (
   };
 
   let daysWorked = 0;
+  let actualWorkedDays = 0;
+  let justifiedDays = 0;
   let vtEligibleDays = 0;
   let vrEligibleDays = 0;
   let absencesCount = 0;
@@ -2812,8 +2884,9 @@ const buildLineRecord = (
       typeof row.effectivePayrollDay === 'boolean'
         ? row.effectivePayrollDay
         : (!isAbsence && (row.workedMinutes > 0 || (justified && hasPlannedJourney)));
-    const effectiveVtDay = typeof row.effectiveVtDay === 'boolean' ? row.effectiveVtDay : effectivePayrollDay;
-    const effectiveVrDay = typeof row.effectiveVrDay === 'boolean' ? row.effectiveVrDay : effectivePayrollDay;
+    const effectiveBenefitDayDefault = !isAbsence && Number(row.workedMinutes || 0) > 0;
+    const effectiveVtDay = typeof row.effectiveVtDay === 'boolean' ? row.effectiveVtDay : effectiveBenefitDayDefault;
+    const effectiveVrDay = typeof row.effectiveVrDay === 'boolean' ? row.effectiveVrDay : effectiveBenefitDayDefault;
     const effectiveAbsence = typeof row.effectiveAbsence === 'boolean' ? row.effectiveAbsence : isAbsence;
 
     if (effectiveAbsence) {
@@ -2824,6 +2897,8 @@ const buildLineRecord = (
     if (effectivePayrollDay) {
       daysWorked += 1;
       workedMinutesTotal += Number(row.workedMinutes || 0);
+      if (Number(row.workedMinutes || 0) > 0) actualWorkedDays += 1;
+      else if (justified) justifiedDays += 1;
     }
     if (effectiveVtDay) vtEligibleDays += 1;
     if (effectiveVrDay) vrEligibleDays += 1;
@@ -2929,6 +3004,8 @@ const buildLineRecord = (
     insalubrityPercent: roundMoney(employee.insalubrityPercent),
     insalubrityAmount,
     daysWorked,
+    actualWorkedDays,
+    justifiedDays,
     absencesCount,
     absenceDiscount,
     lateMinutes,
@@ -2992,6 +3069,8 @@ const buildLineRecord = (
       metrics: {
         workedMinutesTotal,
         daysWorked,
+        actualWorkedDays,
+        justifiedDays,
         vtEligibleDays,
         vrEligibleDays,
         absencesCount,
@@ -3627,12 +3706,51 @@ const listPayrollOperationalEmployeesByDateRange = async (
 export const listPayrollLines = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
   await ensurePayrollTables(db);
   const period = await getPeriodOrThrow(db, periodId);
-  const [rawLines, employees, latestOverrideByEmployee] = await Promise.all([
+  const [rawLines, employees, latestOverrideByEmployee, pointRows, occurrenceRows] = await Promise.all([
     listLinesRaw(db, periodId),
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
     getPointLatestOverrideByEmployeeForDateRange(db, { startDate: period.periodStart, endDate: period.periodEnd }),
+    listPointRowsRaw(db, periodId),
+    listOccurrencesRaw(db, periodId),
   ]);
-  const lines = enrichPayrollLines(filterLinesByCurrentEligibility(rawLines, employees), employees, latestOverrideByEmployee).filter((line) => matchesLineFilters(line, filters));
+  const employeeLookup = buildEmployeeCurrentLookup(employees);
+  const pointMap = new Map<string, PayrollPointDaily[]>();
+  const occurrenceMap = new Map<string, PayrollOccurrence[]>();
+
+  for (const row of pointRows) {
+    const keys = new Set<string>();
+    if (row.employeeId) keys.add(row.employeeId);
+    const comparisonKey = buildComparisonKey(row.employeeName, row.employeeCpf);
+    if (comparisonKey) keys.add(comparisonKey);
+    for (const key of keys) {
+      const list = pointMap.get(key) || [];
+      list.push(row);
+      pointMap.set(key, list);
+    }
+  }
+
+  for (const occurrence of occurrenceRows) {
+    if (!occurrence.employeeId) continue;
+    const list = occurrenceMap.get(occurrence.employeeId) || [];
+    list.push(occurrence);
+    occurrenceMap.set(occurrence.employeeId, list);
+  }
+
+  const lines = enrichPayrollLines(filterLinesByCurrentEligibility(rawLines, employees), employees, latestOverrideByEmployee)
+    .map((line) => {
+      const employeeKey = line.employeeId || buildComparisonKey(line.employeeName, line.employeeCpf);
+      const employee = employeeLookup.get(employeeKey) || null;
+      if (!employee) return line;
+      const rows = pointMap.get(employeeKey) || [];
+      const occurrences = line.employeeId ? occurrenceMap.get(line.employeeId) || [] : [];
+      const breakdown = summarizePayrollDayBreakdown({ rows, occurrences, employee, period });
+      return {
+        ...line,
+        actualWorkedDays: breakdown.actualWorkedDays,
+        justifiedDays: breakdown.justifiedDays,
+      };
+    })
+    .filter((line) => matchesLineFilters(line, filters));
   return {
     items: lines,
     availableCentersCost: Array.from(new Set(lines.map((line) => clean(line.centerCost)).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' })),
