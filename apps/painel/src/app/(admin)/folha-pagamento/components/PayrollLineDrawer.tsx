@@ -13,6 +13,18 @@ type DraftState = {
   lineStatus: string;
 };
 
+const buildPointDayObservation = (day: NonNullable<PayrollLineDetail['pointDays']>[number]) => {
+  const parts: string[] = [];
+  const justification = day.justificationText?.trim();
+  const isScheduleDayOff = day.plannedMinutes === 0 && day.workedMinutes === 0 && !(day.effectiveAbsence ?? day.absenceFlag);
+
+  if (justification) parts.push(justification);
+  if (isScheduleDayOff) parts.push('Folga prevista na escala');
+  if (!parts.length && (day.effectiveAbsence ?? day.absenceFlag)) parts.push('Falta apontada no relatório');
+
+  return parts.length ? parts.join(' · ') : '-';
+};
+
 export function PayrollLineDrawer({
   line,
   detail,
@@ -312,7 +324,7 @@ export function PayrollLineDrawer({
                       <td className="px-3 py-2 text-center">{day.dayBalanceMinutes} min</td>
                       <td className="px-3 py-2 text-center">{day.breakOverrunMinutes} min</td>
                       <td className="px-3 py-2 text-slate-600">
-                        <div>{day.justificationText || ((day.effectiveAbsence ?? day.absenceFlag) ? 'Falta apontada no relatório' : '-')}</div>
+                        <div>{buildPointDayObservation(day)}</div>
                         {day.hasOverride ? (
                           <div className="mt-1 text-[11px] text-blue-700">{day.overrideSummary || 'Ajuste operacional aplicado'}</div>
                         ) : null}

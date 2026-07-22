@@ -252,6 +252,19 @@ const overlapsDateRange = (targetDate: string, startDate: string | null, endDate
   return targetDate >= startDate && targetDate <= effectiveEnd;
 };
 
+const resolveEmployeeActiveWindow = (
+  employee: Pick<EmployeePayrollSource, 'admissionDate' | 'terminationDate'>,
+  period: Pick<PayrollPeriod, 'periodStart' | 'periodEnd'>,
+) => {
+  const startDate = employee.admissionDate && employee.admissionDate > period.periodStart ? employee.admissionDate : period.periodStart;
+  const endDate = employee.terminationDate && employee.terminationDate < period.periodEnd ? employee.terminationDate : period.periodEnd;
+  return {
+    startDate,
+    endDate,
+    hasActiveRange: startDate <= endDate,
+  };
+};
+
 const shiftUtcDate = (dateIso: string, deltaDays: number) => {
   const date = new Date(`${dateIso}T00:00:00.000Z`);
   date.setUTCDate(date.getUTCDate() + deltaDays);
@@ -2755,19 +2768,30 @@ const buildLineRecord = (
   if (employee.salaryAmount <= 0) pendingDataCodes.push('MISSING_SALARY');
   if (!employee.solidesEmployeeId) pendingDataCodes.push('MISSING_SOLIDES_LINK');
 
-  const rawPointRowsInPeriod = pointRows.filter((item) => item.pointDate >= period.periodStart && item.pointDate <= period.periodEnd);
+  const activeWindow = resolveEmployeeActiveWindow(employee, period);
+  const rawPointRowsInPeriod = activeWindow.hasActiveRange
+    ? pointRows.filter((item) => item.pointDate >= activeWindow.startDate && item.pointDate <= activeWindow.endDate)
+    : [];
   const pointRowsInPeriod = lineHasPendingData({ pendingDataCodes }, 'MISSING_SOLIDES_LINK') ? [] : rawPointRowsInPeriod;
+  const occurrencesInPeriod = activeWindow.hasActiveRange
+    ? occurrences.filter((item) => {
+        const start = item.dateStart || null;
+        const end = item.dateEnd || item.dateStart || null;
+        if (!start || !end) return false;
+        return !(end < activeWindow.startDate || start > activeWindow.endDate);
+      })
+    : [];
 
   const getOccurrenceForDate = (pointDate: string) =>
-    occurrences.find((item) => overlapsDateRange(pointDate, item.dateStart, item.dateEnd || item.dateStart));
+    occurrencesInPeriod.find((item) => overlapsDateRange(pointDate, item.dateStart, item.dateEnd || item.dateStart));
 
   const hasFullPeriodCoverageWithoutPoint = () => {
-    return occurrences.some((occurrence) => {
+    return occurrencesInPeriod.some((occurrence) => {
       if (!JUSTIFIED_OCCURRENCE_TYPES.has(occurrence.occurrenceType)) return false;
       const start = occurrence.dateStart || null;
       const end = occurrence.dateEnd || occurrence.dateStart || null;
       if (!start || !end) return false;
-      return start <= period.periodStart && end >= period.periodEnd;
+      return start <= activeWindow.startDate && end >= activeWindow.endDate;
     });
   };
 
@@ -2953,6 +2977,12 @@ const buildLineRecord = (
       competence: period.monthRef,
       periodStart: period.periodStart,
       periodEnd: period.periodEnd,
+      activeEmploymentWindow: activeWindow.hasActiveRange
+        ? {
+            startDate: activeWindow.startDate,
+            endDate: activeWindow.endDate,
+          }
+        : null,
       pendingDataCodes,
       rules: {
         minWageAmount: rules.minWageAmount,
