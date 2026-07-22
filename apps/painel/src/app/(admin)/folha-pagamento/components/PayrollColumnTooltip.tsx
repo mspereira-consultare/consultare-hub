@@ -28,7 +28,7 @@ export function PayrollColumnTooltip({
       <span className="group relative inline-flex items-center">
         <CircleHelp size={12} className="text-slate-400 transition-colors group-hover:text-slate-600" />
         <span
-          className={`pointer-events-none absolute top-full z-30 mt-2 hidden w-72 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] normal-case tracking-normal text-slate-600 shadow-lg group-hover:block ${tooltipPositionClass}`}
+          className={`pointer-events-none absolute top-full z-30 mt-2 hidden w-72 whitespace-normal break-words rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-[11px] normal-case tracking-normal text-slate-600 shadow-lg group-hover:block ${tooltipPositionClass}`}
         >
           <strong className="block text-slate-800">{label}</strong>
           <span className="mt-1 block">{description}</span>
