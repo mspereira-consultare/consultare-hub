@@ -27,6 +27,7 @@ export async function GET(request: Request, context: ParamsContext) {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Hub Consultare';
     workbook.created = new Date();
+    const linesById = new Map(payload.lines.map((line) => [line.id, line] as const));
 
     const mainSheet = workbook.addWorksheet(formatMonthSheetName(payload.period.monthRef));
     mainSheet.columns = [
@@ -43,11 +44,12 @@ export async function GET(request: Request, context: ParamsContext) {
       { header: 'D.V.T', key: 'vtDiscount', width: 14 },
       { header: 'Outros Descontos', key: 'otherDiscounts', width: 18 },
       { header: 'Desconto Totalpass', key: 'totalpassDiscount', width: 18 },
+      { header: 'Líquido operacional', key: 'netOperational', width: 18 },
       { header: 'Observação', key: 'observation', width: 44 },
     ];
 
     mainSheet.addRow([formatOperationalPeriodLabel(payload.period.periodStart, payload.period.periodEnd)]);
-    mainSheet.mergeCells('A1:N1');
+    mainSheet.mergeCells('A1:O1');
     mainSheet.getCell('A1').font = { bold: true, color: { argb: 'FF17407E' } };
     mainSheet.getCell('A1').alignment = { horizontal: 'left' };
 
@@ -56,6 +58,7 @@ export async function GET(request: Request, context: ParamsContext) {
     mainSheet.getRow(2).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17407E' } };
 
     for (const row of payload.previewRows) {
+      const line = linesById.get(row.lineId) || null;
       mainSheet.addRow({
         employeeName: row.employeeName,
         email: row.email || '',
@@ -70,12 +73,13 @@ export async function GET(request: Request, context: ParamsContext) {
         vtDiscount: row.vtDiscount ?? null,
         otherDiscounts: row.otherDiscounts ?? null,
         totalpassDiscount: row.totalpassDiscount ?? null,
+        netOperational: line?.netOperational ?? null,
         observation: row.observation || '',
       });
     }
 
     for (let rowIndex = 3; rowIndex <= mainSheet.rowCount; rowIndex += 1) {
-      setCurrency(mainSheet, rowIndex, [7, 9, 10, 11, 12, 13]);
+      setCurrency(mainSheet, rowIndex, [7, 9, 10, 11, 12, 13, 14]);
     }
 
     const memorySheet = workbook.addWorksheet('Memória de cálculo');
