@@ -42,15 +42,19 @@ export async function GET(request: Request, context: ParamsContext) {
       { header: 'VT por dia', key: 'vtPerDay', width: 14 },
       { header: 'VT total no mês', key: 'vtMonth', width: 16 },
       { header: 'D.V.T', key: 'vtDiscount', width: 14 },
+      { header: 'Desconto por faltas', key: 'absenceDiscount', width: 18 },
+      { header: 'Desconto por atrasos', key: 'lateDiscount', width: 18 },
       { header: 'Outros Descontos', key: 'otherDiscounts', width: 18 },
       { header: 'Desconto Totalpass', key: 'totalpassDiscount', width: 18 },
       { header: 'Ajuste manual', key: 'adjustmentsAmount', width: 18 },
+      { header: 'Proventos', key: 'totalProvents', width: 18 },
+      { header: 'Descontos', key: 'totalDiscounts', width: 18 },
       { header: 'Líquido operacional', key: 'netOperational', width: 18 },
       { header: 'Observação', key: 'observation', width: 44 },
     ];
 
     mainSheet.addRow([formatOperationalPeriodLabel(payload.period.periodStart, payload.period.periodEnd)]);
-    mainSheet.mergeCells('A1:P1');
+    mainSheet.mergeCells('A1:T1');
     mainSheet.getCell('A1').font = { bold: true, color: { argb: 'FF17407E' } };
     mainSheet.getCell('A1').alignment = { horizontal: 'left' };
 
@@ -72,16 +76,20 @@ export async function GET(request: Request, context: ParamsContext) {
         vtPerDay: row.vtPerDay ?? null,
         vtMonth: row.vtMonth ?? null,
         vtDiscount: row.vtDiscount ?? null,
+        absenceDiscount: line?.absenceDiscount ?? null,
+        lateDiscount: line?.lateDiscount ?? null,
         otherDiscounts: row.otherDiscounts ?? null,
         totalpassDiscount: row.totalpassDiscount ?? null,
         adjustmentsAmount: row.adjustmentsAmount,
+        totalProvents: line?.totalProvents ?? null,
+        totalDiscounts: line?.totalDiscounts ?? null,
         netOperational: line?.netOperational ?? null,
         observation: row.observation || '',
       });
     }
 
     for (let rowIndex = 3; rowIndex <= mainSheet.rowCount; rowIndex += 1) {
-      setCurrency(mainSheet, rowIndex, [7, 9, 10, 11, 12, 13, 14, 15]);
+      setCurrency(mainSheet, rowIndex, [7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
     }
 
     const memorySheet = workbook.addWorksheet('Memória de cálculo');
