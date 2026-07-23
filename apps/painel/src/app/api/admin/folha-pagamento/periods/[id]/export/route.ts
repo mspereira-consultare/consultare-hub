@@ -44,12 +44,13 @@ export async function GET(request: Request, context: ParamsContext) {
       { header: 'D.V.T', key: 'vtDiscount', width: 14 },
       { header: 'Outros Descontos', key: 'otherDiscounts', width: 18 },
       { header: 'Desconto Totalpass', key: 'totalpassDiscount', width: 18 },
+      { header: 'Ajuste manual', key: 'adjustmentsAmount', width: 18 },
       { header: 'Líquido operacional', key: 'netOperational', width: 18 },
       { header: 'Observação', key: 'observation', width: 44 },
     ];
 
     mainSheet.addRow([formatOperationalPeriodLabel(payload.period.periodStart, payload.period.periodEnd)]);
-    mainSheet.mergeCells('A1:O1');
+    mainSheet.mergeCells('A1:P1');
     mainSheet.getCell('A1').font = { bold: true, color: { argb: 'FF17407E' } };
     mainSheet.getCell('A1').alignment = { horizontal: 'left' };
 
@@ -73,13 +74,14 @@ export async function GET(request: Request, context: ParamsContext) {
         vtDiscount: row.vtDiscount ?? null,
         otherDiscounts: row.otherDiscounts ?? null,
         totalpassDiscount: row.totalpassDiscount ?? null,
+        adjustmentsAmount: row.adjustmentsAmount,
         netOperational: line?.netOperational ?? null,
         observation: row.observation || '',
       });
     }
 
     for (let rowIndex = 3; rowIndex <= mainSheet.rowCount; rowIndex += 1) {
-      setCurrency(mainSheet, rowIndex, [7, 9, 10, 11, 12, 13, 14]);
+      setCurrency(mainSheet, rowIndex, [7, 9, 10, 11, 12, 13, 14, 15]);
     }
 
     const memorySheet = workbook.addWorksheet('Memória de cálculo');

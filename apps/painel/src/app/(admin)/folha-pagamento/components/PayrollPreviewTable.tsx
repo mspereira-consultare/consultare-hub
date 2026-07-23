@@ -25,7 +25,7 @@ export function PayrollPreviewTable({
         className="border-b border-slate-200 px-4 py-3"
       />
       <div className="max-h-[560px] overflow-auto">
-        <table className="min-w-[1740px] w-full text-sm">
+        <table className="min-w-[1900px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr>
               <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left whitespace-nowrap"><PayrollColumnTooltip label="Nome funcionário" description="Nome que será exportado na planilha operacional." source="Painel" /></th>
@@ -41,19 +41,20 @@ export function PayrollPreviewTable({
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="D.V.T." description="Desconto efetivo de VT exportado na planilha, calculado sobre o VT provisionado da competência." source="Cálculo da folha" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Outros Descontos" description="Outros descontos fixos cadastrados para o colaborador." source="Painel" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Desconto Totalpass" description="Desconto fixo de Totalpass da competência." source="Painel" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Ajuste manual" description="Valor lançado manualmente na linha da folha. Valor positivo soma aos proventos; valor negativo entra como desconto adicional." source="Painel + cálculo da folha" align="right" /></th>
               <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Observação" description="Observações, pendências e ocorrências que ajudam na revisão final da linha." source="Painel + cálculo da folha" /></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={14} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={15} className="px-4 py-16 text-center text-slate-500">
                   Carregando prévia da planilha...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={14} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={15} className="px-4 py-16 text-center text-slate-500">
                   Nenhuma linha disponível para a competência atual.
                 </td>
               </tr>
@@ -82,6 +83,7 @@ export function PayrollPreviewTable({
                   <td className="px-3 py-3 text-right">{row.vtDiscount === null ? '-' : formatMoney(row.vtDiscount)}</td>
                   <td className="px-3 py-3 text-right">{row.otherDiscounts === null ? '-' : formatMoney(row.otherDiscounts)}</td>
                   <td className="px-3 py-3 text-right">{row.totalpassDiscount === null ? '-' : formatMoney(row.totalpassDiscount)}</td>
+                  <td className="px-3 py-3 text-right">{formatMoney(row.adjustmentsAmount)}</td>
                   <td className="px-3 py-3 text-slate-600">{row.observation || '-'}</td>
                 </tr>
               ))

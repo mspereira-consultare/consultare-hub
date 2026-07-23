@@ -61,7 +61,7 @@ export function PayrollClosingTable({
         className="border-b border-slate-200 px-4 py-3"
       />
       <div className="max-h-[560px] overflow-auto">
-        <table className="min-w-[1880px] w-full text-sm">
+        <table className="min-w-[2000px] w-full text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500">
             <tr>
               <th className="sticky left-0 z-20 bg-slate-50 px-4 py-3 text-left whitespace-nowrap">
@@ -93,6 +93,7 @@ export function PayrollClosingTable({
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="D.V.T." description="Desconto efetivo de vale-transporte aplicado em folha. Ele é calculado sobre o VT provisionado, que por padrão considera somente dias elegíveis de benefício." source="Cálculo da folha" formula="Menor valor entre VT provisionado e teto percentual da competência" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Totalpass" description="Desconto fixo de Totalpass aplicado na linha." source="Painel" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Outros" description="Outros descontos fixos cadastrados para o colaborador." source="Painel" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Ajuste manual" description="Valor lançado manualmente no detalhe da linha. Valor positivo soma aos proventos; valor negativo entra como desconto adicional." source="Painel + cálculo da folha" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Proventos" description="Total positivo da linha antes dos descontos." source="Cálculo da folha" formula="Salário base + insalubridade + ajustes positivos" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Descontos" description="Total de descontos aplicados na linha." source="Cálculo da folha" formula="Faltas + atrasos + D.V.T. + Totalpass + outros descontos + ajustes negativos" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Líquido" description="Resultado operacional da linha após somar proventos e subtrair descontos." source="Cálculo da folha" align="right" /></th>
@@ -102,13 +103,13 @@ export function PayrollClosingTable({
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={18} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={19} className="px-4 py-16 text-center text-slate-500">
                   Carregando linhas da folha...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={18} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={19} className="px-4 py-16 text-center text-slate-500">
                   Nenhuma linha gerada para a competência atual.
                 </td>
               </tr>
@@ -154,6 +155,7 @@ export function PayrollClosingTable({
                   <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.vtDiscount, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.totalpassDiscount, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.otherFixedDiscount, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.adjustmentsAmount)}</td>
                   <td className="px-3 py-3 text-right font-semibold text-slate-900">{renderMoneyCell(line, line.totalProvents, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-right font-semibold text-slate-900">{renderMoneyCell(line, line.totalDiscounts, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-right font-bold text-[#17407E]">{renderMoneyCell(line, line.netOperational, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>

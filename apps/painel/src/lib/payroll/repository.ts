@@ -4042,6 +4042,7 @@ const buildPayrollPreviewRow = (
     vtDiscount: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.vtDiscount),
     otherDiscounts: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.otherFixedDiscount),
     totalpassDiscount: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.totalpassDiscount),
+    adjustmentsAmount: roundMoney(line.adjustmentsAmount),
     observation: buildPreviewObservation(line, occurrences),
     pendingDataCodes: line.pendingDataCodes,
     staleCalculationCodes: line.staleCalculationCodes,

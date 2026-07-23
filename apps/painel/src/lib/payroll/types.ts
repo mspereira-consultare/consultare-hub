@@ -261,6 +261,7 @@ export type PayrollPreviewRow = {
   vtDiscount: number | null;
   otherDiscounts: number | null;
   totalpassDiscount: number | null;
+  adjustmentsAmount: number;
   observation: string | null;
   pendingDataCodes: PayrollPendingDataCode[];
   staleCalculationCodes: PayrollLineStaleCode[];
