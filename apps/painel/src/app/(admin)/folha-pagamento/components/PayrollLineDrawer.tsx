@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useMemo, useState } from 'react';
 import { CircleHelp, Loader2, X } from 'lucide-react';
 import type { PayrollDataSource, PayrollLine, PayrollLineDetail } from '@/lib/payroll/types';
 import { formatDateBr, formatMoney, formatSheetInsalubrity, pendingDataCodeDescriptionMap, pendingDataCodeLabelMap, statusLabelMap } from './formatters';
@@ -11,6 +12,23 @@ type DraftState = {
   adjustmentsNotes: string;
   payrollNotes: string;
   lineStatus: string;
+};
+
+type LateCompensationDraftState = {
+  requestedMinutes: string;
+  notes: string;
+};
+
+const roundMoneyClient = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
+
+const parseCalculationMemoryClient = (rawJson: string | null | undefined) => {
+  if (!rawJson) return {} as Record<string, any>;
+  try {
+    const parsed = JSON.parse(rawJson);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
 };
 
 const buildPointDayObservation = (day: NonNullable<PayrollLineDetail['pointDays']>[number]) => {
@@ -65,6 +83,8 @@ export function PayrollLineDrawer({
   saving,
   onClose,
   onSave,
+  onSaveLateCompensation,
+  onRemoveLateCompensation,
 }: {
   line: PayrollLine | null;
   detail: PayrollLineDetail | null;
@@ -73,20 +93,38 @@ export function PayrollLineDrawer({
   saving: boolean;
   onClose: () => void;
   onSave: (draft: DraftState) => void;
+  onSaveLateCompensation: (draft: LateCompensationDraftState) => Promise<void> | void;
+  onRemoveLateCompensation: () => Promise<void> | void;
 }) {
-  if (!open || !line) return null;
-
   const current = detail?.line || line;
-  const draft: DraftState = {
-    adjustmentsAmount: String(current.adjustmentsAmount ?? 0),
-    adjustmentsNotes: current.adjustmentsNotes || '',
-    payrollNotes: current.payrollNotes || '',
-    lineStatus: current.lineStatus,
-  };
+  const [lateCompensationOpen, setLateCompensationOpen] = useState(false);
+  const [lateCompensationDraft, setLateCompensationDraft] = useState<LateCompensationDraftState>({ requestedMinutes: '', notes: '' });
   const preview = detail?.previewRow || null;
-  const hasPendingRegistration = current.pendingDataCodes.length > 0;
-  const pointDayBreakdown = buildPointDayBreakdown(detail, current);
-  const pointAdjustmentHref = current.employeeId && detail?.periodDateRange
+  const hasPendingRegistration = (current?.pendingDataCodes.length || 0) > 0;
+  const pointDayBreakdown = current ? buildPointDayBreakdown(detail, current) : { consideredDays: 0, actualWorkedDays: 0, justifiedDays: 0 };
+  const calculationMemory = parseCalculationMemoryClient(detail?.line?.calculationMemoryJson || current?.calculationMemoryJson);
+  const salaryHour = Number(calculationMemory?.metrics?.salaryHour ?? 0);
+  const availableHoursBalanceMinutes = Math.max(0, Number(detail?.hoursBalance?.balanceMinutes ?? current?.availableHoursBalanceMinutes ?? 0));
+  const maximumLateCompensationMinutes = Math.max(0, Math.min(current?.lateMinutesOriginal ?? 0, availableHoursBalanceMinutes));
+  const parsedRequestedMinutes = Math.max(0, Math.floor(Number(lateCompensationDraft.requestedMinutes || 0)));
+  const lateCompensationPreview = useMemo(() => {
+    const compensatedMinutes = Math.min(parsedRequestedMinutes, maximumLateCompensationMinutes);
+    const chargedMinutes = Math.max(0, (current?.lateMinutesOriginal ?? 0) - compensatedMinutes);
+    const lateDiscountOriginal = current?.lateDiscountOriginal ?? 0;
+    const lateDiscountAfterCompensation =
+      salaryHour > 0
+        ? roundMoneyClient((salaryHour * chargedMinutes) / 60)
+        : (current?.lateMinutesOriginal ?? 0) > 0
+          ? roundMoneyClient((lateDiscountOriginal / (current?.lateMinutesOriginal ?? 1)) * chargedMinutes)
+          : 0;
+    return {
+      compensatedMinutes,
+      chargedMinutes,
+      lateDiscountAfterCompensation,
+      remainingHoursBalanceMinutes: Math.max(0, availableHoursBalanceMinutes - compensatedMinutes),
+    };
+  }, [availableHoursBalanceMinutes, current?.lateDiscountOriginal, current?.lateMinutesOriginal, maximumLateCompensationMinutes, parsedRequestedMinutes, salaryHour]);
+  const pointAdjustmentHref = current?.employeeId && detail?.periodDateRange
     ? `/ponto?startDate=${encodeURIComponent(detail.periodDateRange.startDate)}&endDate=${encodeURIComponent(detail.periodDateRange.endDate)}&employeeId=${encodeURIComponent(current.employeeId)}&adjustments=1`
     : null;
   const detailSources: PayrollLineDetail['sources'] = detail?.sources || {
@@ -99,12 +137,32 @@ export function PayrollLineDrawer({
     calculationMemory: ['PAINEL'],
   };
 
+  useEffect(() => {
+    const suggestedMinutes =
+      current?.lateCompensationRequestedMinutes ??
+      (maximumLateCompensationMinutes > 0 ? maximumLateCompensationMinutes : 0);
+    setLateCompensationDraft({
+      requestedMinutes: suggestedMinutes > 0 ? String(suggestedMinutes) : '',
+      notes: current?.lateCompensationNotes || '',
+    });
+    setLateCompensationOpen(false);
+  }, [current?.id, current?.lateCompensationNotes, current?.lateCompensationRequestedMinutes, maximumLateCompensationMinutes]);
+
+  if (!open || !current) return null;
+
+  const draft: DraftState = {
+    adjustmentsAmount: String(current.adjustmentsAmount ?? 0),
+    adjustmentsNotes: current.adjustmentsNotes || '',
+    payrollNotes: current.payrollNotes || '',
+    lineStatus: current.lineStatus,
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/30">
       <div className="h-full w-full max-w-3xl overflow-auto bg-white shadow-2xl">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-6 py-5">
           <div>
-            <h2 className="text-lg font-bold text-slate-900">{line.employeeName}</h2>
+            <h2 className="text-lg font-bold text-slate-900">{current.employeeName}</h2>
             <p className="mt-1 text-sm text-slate-500">
               Revise aqui o cálculo da linha, os dados sincronizados da Sólides e os ajustes manuais que impactam o total deste colaborador.
             </p>
@@ -145,7 +203,7 @@ export function PayrollLineDrawer({
             <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <div className="font-semibold">Linha desatualizada após mudança na base operacional</div>
               <div className="mt-1 text-amber-800">
-                O cadastro de VT e/ou a base sincronizada do ponto deste colaborador mudaram depois que a linha foi gerada. Use <strong>Recalcular selecionados</strong> ou gere a folha novamente antes de aprovar esta linha.
+                O cadastro de VT, a base sincronizada do ponto e/ou o abatimento de atraso com banco mudaram depois que a linha foi gerada. Use <strong>Recalcular selecionados</strong> ou gere a folha novamente antes de aprovar esta linha.
               </div>
               {pointAdjustmentHref ? (
                 <div className="mt-3">
@@ -269,14 +327,66 @@ export function PayrollLineDrawer({
 
           <section className="grid gap-4 md:grid-cols-2">
             <Card title="Banco de horas" sources={detailSources.hoursBalance}>
-              {detail?.hoursBalance ? (
-                <div className="grid gap-3 text-sm sm:grid-cols-2">
-                  <Info label="Saldo do mês" value={`${detail.hoursBalance.balanceMinutes} min`} />
-                  <Info label="Referência" value={`${detail.hoursBalance.referenceStart || '-'} a ${detail.hoursBalance.referenceEnd || '-'}`} />
-                </div>
-              ) : (
-                <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Nenhum saldo sincronizado para este colaborador na competência.</div>
-              )}
+              <div className="space-y-3">
+                {detail?.hoursBalance ? (
+                  <div className="grid gap-3 text-sm sm:grid-cols-2">
+                    <Info label="Saldo do mês" value={`${detail.hoursBalance.balanceMinutes} min`} />
+                    <Info label="Referência" value={`${detail.hoursBalance.referenceStart || '-'} a ${detail.hoursBalance.referenceEnd || '-'}`} />
+                    <Info label="Atrasos considerados" value={`${current.lateMinutesOriginal} min`} />
+                    <Info label="Atrasos abatidos" value={`${current.lateMinutesCompensated} min`} />
+                    <Info label="Atrasos cobrados" value={`${current.lateMinutesCharged} min`} />
+                    <Info label="Desconto por atraso" value={formatMoney(current.lateDiscount)} />
+                  </div>
+                ) : (
+                  <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">Nenhum saldo sincronizado para este colaborador na competência.</div>
+                )}
+
+                {current.hasLateBankCompensation ? (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                    <div className="font-semibold">Abatimento com banco aplicado nesta competência</div>
+                    <div className="mt-1">
+                      {current.lateMinutesCompensated} min abatido(s) do atraso original de {current.lateMinutesOriginal} min.
+                    </div>
+                    {current.lateCompensationNotes ? <div className="mt-1">Observação: {current.lateCompensationNotes}</div> : null}
+                  </div>
+                ) : null}
+
+                {current.lateMinutesOriginal <= 0 ? (
+                  <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    Este colaborador não possui atraso elegível para abatimento nesta competência.
+                  </div>
+                ) : availableHoursBalanceMinutes <= 0 ? (
+                  <div className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+                    Este colaborador não possui saldo positivo de banco disponível para compensar o atraso nesta competência.
+                  </div>
+                ) : null}
+
+                {canEdit && current.lateMinutesOriginal > 0 && availableHoursBalanceMinutes > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => setLateCompensationOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700"
+                    >
+                      {current.hasLateBankCompensation ? 'Editar abatimento' : 'Abater atrasos com banco'}
+                    </button>
+                    {current.hasLateBankCompensation ? (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => {
+                          if (!window.confirm('Remover o abatimento de atraso com banco desta competência?')) return;
+                          void onRemoveLateCompensation();
+                        }}
+                        className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700"
+                      >
+                        Remover abatimento
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </Card>
 
             <Card title="Assinatura" sources={detailSources.signature}>
@@ -381,6 +491,116 @@ export function PayrollLineDrawer({
             <pre className="overflow-auto rounded-lg bg-slate-950 p-4 text-xs text-slate-100">{detail?.line?.calculationMemoryJson || current.calculationMemoryJson || '{}'}</pre>
           </Card>
         </div>
+
+        {lateCompensationOpen ? (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 px-4">
+            <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+              <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Abater atrasos com banco</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Este ajuste reduz somente o desconto por atraso na folha. O atraso bruto da Sólides continua preservado para auditoria.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setLateCompensationOpen(false)}
+                  className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-50"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="space-y-4 px-5 py-5">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Info label="Atraso considerado" value={`${current.lateMinutesOriginal} min`} />
+                  <Info label="Desconto por atraso antes do abatimento" value={formatMoney(current.lateDiscountOriginal)} />
+                  <Info label="Saldo positivo disponível" value={`${availableHoursBalanceMinutes} min`} />
+                  <Info label="Máximo sugerido" value={`${maximumLateCompensationMinutes} min`} />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Minutos a usar</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={maximumLateCompensationMinutes}
+                      step={1}
+                      value={lateCompensationDraft.requestedMinutes}
+                      disabled={saving}
+                      onChange={(event) =>
+                        setLateCompensationDraft((currentDraft) => ({
+                          ...currentDraft,
+                          requestedMinutes: event.target.value,
+                        }))
+                      }
+                      className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      O sistema sugere o máximo possível, respeitando o atraso e o saldo positivo disponíveis hoje.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-500">Observação</label>
+                    <textarea
+                      rows={3}
+                      value={lateCompensationDraft.notes}
+                      disabled={saving}
+                      onChange={(event) =>
+                        setLateCompensationDraft((currentDraft) => ({
+                          ...currentDraft,
+                          notes: event.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                      placeholder="Opcional: registre o motivo do abatimento."
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="mb-3 text-sm font-semibold text-slate-800">Prévia do abatimento</div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Info label="Minutos abatidos" value={`${lateCompensationPreview.compensatedMinutes} min`} />
+                    <Info label="Atraso ainda cobrado" value={`${lateCompensationPreview.chargedMinutes} min`} />
+                    <Info label="Desconto por atraso após abatimento" value={formatMoney(lateCompensationPreview.lateDiscountAfterCompensation)} />
+                    <Info label="Saldo restante" value={`${lateCompensationPreview.remainingHoursBalanceMinutes} min`} />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => setLateCompensationOpen(false)}
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      saving ||
+                      parsedRequestedMinutes <= 0 ||
+                      parsedRequestedMinutes > maximumLateCompensationMinutes
+                    }
+                    onClick={async () => {
+                      await onSaveLateCompensation(lateCompensationDraft);
+                      setLateCompensationOpen(false);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#17407E] px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : null}
+                    Salvar abatimento
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

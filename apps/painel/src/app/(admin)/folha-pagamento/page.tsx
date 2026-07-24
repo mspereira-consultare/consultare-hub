@@ -643,6 +643,57 @@ export default function FolhaPagamentoPage() {
     }
   };
 
+  const handleSaveLateCompensation = async (draft: { requestedMinutes: string; notes: string }) => {
+    if (!selectedLine) return;
+    setLineSaving(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      const payload = await fetchJson<{ status: string; data: PayrollLineDetail }>(
+        `/api/admin/folha-pagamento/lines/${encodeURIComponent(selectedLine.id)}/late-compensation`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requestedMinutes: Number(draft.requestedMinutes),
+            notes: draft.notes,
+          }),
+        },
+      );
+      setLineDetail(payload.data || null);
+      if (payload.data?.line) setSelectedLine(payload.data.line);
+      await loadPeriod({ background: true, periodId: selectedPeriodIdRef.current });
+      setSuccessMessage('Abatimento de atraso com banco salvo com sucesso.');
+    } catch (fetchError: any) {
+      setError(String(fetchError?.message || fetchError));
+      throw fetchError;
+    } finally {
+      setLineSaving(false);
+    }
+  };
+
+  const handleRemoveLateCompensation = async () => {
+    if (!selectedLine) return;
+    setLineSaving(true);
+    setError('');
+    setSuccessMessage('');
+    try {
+      const payload = await fetchJson<{ status: string; data: PayrollLineDetail }>(
+        `/api/admin/folha-pagamento/lines/${encodeURIComponent(selectedLine.id)}/late-compensation`,
+        { method: 'DELETE' },
+      );
+      setLineDetail(payload.data || null);
+      if (payload.data?.line) setSelectedLine(payload.data.line);
+      await loadPeriod({ background: true, periodId: selectedPeriodIdRef.current });
+      setSuccessMessage('Abatimento de atraso com banco removido com sucesso.');
+    } catch (fetchError: any) {
+      setError(String(fetchError?.message || fetchError));
+      throw fetchError;
+    } finally {
+      setLineSaving(false);
+    }
+  };
+
   useEffect(() => {
     if (!selectedPeriodId || !displayedPeriodId || selectedPeriodId !== displayedPeriodId) return;
     if (!hasPointPipelineInProgress) return;
@@ -958,7 +1009,17 @@ export default function FolhaPagamentoPage() {
         onConfirm={() => executeGenerateAction(true)}
       />
       <PayrollHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
-      <PayrollLineDrawer line={selectedLine} detail={lineDetail} open={lineDetailOpen} canEdit={canEdit} saving={lineSaving} onClose={() => setLineDetailOpen(false)} onSave={handleSaveLine} />
+      <PayrollLineDrawer
+        line={selectedLine}
+        detail={lineDetail}
+        open={lineDetailOpen}
+        canEdit={canEdit}
+        saving={lineSaving}
+        onClose={() => setLineDetailOpen(false)}
+        onSave={handleSaveLine}
+        onSaveLateCompensation={handleSaveLateCompensation}
+        onRemoveLateCompensation={handleRemoveLateCompensation}
+      />
     </div>
   );
 }

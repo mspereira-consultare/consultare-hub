@@ -222,6 +222,15 @@ export type PayrollLine = {
   absenceDiscount: number;
   lateMinutes: number;
   lateDiscount: number;
+  lateMinutesOriginal: number;
+  lateMinutesCompensated: number;
+  lateMinutesCharged: number;
+  lateDiscountOriginal: number;
+  lateCompensationRequestedMinutes: number | null;
+  lateCompensationNotes: string | null;
+  availableHoursBalanceMinutes: number | null;
+  remainingHoursBalanceMinutes: number | null;
+  hasLateBankCompensation: boolean;
   vtProvisioned: number;
   vtDiscount: number;
   totalpassDiscount: number;
@@ -448,7 +457,10 @@ export type PayrollEligibilitySummary = {
 };
 
 export type PayrollPendingDataCode = 'MISSING_SALARY' | 'MISSING_SOLIDES_LINK';
-export type PayrollLineStaleCode = 'VT_RULE_UPDATED_AFTER_GENERATION' | 'POINT_OVERRIDE_UPDATED_AFTER_GENERATION';
+export type PayrollLineStaleCode =
+  | 'VT_RULE_UPDATED_AFTER_GENERATION'
+  | 'POINT_OVERRIDE_UPDATED_AFTER_GENERATION'
+  | 'LATE_BANK_COMPENSATION_OUTDATED';
 
 export type PayrollReadinessStatus = 'READY' | 'ATTENTION' | 'BLOCKED';
 export type PayrollReadinessSeverity = 'BLOCKING' | 'WARNING';

@@ -88,14 +88,14 @@ export function PayrollClosingTable({
               <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias abon./just." description="Dias sem trabalho efetivo que foram aceitos pela folha como justificados ou abonados. Eles continuam contando para o salário, mas não entram automaticamente no cálculo de VT e VR." source="Sólides + cálculo da folha" formula="Conta apenas dias justificados/abonados que não viram falta" align="center" /></th>
               <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Dias considerados" description="Total de dias que a folha usou para pagar a linha salarial desta competência. Aqui entram os dias realmente trabalhados e também os dias abonados ou justificados aceitos no fechamento." source="Sólides + cálculo da folha" formula="Dias trabalhados + dias abonados/justificados" align="center" /></th>
               <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Faltas" description="Quantidade de faltas consideradas no recorte da competência." source="Sólides + cálculo da folha" align="center" /></th>
-              <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Atrasos (min)" description="Minutos de atraso considerados após aplicar a tolerância da regra da competência." source="Sólides + cálculo da folha" align="center" /></th>
+              <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Atrasos (min)" description="Minutos de atraso considerados após aplicar a tolerância da regra da competência. Quando houver abatimento com banco, o atraso continua aparecendo aqui para auditoria." source="Sólides + cálculo da folha" formula="O abatimento com banco reduz apenas o desconto por atraso, sem apagar o atraso registrado" align="center" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT" description="Valor total de vale-transporte provisionado na competência. Dias apenas abonados ou justificados não entram nesse total por padrão." source="Painel + cálculo da folha" formula="Mensal fixo do cadastro ou valor por dia x dias elegíveis de benefício" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="D.V.T." description="Desconto efetivo de vale-transporte aplicado em folha. Ele é calculado sobre o VT provisionado, que por padrão considera somente dias elegíveis de benefício." source="Cálculo da folha" formula="Menor valor entre VT provisionado e teto percentual da competência" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Totalpass" description="Desconto fixo de Totalpass aplicado na linha." source="Painel" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Outros" description="Outros descontos fixos cadastrados para o colaborador." source="Painel" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Ajuste manual" description="Valor lançado manualmente no detalhe da linha. Valor positivo soma aos proventos; valor negativo entra como desconto adicional." source="Painel + cálculo da folha" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Proventos" description="Total positivo da linha antes dos descontos." source="Cálculo da folha" formula="Salário base + insalubridade + ajustes positivos" align="right" /></th>
-              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Descontos" description="Total de descontos aplicados na linha." source="Cálculo da folha" formula="Faltas + atrasos + D.V.T. + Totalpass + outros descontos + ajustes negativos" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Descontos" description="Total de descontos aplicados na linha." source="Cálculo da folha" formula="Faltas + atrasos cobrados após abatimento com banco, D.V.T., Totalpass, outros descontos e ajustes negativos" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Líquido" description="Resultado operacional da linha após somar proventos e subtrair descontos." source="Cálculo da folha" align="right" /></th>
               <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Status" description="Situação atual da linha no fluxo de revisão e aprovação." source="Painel" /></th>
             </tr>
@@ -150,7 +150,18 @@ export function PayrollClosingTable({
                   <td className="px-3 py-3 text-center">{renderCountCell(line, line.justifiedDays ?? 0, { blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-center">{renderCountCell(line, line.daysWorked, { blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-center">{renderCountCell(line, line.absencesCount, { blankWhenMissingSolidesLink: true })}</td>
-                  <td className="px-3 py-3 text-center">{renderCountCell(line, line.lateMinutes, { blankWhenMissingSolidesLink: true })}</td>
+                  <td className="px-3 py-3 text-center">
+                    {hasPendingCode(line, 'MISSING_SOLIDES_LINK') ? (
+                      '-'
+                    ) : (
+                      <div className="flex flex-col items-center gap-0.5">
+                        <span>{line.lateMinutesOriginal} min</span>
+                        {line.lateMinutesCompensated > 0 ? (
+                          <span className="text-[11px] font-medium text-emerald-700">-{line.lateMinutesCompensated} min com banco</span>
+                        ) : null}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.vtProvisioned, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.vtDiscount, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>
                   <td className="px-3 py-3 text-right">{renderMoneyCell(line, line.totalpassDiscount, { blankWhenMissingSalary: true, blankWhenMissingSolidesLink: true })}</td>

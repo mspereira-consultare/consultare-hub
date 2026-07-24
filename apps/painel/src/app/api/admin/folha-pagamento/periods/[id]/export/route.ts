@@ -37,6 +37,9 @@ export async function GET(request: Request, context: ParamsContext) {
       { header: 'Centro de custo', key: 'centerCost', width: 20 },
       { header: 'Função', key: 'roleName', width: 32 },
       { header: 'Contrato', key: 'contractType', width: 16 },
+      { header: 'Atrasos (min)', key: 'lateMinutesOriginal', width: 16 },
+      { header: 'Atrasos abatidos com banco (min)', key: 'lateMinutesCompensated', width: 26 },
+      { header: 'Atrasos cobrados (min)', key: 'lateMinutesCharged', width: 20 },
       { header: 'Salário Base', key: 'salaryBase', width: 16 },
       { header: 'Insalubridade', key: 'insalubrityValue', width: 16 },
       { header: 'VT por dia', key: 'vtPerDay', width: 14 },
@@ -54,7 +57,7 @@ export async function GET(request: Request, context: ParamsContext) {
     ];
 
     mainSheet.addRow([formatOperationalPeriodLabel(payload.period.periodStart, payload.period.periodEnd)]);
-    mainSheet.mergeCells('A1:T1');
+    mainSheet.mergeCells('A1:W1');
     mainSheet.getCell('A1').font = { bold: true, color: { argb: 'FF17407E' } };
     mainSheet.getCell('A1').alignment = { horizontal: 'left' };
 
@@ -71,6 +74,9 @@ export async function GET(request: Request, context: ParamsContext) {
         centerCost: row.centerCost || '',
         roleName: row.roleName || '',
         contractType: row.contractType || '',
+        lateMinutesOriginal: line?.lateMinutesOriginal ?? null,
+        lateMinutesCompensated: line?.lateMinutesCompensated ?? null,
+        lateMinutesCharged: line?.lateMinutesCharged ?? null,
         salaryBase: row.salaryBase,
         insalubrityValue: row.insalubrityValue ?? null,
         vtPerDay: row.vtPerDay ?? null,
@@ -89,7 +95,7 @@ export async function GET(request: Request, context: ParamsContext) {
     }
 
     for (let rowIndex = 3; rowIndex <= mainSheet.rowCount; rowIndex += 1) {
-      setCurrency(mainSheet, rowIndex, [7, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]);
+      setCurrency(mainSheet, rowIndex, [10, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22]);
     }
 
     const memorySheet = workbook.addWorksheet('Memória de cálculo');

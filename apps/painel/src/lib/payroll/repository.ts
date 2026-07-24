@@ -268,6 +268,113 @@ const resolveEmployeeActiveWindow = (
   };
 };
 
+const summarizePayrollOperationalMetrics = ({
+  rows,
+  occurrences,
+  employee,
+  period,
+  lateToleranceMinutes = 0,
+}: {
+  rows: PayrollPointDaily[];
+  occurrences: PayrollOccurrence[];
+  employee: Pick<EmployeePayrollSource, 'admissionDate' | 'terminationDate'>;
+  period: Pick<PayrollPeriod, 'periodStart' | 'periodEnd'>;
+  lateToleranceMinutes?: number;
+}) => {
+  const activeWindow = resolveEmployeeActiveWindow(employee, period);
+  if (!activeWindow.hasActiveRange) {
+    return {
+      pointRowsInPeriod: [] as PayrollPointDaily[],
+      occurrencesInPeriod: [] as PayrollOccurrence[],
+      hasFullPeriodCoverageWithoutPoint: false,
+      consideredDays: 0,
+      actualWorkedDays: 0,
+      justifiedDays: 0,
+      vtEligibleDays: 0,
+      vrEligibleDays: 0,
+      absencesCount: 0,
+      lateMinutes: 0,
+      workedMinutesTotal: 0,
+    };
+  }
+
+  const pointRowsInPeriod = rows.filter((row) => row.pointDate >= activeWindow.startDate && row.pointDate <= activeWindow.endDate);
+  const occurrencesInPeriod = occurrences.filter((occurrence) => {
+    const start = occurrence.dateStart || null;
+    const end = occurrence.dateEnd || occurrence.dateStart || null;
+    if (!start || !end) return false;
+    return !(end < activeWindow.startDate || start > activeWindow.endDate);
+  });
+
+  let consideredDays = 0;
+  let actualWorkedDays = 0;
+  let justifiedDays = 0;
+  let vtEligibleDays = 0;
+  let vrEligibleDays = 0;
+  let absencesCount = 0;
+  let lateMinutes = 0;
+  let workedMinutesTotal = 0;
+
+  const hasFullPeriodCoverageWithoutPoint = occurrencesInPeriod.some((occurrence) => {
+    if (!JUSTIFIED_OCCURRENCE_TYPES.has(occurrence.occurrenceType)) return false;
+    const start = occurrence.dateStart || null;
+    const end = occurrence.dateEnd || occurrence.dateStart || null;
+    if (!start || !end) return false;
+    return start <= activeWindow.startDate && end >= activeWindow.endDate;
+  });
+
+  for (const row of pointRowsInPeriod) {
+    const occurrence = findPayrollOccurrenceForDate(occurrencesInPeriod, row.pointDate);
+    const justified = Boolean(occurrence && JUSTIFIED_OCCURRENCE_TYPES.has(occurrence.occurrenceType));
+    const forcedAbsence = Boolean(occurrence && occurrence.occurrenceType === 'FALTA_INJUSTIFICADA');
+    const hasPlannedJourney = Number(row.plannedMinutes || 0) > 0;
+    const effectiveAbsence =
+      typeof row.effectiveAbsence === 'boolean' ? row.effectiveAbsence : forcedAbsence || (row.absenceFlag && !justified);
+    const effectivePayrollDay =
+      typeof row.effectivePayrollDay === 'boolean'
+        ? row.effectivePayrollDay
+        : (!effectiveAbsence && (row.workedMinutes > 0 || (justified && hasPlannedJourney)));
+    const effectiveBenefitDayDefault = !effectiveAbsence && Number(row.workedMinutes || 0) > 0;
+    const effectiveVtDay = typeof row.effectiveVtDay === 'boolean' ? row.effectiveVtDay : effectiveBenefitDayDefault;
+    const effectiveVrDay = typeof row.effectiveVrDay === 'boolean' ? row.effectiveVrDay : effectiveBenefitDayDefault;
+
+    if (effectiveAbsence) {
+      absencesCount += 1;
+      continue;
+    }
+
+    if (effectivePayrollDay) {
+      consideredDays += 1;
+      workedMinutesTotal += Number(row.workedMinutes || 0);
+      if (Number(row.workedMinutes || 0) > 0) {
+        actualWorkedDays += 1;
+      } else if (justified) {
+        justifiedDays += 1;
+      }
+    }
+    if (effectiveVtDay) vtEligibleDays += 1;
+    if (effectiveVrDay) vrEligibleDays += 1;
+
+    if (effectivePayrollDay && !justified && !forcedAbsence) {
+      lateMinutes += Math.max(0, Number(row.lateMinutes || 0) - lateToleranceMinutes);
+    }
+  }
+
+  return {
+    pointRowsInPeriod,
+    occurrencesInPeriod,
+    hasFullPeriodCoverageWithoutPoint,
+    consideredDays,
+    actualWorkedDays,
+    justifiedDays,
+    vtEligibleDays,
+    vrEligibleDays,
+    absencesCount,
+    lateMinutes,
+    workedMinutesTotal,
+  };
+};
+
 const summarizePayrollDayBreakdown = ({
   rows,
   occurrences,
@@ -279,46 +386,11 @@ const summarizePayrollDayBreakdown = ({
   employee: Pick<EmployeePayrollSource, 'admissionDate' | 'terminationDate'>;
   period: Pick<PayrollPeriod, 'periodStart' | 'periodEnd'>;
 }) => {
-  const activeWindow = resolveEmployeeActiveWindow(employee, period);
-  if (!activeWindow.hasActiveRange) {
-    return {
-      consideredDays: 0,
-      actualWorkedDays: 0,
-      justifiedDays: 0,
-    };
-  }
-
-  let consideredDays = 0;
-  let actualWorkedDays = 0;
-  let justifiedDays = 0;
-
-  for (const row of rows) {
-    if (row.pointDate < activeWindow.startDate || row.pointDate > activeWindow.endDate) continue;
-    const occurrence = findPayrollOccurrenceForDate(occurrences, row.pointDate);
-    const justified = Boolean(occurrence && JUSTIFIED_OCCURRENCE_TYPES.has(occurrence.occurrenceType));
-    const forcedAbsence = Boolean(occurrence && occurrence.occurrenceType === 'FALTA_INJUSTIFICADA');
-    const hasPlannedJourney = Number(row.plannedMinutes || 0) > 0;
-    const effectiveAbsence =
-      typeof row.effectiveAbsence === 'boolean' ? row.effectiveAbsence : forcedAbsence || (row.absenceFlag && !justified);
-    const effectivePayrollDay =
-      typeof row.effectivePayrollDay === 'boolean'
-        ? row.effectivePayrollDay
-        : (!effectiveAbsence && (row.workedMinutes > 0 || (justified && hasPlannedJourney)));
-
-    if (!effectivePayrollDay) continue;
-
-    consideredDays += 1;
-    if (Number(row.workedMinutes || 0) > 0) {
-      actualWorkedDays += 1;
-    } else if (justified) {
-      justifiedDays += 1;
-    }
-  }
-
+  const summary = summarizePayrollOperationalMetrics({ rows, occurrences, employee, period });
   return {
-    consideredDays,
-    actualWorkedDays,
-    justifiedDays,
+    consideredDays: summary.consideredDays,
+    actualWorkedDays: summary.actualWorkedDays,
+    justifiedDays: summary.justifiedDays,
   };
 };
 
@@ -564,9 +636,53 @@ const mapOccurrence = (row: any): PayrollOccurrence => ({
   updatedAt: clean(row.updated_at),
 });
 
+type PayrollLateBankCompensationRecord = {
+  id: string;
+  periodId: string;
+  employeeId: string;
+  requestedMinutes: number;
+  notes: string | null;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const mapLateBankCompensationRecord = (row: any): PayrollLateBankCompensationRecord => ({
+  id: clean(row.id),
+  periodId: clean(row.period_id),
+  employeeId: clean(row.employee_id),
+  requestedMinutes: Number(row.requested_minutes || 0),
+  notes: clean(row.notes) || null,
+  createdBy: clean(row.created_by) || null,
+  updatedBy: clean(row.updated_by) || null,
+  createdAt: clean(row.created_at),
+  updatedAt: clean(row.updated_at),
+});
+
 const mapLine = (row: any): PayrollLine => {
   const calculationMemory = parsePayrollCalculationMemory(row.calculation_memory_json);
   const metrics = calculationMemory?.metrics && typeof calculationMemory.metrics === 'object' ? calculationMemory.metrics : {};
+  const lateBankCompensation =
+    calculationMemory?.lateBankCompensation && typeof calculationMemory.lateBankCompensation === 'object'
+      ? calculationMemory.lateBankCompensation
+      : {};
+  const lateMinutesOriginal = Number(lateBankCompensation.lateMinutesOriginal ?? row.late_minutes ?? 0);
+  const lateMinutesCompensated = Number(lateBankCompensation.compensatedMinutes ?? 0);
+  const lateMinutesCharged = Number(lateBankCompensation.lateMinutesCharged ?? lateMinutesOriginal);
+  const lateDiscountOriginal = toNumber(lateBankCompensation.lateDiscountOriginal, toNumber(row.late_discount));
+  const lateCompensationRequestedMinutes =
+    lateBankCompensation.requestedMinutes === undefined || lateBankCompensation.requestedMinutes === null
+      ? null
+      : Number(lateBankCompensation.requestedMinutes || 0);
+  const availableHoursBalanceMinutes =
+    lateBankCompensation.availableHoursBalanceMinutes === undefined || lateBankCompensation.availableHoursBalanceMinutes === null
+      ? null
+      : Number(lateBankCompensation.availableHoursBalanceMinutes || 0);
+  const remainingHoursBalanceMinutes =
+    lateBankCompensation.remainingHoursBalanceMinutes === undefined || lateBankCompensation.remainingHoursBalanceMinutes === null
+      ? null
+      : Number(lateBankCompensation.remainingHoursBalanceMinutes || 0);
 
   return {
     id: clean(row.id),
@@ -593,6 +709,15 @@ const mapLine = (row: any): PayrollLine => {
     absenceDiscount: toNumber(row.absence_discount),
     lateMinutes: Number(row.late_minutes || 0),
     lateDiscount: toNumber(row.late_discount),
+    lateMinutesOriginal,
+    lateMinutesCompensated,
+    lateMinutesCharged,
+    lateDiscountOriginal,
+    lateCompensationRequestedMinutes,
+    lateCompensationNotes: clean(lateBankCompensation.notes) || null,
+    availableHoursBalanceMinutes,
+    remainingHoursBalanceMinutes,
+    hasLateBankCompensation: lateCompensationRequestedMinutes !== null && lateCompensationRequestedMinutes > 0,
     vtProvisioned: toNumber(row.vt_provisioned),
     vtDiscount: toNumber(row.vt_discount),
     totalpassDiscount: toNumber(row.totalpass_discount),
@@ -738,10 +863,19 @@ const filterLinesByCurrentEligibility = (lines: PayrollLine[], employees: Employ
   });
 };
 
+type PayrollLineCurrentOperationalState = {
+  currentLateMinutes?: number | null;
+  currentAvailableHoursBalanceMinutes?: number | null;
+};
+
+const sameInteger = (left: number | null | undefined, right: number | null | undefined) =>
+  Number(left ?? 0) === Number(right ?? 0);
+
 const resolveStaleCalculationCodes = (
   line: PayrollLine,
   employee: EmployeePayrollSource | null,
   latestPointOverrideAt: string | null,
+  currentOperationalState: PayrollLineCurrentOperationalState = {},
 ): PayrollLineStaleCode[] => {
   if (!employee || line.pendingDataCodes.length > 0) return [];
 
@@ -764,6 +898,18 @@ const resolveStaleCalculationCodes = (
   if (latestPointOverrideAt && calculatedAt && latestPointOverrideAt > calculatedAt) {
     codes.push('POINT_OVERRIDE_UPDATED_AFTER_GENERATION');
   }
+  if (line.hasLateBankCompensation) {
+    const currentLateMinutes = currentOperationalState.currentLateMinutes;
+    const currentAvailableHoursBalanceMinutes = currentOperationalState.currentAvailableHoursBalanceMinutes;
+    const lateChanged = currentLateMinutes !== undefined && currentLateMinutes !== null && !sameInteger(currentLateMinutes, line.lateMinutesOriginal);
+    const balanceChanged =
+      currentAvailableHoursBalanceMinutes !== undefined &&
+      currentAvailableHoursBalanceMinutes !== null &&
+      !sameInteger(currentAvailableHoursBalanceMinutes, line.availableHoursBalanceMinutes);
+    if (lateChanged || balanceChanged) {
+      codes.push('LATE_BANK_COMPENSATION_OUTDATED');
+    }
+  }
   return codes;
 };
 
@@ -771,10 +917,15 @@ const enrichPayrollLine = (
   line: PayrollLine,
   employee: EmployeePayrollSource | null,
   latestPointOverrideAt: string | null = null,
+  currentOperationalState: PayrollLineCurrentOperationalState = {},
 ): PayrollLine => {
-  const staleCalculationCodes = resolveStaleCalculationCodes(line, employee, latestPointOverrideAt);
+  const staleCalculationCodes = resolveStaleCalculationCodes(line, employee, latestPointOverrideAt, currentOperationalState);
   return {
     ...line,
+    availableHoursBalanceMinutes:
+      currentOperationalState.currentAvailableHoursBalanceMinutes === undefined || currentOperationalState.currentAvailableHoursBalanceMinutes === null
+        ? line.availableHoursBalanceMinutes
+        : currentOperationalState.currentAvailableHoursBalanceMinutes,
     staleCalculationCodes,
     requiresRecalculation: staleCalculationCodes.length > 0,
   };
@@ -784,13 +935,35 @@ const enrichPayrollLines = (
   lines: PayrollLine[],
   employees: EmployeePayrollSource[],
   latestOverrideByEmployee: Map<string, string> = new Map(),
+  options?: {
+    period?: PayrollPeriod;
+    pointMap?: Map<string, PayrollPointDaily[]>;
+    occurrenceMap?: Map<string, PayrollOccurrence[]>;
+    hoursBalanceMap?: Map<string, PayrollHoursBalanceMonthly[]>;
+  },
 ) => {
   const employeeLookup = buildEmployeeCurrentLookup(employees);
   return lines.map((line) => {
     const employeeKey = line.employeeId || buildComparisonKey(line.employeeName, line.employeeCpf);
     const employee = employeeLookup.get(employeeKey) || null;
     const latestPointOverrideAt = line.employeeId ? latestOverrideByEmployee.get(line.employeeId) || null : null;
-    return enrichPayrollLine(line, employee, latestPointOverrideAt);
+    let currentOperationalState: PayrollLineCurrentOperationalState = {};
+    if (employee && options?.period) {
+      const rows = options.pointMap?.get(employeeKey) || [];
+      const occurrences = line.employeeId ? options.occurrenceMap?.get(line.employeeId) || [] : [];
+      const summary = summarizePayrollOperationalMetrics({
+        rows,
+        occurrences,
+        employee,
+        period: options.period,
+        lateToleranceMinutes: options.period.rules?.lateToleranceMinutes || 0,
+      });
+      currentOperationalState = {
+        currentLateMinutes: summary.lateMinutes,
+        currentAvailableHoursBalanceMinutes: resolveAvailableHoursBalanceMinutes(options.hoursBalanceMap?.get(employeeKey) || []),
+      };
+    }
+    return enrichPayrollLine(line, employee, latestPointOverrideAt, currentOperationalState);
   });
 };
 
@@ -844,6 +1017,61 @@ const parseScheduleMinutes = (scheduleStart: string | null, scheduleEnd: string 
   }
 
   return null;
+};
+
+const selectPrimaryHoursBalance = (rows: PayrollHoursBalanceMonthly[]) => {
+  if (!rows.length) return null;
+  return [...rows].sort((left, right) => {
+    const rightKey = `${clean(right.referenceEnd)}|${clean(right.referenceStart)}|${clean(right.updatedAt)}`;
+    const leftKey = `${clean(left.referenceEnd)}|${clean(left.referenceStart)}|${clean(left.updatedAt)}`;
+    return rightKey.localeCompare(leftKey);
+  })[0];
+};
+
+const resolveAvailableHoursBalanceMinutes = (rows: PayrollHoursBalanceMonthly[]) => {
+  const primary = selectPrimaryHoursBalance(rows);
+  return Math.max(0, Number(primary?.balanceMinutes || 0));
+};
+
+const computeLateBankCompensationValues = ({
+  lateMinutesOriginal,
+  salaryHour,
+  availableHoursBalanceMinutes,
+  requestedMinutes,
+  hasPendingRegistration,
+  notes,
+}: {
+  lateMinutesOriginal: number;
+  salaryHour: number;
+  availableHoursBalanceMinutes: number;
+  requestedMinutes: number | null;
+  hasPendingRegistration: boolean;
+  notes?: string | null;
+}) => {
+  const safeLateMinutesOriginal = Math.max(0, Number(lateMinutesOriginal || 0));
+  const safeAvailableHoursBalanceMinutes = Math.max(0, Number(availableHoursBalanceMinutes || 0));
+  const safeRequestedMinutes = requestedMinutes === null ? null : Math.max(0, Math.trunc(Number(requestedMinutes || 0)));
+  const lateDiscountOriginal = hasPendingRegistration ? 0 : roundMoney((salaryHour * safeLateMinutesOriginal) / 60);
+  const lateMinutesCompensated =
+    hasPendingRegistration || safeRequestedMinutes === null
+      ? 0
+      : Math.min(safeRequestedMinutes, safeAvailableHoursBalanceMinutes, safeLateMinutesOriginal);
+  const lateMinutesCharged = Math.max(0, safeLateMinutesOriginal - lateMinutesCompensated);
+  const lateDiscountFinal = hasPendingRegistration ? 0 : roundMoney((salaryHour * lateMinutesCharged) / 60);
+  const remainingHoursBalanceMinutes = Math.max(0, safeAvailableHoursBalanceMinutes - lateMinutesCompensated);
+
+  return {
+    requestedMinutes: safeRequestedMinutes,
+    notes: clean(notes) || null,
+    availableHoursBalanceMinutes: safeAvailableHoursBalanceMinutes,
+    lateMinutesOriginal: safeLateMinutesOriginal,
+    lateMinutesCompensated,
+    lateMinutesCharged,
+    lateDiscountOriginal,
+    lateDiscountFinal,
+    remainingHoursBalanceMinutes,
+    hasLateBankCompensation: safeRequestedMinutes !== null && safeRequestedMinutes > 0,
+  };
 };
 
 export const ensurePayrollTables = async (db: DbInterface) => {
@@ -1039,6 +1267,21 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
+    CREATE TABLE IF NOT EXISTS payroll_late_bank_compensations (
+      id VARCHAR(64) PRIMARY KEY,
+      period_id VARCHAR(64) NOT NULL,
+      employee_id VARCHAR(64) NOT NULL,
+      requested_minutes INTEGER NOT NULL DEFAULT 0,
+      notes LONGTEXT NULL,
+      created_by VARCHAR(64) NULL,
+      updated_by VARCHAR(64) NULL,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL,
+      UNIQUE(period_id, employee_id)
+    )
+  `);
+
+  await db.execute(`
     CREATE TABLE IF NOT EXISTS payroll_lines (
       id VARCHAR(64) PRIMARY KEY,
       period_id VARCHAR(64) NOT NULL,
@@ -1126,6 +1369,8 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await ensureMysqlColumnDefinition(db, 'payroll_signature_monthly', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_occurrences', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_occurrences', 'updated_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_late_bank_compensations', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_late_bank_compensations', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_lines', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_lines', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_reference_rows', 'created_at', 'VARCHAR(32) NOT NULL');
@@ -1165,6 +1410,7 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_employee ON payroll_point_daily (period_id, employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_solides_employee ON payroll_point_daily (period_id, solides_employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_occurrences_period ON payroll_occurrences (period_id, employee_id, date_start)`);
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_late_bank_comp_period ON payroll_late_bank_compensations (period_id, employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_reference_rows_period ON payroll_reference_rows (period_id, comparison_key)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_lines_period ON payroll_lines (period_id, employee_name)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_hours_balance_period ON payroll_hours_balance_monthly (period_id, employee_id)`);
@@ -1773,6 +2019,16 @@ const listOccurrencesRaw = async (db: DbInterface, periodId: string, employeeId?
     return effectiveRows.map((row: any) => mapEffectiveOccurrenceToPayroll(row, period.id));
   }
   return listLegacyOccurrencesRaw(db, periodId, employeeId);
+};
+
+const listLateBankCompensationsRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
+  await ensurePayrollTables(db);
+  const params = employeeId ? [periodId, employeeId] : [periodId];
+  const rows = await db.query(
+    `SELECT * FROM payroll_late_bank_compensations WHERE period_id = ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY updated_at DESC`,
+    params,
+  );
+  return rows.map((row: any) => mapLateBankCompensationRecord(row));
 };
 
 const listHoursBalanceRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
@@ -2384,7 +2640,7 @@ const evaluatePayrollApprovalReadiness = (
         code: 'BENEFIT_RULES_UPDATED_AFTER_GENERATION',
         severity: 'BLOCKING',
         title: 'Linhas exigem recálculo antes da aprovação',
-        description: `${staleLines.length} linha(s) ficaram desatualizadas após mudança no cadastro de VT e/ou atualização da base operacional do ponto. Recalcule essas linhas antes de aprovar a competência.`,
+        description: `${staleLines.length} linha(s) ficaram desatualizadas após mudança no cadastro de VT, atualização da base operacional do ponto e/ou alteração no abatimento de atraso com banco. Recalcule essas linhas antes de aprovar a competência.`,
         count: staleLines.length,
         sampleEmployees: staleLines.map((line) => ({
           employeeId: line.employeeId,
@@ -2486,7 +2742,12 @@ export const getPayrollPeriodDetail = async (db: DbInterface, periodId: string):
   ]);
   const summary = buildSummaryFromLines(lines, imports, allEmployees);
   summary.syncCompleted = syncRuns.filter((item) => item.status === 'COMPLETED').length;
-  const filteredLines = enrichPayrollLines(filterLinesByCurrentEligibility(lines, allEmployees), allEmployees, latestOverrideByEmployee);
+  const filteredLines = enrichPayrollLines(filterLinesByCurrentEligibility(lines, allEmployees), allEmployees, latestOverrideByEmployee, {
+    period,
+    pointMap: buildPointRowMap(pointRows),
+    occurrenceMap: buildOccurrenceMap(occurrenceRows),
+    hoursBalanceMap: buildHoursBalanceMap(hoursBalances),
+  });
   let benefitRows: PayrollBenefitRow[] = [];
   let benefitRowsLoadWarning: string | null = null;
   if (filteredLines.length) {
@@ -2833,80 +3094,31 @@ const buildLineRecord = (
   pointRows: PayrollPointDaily[],
   occurrences: PayrollOccurrence[],
   existingLine: PayrollLine | null,
+  hoursBalanceRows: PayrollHoursBalanceMonthly[] = [],
+  lateBankCompensation: PayrollLateBankCompensationRecord | null = null,
 ): PayrollLine => {
   const pendingDataCodes: PayrollPendingDataCode[] = [];
   if (employee.salaryAmount <= 0) pendingDataCodes.push('MISSING_SALARY');
   if (!employee.solidesEmployeeId) pendingDataCodes.push('MISSING_SOLIDES_LINK');
-
   const activeWindow = resolveEmployeeActiveWindow(employee, period);
-  const rawPointRowsInPeriod = activeWindow.hasActiveRange
-    ? pointRows.filter((item) => item.pointDate >= activeWindow.startDate && item.pointDate <= activeWindow.endDate)
-    : [];
-  const pointRowsInPeriod = lineHasPendingData({ pendingDataCodes }, 'MISSING_SOLIDES_LINK') ? [] : rawPointRowsInPeriod;
-  const occurrencesInPeriod = activeWindow.hasActiveRange
-    ? occurrences.filter((item) => {
-        const start = item.dateStart || null;
-        const end = item.dateEnd || item.dateStart || null;
-        if (!start || !end) return false;
-        return !(end < activeWindow.startDate || start > activeWindow.endDate);
-      })
-    : [];
 
-  const getOccurrenceForDate = (pointDate: string) =>
-    occurrencesInPeriod.find((item) => overlapsDateRange(pointDate, item.dateStart, item.dateEnd || item.dateStart));
-
-  const hasFullPeriodCoverageWithoutPoint = () => {
-    return occurrencesInPeriod.some((occurrence) => {
-      if (!JUSTIFIED_OCCURRENCE_TYPES.has(occurrence.occurrenceType)) return false;
-      const start = occurrence.dateStart || null;
-      const end = occurrence.dateEnd || occurrence.dateStart || null;
-      if (!start || !end) return false;
-      return start <= activeWindow.startDate && end >= activeWindow.endDate;
-    });
-  };
-
-  let daysWorked = 0;
-  let actualWorkedDays = 0;
-  let justifiedDays = 0;
-  let vtEligibleDays = 0;
-  let vrEligibleDays = 0;
-  let absencesCount = 0;
-  let lateMinutes = 0;
-  let workedMinutesTotal = 0;
-
-  for (const row of pointRowsInPeriod) {
-    const occurrence = getOccurrenceForDate(row.pointDate);
-    const justified = Boolean(occurrence && JUSTIFIED_OCCURRENCE_TYPES.has(occurrence.occurrenceType));
-    const forcedAbsence = Boolean(occurrence && occurrence.occurrenceType === 'FALTA_INJUSTIFICADA');
-    const isAbsence = forcedAbsence || (row.absenceFlag && !justified);
-    const hasPlannedJourney = Number(row.plannedMinutes || 0) > 0;
-    const effectivePayrollDay =
-      typeof row.effectivePayrollDay === 'boolean'
-        ? row.effectivePayrollDay
-        : (!isAbsence && (row.workedMinutes > 0 || (justified && hasPlannedJourney)));
-    const effectiveBenefitDayDefault = !isAbsence && Number(row.workedMinutes || 0) > 0;
-    const effectiveVtDay = typeof row.effectiveVtDay === 'boolean' ? row.effectiveVtDay : effectiveBenefitDayDefault;
-    const effectiveVrDay = typeof row.effectiveVrDay === 'boolean' ? row.effectiveVrDay : effectiveBenefitDayDefault;
-    const effectiveAbsence = typeof row.effectiveAbsence === 'boolean' ? row.effectiveAbsence : isAbsence;
-
-    if (effectiveAbsence) {
-      absencesCount += 1;
-      continue;
-    }
-
-    if (effectivePayrollDay) {
-      daysWorked += 1;
-      workedMinutesTotal += Number(row.workedMinutes || 0);
-      if (Number(row.workedMinutes || 0) > 0) actualWorkedDays += 1;
-      else if (justified) justifiedDays += 1;
-    }
-    if (effectiveVtDay) vtEligibleDays += 1;
-    if (effectiveVrDay) vrEligibleDays += 1;
-
-    if (effectivePayrollDay && !justified && !forcedAbsence) {
-      lateMinutes += Math.max(0, Number(row.lateMinutes || 0) - rules.lateToleranceMinutes);
-    }
-  }
+  const summary = summarizePayrollOperationalMetrics({
+    rows: lineHasPendingData({ pendingDataCodes }, 'MISSING_SOLIDES_LINK') ? [] : pointRows,
+    occurrences,
+    employee,
+    period,
+    lateToleranceMinutes: rules.lateToleranceMinutes,
+  });
+  const pointRowsInPeriod = summary.pointRowsInPeriod;
+  const occurrencesInPeriod = summary.occurrencesInPeriod;
+  const daysWorked = summary.consideredDays;
+  const actualWorkedDays = summary.actualWorkedDays;
+  const justifiedDays = summary.justifiedDays;
+  const vtEligibleDays = summary.vtEligibleDays;
+  const vrEligibleDays = summary.vrEligibleDays;
+  const absencesCount = summary.absencesCount;
+  const lateMinutes = summary.lateMinutes;
+  const workedMinutesTotal = summary.workedMinutesTotal;
 
   const scheduleMinutes = parseScheduleMinutes(pointRowsInPeriod[0]?.scheduleStart || null, pointRowsInPeriod[0]?.scheduleEnd || null, employee.workSchedule);
   const monthlyDivisor = scheduleMinutes && scheduleMinutes > 0 ? (scheduleMinutes / 60) * 25 : employee.employmentRegime === 'ESTAGIO' ? 150 : 220;
@@ -2920,7 +3132,7 @@ const buildLineRecord = (
     (employee.transportVoucherMode === 'MONTHLY_FIXED' && Number(employee.transportVoucherMonthlyFixed || 0) <= 0);
 
   const warnings: Array<{ code: string; message: string; details?: PayrollBenefitIssueDetail[] }> = [];
-  if (!pointRowsInPeriod.length && !hasFullPeriodCoverageWithoutPoint()) {
+  if (!pointRowsInPeriod.length && !summary.hasFullPeriodCoverageWithoutPoint) {
     warnings.push({
       code: 'EMPLOYEE_WITHOUT_POINT_ROWS',
       message: 'Colaborador ativo sem registros de ponto na competência.',
@@ -2963,7 +3175,6 @@ const buildLineRecord = (
 
   const hasPendingRegistration = pendingDataCodes.length > 0;
   const absenceDiscount = hasPendingRegistration ? 0 : roundMoney((employee.salaryAmount / 30) * absencesCount);
-  const lateDiscount = hasPendingRegistration ? 0 : roundMoney((salaryHour * lateMinutes) / 60);
   const insalubrityAmount = hasPendingRegistration ? 0 : roundMoney((rules.minWageAmount * employee.insalubrityPercent) / 100);
   const {
     transportVoucherModeApplied,
@@ -2980,6 +3191,16 @@ const buildLineRecord = (
   const totalpassDiscount = hasPendingRegistration ? 0 : roundMoney(employee.totalpassDiscountFixed || 0);
   const otherFixedDiscount = hasPendingRegistration ? 0 : roundMoney(employee.otherFixedDiscountAmount || 0);
   const adjustmentsAmount = roundMoney(existingLine?.adjustmentsAmount || 0);
+  const primaryHoursBalance = selectPrimaryHoursBalance(hoursBalanceRows);
+  const lateBankCompensationValues = computeLateBankCompensationValues({
+    lateMinutesOriginal: lateMinutes,
+    salaryHour,
+    availableHoursBalanceMinutes: primaryHoursBalance?.balanceMinutes || 0,
+    requestedMinutes: lateBankCompensation?.requestedMinutes ?? existingLine?.lateCompensationRequestedMinutes ?? null,
+    hasPendingRegistration,
+    notes: lateBankCompensation?.notes ?? existingLine?.lateCompensationNotes ?? null,
+  });
+  const lateDiscount = lateBankCompensationValues.lateDiscountFinal;
 
   let totalProvents = hasPendingRegistration ? 0 : employee.salaryAmount + insalubrityAmount;
   let totalDiscounts = hasPendingRegistration ? 0 : absenceDiscount + lateDiscount + vtDiscount + totalpassDiscount + otherFixedDiscount;
@@ -3010,6 +3231,15 @@ const buildLineRecord = (
     absenceDiscount,
     lateMinutes,
     lateDiscount,
+    lateMinutesOriginal: lateBankCompensationValues.lateMinutesOriginal,
+    lateMinutesCompensated: lateBankCompensationValues.lateMinutesCompensated,
+    lateMinutesCharged: lateBankCompensationValues.lateMinutesCharged,
+    lateDiscountOriginal: lateBankCompensationValues.lateDiscountOriginal,
+    lateCompensationRequestedMinutes: lateBankCompensationValues.requestedMinutes,
+    lateCompensationNotes: lateBankCompensationValues.notes,
+    availableHoursBalanceMinutes: lateBankCompensationValues.availableHoursBalanceMinutes,
+    remainingHoursBalanceMinutes: lateBankCompensationValues.remainingHoursBalanceMinutes,
+    hasLateBankCompensation: lateBankCompensationValues.hasLateBankCompensation,
     vtProvisioned,
     vtDiscount,
     totalpassDiscount,
@@ -3080,6 +3310,7 @@ const buildLineRecord = (
       },
       discounts: {
         absenceDiscount,
+        lateDiscountOriginal: lateBankCompensationValues.lateDiscountOriginal,
         lateDiscount,
         vtProvisioned,
         vtDiscountCap,
@@ -3096,6 +3327,17 @@ const buildLineRecord = (
         transportVoucherProvisioned,
         transportVoucherDiscountCap,
         transportVoucherDiscountApplied,
+      },
+      lateBankCompensation: {
+        requestedMinutes: lateBankCompensationValues.requestedMinutes,
+        notes: lateBankCompensationValues.notes,
+        availableHoursBalanceMinutes: lateBankCompensationValues.availableHoursBalanceMinutes,
+        remainingHoursBalanceMinutes: lateBankCompensationValues.remainingHoursBalanceMinutes,
+        lateMinutesOriginal: lateBankCompensationValues.lateMinutesOriginal,
+        compensatedMinutes: lateBankCompensationValues.lateMinutesCompensated,
+        lateMinutesCharged: lateBankCompensationValues.lateMinutesCharged,
+        lateDiscountOriginal: lateBankCompensationValues.lateDiscountOriginal,
+        lateDiscountFinal: lateBankCompensationValues.lateDiscountFinal,
       },
       calculatedAt: NOW(),
       warnings,
@@ -3162,13 +3404,65 @@ const overwritePayrollLineRecord = async (db: DbInterface, line: PayrollLine) =>
   await persistPayrollLineRecord(db, line);
 };
 
+const buildPointRowMap = (pointRows: PayrollPointDaily[]) => {
+  const pointMap = new Map<string, PayrollPointDaily[]>();
+  for (const row of pointRows) {
+    const keys = new Set<string>();
+    if (row.employeeId) keys.add(row.employeeId);
+    const comparisonKey = buildComparisonKey(row.employeeName, row.employeeCpf);
+    if (comparisonKey) keys.add(comparisonKey);
+    for (const key of keys) {
+      const list = pointMap.get(key) || [];
+      list.push(row);
+      pointMap.set(key, list);
+    }
+  }
+  return pointMap;
+};
+
+const buildOccurrenceMap = (occurrenceRows: PayrollOccurrence[]) => {
+  const occurrenceMap = new Map<string, PayrollOccurrence[]>();
+  for (const row of occurrenceRows) {
+    const list = occurrenceMap.get(row.employeeId) || [];
+    list.push(row);
+    occurrenceMap.set(row.employeeId, list);
+  }
+  return occurrenceMap;
+};
+
+const buildHoursBalanceMap = (hoursBalanceRows: PayrollHoursBalanceMonthly[]) => {
+  const hoursBalanceMap = new Map<string, PayrollHoursBalanceMonthly[]>();
+  for (const row of hoursBalanceRows) {
+    const keys = new Set<string>();
+    if (row.employeeId) keys.add(row.employeeId);
+    const comparisonKey = buildComparisonKey(row.employeeName, row.employeeCpf);
+    if (comparisonKey) keys.add(comparisonKey);
+    for (const key of keys) {
+      const list = hoursBalanceMap.get(key) || [];
+      list.push(row);
+      hoursBalanceMap.set(key, list);
+    }
+  }
+  return hoursBalanceMap;
+};
+
+const buildLateBankCompensationMap = (rows: PayrollLateBankCompensationRecord[]) => {
+  const compensationMap = new Map<string, PayrollLateBankCompensationRecord>();
+  for (const row of rows) {
+    if (!row.employeeId || compensationMap.has(row.employeeId)) continue;
+    compensationMap.set(row.employeeId, row);
+  }
+  return compensationMap;
+};
+
 const loadPayrollGenerationContext = async (db: DbInterface, period: PayrollPeriod) => {
-  const [allEmployees, employees, occurrenceRows, existingLines, syncRuns] = await Promise.all([
+  const [allEmployees, employees, occurrenceRows, existingLines, syncRuns, lateBankCompensations] = await Promise.all([
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
     loadPayrollEligibleEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
     listOccurrencesRaw(db, period.id),
     listLinesRaw(db, period.id),
     listPointSyncRunsByPeriod(db, period.id),
+    listLateBankCompensationsRaw(db, period.id),
   ]);
   const [pointRows, hoursBalances, signatures] = await Promise.all([
     listPointRowsRaw(db, period.id),
@@ -3177,20 +3471,10 @@ const loadPayrollGenerationContext = async (db: DbInterface, period: PayrollPeri
   ]);
   const readiness = evaluatePayrollPeriodReadiness(period, syncRuns, employees, pointRows, occurrenceRows, hoursBalances, signatures);
 
-  const pointMap = new Map<string, PayrollPointDaily[]>();
-  for (const row of pointRows) {
-    const key = row.employeeId || buildComparisonKey(row.employeeName, row.employeeCpf);
-    const list = pointMap.get(key) || [];
-    list.push(row);
-    pointMap.set(key, list);
-  }
-
-  const occurrenceMap = new Map<string, PayrollOccurrence[]>();
-  for (const row of occurrenceRows) {
-    const list = occurrenceMap.get(row.employeeId) || [];
-    list.push(row);
-    occurrenceMap.set(row.employeeId, list);
-  }
+  const pointMap = buildPointRowMap(pointRows);
+  const occurrenceMap = buildOccurrenceMap(occurrenceRows);
+  const hoursBalanceMap = buildHoursBalanceMap(hoursBalances);
+  const lateBankCompensationMap = buildLateBankCompensationMap(lateBankCompensations);
 
   const existingMap = new Map<string, PayrollLine>();
   for (const line of existingLines) {
@@ -3207,9 +3491,12 @@ const loadPayrollGenerationContext = async (db: DbInterface, period: PayrollPeri
     pointRows,
     hoursBalances,
     signatures,
+    lateBankCompensations,
     readiness,
     pointMap,
     occurrenceMap,
+    hoursBalanceMap,
+    lateBankCompensationMap,
     existingMap,
   };
 };
@@ -3240,6 +3527,8 @@ export const generatePayrollPeriod = async (
     readiness,
     pointMap,
     occurrenceMap,
+    hoursBalanceMap,
+    lateBankCompensationMap,
     existingMap,
   } = await loadPayrollGenerationContext(db, period);
   const hardBlockingIssues = readiness.issues.filter((issue) => issue.severity === 'BLOCKING');
@@ -3259,6 +3548,8 @@ export const generatePayrollPeriod = async (
       pointMap.get(employee.id) || pointMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || [],
       occurrenceMap.get(employee.id) || [],
       existingMap.get(employee.id) || existingMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || null,
+      hoursBalanceMap.get(employee.id) || hoursBalanceMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || [],
+      lateBankCompensationMap.get(employee.id) || null,
     ),
   );
 
@@ -3305,6 +3596,8 @@ export const recalculatePayrollPeriodLines = async (db: DbInterface, periodId: s
       employees,
       occurrenceMap,
       pointMap,
+      hoursBalanceMap,
+      lateBankCompensationMap,
     } = await loadPayrollGenerationContext(txDb, period);
 
     const employeeLookup = new Map<string, EmployeePayrollSource>();
@@ -3336,6 +3629,8 @@ export const recalculatePayrollPeriodLines = async (db: DbInterface, periodId: s
         pointMap.get(employee.id) || pointMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || [],
         occurrenceMap.get(employee.id) || [],
         line,
+        hoursBalanceMap.get(employee.id) || hoursBalanceMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || [],
+        lateBankCompensationMap.get(employee.id) || null,
       );
       await overwritePayrollLineRecord(txDb, nextLine);
       updatedLineIds.push(nextLine.id);
@@ -3370,11 +3665,19 @@ export const approvePayrollPeriodLines = async (db: DbInterface, periodId: strin
       `SELECT * FROM payroll_lines WHERE period_id = ? AND id IN (${normalizedLineIds.map(() => '?').join(', ')}) ORDER BY employee_name ASC`,
       [periodId, ...normalizedLineIds],
     );
-    const [employees, latestOverrideByEmployee] = await Promise.all([
+    const [employees, latestOverrideByEmployee, pointRows, occurrenceRows, hoursBalances] = await Promise.all([
       loadEmployeeRosterForPeriod(txDb, period.periodStart, period.periodEnd),
       getPointLatestOverrideByEmployeeForDateRange(txDb, { startDate: period.periodStart, endDate: period.periodEnd }),
+      listPointRowsRaw(txDb, period.id),
+      listOccurrencesRaw(txDb, period.id),
+      listHoursBalanceRaw(txDb, period.id),
     ]);
-    const selectedLines = enrichPayrollLines(rows.map(mapLine), employees, latestOverrideByEmployee);
+    const selectedLines = enrichPayrollLines(rows.map(mapLine), employees, latestOverrideByEmployee, {
+      period,
+      pointMap: buildPointRowMap(pointRows),
+      occurrenceMap: buildOccurrenceMap(occurrenceRows),
+      hoursBalanceMap: buildHoursBalanceMap(hoursBalances),
+    });
 
     const updatedLineIds: string[] = [];
     const skipped: Array<{ lineId: string; employeeName: string; reason: string }> = [];
@@ -3394,7 +3697,7 @@ export const approvePayrollPeriodLines = async (db: DbInterface, periodId: strin
         skipped.push({
           lineId: line.id,
           employeeName: line.employeeName,
-          reason: 'Linha exige recálculo porque houve mudança no VT e/ou atualização da base operacional do ponto após a geração.',
+          reason: 'Linha exige recálculo porque houve mudança no VT, na base operacional do ponto e/ou no abatimento de atraso com banco após a geração.',
         });
         continue;
       }
@@ -3441,6 +3744,7 @@ export const deletePayrollPeriod = async (db: DbInterface, periodId: string) => 
     await txDb.execute(`DELETE FROM payroll_occurrences WHERE period_id = ?`, [period.id]);
     await txDb.execute(`DELETE FROM payroll_reference_rows WHERE period_id = ?`, [period.id]);
     await txDb.execute(`DELETE FROM payroll_import_files WHERE period_id = ?`, [period.id]);
+    await txDb.execute(`DELETE FROM payroll_late_bank_compensations WHERE period_id = ?`, [period.id]);
     await txDb.execute(`DELETE FROM payroll_point_daily WHERE period_id = ?`, [period.id]);
     await txDb.execute(`DELETE FROM payroll_hours_balance_monthly WHERE period_id = ?`, [period.id]);
     await txDb.execute(`DELETE FROM payroll_signature_monthly WHERE period_id = ?`, [period.id]);
@@ -3706,37 +4010,25 @@ const listPayrollOperationalEmployeesByDateRange = async (
 export const listPayrollLines = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
   await ensurePayrollTables(db);
   const period = await getPeriodOrThrow(db, periodId);
-  const [rawLines, employees, latestOverrideByEmployee, pointRows, occurrenceRows] = await Promise.all([
+  const [rawLines, employees, latestOverrideByEmployee, pointRows, occurrenceRows, hoursBalances] = await Promise.all([
     listLinesRaw(db, periodId),
     loadEmployeeRosterForPeriod(db, period.periodStart, period.periodEnd),
     getPointLatestOverrideByEmployeeForDateRange(db, { startDate: period.periodStart, endDate: period.periodEnd }),
     listPointRowsRaw(db, periodId),
     listOccurrencesRaw(db, periodId),
+    listHoursBalanceRaw(db, periodId),
   ]);
   const employeeLookup = buildEmployeeCurrentLookup(employees);
-  const pointMap = new Map<string, PayrollPointDaily[]>();
-  const occurrenceMap = new Map<string, PayrollOccurrence[]>();
+  const pointMap = buildPointRowMap(pointRows);
+  const occurrenceMap = buildOccurrenceMap(occurrenceRows);
+  const hoursBalanceMap = buildHoursBalanceMap(hoursBalances);
 
-  for (const row of pointRows) {
-    const keys = new Set<string>();
-    if (row.employeeId) keys.add(row.employeeId);
-    const comparisonKey = buildComparisonKey(row.employeeName, row.employeeCpf);
-    if (comparisonKey) keys.add(comparisonKey);
-    for (const key of keys) {
-      const list = pointMap.get(key) || [];
-      list.push(row);
-      pointMap.set(key, list);
-    }
-  }
-
-  for (const occurrence of occurrenceRows) {
-    if (!occurrence.employeeId) continue;
-    const list = occurrenceMap.get(occurrence.employeeId) || [];
-    list.push(occurrence);
-    occurrenceMap.set(occurrence.employeeId, list);
-  }
-
-  const lines = enrichPayrollLines(filterLinesByCurrentEligibility(rawLines, employees), employees, latestOverrideByEmployee)
+  const lines = enrichPayrollLines(filterLinesByCurrentEligibility(rawLines, employees), employees, latestOverrideByEmployee, {
+    period,
+    pointMap,
+    occurrenceMap,
+    hoursBalanceMap,
+  })
     .map((line) => {
       const employeeKey = line.employeeId || buildComparisonKey(line.employeeName, line.employeeCpf);
       const employee = employeeLookup.get(employeeKey) || null;
@@ -3915,6 +4207,7 @@ const buildPreviewObservation = (line: PayrollLine, occurrences: PayrollOccurren
   if (clean(line.payrollNotes)) parts.push(clean(line.payrollNotes));
   if (clean(line.adjustmentsNotes)) parts.push(`Ajuste: ${clean(line.adjustmentsNotes)}`);
   if (clean(line.otherFixedDiscountDescription)) parts.push(`Desconto: ${clean(line.otherFixedDiscountDescription)}`);
+  if (line.lateMinutesCompensated > 0) parts.push(`Atrasos abatidos com banco: ${line.lateMinutesCompensated} min`);
 
   const occurrenceText = occurrences.map(buildOccurrenceSummary).filter(Boolean).join('; ');
   if (occurrenceText) parts.push(occurrenceText);
@@ -4639,7 +4932,23 @@ export const getPayrollLineDetail = async (db: DbInterface, lineId: string): Pro
   ]);
   const currentEmployeeLookup = buildEmployeeCurrentLookup(currentEmployees);
   const employeeKey = rawLine.employeeId || buildComparisonKey(rawLine.employeeName, rawLine.employeeCpf);
-  const line = enrichPayrollLine(rawLine, currentEmployeeLookup.get(employeeKey) || null, rawLine.employeeId ? latestOverrideByEmployee.get(rawLine.employeeId) || null : null);
+  const line = enrichPayrollLine(
+    rawLine,
+    currentEmployeeLookup.get(employeeKey) || null,
+    rawLine.employeeId ? latestOverrideByEmployee.get(rawLine.employeeId) || null : null,
+    {
+      currentLateMinutes: currentEmployeeLookup.get(employeeKey)
+        ? summarizePayrollOperationalMetrics({
+            rows: pointDays,
+            occurrences,
+            employee: currentEmployeeLookup.get(employeeKey)!,
+            period,
+            lateToleranceMinutes: period.rules?.lateToleranceMinutes || 0,
+          }).lateMinutes
+        : null,
+      currentAvailableHoursBalanceMinutes: resolveAvailableHoursBalanceMinutes(hoursBalanceRows),
+    },
+  );
 
   const previewRow = buildPayrollPreviewRow(
     line,
@@ -4657,7 +4966,7 @@ export const getPayrollLineDetail = async (db: DbInterface, lineId: string): Pro
     pointDays,
     occurrences,
     previewRow,
-    hoursBalance: hoursBalanceRows[0] || null,
+    hoursBalance: selectPrimaryHoursBalance(hoursBalanceRows),
     signature: signatureRows[0] || null,
     sources: {
       adjustments: ['PAINEL'],
@@ -4681,7 +4990,7 @@ export const patchPayrollLine = async (db: DbInterface, lineId: string, input: P
     ? 'PENDENTE_CADASTRO'
     : ((clean(input.lineStatus) || detail.line.lineStatus) as PayrollLineStatus);
   if (nextLineStatus === 'APROVADO' && detail.line.requiresRecalculation) {
-    throw new PayrollValidationError('Esta linha exige recálculo porque o VT e/ou a base operacional do ponto mudaram após a geração. Recalcule a linha antes de aprovar.', 409);
+    throw new PayrollValidationError('Esta linha exige recálculo porque o VT, a base operacional do ponto e/ou o abatimento de atraso com banco mudaram após a geração. Recalcule a linha antes de aprovar.', 409);
   }
 
   let totalProvents = detail.line.salaryBase + detail.line.insalubrityAmount;
@@ -4712,6 +5021,181 @@ export const patchPayrollLine = async (db: DbInterface, lineId: string, input: P
   );
 
   return getPayrollLineDetail(db, lineId);
+};
+
+export const upsertPayrollLateBankCompensation = async (
+  db: DbInterface,
+  lineId: string,
+  input: { requestedMinutes?: number | null; notes?: string | null },
+  actorUserId: string,
+) => {
+  await ensurePayrollTables(db);
+  const requestedMinutesNumber = Number(input?.requestedMinutes);
+  if (!Number.isFinite(requestedMinutesNumber) || !Number.isInteger(requestedMinutesNumber) || requestedMinutesNumber <= 0) {
+    throw new PayrollValidationError('Informe uma quantidade inteira e positiva de minutos para abater com banco.', 400);
+  }
+
+  return runInTransaction(db, async (txDb) => {
+    const rows = await txDb.query(`SELECT * FROM payroll_lines WHERE id = ? LIMIT 1`, [lineId]);
+    if (!rows[0]) throw new PayrollValidationError('Linha da folha não encontrada.', 404);
+    const currentLine = mapLine(rows[0]);
+    if (!currentLine.employeeId) {
+      throw new PayrollValidationError('Esta linha não possui colaborador vinculado para aplicar abatimento com banco.', 409);
+    }
+
+    const period = await getPeriodOrThrow(txDb, currentLine.periodId);
+    if (!period.rules) throw new PayrollValidationError('Regras da competência não encontradas.', 500);
+    const syncJobsInProgress = await countPointSyncJobsInProgress(txDb, period.id);
+    if (syncJobsInProgress > 0) {
+      throw new PayrollValidationError('Ainda há sincronizações da Sólides em andamento nesta competência. Aguarde a conclusão antes de abater atrasos com banco.', 409);
+    }
+
+    const context = await loadPayrollGenerationContext(txDb, period);
+    const employeeLookup = new Map<string, EmployeePayrollSource>();
+    for (const employee of context.allEmployees) {
+      employeeLookup.set(employee.id, employee);
+      employeeLookup.set(buildComparisonKey(employee.fullName, employee.cpf), employee);
+    }
+
+    const employeeKey = currentLine.employeeId || buildComparisonKey(currentLine.employeeName, currentLine.employeeCpf);
+    const employee = employeeLookup.get(employeeKey) || null;
+    if (!employee) {
+      throw new PayrollValidationError('Colaborador não encontrado na base atual da competência.', 409);
+    }
+
+    const pointRows = context.pointMap.get(employee.id) || context.pointMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || [];
+    const occurrences = context.occurrenceMap.get(employee.id) || [];
+    const hoursBalanceRows = context.hoursBalanceMap.get(employee.id) || context.hoursBalanceMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || [];
+    const currentSummary = summarizePayrollOperationalMetrics({
+      rows: pointRows,
+      occurrences,
+      employee,
+      period,
+      lateToleranceMinutes: period.rules.lateToleranceMinutes,
+    });
+    const availableHoursBalanceMinutes = resolveAvailableHoursBalanceMinutes(hoursBalanceRows);
+    const maximumMinutes = Math.min(currentSummary.lateMinutes, availableHoursBalanceMinutes);
+
+    if (currentSummary.lateMinutes <= 0) {
+      throw new PayrollValidationError('Este colaborador não possui atrasos elegíveis para abatimento nesta competência.', 409);
+    }
+    if (availableHoursBalanceMinutes <= 0) {
+      throw new PayrollValidationError('Este colaborador não possui saldo positivo de banco de horas disponível para abatimento nesta competência.', 409);
+    }
+    if (requestedMinutesNumber > maximumMinutes) {
+      throw new PayrollValidationError(`O abatimento não pode ultrapassar ${maximumMinutes} minuto(s) nesta competência.`, 409);
+    }
+
+    const now = NOW();
+    const existingCompensation = context.lateBankCompensationMap.get(employee.id) || null;
+    let compensationRecord: PayrollLateBankCompensationRecord;
+    if (existingCompensation) {
+      await txDb.execute(
+        `UPDATE payroll_late_bank_compensations
+         SET requested_minutes = ?, notes = ?, updated_by = ?, updated_at = ?
+         WHERE id = ?`,
+        [requestedMinutesNumber, clean(input.notes) || null, actorUserId, now, existingCompensation.id],
+      );
+      compensationRecord = {
+        ...existingCompensation,
+        requestedMinutes: requestedMinutesNumber,
+        notes: clean(input.notes) || null,
+        updatedBy: actorUserId,
+        updatedAt: now,
+      };
+    } else {
+      compensationRecord = {
+        id: randomUUID(),
+        periodId: period.id,
+        employeeId: employee.id,
+        requestedMinutes: requestedMinutesNumber,
+        notes: clean(input.notes) || null,
+        createdBy: actorUserId,
+        updatedBy: actorUserId,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await txDb.execute(
+        `INSERT INTO payroll_late_bank_compensations (
+          id, period_id, employee_id, requested_minutes, notes, created_by, updated_by, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          compensationRecord.id,
+          compensationRecord.periodId,
+          compensationRecord.employeeId,
+          compensationRecord.requestedMinutes,
+          compensationRecord.notes,
+          compensationRecord.createdBy,
+          compensationRecord.updatedBy,
+          compensationRecord.createdAt,
+          compensationRecord.updatedAt,
+        ],
+      );
+    }
+
+    const nextLine = buildLineRecord(
+      employee,
+      period,
+      period.rules,
+      pointRows,
+      occurrences,
+      context.existingMap.get(employee.id) || context.existingMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || currentLine,
+      hoursBalanceRows,
+      compensationRecord,
+    );
+    await overwritePayrollLineRecord(txDb, nextLine);
+    return getPayrollLineDetail(txDb, nextLine.id);
+  });
+};
+
+export const deletePayrollLateBankCompensation = async (db: DbInterface, lineId: string) => {
+  await ensurePayrollTables(db);
+  return runInTransaction(db, async (txDb) => {
+    const rows = await txDb.query(`SELECT * FROM payroll_lines WHERE id = ? LIMIT 1`, [lineId]);
+    if (!rows[0]) throw new PayrollValidationError('Linha da folha não encontrada.', 404);
+    const currentLine = mapLine(rows[0]);
+    if (!currentLine.employeeId) {
+      throw new PayrollValidationError('Esta linha não possui colaborador vinculado para remover o abatimento com banco.', 409);
+    }
+
+    const period = await getPeriodOrThrow(txDb, currentLine.periodId);
+    if (!period.rules) throw new PayrollValidationError('Regras da competência não encontradas.', 500);
+    const syncJobsInProgress = await countPointSyncJobsInProgress(txDb, period.id);
+    if (syncJobsInProgress > 0) {
+      throw new PayrollValidationError('Ainda há sincronizações da Sólides em andamento nesta competência. Aguarde a conclusão antes de remover o abatimento com banco.', 409);
+    }
+
+    const context = await loadPayrollGenerationContext(txDb, period);
+    const employeeLookup = new Map<string, EmployeePayrollSource>();
+    for (const employee of context.allEmployees) {
+      employeeLookup.set(employee.id, employee);
+      employeeLookup.set(buildComparisonKey(employee.fullName, employee.cpf), employee);
+    }
+
+    const employeeKey = currentLine.employeeId || buildComparisonKey(currentLine.employeeName, currentLine.employeeCpf);
+    const employee = employeeLookup.get(employeeKey) || null;
+    if (!employee) {
+      throw new PayrollValidationError('Colaborador não encontrado na base atual da competência.', 409);
+    }
+
+    await txDb.execute(`DELETE FROM payroll_late_bank_compensations WHERE period_id = ? AND employee_id = ?`, [period.id, employee.id]);
+
+    const pointRows = context.pointMap.get(employee.id) || context.pointMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || [];
+    const occurrences = context.occurrenceMap.get(employee.id) || [];
+    const hoursBalanceRows = context.hoursBalanceMap.get(employee.id) || context.hoursBalanceMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || [];
+    const nextLine = buildLineRecord(
+      employee,
+      period,
+      period.rules,
+      pointRows,
+      occurrences,
+      context.existingMap.get(employee.id) || context.existingMap.get(buildComparisonKey(employee.fullName, employee.cpf)) || currentLine,
+      hoursBalanceRows,
+      null,
+    );
+    await overwritePayrollLineRecord(txDb, nextLine);
+    return getPayrollLineDetail(txDb, nextLine.id);
+  });
 };
 
 export const createPayrollOccurrence = async (db: DbInterface, input: PayrollOccurrenceInput, actorUserId: string) => {
