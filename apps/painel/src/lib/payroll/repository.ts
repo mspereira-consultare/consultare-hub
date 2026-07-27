@@ -293,6 +293,7 @@ const summarizePayrollOperationalMetrics = ({
       vtEligibleDays: 0,
       vrEligibleDays: 0,
       absencesCount: 0,
+      absenceDates: [] as string[],
       lateMinutes: 0,
       workedMinutesTotal: 0,
     };
@@ -312,6 +313,7 @@ const summarizePayrollOperationalMetrics = ({
   let vtEligibleDays = 0;
   let vrEligibleDays = 0;
   let absencesCount = 0;
+  const absenceDates: string[] = [];
   let lateMinutes = 0;
   let workedMinutesTotal = 0;
 
@@ -340,6 +342,7 @@ const summarizePayrollOperationalMetrics = ({
 
     if (effectiveAbsence) {
       absencesCount += 1;
+      absenceDates.push(row.pointDate);
       continue;
     }
 
@@ -370,6 +373,7 @@ const summarizePayrollOperationalMetrics = ({
     vtEligibleDays,
     vrEligibleDays,
     absencesCount,
+    absenceDates,
     lateMinutes,
     workedMinutesTotal,
   };
@@ -452,6 +456,12 @@ const safeCreateIndex = async (db: DbInterface, sql: string) => {
     if (code === 'ER_DUP_KEYNAME' || /already exists/i.test(message)) return;
     throw error;
   }
+};
+
+const isMissingTableError = (error: any, tableName: string) => {
+  const code = String(error?.code || '');
+  const message = String(error?.message || '');
+  return code === 'ER_NO_SUCH_TABLE' || new RegExp(`\\.${tableName}' doesn't exist`, 'i').test(message) || new RegExp(`Table '.*${tableName}' doesn't exist`, 'i').test(message);
 };
 
 const ensureMysqlColumnDefinition = async (
@@ -1075,7 +1085,10 @@ const computeLateBankCompensationValues = ({
 };
 
 export const ensurePayrollTables = async (db: DbInterface) => {
-  if (tablesEnsured) return;
+  if (tablesEnsured) {
+    await ensurePayrollLateBankCompensationsTable(db);
+    return;
+  }
 
   await ensureEmployeesTables(db);
 
@@ -1267,21 +1280,6 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   `);
 
   await db.execute(`
-    CREATE TABLE IF NOT EXISTS payroll_late_bank_compensations (
-      id VARCHAR(64) PRIMARY KEY,
-      period_id VARCHAR(64) NOT NULL,
-      employee_id VARCHAR(64) NOT NULL,
-      requested_minutes INTEGER NOT NULL DEFAULT 0,
-      notes LONGTEXT NULL,
-      created_by VARCHAR(64) NULL,
-      updated_by VARCHAR(64) NULL,
-      created_at VARCHAR(32) NOT NULL,
-      updated_at VARCHAR(32) NOT NULL,
-      UNIQUE(period_id, employee_id)
-    )
-  `);
-
-  await db.execute(`
     CREATE TABLE IF NOT EXISTS payroll_lines (
       id VARCHAR(64) PRIMARY KEY,
       period_id VARCHAR(64) NOT NULL,
@@ -1369,8 +1367,6 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await ensureMysqlColumnDefinition(db, 'payroll_signature_monthly', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_occurrences', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_occurrences', 'updated_at', 'VARCHAR(32) NOT NULL');
-  await ensureMysqlColumnDefinition(db, 'payroll_late_bank_compensations', 'created_at', 'VARCHAR(32) NOT NULL');
-  await ensureMysqlColumnDefinition(db, 'payroll_late_bank_compensations', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_lines', 'created_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_lines', 'updated_at', 'VARCHAR(32) NOT NULL');
   await ensureMysqlColumnDefinition(db, 'payroll_reference_rows', 'created_at', 'VARCHAR(32) NOT NULL');
@@ -1410,11 +1406,11 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_employee ON payroll_point_daily (period_id, employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_point_daily_solides_employee ON payroll_point_daily (period_id, solides_employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_occurrences_period ON payroll_occurrences (period_id, employee_id, date_start)`);
-  await safeCreateIndex(db, `CREATE INDEX idx_payroll_late_bank_comp_period ON payroll_late_bank_compensations (period_id, employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_reference_rows_period ON payroll_reference_rows (period_id, comparison_key)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_lines_period ON payroll_lines (period_id, employee_name)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_hours_balance_period ON payroll_hours_balance_monthly (period_id, employee_id)`);
   await safeCreateIndex(db, `CREATE INDEX idx_payroll_signature_period ON payroll_signature_monthly (period_id, employee_id)`);
+  await ensurePayrollLateBankCompensationsTable(db);
   });
 
   tablesEnsured = true;
@@ -2024,10 +2020,15 @@ const listOccurrencesRaw = async (db: DbInterface, periodId: string, employeeId?
 const listLateBankCompensationsRaw = async (db: DbInterface, periodId: string, employeeId?: string) => {
   await ensurePayrollTables(db);
   const params = employeeId ? [periodId, employeeId] : [periodId];
-  const rows = await db.query(
-    `SELECT * FROM payroll_late_bank_compensations WHERE period_id = ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY updated_at DESC`,
-    params,
-  );
+  const sql = `SELECT * FROM payroll_late_bank_compensations WHERE period_id = ? ${employeeId ? 'AND employee_id = ?' : ''} ORDER BY updated_at DESC`;
+  let rows: any[];
+  try {
+    rows = await db.query(sql, params);
+  } catch (error: any) {
+    if (!isMissingTableError(error, 'payroll_late_bank_compensations')) throw error;
+    await ensurePayrollLateBankCompensationsTable(db);
+    rows = await db.query(sql, params);
+  }
   return rows.map((row: any) => mapLateBankCompensationRecord(row));
 };
 
@@ -3117,6 +3118,7 @@ const buildLineRecord = (
   const vtEligibleDays = summary.vtEligibleDays;
   const vrEligibleDays = summary.vrEligibleDays;
   const absencesCount = summary.absencesCount;
+  const absenceDates = summary.absenceDates;
   const lateMinutes = summary.lateMinutes;
   const workedMinutesTotal = summary.workedMinutesTotal;
 
@@ -3304,6 +3306,7 @@ const buildLineRecord = (
         vtEligibleDays,
         vrEligibleDays,
         absencesCount,
+        absenceDates,
         lateMinutes,
         monthlyDivisor,
         salaryHour: roundMoney(salaryHour),
@@ -3397,6 +3400,26 @@ const persistPayrollLineRecord = async (db: DbInterface, line: PayrollLine) => {
       line.updatedAt,
     ],
   );
+};
+
+const ensurePayrollLateBankCompensationsTable = async (db: DbInterface) => {
+  await db.execute(`
+    CREATE TABLE IF NOT EXISTS payroll_late_bank_compensations (
+      id VARCHAR(64) PRIMARY KEY,
+      period_id VARCHAR(64) NOT NULL,
+      employee_id VARCHAR(64) NOT NULL,
+      requested_minutes INTEGER NOT NULL DEFAULT 0,
+      notes LONGTEXT NULL,
+      created_by VARCHAR(64) NULL,
+      updated_by VARCHAR(64) NULL,
+      created_at VARCHAR(32) NOT NULL,
+      updated_at VARCHAR(32) NOT NULL,
+      UNIQUE(period_id, employee_id)
+    )
+  `);
+  await ensureMysqlColumnDefinition(db, 'payroll_late_bank_compensations', 'created_at', 'VARCHAR(32) NOT NULL');
+  await ensureMysqlColumnDefinition(db, 'payroll_late_bank_compensations', 'updated_at', 'VARCHAR(32) NOT NULL');
+  await safeCreateIndex(db, `CREATE INDEX idx_payroll_late_bank_comp_period ON payroll_late_bank_compensations (period_id, employee_id)`);
 };
 
 const overwritePayrollLineRecord = async (db: DbInterface, line: PayrollLine) => {
@@ -4202,7 +4225,29 @@ const buildPendingObservation = (line: PayrollLine) => {
   return notes;
 };
 
-const buildPreviewObservation = (line: PayrollLine, occurrences: PayrollOccurrence[]) => {
+const buildAbsenceDateLabels = (line: PayrollLine, pointRows: PayrollPointDaily[]) => {
+  const pointDates = Array.from(
+    new Set(
+      pointRows
+        .filter((row) => (typeof row.effectiveAbsence === 'boolean' ? row.effectiveAbsence : row.absenceFlag))
+        .map((row) => formatShortDateBr(row.pointDate))
+        .filter(Boolean) as string[],
+    ),
+  );
+  if (pointDates.length) return pointDates;
+
+  const memory = parsePayrollCalculationMemory(line.calculationMemoryJson);
+  const rawDates = Array.isArray(memory?.metrics?.absenceDates) ? memory.metrics.absenceDates : [];
+  return Array.from(
+    new Set(
+      rawDates
+        .map((value: unknown) => formatShortDateBr(String(value || '')))
+        .filter(Boolean) as string[],
+    ),
+  );
+};
+
+const buildPreviewObservation = (line: PayrollLine, occurrences: PayrollOccurrence[], pointRows: PayrollPointDaily[] = []) => {
   const parts: string[] = [...buildPendingObservation(line)];
   if (clean(line.payrollNotes)) parts.push(clean(line.payrollNotes));
   if (clean(line.adjustmentsNotes)) parts.push(`Ajuste: ${clean(line.adjustmentsNotes)}`);
@@ -4212,7 +4257,14 @@ const buildPreviewObservation = (line: PayrollLine, occurrences: PayrollOccurren
   const occurrenceText = occurrences.map(buildOccurrenceSummary).filter(Boolean).join('; ');
   if (occurrenceText) parts.push(occurrenceText);
 
-  if (line.absencesCount > 0) parts.push(`Faltas consideradas: ${line.absencesCount}`);
+  if (line.absencesCount > 0) {
+    const absenceDateLabels = buildAbsenceDateLabels(line, pointRows);
+    parts.push(
+      absenceDateLabels.length
+        ? `Faltas consideradas: ${line.absencesCount} (${absenceDateLabels.join(', ')})`
+        : `Faltas consideradas: ${line.absencesCount}`,
+    );
+  }
   if (line.lateMinutes > 0) parts.push(`Atrasos considerados: ${line.lateMinutes} min`);
 
   return parts.join(' | ') || null;
@@ -4304,6 +4356,7 @@ const buildPayrollPreviewRow = (
   line: PayrollLine,
   employeeFallback: PayrollEmployeePreviewSource | null,
   occurrences: PayrollOccurrence[],
+  pointRows: PayrollPointDaily[] = [],
 ): PayrollPreviewRow => {
   const snapshot = parsePayrollLineSnapshot(line.employeeSnapshotJson);
   const missingSalary = lineHasPendingData(line, 'MISSING_SALARY');
@@ -4336,7 +4389,7 @@ const buildPayrollPreviewRow = (
     otherDiscounts: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.otherFixedDiscount),
     totalpassDiscount: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.totalpassDiscount),
     adjustmentsAmount: roundMoney(line.adjustmentsAmount),
-    observation: buildPreviewObservation(line, occurrences),
+    observation: buildPreviewObservation(line, occurrences, pointRows),
     pendingDataCodes: line.pendingDataCodes,
     staleCalculationCodes: line.staleCalculationCodes,
     requiresRecalculation: line.requiresRecalculation,
@@ -4347,9 +4400,10 @@ const buildPayrollPreviewRow = (
 export const listPayrollPreviewRows = async (db: DbInterface, periodId: string, filters: PayrollLineFilters) => {
   await ensurePayrollTables(db);
   await getPeriodOrThrow(db, periodId);
-  const [linesResult, occurrenceRows] = await Promise.all([
+  const [linesResult, occurrenceRows, pointRows] = await Promise.all([
     listPayrollLines(db, periodId, filters),
     listOccurrencesRaw(db, periodId),
+    listPointRowsRaw(db, periodId),
   ]);
 
   const employeeMap = await loadEmployeePreviewMap(
@@ -4364,12 +4418,15 @@ export const listPayrollPreviewRows = async (db: DbInterface, periodId: string, 
     occurrenceMap.set(occurrence.employeeId, list);
   }
 
+  const pointMap = buildPointRowMap(pointRows);
+
   return {
     items: linesResult.items.map((line) =>
       buildPayrollPreviewRow(
         line,
         line.employeeId ? employeeMap.get(line.employeeId) || null : null,
         line.employeeId ? occurrenceMap.get(line.employeeId) || [] : [],
+        pointMap.get(line.employeeId || '') || pointMap.get(buildComparisonKey(line.employeeName, line.employeeCpf)) || [],
       ),
     ),
   };
@@ -4954,6 +5011,7 @@ export const getPayrollLineDetail = async (db: DbInterface, lineId: string): Pro
     line,
     line.employeeId ? employeeMap.get(line.employeeId) || null : null,
     occurrences,
+    pointDays,
   );
   const pointSources = uniqueSources(pointDays.map((item) => item.source));
   const occurrenceSources = uniqueSources(occurrences.map((item) => item.source));
