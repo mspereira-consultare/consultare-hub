@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useSession } from "next-auth/react";
-import { ArrowLeft, MailCheck } from "lucide-react";
+import { ArrowLeft, CircleHelp, MailCheck } from "lucide-react";
 import { hasPermission } from "@/lib/permissions";
 import { isRepassesModuleEnabledClient } from "@/lib/repasses/feature";
 import { RepasseEmailPanel } from "../components/RepasseEmailPanel";
+import { RepasseEmailHelpModal } from "../components/RepasseEmailHelpModal";
 
 type SessionUserWithPermissions = {
   role?: string | null;
@@ -30,6 +31,7 @@ export default function RepasseEmailPage() {
   const canRefresh = hasPermission(user?.permissions, "repasses", "refresh", role);
   const canEdit = hasPermission(user?.permissions, "repasses", "edit", role);
   const [periodRef, setPeriodRef] = useState(previousMonthRef());
+  const [helpOpen, setHelpOpen] = useState(false);
 
   if (!moduleEnabled) {
     return (
@@ -56,30 +58,40 @@ export default function RepasseEmailPage() {
       <header className="rounded-xl border border-slate-200 bg-white shadow-sm">
         <div className="flex flex-col gap-4 border-b border-slate-100 p-5 md:flex-row md:items-center md:justify-between">
           <div>
-          <Link
-            href="/repasses"
-            className="mb-2 inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
-          >
-            <ArrowLeft size={14} />
-            Repasses
-          </Link>
-          <div className="flex items-center gap-2">
-            <MailCheck size={18} className="text-[#17407E]" />
-            <h1 className="text-xl font-bold text-slate-800">Envios de fechamento</h1>
+            <Link
+              href="/repasses"
+              className="mb-2 inline-flex items-center gap-2 text-xs font-semibold text-slate-600 hover:text-slate-900"
+            >
+              <ArrowLeft size={14} />
+              Repasses
+            </Link>
+            <div className="flex items-center gap-2">
+              <MailCheck size={18} className="text-[#17407E]" />
+              <h1 className="text-xl font-bold text-slate-800">Envios de fechamento</h1>
+            </div>
+            <p className="mt-1 max-w-2xl text-xs text-slate-500">
+              Escolha a competência do fechamento, importe a planilha, vincule os anexos quando houver e selecione quem deve receber o e-mail.
+            </p>
           </div>
-          <p className="mt-1 max-w-2xl text-xs text-slate-500">
-            Escolha a competência do fechamento, importe a planilha, vincule os anexos quando houver e selecione quem deve receber o e-mail.
-          </p>
-        </div>
-        <label className="flex w-full flex-col gap-1 text-xs font-bold uppercase tracking-wider text-slate-500 md:w-48">
-          Competência
-          <input
-            type="month"
-            value={periodRef}
-            onChange={(event) => setPeriodRef(event.target.value)}
-            className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
-          />
-        </label>
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-end sm:justify-between md:w-auto md:justify-end">
+            <label className="flex w-full flex-col gap-1 text-xs font-bold uppercase tracking-wider text-slate-500 md:w-48">
+              Competência
+              <input
+                type="month"
+                value={periodRef}
+                onChange={(event) => setPeriodRef(event.target.value)}
+                className="h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-medium text-slate-700 outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={() => setHelpOpen(true)}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              <CircleHelp size={14} />
+              Como funciona
+            </button>
+          </div>
         </div>
       </header>
 
@@ -89,6 +101,8 @@ export default function RepasseEmailPage() {
         canRefresh={canRefresh}
         canEdit={canEdit}
       />
+
+      <RepasseEmailHelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
     </main>
   );
 }
