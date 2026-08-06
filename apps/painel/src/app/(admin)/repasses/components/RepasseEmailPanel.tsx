@@ -136,6 +136,10 @@ const recipientLastEventLabel = (recipient: RepasseEmailRecipient) => {
   return eventLabel(recipient.lastEventType);
 };
 
+const recipientMatchesFailedFilter = (recipient: RepasseEmailRecipient) =>
+  recipient.lastEventType === "failed"
+  || ["FAILED", "SOFT_BOUNCE", "HARD_BOUNCE", "SPAM_COMPLAINT", "UNSUBSCRIBED"].includes(recipient.sendStatus);
+
 const statusClass = (status: string) => {
   const normalized = String(status || "").toUpperCase();
   if (["READY", "DELIVERED", "MANUAL_CONFIRMED", "COMPLETED", "VALID"].includes(normalized)) {
@@ -156,9 +160,22 @@ const StatusPill = ({ value }: { value: string }) => (
   </span>
 );
 
-const RecipientSendStatusPill = ({ recipient }: { recipient: RepasseEmailRecipient }) => (
-  <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${statusClass(recipient.sendStatus)}`}>
-    {recipientSendStatusLabel(recipient)}
+const RecipientSendStatusPill = ({
+  recipient,
+  busy = false,
+}: {
+  recipient: RepasseEmailRecipient;
+  busy?: boolean;
+}) => (
+  <span className={`inline-flex whitespace-nowrap rounded-full border px-2 py-0.5 text-[11px] font-semibold ${busy ? "border-blue-200 bg-blue-50 text-blue-700" : statusClass(recipient.sendStatus)}`}>
+    {busy ? (
+      <span className="inline-flex items-center gap-1">
+        <Loader2 size={11} className="animate-spin" />
+        Atualizando
+      </span>
+    ) : (
+      recipientSendStatusLabel(recipient)
+    )}
   </span>
 );
 
@@ -233,7 +250,8 @@ export function RepasseEmailPanel({
       const matchesProfessional = !professionalTerm
         || recipient.professionalName.toLowerCase().includes(professionalTerm)
         || recipient.recipientEmail.toLowerCase().includes(professionalTerm);
-      const matchesSendStatus = sendStatusFilter === "all" || recipient.sendStatus === sendStatusFilter;
+      const matchesSendStatus = sendStatusFilter === "all"
+        || (sendStatusFilter === "FAILED" ? recipientMatchesFailedFilter(recipient) : recipient.sendStatus === sendStatusFilter);
       const matchesValidationStatus = validationStatusFilter === "all" || recipient.validationStatus === validationStatusFilter;
       return matchesProfessional && matchesSendStatus && matchesValidationStatus;
     });
@@ -253,12 +271,35 @@ export function RepasseEmailPanel({
 
   const hasRecipientFilters = professionalFilter.trim() !== "" || sendStatusFilter !== "all" || validationStatusFilter !== "all";
 
+  const hasPanelActivity = useMemo(
+    () =>
+      recipients.some((recipient) => ["QUEUED", "SENDING", "ACCEPTED_PROVIDER"].includes(recipient.sendStatus))
+      || jobs.some((job) => ["PENDING", "RUNNING"].includes(job.status)),
+    [jobs, recipients]
+  );
+
   const clearRecipientFilters = () => {
     setProfessionalFilter("");
     setSendStatusFilter("all");
     setValidationStatusFilter("all");
     setSelectedRecipientIds([]);
   };
+
+  const replaceRecipients = useCallback((items: RepasseEmailRecipient[]) => {
+    setRecipients(items);
+    setSelectedRecipientIds((prev) => prev.filter((id) => items.some((item) => item.id === id)));
+  }, []);
+
+  const patchRecipients = useCallback((recipientIds: string[], patch: Partial<RepasseEmailRecipient>) => {
+    if (!recipientIds.length) return;
+    const idSet = new Set(recipientIds);
+    setRecipients((prev) => prev.map((recipient) => (idSet.has(recipient.id) ? { ...recipient, ...patch } : recipient)));
+  }, []);
+
+  const replaceRecipient = useCallback((updatedRecipient: RepasseEmailRecipient) => {
+    setRecipients((prev) => prev.map((recipient) => (recipient.id === updatedRecipient.id ? updatedRecipient : recipient)));
+    setSelectedRecipientIds((prev) => prev.filter((id) => id !== updatedRecipient.id));
+  }, []);
 
   const loadRecipients = useCallback(async (batchId: string) => {
     if (!canView || !batchId) {
@@ -271,9 +312,32 @@ export function RepasseEmailPanel({
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data?.error || "Falha ao carregar destinatários.");
     const items = Array.isArray(data?.data?.items) ? data.data.items : [];
-    setRecipients(items);
-    setSelectedRecipientIds((prev) => prev.filter((id) => items.some((item: RepasseEmailRecipient) => item.id === id)));
-  }, [canView]);
+    replaceRecipients(items);
+  }, [canView, replaceRecipients]);
+
+  const loadEmailPanelMeta = useCallback(async () => {
+    if (!canView) return;
+    const qs = new URLSearchParams({ periodRef, limit: "10" }).toString();
+    const [batchRes, jobRes] = await Promise.all([
+      fetch(`/api/admin/repasses/email-batches?${qs}`, { cache: "no-store" }),
+      fetch(`/api/admin/repasses/email-jobs?${qs}`, { cache: "no-store" }),
+    ]);
+    const batchData = await batchRes.json().catch(() => ({}));
+    const jobData = await jobRes.json().catch(() => ({}));
+    if (!batchRes.ok) throw new Error(batchData?.error || "Falha ao carregar lotes de e-mail.");
+    if (!jobRes.ok) throw new Error(jobData?.error || "Falha ao carregar processamentos de e-mail.");
+
+    const loadedBatches: RepasseEmailBatch[] = Array.isArray(batchData?.data?.items)
+      ? batchData.data.items
+      : [];
+    setBatches(loadedBatches);
+    setJobs(Array.isArray(jobData?.data?.items) ? jobData.data.items : []);
+    const nextBatchId = activeBatchId && loadedBatches.some((batch) => batch.id === activeBatchId)
+      ? activeBatchId
+      : loadedBatches[0]?.id || "";
+    setActiveBatchId(nextBatchId);
+    return nextBatchId;
+  }, [activeBatchId, canView, periodRef]);
 
   const loadEmailPanel = useCallback(async (silent = false) => {
     if (!canView) return;
@@ -282,25 +346,7 @@ export function RepasseEmailPanel({
       setError("");
     }
     try {
-      const qs = new URLSearchParams({ periodRef, limit: "10" }).toString();
-      const [batchRes, jobRes] = await Promise.all([
-        fetch(`/api/admin/repasses/email-batches?${qs}`, { cache: "no-store" }),
-        fetch(`/api/admin/repasses/email-jobs?${qs}`, { cache: "no-store" }),
-      ]);
-      const batchData = await batchRes.json().catch(() => ({}));
-      const jobData = await jobRes.json().catch(() => ({}));
-      if (!batchRes.ok) throw new Error(batchData?.error || "Falha ao carregar lotes de e-mail.");
-      if (!jobRes.ok) throw new Error(jobData?.error || "Falha ao carregar processamentos de e-mail.");
-
-      const loadedBatches: RepasseEmailBatch[] = Array.isArray(batchData?.data?.items)
-        ? batchData.data.items
-        : [];
-      setBatches(loadedBatches);
-      setJobs(Array.isArray(jobData?.data?.items) ? jobData.data.items : []);
-      const nextBatchId = activeBatchId && loadedBatches.some((batch) => batch.id === activeBatchId)
-        ? activeBatchId
-        : loadedBatches[0]?.id || "";
-      setActiveBatchId(nextBatchId);
+      const nextBatchId = await loadEmailPanelMeta();
       if (nextBatchId) await loadRecipients(nextBatchId);
       else setRecipients([]);
     } catch (e: unknown) {
@@ -308,7 +354,7 @@ export function RepasseEmailPanel({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, [activeBatchId, canView, loadRecipients, periodRef]);
+  }, [canView, loadEmailPanelMeta, loadRecipients]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -321,10 +367,11 @@ export function RepasseEmailPanel({
     if (!canView) return;
     const interval = window.setInterval(() => {
       if (preparing || uploadingAttachments || enqueueing || preview) return;
+      if (!hasPanelActivity) return;
       void loadEmailPanel(true);
     }, 10000);
     return () => window.clearInterval(interval);
-  }, [canView, enqueueing, loadEmailPanel, preparing, preview, uploadingAttachments]);
+  }, [canView, enqueueing, hasPanelActivity, loadEmailPanel, preparing, preview, uploadingAttachments]);
 
   const prepareBatch = async () => {
     if (!canRefresh) return;
@@ -383,8 +430,12 @@ export function RepasseEmailPanel({
       setNotice(`Anexos processados: ${summary.matched || 0} vinculados, ${summary.unmatched || 0} sem vínculo, ${summary.ambiguous || 0} ambíguos.`);
       setAttachmentFiles(null);
       setSelectedRecipientIds([]);
-      await loadRecipients(activeBatch.id);
-      await loadEmailPanel();
+      if (Array.isArray(summary.recipients)) {
+        replaceRecipients(summary.recipients);
+      } else {
+        await loadRecipients(activeBatch.id);
+      }
+      await loadEmailPanelMeta();
     } catch (e: unknown) {
       setError(errorMessage(e, "Erro ao enviar anexos."));
     } finally {
@@ -399,7 +450,12 @@ export function RepasseEmailPanel({
       setError("Selecione ao menos um destinatário apto para envio ou reenvio.");
       return;
     }
+    const queuedIds = selectedDispatchableIds;
     setEnqueueing(true);
+    setActionByRecipient((prev) => ({
+      ...prev,
+      ...Object.fromEntries(queuedIds.map((id) => [id, true])),
+    }));
     setError("");
     setNotice("");
     try {
@@ -416,11 +472,19 @@ export function RepasseEmailPanel({
       if (!res.ok) throw new Error(data?.error || "Falha ao enfileirar envio.");
       setNotice(`Envio colocado na fila. Identificador: ${data?.data?.id || "-"}.`);
       setSelectedRecipientIds([]);
-      await loadEmailPanel();
+      patchRecipients(queuedIds, { sendStatus: "QUEUED", updatedAt: new Date().toISOString() });
+      await loadEmailPanelMeta();
     } catch (e: unknown) {
       setError(errorMessage(e, "Erro ao enfileirar envio."));
     } finally {
       setEnqueueing(false);
+      setActionByRecipient((prev) => {
+        const next = { ...prev };
+        queuedIds.forEach((id) => {
+          next[id] = false;
+        });
+        return next;
+      });
     }
   };
 
@@ -451,8 +515,13 @@ export function RepasseEmailPanel({
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Falha ao atualizar destinatário.");
       setNotice(action === "retry" ? "Reenvio colocado na fila." : "Confirmação manual registrada.");
-      if (activeBatch) await loadRecipients(activeBatch.id);
-      await loadEmailPanel();
+      if (action === "manual-confirm" && data?.data?.id) {
+        replaceRecipient(data.data);
+      } else {
+        patchRecipients([recipientId], { sendStatus: "QUEUED", updatedAt: new Date().toISOString() });
+        setSelectedRecipientIds((prev) => prev.filter((id) => id !== recipientId));
+      }
+      await loadEmailPanelMeta();
     } catch (e: unknown) {
       setError(errorMessage(e, "Erro ao atualizar destinatário."));
     } finally {
@@ -755,7 +824,7 @@ export function RepasseEmailPanel({
             </tr>
           </thead>
           <tbody>
-            {loading && (
+            {loading && recipients.length === 0 && (
               <tr>
                 <td colSpan={11} className="px-3 py-6 text-center text-slate-500">
                   Carregando envios...
@@ -841,7 +910,7 @@ export function RepasseEmailPanel({
                       </div>
                     </td>
                     <td className="px-2 py-2">
-                      <RecipientSendStatusPill recipient={recipient} />
+                      <RecipientSendStatusPill recipient={recipient} busy={busy} />
                     </td>
                     <td className="px-2 py-2 text-slate-600">
                       {recipientLastEventLabel(recipient)}
