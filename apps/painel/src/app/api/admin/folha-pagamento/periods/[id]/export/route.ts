@@ -125,6 +125,12 @@ const resolveTransportVoucherBaseLabel = (rows: Array<{ vtPerDay: number | null 
   return 'conforme cadastro do colaborador';
 };
 
+const buildHolidaySummaryLabel = (holidays: Array<{ date: string; label: string }>) => {
+  if (!holidays.length) return '';
+  const prefix = holidays.length === 1 ? ' | Feriado: ' : ' | Feriados: ';
+  return `${prefix}${holidays.map((holiday) => `${formatDateBr(holiday.date)} (${holiday.label})`).join(', ')}`;
+};
+
 export async function GET(request: Request, context: ParamsContext) {
   try {
     const auth = await requirePayrollPermission('view');
@@ -138,38 +144,39 @@ export async function GET(request: Request, context: ParamsContext) {
     const periodLabel = `${formatDateBr(payload.period.periodStart)} a ${formatDateBr(payload.period.periodEnd)}`;
     const businessDays = countBusinessDaysMondayToSaturday(payload.period.periodStart, payload.period.periodEnd);
     const holidays = listHolidaysInRange(payload.period.periodStart, payload.period.periodEnd);
-    const holidaysLabel = holidays.length
-      ? ` | Feriado(s): ${holidays.map((holiday) => `${formatDateBr(holiday.date)} (${holiday.label})`).join(', ')}`
-      : '';
+    const holidaysLabel = buildHolidaySummaryLabel(holidays);
     const vtBaseLabel = resolveTransportVoucherBaseLabel(payload.previewRows);
+    const columnDefinitions = [
+      { header: 'Nome Funcionário', key: 'employeeName', width: 27.5 },
+      { header: 'E-mail', key: 'email', width: 29.5 },
+      { header: 'CPF', key: 'employeeCpf', width: 17.5 },
+      { header: 'Centro de Custo', key: 'centerCost', width: 15.5 },
+      { header: 'Função', key: 'roleName', width: 22 },
+      { header: 'Contrato', key: 'contractType', width: 11.2 },
+      { header: 'Salário Base', key: 'salaryBase', width: 13 },
+      { header: 'Insalubridade (%)', key: 'insalubrityValue', width: 10.9 },
+      { header: 'VT a.d (R$)', key: 'vtPerDay', width: 10.8 },
+      { header: `VT a.m (R$)\n${businessDays} dias`, key: 'vtMonth', width: 10.8 },
+      { header: 'Faltas\n(dias)', key: 'absenceDays', width: 9.5 },
+      { header: 'Outros Descontos\n(R$)', key: 'otherDiscountsExport', width: 10.5 },
+      { header: 'Desc. Totalpass\n(R$)', key: 'totalpassDiscountExport', width: 27.5 },
+      { header: 'Observação', key: 'observation', width: 30.5 },
+    ] as const;
 
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'Hub Consultare';
     workbook.created = new Date();
 
     const mainSheet = workbook.addWorksheet(formatMonthSheetName(payload.period.monthRef));
-    mainSheet.views = [{ state: 'frozen', ySplit: 3 }];
-    mainSheet.columns = [
-      { header: 'Nome Funcionário', key: 'employeeName', width: 34 },
-      { header: 'E-mail', key: 'email', width: 30 },
-      { header: 'CPF', key: 'employeeCpf', width: 18 },
-      { header: 'Centro de Custo', key: 'centerCost', width: 22 },
-      { header: 'Função', key: 'roleName', width: 32 },
-      { header: 'Contrato', key: 'contractType', width: 16 },
-      { header: 'Salário Base', key: 'salaryBase', width: 16 },
-      { header: 'Insalubridade (%)', key: 'insalubrityValue', width: 18 },
-      { header: 'VT a.d (R$)', key: 'vtPerDay', width: 14 },
-      { header: 'VT a.m (R$)', key: 'vtMonth', width: 16 },
-      { header: 'Faltas (dias)', key: 'absenceDays', width: 16 },
-      { header: 'Outros Descontos (R$)', key: 'otherDiscountsExport', width: 22 },
-      { header: 'Desc. Totalpass (R$)', key: 'totalpassDiscountExport', width: 20 },
-      { header: 'Observação', key: 'observation', width: 44 },
-    ];
+    mainSheet.columns = columnDefinitions.map((column) => ({
+      key: column.key,
+      width: column.width,
+    }));
 
-    mainSheet.addRow([`FOLHA DE PAGAMENTO - ${headerMonth} | Período: ${periodLabel} | Empresa: ${companyName}`]);
+    mainSheet.addRow([`FOLHA DE PAGAMENTO – ${headerMonth} | Período: ${periodLabel} | Empresa: ${companyName}`]);
     mainSheet.addRow([`Dias úteis (2ª-Sáb) em ${headerMonthSlash}: ${businessDays} dias${holidaysLabel} | VT base: ${vtBaseLabel}`]);
-    mainSheet.mergeCells('A1:N1');
-    mainSheet.mergeCells('A2:N2');
+    mainSheet.mergeCells('A1:M1');
+    mainSheet.mergeCells('A2:M2');
     mainSheet.getCell('A1').font = { bold: true, color: { argb: 'FF17407E' } };
     mainSheet.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
     mainSheet.getCell('A2').font = { color: { argb: 'FF475569' } };
@@ -177,11 +184,10 @@ export async function GET(request: Request, context: ParamsContext) {
     mainSheet.getRow(1).height = 24;
     mainSheet.getRow(2).height = 22;
 
-    mainSheet.addRow(mainSheet.columns.map((column) => column.header as string));
+    mainSheet.addRow(columnDefinitions.map((column) => column.header));
     mainSheet.getRow(3).font = { bold: true, color: { argb: 'FFFFFFFF' } };
     mainSheet.getRow(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17407E' } };
     mainSheet.getRow(3).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    mainSheet.autoFilter = 'A3:N3';
     mainSheet.getColumn(14).alignment = { vertical: 'top', wrapText: true };
 
     for (const row of payload.previewRows) {
