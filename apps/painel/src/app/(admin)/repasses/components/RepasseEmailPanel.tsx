@@ -819,7 +819,7 @@ export function RepasseEmailPanel({
               <th className="px-2 py-2">Anexo</th>
               <th className="px-2 py-2">Conferência</th>
               <th className="px-2 py-2">Envio</th>
-              <th className="px-2 py-2">Última atualização</th>
+              <th className="w-64 min-w-64 px-2 py-2">Última atualização</th>
               <th className="px-2 py-2 text-right">Ações</th>
             </tr>
           </thead>
@@ -912,11 +912,14 @@ export function RepasseEmailPanel({
                     <td className="px-2 py-2">
                       <RecipientSendStatusPill recipient={recipient} busy={busy} />
                     </td>
-                    <td className="px-2 py-2 text-slate-600">
+                    <td className="w-64 min-w-64 px-2 py-2 text-slate-600">
                       {recipientLastEventLabel(recipient)}
                       {recipient.lastEventAt ? <span className="block text-[11px] text-slate-400">{formatDateTimeBr(recipient.lastEventAt)}</span> : null}
                       {recipient.lastEventType === "failed" && recipient.lastMessageError ? (
-                        <span className="mt-1 block max-w-[220px] text-[11px] leading-snug text-slate-400">
+                        <span
+                          className="mt-1 line-clamp-2 block max-w-[240px] text-[11px] leading-snug text-slate-400"
+                          title={recipient.lastMessageError}
+                        >
                           {isProviderLimitError(recipient.lastMessageError) ? "Tente reenviar quando o limite do SendPulse liberar." : recipient.lastMessageError}
                         </span>
                       ) : null}
