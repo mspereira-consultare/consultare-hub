@@ -268,10 +268,14 @@ export type PayrollPreviewRow = {
   vtPerDay: number | null;
   vtMonth: number | null;
   vtDiscount: number | null;
+  absenceDays: number | null;
   otherDiscounts: number | null;
+  otherDiscountsExport: number | null;
   totalpassDiscount: number | null;
+  totalpassDiscountExport: number | null;
   adjustmentsAmount: number;
   observation: string | null;
+  exportObservation: string | null;
   pendingDataCodes: PayrollPendingDataCode[];
   staleCalculationCodes: PayrollLineStaleCode[];
   requiresRecalculation: boolean;

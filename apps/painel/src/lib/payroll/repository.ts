@@ -177,6 +177,8 @@ const normalizeSearch = (value: unknown) =>
 
 const buildComparisonKey = (employeeName: string, employeeCpf: string | null) => employeeCpf || normalizeSearch(employeeName);
 const roundMoney = (value: number) => Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+const formatMoney = (value: number | null | undefined) =>
+  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(value || 0));
 
 const toMonthRef = (dateIso: string | null | undefined) => {
   const normalized = parseDate(dateIso || '');
@@ -4247,6 +4249,48 @@ const buildAbsenceDateLabels = (line: PayrollLine, pointRows: PayrollPointDaily[
   );
 };
 
+const buildPayrollExportOtherDiscounts = (line: PayrollLine) => {
+  const manualNegativeAdjustment = line.adjustmentsAmount < 0 ? Math.abs(line.adjustmentsAmount) : 0;
+  return nullableSheetMoney(
+    roundMoney(
+      Number(line.otherFixedDiscount || 0) +
+      Number(line.vtDiscount || 0) +
+      Number(line.lateDiscount || 0) +
+      manualNegativeAdjustment,
+    ),
+  );
+};
+
+const buildPayrollExportObservation = (line: PayrollLine, occurrences: PayrollOccurrence[], pointRows: PayrollPointDaily[] = []) => {
+  const parts: string[] = [...buildPendingObservation(line)];
+  const absenceDateLabels = buildAbsenceDateLabels(line, pointRows);
+  const fixedDiscountDescription = clean(line.otherFixedDiscountDescription);
+  const manualNegativeAdjustment = line.adjustmentsAmount < 0 ? Math.abs(line.adjustmentsAmount) : 0;
+
+  if (line.absencesCount > 0) {
+    parts.push(
+      absenceDateLabels.length
+        ? `Faltas consideradas: ${line.absencesCount} (${absenceDateLabels.join(', ')})`
+        : `Faltas consideradas: ${line.absencesCount}`,
+    );
+  }
+  if (fixedDiscountDescription && Number(line.otherFixedDiscount || 0) > 0) {
+    parts.push(`${fixedDiscountDescription}: ${formatMoney(line.otherFixedDiscount)}`);
+  } else if (Number(line.otherFixedDiscount || 0) > 0) {
+    parts.push(`Outros descontos fixos: ${formatMoney(line.otherFixedDiscount)}`);
+  }
+  if (Number(line.vtDiscount || 0) > 0) parts.push(`D.V.T.: ${formatMoney(line.vtDiscount)}`);
+  if (Number(line.lateDiscount || 0) > 0) parts.push(`Atrasos: ${formatMoney(line.lateDiscount)}`);
+  if (manualNegativeAdjustment > 0) parts.push(`Ajuste manual negativo: ${formatMoney(manualNegativeAdjustment)}`);
+  if (clean(line.payrollNotes)) parts.push(clean(line.payrollNotes));
+  if (clean(line.adjustmentsNotes)) parts.push(`Ajuste: ${clean(line.adjustmentsNotes)}`);
+
+  const occurrenceText = occurrences.map(buildOccurrenceSummary).filter(Boolean).join('; ');
+  if (occurrenceText) parts.push(occurrenceText);
+
+  return parts.join(' | ') || null;
+};
+
 const buildPreviewObservation = (line: PayrollLine, occurrences: PayrollOccurrence[], pointRows: PayrollPointDaily[] = []) => {
   const parts: string[] = [...buildPendingObservation(line)];
   if (clean(line.payrollNotes)) parts.push(clean(line.payrollNotes));
@@ -4371,6 +4415,9 @@ const buildPayrollPreviewRow = (
   const insalubrityValue = normalizeInsalubrityForSheet(
     toNullableNumber(snapshot.insalubrityPercent) ?? employeeFallback?.insalubrityPercent ?? line.insalubrityPercent,
   );
+  const absenceDays = missingSolidesLink ? null : (line.absencesCount > 0 ? line.absencesCount : null);
+  const otherDiscountsExport = missingSalary || missingSolidesLink ? null : buildPayrollExportOtherDiscounts(line);
+  const exportObservation = buildPayrollExportObservation(line, occurrences, pointRows);
 
   return {
     key: line.id,
@@ -4386,10 +4433,14 @@ const buildPayrollPreviewRow = (
     vtPerDay,
     vtMonth: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.vtProvisioned),
     vtDiscount: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.vtDiscount),
+    absenceDays,
     otherDiscounts: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.otherFixedDiscount),
+    otherDiscountsExport,
     totalpassDiscount: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.totalpassDiscount),
+    totalpassDiscountExport: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.totalpassDiscount),
     adjustmentsAmount: roundMoney(line.adjustmentsAmount),
-    observation: buildPreviewObservation(line, occurrences, pointRows),
+    observation: exportObservation,
+    exportObservation,
     pendingDataCodes: line.pendingDataCodes,
     staleCalculationCodes: line.staleCalculationCodes,
     requiresRecalculation: line.requiresRecalculation,
