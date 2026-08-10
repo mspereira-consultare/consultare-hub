@@ -113,9 +113,9 @@ export function ProposalsDetailRow({ row, canEdit, followupOptions, onSaved }: P
       ? 'group align-top bg-amber-50/70 hover:bg-amber-50'
       : 'group align-top hover:bg-slate-50';
   const stickyCellClassName = isOverdueReturn
-    ? 'bg-rose-50/70 group-hover:bg-rose-50'
+    ? 'bg-rose-50 group-hover:bg-rose-50'
     : isTodayReturn
-      ? 'bg-amber-50/70 group-hover:bg-amber-50'
+      ? 'bg-amber-50 group-hover:bg-amber-50'
       : 'bg-white group-hover:bg-slate-50';
 
   useEffect(() => {
