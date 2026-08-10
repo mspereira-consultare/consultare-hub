@@ -167,10 +167,12 @@ function PropostasBasePageContent() {
     }
   }, [canView, dateRange.end, dateRange.start, selectedStatus, selectedUnit]);
 
-  const fetchDetailData = useCallback(async () => {
+  const fetchDetailData = useCallback(async (options?: { silent?: boolean }) => {
     if (!canView) return;
-    setDetailLoading(true);
-    setDetailError('');
+    if (!options?.silent) {
+      setDetailLoading(true);
+      setDetailError('');
+    }
 
     try {
       const params = new URLSearchParams({
@@ -198,10 +200,14 @@ function PropostasBasePageContent() {
       setDetailPage(Number(payload?.data?.page) || 1);
     } catch (fetchError) {
       console.error('Erro ao carregar base detalhada de propostas:', fetchError);
-      setDetailError(normalizeFetchError(fetchError, 'Erro ao carregar a base detalhada.'));
-      setDetailData(EMPTY_DETAIL_DATA);
+      if (!options?.silent) {
+        setDetailError(normalizeFetchError(fetchError, 'Erro ao carregar a base detalhada.'));
+        setDetailData(EMPTY_DETAIL_DATA);
+      }
     } finally {
-      setDetailLoading(false);
+      if (!options?.silent) {
+        setDetailLoading(false);
+      }
     }
   }, [
     canView,
@@ -251,7 +257,7 @@ function PropostasBasePageContent() {
 
     const timeoutId = window.setTimeout(() => {
       void loadOptions();
-      void fetchDetailData();
+      void fetchDetailData({ silent: true });
     }, 3000);
 
     return () => window.clearTimeout(timeoutId);
@@ -338,7 +344,7 @@ function PropostasBasePageContent() {
   ]);
 
   const handleFollowupRowSaved = (_nextRow: ProposalDetailRow) => {
-    void fetchDetailData();
+    void fetchDetailData({ silent: true });
   };
 
   const handleManualUpdate = async () => {
@@ -353,7 +359,7 @@ function PropostasBasePageContent() {
       }
       window.setTimeout(() => {
         void loadOptions();
-        void fetchDetailData();
+        void fetchDetailData({ silent: true });
       }, 1000);
     } catch (updateError) {
       console.error('Erro ao solicitar atualização de propostas:', updateError);
