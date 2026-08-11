@@ -8,6 +8,7 @@ import { ProposalsDetailSection } from './components/ProposalsDetailSection';
 import { ProposalsFiltersPanel } from './components/ProposalsFiltersPanel';
 import { AWAITING_CLIENT_APPROVAL_STATUS } from '@/lib/proposals/constants';
 import type {
+  ProposalDetailFilterOptions,
   ProposalDetailResponse,
   ProposalDetailRow,
   ProposalFollowupOptions,
@@ -36,6 +37,13 @@ const EMPTY_FOLLOWUP_OPTIONS: ProposalFollowupOptions = {
   users: [],
   conversionStatuses: [],
   conversionReasonsByStatus: {},
+};
+
+const EMPTY_FILTER_OPTIONS: ProposalDetailFilterOptions = {
+  availableUnits: [],
+  availableStatuses: [],
+  availableProfessionals: [],
+  availableCreatorSectors: [],
 };
 
 const getDefaultDateRange = () => {
@@ -83,6 +91,7 @@ function PropostasBasePageContent() {
   const initialConversion = useMemo(() => normalizeSelectParam(searchParams.get('conversion')), [searchParams]);
   const initialResponsible = useMemo(() => normalizeSelectParam(searchParams.get('responsible')), [searchParams]);
   const initialProfessional = useMemo(() => normalizeSelectParam(searchParams.get('professional')), [searchParams]);
+  const initialCreatorSector = useMemo(() => normalizeSelectParam(searchParams.get('creatorSector')), [searchParams]);
   const initialReturnDate = useMemo(() => {
     const raw = String(searchParams.get('returnDate') || '').trim();
     return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
@@ -100,11 +109,13 @@ function PropostasBasePageContent() {
   const [selectedConversion, setSelectedConversion] = useState(initialConversion);
   const [selectedResponsible, setSelectedResponsible] = useState(initialResponsible);
   const [selectedProfessional, setSelectedProfessional] = useState(initialProfessional);
+  const [selectedCreatorSector, setSelectedCreatorSector] = useState(initialCreatorSector);
   const [selectedReturnDate, setSelectedReturnDate] = useState(initialReturnDate);
   const [filtersExpanded, setFiltersExpanded] = useState(true);
-  const [availableUnits, setAvailableUnits] = useState<string[]>([]);
-  const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
-  const [availableProfessionals, setAvailableProfessionals] = useState<string[]>([]);
+  const [availableUnits, setAvailableUnits] = useState<string[]>(EMPTY_FILTER_OPTIONS.availableUnits);
+  const [availableStatuses, setAvailableStatuses] = useState<string[]>(EMPTY_FILTER_OPTIONS.availableStatuses);
+  const [availableProfessionals, setAvailableProfessionals] = useState<string[]>(EMPTY_FILTER_OPTIONS.availableProfessionals);
+  const [availableCreatorSectors, setAvailableCreatorSectors] = useState<string[]>(EMPTY_FILTER_OPTIONS.availableCreatorSectors);
 
   const [detailData, setDetailData] = useState<ProposalDetailResponse>(EMPTY_DETAIL_DATA);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -128,6 +139,7 @@ function PropostasBasePageContent() {
     selectedConversion !== 'all' ||
     selectedResponsible !== 'all' ||
     selectedProfessional !== 'all' ||
+    selectedCreatorSector !== 'all' ||
     Boolean(selectedReturnDate);
 
   const loadOptions = useCallback(async () => {
@@ -154,10 +166,14 @@ function PropostasBasePageContent() {
       const nextProfessionals = Array.isArray(payload?.data?.availableProfessionals)
         ? payload.data.availableProfessionals.map((item: unknown) => String(item || '').trim()).filter(Boolean)
         : [];
+      const nextCreatorSectors = Array.isArray(payload?.data?.availableCreatorSectors)
+        ? payload.data.availableCreatorSectors.map((item: unknown) => String(item || '').trim()).filter(Boolean)
+        : [];
 
       setAvailableUnits(nextUnits);
       setAvailableStatuses(nextStatuses);
       setAvailableProfessionals(nextProfessionals);
+      setAvailableCreatorSectors(nextCreatorSectors);
       setHeartbeat(payload?.data?.heartbeat || null);
       setCanRefresh(Boolean(payload?.data?.canRefresh));
       setIsUpdating(['PENDING', 'RUNNING'].includes(String(payload?.data?.heartbeat?.status || '').toUpperCase()));
@@ -184,6 +200,7 @@ function PropostasBasePageContent() {
         conversion: selectedConversion,
         responsible: selectedResponsible,
         professional: selectedProfessional,
+        creatorSector: selectedCreatorSector,
         returnDate: selectedReturnDate,
         search: detailSearch,
         page: String(detailPage),
@@ -217,6 +234,7 @@ function PropostasBasePageContent() {
     detailSearch,
     detailStatus,
     selectedConversion,
+    selectedCreatorSector,
     selectedReturnDate,
     selectedProfessional,
     selectedResponsible,
@@ -283,6 +301,13 @@ function PropostasBasePageContent() {
   }, [availableProfessionals, selectedProfessional]);
 
   useEffect(() => {
+    if (selectedCreatorSector === 'all') return;
+    if (availableCreatorSectors.length === 0) return;
+    if (availableCreatorSectors.includes(selectedCreatorSector)) return;
+    setSelectedCreatorSector('all');
+  }, [availableCreatorSectors, selectedCreatorSector]);
+
+  useEffect(() => {
     if (selectedResponsible === 'all') return;
     if (followupOptions.users.length === 0) return;
     if (followupOptions.users.some((item) => item.value === selectedResponsible)) return;
@@ -326,6 +351,7 @@ function PropostasBasePageContent() {
       conversion: selectedConversion,
       responsible: selectedResponsible,
       professional: selectedProfessional,
+      creatorSector: selectedCreatorSector,
       returnDate: selectedReturnDate,
     });
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
@@ -336,6 +362,7 @@ function PropostasBasePageContent() {
     pathname,
     router,
     selectedConversion,
+    selectedCreatorSector,
     selectedReturnDate,
     selectedProfessional,
     selectedResponsible,
@@ -381,6 +408,7 @@ function PropostasBasePageContent() {
         conversion: selectedConversion,
         responsible: selectedResponsible,
         professional: selectedProfessional,
+        creatorSector: selectedCreatorSector,
         returnDate: selectedReturnDate,
         search: detailSearch,
       });
@@ -491,6 +519,25 @@ function PropostasBasePageContent() {
             </div>
 
             <div>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Setor do criador</label>
+              <select
+                value={selectedCreatorSector}
+                onChange={(event) => {
+                  setSelectedCreatorSector(event.target.value);
+                  setDetailPage(1);
+                }}
+                className="w-full cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="all">Todos os setores</option>
+                {availableCreatorSectors.map((sector) => (
+                  <option key={sector} value={sector}>
+                    {sector}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Data de retorno</label>
               <input
                 type="date"
@@ -523,6 +570,7 @@ function PropostasBasePageContent() {
           setSelectedConversion('all');
           setSelectedResponsible('all');
           setSelectedProfessional('all');
+          setSelectedCreatorSector('all');
           setSelectedReturnDate('');
           setDetailPage(1);
         }}

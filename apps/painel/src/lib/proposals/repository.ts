@@ -24,6 +24,7 @@ export type ProposalDetailFilters = ProposalFilters & {
   conversion: string;
   responsible: string;
   professional: string;
+  creatorSector: string;
   returnDate: string;
   page: number;
   pageSize: number;
@@ -44,6 +45,7 @@ export type ProposalFilterOptions = {
   availableUnits: string[];
   availableStatuses: string[];
   availableProfessionals: string[];
+  availableCreatorSectors: string[];
 };
 
 export type ProposalFollowupUpdateInput = {
@@ -155,6 +157,12 @@ type RawProposalRow = {
 
 const normalizeString = (value: unknown) => String(value || '').trim();
 const normalizeText = (value: unknown) => String(value || '').trim();
+const normalizeNameKey = (value: unknown) =>
+  normalizeString(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '')
+    .toLowerCase();
 const normalizeNumber = (value: unknown) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -282,6 +290,7 @@ export const normalizeProposalDetailFilters = (
     conversion: normalizeString(getParam(params, 'conversion')) || 'all',
     responsible: normalizeString(getParam(params, 'responsible')) || 'all',
     professional: normalizeString(getParam(params, 'professional')) || 'all',
+    creatorSector: normalizeString(getParam(params, 'creatorSector')) || 'all',
     returnDate: normalizeIsoDateOnly(getParam(params, 'returnDate')),
     page,
     pageSize,
@@ -363,6 +372,51 @@ const buildSearchClause = (search: string) => {
 
 const buildWonStatusNotInClause = () => PROPOSAL_WON_STATUSES.map(() => '?').join(',');
 
+type CreatorEmployeeRow = {
+  full_name?: string | null;
+  department?: string | null;
+};
+
+const buildCreatorSectorMap = async (db: DbInterface) => {
+  const employeeRows = await db.query(
+    `
+      SELECT full_name, department
+      FROM employees
+      WHERE full_name IS NOT NULL
+        AND TRIM(full_name) <> ''
+    `,
+  );
+
+  const sectorsByCreator = new Map<string, string | null>();
+  for (const row of employeeRows as CreatorEmployeeRow[]) {
+    const key = normalizeNameKey(row.full_name);
+    if (!key) continue;
+
+    const department = normalizeString(row.department) || null;
+    if (!sectorsByCreator.has(key) || (!sectorsByCreator.get(key) && department)) {
+      sectorsByCreator.set(key, department);
+    }
+  }
+
+  return sectorsByCreator;
+};
+
+const resolveCreatorSector = (professionalName: string | null | undefined, creatorSectorMap: Map<string, string | null>) => {
+  const key = normalizeNameKey(professionalName);
+  if (!key) return null;
+  return creatorSectorMap.get(key) || null;
+};
+
+const matchesCreatorSectorFilter = (
+  professionalName: string | null | undefined,
+  creatorSectorFilter: string,
+  creatorSectorMap: Map<string, string | null>,
+) => {
+  if (normalizeString(creatorSectorFilter).toLowerCase() === 'all') return true;
+  const sector = resolveCreatorSector(professionalName, creatorSectorMap);
+  return normalizeString(sector).toLowerCase() === normalizeString(creatorSectorFilter).toLowerCase();
+};
+
 export const listProposalFilterOptions = async (
   filters: ProposalFilters,
   db: DbInterface = getDbConnection(),
@@ -394,7 +448,7 @@ export const listProposalFilterOptions = async (
     professionalsParams.push(filters.status);
   }
 
-  const [unitRows, statusRows, professionalRows] = await Promise.all([
+  const [unitRows, statusRows, professionalRows, creatorSectorMap] = await Promise.all([
     db.query(
       `
         SELECT DISTINCT TRIM(unit_name) AS unit_name
@@ -428,7 +482,21 @@ export const listProposalFilterOptions = async (
       `,
       professionalsParams,
     ),
+    buildCreatorSectorMap(db),
   ]);
+
+  const availableProfessionals = professionalRows
+    .map((row: any) => normalizeString(row?.professional_name))
+    .filter(Boolean);
+
+  const availableCreatorSectors = Array.from(
+    new Set(
+      availableProfessionals
+        .map((professionalName) => resolveCreatorSector(professionalName, creatorSectorMap))
+        .map((sector) => normalizeString(sector))
+        .filter(Boolean),
+    ),
+  ).sort((left, right) => left.localeCompare(right, 'pt-BR'));
 
   return {
     availableUnits: unitRows
@@ -437,9 +505,8 @@ export const listProposalFilterOptions = async (
     availableStatuses: statusRows
       .map((row: any) => normalizeString(row?.status))
       .filter(Boolean),
-    availableProfessionals: professionalRows
-      .map((row: any) => normalizeString(row?.professional_name))
-      .filter(Boolean),
+    availableProfessionals,
+    availableCreatorSectors,
   };
 };
 
@@ -838,138 +905,7 @@ export const listProposalDetails = async (filters: ProposalDetailFilters, db: Db
   const whereParams = [...baseWhere.params, ...searchClause.params];
   const todayRef = getTodayRef();
 
-  const totalRowsResult = await db.query(
-    `
-      SELECT COUNT(*) AS total
-      FROM feegow_proposals p
-      LEFT JOIN feegow_patient_contacts_cache c ON c.patient_id = p.patient_id
-      LEFT JOIN proposal_followup_control f ON f.proposal_id = p.proposal_id
-      ${whereSql}
-    `,
-    whereParams,
-  );
-  const totalRows = normalizeNumber((totalRowsResult[0] as any)?.total);
-  const wonStatusNotInClause = buildWonStatusNotInClause();
-  const summaryRows = await db.query(
-    `
-      SELECT
-        COUNT(*) AS filtered_rows,
-        COALESCE(SUM(CASE WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN 1 ELSE 0 END), 0) AS due_now,
-        COALESCE(SUM(CASE WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) < ? THEN 1 ELSE 0 END), 0) AS overdue,
-        COALESCE(SUM(CASE WHEN TRIM(COALESCE(f.responsible_user_id, '')) = '' THEN 1 ELSE 0 END), 0) AS without_responsible,
-        COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(NULLIF(f.conversion_status, ''), 'PENDENTE'))) = 'EM_CONTATO' THEN 1 ELSE 0 END), 0) AS in_contact,
-        COALESCE(SUM(CASE WHEN UPPER(TRIM(COALESCE(NULLIF(f.conversion_status, ''), 'PENDENTE'))) = 'CONVERTIDO' THEN 1 ELSE 0 END), 0) AS converted,
-        COALESCE(
-          SUM(
-            CASE
-              WHEN TRIM(COALESCE(p.status, '')) = '' OR LOWER(TRIM(COALESCE(p.status, ''))) NOT IN (${wonStatusNotInClause})
-                THEN COALESCE(p.total_value, 0)
-              ELSE 0
-            END
-          ),
-          0
-        ) AS open_budget_value
-      FROM feegow_proposals p
-      LEFT JOIN feegow_patient_contacts_cache c ON c.patient_id = p.patient_id
-      LEFT JOIN proposal_followup_control f ON f.proposal_id = p.proposal_id
-      ${whereSql}
-    `,
-    [todayRef, todayRef, ...PROPOSAL_WON_STATUSES, ...whereParams],
-  );
-  const rawSummary = (summaryRows[0] || {}) as Record<string, unknown>;
-  const totalPages = Math.max(1, Math.ceil(totalRows / filters.pageSize));
-  const safePage = clamp(filters.page, 1, totalPages);
-  const offset = (safePage - 1) * filters.pageSize;
-
-  let rows = (await db.query(
-    `
-      ${baseDetailSelect}
-      ${whereSql}
-      ORDER BY
-        CASE
-          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN 0
-          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN 1
-          ELSE 2
-        END ASC,
-        CASE
-          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN TRIM(f.next_contact_at)
-          ELSE NULL
-        END ASC,
-        CASE
-          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN TRIM(f.next_contact_at)
-          ELSE NULL
-        END ASC,
-        p.date DESC,
-        p.proposal_id DESC
-      LIMIT ? OFFSET ?
-    `,
-    [...whereParams, todayRef, todayRef, filters.pageSize, offset],
-  )) as RawProposalRow[];
-
-  const missingIds = Array.from(
-    new Set(
-      rows
-        .filter((row) => normalizeNumber(row.patient_id) > 0 && !normalizeString(row.patient_name) && !normalizeString(row.phone_primary))
-        .map((row) => normalizeNumber(row.patient_id)),
-    ),
-  );
-
-  if (missingIds.length > 0) {
-    await hydrateMissingPatientContacts(db, missingIds);
-    rows = (await db.query(
-      `
-        ${baseDetailSelect}
-        ${whereSql}
-        ORDER BY
-          CASE
-            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN 0
-            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN 1
-            ELSE 2
-          END ASC,
-          CASE
-            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN TRIM(f.next_contact_at)
-            ELSE NULL
-          END ASC,
-          CASE
-            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN TRIM(f.next_contact_at)
-            ELSE NULL
-          END ASC,
-          p.date DESC,
-          p.proposal_id DESC
-        LIMIT ? OFFSET ?
-      `,
-      [...whereParams, todayRef, todayRef, filters.pageSize, offset],
-    )) as RawProposalRow[];
-  }
-
-  return {
-    rows: mapProposalRows(rows),
-    page: safePage,
-    pageSize: filters.pageSize,
-    totalRows,
-    totalPages,
-    detailStatusApplied,
-    summary: {
-      filteredRows: normalizeNumber(rawSummary.filtered_rows),
-      dueNow: normalizeNumber(rawSummary.due_now),
-      overdue: normalizeNumber(rawSummary.overdue),
-      withoutResponsible: normalizeNumber(rawSummary.without_responsible),
-      inContact: normalizeNumber(rawSummary.in_contact),
-      converted: normalizeNumber(rawSummary.converted),
-      openBudgetValue: normalizeNumber(rawSummary.open_budget_value),
-    },
-  };
-};
-
-export const listProposalExportRows = async (filters: ProposalDetailFilters, db: DbInterface = getDbConnection()) => {
-  await ensureProposalsSupportTables(db);
-  const detailStatusApplied = resolveProposalDetailStatus(filters.status, filters.detailStatus);
-  const baseWhere = buildProposalWhere(filters, detailStatusApplied);
-  const searchClause = buildSearchClause(filters.search);
-  const whereSql = `${baseWhere.where} ${searchClause.sql}`;
-  const whereParams = [...baseWhere.params, ...searchClause.params];
-  const todayRef = getTodayRef();
-
+  const creatorSectorMap = await buildCreatorSectorMap(db);
   let rows = (await db.query(
     `
       ${baseDetailSelect}
@@ -993,6 +929,7 @@ export const listProposalExportRows = async (filters: ProposalDetailFilters, db:
     `,
     [...whereParams, todayRef, todayRef],
   )) as RawProposalRow[];
+  rows = rows.filter((row) => matchesCreatorSectorFilter(row.professional_name, filters.creatorSector, creatorSectorMap));
 
   const missingIds = Array.from(
     new Set(
@@ -1027,6 +964,131 @@ export const listProposalExportRows = async (filters: ProposalDetailFilters, db:
       `,
       [...whereParams, todayRef, todayRef],
     )) as RawProposalRow[];
+    rows = rows.filter((row) => matchesCreatorSectorFilter(row.professional_name, filters.creatorSector, creatorSectorMap));
+  }
+
+  const totalRows = rows.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / filters.pageSize));
+  const safePage = clamp(filters.page, 1, totalPages);
+  const offset = (safePage - 1) * filters.pageSize;
+  const paginatedRows = rows.slice(offset, offset + filters.pageSize);
+  const wonStatuses = new Set(PROPOSAL_WON_STATUSES);
+  const rawSummary = rows.reduce(
+    (acc, row) => {
+      const nextContactAt = normalizeIsoDateOnly(row.next_contact_at);
+      const conversionStatus = normalizeProposalConversionStatus(row.conversion_status);
+      const status = normalizeString(row.status).toLowerCase();
+
+      acc.filtered_rows += 1;
+      if (nextContactAt && nextContactAt <= todayRef) acc.due_now += 1;
+      if (nextContactAt && nextContactAt < todayRef) acc.overdue += 1;
+      if (!normalizeString(row.responsible_user_id)) acc.without_responsible += 1;
+      if (conversionStatus === 'EM_CONTATO') acc.in_contact += 1;
+      if (conversionStatus === 'CONVERTIDO') acc.converted += 1;
+      if (!status || !wonStatuses.has(status as (typeof PROPOSAL_WON_STATUSES)[number])) {
+        acc.open_budget_value += normalizeNumber(row.total_value);
+      }
+      return acc;
+    },
+    {
+      filtered_rows: 0,
+      due_now: 0,
+      overdue: 0,
+      without_responsible: 0,
+      in_contact: 0,
+      converted: 0,
+      open_budget_value: 0,
+    },
+  );
+
+  return {
+    rows: mapProposalRows(paginatedRows),
+    page: safePage,
+    pageSize: filters.pageSize,
+    totalRows,
+    totalPages,
+    detailStatusApplied,
+    summary: {
+      filteredRows: normalizeNumber(rawSummary.filtered_rows),
+      dueNow: normalizeNumber(rawSummary.due_now),
+      overdue: normalizeNumber(rawSummary.overdue),
+      withoutResponsible: normalizeNumber(rawSummary.without_responsible),
+      inContact: normalizeNumber(rawSummary.in_contact),
+      converted: normalizeNumber(rawSummary.converted),
+      openBudgetValue: normalizeNumber(rawSummary.open_budget_value),
+    },
+  };
+};
+
+export const listProposalExportRows = async (filters: ProposalDetailFilters, db: DbInterface = getDbConnection()) => {
+  await ensureProposalsSupportTables(db);
+  const detailStatusApplied = resolveProposalDetailStatus(filters.status, filters.detailStatus);
+  const baseWhere = buildProposalWhere(filters, detailStatusApplied);
+  const searchClause = buildSearchClause(filters.search);
+  const whereSql = `${baseWhere.where} ${searchClause.sql}`;
+  const whereParams = [...baseWhere.params, ...searchClause.params];
+  const todayRef = getTodayRef();
+  const creatorSectorMap = await buildCreatorSectorMap(db);
+
+  let rows = (await db.query(
+    `
+      ${baseDetailSelect}
+      ${whereSql}
+      ORDER BY
+        CASE
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN 0
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN 1
+          ELSE 2
+        END ASC,
+        CASE
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN TRIM(f.next_contact_at)
+          ELSE NULL
+        END ASC,
+        CASE
+          WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN TRIM(f.next_contact_at)
+          ELSE NULL
+        END ASC,
+        p.date DESC,
+        p.proposal_id DESC
+    `,
+    [...whereParams, todayRef, todayRef],
+  )) as RawProposalRow[];
+  rows = rows.filter((row) => matchesCreatorSectorFilter(row.professional_name, filters.creatorSector, creatorSectorMap));
+
+  const missingIds = Array.from(
+    new Set(
+      rows
+        .filter((row) => normalizeNumber(row.patient_id) > 0 && !normalizeString(row.patient_name) && !normalizeString(row.phone_primary))
+        .map((row) => normalizeNumber(row.patient_id)),
+    ),
+  );
+
+  if (missingIds.length > 0) {
+    await hydrateMissingPatientContacts(db, missingIds);
+    rows = (await db.query(
+      `
+        ${baseDetailSelect}
+        ${whereSql}
+        ORDER BY
+          CASE
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN 0
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN 1
+            ELSE 2
+          END ASC,
+          CASE
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' AND TRIM(f.next_contact_at) <= ? THEN TRIM(f.next_contact_at)
+            ELSE NULL
+          END ASC,
+          CASE
+            WHEN TRIM(COALESCE(f.next_contact_at, '')) <> '' THEN TRIM(f.next_contact_at)
+            ELSE NULL
+          END ASC,
+          p.date DESC,
+          p.proposal_id DESC
+      `,
+      [...whereParams, todayRef, todayRef],
+    )) as RawProposalRow[];
+    rows = rows.filter((row) => matchesCreatorSectorFilter(row.professional_name, filters.creatorSector, creatorSectorMap));
   }
 
   return {

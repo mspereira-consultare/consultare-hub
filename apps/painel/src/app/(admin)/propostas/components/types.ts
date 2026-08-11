@@ -94,6 +94,13 @@ export type ProposalDetailResponse = {
   };
 };
 
+export type ProposalDetailFilterOptions = {
+  availableUnits: string[];
+  availableStatuses: string[];
+  availableProfessionals: string[];
+  availableCreatorSectors: string[];
+};
+
 export type ProposalFollowupOptions = {
   canEdit: boolean;
   users: Array<{ value: string; label: string }>;

@@ -42,7 +42,7 @@ export async function GET(request: Request) {
       { header: 'E-mail', key: 'patientEmail', width: 28 },
       { header: 'Procedimento(s)', key: 'procedureSummary', width: 64 },
       { header: 'Unidade', key: 'unitName', width: 24 },
-      { header: 'Profissional', key: 'professionalName', width: 30 },
+      { header: 'Criador da proposta', key: 'professionalName', width: 30 },
       { header: 'Status da proposta', key: 'status', width: 28 },
       { header: 'Último contato', key: 'lastContactAt', width: 18 },
       { header: 'Próximo contato', key: 'nextContactAt', width: 18 },
@@ -63,7 +63,7 @@ export async function GET(request: Request) {
     worksheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17407E' } };
 
     worksheet.mergeCells('A2:S2');
-    worksheet.getCell('A2').value = `Período: ${filters.startDate} até ${filters.endDate} | Unidade: ${filters.unit === 'all' ? 'Todas as unidades' : filters.unit} | Status detalhado: ${result.detailStatusApplied} | Data de retorno: ${filters.returnDate || 'Todas'}`;
+    worksheet.getCell('A2').value = `Período: ${filters.startDate} até ${filters.endDate} | Unidade: ${filters.unit === 'all' ? 'Todas as unidades' : filters.unit} | Setor do criador: ${filters.creatorSector === 'all' ? 'Todos os setores' : filters.creatorSector} | Status detalhado: ${result.detailStatusApplied} | Data de retorno: ${filters.returnDate || 'Todas'}`;
     worksheet.getCell('A2').font = { size: 10 };
 
     worksheet.mergeCells('A3:S3');
