@@ -68,6 +68,7 @@ export async function GET(request: Request) {
             group_filter: goal.filter_group,
             unit_filter: unitFilter,
             collaborator: goal.collaborator,
+            employee_id: goal.employee_id,
             team: goal.team,
             scope: goal.scope // 'CLINIC' ou 'CARD'
         }

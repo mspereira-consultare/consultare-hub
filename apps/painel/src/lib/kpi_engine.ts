@@ -14,6 +14,7 @@ interface KpiOptions {
     group_filter?: string; 
     unit_filter?: string;
     collaborator?: string;
+    employee_id?: string;
     team?: string;
     scope?: 'CLINIC' | 'CARD'; 
 }
@@ -23,10 +24,11 @@ interface KpiHistoryItem {
     value: number; 
 }
 
-const buildAppointmentsFilter = (startDate: string, endDate: string, options?: KpiOptions) => {
+const buildAppointmentsFilter = async (db: any, startDate: string, endDate: string, options?: KpiOptions) => {
     const filterVal = options?.group_filter ? String(options.group_filter).trim() : undefined;
     const unitVal = options?.unit_filter ? String(options.unit_filter).trim() : undefined;
     const collaboratorVal = options?.collaborator ? String(options.collaborator).trim() : undefined;
+    const employeeIdVal = options?.employee_id ? String(options.employee_id).trim() : undefined;
     const teamVal = options?.team ? String(options.team).trim() : undefined;
 
     const dbStart = `${startDate} 00:00:00`;
@@ -44,9 +46,10 @@ const buildAppointmentsFilter = (startDate: string, endDate: string, options?: K
         params.push(unitVal);
     }
 
-    if (collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '') {
-        whereSql += ` AND UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?))`;
-        params.push(collaboratorVal);
+    const collaboratorNames = await resolveAppointmentCollaboratorNames(db, collaboratorVal, employeeIdVal);
+    if (collaboratorNames.length > 0) {
+        whereSql += ` AND (${collaboratorNames.map(() => `UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?))`).join(' OR ')})`;
+        params.push(...collaboratorNames);
     }
 
     let joinSql = "";
@@ -62,10 +65,11 @@ const buildAppointmentsFilter = (startDate: string, endDate: string, options?: K
     return { joinSql, whereSql, params };
 };
 
-const buildConsultasDateFilter = (startDate: string, endDate: string, options?: KpiOptions) => {
+const buildConsultasDateFilter = async (db: any, startDate: string, endDate: string, options?: KpiOptions) => {
     const filterVal = options?.group_filter ? String(options.group_filter).trim() : undefined;
     const unitVal = options?.unit_filter ? String(options.unit_filter).trim() : undefined;
     const collaboratorVal = options?.collaborator ? String(options.collaborator).trim() : undefined;
+    const employeeIdVal = options?.employee_id ? String(options.employee_id).trim() : undefined;
     const teamVal = options?.team ? String(options.team).trim() : undefined;
 
     const params: any[] = [startDate, endDate];
@@ -81,9 +85,10 @@ const buildConsultasDateFilter = (startDate: string, endDate: string, options?: 
         params.push(unitVal);
     }
 
-    if (collaboratorVal && collaboratorVal !== 'all' && collaboratorVal !== '') {
-        whereSql += ` AND UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?))`;
-        params.push(collaboratorVal);
+    const collaboratorNames = await resolveAppointmentCollaboratorNames(db, collaboratorVal, employeeIdVal);
+    if (collaboratorNames.length > 0) {
+        whereSql += ` AND (${collaboratorNames.map(() => `UPPER(TRIM(f.scheduled_by)) = UPPER(TRIM(?))`).join(' OR ')})`;
+        params.push(...collaboratorNames);
     }
 
     let joinSql = "";
@@ -103,7 +108,7 @@ const calculateConfirmRateAggregate = async (startDate: string, endDate: string,
     const db = getDbConnection();
     const confirmationContext = await getAppointmentConfirmationContext(db);
     const hybridCte = buildAppointmentConfirmationHybridCte(confirmationContext);
-    const { joinSql, whereSql, params } = buildAppointmentsFilter(startDate, endDate, options);
+    const { joinSql, whereSql, params } = await buildAppointmentsFilter(db, startDate, endDate, options);
 
     const rows = await db.query(`
         ${hybridCte.sql}
@@ -164,6 +169,7 @@ const SUMMARY_MONTH_COL = 'month_ref';
 const RESOLVECARD_UNIT = 'RESOLVECARD GESTÃO DE BENEFICOS E MEIOS DE PAGAMENTOS';
 const PROPOSAL_EXEC_STATUSES = "('executada','aprovada pelo cliente','ganho','realizado','concluido','pago')";
 let cachedCollaboratorColumn: string | null | undefined;
+let cachedAppointmentCollaborators: string[] | null = null;
 
 const normalizeIdentifier = (value: string) => String(value || '')
     .normalize('NFD')
@@ -175,6 +181,70 @@ const quoteIdentifier = (value: string) => {
     const safe = /^[A-Za-z_][A-Za-z0-9_]*$/.test(value);
     if (safe) return value;
     return `"${value.replace(/"/g, '""')}"`;
+};
+
+const normalizeHumanName = (value: string) => normalizeIdentifier(value).replace(/\s+/g, ' ');
+
+const namesLookEquivalent = (left: string, right: string) => {
+    const normalizedLeft = normalizeHumanName(left);
+    const normalizedRight = normalizeHumanName(right);
+    if (!normalizedLeft || !normalizedRight) return false;
+    if (normalizedLeft === normalizedRight) return true;
+    return normalizedLeft.startsWith(`${normalizedRight} `) || normalizedRight.startsWith(`${normalizedLeft} `);
+};
+
+const getAppointmentCollaborators = async (db: any) => {
+    if (cachedAppointmentCollaborators !== null) return cachedAppointmentCollaborators;
+    const rows = await db.query(`
+        SELECT DISTINCT TRIM(scheduled_by) AS name
+        FROM feegow_appointments
+        WHERE scheduled_by IS NOT NULL
+          AND TRIM(scheduled_by) <> ''
+          AND TRIM(scheduled_by) <> 'Sistema'
+    `);
+
+    cachedAppointmentCollaborators = (rows || [])
+        .map((row: any) => String(row?.name || '').replace(/\s+/g, ' ').trim())
+        .filter(Boolean);
+    return cachedAppointmentCollaborators || [];
+};
+
+const resolveAppointmentCollaboratorNames = async (db: any, collaborator?: string, employeeId?: string) => {
+    const candidates = new Set<string>();
+    const collaboratorVal = String(collaborator || '').replace(/\s+/g, ' ').trim();
+    const employeeIdVal = String(employeeId || '').trim();
+
+    if (collaboratorVal && collaboratorVal !== 'all') {
+        candidates.add(collaboratorVal);
+    }
+
+    if (employeeIdVal && employeeIdVal !== 'all') {
+        try {
+            const rows = await db.query(
+                `
+                SELECT full_name
+                FROM employees
+                WHERE id = ?
+                LIMIT 1
+                `,
+                [employeeIdVal]
+            );
+            const fullName = String(rows?.[0]?.full_name || '').replace(/\s+/g, ' ').trim();
+            if (fullName) candidates.add(fullName);
+        } catch (error) {
+            console.warn('[KPI_ENGINE] Não foi possível resolver employee_id para colaborador operacional:', error);
+        }
+    }
+
+    const rawCandidates = Array.from(candidates);
+    if (!rawCandidates.length) return [];
+
+    const appointmentCollaborators = await getAppointmentCollaborators(db);
+    const matched = appointmentCollaborators.filter((name) =>
+        rawCandidates.some((candidate) => namesLookEquivalent(candidate, name))
+    );
+
+    return matched.length ? matched : rawCandidates;
 };
 
 const getCollaboratorColumn = async (db: any) => {
@@ -516,7 +586,7 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
             }
             // --- KPI ESPECIAL: AGENDAMENTOS CRIADOS (scheduled_at) ---
             if (kpiId === 'agendamentos') {
-                const { joinSql, whereSql, params } = buildAppointmentsFilter(startDate, endDate, options);
+                const { joinSql, whereSql, params } = await buildAppointmentsFilter(db, startDate, endDate, options);
                 query = `
                     SELECT substr(f.scheduled_at, 1, 10) as d, COUNT(DISTINCT f.appointment_id) as val
                     FROM feegow_appointments f
@@ -526,7 +596,7 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
                 `;
                 queryParams = params;
             } else if (kpiId === 'consultas_dia') {
-                const { joinSql, whereSql, params } = buildConsultasDateFilter(startDate, endDate, options);
+                const { joinSql, whereSql, params } = await buildConsultasDateFilter(db, startDate, endDate, options);
                 query = `
                     SELECT substr(f.date, 1, 10) as d, COUNT(DISTINCT f.appointment_id) as val
                     FROM feegow_appointments f
@@ -538,7 +608,7 @@ export async function calculateHistory(kpiId: string, startDate: string, endDate
             } else if (kpiId === 'agendamentos_confirm_rate') {
                 const confirmationContext = await getAppointmentConfirmationContext(db);
                 const hybridCte = buildAppointmentConfirmationHybridCte(confirmationContext);
-                const { joinSql, whereSql, params } = buildAppointmentsFilter(startDate, endDate, options);
+                const { joinSql, whereSql, params } = await buildAppointmentsFilter(db, startDate, endDate, options);
                 query = `
                     ${hybridCte.sql}
                     SELECT 

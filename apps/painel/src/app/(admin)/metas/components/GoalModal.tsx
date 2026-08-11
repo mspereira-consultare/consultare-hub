@@ -224,11 +224,9 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
     }, [isOpen]);
 
     const handleEmployeeLinkChange = (employeeId: string) => {
-        const employee = employeeOptions.find((item) => item.id === employeeId);
         setFormData((current) => ({
             ...current,
-            employee_id: employee?.id || null,
-            collaborator: employee?.fullName || 'all',
+            employee_id: employeeId || null,
         }));
     };
 

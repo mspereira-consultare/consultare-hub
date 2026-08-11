@@ -753,6 +753,7 @@ const listExecutiveGoalProgress = async (db: DbInterface, scope: ExecutiveScope)
         group_filter: clean(goal?.filter_group) || undefined,
         unit_filter: normalizeGoalUnitFilter(goal),
         collaborator: clean(goal?.collaborator) || undefined,
+        employee_id: clean(goal?.employee_id) || undefined,
         team: clean(goal?.team) || undefined,
         scope: upper(goal?.scope) === 'CARD' ? 'CARD' : 'CLINIC',
       }).catch(() => ({ currentValue: 0 }));

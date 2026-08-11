@@ -1381,6 +1381,7 @@ const calculateGoalCurrentValue = async (goal: any, today: string) => {
     group_filter: clean(goal.filter_group) || undefined,
     unit_filter: normalizeUnitFilterForGoal(goal),
     collaborator: clean(goal.collaborator) || undefined,
+    employee_id: clean(goal.employee_id) || undefined,
     team: clean(goal.team) || undefined,
     scope: upper(goal.scope) === 'CARD' ? 'CARD' : 'CLINIC',
   });
