@@ -21,7 +21,7 @@ export function ProposalsDetailTable({ rows, canEdit, followupOptions, onSaved }
             <th className="px-4 py-3">Telefone</th>
             <th className="min-w-[380px] px-4 py-3">Procedimento(s)</th>
             <th className="px-4 py-3">Unidade</th>
-            <th className="px-4 py-3">Profissional</th>
+            <th className="px-4 py-3">Criador da proposta</th>
             <th className="px-4 py-3 text-right">Valor</th>
             <th className="min-w-[250px] px-4 py-3">Status da proposta</th>
             <th className="min-w-[150px] px-4 py-3">Último contato</th>

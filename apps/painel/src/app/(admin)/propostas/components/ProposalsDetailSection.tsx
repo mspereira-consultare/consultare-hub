@@ -114,7 +114,7 @@ export function ProposalsDetailSection({
                 type="text"
                 value={detailSearch}
                 onChange={(e) => onChangeDetailSearch(e.target.value)}
-                placeholder="Paciente, telefone, procedimento, unidade, profissional ou responsável"
+                placeholder="Paciente, telefone, procedimento, unidade, criador da proposta ou responsável"
                 className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-700 outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>

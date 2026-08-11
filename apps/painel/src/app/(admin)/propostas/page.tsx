@@ -472,7 +472,7 @@ function PropostasBasePageContent() {
             </div>
 
             <div>
-              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Profissional</label>
+              <label className="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500">Criador da proposta</label>
               <select
                 value={selectedProfessional}
                 onChange={(event) => {
@@ -481,7 +481,7 @@ function PropostasBasePageContent() {
                 }}
                 className="w-full cursor-pointer rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 outline-none hover:border-slate-300 focus:ring-1 focus:ring-blue-500"
               >
-                <option value="all">Todos os profissionais</option>
+                <option value="all">Todos os criadores</option>
                 {availableProfessionals.map((professional) => (
                   <option key={professional} value={professional}>
                     {professional}
