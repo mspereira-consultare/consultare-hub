@@ -1488,13 +1488,28 @@ export const updateTask = async (
     const shouldReplaceAssignees =
       Object.prototype.hasOwnProperty.call(input, 'primaryAssigneeUserId') ||
       Object.prototype.hasOwnProperty.call(input, 'assigneeUserIds');
+    const currentPrimaryAssigneeUserId = nullable(current.primary_assignee_user_id);
+    const currentApproverUserId = nullable(current.approver_user_id);
+    const currentAssigneeIds = new Set(
+      (previousAssigneeRows as Row[])
+        .map((row) => clean(row.user_id))
+        .filter(Boolean)
+    );
 
     const finalAssigneeIds = shouldReplaceAssignees
       ? computeAssigneeIds(nextPrimaryAssigneeUserId, requestedAssigneeIds)
       : [];
 
-    for (const userId of finalAssigneeIds) await ensureUserIsActive(txDb, userId);
-    if (nextApprover) await ensureUserIsActive(txDb, nextApprover);
+    for (const userId of finalAssigneeIds) {
+      const isExistingAssignee = currentAssigneeIds.has(userId);
+      const isBecomingPrimary = userId === nextPrimaryAssigneeUserId && nextPrimaryAssigneeUserId !== currentPrimaryAssigneeUserId;
+      if (!isExistingAssignee || isBecomingPrimary) {
+        await ensureUserIsActive(txDb, userId);
+      }
+    }
+    if (nextApprover && nextApprover !== currentApproverUserId) {
+      await ensureUserIsActive(txDb, nextApprover);
+    }
 
     const updatedAt = NOW();
     const nextTitle = Object.prototype.hasOwnProperty.call(input, 'title') ? clean(input.title) : clean(current.title);
