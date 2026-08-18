@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import {
+  createSuggestedRecepcaoChecklistConfig,
   listRecepcaoChecklistConfigsWithOptions,
   requireRecepcaoChecklistAccess,
   saveRecepcaoChecklistConfig,
@@ -35,6 +36,11 @@ export async function POST(request: Request) {
     if (!auth.ok) return auth.response;
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    if (body.useSuggestedDraft === true) {
+      const created = await createSuggestedRecepcaoChecklistConfig(auth);
+      return NextResponse.json({ status: 'success', data: created });
+    }
+
     const id = await saveRecepcaoChecklistConfig(auth, {
       name: String(body.name || '').trim() || null,
       leaderUserId: String(body.leaderUserId || '').trim(),

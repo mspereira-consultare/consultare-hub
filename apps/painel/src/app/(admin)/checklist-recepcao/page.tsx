@@ -38,6 +38,8 @@ type ChecklistData = {
   generatedAt: string;
   today: string;
   access: { isManager: boolean };
+  selectedLeaderUserId: string | null;
+  availableLeaderFilters: Array<{ userId: string; name: string }>;
   viewMode: 'current' | 'd1';
   referenceDate: string;
   readOnly: boolean;
@@ -59,6 +61,15 @@ type ChecklistData = {
     leaderEmployeeId: string | null;
     leaderName: string;
     units: string[];
+  } | null;
+  suggestedConfigDraft: {
+    name?: string | null;
+    leaderUserId: string;
+    leaderEmployeeId?: string | null;
+    leaderName?: string | null;
+    units: string[];
+    teamEmployeeIds: string[];
+    isActive?: boolean;
   } | null;
   versionSelectedId: string | null;
   versions: Array<{
@@ -217,6 +228,15 @@ type ConfigOptionsPayload = {
     leaderName: string;
     units: string[];
   } | null;
+  suggestedConfigDraft: {
+    name?: string | null;
+    leaderUserId: string;
+    leaderEmployeeId?: string | null;
+    leaderName?: string | null;
+    units: string[];
+    teamEmployeeIds: string[];
+    isActive?: boolean;
+  } | null;
 };
 
 type ConfigFormState = {
@@ -332,15 +352,18 @@ const emptyManual = (data?: ChecklistData | null): ManualState => ({
 
 const configFromData = (payload?: ConfigOptionsPayload | null, source?: ChecklistData['config'] | ChecklistData['suggestedConfig'] | null): ConfigFormState => ({
   id: 'id' in (source || {}) ? String((source as { id?: string }).id || '') : '',
-  name: 'name' in (source || {}) ? String((source as { name?: string }).name || '') : '',
-  leaderUserId: source?.leaderUserId || payload?.suggestedConfig?.leaderUserId || '',
-  leaderEmployeeId: source?.leaderEmployeeId || payload?.suggestedConfig?.leaderEmployeeId || '',
-  leaderName: source?.leaderName || payload?.suggestedConfig?.leaderName || '',
-  units: 'units' in (source || {}) && Array.isArray(source?.units) ? source.units : payload?.suggestedConfig?.units || [],
+  name: 'name' in (source || {}) ? String((source as { name?: string }).name || '') : String(payload?.suggestedConfigDraft?.name || ''),
+  leaderUserId: source?.leaderUserId || payload?.suggestedConfigDraft?.leaderUserId || payload?.suggestedConfig?.leaderUserId || '',
+  leaderEmployeeId: source?.leaderEmployeeId || payload?.suggestedConfigDraft?.leaderEmployeeId || payload?.suggestedConfig?.leaderEmployeeId || '',
+  leaderName: source?.leaderName || payload?.suggestedConfigDraft?.leaderName || payload?.suggestedConfig?.leaderName || '',
+  units:
+    'units' in (source || {}) && Array.isArray(source?.units)
+      ? source.units
+      : payload?.suggestedConfigDraft?.units || payload?.suggestedConfig?.units || [],
   teamEmployeeIds:
     'teamMembers' in (source || {}) && Array.isArray((source as ChecklistData['config'])?.teamMembers)
       ? ((source as ChecklistData['config'])?.teamMembers || []).map((member) => member.employeeId)
-      : [],
+      : payload?.suggestedConfigDraft?.teamEmployeeIds || [],
   isActive: true,
 });
 
@@ -358,6 +381,7 @@ export default function ChecklistRecepcaoPage() {
   const [manual, setManual] = useState<ManualState>(emptyManual());
   const [riskGroups, setRiskGroups] = useState<RiskState>([]);
   const [selectedConfigId, setSelectedConfigId] = useState('');
+  const [selectedLeaderUserId, setSelectedLeaderUserId] = useState('');
   const [selectedUnitKey, setSelectedUnitKey] = useState('');
   const [viewMode, setViewMode] = useState<'current' | 'd1'>('current');
   const [referenceDate, setReferenceDate] = useState('');
@@ -371,6 +395,7 @@ export default function ChecklistRecepcaoPage() {
   const [configForm, setConfigForm] = useState<ConfigFormState>(configFromData());
   const requestStateRef = useRef({
     selectedConfigId: '',
+    selectedLeaderUserId: '',
     selectedUnitKey: '',
     viewMode: 'current' as 'current' | 'd1',
     referenceDate: '',
@@ -383,19 +408,21 @@ export default function ChecklistRecepcaoPage() {
     [data?.versions, referenceDate, selectedUnitKey],
   );
 
-  const fetchData = useCallback(async (opts?: { forceFresh?: boolean; nextConfigId?: string; nextUnitKey?: string; nextViewMode?: 'current' | 'd1'; nextReferenceDate?: string; nextVersionId?: string }) => {
+  const fetchData = useCallback(async (opts?: { forceFresh?: boolean; nextConfigId?: string; nextLeaderUserId?: string; nextUnitKey?: string; nextViewMode?: 'current' | 'd1'; nextReferenceDate?: string; nextVersionId?: string }) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       const currentState = requestStateRef.current;
       const configId = opts?.nextConfigId ?? currentState.selectedConfigId;
+      const leaderUserId = opts?.nextLeaderUserId ?? currentState.selectedLeaderUserId;
       const unitKey = opts?.nextUnitKey ?? currentState.selectedUnitKey;
       const mode = opts?.nextViewMode ?? currentState.viewMode;
       const date = opts?.nextReferenceDate ?? currentState.referenceDate;
       const versionId = opts?.nextVersionId ?? currentState.selectedVersionId;
 
       if (configId) params.set('configId', configId);
+      if (leaderUserId) params.set('leaderUserId', leaderUserId);
       if (unitKey) params.set('unitKey', unitKey);
       params.set('viewMode', mode);
       if (date) params.set('referenceDate', date);
@@ -411,6 +438,7 @@ export default function ChecklistRecepcaoPage() {
       const nextData = payload.data as ChecklistData;
       setData(nextData);
       setSelectedConfigId(nextData.config?.id || configId || '');
+      setSelectedLeaderUserId(nextData.selectedLeaderUserId || leaderUserId || '');
       setSelectedUnitKey(nextData.selectedUnitKey);
       setViewMode(nextData.viewMode);
       setReferenceDate(nextData.referenceDate);
@@ -445,13 +473,14 @@ export default function ChecklistRecepcaoPage() {
   useEffect(() => {
     requestStateRef.current = {
       selectedConfigId,
+      selectedLeaderUserId,
       selectedUnitKey,
       viewMode,
       referenceDate,
       selectedVersionId,
       refreshSeed,
     };
-  }, [referenceDate, refreshSeed, selectedConfigId, selectedUnitKey, selectedVersionId, viewMode]);
+  }, [referenceDate, refreshSeed, selectedConfigId, selectedLeaderUserId, selectedUnitKey, selectedVersionId, viewMode]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -500,6 +529,7 @@ export default function ChecklistRecepcaoPage() {
   const handleExportPdf = () => {
     const params = new URLSearchParams();
     if (selectedConfigId) params.set('configId', selectedConfigId);
+    if (selectedLeaderUserId) params.set('leaderUserId', selectedLeaderUserId);
     if (selectedUnitKey) params.set('unitKey', selectedUnitKey);
     if (referenceDate) params.set('referenceDate', referenceDate);
     params.set('viewMode', viewMode);
@@ -529,6 +559,34 @@ export default function ChecklistRecepcaoPage() {
       await fetchData({ forceFresh: true, nextConfigId: payload?.data?.id || configForm.id || selectedConfigId });
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Erro ao salvar configuracao.');
+    } finally {
+      setConfigSaving(false);
+    }
+  };
+
+  const createSuggestedConfig = async () => {
+    setConfigSaving(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/checklist/recepcao/configs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ useSuggestedDraft: true }),
+      });
+      const payload = await response.json();
+      if (!response.ok || payload?.status !== 'success') {
+        throw new Error(payload?.error || 'Falha ao criar configuracao sugerida.');
+      }
+      setConfigModalOpen(false);
+      await fetchData({
+        forceFresh: true,
+        nextLeaderUserId: '',
+        nextConfigId: payload?.data?.id || '',
+        nextVersionId: '',
+        nextUnitKey: '',
+      });
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Erro ao criar configuracao sugerida.');
     } finally {
       setConfigSaving(false);
     }
@@ -607,7 +665,31 @@ export default function ChecklistRecepcaoPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 bg-slate-50/70 px-5 py-4 md:grid-cols-2 xl:grid-cols-6">
+          <div className="grid gap-4 bg-slate-50/70 px-5 py-4 md:grid-cols-2 xl:grid-cols-7">
+            {data?.access.isManager ? (
+              <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Lider
+                <select
+                  value={selectedLeaderUserId}
+                  onChange={(event) =>
+                    void fetchData({
+                      nextLeaderUserId: event.target.value,
+                      nextConfigId: '',
+                      nextUnitKey: '',
+                      nextVersionId: '',
+                    })
+                  }
+                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                >
+                  <option value="">Todos os lideres</option>
+                  {(data?.availableLeaderFilters || []).map((leader) => (
+                    <option key={leader.userId} value={leader.userId}>
+                      {leader.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
             <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
               Configuracao
               <select
@@ -615,6 +697,7 @@ export default function ChecklistRecepcaoPage() {
                 onChange={(event) => void fetchData({ nextConfigId: event.target.value, nextVersionId: '' })}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
+                <option value="">Selecione</option>
                 {(data?.availableConfigs || []).map((config) => (
                   <option key={config.id} value={config.id}>
                     {config.name} - {config.leaderName}
@@ -707,6 +790,27 @@ export default function ChecklistRecepcaoPage() {
                   Esta pagina depende de uma configuracao local de lider, unidades e equipe. A gerencia pode criar a primeira configuracao pelo modal
                   de ajuste proprio da checklist.
                 </p>
+                {data?.access.isManager && data?.suggestedConfigDraft ? (
+                  <div className="mt-4 flex flex-wrap gap-3">
+                    <button
+                      type="button"
+                      onClick={createSuggestedConfig}
+                      disabled={configSaving}
+                      className="inline-flex items-center gap-2 rounded-xl bg-[#17407E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                    >
+                      {configSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                      {configSaving ? 'Criando...' : 'Criar configuracao sugerida'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openConfigModal}
+                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+                    >
+                      <Settings2 size={15} />
+                      Ajustar manualmente
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
           </section>
@@ -1117,66 +1221,90 @@ export default function ChecklistRecepcaoPage() {
                   Carregando configuracoes...
                 </div>
               ) : (
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <label className="text-sm font-medium text-slate-700">
-                    Nome da configuracao
-                    <input
-                      value={configForm.name}
-                      onChange={(event) => setConfigForm((current) => ({ ...current, name: event.target.value }))}
-                      className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 outline-none"
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-slate-700">
-                    Lider
-                    <select
-                      value={configForm.leaderUserId}
-                      onChange={(event) => {
-                        const nextLeader = configPayload?.options.leaders.find((item) => item.userId === event.target.value) || null;
-                        setConfigForm((current) => ({
-                          ...current,
-                          leaderUserId: event.target.value,
-                          leaderEmployeeId: nextLeader?.employeeId || '',
-                          leaderName: nextLeader?.name || '',
-                          units: current.units.length > 0 ? current.units : nextLeader?.units || [],
-                        }));
-                      }}
-                      className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none"
-                    >
-                      <option value="">Selecione</option>
-                      {(configPayload?.options.leaders || []).map((leader) => (
-                        <option key={leader.userId} value={leader.userId}>
-                          {leader.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 lg:col-span-2">
-                    <div className="font-semibold text-slate-800">Dados importados do cadastro</div>
-                    <div className="mt-2">Unidades do lider: {currentLeader?.units.join(', ') || 'Sem unidades mapeadas no cadastro oficial.'}</div>
-                  </div>
-                  <div className="lg:col-span-2">
-                    <div className="text-sm font-medium text-slate-700">Unidades desta checklist</div>
-                    <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-                      {(configPayload?.options.units || []).map((unit) => (
-                        <label key={unit.key} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
-                          <input
-                            type="checkbox"
-                            checked={configForm.units.includes(unit.key)}
-                            onChange={(event) =>
-                              setConfigForm((current) => ({
-                                ...current,
-                                units: event.target.checked
-                                  ? Array.from(new Set([...current.units, unit.key]))
-                                  : current.units.filter((item) => item !== unit.key),
-                              }))
-                            }
-                          />
-                          {unit.label}
-                        </label>
-                      ))}
+                <div className="space-y-4">
+                  {configPayload?.suggestedConfigDraft ? (
+                    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                      <div>
+                        <div className="font-semibold">Sugestao pronta para bootstrap</div>
+                        <div className="mt-1 text-emerald-800/90">
+                          Lider: {configPayload.suggestedConfigDraft.leaderName || 'Nao identificado'} | {configPayload.suggestedConfigDraft.units.length} unidade(s) |
+                          {' '}{configPayload.suggestedConfigDraft.teamEmployeeIds.length} colaborador(es)
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={createSuggestedConfig}
+                        disabled={configSaving}
+                        className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 font-semibold text-emerald-900 disabled:opacity-60"
+                      >
+                        {configSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                        Aplicar sugestao
+                      </button>
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <label className="text-sm font-medium text-slate-700">
+                      Nome da configuracao
+                      <input
+                        value={configForm.name}
+                        onChange={(event) => setConfigForm((current) => ({ ...current, name: event.target.value }))}
+                        className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                      />
+                    </label>
+                    <label className="text-sm font-medium text-slate-700">
+                      Lider
+                      <select
+                        value={configForm.leaderUserId}
+                        onChange={(event) => {
+                          const nextLeader = configPayload?.options.leaders.find((item) => item.userId === event.target.value) || null;
+                          setConfigForm((current) => ({
+                            ...current,
+                            leaderUserId: event.target.value,
+                            leaderEmployeeId: nextLeader?.employeeId || '',
+                            leaderName: nextLeader?.name || '',
+                            units: current.units.length > 0 ? current.units : nextLeader?.units || [],
+                          }));
+                        }}
+                        className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none"
+                      >
+                        <option value="">Selecione</option>
+                        {(configPayload?.options.leaders || []).map((leader) => (
+                          <option key={leader.userId} value={leader.userId}>
+                            {leader.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 lg:col-span-2">
+                      <div className="font-semibold text-slate-800">Dados importados do cadastro</div>
+                      <div className="mt-2">Unidades do lider: {currentLeader?.units.join(', ') || 'Sem unidades mapeadas no cadastro oficial.'}</div>
+                    </div>
+                    <div className="lg:col-span-2">
+                      <div className="text-sm font-medium text-slate-700">Unidades desta checklist</div>
+                      <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                        {(configPayload?.options.units || []).map((unit) => (
+                          <label key={unit.key} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
+                            <input
+                              type="checkbox"
+                              checked={configForm.units.includes(unit.key)}
+                              onChange={(event) =>
+                                setConfigForm((current) => ({
+                                  ...current,
+                                  units: event.target.checked
+                                    ? Array.from(new Set([...current.units, unit.key]))
+                                    : current.units.filter((item) => item !== unit.key),
+                                }))
+                              }
+                            />
+                            {unit.label}
+                          </label>
+                        ))}
+                      </div>
                     </div>
                   </div>
-                  <div className="lg:col-span-2">
+
+                  <div>
                     <div className="text-sm font-medium text-slate-700">Equipe local da pagina</div>
                     <div className="mt-2 max-h-80 overflow-y-auto rounded-2xl border border-slate-200 p-3">
                       <div className="grid gap-2 md:grid-cols-2">

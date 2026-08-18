@@ -26,6 +26,7 @@ export async function GET(request: Request) {
     const data = await withCache(cacheKey, CACHE_TTL_MS, () =>
       buildRecepcaoChecklistPayload(auth, {
         configId: url.searchParams.get('configId'),
+        leaderUserId: url.searchParams.get('leaderUserId'),
         unitKey: url.searchParams.get('unitKey'),
         viewMode: url.searchParams.get('viewMode'),
         referenceDate: url.searchParams.get('referenceDate'),

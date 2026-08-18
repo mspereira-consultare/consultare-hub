@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:checklist-recepcao": "node scripts/checklist-recepcao-domain-test.cjs",
     "db:bootstrap:mysql-schema": "node scripts/bootstrap-mysql-schema.cjs",
     "db:bootstrap:mysql-schema:dry": "node scripts/bootstrap-mysql-schema.cjs --dry-run",
     "db:backfill:intranet-basic-access": "node scripts/backfill-intranet-basic-access.cjs",

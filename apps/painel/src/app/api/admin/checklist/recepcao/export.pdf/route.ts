@@ -21,6 +21,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const payload = await buildRecepcaoChecklistPayload(auth, {
       configId: url.searchParams.get('configId'),
+      leaderUserId: url.searchParams.get('leaderUserId'),
       unitKey: url.searchParams.get('unitKey'),
       viewMode: url.searchParams.get('viewMode'),
       referenceDate: url.searchParams.get('referenceDate'),

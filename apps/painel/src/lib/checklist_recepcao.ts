@@ -13,6 +13,18 @@ import {
   listFinancialUnits,
   type FinancialUnitDefinition,
 } from '@/lib/financial_units';
+import {
+  calculateDailyTarget,
+  calculateShouldHaveUntilDate,
+  countBusinessDays,
+  monthEnd,
+  monthStart,
+  resolveFreezeSource,
+  resolveReferenceDate,
+  resolveReadOnly,
+  shiftDate,
+  type RecepcaoChecklistViewMode,
+} from '@/lib/checklist_recepcao_domain';
 import { calculateKpi } from '@/lib/kpi_engine';
 import { DEFAULT_POINT_FILTERS } from '@/lib/point/filters';
 import { listPointDailyControlRowsByDateRange } from '@/lib/point/repository';
@@ -25,7 +37,7 @@ const IS_MYSQL =
   String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL || !!process.env.MYSQL_PUBLIC_URL;
 const GOOGLE_RATING_TARGET = 4.7;
 
-type ViewMode = 'current' | 'd1';
+type ViewMode = RecepcaoChecklistViewMode;
 
 type DbRow = Record<string, unknown>;
 
@@ -118,6 +130,11 @@ export type RecepcaoChecklistPayload = {
   access: {
     isManager: boolean;
   };
+  selectedLeaderUserId: string | null;
+  availableLeaderFilters: Array<{
+    userId: string;
+    name: string;
+  }>;
   viewMode: ViewMode;
   referenceDate: string;
   readOnly: boolean;
@@ -138,6 +155,7 @@ export type RecepcaoChecklistPayload = {
     leaderName: string;
     units: string[];
   } | null;
+  suggestedConfigDraft: SaveConfigInput | null;
   versionSelectedId: string | null;
   versions: RecepcaoChecklistVersionSummary[];
   manual: RecepcaoChecklistManualPayload;
@@ -242,6 +260,7 @@ export type RecepcaoChecklistPayload = {
 
 type ConfigFilters = {
   configId?: string | null;
+  leaderUserId?: string | null;
   unitKey?: string | null;
   viewMode?: string | null;
   referenceDate?: string | null;
@@ -303,46 +322,6 @@ const toSaoPauloDateTime = (date = new Date()) =>
   })
     .format(date)
     .replace('T', ' ');
-
-const parseIsoDate = (value: string) => (/^\d{4}-\d{2}-\d{2}$/.test(clean(value)) ? clean(value) : null);
-
-const shiftDate = (dateIso: string, deltaDays: number) => {
-  const [year, month, day] = dateIso.split('-').map(Number);
-  const date = new Date(Date.UTC(year || 0, (month || 1) - 1, day || 1));
-  date.setUTCDate(date.getUTCDate() + deltaDays);
-  return date.toISOString().slice(0, 10);
-};
-
-const isBusinessDay = (dateIso: string) => {
-  const [year, month, day] = dateIso.split('-').map(Number);
-  const weekday = new Date(Date.UTC(year || 0, (month || 1) - 1, day || 1)).getUTCDay();
-  return weekday !== 0;
-};
-
-const monthStart = (dateIso: string) => `${dateIso.slice(0, 7)}-01`;
-
-const monthEnd = (dateIso: string) => {
-  const [year, month] = dateIso.slice(0, 7).split('-').map(Number);
-  const date = new Date(Date.UTC(year || 0, month || 1, 0));
-  return date.toISOString().slice(0, 10);
-};
-
-const countBusinessDays = (startDate: string, endDate: string) => {
-  if (endDate < startDate) return 0;
-  let cursor = startDate;
-  let total = 0;
-  while (cursor <= endDate) {
-    if (isBusinessDay(cursor)) total += 1;
-    cursor = shiftDate(cursor, 1);
-  }
-  return total;
-};
-
-const previousBusinessDate = (dateIso: string) => {
-  let cursor = shiftDate(dateIso, -1);
-  while (!isBusinessDay(cursor)) cursor = shiftDate(cursor, -1);
-  return cursor;
-};
 
 const normalizeUnitKeys = (values: unknown) =>
   unique(
@@ -599,9 +578,46 @@ const loadSuggestedConfig = async (db: DbInterface, userId: string) => {
   };
 };
 
-const listAccessibleConfigs = async (db: DbInterface, actor: RecepcaoChecklistActor) => {
-  const where = actor.isManager ? '' : 'WHERE leader_user_id = ?';
-  const params = actor.isManager ? [] : [actor.userId];
+const buildSuggestedConfigInput = (
+  options: RecepcaoChecklistOptions,
+  suggestedConfig: {
+    leaderUserId: string;
+    leaderEmployeeId: string | null;
+    leaderName: string;
+    units: string[];
+  } | null,
+) => {
+  if (!suggestedConfig?.leaderUserId || suggestedConfig.units.length <= 0) return null;
+
+  const unitSet = new Set(suggestedConfig.units);
+  const teamEmployeeIds = options.teamMembers
+    .filter((member) => member.units.some((unit) => unitSet.has(unit)))
+    .map((member) => member.employeeId);
+
+  return {
+    name: `Checklist ${suggestedConfig.leaderName || 'Recepcao'}`,
+    leaderUserId: suggestedConfig.leaderUserId,
+    leaderEmployeeId: suggestedConfig.leaderEmployeeId,
+    leaderName: suggestedConfig.leaderName,
+    units: suggestedConfig.units,
+    teamEmployeeIds,
+    isActive: true,
+  };
+};
+
+const listAccessibleConfigs = async (db: DbInterface, actor: RecepcaoChecklistActor, filters?: { leaderUserId?: string | null }) => {
+  const whereParts: string[] = [];
+  const params: string[] = [];
+
+  if (!actor.isManager) {
+    whereParts.push('leader_user_id = ?');
+    params.push(actor.userId);
+  } else if (clean(filters?.leaderUserId)) {
+    whereParts.push('leader_user_id = ?');
+    params.push(clean(filters?.leaderUserId));
+  }
+
+  const where = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
   const rows = await db.query(
     `
       SELECT *
@@ -724,13 +740,6 @@ const queryVersionRow = async (
   return (rows[0] as DbRow | undefined) || null;
 };
 
-const calculateDailyTarget = (monthlyGoal: number, currentValue: number, referenceDate: string) => {
-  const remaining = Math.max(0, monthlyGoal - currentValue);
-  const daysRemaining = countBusinessDays(referenceDate, monthEnd(referenceDate));
-  if (daysRemaining <= 0) return remaining;
-  return remaining / daysRemaining;
-};
-
 const loadUnitFinancialMetrics = async (db: DbInterface, referenceDate: string, unit: FinancialUnitDefinition) => {
   const dayParams: Array<string | number> = [referenceDate];
   const unitDaySql = buildFinancialUnitClause('unidade', unit.key, dayParams);
@@ -796,7 +805,7 @@ const loadUnitFinancialMetrics = async (db: DbInterface, referenceDate: string, 
   const businessDaysElapsed = countBusinessDays(monthStart(referenceDate), referenceDate);
   const businessDaysInMonth = countBusinessDays(monthStart(referenceDate), monthEnd(referenceDate));
   const businessDaysRemaining = countBusinessDays(referenceDate, monthEnd(referenceDate));
-  const shouldHaveUntilDate = businessDaysInMonth > 0 ? (monthlyGoal * businessDaysElapsed) / businessDaysInMonth : 0;
+  const shouldHaveUntilDate = calculateShouldHaveUntilDate(monthlyGoal, referenceDate);
 
   return {
     revenueDay,
@@ -1190,8 +1199,7 @@ const loadRiskGroups = async (
     const groupName = clean(row.filter_group);
     const monthlyGoal = toNumber(row.total);
     const actualMonth = actualByGroup.get(normalizeHumanText(groupName)) || 0;
-    const shouldHaveUntilDate =
-      unitMetrics.businessDaysInMonth > 0 ? (monthlyGoal * unitMetrics.businessDaysElapsed) / unitMetrics.businessDaysInMonth : 0;
+    const shouldHaveUntilDate = calculateShouldHaveUntilDate(monthlyGoal, referenceDate);
     const saved = manualByGroup.get(normalizeHumanText(groupName));
     return {
       groupName,
@@ -1227,15 +1235,24 @@ export const buildRecepcaoChecklistPayload = async (
   actor: RecepcaoChecklistActor,
   filters: ConfigFilters,
 ): Promise<RecepcaoChecklistPayload> => {
-  const configs = await listAccessibleConfigs(actor.db, actor);
+  const allConfigs = await listAccessibleConfigs(actor.db, actor);
+  const selectedLeaderUserId = actor.isManager ? clean(filters.leaderUserId) || null : null;
+  const configs =
+    actor.isManager && selectedLeaderUserId
+      ? allConfigs.filter((item) => item.leaderUserId === selectedLeaderUserId)
+      : allConfigs;
   const config = resolveConfigForActor(configs, actor, filters);
   const today = toSaoPauloDate();
   const viewMode: ViewMode = clean(filters.viewMode) === 'd1' ? 'd1' : 'current';
-  const referenceDate = parseIsoDate(clean(filters.referenceDate))
-    || (viewMode === 'd1' ? previousBusinessDate(today) : today);
-  const readOnly = viewMode === 'd1';
+  const referenceDate = resolveReferenceDate(today, viewMode, filters.referenceDate);
+  const readOnly = resolveReadOnly(viewMode);
   const unit = resolveUnitForConfig(config, filters.unitKey);
   const selectedUnit = unit || listFinancialUnits()[0];
+  const suggestedConfig = config ? null : await loadSuggestedConfig(actor.db, actor.userId);
+  const suggestedConfigDraft =
+    actor.isManager && !config && suggestedConfig
+      ? buildSuggestedConfigInput(await loadOptions(actor.db), suggestedConfig)
+      : null;
 
   const versions = config ? await queryVersionSummaries(actor.db, config.id, selectedUnit.key) : [];
   const selectedVersion = config
@@ -1254,11 +1271,11 @@ export const buildRecepcaoChecklistPayload = async (
     selectedVersion?.payload?.manual
     || (!readOnly && legacyManual ? normalizeLegacyManual(legacyManual) : normalizeManualPayload(null));
 
-  const source: RecepcaoChecklistPayload['freezeMetadata']['source'] = selectedVersion
-    ? 'version'
-    : !readOnly && legacyManual
-      ? 'legacy-fallback'
-      : 'live-fallback';
+  const source = resolveFreezeSource({
+    hasSelectedVersion: !!selectedVersion,
+    readOnly,
+    hasLegacyManual: !!legacyManual,
+  });
 
   const unitMetrics = await loadUnitFinancialMetrics(actor.db, referenceDate, selectedUnit);
   const collaborators = await loadCollaboratorMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
@@ -1295,6 +1312,12 @@ export const buildRecepcaoChecklistPayload = async (
     access: {
       isManager: actor.isManager,
     },
+    selectedLeaderUserId,
+    availableLeaderFilters: unique(
+      allConfigs
+        .map((item) => JSON.stringify({ userId: item.leaderUserId, name: item.leaderName }))
+        .filter(Boolean),
+    ).map((item) => JSON.parse(item) as { userId: string; name: string }),
     viewMode,
     referenceDate,
     readOnly,
@@ -1309,7 +1332,8 @@ export const buildRecepcaoChecklistPayload = async (
       isActive: item.isActive,
     })),
     availableUnits: listFinancialUnits().map((item) => ({ key: item.key, label: item.label })),
-    suggestedConfig: config ? null : await loadSuggestedConfig(actor.db, actor.userId),
+    suggestedConfig,
+    suggestedConfigDraft,
     versionSelectedId: selectedVersion?.versionId || null,
     versions,
     manual,
@@ -1488,6 +1512,34 @@ export const saveRecepcaoChecklistConfig = async (
   return id;
 };
 
+export const createSuggestedRecepcaoChecklistConfig = async (actor: RecepcaoChecklistActor) => {
+  if (!actor.isManager) {
+    const error = new Error('Somente a gerência pode inicializar a configuração local da checklist.') as Error & { status?: number };
+    error.status = 403;
+    throw error;
+  }
+
+  const [options, suggestedConfig] = await Promise.all([
+    loadOptions(actor.db),
+    loadSuggestedConfig(actor.db, actor.userId),
+  ]);
+  const draft = buildSuggestedConfigInput(options, suggestedConfig);
+  if (!draft) {
+    const error = new Error('Não foi possível gerar uma configuração sugerida a partir do colaborador vinculado.') as Error & { status?: number };
+    error.status = 400;
+    throw error;
+  }
+
+  const existingConfigs = await listAccessibleConfigs(actor.db, actor);
+  const existing = existingConfigs.find((item) => item.leaderUserId === draft.leaderUserId);
+  if (existing) {
+    return { id: existing.id, draft };
+  }
+
+  const id = await saveRecepcaoChecklistConfig(actor, draft);
+  return { id, draft };
+};
+
 export const listRecepcaoChecklistConfigsWithOptions = async (actor: RecepcaoChecklistActor) => {
   const [configs, options, suggestedConfig] = await Promise.all([
     listAccessibleConfigs(actor.db, actor),
@@ -1499,6 +1551,7 @@ export const listRecepcaoChecklistConfigsWithOptions = async (actor: RecepcaoChe
     configs,
     options,
     suggestedConfig,
+    suggestedConfigDraft: actor.isManager ? buildSuggestedConfigInput(options, suggestedConfig) : null,
   };
 };
 
