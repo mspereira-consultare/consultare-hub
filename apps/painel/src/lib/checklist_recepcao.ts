@@ -467,7 +467,7 @@ export const ensureRecepcaoChecklistSchema = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE recepcao_checklist_configs ADD COLUMN name VARCHAR(180) NOT NULL DEFAULT 'Checklist Recepcao'`);
   await safeAddColumn(db, `ALTER TABLE recepcao_checklist_configs ADD COLUMN leader_employee_id VARCHAR(64) NULL`);
   await safeAddColumn(db, `ALTER TABLE recepcao_checklist_configs ADD COLUMN leader_name VARCHAR(180) NOT NULL DEFAULT ''`);
-  await safeAddColumn(db, `ALTER TABLE recepcao_checklist_configs ADD COLUMN team_members_json LONGTEXT NOT NULL DEFAULT '[]'`);
+  await safeAddColumn(db, `ALTER TABLE recepcao_checklist_configs ADD COLUMN team_members_json LONGTEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE recepcao_checklist_configs ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1`);
   await safeAddColumn(db, `ALTER TABLE recepcao_checklist_configs ADD COLUMN created_at TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE recepcao_checklist_configs ADD COLUMN created_by VARCHAR(64) NULL`);
