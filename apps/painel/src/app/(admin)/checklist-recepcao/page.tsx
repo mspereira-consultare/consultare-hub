@@ -857,19 +857,26 @@ export default function ChecklistRecepcaoPage() {
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">Faturamento da unidade</h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Realizado do mes, comparativo contra meta mensal e contra o patamar esperado ate {formatDateBr(data.referenceDate)}.
+                    Velocimetros da unidade com realizado diario, acumulado do mes, referencia esperada ate {formatDateBr(data.referenceDate)} e nota Google.
                   </p>
                 </div>
                 <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                   {data.readOnly ? 'D-1 congelado' : 'Hoje editavel'}
                 </div>
               </div>
-              <div className="mt-5 grid gap-4 lg:grid-cols-3">
+              <div className="mt-5 grid gap-4 xl:grid-cols-4">
                 <GaugeCard
-                  title="Meta mensal"
+                  title="Faturamento mensal"
                   value={data.metrics.unit.revenueMonth}
                   max={data.metrics.unit.monthlyGoal}
                   helper={`${formatCurrency(data.metrics.unit.revenueMonth)} / ${formatCurrency(data.metrics.unit.monthlyGoal)}`}
+                />
+                <GaugeCard
+                  title="Faturamento diario"
+                  value={data.metrics.unit.revenueDay}
+                  max={data.metrics.unit.dynamicDailyTarget}
+                  helper={`${formatCurrency(data.metrics.unit.revenueDay)} / ${formatCurrency(data.metrics.unit.dynamicDailyTarget)}`}
+                  accent="#1D4ED8"
                 />
                 <GaugeCard
                   title="Deveria ate a data"
@@ -933,20 +940,20 @@ export default function ChecklistRecepcaoPage() {
             <div className="grid gap-6 xl:grid-cols-2">
               <section className={`${sectionClassName} p-5`}>
                 <h2 className="text-lg font-bold text-slate-900">Resolve e Check-up da equipe</h2>
-                <p className="mt-1 text-sm text-slate-500">V1 com realizado manual versionado, pronto para troca futura da origem sem mudar a interface.</p>
+                <p className="mt-1 text-sm text-slate-500">Velocimetros da meta geral da equipe no v1 manual versionado, prontos para troca futura da origem sem mudar a interface.</p>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <GaugeCard
-                    title="Resolve"
-                    value={manual.resolveActual}
-                    max={manual.resolveMonthlyTarget}
-                    helper={`${manual.resolveActual} / ${manual.resolveMonthlyTarget}`}
+                    title="Meta geral Resolve"
+                    value={data.metrics.teamProduction.resolveActual}
+                    max={data.metrics.teamProduction.resolveMonthlyTarget}
+                    helper={`${data.metrics.teamProduction.resolveActual} / ${data.metrics.teamProduction.resolveMonthlyTarget}`}
                     accent="#0284C7"
                   />
                   <GaugeCard
-                    title="Check-up"
-                    value={manual.checkupActual}
-                    max={manual.checkupMonthlyTarget}
-                    helper={`${manual.checkupActual} / ${manual.checkupMonthlyTarget}`}
+                    title="Meta geral Check-up"
+                    value={data.metrics.teamProduction.checkupActual}
+                    max={data.metrics.teamProduction.checkupMonthlyTarget}
+                    helper={`${data.metrics.teamProduction.checkupActual} / ${data.metrics.teamProduction.checkupMonthlyTarget}`}
                     accent="#9333EA"
                   />
                 </div>
@@ -996,13 +1003,16 @@ export default function ChecklistRecepcaoPage() {
 
               <section className={`${sectionClassName} p-5`}>
                 <h2 className="text-lg font-bold text-slate-900">Operacao e equipe</h2>
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                  <Card
-                    title="Confirmacao D+1"
-                    value={formatPercent(data.metrics.appointmentsConfirmation.ratePct)}
-                    helper={`${data.metrics.appointmentsConfirmation.confirmed}/${data.metrics.appointmentsConfirmation.total} | ${data.metrics.appointmentsConfirmation.source}`}
-                    icon={<CalendarDays size={16} />}
+                <div className="mt-4">
+                  <GaugeCard
+                    title="Confirmacao de agendamentos D+1"
+                    value={data.metrics.appointmentsConfirmation.ratePct}
+                    max={100}
+                    helper={`${formatPercent(data.metrics.appointmentsConfirmation.ratePct)} | ${data.metrics.appointmentsConfirmation.confirmed}/${data.metrics.appointmentsConfirmation.total}`}
+                    accent="#15803D"
                   />
+                </div>
+                <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <Card
                     title="Pos-consulta equipe"
                     value={formatPercent(data.metrics.postConsult.conversionRate)}
