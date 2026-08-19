@@ -294,20 +294,20 @@ const toNumberInput = (value: string) => {
 };
 
 const Card = ({ title, value, helper, icon }: { title: string; value: string; helper?: string; icon: React.ReactNode }) => (
-  <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
-    <div className="flex items-center justify-between gap-3">
+  <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <div className="flex items-center justify-between gap-2.5">
       <div>
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</div>
-        <div className="mt-1.5 text-[1.35rem] font-bold text-slate-900">{value}</div>
+        <div className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-500">{title}</div>
+        <div className="mt-1 text-[1.15rem] font-bold leading-tight text-slate-900">{value}</div>
       </div>
-      <div className="rounded-xl bg-slate-100 p-1.5 text-slate-500">{icon}</div>
+      <div className="rounded-lg bg-slate-100 p-1.5 text-slate-500">{icon}</div>
     </div>
-    {helper ? <div className="mt-2 text-[11px] text-slate-500">{helper}</div> : null}
+    {helper ? <div className="mt-1.5 text-[10px] text-slate-500">{helper}</div> : null}
   </div>
 );
 
-const sectionClassName = 'rounded-3xl border border-slate-200 bg-white shadow-sm';
-const tableShellClassName = 'mt-4 max-h-[24rem] overflow-auto rounded-2xl border border-slate-200';
+const sectionClassName = 'rounded-[1.6rem] border border-slate-200 bg-white shadow-sm';
+const tableShellClassName = 'mt-3 max-h-[22rem] overflow-auto rounded-xl border border-slate-200';
 
 const helpWorkflowCards = [
   {
@@ -363,18 +363,18 @@ const GaugeCard = ({
   const ratio = Math.max(0, Math.min(1, value / normalizedMax));
   const centerX = 100;
   const centerY = 100;
-  const radius = 72;
+  const radius = 66;
   const displayedValue = valueLabel || formatPercent(ratio * 100);
   const angle = Math.PI - ratio * Math.PI;
-  const needleLength = 60;
+  const needleLength = 54;
   const needleX = centerX + Math.cos(angle) * needleLength;
   const needleY = centerY - Math.sin(angle) * needleLength;
   const tickAngles = Array.from({ length: 11 }, (_, index) => Math.PI - (index / 10) * Math.PI);
-  const valuePlateWidth = Math.max(70, Math.min(126, displayedValue.length * 10.5));
+  const valuePlateWidth = Math.max(66, Math.min(116, displayedValue.length * 9.4));
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-3">
-      <svg viewBox="0 0 200 150" className="mx-auto h-44 w-full max-w-[17rem]">
+    <div className="rounded-xl border border-slate-200 bg-white p-2.5">
+      <svg viewBox="0 0 200 150" className="mx-auto h-36 w-full max-w-[14.5rem]">
         <defs>
           <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#E24545" />
@@ -407,7 +407,7 @@ const GaugeCard = ({
           d={`M 28 100 A ${radius} ${radius} 0 0 1 172 100`}
           fill="none"
           stroke={`url(#${gradientId})`}
-          strokeWidth="14"
+          strokeWidth="12"
           strokeLinecap="round"
           opacity="0.35"
         />
@@ -415,7 +415,7 @@ const GaugeCard = ({
           d={`M 28 100 A ${radius} ${radius} 0 0 1 172 100`}
           fill="none"
           stroke={`url(#${gradientId})`}
-          strokeWidth="14"
+          strokeWidth="12"
           strokeLinecap="round"
           pathLength={100}
           strokeDasharray={`${ratio * 100} 100`}
@@ -426,27 +426,27 @@ const GaugeCard = ({
           x2={needleX}
           y2={needleY}
           stroke="#0F172A"
-          strokeWidth="3.5"
+          strokeWidth="3"
           strokeLinecap="round"
         />
-        <circle cx={centerX} cy={centerY} r="5.5" fill="#0F172A" />
+        <circle cx={centerX} cy={centerY} r="5" fill="#0F172A" />
         <rect
           x={centerX - valuePlateWidth / 2}
-          y="72"
+          y="75"
           width={valuePlateWidth}
-          height="28"
-          rx="14"
+          height="24"
+          rx="12"
           fill="#FFFFFF"
           opacity="0.96"
         />
-        <text x="100" y="91" textAnchor="middle" className="fill-slate-900 text-[17px] font-bold">
+        <text x="100" y="91" textAnchor="middle" className="fill-slate-900 text-[15px] font-bold">
           {displayedValue}
         </text>
-        <text x="100" y="122" textAnchor="middle" className="fill-slate-500 text-[10px] font-semibold uppercase tracking-[0.18em]">
+        <text x="100" y="119" textAnchor="middle" className="fill-slate-500 text-[9px] font-semibold uppercase tracking-[0.15em]">
           {title}
         </text>
       </svg>
-      <div className="mt-0.5 text-center text-[11px] text-slate-500">{helper}</div>
+      <div className="mt-0.5 text-center text-[10px] text-slate-500">{helper}</div>
     </div>
   );
 };
@@ -858,25 +858,25 @@ export default function ChecklistRecepcaoPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 p-3 md:p-5">
-      <div className="mx-auto flex max-w-7xl flex-col gap-5">
+    <main className="min-h-screen bg-slate-50 p-3 md:p-4">
+      <div className="mx-auto flex max-w-[1500px] flex-col gap-4">
         <section className={`${sectionClassName} overflow-hidden`}>
-          <div className="border-b border-slate-200 bg-white px-4 py-4 md:px-5">
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(19rem,0.9fr)] xl:items-start">
+          <div className="border-b border-slate-200 bg-white px-4 py-3.5">
+            <div className="grid gap-3 xl:grid-cols-[minmax(0,1.45fr)_minmax(18rem,0.82fr)] xl:items-start">
               <div className="min-w-0">
-                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  <Gauge size={12} />
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.16em] text-slate-500">
+                  <Gauge size={11} />
                   Checklist gerencial
                 </div>
-                <h1 className="mt-2.5 text-[2rem] font-bold leading-tight text-slate-900">Checklist Recepção</h1>
-                <p className="mt-2 max-w-4xl text-[15px] leading-7 text-slate-500">
+                <h1 className="mt-2 text-[1.7rem] font-bold leading-tight text-slate-900">Checklist Recepção</h1>
+                <p className="mt-1.5 max-w-4xl text-[13px] leading-6 text-slate-500">
                   Visão operacional versionada com modo atual, histórico D-1 congelado, escopo local de liderança e exportação em PDF.
                 </p>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2">
                 <div className="grid gap-2 sm:grid-cols-2">
                 {isRefreshing ? (
-                    <div className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 sm:col-span-2">
+                    <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-medium text-slate-600 sm:col-span-2">
                     <Loader2 size={15} className="animate-spin" />
                     Atualizando indicadores...
                   </div>
@@ -884,18 +884,18 @@ export default function ChecklistRecepcaoPage() {
                 <button
                   type="button"
                   onClick={() => setHelpOpen(true)}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  <CircleHelp size={15} />
+                  <CircleHelp size={14} />
                   Como funciona
                 </button>
                 {data?.access.isManager ? (
                   <button
                     type="button"
                     onClick={openConfigModal}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50"
                   >
-                    <Settings2 size={15} />
+                    <Settings2 size={14} />
                     Configurar líder/equipe
                   </button>
                 ) : null}
@@ -903,24 +903,24 @@ export default function ChecklistRecepcaoPage() {
                   type="button"
                   onClick={() => setRefreshSeed((current) => current + 1)}
                   disabled={!canRefresh}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <RefreshCw size={15} />
+                  <RefreshCw size={14} />
                   Atualizar
                 </button>
                 <button
                   type="button"
                   onClick={handleExportPdf}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  <Download size={15} />
+                  <Download size={14} />
                   PDF
                 </button>
                 <button
                   type="button"
                   onClick={handleSave}
                   disabled={!canEdit || data?.readOnly || saving || !data?.config}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123666] disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
+                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#17407E] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#123666] disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
                 >
                   {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                   {saving ? 'Salvando...' : 'Salvar nova versão'}
@@ -930,9 +930,9 @@ export default function ChecklistRecepcaoPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 bg-slate-50/70 px-4 py-4 md:grid-cols-2 md:px-5 xl:grid-cols-12">
+          <div className="grid gap-2.5 bg-slate-50/70 px-4 py-3 md:grid-cols-2 xl:grid-cols-12">
             {data?.access.isManager ? (
-              <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
+              <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
                 Líder
                 <select
                   value={selectedLeaderUserId}
@@ -944,7 +944,7 @@ export default function ChecklistRecepcaoPage() {
                       nextVersionId: '',
                     })
                   }
-                  className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
                 >
                   <option value="">Todos os líderes</option>
                   {(data?.availableLeaderFilters || []).map((leader) => (
@@ -955,12 +955,12 @@ export default function ChecklistRecepcaoPage() {
                 </select>
               </label>
             ) : null}
-            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
+            <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
               Configuração
               <select
                 value={selectedConfigId}
                 onChange={(event) => void fetchData({ nextConfigId: event.target.value, nextVersionId: '' })}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 <option value="">Selecione</option>
                 {(data?.availableConfigs || []).map((config) => (
@@ -970,12 +970,12 @@ export default function ChecklistRecepcaoPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
+            <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
               Unidade
               <select
                 value={selectedUnitKey}
                 onChange={(event) => void fetchData({ nextUnitKey: event.target.value, nextVersionId: '' })}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 {(data?.availableUnits || []).filter((unit) => !data?.config || data.config.units.includes(unit.key)).map((unit) => (
                   <option key={unit.key} value={unit.key}>
@@ -984,7 +984,7 @@ export default function ChecklistRecepcaoPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
+            <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
               Modo
               <select
                 value={viewMode}
@@ -995,13 +995,13 @@ export default function ChecklistRecepcaoPage() {
                     nextVersionId: '',
                   })
                 }
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 <option value="current">Hoje</option>
                 <option value="d1">D-1</option>
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
+            <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
               Data de referência
               <input
                 type="date"
@@ -1011,10 +1011,10 @@ export default function ChecklistRecepcaoPage() {
                   setReferenceDate(nextDate);
                   void fetchData({ nextReferenceDate: nextDate, nextVersionId: '' });
                 }}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               />
             </label>
-            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
+            <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
               Versão salva
               <select
                 value={selectedVersionId}
@@ -1023,7 +1023,7 @@ export default function ChecklistRecepcaoPage() {
                   setSelectedVersionId(nextVersionId);
                   void fetchData({ nextVersionId });
                 }}
-                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 <option value="">Última referência</option>
                 {availableVersions.map((version) => (
@@ -1033,14 +1033,14 @@ export default function ChecklistRecepcaoPage() {
                 ))}
               </select>
             </label>
-            <div className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2 xl:col-span-12">
-              <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Escopo local</div>
-              <div className="mt-2 text-[15px] font-semibold text-slate-900">{data?.config?.leaderName || 'Sem configuração'}</div>
-              <div className="mt-1 text-[13px] text-slate-500">{data?.config?.teamMembers.length || 0} colaborador(es) na equipe local</div>
-              <div className="mt-2 text-[13px] text-slate-500">
+            <div className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 md:col-span-2 xl:col-span-12">
+              <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">Escopo local</div>
+              <div className="mt-1.5 text-[14px] font-semibold text-slate-900">{data?.config?.leaderName || 'Sem configuração'}</div>
+              <div className="mt-1 text-[12px] text-slate-500">{data?.config?.teamMembers.length || 0} colaborador(es) na equipe local</div>
+              <div className="mt-1.5 text-[12px] text-slate-500">
                 Unidades habilitadas: {data?.config?.units.map((unitKey) => data.availableUnits.find((unit) => unit.key === unitKey)?.label || unitKey).join(', ') || 'Nenhuma'}
               </div>
-              <div className="mt-2.5 text-[13px] leading-6 text-slate-500">As unidades exibidas dependem da configuração local da checklist, não da equipe local.</div>
+              <div className="mt-1.5 text-[12px] leading-5 text-slate-500">As unidades exibidas dependem da configuração local da checklist, não da equipe local.</div>
             </div>
           </div>
         </section>
@@ -1085,7 +1085,7 @@ export default function ChecklistRecepcaoPage() {
           </section>
         ) : (
           <>
-            <div className="grid gap-3 xl:grid-cols-4">
+            <div className="grid gap-2.5 xl:grid-cols-4">
               <Card
                 title="Faturamento do Dia"
                 value={formatCurrency(data.metrics.unit.revenueDay)}
@@ -1112,19 +1112,19 @@ export default function ChecklistRecepcaoPage() {
               />
             </div>
 
-            <section className={`${sectionClassName} p-4`}>
+            <section className={`${sectionClassName} p-3.5`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-[1.05rem] font-bold text-slate-900">Faturamento da unidade</h2>
-                  <p className="mt-1 text-[13px] text-slate-500">
+                  <h2 className="text-[0.98rem] font-bold text-slate-900">Faturamento da unidade</h2>
+                  <p className="mt-1 text-[12px] text-slate-500">
                     Velocímetros da unidade com realizado diário, acumulado do mês, referência esperada até {formatDateBr(data.referenceDate)} e nota Google.
                   </p>
                 </div>
-                <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                <div className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
                   {data.readOnly ? 'D-1 congelado' : 'Hoje editável'}
                 </div>
               </div>
-              <div className="mt-4 grid gap-3 xl:grid-cols-4">
+              <div className="mt-3 grid gap-2.5 xl:grid-cols-4">
                 <GaugeCard
                   title="Faturamento mensal"
                   value={data.metrics.unit.revenueMonth}
@@ -1158,12 +1158,12 @@ export default function ChecklistRecepcaoPage() {
               </div>
             </section>
 
-            <section className={`${sectionClassName} p-4`}>
+            <section className={`${sectionClassName} p-3.5`}>
               <div className="flex items-center gap-3">
                 <Users className="text-slate-500" size={18} />
                 <div>
-                  <h2 className="text-[1.05rem] font-bold text-slate-900">Faturamento por colaborador</h2>
-                  <p className="mt-1 text-[13px] text-slate-500">A equipe local configurada nesta página alimenta a visão individual de metas e realizado.</p>
+                  <h2 className="text-[0.98rem] font-bold text-slate-900">Faturamento por colaborador</h2>
+                  <p className="mt-1 text-[12px] text-slate-500">A equipe local configurada nesta página alimenta a visão individual de metas e realizado.</p>
                 </div>
               </div>
               <div className={tableShellClassName}>
@@ -1200,11 +1200,11 @@ export default function ChecklistRecepcaoPage() {
               </div>
             </section>
 
-            <div className="grid gap-5 xl:grid-cols-2">
-              <section className={`${sectionClassName} p-4`}>
-                <h2 className="text-[1.05rem] font-bold text-slate-900">Resolve e Check-up da equipe</h2>
-                <p className="mt-1 text-[13px] text-slate-500">Velocímetros da meta geral da equipe no v1 manual versionado, prontos para troca futura da origem sem mudar a interface.</p>
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="grid gap-4 xl:grid-cols-2">
+              <section className={`${sectionClassName} p-3.5`}>
+                <h2 className="text-[0.98rem] font-bold text-slate-900">Resolve e Check-up da equipe</h2>
+                <p className="mt-1 text-[12px] text-slate-500">Velocímetros da meta geral da equipe no v1 manual versionado, prontos para troca futura da origem sem mudar a interface.</p>
+                <div className="mt-3 grid gap-2.5 md:grid-cols-2">
                   <GaugeCard
                     title="Meta geral Resolve"
                     value={resolveGaugeActual}
@@ -1220,7 +1220,7 @@ export default function ChecklistRecepcaoPage() {
                     valueLabel={String(checkupGaugeActual)}
                   />
                 </div>
-                <fieldset disabled={!canEdit || data.readOnly} className={`mt-4 grid gap-3 md:grid-cols-2 ${!canEdit || data.readOnly ? 'opacity-70' : ''}`}>
+                <fieldset disabled={!canEdit || data.readOnly} className={`mt-3 grid gap-2.5 md:grid-cols-2 ${!canEdit || data.readOnly ? 'opacity-70' : ''}`}>
                   <label className="text-[13px] font-medium text-slate-700">
                     Meta mensal Resolve
                     <input
@@ -1228,7 +1228,7 @@ export default function ChecklistRecepcaoPage() {
                       min={0}
                       value={manual.resolveMonthlyTarget}
                       onChange={(event) => setManual((current) => ({ ...current, resolveMonthlyTarget: toNumberInput(event.target.value) }))}
-                      className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 outline-none"
                     />
                   </label>
                   <label className="text-[13px] font-medium text-slate-700">
@@ -1238,7 +1238,7 @@ export default function ChecklistRecepcaoPage() {
                       min={0}
                       value={manual.resolveActual}
                       onChange={(event) => setManual((current) => ({ ...current, resolveActual: toNumberInput(event.target.value) }))}
-                      className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 outline-none"
                     />
                   </label>
                   <label className="text-[13px] font-medium text-slate-700">
@@ -1248,7 +1248,7 @@ export default function ChecklistRecepcaoPage() {
                       min={0}
                       value={manual.checkupMonthlyTarget}
                       onChange={(event) => setManual((current) => ({ ...current, checkupMonthlyTarget: toNumberInput(event.target.value) }))}
-                      className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 outline-none"
                     />
                   </label>
                   <label className="text-[13px] font-medium text-slate-700">
@@ -1258,15 +1258,15 @@ export default function ChecklistRecepcaoPage() {
                       min={0}
                       value={manual.checkupActual}
                       onChange={(event) => setManual((current) => ({ ...current, checkupActual: toNumberInput(event.target.value) }))}
-                      className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                      className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 outline-none"
                     />
                   </label>
                 </fieldset>
               </section>
 
-              <section className={`${sectionClassName} p-4`}>
-                <h2 className="text-[1.05rem] font-bold text-slate-900">Operação e equipe</h2>
-                <div className="mt-4">
+              <section className={`${sectionClassName} p-3.5`}>
+                <h2 className="text-[0.98rem] font-bold text-slate-900">Operação e equipe</h2>
+                <div className="mt-3">
                   <GaugeCard
                     title="Confirmação de agendamentos D+1"
                     value={data.metrics.appointmentsConfirmation.ratePct}
@@ -1275,7 +1275,7 @@ export default function ChecklistRecepcaoPage() {
                     valueLabel={formatPercent(data.metrics.appointmentsConfirmation.ratePct)}
                   />
                 </div>
-                <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
                   <Card
                     title="Pós-consulta equipe"
                     value={formatPercent(data.metrics.postConsult.conversionRate)}
@@ -1304,14 +1304,14 @@ export default function ChecklistRecepcaoPage() {
               </section>
             </div>
 
-            <section className={`${sectionClassName} p-4`}>
+            <section className={`${sectionClassName} p-3.5`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-[1.05rem] font-bold text-slate-900">Faltas e atrasos da equipe local</h2>
-                  <p className="mt-1 text-[13px] text-slate-500">Indicadores consolidados da equipe vinculada à líder desta configuração.</p>
+                  <h2 className="text-[0.98rem] font-bold text-slate-900">Faltas e atrasos da equipe local</h2>
+                  <p className="mt-1 text-[12px] text-slate-500">Indicadores consolidados da equipe vinculada à líder desta configuração.</p>
                 </div>
               </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="mt-3 grid gap-2.5 md:grid-cols-2">
                 <Card
                   title="Faltas no período"
                   value={String(data.metrics.absences.absenceDays)}
@@ -1355,20 +1355,20 @@ export default function ChecklistRecepcaoPage() {
               </div>
             </section>
 
-            <section className={`${sectionClassName} p-4`}>
+            <section className={`${sectionClassName} p-3.5`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-[1.05rem] font-bold text-slate-900">Pendências e validações</h2>
-                  <p className="mt-1 text-[13px] text-slate-500">Campos manuais versionados junto com cada salvamento da checklist.</p>
+                  <h2 className="text-[0.98rem] font-bold text-slate-900">Pendências e validações</h2>
+                  <p className="mt-1 text-[12px] text-slate-500">Campos manuais versionados junto com cada salvamento da checklist.</p>
                 </div>
               </div>
-              <fieldset disabled={!canEdit || data.readOnly} className={`mt-4 grid gap-3 md:grid-cols-2 ${!canEdit || data.readOnly ? 'opacity-70' : ''}`}>
+              <fieldset disabled={!canEdit || data.readOnly} className={`mt-3 grid gap-2.5 md:grid-cols-2 ${!canEdit || data.readOnly ? 'opacity-70' : ''}`}>
                 <label className="text-[13px] font-medium text-slate-700">
                   Nota fiscal em aberto
                   <select
                     value={manual.nfOpenStatus}
                     onChange={(event) => setManual((current) => ({ ...current, nfOpenStatus: event.target.value }))}
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none"
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 outline-none"
                   >
                     <option value="">Selecione</option>
                     <option value="Validado">Validado</option>
@@ -1380,7 +1380,7 @@ export default function ChecklistRecepcaoPage() {
                   <select
                     value={manual.accountsOpenStatus}
                     onChange={(event) => setManual((current) => ({ ...current, accountsOpenStatus: event.target.value }))}
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none"
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-3 outline-none"
                   >
                     <option value="">Selecione</option>
                     <option value="Validado">Validado</option>
@@ -1396,7 +1396,7 @@ export default function ChecklistRecepcaoPage() {
                     step="0.1"
                     value={manual.googleRating}
                     onChange={(event) => setManual((current) => ({ ...current, googleRating: toNumberInput(event.target.value) }))}
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 outline-none"
                   />
                 </label>
                 <label className="text-[13px] font-medium text-slate-700">
@@ -1406,7 +1406,7 @@ export default function ChecklistRecepcaoPage() {
                     min={0}
                     value={manual.googleNewReviewsCount}
                     onChange={(event) => setManual((current) => ({ ...current, googleNewReviewsCount: toNumberInput(event.target.value) }))}
-                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                    className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 outline-none"
                   />
                 </label>
                 <label className="text-[13px] font-medium text-slate-700 md:col-span-2">
