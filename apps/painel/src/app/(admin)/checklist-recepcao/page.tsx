@@ -873,10 +873,10 @@ export default function ChecklistRecepcaoPage() {
                   Visão operacional versionada com modo atual, histórico D-1 congelado, escopo local de liderança e exportação em PDF.
                 </p>
               </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-1.5">
                 <div className="grid gap-2 sm:grid-cols-2">
                 {isRefreshing ? (
-                    <div className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-medium text-slate-600 sm:col-span-2">
+                    <div className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-medium text-slate-600 sm:col-span-2">
                     <Loader2 size={15} className="animate-spin" />
                     Atualizando indicadores...
                   </div>
@@ -884,18 +884,18 @@ export default function ChecklistRecepcaoPage() {
                 <button
                   type="button"
                   onClick={() => setHelpOpen(true)}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50"
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  <CircleHelp size={14} />
+                  <CircleHelp size={13} />
                   Como funciona
                 </button>
                 {data?.access.isManager ? (
                   <button
                     type="button"
                     onClick={openConfigModal}
-                      className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50"
+                      className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50"
                   >
-                    <Settings2 size={14} />
+                    <Settings2 size={13} />
                     Configurar líder/equipe
                   </button>
                 ) : null}
@@ -903,26 +903,26 @@ export default function ChecklistRecepcaoPage() {
                   type="button"
                   onClick={() => setRefreshSeed((current) => current + 1)}
                   disabled={!canRefresh}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  <RefreshCw size={14} />
+                  <RefreshCw size={13} />
                   Atualizar
                 </button>
                 <button
                   type="button"
                   onClick={handleExportPdf}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[13px] font-medium text-slate-700 hover:bg-slate-50"
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50"
                 >
-                  <Download size={14} />
+                  <Download size={13} />
                   PDF
                 </button>
                 <button
                   type="button"
                   onClick={handleSave}
                   disabled={!canEdit || data?.readOnly || saving || !data?.config}
-                    className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#17407E] px-4 py-2 text-[13px] font-semibold text-white hover:bg-[#123666] disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
+                    className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#17407E] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#123666] disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
                 >
-                  {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                   {saving ? 'Salvando...' : 'Salvar nova versão'}
                 </button>
                 </div>
