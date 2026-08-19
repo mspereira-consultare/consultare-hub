@@ -1695,6 +1695,9 @@ export default function ChecklistRecepcaoPage() {
             <section className={`${sectionClassName} p-5`}>
               <h2 className="text-lg font-bold text-slate-900">Grupos de faturamento em risco</h2>
               <p className="mt-1 text-sm text-slate-500">Somente grupos com meta configurada entram nesta lista. O FCA fica salvo dentro de cada versão criada.</p>
+              <p className="mt-1 text-xs text-amber-700/90">
+                Os grupos em amarelo estão em risco: o realizado acumulado no mês está abaixo do valor que o grupo deveria ter alcançado até a data de referência.
+              </p>
               <p className="mt-1 text-[10px] text-slate-400">{renderFreshnessLabel(data.riskGroupsFreshness)}</p>
               <div className={tableShellClassName}>
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -1707,7 +1710,7 @@ export default function ChecklistRecepcaoPage() {
                       <th className="px-4 py-3">Plano</th>
                       <th className="px-4 py-3">Fato</th>
                       <th className="px-4 py-3">Causa</th>
-                      <th className="px-4 py-3">Acao</th>
+                      <th className="px-4 py-3">Ação</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">

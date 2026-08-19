@@ -3258,7 +3258,10 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
     });
   }
 
-  drawSectionTitle('Grupos de faturamento em risco', formatPdfFreshness(payload.riskGroupsFreshness));
+  drawSectionTitle(
+    'Grupos de faturamento em risco',
+    `Os grupos em amarelo estão em risco: o realizado acumulado no mês está abaixo do valor que o grupo deveria ter alcançado até a data de referência. ${formatPdfFreshness(payload.riskGroupsFreshness)}`.trim(),
+  );
   if (payload.riskGroups.length <= 0) {
     drawNotesBlock('Grupos em risco', 'Nenhum grupo com meta mensal configurada foi encontrado para esta unidade.');
   } else {
