@@ -363,6 +363,7 @@ const GaugeCard = ({
   const needleX = centerX + Math.cos(angle) * needleLength;
   const needleY = centerY - Math.sin(angle) * needleLength;
   const tickAngles = Array.from({ length: 11 }, (_, index) => Math.PI - (index / 10) * Math.PI);
+  const valuePlateWidth = Math.max(70, Math.min(126, displayedValue.length * 10.5));
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -422,7 +423,16 @@ const GaugeCard = ({
           strokeLinecap="round"
         />
         <circle cx={centerX} cy={centerY} r="5.5" fill="#0F172A" />
-        <text x="100" y="96" textAnchor="middle" className="fill-slate-900 text-[17px] font-bold">
+        <rect
+          x={centerX - valuePlateWidth / 2}
+          y="72"
+          width={valuePlateWidth}
+          height="28"
+          rx="14"
+          fill="#FFFFFF"
+          opacity="0.96"
+        />
+        <text x="100" y="91" textAnchor="middle" className="fill-slate-900 text-[17px] font-bold">
           {displayedValue}
         </text>
         <text x="100" y="122" textAnchor="middle" className="fill-slate-500 text-[10px] font-semibold uppercase tracking-[0.18em]">
@@ -811,20 +821,21 @@ export default function ChecklistRecepcaoPage() {
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <section className={`${sectionClassName} overflow-hidden`}>
           <div className="border-b border-slate-200 bg-white px-5 py-5">
-            <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-              <div>
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.95fr)] xl:items-start">
+              <div className="min-w-0">
                 <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
                   <Gauge size={13} />
                   Checklist gerencial
                 </div>
                 <h1 className="mt-3 text-2xl font-bold text-slate-900">Checklist Recepção</h1>
-                <p className="mt-2 max-w-3xl text-sm text-slate-500">
+                <p className="mt-2 max-w-4xl text-sm leading-7 text-slate-500">
                   Visão operacional versionada com modo atual, histórico D-1 congelado, escopo local de liderança e exportação em PDF.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+                <div className="grid gap-2 sm:grid-cols-2">
                 {isRefreshing ? (
-                  <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
+                    <div className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 sm:col-span-2">
                     <Loader2 size={15} className="animate-spin" />
                     Atualizando indicadores...
                   </div>
@@ -832,7 +843,7 @@ export default function ChecklistRecepcaoPage() {
                 <button
                   type="button"
                   onClick={() => setHelpOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   <CircleHelp size={15} />
                   Como funciona
@@ -841,7 +852,7 @@ export default function ChecklistRecepcaoPage() {
                   <button
                     type="button"
                     onClick={openConfigModal}
-                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     <Settings2 size={15} />
                     Configurar líder/equipe
@@ -851,7 +862,7 @@ export default function ChecklistRecepcaoPage() {
                   type="button"
                   onClick={() => setRefreshSeed((current) => current + 1)}
                   disabled={!canRefresh}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <RefreshCw size={15} />
                   Atualizar
@@ -859,7 +870,7 @@ export default function ChecklistRecepcaoPage() {
                 <button
                   type="button"
                   onClick={handleExportPdf}
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   <Download size={15} />
                   PDF
@@ -868,18 +879,19 @@ export default function ChecklistRecepcaoPage() {
                   type="button"
                   onClick={handleSave}
                   disabled={!canEdit || data?.readOnly || saving || !data?.config}
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123666] disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123666] disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
                 >
                   {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                   {saving ? 'Salvando...' : 'Salvar nova versão'}
                 </button>
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="grid gap-4 bg-slate-50/70 px-5 py-4 md:grid-cols-2 xl:grid-cols-7">
+          <div className="grid gap-4 bg-slate-50/70 px-5 py-5 md:grid-cols-2 xl:grid-cols-12">
             {data?.access.isManager ? (
-              <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
                 Líder
                 <select
                   value={selectedLeaderUserId}
@@ -902,7 +914,7 @@ export default function ChecklistRecepcaoPage() {
                 </select>
               </label>
             ) : null}
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
               Configuração
               <select
                 value={selectedConfigId}
@@ -917,7 +929,7 @@ export default function ChecklistRecepcaoPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
               Unidade
               <select
                 value={selectedUnitKey}
@@ -931,7 +943,7 @@ export default function ChecklistRecepcaoPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
               Modo
               <select
                 value={viewMode}
@@ -948,7 +960,7 @@ export default function ChecklistRecepcaoPage() {
                 <option value="d1">D-1</option>
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
               Data de referência
               <input
                 type="date"
@@ -961,7 +973,7 @@ export default function ChecklistRecepcaoPage() {
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
               Versão salva
               <select
                 value={selectedVersionId}
@@ -980,14 +992,14 @@ export default function ChecklistRecepcaoPage() {
                 ))}
               </select>
             </label>
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2 xl:col-span-4">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Escopo local</div>
-              <div className="mt-2 text-sm font-semibold text-slate-900">{data?.config?.leaderName || 'Sem configuração'}</div>
-              <div className="mt-1 text-xs text-slate-500">{data?.config?.teamMembers.length || 0} colaborador(es) na equipe local</div>
-              <div className="mt-1 text-xs text-slate-500">
+              <div className="mt-2 text-base font-semibold text-slate-900">{data?.config?.leaderName || 'Sem configuração'}</div>
+              <div className="mt-1 text-sm text-slate-500">{data?.config?.teamMembers.length || 0} colaborador(es) na equipe local</div>
+              <div className="mt-2 text-sm text-slate-500">
                 Unidades habilitadas: {data?.config?.units.map((unitKey) => data.availableUnits.find((unit) => unit.key === unitKey)?.label || unitKey).join(', ') || 'Nenhuma'}
               </div>
-              <div className="mt-2 text-xs text-slate-500">As unidades exibidas dependem da configuração local da checklist, não da equipe local.</div>
+              <div className="mt-3 text-sm leading-6 text-slate-500">As unidades exibidas dependem da configuração local da checklist, não da equipe local.</div>
             </div>
           </div>
         </section>

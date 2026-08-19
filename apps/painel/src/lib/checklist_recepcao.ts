@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import PDFDocument from 'pdfkit';
+import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { requirePagePermission, type PagePermissionAuth, type PagePermissionDenied } from '@/lib/authz';
 import {
   APPOINTMENTS_CONFIRMATION_SNAPSHOT_TABLE,
@@ -318,6 +318,14 @@ const toInt = (value: unknown) => Math.max(0, Math.floor(toNumber(value)));
 
 const formatCurrency = (value: number) =>
   Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
+const formatCompactCurrency = (value: number) =>
+  Number(value || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  });
 
 const formatPercent = (value: number) => `${Number(value || 0).toFixed(1).replace('.', ',')}%`;
 
@@ -1711,98 +1719,314 @@ export const listRecepcaoChecklistConfigsWithOptions = async (actor: RecepcaoChe
   };
 };
 
-const collectPdfBuffer = async (doc: InstanceType<typeof PDFDocument>) =>
-  new Promise<Buffer>((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    doc.on('data', (chunk: Uint8Array | Buffer | string) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-    doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', reject);
-    doc.end();
-  });
+const pdfColor = (hex: string) => {
+  const normalized = hex.replace('#', '');
+  const expanded = normalized.length === 3 ? normalized.split('').map((char) => char + char).join('') : normalized;
+  const value = expanded.padEnd(6, '0').slice(0, 6);
+  return rgb(parseInt(value.slice(0, 2), 16) / 255, parseInt(value.slice(2, 4), 16) / 255, parseInt(value.slice(4, 6), 16) / 255);
+};
 
-const drawGauge = (
-  doc: InstanceType<typeof PDFDocument>,
-  args: { x: number; y: number; radius: number; label: string; value: number; max: number; helper: string },
-) => {
-  const gaugeDoc = doc as InstanceType<typeof PDFDocument> & {
-    arc: (x: number, y: number, radius: number, startAngle: number, endAngle: number) => InstanceType<typeof PDFDocument>;
+const polarToCartesian = (centerX: number, centerY: number, radius: number, angleInDegrees: number) => {
+  const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180;
+  return {
+    x: centerX + radius * Math.cos(angleInRadians),
+    y: centerY + radius * Math.sin(angleInRadians),
   };
-  const progress = args.max > 0 ? Math.max(0, Math.min(1, args.value / args.max)) : 0;
-  const endAngle = 180 - progress * 180;
+};
 
-  gaugeDoc
-    .save()
-    .lineWidth(10)
-    .strokeColor('#E2E8F0')
-    .arc(args.x, args.y, args.radius, 180, 0)
-    .stroke();
+const describeArcPath = (centerX: number, centerY: number, radius: number, startAngle: number, endAngle: number) => {
+  const start = polarToCartesian(centerX, centerY, radius, endAngle);
+  const end = polarToCartesian(centerX, centerY, radius, startAngle);
+  const largeArcFlag = Math.abs(endAngle - startAngle) <= 180 ? '0' : '1';
+  return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
+};
 
-  gaugeDoc
-    .lineWidth(10)
-    .strokeColor(progress >= 1 ? '#15803D' : progress >= 0.7 ? '#0F766E' : '#B45309')
-    .arc(args.x, args.y, args.radius, 180, endAngle)
-    .stroke()
-    .restore();
+const measureTextWidth = (font: PDFFont, size: number, text: string) => font.widthOfTextAtSize(String(text || ''), size);
 
-  doc.fontSize(10).fillColor('#475569').text(args.label, args.x - args.radius, args.y + 18, {
-    width: args.radius * 2,
-    align: 'center',
-  });
-  doc.fontSize(14).fillColor('#0F172A').text(formatPercent(progress * 100), args.x - args.radius, args.y - 8, {
-    width: args.radius * 2,
-    align: 'center',
-  });
-  doc.fontSize(8).fillColor('#64748B').text(args.helper, args.x - args.radius, args.y + 34, {
-    width: args.radius * 2,
-    align: 'center',
+const drawCenteredText = (
+  page: PDFPage,
+  text: string,
+  options: { x: number; y: number; width: number; size: number; font: PDFFont; color: ReturnType<typeof rgb> },
+) => {
+  const safeText = String(text || '');
+  const textWidth = measureTextWidth(options.font, options.size, safeText);
+  page.drawText(safeText, {
+    x: options.x + Math.max(0, (options.width - textWidth) / 2),
+    y: options.y,
+    size: options.size,
+    font: options.font,
+    color: options.color,
   });
 };
 
+const wrapPdfText = (text: string, font: PDFFont, size: number, maxWidth: number) => {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [''];
+
+  const lines: string[] = [];
+  let currentLine = '';
+
+  words.forEach((word) => {
+    const candidate = currentLine ? `${currentLine} ${word}` : word;
+    if (measureTextWidth(font, size, candidate) <= maxWidth || !currentLine) {
+      currentLine = candidate;
+      return;
+    }
+    lines.push(currentLine);
+    currentLine = word;
+  });
+
+  if (currentLine) lines.push(currentLine);
+  return lines;
+};
+
+const drawGaugePdf = (
+  page: PDFPage,
+  args: {
+    x: number;
+    y: number;
+    radius: number;
+    title: string;
+    value: number;
+    max: number;
+    valueLabel: string;
+    helper: string;
+    regular: PDFFont;
+    bold: PDFFont;
+  },
+) => {
+  const ratio = args.max > 0 ? Math.max(0, Math.min(1, args.value / args.max)) : 0;
+  const arcWidth = 12;
+  const titleSize = 10;
+  const valueSize = args.valueLabel.length > 10 ? 16 : 18;
+  const cardWidth = args.radius * 2 + 34;
+  const left = args.x - cardWidth / 2;
+  const valuePlateWidth = Math.max(74, Math.min(128, args.valueLabel.length * 8.5));
+
+  page.drawRectangle({
+    x: left,
+    y: args.y - args.radius - 58,
+    width: cardWidth,
+    height: args.radius + 88,
+    borderColor: pdfColor('#D9E2EF'),
+    borderWidth: 0.8,
+    color: pdfColor('#FFFFFF'),
+    borderOpacity: 1,
+  });
+
+  for (let index = 0; index <= 10; index += 1) {
+    const angle = 180 - (index / 10) * 180;
+    const outer = polarToCartesian(args.x, args.y, args.radius + 12, angle);
+    const inner = polarToCartesian(args.x, args.y, args.radius + (index % 5 === 0 ? 3 : 7), angle);
+    page.drawLine({
+      start: { x: inner.x, y: inner.y },
+      end: { x: outer.x, y: outer.y },
+      color: pdfColor('#94A3B8'),
+      thickness: index % 5 === 0 ? 1.4 : 0.8,
+      opacity: index % 5 === 0 ? 0.9 : 0.55,
+    });
+  }
+
+  page.drawSvgPath(describeArcPath(args.x, args.y, args.radius, 180, 0), {
+    borderColor: pdfColor('#C7E5D0'),
+    borderWidth: arcWidth,
+    opacity: 1,
+  });
+  page.drawSvgPath(describeArcPath(args.x, args.y, args.radius, 180, 126), {
+    borderColor: pdfColor('#EF4444'),
+    borderWidth: arcWidth,
+  });
+  page.drawSvgPath(describeArcPath(args.x, args.y, args.radius, 126, 72), {
+    borderColor: pdfColor('#F59E0B'),
+    borderWidth: arcWidth,
+  });
+  page.drawSvgPath(describeArcPath(args.x, args.y, args.radius, 72, 0), {
+    borderColor: pdfColor('#34A853'),
+    borderWidth: arcWidth,
+  });
+
+  const pointerAngle = 180 - ratio * 180;
+  const pointerEnd = polarToCartesian(args.x, args.y, args.radius - 8, pointerAngle);
+  page.drawLine({
+    start: { x: args.x, y: args.y },
+    end: { x: pointerEnd.x, y: pointerEnd.y },
+    color: pdfColor('#17213A'),
+    thickness: 3.2,
+  });
+  page.drawCircle({ x: args.x, y: args.y, size: 5.8, color: pdfColor('#17213A') });
+
+  page.drawRectangle({
+    x: args.x - valuePlateWidth / 2,
+    y: args.y - 2,
+    width: valuePlateWidth,
+    height: 24,
+    color: pdfColor('#FFFFFF'),
+    opacity: 0.98,
+  });
+  drawCenteredText(page, args.valueLabel, {
+    x: args.x - valuePlateWidth / 2,
+    y: args.y + 6,
+    width: valuePlateWidth,
+    size: valueSize,
+    font: args.bold,
+    color: pdfColor('#17213A'),
+  });
+  drawCenteredText(page, args.title.toUpperCase(), {
+    x: left + 8,
+    y: args.y - 34,
+    width: cardWidth - 16,
+    size: titleSize,
+    font: args.bold,
+    color: pdfColor('#64748B'),
+  });
+
+  wrapPdfText(args.helper, args.regular, 8.5, cardWidth - 24)
+    .slice(0, 2)
+    .forEach((line, index) => {
+      drawCenteredText(page, line, {
+        x: left + 12,
+        y: args.y - 52 - index * 11,
+        width: cardWidth - 24,
+        size: 8.5,
+        font: args.regular,
+        color: pdfColor('#64748B'),
+      });
+    });
+};
+
 export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayload) => {
-  const doc = new PDFDocument({ size: 'A4', margin: 36 });
-  doc.info.Title = `Checklist Recepcao - ${payload.selectedUnitLabel}`;
-  doc.info.Author = 'Consultare Hub';
+  const pdfDoc = await PDFDocument.create();
+  pdfDoc.setTitle(`Checklist Recepcao - ${payload.selectedUnitLabel}`);
+  pdfDoc.setAuthor('Consultare Hub');
 
-  doc.rect(36, 36, 523, 42).fill('#17407E');
-  doc.fillColor('#FFFFFF').fontSize(18).text('Checklist Recepcao', 48, 49);
-  doc.fontSize(10).text(`${payload.selectedUnitLabel} | ${payload.viewMode === 'd1' ? 'D-1' : 'Hoje'} | ${payload.referenceDate}`, 48, 66);
+  const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const bold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const pageSize: [number, number] = [595.28, 841.89];
+  const margin = 36;
+  const contentWidth = pageSize[0] - margin * 2;
+  let page = pdfDoc.addPage(pageSize);
 
-  doc.moveDown(2.4);
-  doc.fillColor('#0F172A').fontSize(11).text(`Configuracao: ${payload.config?.name || 'Sem configuracao'}`);
-  doc.fontSize(10).fillColor('#475569').text(`Lider: ${payload.config?.leaderName || '-'}`);
-  doc.text(`Gerado em: ${payload.generatedAt}`);
+  const addPage = (withHeader = false) => {
+    page = pdfDoc.addPage(pageSize);
+    if (withHeader) {
+      page.drawRectangle({ x: margin, y: pageSize[1] - 72, width: contentWidth, height: 38, color: pdfColor('#17407E') });
+      page.drawText('Checklist Recepcao', {
+        x: margin + 12,
+        y: pageSize[1] - 58,
+        size: 16,
+        font: bold,
+        color: pdfColor('#FFFFFF'),
+      });
+    }
+    return pageSize[1] - 100;
+  };
 
-  drawGauge(doc, {
-    x: 110,
-    y: 180,
-    radius: 48,
-    label: 'Faturamento mensal',
-    value: payload.metrics.unit.revenueMonth,
-    max: payload.metrics.unit.monthlyGoal || 1,
-    helper: `${formatCurrency(payload.metrics.unit.revenueMonth)} / ${formatCurrency(payload.metrics.unit.monthlyGoal)}`,
+  const ensureSpace = (cursorY: number, neededHeight: number) => {
+    if (cursorY - neededHeight < 48) {
+      return addPage(true);
+    }
+    return cursorY;
+  };
+
+  page.drawRectangle({ x: margin, y: pageSize[1] - 84, width: contentWidth, height: 48, color: pdfColor('#17407E') });
+  page.drawText('Checklist Recepcao', {
+    x: margin + 12,
+    y: pageSize[1] - 64,
+    size: 18,
+    font: bold,
+    color: pdfColor('#FFFFFF'),
   });
-  drawGauge(doc, {
-    x: 300,
-    y: 180,
-    radius: 48,
-    label: 'Deveria ate hoje',
-    value: payload.metrics.unit.revenueMonth,
-    max: payload.metrics.unit.shouldHaveUntilDate || 1,
-    helper: `${formatCurrency(payload.metrics.unit.shouldHaveUntilDate)} previsto`,
-  });
-  drawGauge(doc, {
-    x: 490,
-    y: 180,
-    radius: 48,
-    label: 'Google',
-    value: payload.metrics.google.ratingActual,
-    max: payload.metrics.google.ratingTarget || 1,
-    helper: `${payload.metrics.google.ratingActual.toFixed(1).replace('.', ',')} / ${payload.metrics.google.ratingTarget.toFixed(1).replace('.', ',')}`,
+  page.drawText(`${payload.selectedUnitLabel} | ${payload.viewMode === 'd1' ? 'D-1' : 'Hoje'} | ${payload.referenceDate}`, {
+    x: margin + 12,
+    y: pageSize[1] - 78,
+    size: 9,
+    font: regular,
+    color: pdfColor('#E2E8F0'),
   });
 
-  doc.y = 260;
-  doc.fontSize(12).fillColor('#0F172A').text('Resumo operacional', 36, doc.y);
-  doc.moveDown(0.6);
+  let y = pageSize[1] - 116;
+  [
+    `Configuracao: ${payload.config?.name || 'Sem configuracao'}`,
+    `Lider: ${payload.config?.leaderName || '-'}`,
+    `Gerado em: ${payload.generatedAt}`,
+  ].forEach((line, index) => {
+    page.drawText(line, {
+      x: margin,
+      y: y - index * 14,
+      size: index === 0 ? 11 : 10,
+      font: index === 0 ? bold : regular,
+      color: index === 0 ? pdfColor('#0F172A') : pdfColor('#475569'),
+    });
+  });
+
+  const gaugeTopY = pageSize[1] - 210;
+  [
+    {
+      x: margin + 83,
+      title: 'Faturamento mensal',
+      value: payload.metrics.unit.revenueMonth,
+      max: payload.metrics.unit.monthlyGoal || 1,
+      valueLabel: formatCompactCurrency(payload.metrics.unit.revenueMonth),
+      helper: `${formatCurrency(payload.metrics.unit.revenueMonth)} / ${formatCurrency(payload.metrics.unit.monthlyGoal)}`,
+    },
+    {
+      x: margin + 261,
+      title: 'Faturamento diario',
+      value: payload.metrics.unit.revenueDay,
+      max: payload.metrics.unit.dynamicDailyTarget || 1,
+      valueLabel: formatCompactCurrency(payload.metrics.unit.revenueDay),
+      helper: `${formatCurrency(payload.metrics.unit.revenueDay)} / ${formatCurrency(payload.metrics.unit.dynamicDailyTarget)}`,
+    },
+    {
+      x: margin + 439,
+      title: 'Google',
+      value: payload.metrics.google.ratingActual,
+      max: payload.metrics.google.ratingTarget || 1,
+      valueLabel: payload.metrics.google.ratingActual.toFixed(1).replace('.', ','),
+      helper: `${payload.metrics.google.ratingActual.toFixed(1).replace('.', ',')} / ${payload.metrics.google.ratingTarget.toFixed(1).replace('.', ',')}`,
+    },
+  ].forEach((gauge) => {
+    drawGaugePdf(page, { ...gauge, y: gaugeTopY, radius: 42, regular, bold });
+  });
+
+  [
+    {
+      x: margin + 112,
+      title: 'Deveria ate a data',
+      value: payload.metrics.unit.revenueMonth,
+      max: payload.metrics.unit.shouldHaveUntilDate || 1,
+      valueLabel: formatPercent(payload.metrics.unit.shouldHaveUntilDate > 0 ? (payload.metrics.unit.revenueMonth * 100) / payload.metrics.unit.shouldHaveUntilDate : 0),
+      helper: `${formatCurrency(payload.metrics.unit.shouldHaveUntilDate)} previsto`,
+    },
+    {
+      x: margin + 298,
+      title: 'Confirmacao D+1',
+      value: payload.metrics.appointmentsConfirmation.ratePct,
+      max: 100,
+      valueLabel: formatPercent(payload.metrics.appointmentsConfirmation.ratePct),
+      helper: `${payload.metrics.appointmentsConfirmation.confirmed}/${payload.metrics.appointmentsConfirmation.total} confirmados`,
+    },
+    {
+      x: margin + 484,
+      title: 'Resolve / Check-up',
+      value: payload.metrics.teamProduction.resolveActual + payload.metrics.teamProduction.checkupActual,
+      max: payload.metrics.teamProduction.resolveMonthlyTarget + payload.metrics.teamProduction.checkupMonthlyTarget || 1,
+      valueLabel: `${payload.metrics.teamProduction.resolveActual + payload.metrics.teamProduction.checkupActual}`,
+      helper: `${payload.metrics.teamProduction.resolveActual}/${payload.metrics.teamProduction.resolveMonthlyTarget} • ${payload.metrics.teamProduction.checkupActual}/${payload.metrics.teamProduction.checkupMonthlyTarget}`,
+    },
+  ].forEach((gauge) => {
+    drawGaugePdf(page, { ...gauge, y: pageSize[1] - 390, radius: 34, regular, bold });
+  });
+
+  y = pageSize[1] - 470;
+  page.drawText('Resumo operacional', {
+    x: margin,
+    y,
+    size: 12,
+    font: bold,
+    color: pdfColor('#0F172A'),
+  });
+  y -= 18;
   const summaryLines = [
     `Faturamento do dia: ${formatCurrency(payload.metrics.unit.revenueDay)}`,
     `Ticket medio do dia: ${formatCurrency(payload.metrics.unit.ticketAverageDay)}`,
@@ -1816,11 +2040,27 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
     `Faltas / atrasos: ${payload.metrics.absences.absenceDays} dias | ${payload.metrics.absences.lateMinutes} min`,
   ];
   summaryLines.forEach((line) => {
-    doc.fontSize(10).fillColor('#334155').text(`- ${line}`, { width: 520 });
+    y = ensureSpace(y, 16);
+    page.drawText(`- ${line}`, {
+      x: margin,
+      y,
+      size: 9.5,
+      font: regular,
+      color: pdfColor('#334155'),
+    });
+    y -= 13;
   });
 
-  doc.moveDown(0.8);
-  doc.fontSize(12).fillColor('#0F172A').text('Campos manuais');
+  y -= 8;
+  y = ensureSpace(y, 22);
+  page.drawText('Campos manuais', {
+    x: margin,
+    y,
+    size: 12,
+    font: bold,
+    color: pdfColor('#0F172A'),
+  });
+  y -= 18;
   [
     `NF em aberto: ${payload.manual.nfOpenStatus || '-'}`,
     `Contas em aberto: ${payload.manual.accountsOpenStatus || '-'}`,
@@ -1829,33 +2069,96 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
     `Novas avaliacoes Google: ${payload.manual.googleNewReviewsCount}`,
     `Recoletas: ${payload.manual.recollectionCount}`,
   ].forEach((line) => {
-    doc.fontSize(10).fillColor('#334155').text(`- ${line}`, { width: 520 });
+    y = ensureSpace(y, 16);
+    page.drawText(`- ${line}`, {
+      x: margin,
+      y,
+      size: 9.5,
+      font: regular,
+      color: pdfColor('#334155'),
+    });
+    y -= 13;
   });
 
   if (payload.manual.pendingNotes) {
-    doc.moveDown(0.6);
-    doc.fontSize(10).fillColor('#0F172A').text('Pendencias:');
-    doc.fontSize(9).fillColor('#475569').text(payload.manual.pendingNotes, { width: 520 });
+    y -= 6;
+    y = ensureSpace(y, 40);
+    page.drawText('Pendencias:', {
+      x: margin,
+      y,
+      size: 10,
+      font: bold,
+      color: pdfColor('#0F172A'),
+    });
+    y -= 14;
+    wrapPdfText(payload.manual.pendingNotes, regular, 9, contentWidth)
+      .slice(0, 6)
+      .forEach((line) => {
+        y = ensureSpace(y, 14);
+        page.drawText(line, {
+          x: margin,
+          y,
+          size: 9,
+          font: regular,
+          color: pdfColor('#475569'),
+        });
+        y -= 12;
+      });
   }
 
   if (payload.riskGroups.length > 0) {
-    doc.addPage({ margin: 36 });
-    doc.fontSize(16).fillColor('#0F172A').text('Grupos de faturamento em risco');
-    doc.moveDown(0.8);
+    y = addPage(true);
+    page.drawText('Grupos de faturamento em risco', {
+      x: margin,
+      y,
+      size: 16,
+      font: bold,
+      color: pdfColor('#0F172A'),
+    });
+    y -= 22;
     payload.riskGroups.forEach((group) => {
-      doc.fontSize(11).fillColor('#0F172A').text(group.groupName);
-      doc.fontSize(9).fillColor('#475569').text(
+      y = ensureSpace(y, 66);
+      page.drawText(group.groupName, {
+        x: margin,
+        y,
+        size: 11,
+        font: bold,
+        color: pdfColor('#0F172A'),
+      });
+      y -= 14;
+      page.drawText(
         `Meta: ${formatCurrency(group.monthlyGoal)} | Realizado: ${formatCurrency(group.actualMonth)} | Previsto ate a data: ${formatCurrency(group.shouldHaveUntilDate)}`,
+        {
+          x: margin,
+          y,
+          size: 9,
+          font: regular,
+          color: pdfColor('#475569'),
+        },
       );
+      y -= 12;
       if (group.planAction || group.fact || group.cause || group.action) {
-        doc.fontSize(9).text(`Plano: ${group.planAction || '-'}`);
-        doc.text(`Fato: ${group.fact || '-'}`);
-        doc.text(`Causa: ${group.cause || '-'}`);
-        doc.text(`Acao: ${group.action || '-'}`);
+        [
+          `Plano: ${group.planAction || '-'}`,
+          `Fato: ${group.fact || '-'}`,
+          `Causa: ${group.cause || '-'}`,
+          `Acao: ${group.action || '-'}`,
+        ].forEach((line) => {
+          y = ensureSpace(y, 14);
+          page.drawText(line, {
+            x: margin + 8,
+            y,
+            size: 9,
+            font: regular,
+            color: pdfColor('#334155'),
+          });
+          y -= 11;
+        });
       }
-      doc.moveDown(0.8);
+      y -= 8;
     });
   }
 
-  return collectPdfBuffer(doc);
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
 };
