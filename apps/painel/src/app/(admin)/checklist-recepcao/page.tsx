@@ -281,21 +281,28 @@ const formatDateBr = (value: string) => {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 };
 
+const normalizeSearchText = (value: string) =>
+  String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
 const toNumberInput = (value: string) => {
   const parsed = Number(String(value || '').replace(',', '.'));
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
 const Card = ({ title, value, helper, icon }: { title: string; value: string; helper?: string; icon: React.ReactNode }) => (
-  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+  <div className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm">
     <div className="flex items-center justify-between gap-3">
       <div>
-        <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">{title}</div>
-        <div className="mt-2 text-2xl font-bold text-slate-900">{value}</div>
+        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</div>
+        <div className="mt-1.5 text-[1.35rem] font-bold text-slate-900">{value}</div>
       </div>
-      <div className="rounded-xl bg-slate-100 p-2 text-slate-500">{icon}</div>
+      <div className="rounded-xl bg-slate-100 p-1.5 text-slate-500">{icon}</div>
     </div>
-    {helper ? <div className="mt-3 text-xs text-slate-500">{helper}</div> : null}
+    {helper ? <div className="mt-2 text-[11px] text-slate-500">{helper}</div> : null}
   </div>
 );
 
@@ -366,8 +373,8 @@ const GaugeCard = ({
   const valuePlateWidth = Math.max(70, Math.min(126, displayedValue.length * 10.5));
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4">
-      <svg viewBox="0 0 200 150" className="mx-auto h-48 w-full max-w-[18rem]">
+    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+      <svg viewBox="0 0 200 150" className="mx-auto h-44 w-full max-w-[17rem]">
         <defs>
           <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="#E24545" />
@@ -439,7 +446,7 @@ const GaugeCard = ({
           {title}
         </text>
       </svg>
-      <div className="mt-1 text-center text-xs text-slate-500">{helper}</div>
+      <div className="mt-0.5 text-center text-[11px] text-slate-500">{helper}</div>
     </div>
   );
 };
@@ -567,6 +574,8 @@ export default function ChecklistRecepcaoPage() {
   const [configSaving, setConfigSaving] = useState(false);
   const [configPayload, setConfigPayload] = useState<ConfigOptionsPayload | null>(null);
   const [configForm, setConfigForm] = useState<ConfigFormState>(configFromData());
+  const [leaderSearch, setLeaderSearch] = useState('');
+  const [teamSearch, setTeamSearch] = useState('');
   const requestStateRef = useRef({
     selectedConfigId: '',
     selectedLeaderUserId: '',
@@ -735,6 +744,8 @@ export default function ChecklistRecepcaoPage() {
   };
 
   const openConfigModal = async () => {
+    setLeaderSearch('');
+    setTeamSearch('');
     setConfigModalOpen(true);
     await loadConfigPayload();
   };
@@ -794,6 +805,36 @@ export default function ChecklistRecepcaoPage() {
     [configForm.leaderUserId, configPayload?.options.leaders],
   );
 
+  const filteredLeaderOptions = useMemo(() => {
+    const search = normalizeSearchText(leaderSearch);
+    const items = configPayload?.options.leaders || [];
+    if (!search) return items;
+    return items.filter((leader) =>
+      normalizeSearchText(`${leader.name} ${leader.department || ''} ${(leader.units || []).join(' ')}`).includes(search),
+    );
+  }, [configPayload?.options.leaders, leaderSearch]);
+
+  const filteredTeamOptions = useMemo(() => {
+    const search = normalizeSearchText(teamSearch);
+    const items = configPayload?.options.teamMembers || [];
+    if (!search) return items;
+    return items.filter((member) =>
+      normalizeSearchText(`${member.fullName} ${member.department || ''} ${(member.units || []).join(' ')}`).includes(search),
+    );
+  }, [configPayload?.options.teamMembers, teamSearch]);
+
+  const selectedTeamMembersPreview = useMemo(() => {
+    const selectedIds = new Set(configForm.teamEmployeeIds);
+    return (configPayload?.options.teamMembers || []).filter((member) => selectedIds.has(member.employeeId));
+  }, [configForm.teamEmployeeIds, configPayload?.options.teamMembers]);
+
+  const googleGaugeActual = manual.googleRating;
+  const googleGaugeTarget = data?.metrics.google.ratingTarget || 4.7;
+  const resolveGaugeActual = manual.resolveActual;
+  const resolveGaugeTarget = manual.resolveMonthlyTarget;
+  const checkupGaugeActual = manual.checkupActual;
+  const checkupGaugeTarget = manual.checkupMonthlyTarget;
+
   const applyCurrentLeaderUnits = () => {
     if (!currentLeader) return;
     setConfigForm((current) => ({
@@ -817,25 +858,25 @@ export default function ChecklistRecepcaoPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 p-4 md:p-6">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <main className="min-h-screen bg-slate-50 p-3 md:p-5">
+      <div className="mx-auto flex max-w-7xl flex-col gap-5">
         <section className={`${sectionClassName} overflow-hidden`}>
-          <div className="border-b border-slate-200 bg-white px-5 py-5">
-            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.95fr)] xl:items-start">
+          <div className="border-b border-slate-200 bg-white px-4 py-4 md:px-5">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(19rem,0.9fr)] xl:items-start">
               <div className="min-w-0">
-                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  <Gauge size={13} />
+                <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  <Gauge size={12} />
                   Checklist gerencial
                 </div>
-                <h1 className="mt-3 text-2xl font-bold text-slate-900">Checklist Recepção</h1>
-                <p className="mt-2 max-w-4xl text-sm leading-7 text-slate-500">
+                <h1 className="mt-2.5 text-[2rem] font-bold leading-tight text-slate-900">Checklist Recepção</h1>
+                <p className="mt-2 max-w-4xl text-[15px] leading-7 text-slate-500">
                   Visão operacional versionada com modo atual, histórico D-1 congelado, escopo local de liderança e exportação em PDF.
                 </p>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-2.5">
                 <div className="grid gap-2 sm:grid-cols-2">
                 {isRefreshing ? (
-                    <div className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 sm:col-span-2">
+                    <div className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 sm:col-span-2">
                     <Loader2 size={15} className="animate-spin" />
                     Atualizando indicadores...
                   </div>
@@ -843,7 +884,7 @@ export default function ChecklistRecepcaoPage() {
                 <button
                   type="button"
                   onClick={() => setHelpOpen(true)}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   <CircleHelp size={15} />
                   Como funciona
@@ -852,7 +893,7 @@ export default function ChecklistRecepcaoPage() {
                   <button
                     type="button"
                     onClick={openConfigModal}
-                      className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     <Settings2 size={15} />
                     Configurar líder/equipe
@@ -862,7 +903,7 @@ export default function ChecklistRecepcaoPage() {
                   type="button"
                   onClick={() => setRefreshSeed((current) => current + 1)}
                   disabled={!canRefresh}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <RefreshCw size={15} />
                   Atualizar
@@ -870,7 +911,7 @@ export default function ChecklistRecepcaoPage() {
                 <button
                   type="button"
                   onClick={handleExportPdf}
-                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                    className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                 >
                   <Download size={15} />
                   PDF
@@ -879,7 +920,7 @@ export default function ChecklistRecepcaoPage() {
                   type="button"
                   onClick={handleSave}
                   disabled={!canEdit || data?.readOnly || saving || !data?.config}
-                    className="inline-flex h-12 items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123666] disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123666] disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
                 >
                   {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
                   {saving ? 'Salvando...' : 'Salvar nova versão'}
@@ -889,9 +930,9 @@ export default function ChecklistRecepcaoPage() {
             </div>
           </div>
 
-          <div className="grid gap-4 bg-slate-50/70 px-5 py-5 md:grid-cols-2 xl:grid-cols-12">
+          <div className="grid gap-3 bg-slate-50/70 px-4 py-4 md:grid-cols-2 md:px-5 xl:grid-cols-12">
             {data?.access.isManager ? (
-              <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
+              <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
                 Líder
                 <select
                   value={selectedLeaderUserId}
@@ -903,7 +944,7 @@ export default function ChecklistRecepcaoPage() {
                       nextVersionId: '',
                     })
                   }
-                  className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                  className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
                 >
                   <option value="">Todos os líderes</option>
                   {(data?.availableLeaderFilters || []).map((leader) => (
@@ -914,12 +955,12 @@ export default function ChecklistRecepcaoPage() {
                 </select>
               </label>
             ) : null}
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
+            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
               Configuração
               <select
                 value={selectedConfigId}
                 onChange={(event) => void fetchData({ nextConfigId: event.target.value, nextVersionId: '' })}
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 <option value="">Selecione</option>
                 {(data?.availableConfigs || []).map((config) => (
@@ -929,12 +970,12 @@ export default function ChecklistRecepcaoPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
+            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
               Unidade
               <select
                 value={selectedUnitKey}
                 onChange={(event) => void fetchData({ nextUnitKey: event.target.value, nextVersionId: '' })}
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 {(data?.availableUnits || []).filter((unit) => !data?.config || data.config.units.includes(unit.key)).map((unit) => (
                   <option key={unit.key} value={unit.key}>
@@ -943,7 +984,7 @@ export default function ChecklistRecepcaoPage() {
                 ))}
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
+            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
               Modo
               <select
                 value={viewMode}
@@ -954,13 +995,13 @@ export default function ChecklistRecepcaoPage() {
                     nextVersionId: '',
                   })
                 }
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 <option value="current">Hoje</option>
                 <option value="d1">D-1</option>
               </select>
             </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
+            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
               Data de referência
               <input
                 type="date"
@@ -970,10 +1011,10 @@ export default function ChecklistRecepcaoPage() {
                   setReferenceDate(nextDate);
                   void fetchData({ nextReferenceDate: nextDate, nextVersionId: '' });
                 }}
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
               />
             </label>
-            <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 xl:col-span-2">
+            <label className="flex flex-col gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500 xl:col-span-2">
               Versão salva
               <select
                 value={selectedVersionId}
@@ -982,7 +1023,7 @@ export default function ChecklistRecepcaoPage() {
                   setSelectedVersionId(nextVersionId);
                   void fetchData({ nextVersionId });
                 }}
-                className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
+                className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 <option value="">Última referência</option>
                 {availableVersions.map((version) => (
@@ -992,14 +1033,14 @@ export default function ChecklistRecepcaoPage() {
                 ))}
               </select>
             </label>
-            <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2 xl:col-span-4">
+            <div className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 md:col-span-2 xl:col-span-12">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Escopo local</div>
-              <div className="mt-2 text-base font-semibold text-slate-900">{data?.config?.leaderName || 'Sem configuração'}</div>
-              <div className="mt-1 text-sm text-slate-500">{data?.config?.teamMembers.length || 0} colaborador(es) na equipe local</div>
-              <div className="mt-2 text-sm text-slate-500">
+              <div className="mt-2 text-[15px] font-semibold text-slate-900">{data?.config?.leaderName || 'Sem configuração'}</div>
+              <div className="mt-1 text-[13px] text-slate-500">{data?.config?.teamMembers.length || 0} colaborador(es) na equipe local</div>
+              <div className="mt-2 text-[13px] text-slate-500">
                 Unidades habilitadas: {data?.config?.units.map((unitKey) => data.availableUnits.find((unit) => unit.key === unitKey)?.label || unitKey).join(', ') || 'Nenhuma'}
               </div>
-              <div className="mt-3 text-sm leading-6 text-slate-500">As unidades exibidas dependem da configuração local da checklist, não da equipe local.</div>
+              <div className="mt-2.5 text-[13px] leading-6 text-slate-500">As unidades exibidas dependem da configuração local da checklist, não da equipe local.</div>
             </div>
           </div>
         </section>
@@ -1044,7 +1085,7 @@ export default function ChecklistRecepcaoPage() {
           </section>
         ) : (
           <>
-            <div className="grid gap-4 xl:grid-cols-4">
+            <div className="grid gap-3 xl:grid-cols-4">
               <Card
                 title="Faturamento do Dia"
                 value={formatCurrency(data.metrics.unit.revenueDay)}
@@ -1071,19 +1112,19 @@ export default function ChecklistRecepcaoPage() {
               />
             </div>
 
-            <section className={`${sectionClassName} p-5`}>
+            <section className={`${sectionClassName} p-4`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Faturamento da unidade</h2>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <h2 className="text-[1.05rem] font-bold text-slate-900">Faturamento da unidade</h2>
+                  <p className="mt-1 text-[13px] text-slate-500">
                     Velocímetros da unidade com realizado diário, acumulado do mês, referência esperada até {formatDateBr(data.referenceDate)} e nota Google.
                   </p>
                 </div>
-                <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                <div className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">
                   {data.readOnly ? 'D-1 congelado' : 'Hoje editável'}
                 </div>
               </div>
-              <div className="mt-5 grid gap-4 xl:grid-cols-4">
+              <div className="mt-4 grid gap-3 xl:grid-cols-4">
                 <GaugeCard
                   title="Faturamento mensal"
                   value={data.metrics.unit.revenueMonth}
@@ -1109,20 +1150,20 @@ export default function ChecklistRecepcaoPage() {
                 />
                 <GaugeCard
                   title="Google"
-                  value={data.metrics.google.ratingActual}
-                  max={data.metrics.google.ratingTarget}
-                  helper={`${data.metrics.google.ratingActual.toFixed(1).replace('.', ',')} / ${data.metrics.google.ratingTarget.toFixed(1).replace('.', ',')}`}
-                  valueLabel={data.metrics.google.ratingActual.toFixed(1).replace('.', ',')}
+                  value={googleGaugeActual}
+                  max={googleGaugeTarget}
+                  helper={`${googleGaugeActual.toFixed(1).replace('.', ',')} / ${googleGaugeTarget.toFixed(1).replace('.', ',')}`}
+                  valueLabel={googleGaugeActual.toFixed(1).replace('.', ',')}
                 />
               </div>
             </section>
 
-            <section className={`${sectionClassName} p-5`}>
+            <section className={`${sectionClassName} p-4`}>
               <div className="flex items-center gap-3">
                 <Users className="text-slate-500" size={18} />
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Faturamento por colaborador</h2>
-                  <p className="mt-1 text-sm text-slate-500">A equipe local configurada nesta página alimenta a visão individual de metas e realizado.</p>
+                  <h2 className="text-[1.05rem] font-bold text-slate-900">Faturamento por colaborador</h2>
+                  <p className="mt-1 text-[13px] text-slate-500">A equipe local configurada nesta página alimenta a visão individual de metas e realizado.</p>
                 </div>
               </div>
               <div className={tableShellClassName}>
@@ -1159,72 +1200,72 @@ export default function ChecklistRecepcaoPage() {
               </div>
             </section>
 
-            <div className="grid gap-6 xl:grid-cols-2">
-              <section className={`${sectionClassName} p-5`}>
-                <h2 className="text-lg font-bold text-slate-900">Resolve e Check-up da equipe</h2>
-                <p className="mt-1 text-sm text-slate-500">Velocímetros da meta geral da equipe no v1 manual versionado, prontos para troca futura da origem sem mudar a interface.</p>
-                <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <div className="grid gap-5 xl:grid-cols-2">
+              <section className={`${sectionClassName} p-4`}>
+                <h2 className="text-[1.05rem] font-bold text-slate-900">Resolve e Check-up da equipe</h2>
+                <p className="mt-1 text-[13px] text-slate-500">Velocímetros da meta geral da equipe no v1 manual versionado, prontos para troca futura da origem sem mudar a interface.</p>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
                   <GaugeCard
                     title="Meta geral Resolve"
-                    value={data.metrics.teamProduction.resolveActual}
-                    max={data.metrics.teamProduction.resolveMonthlyTarget}
-                    helper={`${data.metrics.teamProduction.resolveActual} / ${data.metrics.teamProduction.resolveMonthlyTarget}`}
-                    valueLabel={String(data.metrics.teamProduction.resolveActual)}
+                    value={resolveGaugeActual}
+                    max={resolveGaugeTarget}
+                    helper={`${resolveGaugeActual} / ${resolveGaugeTarget}`}
+                    valueLabel={String(resolveGaugeActual)}
                   />
                   <GaugeCard
                     title="Meta geral Check-up"
-                    value={data.metrics.teamProduction.checkupActual}
-                    max={data.metrics.teamProduction.checkupMonthlyTarget}
-                    helper={`${data.metrics.teamProduction.checkupActual} / ${data.metrics.teamProduction.checkupMonthlyTarget}`}
-                    valueLabel={String(data.metrics.teamProduction.checkupActual)}
+                    value={checkupGaugeActual}
+                    max={checkupGaugeTarget}
+                    helper={`${checkupGaugeActual} / ${checkupGaugeTarget}`}
+                    valueLabel={String(checkupGaugeActual)}
                   />
                 </div>
-                <fieldset disabled={!canEdit || data.readOnly} className={`mt-5 grid gap-4 md:grid-cols-2 ${!canEdit || data.readOnly ? 'opacity-70' : ''}`}>
-                  <label className="text-sm font-medium text-slate-700">
+                <fieldset disabled={!canEdit || data.readOnly} className={`mt-4 grid gap-3 md:grid-cols-2 ${!canEdit || data.readOnly ? 'opacity-70' : ''}`}>
+                  <label className="text-[13px] font-medium text-slate-700">
                     Meta mensal Resolve
                     <input
                       type="number"
                       min={0}
                       value={manual.resolveMonthlyTarget}
                       onChange={(event) => setManual((current) => ({ ...current, resolveMonthlyTarget: toNumberInput(event.target.value) }))}
-                      className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                      className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
                     />
                   </label>
-                  <label className="text-sm font-medium text-slate-700">
+                  <label className="text-[13px] font-medium text-slate-700">
                     Realizado Resolve
                     <input
                       type="number"
                       min={0}
                       value={manual.resolveActual}
                       onChange={(event) => setManual((current) => ({ ...current, resolveActual: toNumberInput(event.target.value) }))}
-                      className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                      className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
                     />
                   </label>
-                  <label className="text-sm font-medium text-slate-700">
+                  <label className="text-[13px] font-medium text-slate-700">
                     Meta mensal Check-up
                     <input
                       type="number"
                       min={0}
                       value={manual.checkupMonthlyTarget}
                       onChange={(event) => setManual((current) => ({ ...current, checkupMonthlyTarget: toNumberInput(event.target.value) }))}
-                      className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                      className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
                     />
                   </label>
-                  <label className="text-sm font-medium text-slate-700">
+                  <label className="text-[13px] font-medium text-slate-700">
                     Realizado Check-up
                     <input
                       type="number"
                       min={0}
                       value={manual.checkupActual}
                       onChange={(event) => setManual((current) => ({ ...current, checkupActual: toNumberInput(event.target.value) }))}
-                      className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                      className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
                     />
                   </label>
                 </fieldset>
               </section>
 
-              <section className={`${sectionClassName} p-5`}>
-                <h2 className="text-lg font-bold text-slate-900">Operação e equipe</h2>
+              <section className={`${sectionClassName} p-4`}>
+                <h2 className="text-[1.05rem] font-bold text-slate-900">Operação e equipe</h2>
                 <div className="mt-4">
                   <GaugeCard
                     title="Confirmação de agendamentos D+1"
@@ -1263,11 +1304,11 @@ export default function ChecklistRecepcaoPage() {
               </section>
             </div>
 
-            <section className={`${sectionClassName} p-5`}>
+            <section className={`${sectionClassName} p-4`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Faltas e atrasos da equipe local</h2>
-                  <p className="mt-1 text-sm text-slate-500">Indicadores consolidados da equipe vinculada à líder desta configuração.</p>
+                  <h2 className="text-[1.05rem] font-bold text-slate-900">Faltas e atrasos da equipe local</h2>
+                  <p className="mt-1 text-[13px] text-slate-500">Indicadores consolidados da equipe vinculada à líder desta configuração.</p>
                 </div>
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -1314,39 +1355,39 @@ export default function ChecklistRecepcaoPage() {
               </div>
             </section>
 
-            <section className={`${sectionClassName} p-5`}>
+            <section className={`${sectionClassName} p-4`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-bold text-slate-900">Pendências e validações</h2>
-                  <p className="mt-1 text-sm text-slate-500">Campos manuais versionados junto com cada salvamento da checklist.</p>
+                  <h2 className="text-[1.05rem] font-bold text-slate-900">Pendências e validações</h2>
+                  <p className="mt-1 text-[13px] text-slate-500">Campos manuais versionados junto com cada salvamento da checklist.</p>
                 </div>
               </div>
-              <fieldset disabled={!canEdit || data.readOnly} className={`mt-4 grid gap-4 md:grid-cols-2 ${!canEdit || data.readOnly ? 'opacity-70' : ''}`}>
-                <label className="text-sm font-medium text-slate-700">
+              <fieldset disabled={!canEdit || data.readOnly} className={`mt-4 grid gap-3 md:grid-cols-2 ${!canEdit || data.readOnly ? 'opacity-70' : ''}`}>
+                <label className="text-[13px] font-medium text-slate-700">
                   Nota fiscal em aberto
                   <select
                     value={manual.nfOpenStatus}
                     onChange={(event) => setManual((current) => ({ ...current, nfOpenStatus: event.target.value }))}
-                    className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none"
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none"
                   >
                     <option value="">Selecione</option>
                     <option value="Validado">Validado</option>
                     <option value="Nao validado">Não validado</option>
                   </select>
                 </label>
-                <label className="text-sm font-medium text-slate-700">
+                <label className="text-[13px] font-medium text-slate-700">
                   Contas em aberto
                   <select
                     value={manual.accountsOpenStatus}
                     onChange={(event) => setManual((current) => ({ ...current, accountsOpenStatus: event.target.value }))}
-                    className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none"
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none"
                   >
                     <option value="">Selecione</option>
                     <option value="Validado">Validado</option>
                     <option value="Nao validado">Não validado</option>
                   </select>
                 </label>
-                <label className="text-sm font-medium text-slate-700">
+                <label className="text-[13px] font-medium text-slate-700">
                   Avaliação Google
                   <input
                     type="number"
@@ -1355,20 +1396,20 @@ export default function ChecklistRecepcaoPage() {
                     step="0.1"
                     value={manual.googleRating}
                     onChange={(event) => setManual((current) => ({ ...current, googleRating: toNumberInput(event.target.value) }))}
-                    className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
                   />
                 </label>
-                <label className="text-sm font-medium text-slate-700">
+                <label className="text-[13px] font-medium text-slate-700">
                   Novas avaliações no Google
                   <input
                     type="number"
                     min={0}
                     value={manual.googleNewReviewsCount}
                     onChange={(event) => setManual((current) => ({ ...current, googleNewReviewsCount: toNumberInput(event.target.value) }))}
-                    className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                    className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
                   />
                 </label>
-                <label className="text-sm font-medium text-slate-700 md:col-span-2">
+                <label className="text-[13px] font-medium text-slate-700 md:col-span-2">
                   Pendências da unidade
                   <textarea
                     rows={4}
@@ -1377,7 +1418,7 @@ export default function ChecklistRecepcaoPage() {
                     className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-3 outline-none"
                   />
                 </label>
-                <label className="text-sm font-medium text-slate-700 md:col-span-2">
+                <label className="text-[13px] font-medium text-slate-700 md:col-span-2">
                   Observações gerais
                   <textarea
                     rows={4}
@@ -1513,8 +1554,8 @@ export default function ChecklistRecepcaoPage() {
           <div className="w-full max-w-4xl rounded-3xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Configuração local da checklist</h3>
-                <p className="mt-1 text-sm text-slate-500">Importa o contexto do cadastro do colaborador, mas o ajuste vale apenas para esta página.</p>
+                <h3 className="text-[1.05rem] font-bold text-slate-900">Configuração local da checklist</h3>
+                <p className="mt-1 text-[13px] text-slate-500">Importa o contexto do cadastro do colaborador, mas o ajuste vale apenas para esta página.</p>
               </div>
               <button type="button" onClick={() => setConfigModalOpen(false)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
                 Fechar
@@ -1550,16 +1591,22 @@ export default function ChecklistRecepcaoPage() {
                   ) : null}
 
                   <div className="grid gap-4 lg:grid-cols-2">
-                    <label className="text-sm font-medium text-slate-700">
+                    <label className="text-[13px] font-medium text-slate-700">
                       Nome da configuração
                       <input
                         value={configForm.name}
                         onChange={(event) => setConfigForm((current) => ({ ...current, name: event.target.value }))}
-                        className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 outline-none"
+                        className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 outline-none"
                       />
                     </label>
-                    <label className="text-sm font-medium text-slate-700">
-                      Líder
+                    <div className="text-[13px] font-medium text-slate-700">
+                      Líder da checklist
+                      <input
+                        value={leaderSearch}
+                        onChange={(event) => setLeaderSearch(event.target.value)}
+                        placeholder="Buscar líder por nome, setor ou unidade"
+                        className="mt-1 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm font-normal outline-none"
+                      />
                       <select
                         value={configForm.leaderUserId}
                         onChange={(event) => {
@@ -1572,16 +1619,21 @@ export default function ChecklistRecepcaoPage() {
                             units: current.units.length > 0 ? current.units : nextLeader?.units || [],
                           }));
                         }}
-                        className="mt-1 h-11 w-full rounded-xl border border-slate-200 bg-white px-3 outline-none"
+                        className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal outline-none"
                       >
                         <option value="">Selecione</option>
-                        {(configPayload?.options.leaders || []).map((leader) => (
+                        {filteredLeaderOptions.map((leader) => (
                           <option key={leader.userId} value={leader.userId}>
                             {leader.name}
                           </option>
                         ))}
                       </select>
-                    </label>
+                      {configForm.leaderUserId ? (
+                        <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] text-slate-600">
+                          Prévia: {configForm.leaderName || 'Líder selecionado'}
+                        </div>
+                      ) : null}
+                    </div>
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 lg:col-span-2">
                       <div className="font-semibold text-slate-800">Dados importados do cadastro</div>
                       <div className="mt-2">Unidades do líder: {currentLeader?.units.join(', ') || 'Sem unidades mapeadas no cadastro oficial.'}</div>
@@ -1597,7 +1649,7 @@ export default function ChecklistRecepcaoPage() {
                       </button>
                     </div>
                     <div className="lg:col-span-2">
-                      <div className="text-sm font-medium text-slate-700">Unidades desta checklist</div>
+                      <div className="text-[13px] font-medium text-slate-700">Unidades desta checklist</div>
                       <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
                         {(configPayload?.options.units || []).map((unit) => (
                           <label key={unit.key} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
@@ -1621,10 +1673,19 @@ export default function ChecklistRecepcaoPage() {
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-slate-700">Equipe local da página</div>
-                    <div className="mt-2 max-h-80 overflow-y-auto rounded-2xl border border-slate-200 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-[13px] font-medium text-slate-700">Equipe local da página</div>
+                      <div className="text-[12px] text-slate-500">{selectedTeamMembersPreview.length} selecionado(s)</div>
+                    </div>
+                    <input
+                      value={teamSearch}
+                      onChange={(event) => setTeamSearch(event.target.value)}
+                      placeholder="Buscar colaborador por nome, setor ou unidade"
+                      className="mt-2 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
+                    />
+                    <div className="mt-2 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 p-3">
                       <div className="grid gap-2 md:grid-cols-2">
-                        {(configPayload?.options.teamMembers || []).map((member) => (
+                        {filteredTeamOptions.map((member) => (
                           <label key={member.employeeId} className="inline-flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
                             <input
                               type="checkbox"
@@ -1645,6 +1706,25 @@ export default function ChecklistRecepcaoPage() {
                           </label>
                         ))}
                       </div>
+                    </div>
+                    <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-3 py-3">
+                      <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Prévia da equipe selecionada</div>
+                      {selectedTeamMembersPreview.length === 0 ? (
+                        <div className="mt-2 text-[12px] text-slate-500">Nenhum colaborador selecionado.</div>
+                      ) : (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {selectedTeamMembersPreview.slice(0, 12).map((member) => (
+                            <span key={member.employeeId} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] text-slate-600">
+                              {member.fullName}
+                            </span>
+                          ))}
+                          {selectedTeamMembersPreview.length > 12 ? (
+                            <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] text-slate-500">
+                              +{selectedTeamMembersPreview.length - 12} colaborador(es)
+                            </span>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>

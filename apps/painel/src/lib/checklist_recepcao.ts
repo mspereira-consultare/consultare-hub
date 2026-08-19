@@ -11,6 +11,8 @@ import {
   buildFinancialUnitClause,
   getFinancialUnitByKey,
   listFinancialUnits,
+  normalizeFinancialUnitText,
+  resolveFinancialUnit,
   type FinancialUnitDefinition,
 } from '@/lib/financial_units';
 import {
@@ -1248,13 +1250,23 @@ const loadAbsenceMetrics = async (
   unit: FinancialUnitDefinition,
   members: RecepcaoChecklistTeamMember[],
 ) => {
-  const employeeIds = new Set(members.map((member) => member.employeeId).filter(Boolean));
+  const allowedUnitKeys = new Set<string>([unit.key]);
+  const allowedUnitLabels = new Set<string>([unit.label, ...(unit.aliases || [])].map((item) => normalizeFinancialUnitText(item)));
+  const scopedMembers = members.filter((member) => {
+    if (!Array.isArray(member.units) || member.units.length <= 0) return true;
+    return member.units.some((memberUnit) => {
+      const resolved = resolveFinancialUnit(memberUnit);
+      if (resolved) return allowedUnitKeys.has(resolved.key);
+      return allowedUnitLabels.has(normalizeFinancialUnitText(memberUnit));
+    });
+  });
+  const employeeIds = new Set((scopedMembers.length > 0 ? scopedMembers : members).map((member) => member.employeeId).filter(Boolean));
   const rows = await listPointDailyControlRowsByDateRange(
     db,
     { startDate: monthStart(referenceDate), endDate: referenceDate },
     {
       ...DEFAULT_POINT_FILTERS,
-      unit: unit.label,
+      unit: 'all',
     },
   ).catch(() => ({ items: [] as Array<Record<string, unknown>> }));
 
@@ -1274,7 +1286,7 @@ const loadAbsenceMetrics = async (
     .slice(0, 8);
 
   return {
-    trackedEmployees: filtered.length,
+    trackedEmployees: employeeIds.size > 0 ? employeeIds.size : filtered.length,
     absenceDays: filtered.reduce((sum: number, row: Record<string, unknown>) => sum + toNumber(row.absenceDays), 0),
     lateMinutes: filtered.reduce((sum: number, row: Record<string, unknown>) => sum + toNumber(row.lateMinutes), 0),
     rows: relevantRows,
