@@ -43,6 +43,12 @@ type RecollectionEntry = {
   notes: string;
 };
 
+type MetricFreshness = {
+  updatedAt: string | null;
+  sourceLabel: string;
+  stale: boolean;
+};
+
 type ChecklistData = {
   generatedAt: string;
   today: string;
@@ -128,6 +134,14 @@ type ChecklistData = {
       businessDaysElapsed: number;
       businessDaysInMonth: number;
       businessDaysRemaining: number;
+      freshness: {
+        revenueDay: MetricFreshness;
+        revenueMonth: MetricFreshness;
+        ticketAverageDay: MetricFreshness;
+        monthlyGoal: MetricFreshness;
+        shouldHaveUntilDate: MetricFreshness;
+        dynamicDailyTarget: MetricFreshness;
+      };
     };
     collaborators: Array<{
       employeeId: string;
@@ -138,6 +152,7 @@ type ChecklistData = {
       dynamicDailyTarget: number;
       progressPct: number;
     }>;
+    collaboratorsFreshness: MetricFreshness;
     teamProduction: {
       resolveMonthlyTarget: number;
       resolveActual: number;
@@ -154,6 +169,7 @@ type ChecklistData = {
       confirmed: number;
       ratePct: number;
       source: 'live' | 'snapshot' | 'snapshot-fallback';
+      freshness: MetricFreshness;
     };
     postConsult: {
       totalEvents: number;
@@ -161,22 +177,29 @@ type ChecklistData = {
       pendingPatients: number;
       executedProposalValue: number;
       conversionRate: number;
+      freshness: MetricFreshness;
     };
     waits: {
       receptionAverageMinutes: number;
       receptionAttendedCount: number;
       medicAverageMinutes: number;
       medicAttendedCount: number;
+      freshness: {
+        reception: MetricFreshness;
+        medic: MetricFreshness;
+      };
     };
     tasks: {
       pendingTasks: number;
       overdueTasks: number;
       dueNext7DaysTasks: number;
       awaitingApprovalTasks: number;
+      freshness: MetricFreshness;
     };
     proposals: {
       openCount: number;
       openValue: number;
+      freshness: MetricFreshness;
     };
     absences: {
       trackedEmployees: number;
@@ -188,6 +211,7 @@ type ChecklistData = {
         absenceDays: number;
         lateMinutes: number;
       }>;
+      freshness: MetricFreshness;
     };
     google: {
       ratingTarget: number;
@@ -208,6 +232,15 @@ type ChecklistData = {
     cause: string;
     action: string;
   }>;
+  riskGroupsFreshness: MetricFreshness;
+};
+
+type RefreshServiceStatus = {
+  serviceName: string;
+  status: string;
+  lastRun: string | null;
+  details: string;
+  isActive: boolean;
 };
 
 type ConfigOptionsPayload = {
@@ -281,6 +314,22 @@ const formatDateBr = (value: string) => {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 };
 
+const formatDateTimeBr = (value: string | null | undefined) => {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Sem atualização registrada';
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
+  const withTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized) ? normalized : `${normalized}-03:00`;
+  const parsed = new Date(withTimezone);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+};
+
+const renderFreshnessLabel = (freshness?: MetricFreshness | null) => {
+  if (!freshness) return null;
+  const base = `Atualizado em ${formatDateTimeBr(freshness.updatedAt)}`;
+  return freshness.stale ? `${base} • desatualizado` : base;
+};
+
 const normalizeSearchText = (value: string) =>
   String(value || '')
     .normalize('NFD')
@@ -293,7 +342,19 @@ const toNumberInput = (value: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const Card = ({ title, value, helper, icon }: { title: string; value: string; helper?: string; icon: React.ReactNode }) => (
+const Card = ({
+  title,
+  value,
+  helper,
+  icon,
+  freshness,
+}: {
+  title: string;
+  value: string;
+  helper?: string;
+  icon: React.ReactNode;
+  freshness?: MetricFreshness | null;
+}) => (
   <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
     <div className="flex items-center justify-between gap-2.5">
       <div>
@@ -303,6 +364,7 @@ const Card = ({ title, value, helper, icon }: { title: string; value: string; he
       <div className="rounded-lg bg-slate-100 p-1.5 text-slate-500">{icon}</div>
     </div>
     {helper ? <div className="mt-1.5 text-[10px] text-slate-500">{helper}</div> : null}
+    {freshness ? <div className="mt-1 text-[10px] text-slate-400">{renderFreshnessLabel(freshness)}</div> : null}
   </div>
 );
 
@@ -351,12 +413,14 @@ const GaugeCard = ({
   max,
   helper,
   valueLabel,
+  freshness,
 }: {
   title: string;
   value: number;
   max: number;
   helper: string;
   valueLabel?: string;
+  freshness?: MetricFreshness | null;
 }) => {
   const gradientId = useId().replace(/:/g, '');
   const normalizedMax = max > 0 ? max : 1;
@@ -447,6 +511,7 @@ const GaugeCard = ({
         </text>
       </svg>
       <div className="mt-0.5 text-center text-[10px] text-slate-500">{helper}</div>
+      {freshness ? <div className="mt-1 text-center text-[10px] text-slate-400">{renderFreshnessLabel(freshness)}</div> : null}
     </div>
   );
 };
@@ -568,6 +633,10 @@ export default function ChecklistRecepcaoPage() {
   const [selectedVersionId, setSelectedVersionId] = useState('');
   const [refreshSeed, setRefreshSeed] = useState(0);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [refreshRequesting, setRefreshRequesting] = useState(false);
+  const [refreshStatusMessage, setRefreshStatusMessage] = useState<string | null>(null);
+  const [refreshServices, setRefreshServices] = useState<RefreshServiceStatus[]>([]);
+  const [batchStatus, setBatchStatus] = useState<RefreshServiceStatus | null>(null);
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [configLoading, setConfigLoading] = useState(false);
@@ -674,6 +743,55 @@ export default function ChecklistRecepcaoPage() {
     }
   };
 
+  const readRefreshStatus = useCallback(async () => {
+    const response = await fetch('/api/admin/checklist/recepcao/refresh', { cache: 'no-store' });
+    const payload = await response.json();
+    if (!response.ok || payload?.status !== 'success') {
+      throw new Error(payload?.error || 'Falha ao consultar status da atualização.');
+    }
+    setBatchStatus((payload.data?.batchStatus || null) as RefreshServiceStatus | null);
+    setRefreshServices(Array.isArray(payload.data?.services) ? (payload.data.services as RefreshServiceStatus[]) : []);
+    return payload.data as { batchStatus: RefreshServiceStatus | null; services: RefreshServiceStatus[] };
+  }, []);
+
+  const pollRefreshUntilSettled = useCallback(async () => {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 3 * 60 * 1000) {
+      const status = await readRefreshStatus();
+      if (!status.batchStatus?.isActive) {
+        await fetchData({ forceFresh: true });
+        return status;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 4000));
+    }
+    return null;
+  }, [fetchData, readRefreshStatus]);
+
+  const handleRefresh = useCallback(async () => {
+    if (!canRefresh) return;
+    setRefreshRequesting(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/checklist/recepcao/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const payload = await response.json();
+      if (!response.ok || payload?.status !== 'success') {
+        throw new Error(payload?.error || 'Falha ao solicitar atualização da checklist.');
+      }
+      setRefreshStatusMessage(String(payload.message || 'Atualização solicitada.'));
+      setBatchStatus((payload.batchStatus || null) as RefreshServiceStatus | null);
+      setRefreshServices(Array.isArray(payload.services) ? (payload.services as RefreshServiceStatus[]) : []);
+      await pollRefreshUntilSettled();
+      setRefreshSeed((current) => current + 1);
+    } catch (refreshError) {
+      setError(refreshError instanceof Error ? refreshError.message : 'Erro ao atualizar checklist.');
+    } finally {
+      setRefreshRequesting(false);
+    }
+  }, [canRefresh, pollRefreshUntilSettled]);
+
   useEffect(() => {
     requestStateRef.current = {
       selectedConfigId,
@@ -692,6 +810,10 @@ export default function ChecklistRecepcaoPage() {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [fetchData, refreshSeed]);
+
+  useEffect(() => {
+    void readRefreshStatus().catch(() => undefined);
+  }, [readRefreshStatus]);
 
   const handleSave = async () => {
     if (!data?.config || !canEdit || data.readOnly) return;
@@ -875,10 +997,10 @@ export default function ChecklistRecepcaoPage() {
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-1.5">
                 <div className="grid gap-2 sm:grid-cols-2">
-                {isRefreshing ? (
+                {isRefreshing || refreshRequesting || batchStatus?.isActive ? (
                     <div className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-medium text-slate-600 sm:col-span-2">
                     <Loader2 size={15} className="animate-spin" />
-                    Atualizando indicadores...
+                    {refreshRequesting ? 'Solicitando atualização...' : batchStatus?.isActive ? 'Lote em processamento...' : 'Atualizando indicadores...'}
                   </div>
                 ) : null}
                 <button
@@ -901,8 +1023,8 @@ export default function ChecklistRecepcaoPage() {
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => setRefreshSeed((current) => current + 1)}
-                  disabled={!canRefresh}
+                  onClick={handleRefresh}
+                  disabled={!canRefresh || refreshRequesting}
                     className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <RefreshCw size={13} />
@@ -1049,6 +1171,26 @@ export default function ChecklistRecepcaoPage() {
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
         ) : null}
 
+        {refreshStatusMessage || batchStatus ? (
+          <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+            {refreshStatusMessage ? <div>{refreshStatusMessage}</div> : null}
+            {batchStatus ? (
+              <div className="mt-1 text-[12px] text-slate-500">
+                Lote: {batchStatus.status} • {formatDateTimeBr(batchStatus.lastRun)}
+              </div>
+            ) : null}
+            {refreshServices.length > 0 ? (
+              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
+                {refreshServices.map((service) => (
+                  <span key={service.serviceName} className="rounded-full bg-slate-100 px-2 py-1">
+                    {service.serviceName}: {service.status}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {!data?.config ? (
           <section className={`${sectionClassName} p-6`}>
             <div className="flex items-start gap-3">
@@ -1091,24 +1233,28 @@ export default function ChecklistRecepcaoPage() {
                 value={formatCurrency(data.metrics.unit.revenueDay)}
                 helper={`Ticket médio: ${formatCurrency(data.metrics.unit.ticketAverageDay)}`}
                 icon={<TrendingUp size={16} />}
+                freshness={data.metrics.unit.freshness.revenueDay}
               />
               <Card
                 title="Faturamento no Mês"
                 value={formatCurrency(data.metrics.unit.revenueMonth)}
                 helper={`Meta mensal: ${formatCurrency(data.metrics.unit.monthlyGoal)}`}
                 icon={<Target size={16} />}
+                freshness={data.metrics.unit.freshness.revenueMonth}
               />
               <Card
                 title="Meta Diária Dinâmica"
                 value={formatCurrency(data.metrics.unit.dynamicDailyTarget)}
                 helper={`${data.metrics.unit.businessDaysRemaining} dia(s) úteis restantes`}
                 icon={<CalendarDays size={16} />}
+                freshness={data.metrics.unit.freshness.dynamicDailyTarget}
               />
               <Card
                 title="Orçamentos em Aberto"
                 value={String(data.metrics.proposals.openCount)}
                 helper={formatCurrency(data.metrics.proposals.openValue)}
                 icon={<FileText size={16} />}
+                freshness={data.metrics.proposals.freshness}
               />
             </div>
 
@@ -1131,6 +1277,7 @@ export default function ChecklistRecepcaoPage() {
                   max={data.metrics.unit.monthlyGoal}
                   helper={`${formatCurrency(data.metrics.unit.revenueMonth)} / ${formatCurrency(data.metrics.unit.monthlyGoal)}`}
                   valueLabel={formatCompactCurrency(data.metrics.unit.revenueMonth)}
+                  freshness={data.metrics.unit.freshness.revenueMonth}
                 />
                 <GaugeCard
                   title="Faturamento diário"
@@ -1138,6 +1285,7 @@ export default function ChecklistRecepcaoPage() {
                   max={data.metrics.unit.dynamicDailyTarget}
                   helper={`${formatCurrency(data.metrics.unit.revenueDay)} / ${formatCurrency(data.metrics.unit.dynamicDailyTarget)}`}
                   valueLabel={formatCompactCurrency(data.metrics.unit.revenueDay)}
+                  freshness={data.metrics.unit.freshness.revenueDay}
                 />
                 <GaugeCard
                   title="Deveria até a data"
@@ -1147,6 +1295,7 @@ export default function ChecklistRecepcaoPage() {
                   valueLabel={formatPercent(
                     data.metrics.unit.shouldHaveUntilDate > 0 ? (data.metrics.unit.revenueMonth / data.metrics.unit.shouldHaveUntilDate) * 100 : 0,
                   )}
+                  freshness={data.metrics.unit.freshness.shouldHaveUntilDate}
                 />
                 <GaugeCard
                   title="Google"
@@ -1164,6 +1313,7 @@ export default function ChecklistRecepcaoPage() {
                 <div>
                   <h2 className="text-[0.98rem] font-bold text-slate-900">Faturamento por colaborador</h2>
                   <p className="mt-1 text-[12px] text-slate-500">A equipe local configurada nesta página alimenta a visão individual de metas e realizado.</p>
+                  <p className="mt-1 text-[10px] text-slate-400">{renderFreshnessLabel(data.metrics.collaboratorsFreshness)}</p>
                 </div>
               </div>
               <div className={tableShellClassName}>
@@ -1273,6 +1423,7 @@ export default function ChecklistRecepcaoPage() {
                     max={100}
                     helper={`${formatPercent(data.metrics.appointmentsConfirmation.ratePct)} | ${data.metrics.appointmentsConfirmation.confirmed}/${data.metrics.appointmentsConfirmation.total}`}
                     valueLabel={formatPercent(data.metrics.appointmentsConfirmation.ratePct)}
+                    freshness={data.metrics.appointmentsConfirmation.freshness}
                   />
                 </div>
                 <div className="mt-3 grid gap-2.5 sm:grid-cols-2">
@@ -1281,24 +1432,28 @@ export default function ChecklistRecepcaoPage() {
                     value={formatPercent(data.metrics.postConsult.conversionRate)}
                     helper={`${data.metrics.postConsult.totalClosedEvents}/${data.metrics.postConsult.totalEvents} fechados`}
                     icon={<TrendingUp size={16} />}
+                    freshness={data.metrics.postConsult.freshness}
                   />
                   <Card
                     title="Espera recepção"
                     value={`${data.metrics.waits.receptionAverageMinutes} min`}
                     helper={`${data.metrics.waits.receptionAttendedCount} atendidos`}
                     icon={<Users size={16} />}
+                    freshness={data.metrics.waits.freshness.reception}
                   />
                   <Card
                     title="Espera médico"
                     value={`${data.metrics.waits.medicAverageMinutes} min`}
                     helper={`${data.metrics.waits.medicAttendedCount} atendidos`}
                     icon={<Users size={16} />}
+                    freshness={data.metrics.waits.freshness.medic}
                   />
                   <Card
                     title="Tarefas da líder"
                     value={String(data.metrics.tasks.overdueTasks)}
                     helper={`${data.metrics.tasks.dueNext7DaysTasks} vencem em 7 dias`}
                     icon={<AlertTriangle size={16} />}
+                    freshness={data.metrics.tasks.freshness}
                   />
                 </div>
               </section>
@@ -1317,12 +1472,14 @@ export default function ChecklistRecepcaoPage() {
                   value={String(data.metrics.absences.absenceDays)}
                   helper={`${data.metrics.absences.trackedEmployees} colaborador(es) monitorados`}
                   icon={<AlertTriangle size={16} />}
+                  freshness={data.metrics.absences.freshness}
                 />
                 <Card
                   title="Atrasos no período"
                   value={`${data.metrics.absences.lateMinutes} min`}
                   helper={`${data.metrics.absences.rows.length} colaborador(es) com ocorrência`}
                   icon={<AlertTriangle size={16} />}
+                  freshness={data.metrics.absences.freshness}
                 />
               </div>
               <div className={tableShellClassName}>
@@ -1490,6 +1647,7 @@ export default function ChecklistRecepcaoPage() {
             <section className={`${sectionClassName} p-5`}>
               <h2 className="text-lg font-bold text-slate-900">Grupos de faturamento em risco</h2>
               <p className="mt-1 text-sm text-slate-500">Somente grupos com meta configurada entram nesta lista. O FCA fica salvo dentro de cada versão criada.</p>
+              <p className="mt-1 text-[10px] text-slate-400">{renderFreshnessLabel(data.riskGroupsFreshness)}</p>
               <div className={tableShellClassName}>
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-50">

@@ -36,6 +36,19 @@ const plusDays = (dateIso: string, days: number) => {
   return base.toISOString().slice(0, 10);
 };
 
+const safeCreateIndex = async (db: DbInterface, sql: string) => {
+  try {
+    await db.execute(sql);
+  } catch (error: unknown) {
+    const message = String((error as { message?: unknown } | null)?.message || '');
+    const code = String((error as { code?: unknown } | null)?.code || '');
+    if (code === 'ER_DUP_KEYNAME' || /already exists/i.test(message) || /duplicate key name/i.test(message)) {
+      return;
+    }
+    throw error;
+  }
+};
+
 export async function ensureAppointmentConfirmationSnapshotSchema(db: DbInterface) {
   await db.execute(`
     CREATE TABLE IF NOT EXISTS ${APPOINTMENTS_CONFIRMATION_SNAPSHOT_TABLE} (
@@ -57,6 +70,10 @@ export async function ensureAppointmentConfirmationSnapshotSchema(db: DbInterfac
       PRIMARY KEY (appointment_id, target_date)
     )
   `);
+  await safeCreateIndex(
+    db,
+    `CREATE INDEX idx_appointments_confirmation_snapshot_business_date ON ${APPOINTMENTS_CONFIRMATION_SNAPSHOT_TABLE} (target_date, snapshot_business_date)`,
+  );
 }
 
 export async function getAppointmentConfirmationContext(db: DbInterface): Promise<AppointmentConfirmationContext> {

@@ -275,6 +275,7 @@ KNOWN_ACTIONS = {
     'marketing_funnel', # Funil de Marketing (Google Ads + GA4)
     'clinia_ads', # Estatisticas de anuncios do Clinia
     'intranet_knowledge_index', # Indexacao da base de conhecimento da intranet
+    'checklist_recepcao_refresh', # Lote gerencial da checklist da recepcao
 }
 
 def _normalize_service_key(service_raw: str) -> str:
@@ -367,6 +368,9 @@ ALIAS_ACTION_MAP = {
     'intranet_knowledge_index': 'intranet_knowledge_index',
     'worker_intranet_knowledge': 'intranet_knowledge_index',
     'knowledge_index': 'intranet_knowledge_index',
+    'checklist_recepcao_refresh': 'checklist_recepcao_refresh',
+    'checklist_recepcao': 'checklist_recepcao_refresh',
+    'checklist_recepcao_batch': 'checklist_recepcao_refresh',
 }
 
 # Mapeia ação para nome canônico no `system_status`
@@ -394,6 +398,7 @@ CANONICAL_NAME = {
     'marketing_funnel': 'Marketing Funil (Google API)',
     'clinia_ads': 'Clinia Ads (API nao oficial)',
     'intranet_knowledge_index': 'Base de Conhecimento (Intranet IA)',
+    'checklist_recepcao_refresh': 'Checklist Recepcao - Refresh Completo',
 }
 
 def canonicalize(service_raw: str):
@@ -477,6 +482,213 @@ def normalize_system_status_rows():
         print(f"⚠️ Falha ao normalizar system_status: {e}")
     finally:
         conn.close()
+
+
+def _get_system_status_row(service_name: str):
+    try:
+        db = DatabaseManager()
+        rows = db.execute_query(
+            """
+            SELECT status, last_run, details
+            FROM system_status
+            WHERE service_name = ?
+            LIMIT 1
+            """,
+            (service_name,),
+        )
+        if not rows:
+            return {"status": "", "last_run": None, "details": ""}
+        row = rows[0]
+        if isinstance(row, (tuple, list)):
+            return {
+                "status": str(row[0] or "").strip().upper(),
+                "last_run": str(row[1] or "").strip() or None,
+                "details": str(row[2] or "").strip(),
+            }
+        return {
+            "status": str(getattr(row, "status", None) or row.get("status") or "").strip().upper(),
+            "last_run": str(getattr(row, "last_run", None) or row.get("last_run") or "").strip() or None,
+            "details": str(getattr(row, "details", None) or row.get("details") or "").strip(),
+        }
+    except Exception as exc:
+        print(f"⚠️ Falha ao consultar system_status de {service_name}: {exc}")
+        return {"status": "", "last_run": None, "details": ""}
+
+
+def _is_status_active(service_name: str) -> bool:
+    row = _get_system_status_row(service_name)
+    return str(row.get("status") or "").upper() in {"PENDING", "QUEUED", "RUNNING"}
+
+
+def _wait_for_service_settle(service_name: str, timeout_seconds: int = 7200, poll_seconds: int = 5):
+    started_at = time.time()
+    while True:
+        row = _get_system_status_row(service_name)
+        status = str(row.get("status") or "").upper()
+        if status and status not in {"PENDING", "QUEUED", "RUNNING"}:
+            return status, str(row.get("details") or "")
+        if (time.time() - started_at) >= timeout_seconds:
+            return "TIMEOUT", f"Timeout aguardando {service_name}"
+        time.sleep(max(1, poll_seconds))
+
+
+def _shift_iso_date(date_iso: str, days: int) -> str:
+    base = datetime.datetime.strptime(str(date_iso), "%Y-%m-%d")
+    shifted = base + datetime.timedelta(days=days)
+    return shifted.strftime("%Y-%m-%d")
+
+
+def _build_default_point_sync_window():
+    end_date = _now_work_tz().strftime("%Y-%m-%d")
+    start_date = _shift_iso_date(end_date, -29)
+    return start_date, end_date
+
+
+def _ensure_point_sync_job(requested_by: str):
+    db = DatabaseManager()
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    start_date, end_date = _build_default_point_sync_window()
+    conn = db.get_connection()
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS point_sync_jobs (
+              id VARCHAR(64) PRIMARY KEY,
+              window_start DATE NOT NULL,
+              window_end DATE NOT NULL,
+              status VARCHAR(20) NOT NULL,
+              requested_by VARCHAR(64) NULL,
+              error_message LONGTEXT NULL,
+              created_at VARCHAR(32) NOT NULL,
+              started_at VARCHAR(32) NULL,
+              finished_at VARCHAR(32) NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS point_sync_runs (
+              id VARCHAR(64) PRIMARY KEY,
+              job_id VARCHAR(64) NULL,
+              status VARCHAR(20) NOT NULL,
+              source_label VARCHAR(120) NOT NULL,
+              window_start DATE NOT NULL,
+              window_end DATE NOT NULL,
+              total_employees INTEGER NOT NULL DEFAULT 0,
+              processed_employees INTEGER NOT NULL DEFAULT 0,
+              processed_days INTEGER NOT NULL DEFAULT 0,
+              current_stage VARCHAR(40) NULL,
+              progress_percent DECIMAL(5,2) NULL,
+              last_progress_at VARCHAR(32) NULL,
+              estimated_remaining_seconds INTEGER NULL,
+              synchronized_employees INTEGER NOT NULL DEFAULT 0,
+              synchronized_days INTEGER NOT NULL DEFAULT 0,
+              unmatched_employees INTEGER NOT NULL DEFAULT 0,
+              pending_adjustments INTEGER NOT NULL DEFAULT 0,
+              pending_signatures INTEGER NOT NULL DEFAULT 0,
+              details LONGTEXT NULL,
+              started_at VARCHAR(32) NULL,
+              finished_at VARCHAR(32) NULL,
+              created_at VARCHAR(32) NOT NULL
+            )
+            """
+        )
+        existing = conn.execute(
+            """
+            SELECT id, status
+            FROM point_sync_jobs
+            WHERE status IN ('PENDING', 'RUNNING')
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        if existing:
+            job_id = existing[0] if isinstance(existing, (tuple, list)) else existing["id"]
+            status = existing[1] if isinstance(existing, (tuple, list)) else existing["status"]
+            if not db.use_turso:
+                conn.commit()
+            return {
+                "created": False,
+                "job_id": str(job_id or "").strip(),
+                "window_start": start_date,
+                "window_end": end_date,
+                "status": str(status or "").strip().upper(),
+            }
+
+        job_id = str(uuid.uuid4())
+        run_id = str(uuid.uuid4())
+        conn.execute(
+            """
+            INSERT INTO point_sync_jobs (
+              id, window_start, window_end, status, requested_by, error_message, created_at, started_at, finished_at
+            ) VALUES (?, ?, ?, 'PENDING', ?, NULL, ?, NULL, NULL)
+            """,
+            (job_id, start_date, end_date, requested_by, now_iso),
+        )
+        conn.execute(
+            """
+            INSERT INTO point_sync_runs (
+              id, job_id, status, source_label, window_start, window_end, total_employees, processed_employees, processed_days,
+              current_stage, progress_percent, last_progress_at, estimated_remaining_seconds, synchronized_employees, synchronized_days,
+              unmatched_employees, pending_adjustments, pending_signatures, details, started_at, finished_at, created_at
+            ) VALUES (?, ?, 'PENDING', 'API Sólides', ?, ?, 0, 0, 0, NULL, NULL, NULL, NULL, 0, 0, 0, 0, 0, ?, NULL, NULL, ?)
+            """,
+            (run_id, job_id, start_date, end_date, f"Janela enfileirada: {start_date} a {end_date}.", now_iso),
+        )
+        if not db.use_turso:
+            conn.commit()
+        return {
+            "created": True,
+            "job_id": job_id,
+            "window_start": start_date,
+            "window_end": end_date,
+            "status": "PENDING",
+        }
+    finally:
+        conn.close()
+
+
+def run_checklist_recepcao_batch(trigger: str = "manual"):
+    db = DatabaseManager()
+    service_name = "checklist_recepcao_refresh"
+    batch_started_at = time.time()
+    requested_by = f"checklist_recepcao_{trigger}"
+    steps = []
+    try:
+        db.update_heartbeat(service_name, "RUNNING", f"Lote da checklist da recepcao iniciado | trigger={trigger}")
+        point_job = _ensure_point_sync_job(requested_by)
+        steps.append(
+            f"point_sync_job={point_job.get('job_id') or 'em_andamento'}:{'novo' if point_job.get('created') else 'reutilizado'}"
+        )
+
+        sequence = [
+            ("point_sync", 7200),
+            ("appointments", 1800),
+            ("faturamento", 7200),
+            ("comercial", 1800),
+            ("appointments_confirmation_snapshot", 1800),
+        ]
+
+        for action, timeout_seconds in sequence:
+            run_service(action)
+            final_status, details = _wait_for_service_settle(action, timeout_seconds=timeout_seconds)
+            steps.append(f"{action}={final_status}")
+            if final_status not in {"COMPLETED", "WARNING"}:
+                raise RuntimeError(f"{action} finalizou com status {final_status}: {details}")
+
+        elapsed = round(time.time() - batch_started_at, 2)
+        db.update_heartbeat(
+            service_name,
+            "COMPLETED",
+            f"Lote concluido em {elapsed}s | trigger={trigger} | {' | '.join(steps)}",
+        )
+    except Exception as exc:
+        db.update_heartbeat(
+            service_name,
+            "ERROR",
+            f"Falha no lote da checklist | trigger={trigger} | {' | '.join(steps)} | erro={exc}",
+        )
+        raise
 
 
 def _enqueue_serial_service(action: str, display_name: str, reason: str, raw_key: str = "") -> bool:
@@ -620,6 +832,8 @@ def _run_service_direct(action: str, display_name: str, raw_key: str = ""):
             ):
                 drained += 1
             print(f"Clinia Ads: jobs drenados={drained}")
+        elif action == "checklist_recepcao_refresh":
+            run_checklist_recepcao_batch(trigger="worker")
         else:
             print(f"⚠️ Ação desconhecida solicitada: {action}")
 
@@ -846,9 +1060,6 @@ def run_scheduler():
     schedule.every().day.at("05:35").do(lambda: run_service('clinia_ads'))
     schedule.every().day.at("05:40").do(lambda: run_service('marketing_funnel'))
     schedule.every().day.at("06:15").do(run_agenda_occupancy_current_month)
-    schedule.every().day.at(str(os.getenv("APPOINTMENTS_CONFIRMATION_SNAPSHOT_SCHEDULE", "21:10"))).do(
-        lambda: run_service('appointments_confirmation_snapshot')
-    )
 
     schedule.every().day.at("12:00").do(lambda: run_service('contratos'))
 

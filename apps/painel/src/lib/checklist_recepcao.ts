@@ -32,12 +32,21 @@ import { listPointDailyControlRowsByDateRange } from '@/lib/point/repository';
 import { listPostConsultExportRows, normalizePostConsultFilters } from '@/lib/post_consulta/repository';
 import { invalidateCache } from '@/lib/api_cache';
 import { getTaskDashboardSummary } from '@consultare/core/tasks/repository';
+import { parseSystemStatusTimestamp } from '@/lib/system_status_time';
 
 const PROPOSAL_EXEC_STATUSES = "('executada','aprovada pelo cliente','ganho','realizado','concluido','pago')";
 const IS_MYSQL =
   String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL || !!process.env.MYSQL_PUBLIC_URL;
 const GOOGLE_RATING_TARGET = 4.7;
 const CLINIC_REVENUE_EXCLUSION = "AND unidade NOT LIKE '%Card%' AND unidade NOT LIKE '%Resolve%'";
+export const RECEPCAO_CHECKLIST_REFRESH_SERVICE = 'checklist_recepcao_refresh';
+export const RECEPCAO_CHECKLIST_REFRESH_SERVICES = [
+  'point_sync',
+  'appointments',
+  'faturamento',
+  'comercial',
+  'appointments_confirmation_snapshot',
+] as const;
 const SQL_DATE_ANALITICO = IS_MYSQL
   ? `(CASE WHEN INSTR(data_do_pagamento, '/') > 0 THEN CONCAT(SUBSTR(data_do_pagamento, 7, 4), '-', SUBSTR(data_do_pagamento, 4, 2), '-', SUBSTR(data_do_pagamento, 1, 2)) ELSE data_do_pagamento END)`
   : `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
@@ -106,6 +115,12 @@ export type RecepcaoChecklistVersionSummary = {
   createdAt: string | null;
   createdByName: string | null;
   viewMode: ViewMode;
+};
+
+export type RecepcaoChecklistMetricFreshness = {
+  updatedAt: string | null;
+  sourceLabel: string;
+  stale: boolean;
 };
 
 export type RecepcaoChecklistActor = PagePermissionAuth & {
@@ -187,6 +202,14 @@ export type RecepcaoChecklistPayload = {
       businessDaysElapsed: number;
       businessDaysInMonth: number;
       businessDaysRemaining: number;
+      freshness: {
+        revenueDay: RecepcaoChecklistMetricFreshness;
+        revenueMonth: RecepcaoChecklistMetricFreshness;
+        ticketAverageDay: RecepcaoChecklistMetricFreshness;
+        monthlyGoal: RecepcaoChecklistMetricFreshness;
+        shouldHaveUntilDate: RecepcaoChecklistMetricFreshness;
+        dynamicDailyTarget: RecepcaoChecklistMetricFreshness;
+      };
     };
     collaborators: Array<{
       employeeId: string;
@@ -197,6 +220,7 @@ export type RecepcaoChecklistPayload = {
       dynamicDailyTarget: number;
       progressPct: number;
     }>;
+    collaboratorsFreshness: RecepcaoChecklistMetricFreshness;
     teamProduction: {
       resolveMonthlyTarget: number;
       resolveActual: number;
@@ -213,6 +237,7 @@ export type RecepcaoChecklistPayload = {
       confirmed: number;
       ratePct: number;
       source: 'live' | 'snapshot' | 'snapshot-fallback';
+      freshness: RecepcaoChecklistMetricFreshness;
     };
     postConsult: {
       totalEvents: number;
@@ -220,22 +245,29 @@ export type RecepcaoChecklistPayload = {
       pendingPatients: number;
       executedProposalValue: number;
       conversionRate: number;
+      freshness: RecepcaoChecklistMetricFreshness;
     };
     waits: {
       receptionAverageMinutes: number;
       receptionAttendedCount: number;
       medicAverageMinutes: number;
       medicAttendedCount: number;
+      freshness: {
+        reception: RecepcaoChecklistMetricFreshness;
+        medic: RecepcaoChecklistMetricFreshness;
+      };
     };
     tasks: {
       pendingTasks: number;
       overdueTasks: number;
       dueNext7DaysTasks: number;
       awaitingApprovalTasks: number;
+      freshness: RecepcaoChecklistMetricFreshness;
     };
     proposals: {
       openCount: number;
       openValue: number;
+      freshness: RecepcaoChecklistMetricFreshness;
     };
     absences: {
       trackedEmployees: number;
@@ -247,6 +279,7 @@ export type RecepcaoChecklistPayload = {
         absenceDays: number;
         lateMinutes: number;
       }>;
+      freshness: RecepcaoChecklistMetricFreshness;
     };
     google: {
       ratingTarget: number;
@@ -267,6 +300,7 @@ export type RecepcaoChecklistPayload = {
     cause: string;
     action: string;
   }>;
+  riskGroupsFreshness: RecepcaoChecklistMetricFreshness;
 };
 
 type ConfigFilters = {
@@ -277,6 +311,15 @@ type ConfigFilters = {
   referenceDate?: string | null;
   versionId?: string | null;
 };
+
+type SystemStatusRow = {
+  serviceName: string;
+  status: string;
+  lastRun: string | null;
+  details: string;
+};
+
+type SystemStatusMap = Map<string, SystemStatusRow>;
 
 const clean = (value: unknown) => String(value ?? '').trim();
 const upper = (value: unknown) => clean(value).toUpperCase();
@@ -352,6 +395,75 @@ const toSaoPauloDateTime = (date = new Date()) =>
   })
     .format(date)
     .replace('T', ' ');
+
+const isIsoDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim());
+
+const shiftIsoDate = (dateIso: string, deltaDays: number) => {
+  if (!isIsoDate(dateIso)) return dateIso;
+  const date = new Date(`${dateIso}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + deltaDays);
+  return date.toISOString().slice(0, 10);
+};
+
+const toDateOnly = (value: string | null | undefined) => {
+  const raw = clean(value);
+  return raw.slice(0, 10);
+};
+
+const hoursBetweenNowAnd = (value: string | null | undefined) => {
+  const parsed = parseSystemStatusTimestamp(value);
+  if (!parsed) return null;
+  return (Date.now() - parsed.getTime()) / 3600000;
+};
+
+const buildFreshness = (
+  updatedAt: string | null,
+  sourceLabel: string,
+  stale = false,
+): RecepcaoChecklistMetricFreshness => ({
+  updatedAt: clean(updatedAt) || null,
+  sourceLabel,
+  stale,
+});
+
+const pickOldestTimestamp = (items: Array<string | null | undefined>) => {
+  let winner: string | null = null;
+  let winnerTs = Number.POSITIVE_INFINITY;
+  for (const item of items) {
+    const parsed = parseSystemStatusTimestamp(item || null);
+    if (!parsed) continue;
+    if (parsed.getTime() < winnerTs) {
+      winner = clean(item) || null;
+      winnerTs = parsed.getTime();
+    }
+  }
+  return winner;
+};
+
+const mergeFreshness = (
+  items: Array<RecepcaoChecklistMetricFreshness | null | undefined>,
+  sourceLabel?: string,
+): RecepcaoChecklistMetricFreshness => {
+  const valid = items.filter(Boolean) as RecepcaoChecklistMetricFreshness[];
+  if (valid.length <= 0) return buildFreshness(null, sourceLabel || 'Sem fonte', false);
+  return buildFreshness(
+    pickOldestTimestamp(valid.map((item) => item.updatedAt)),
+    sourceLabel || valid.map((item) => item.sourceLabel).join(' + '),
+    valid.some((item) => item.stale),
+  );
+};
+
+const looksStaleForCurrentReference = (
+  updatedAt: string | null | undefined,
+  referenceDate: string,
+  maxAgeHours: number,
+) => {
+  if (!clean(updatedAt)) return false;
+  const updatedDate = toDateOnly(updatedAt);
+  if (referenceDate && updatedDate && updatedDate < referenceDate) return true;
+  const ageHours = hoursBetweenNowAnd(updatedAt);
+  return ageHours !== null && ageHours > maxAgeHours;
+};
 
 const normalizeUnitKeys = (values: unknown) =>
   unique(
@@ -489,6 +601,60 @@ const safeCreateIndex = async (db: DbInterface, sql: string) => {
     }
     throw error;
   }
+};
+
+const loadSystemStatusMap = async (db: DbInterface, serviceNames: readonly string[]): Promise<SystemStatusMap> => {
+  const normalized = unique(serviceNames.map((item) => clean(item)).filter(Boolean));
+  const map: SystemStatusMap = new Map();
+  if (normalized.length <= 0) return map;
+
+  const placeholders = normalized.map(() => '?').join(',');
+  const rows = await db.query(
+    `
+      SELECT service_name, status, last_run, details
+      FROM system_status
+      WHERE service_name IN (${placeholders})
+    `,
+    normalized,
+  ).catch(() => []);
+
+  for (const row of rows as DbRow[]) {
+    const serviceName = clean(row.service_name);
+    if (!serviceName) continue;
+    map.set(serviceName, {
+      serviceName,
+      status: upper(row.status || 'UNKNOWN') || 'UNKNOWN',
+      lastRun: clean(row.last_run) || null,
+      details: clean(row.details),
+    });
+  }
+
+  return map;
+};
+
+const getServiceFreshness = (
+  statuses: SystemStatusMap,
+  serviceName: string,
+  sourceLabel: string,
+  referenceDate: string,
+  staleAfterHours = 18,
+) => {
+  const row = statuses.get(serviceName);
+  return buildFreshness(
+    row?.lastRun || null,
+    sourceLabel,
+    looksStaleForCurrentReference(row?.lastRun || null, referenceDate, staleAfterHours),
+  );
+};
+
+const queryMaxTimestamp = async (
+  db: DbInterface,
+  sql: string,
+  params: Array<string | number>,
+  sourceLabel: string,
+) => {
+  const rows = await db.query(sql, params).catch(() => []);
+  return buildFreshness(clean(rows[0]?.updated_at) || null, sourceLabel, false);
 };
 
 export const ensureRecepcaoChecklistSchema = async (db: DbInterface) => {
@@ -1297,7 +1463,6 @@ const loadRiskGroups = async (
   db: DbInterface,
   referenceDate: string,
   unit: FinancialUnitDefinition,
-  unitMetrics: RecepcaoChecklistPayload['metrics']['unit'],
   manual: RecepcaoChecklistManualPayload,
 ) => {
   const params: Array<string | number> = [referenceDate, referenceDate];
@@ -1365,6 +1530,127 @@ const loadRiskGroups = async (
   });
 };
 
+const loadChecklistFreshness = async (
+  db: DbInterface,
+  args: {
+    referenceDate: string;
+    unit: FinancialUnitDefinition;
+    leaderUserId: string | null;
+    readOnly: boolean;
+    appointmentsConfirmationSource: 'live' | 'snapshot' | 'snapshot-fallback';
+  },
+) => {
+  const statusesPromise = loadSystemStatusMap(db, [
+    ...RECEPCAO_CHECKLIST_REFRESH_SERVICES,
+    RECEPCAO_CHECKLIST_REFRESH_SERVICE,
+  ]);
+
+  const goalsFreshnessPromise = queryMaxTimestamp(
+    db,
+    `
+      SELECT MAX(COALESCE(updated_at, created_at)) AS updated_at
+      FROM goals_config
+    `,
+    [],
+    'Configuração de metas',
+  );
+
+  const receptionFreshnessPromise = queryMaxTimestamp(
+    db,
+    `
+      SELECT MAX(updated_at) AS updated_at
+      FROM recepcao_historico
+      WHERE dia_referencia = ?
+    `,
+    [args.referenceDate],
+    'Histórico de recepção',
+  );
+
+  const medicFreshnessPromise = queryMaxTimestamp(
+    db,
+    IS_MYSQL
+      ? `
+        SELECT MAX(updated_at) AS updated_at
+        FROM espera_medica
+        WHERE DATE(updated_at) = ?
+      `
+      : `
+        SELECT MAX(updated_at) AS updated_at
+        FROM espera_medica
+        WHERE date(updated_at) = ?
+      `,
+    [args.referenceDate],
+    'Espera médica',
+  );
+
+  const tasksFreshnessPromise = queryMaxTimestamp(
+    db,
+    `
+      SELECT MAX(t.updated_at) AS updated_at
+      FROM tasks t
+      LEFT JOIN task_assignees ta ON ta.task_id = t.id
+      WHERE (? = '' OR ta.user_id = ? OR t.created_by = ?)
+    `,
+    [clean(args.leaderUserId), clean(args.leaderUserId), clean(args.leaderUserId)],
+    'Base de tarefas',
+  );
+
+  const pointCoveragePromise = db
+    .query(
+      `
+        SELECT
+          MAX(COALESCE(finished_at, created_at)) AS updated_at,
+          MAX(window_end) AS covered_until
+        FROM point_sync_runs
+        WHERE status = 'COMPLETED'
+      `,
+    )
+    .catch(() => []);
+
+  const [statuses, goalsFreshness, receptionFreshness, medicFreshness, tasksFreshness, pointCoverageRows] = await Promise.all([
+    statusesPromise,
+    goalsFreshnessPromise,
+    receptionFreshnessPromise,
+    medicFreshnessPromise,
+    tasksFreshnessPromise,
+    pointCoveragePromise,
+  ]);
+
+  const revenueFreshness = getServiceFreshness(statuses, 'faturamento', 'Faturamento', args.referenceDate, 24);
+  const proposalsFreshness = getServiceFreshness(statuses, 'comercial', 'Propostas e pós-consulta', args.referenceDate, 24);
+  const appointmentsFreshness =
+    args.appointmentsConfirmationSource === 'snapshot'
+      ? getServiceFreshness(statuses, 'appointments_confirmation_snapshot', 'Snapshot D+1 da confirmação', args.referenceDate, 36)
+      : getServiceFreshness(statuses, 'appointments', 'Agendamentos Feegow', args.referenceDate, 12);
+
+  const pointCoverage = pointCoverageRows[0] as DbRow | undefined;
+  const pointCoveredUntil = clean(pointCoverage?.covered_until) || null;
+  const pointFreshness = buildFreshness(
+    clean(pointCoverage?.updated_at) || null,
+    'Sincronização da base de ponto',
+    !!pointCoveredUntil && pointCoveredUntil < args.referenceDate,
+  );
+
+  return {
+    revenueFreshness,
+    goalsFreshness,
+    proposalsFreshness,
+    appointmentsFreshness:
+      args.appointmentsConfirmationSource === 'snapshot-fallback'
+        ? buildFreshness(
+            appointmentsFreshness.updatedAt,
+            appointmentsFreshness.sourceLabel,
+            true,
+          )
+        : appointmentsFreshness,
+    receptionFreshness,
+    medicFreshness,
+    tasksFreshness,
+    pointFreshness,
+    statuses,
+  };
+};
+
 const resolveManualFromVersionRow = (row: DbRow | null) => {
   if (!row) return null;
   const payload = safeJsonParse<RecepcaoChecklistVersionStoredPayload>(row.payload_json, {
@@ -1417,6 +1703,13 @@ export const buildRecepcaoChecklistPayload = async (
   const tasksPromise = loadTaskMetrics(actor.db, config?.leaderUserId || null);
   const proposalsPromise = loadProposalMetrics(actor.db, selectedUnit);
   const absencesPromise = loadAbsenceMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
+  const freshnessPromise = loadChecklistFreshness(actor.db, {
+    referenceDate,
+    unit: selectedUnit,
+    leaderUserId: config?.leaderUserId || null,
+    readOnly,
+    appointmentsConfirmationSource: readOnly ? 'snapshot' : 'live',
+  });
 
   const [
     suggestedConfig,
@@ -1432,6 +1725,7 @@ export const buildRecepcaoChecklistPayload = async (
     tasks,
     proposals,
     absences,
+    freshness,
   ] = await Promise.all([
     suggestedConfigPromise,
     optionsPromise,
@@ -1446,6 +1740,7 @@ export const buildRecepcaoChecklistPayload = async (
     tasksPromise,
     proposalsPromise,
     absencesPromise,
+    freshnessPromise,
   ]);
   const suggestedConfigDraft =
     actor.isManager && !config && suggestedConfig && checklistOptions
@@ -1474,13 +1769,28 @@ export const buildRecepcaoChecklistPayload = async (
     checkupProgressPct: manual.checkupMonthlyTarget > 0 ? (manual.checkupActual * 100) / manual.checkupMonthlyTarget : 0,
   };
 
-  const riskGroups = await loadRiskGroups(actor.db, referenceDate, selectedUnit, unitMetrics, manual);
+  const riskGroups = await loadRiskGroups(actor.db, referenceDate, selectedUnit, manual);
   const google = {
     ratingTarget: GOOGLE_RATING_TARGET,
     ratingActual: manual.googleRating,
     ratingProgressPct: GOOGLE_RATING_TARGET > 0 ? (manual.googleRating * 100) / GOOGLE_RATING_TARGET : 0,
     newReviewsCount: manual.googleNewReviewsCount,
   };
+  const unitRevenueFreshness = freshness.revenueFreshness;
+  const goalsFreshness = freshness.goalsFreshness;
+  const unitDerivedFreshness = mergeFreshness([unitRevenueFreshness, goalsFreshness], 'Faturamento e metas');
+  const collaboratorFreshness = mergeFreshness([unitRevenueFreshness, goalsFreshness], 'Faturamento individual e metas');
+  const riskGroupsFreshness = mergeFreshness([unitRevenueFreshness, goalsFreshness], 'Grupos de faturamento e metas');
+  const appointmentsFreshness =
+    appointmentsConfirmation.source === 'snapshot'
+      ? getServiceFreshness(freshness.statuses, 'appointments_confirmation_snapshot', 'Snapshot D+1 da confirmação', referenceDate, 36)
+      : appointmentsConfirmation.source === 'snapshot-fallback'
+        ? buildFreshness(
+            getServiceFreshness(freshness.statuses, 'appointments', 'Agendamentos Feegow', referenceDate, 12).updatedAt,
+            'Agendamentos Feegow',
+            true,
+          )
+        : getServiceFreshness(freshness.statuses, 'appointments', 'Agendamentos Feegow', referenceDate, 12);
 
   return {
     generatedAt: toSaoPauloDateTime(),
@@ -1518,18 +1828,51 @@ export const buildRecepcaoChecklistPayload = async (
       source,
     },
     metrics: {
-      unit: unitMetrics,
+      unit: {
+        ...unitMetrics,
+        freshness: {
+          revenueDay: unitRevenueFreshness,
+          revenueMonth: unitRevenueFreshness,
+          ticketAverageDay: unitRevenueFreshness,
+          monthlyGoal: goalsFreshness,
+          shouldHaveUntilDate: unitDerivedFreshness,
+          dynamicDailyTarget: unitDerivedFreshness,
+        },
+      },
       collaborators,
+      collaboratorsFreshness: collaboratorFreshness,
       teamProduction,
-      appointmentsConfirmation,
-      postConsult,
-      waits,
-      tasks,
-      proposals,
-      absences,
+      appointmentsConfirmation: {
+        ...appointmentsConfirmation,
+        freshness: appointmentsFreshness,
+      },
+      postConsult: {
+        ...postConsult,
+        freshness: freshness.proposalsFreshness,
+      },
+      waits: {
+        ...waits,
+        freshness: {
+          reception: freshness.receptionFreshness,
+          medic: freshness.medicFreshness,
+        },
+      },
+      tasks: {
+        ...tasks,
+        freshness: freshness.tasksFreshness,
+      },
+      proposals: {
+        ...proposals,
+        freshness: freshness.proposalsFreshness,
+      },
+      absences: {
+        ...absences,
+        freshness: freshness.pointFreshness,
+      },
       google,
     },
     riskGroups,
+    riskGroupsFreshness,
   };
 };
 

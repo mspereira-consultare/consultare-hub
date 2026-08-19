@@ -54,6 +54,12 @@ def ensure_snapshot_schema(conn, use_turso=False, use_mysql=False):
         )
     """
     conn.execute(sql)
+    try:
+        conn.execute(
+            f"CREATE INDEX IF NOT EXISTS idx_{SNAPSHOT_TABLE}_business_date ON {SNAPSHOT_TABLE} (target_date, snapshot_business_date)"
+        )
+    except Exception:
+        pass
     if not use_turso:
         conn.commit()
 
@@ -73,6 +79,28 @@ def update_appointments_confirmation_snapshot():
     conn = db.get_connection()
     try:
         ensure_snapshot_schema(conn, use_turso=db.use_turso, use_mysql=db.use_mysql)
+
+        existing_rows = db.execute_query(
+            f"""
+            SELECT COUNT(*) AS total
+            FROM {SNAPSHOT_TABLE}
+            WHERE target_date = ?
+              AND snapshot_business_date = ?
+            """,
+            (target_date, business_date),
+        )
+        existing_total = 0
+        if existing_rows:
+            first = existing_rows[0]
+            existing_total = int(first[0] or 0) if isinstance(first, (tuple, list)) else int(first.get("total") or 0)
+        if existing_total > 0:
+            msg = (
+                f"Snapshot D+1 já capturado | target_date={target_date} "
+                f"business_date={business_date} rows={existing_total}"
+            )
+            print(f"ℹ️ {msg}")
+            db.update_heartbeat(SNAPSHOT_SERVICE, "COMPLETED", msg)
+            return
 
         rows = db.execute_query(
             """
