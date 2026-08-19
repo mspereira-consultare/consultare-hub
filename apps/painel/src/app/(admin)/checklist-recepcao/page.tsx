@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import {
   AlertTriangle,
@@ -266,6 +266,14 @@ type RiskState = ChecklistData['riskGroups'];
 const formatCurrency = (value: number) =>
   Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
+const formatCompactCurrency = (value: number) =>
+  Number(value || 0).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  });
+
 const formatPercent = (value: number) => `${Number(value || 0).toFixed(1).replace('.', ',')}%`;
 
 const formatDateBr = (value: string) => {
@@ -335,48 +343,93 @@ const GaugeCard = ({
   value,
   max,
   helper,
-  accent = '#17407E',
+  valueLabel,
 }: {
   title: string;
   value: number;
   max: number;
   helper: string;
-  accent?: string;
+  valueLabel?: string;
 }) => {
+  const gradientId = useId().replace(/:/g, '');
   const normalizedMax = max > 0 ? max : 1;
   const ratio = Math.max(0, Math.min(1, value / normalizedMax));
-  const startX = 20;
-  const endX = 180;
-  const radius = 80;
-  const circumference = Math.PI * radius;
-  const progress = circumference * ratio;
+  const centerX = 100;
+  const centerY = 100;
+  const radius = 72;
+  const displayedValue = valueLabel || formatPercent(ratio * 100);
+  const angle = Math.PI - ratio * Math.PI;
+  const needleLength = 60;
+  const needleX = centerX + Math.cos(angle) * needleLength;
+  const needleY = centerY - Math.sin(angle) * needleLength;
+  const tickAngles = Array.from({ length: 11 }, (_, index) => Math.PI - (index / 10) * Math.PI);
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
-      <div className="text-sm font-semibold text-slate-800">{title}</div>
-      <svg viewBox="0 0 200 120" className="mt-3 h-36 w-full">
+    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+      <svg viewBox="0 0 200 150" className="mx-auto h-48 w-full max-w-[18rem]">
+        <defs>
+          <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#E24545" />
+            <stop offset="38%" stopColor="#F08C00" />
+            <stop offset="70%" stopColor="#66A63A" />
+            <stop offset="100%" stopColor="#2F9E6F" />
+          </linearGradient>
+        </defs>
+        {tickAngles.map((tickAngle, index) => {
+          const outerX = centerX + Math.cos(tickAngle) * (radius + 12);
+          const outerY = centerY - Math.sin(tickAngle) * (radius + 12);
+          const innerX = centerX + Math.cos(tickAngle) * (radius + (index % 5 === 0 ? 3 : 7));
+          const innerY = centerY - Math.sin(tickAngle) * (radius + (index % 5 === 0 ? 3 : 7));
+
+          return (
+            <line
+              key={`${title}-${index}`}
+              x1={innerX}
+              y1={innerY}
+              x2={outerX}
+              y2={outerY}
+              stroke="#94A3B8"
+              strokeWidth={index % 5 === 0 ? 1.8 : 1}
+              strokeLinecap="round"
+              opacity={index % 5 === 0 ? 0.9 : 0.55}
+            />
+          );
+        })}
         <path
-          d={`M ${startX} 100 A ${radius} ${radius} 0 0 1 ${endX} 100`}
+          d={`M 28 100 A ${radius} ${radius} 0 0 1 172 100`}
           fill="none"
-          stroke="#E2E8F0"
-          strokeWidth="12"
+          stroke={`url(#${gradientId})`}
+          strokeWidth="14"
           strokeLinecap="round"
+          opacity="0.35"
         />
         <path
-          d={`M ${startX} 100 A ${radius} ${radius} 0 0 1 ${endX} 100`}
+          d={`M 28 100 A ${radius} ${radius} 0 0 1 172 100`}
           fill="none"
-          stroke={accent}
-          strokeWidth="12"
+          stroke={`url(#${gradientId})`}
+          strokeWidth="14"
           strokeLinecap="round"
-          strokeDasharray={`${progress} ${circumference}`}
+          pathLength={100}
+          strokeDasharray={`${ratio * 100} 100`}
         />
-        <text x="100" y="72" textAnchor="middle" className="fill-slate-900 text-[18px] font-bold">
-          {formatPercent(ratio * 100)}
+        <line
+          x1={centerX}
+          y1={centerY}
+          x2={needleX}
+          y2={needleY}
+          stroke="#0F172A"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+        />
+        <circle cx={centerX} cy={centerY} r="5.5" fill="#0F172A" />
+        <text x="100" y="96" textAnchor="middle" className="fill-slate-900 text-[17px] font-bold">
+          {displayedValue}
         </text>
-        <text x="100" y="92" textAnchor="middle" className="fill-slate-500 text-[11px] font-medium">
-          {helper}
+        <text x="100" y="122" textAnchor="middle" className="fill-slate-500 text-[10px] font-semibold uppercase tracking-[0.18em]">
+          {title}
         </text>
       </svg>
+      <div className="mt-1 text-center text-xs text-slate-500">{helper}</div>
     </div>
   );
 };
@@ -1024,27 +1077,30 @@ export default function ChecklistRecepcaoPage() {
                   value={data.metrics.unit.revenueMonth}
                   max={data.metrics.unit.monthlyGoal}
                   helper={`${formatCurrency(data.metrics.unit.revenueMonth)} / ${formatCurrency(data.metrics.unit.monthlyGoal)}`}
+                  valueLabel={formatCompactCurrency(data.metrics.unit.revenueMonth)}
                 />
                 <GaugeCard
                   title="Faturamento diário"
                   value={data.metrics.unit.revenueDay}
                   max={data.metrics.unit.dynamicDailyTarget}
                   helper={`${formatCurrency(data.metrics.unit.revenueDay)} / ${formatCurrency(data.metrics.unit.dynamicDailyTarget)}`}
-                  accent="#1D4ED8"
+                  valueLabel={formatCompactCurrency(data.metrics.unit.revenueDay)}
                 />
                 <GaugeCard
                   title="Deveria até a data"
                   value={data.metrics.unit.revenueMonth}
                   max={data.metrics.unit.shouldHaveUntilDate}
                   helper={`${formatCurrency(data.metrics.unit.shouldHaveUntilDate)} previsto`}
-                  accent="#0F766E"
+                  valueLabel={formatPercent(
+                    data.metrics.unit.shouldHaveUntilDate > 0 ? (data.metrics.unit.revenueMonth / data.metrics.unit.shouldHaveUntilDate) * 100 : 0,
+                  )}
                 />
                 <GaugeCard
                   title="Google"
                   value={data.metrics.google.ratingActual}
                   max={data.metrics.google.ratingTarget}
                   helper={`${data.metrics.google.ratingActual.toFixed(1).replace('.', ',')} / ${data.metrics.google.ratingTarget.toFixed(1).replace('.', ',')}`}
-                  accent="#B45309"
+                  valueLabel={data.metrics.google.ratingActual.toFixed(1).replace('.', ',')}
                 />
               </div>
             </section>
@@ -1101,14 +1157,14 @@ export default function ChecklistRecepcaoPage() {
                     value={data.metrics.teamProduction.resolveActual}
                     max={data.metrics.teamProduction.resolveMonthlyTarget}
                     helper={`${data.metrics.teamProduction.resolveActual} / ${data.metrics.teamProduction.resolveMonthlyTarget}`}
-                    accent="#0284C7"
+                    valueLabel={String(data.metrics.teamProduction.resolveActual)}
                   />
                   <GaugeCard
                     title="Meta geral Check-up"
                     value={data.metrics.teamProduction.checkupActual}
                     max={data.metrics.teamProduction.checkupMonthlyTarget}
                     helper={`${data.metrics.teamProduction.checkupActual} / ${data.metrics.teamProduction.checkupMonthlyTarget}`}
-                    accent="#9333EA"
+                    valueLabel={String(data.metrics.teamProduction.checkupActual)}
                   />
                 </div>
                 <fieldset disabled={!canEdit || data.readOnly} className={`mt-5 grid gap-4 md:grid-cols-2 ${!canEdit || data.readOnly ? 'opacity-70' : ''}`}>
@@ -1163,7 +1219,7 @@ export default function ChecklistRecepcaoPage() {
                     value={data.metrics.appointmentsConfirmation.ratePct}
                     max={100}
                     helper={`${formatPercent(data.metrics.appointmentsConfirmation.ratePct)} | ${data.metrics.appointmentsConfirmation.confirmed}/${data.metrics.appointmentsConfirmation.total}`}
-                    accent="#15803D"
+                    valueLabel={formatPercent(data.metrics.appointmentsConfirmation.ratePct)}
                   />
                 </div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
