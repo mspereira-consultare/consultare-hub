@@ -43,6 +43,14 @@ type RecollectionEntry = {
   notes: string;
 };
 
+type TaskDetail = {
+  taskId: string;
+  protocolId: string;
+  title: string;
+  description: string;
+  dueDate: string | null;
+};
+
 type MetricFreshness = {
   updatedAt: string | null;
   sourceLabel: string;
@@ -194,6 +202,8 @@ type ChecklistData = {
       overdueTasks: number;
       dueNext7DaysTasks: number;
       awaitingApprovalTasks: number;
+      overdueItems: TaskDetail[];
+      dueSoonItems: TaskDetail[];
       freshness: MetricFreshness;
     };
     proposals: {
@@ -515,6 +525,32 @@ const GaugeCard = ({
     </div>
   );
 };
+
+const TaskListPanel = ({
+  title,
+  items,
+  emptyMessage,
+}: {
+  title: string;
+  items: TaskDetail[];
+  emptyMessage: string;
+}) => (
+  <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+    <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">{title}</div>
+    <div className="mt-2 max-h-64 space-y-2 overflow-auto pr-1">
+      {items.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-slate-200 bg-white px-3 py-5 text-sm text-slate-500">{emptyMessage}</div>
+      ) : (
+        items.map((item) => (
+          <div key={item.taskId} className="rounded-xl border border-slate-200 bg-white px-3 py-3">
+            <div className="text-sm font-semibold text-slate-900">{item.title}</div>
+            <p className="mt-1 text-sm leading-5 text-slate-600">{item.description || 'Sem descrição'}</p>
+          </div>
+        ))
+      )}
+    </div>
+  </div>
+);
 
 const HelpModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
   useEffect(() => {
@@ -1454,6 +1490,18 @@ export default function ChecklistRecepcaoPage() {
                     helper={`${data.metrics.tasks.dueNext7DaysTasks} vencem em 7 dias`}
                     icon={<AlertTriangle size={16} />}
                     freshness={data.metrics.tasks.freshness}
+                  />
+                </div>
+                <div className="mt-3 grid gap-2.5 lg:grid-cols-2">
+                  <TaskListPanel
+                    title="Tarefas vencidas"
+                    items={data.metrics.tasks.overdueItems}
+                    emptyMessage="Nenhuma tarefa vencida foi encontrada para a líder neste recorte."
+                  />
+                  <TaskListPanel
+                    title="Tarefas a vencer em 7 dias"
+                    items={data.metrics.tasks.dueSoonItems}
+                    emptyMessage="Nenhuma tarefa a vencer nos próximos 7 dias foi encontrada para a líder neste recorte."
                   />
                 </div>
               </section>

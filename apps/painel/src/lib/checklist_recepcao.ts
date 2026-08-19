@@ -31,7 +31,7 @@ import { DEFAULT_POINT_FILTERS } from '@/lib/point/filters';
 import { listPointDailyControlRowsByDateRange } from '@/lib/point/repository';
 import { listPostConsultExportRows, normalizePostConsultFilters } from '@/lib/post_consulta/repository';
 import { invalidateCache } from '@/lib/api_cache';
-import { getTaskDashboardSummary } from '@consultare/core/tasks/repository';
+import { listTasks } from '@consultare/core/tasks/repository';
 import { parseSystemStatusTimestamp } from '@/lib/system_status_time';
 
 const PROPOSAL_EXEC_STATUSES = "('executada','aprovada pelo cliente','ganho','realizado','concluido','pago')";
@@ -47,6 +47,14 @@ export const RECEPCAO_CHECKLIST_REFRESH_SERVICES = [
   'comercial',
   'appointments_confirmation_snapshot',
 ] as const;
+const CHECKLIST_PENDING_TASK_STATUSES = new Set(['BACKLOG', 'A_FAZER', 'EM_ANDAMENTO', 'AGUARDANDO_APROVACAO', 'PAUSADO']);
+const CHECKLIST_CLOSED_TASK_STATUSES = new Set(['CONCLUIDA', 'ARQUIVADA', 'CANCELADA']);
+const CHECKLIST_TASK_PRIORITY_RANK: Record<string, number> = {
+  URGENTE: 0,
+  ALTA: 1,
+  MEDIA: 2,
+  BAIXA: 3,
+};
 const SQL_DATE_ANALITICO = IS_MYSQL
   ? `(CASE WHEN INSTR(data_do_pagamento, '/') > 0 THEN CONCAT(SUBSTR(data_do_pagamento, 7, 4), '-', SUBSTR(data_do_pagamento, 4, 2), '-', SUBSTR(data_do_pagamento, 1, 2)) ELSE data_do_pagamento END)`
   : `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
@@ -121,6 +129,14 @@ export type RecepcaoChecklistMetricFreshness = {
   updatedAt: string | null;
   sourceLabel: string;
   stale: boolean;
+};
+
+export type RecepcaoChecklistTaskDetail = {
+  taskId: string;
+  protocolId: string;
+  title: string;
+  description: string;
+  dueDate: string | null;
 };
 
 export type RecepcaoChecklistActor = PagePermissionAuth & {
@@ -262,6 +278,8 @@ export type RecepcaoChecklistPayload = {
       overdueTasks: number;
       dueNext7DaysTasks: number;
       awaitingApprovalTasks: number;
+      overdueItems: RecepcaoChecklistTaskDetail[];
+      dueSoonItems: RecepcaoChecklistTaskDetail[];
       freshness: RecepcaoChecklistMetricFreshness;
     };
     proposals: {
@@ -1368,27 +1386,79 @@ const loadWaitMetrics = async (db: DbInterface, referenceDate: string, unit: Fin
   };
 };
 
-const loadTaskMetrics = async (db: DbInterface, leaderUserId: string | null) => {
+const isChecklistTaskPending = (status: string | null | undefined) => CHECKLIST_PENDING_TASK_STATUSES.has(clean(status).toUpperCase());
+
+const isChecklistTaskOverdue = (task: { dueDate: string | null; status: string }, referenceDate: string) =>
+  Boolean(task.dueDate && task.dueDate < referenceDate && !CHECKLIST_CLOSED_TASK_STATUSES.has(clean(task.status).toUpperCase()));
+
+const isChecklistTaskDueSoon = (task: { dueDate: string | null; status: string }, referenceDate: string, dueSoonEndDate: string) =>
+  Boolean(
+    task.dueDate &&
+      task.dueDate >= referenceDate &&
+      task.dueDate <= dueSoonEndDate &&
+      !CHECKLIST_CLOSED_TASK_STATUSES.has(clean(task.status).toUpperCase()),
+  );
+
+const compareChecklistTaskItems = (
+  left: { dueDate: string | null; priority: string; protocolId: string },
+  right: { dueDate: string | null; priority: string; protocolId: string },
+) => {
+  const leftDueDate = clean(left.dueDate) || '9999-12-31';
+  const rightDueDate = clean(right.dueDate) || '9999-12-31';
+  if (leftDueDate !== rightDueDate) return leftDueDate.localeCompare(rightDueDate);
+
+  const leftPriority = CHECKLIST_TASK_PRIORITY_RANK[clean(left.priority).toUpperCase()] ?? 999;
+  const rightPriority = CHECKLIST_TASK_PRIORITY_RANK[clean(right.priority).toUpperCase()] ?? 999;
+  if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+
+  return clean(left.protocolId).localeCompare(clean(right.protocolId), 'pt-BR', { numeric: true });
+};
+
+const mapChecklistTaskDetail = (task: {
+  id: string;
+  protocolId: string;
+  title: string;
+  description: string;
+  dueDate: string | null;
+}): RecepcaoChecklistTaskDetail => ({
+  taskId: clean(task.id),
+  protocolId: clean(task.protocolId),
+  title: clean(task.title) || 'Sem título',
+  description: clean(task.description).replace(/\s+/g, ' ') || 'Sem descrição',
+  dueDate: clean(task.dueDate) || null,
+});
+
+const loadTaskMetrics = async (db: DbInterface, leaderUserId: string | null, referenceDate: string) => {
   if (!leaderUserId) {
     return {
       pendingTasks: 0,
       overdueTasks: 0,
       dueNext7DaysTasks: 0,
       awaitingApprovalTasks: 0,
+      overdueItems: [],
+      dueSoonItems: [],
     };
   }
 
-  const summary = await getTaskDashboardSummary(
+  const dueSoonEndDate = shiftDate(referenceDate, 7);
+  const tasks = await listTasks(
     db,
     { userId: leaderUserId, canViewAll: true },
     { assigneeUserId: leaderUserId, includeCanceled: true },
-  ).catch(() => null);
+  ).catch(() => []);
+
+  const pendingTasks = tasks.filter((task) => isChecklistTaskPending(task.status));
+  const overdueItems = pendingTasks.filter((task) => isChecklistTaskOverdue(task, referenceDate)).sort(compareChecklistTaskItems);
+  const dueSoonItems = pendingTasks.filter((task) => isChecklistTaskDueSoon(task, referenceDate, dueSoonEndDate)).sort(compareChecklistTaskItems);
+  const awaitingApprovalTasks = pendingTasks.filter((task) => clean(task.status).toUpperCase() === 'AGUARDANDO_APROVACAO');
 
   return {
-    pendingTasks: toInt(summary?.totalTasks),
-    overdueTasks: toInt(summary?.overdueTasks),
-    dueNext7DaysTasks: toInt(summary?.dueSoonTasks),
-    awaitingApprovalTasks: toInt(summary?.awaitingApprovalTasks),
+    pendingTasks: pendingTasks.length,
+    overdueTasks: overdueItems.length,
+    dueNext7DaysTasks: dueSoonItems.length,
+    awaitingApprovalTasks: awaitingApprovalTasks.length,
+    overdueItems: overdueItems.map(mapChecklistTaskDetail),
+    dueSoonItems: dueSoonItems.map(mapChecklistTaskDetail),
   };
 };
 
@@ -1700,7 +1770,7 @@ export const buildRecepcaoChecklistPayload = async (
   const appointmentsConfirmationPromise = loadConfirmationMetrics(actor.db, referenceDate, selectedUnit, readOnly);
   const postConsultPromise = loadPostConsultMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
   const waitsPromise = loadWaitMetrics(actor.db, referenceDate, selectedUnit);
-  const tasksPromise = loadTaskMetrics(actor.db, config?.leaderUserId || null);
+  const tasksPromise = loadTaskMetrics(actor.db, config?.leaderUserId || null, referenceDate);
   const proposalsPromise = loadProposalMetrics(actor.db, selectedUnit);
   const absencesPromise = loadAbsenceMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
   const freshnessPromise = loadChecklistFreshness(actor.db, {
@@ -2098,9 +2168,25 @@ const describeArcPath = (centerX: number, centerY: number, radius: number, start
 
 const measureTextWidth = (font: PDFFont, size: number, text: string) => font.widthOfTextAtSize(String(text || ''), size);
 
+const formatPdfDateBr = (value: string | null | undefined) => {
+  const raw = clean(value);
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}/${match[2]}/${match[1]}` : raw;
+};
+
+const formatPdfDateTimeBr = (value: string | null | undefined) => {
+  const raw = clean(value);
+  if (!raw) return 'Sem atualização registrada';
+  const normalized = raw.includes('T') ? raw : raw.replace(' ', 'T');
+  const withTimezone = /(?:Z|[+-]\d{2}:\d{2})$/i.test(normalized) ? normalized : `${normalized}-03:00`;
+  const parsed = new Date(withTimezone);
+  if (Number.isNaN(parsed.getTime())) return raw;
+  return parsed.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+};
+
 const formatPdfFreshness = (freshness?: RecepcaoChecklistMetricFreshness | null) => {
   if (!freshness) return '';
-  const timestamp = clean(freshness.updatedAt) || 'Sem atualizacao registrada';
+  const timestamp = formatPdfDateTimeBr(freshness.updatedAt);
   return freshness.stale ? `Atualizado em ${timestamp} • desatualizado` : `Atualizado em ${timestamp}`;
 };
 
@@ -2124,21 +2210,73 @@ const wrapPdfText = (text: string, font: PDFFont, size: number, maxWidth: number
   const words = String(text || '').split(/\s+/).filter(Boolean);
   if (words.length === 0) return [''];
 
+  const splitLongToken = (token: string) => {
+    if (measureTextWidth(font, size, token) <= maxWidth) return [token];
+    const parts: string[] = [];
+    let currentPart = '';
+    Array.from(token).forEach((char) => {
+      const candidate = `${currentPart}${char}`;
+      if (!currentPart || measureTextWidth(font, size, candidate) <= maxWidth) {
+        currentPart = candidate;
+        return;
+      }
+      parts.push(currentPart);
+      currentPart = char;
+    });
+    if (currentPart) parts.push(currentPart);
+    return parts;
+  };
+
   const lines: string[] = [];
   let currentLine = '';
 
   words.forEach((word) => {
-    const candidate = currentLine ? `${currentLine} ${word}` : word;
-    if (measureTextWidth(font, size, candidate) <= maxWidth || !currentLine) {
-      currentLine = candidate;
-      return;
-    }
-    lines.push(currentLine);
-    currentLine = word;
+    const parts = splitLongToken(word);
+    parts.forEach((part) => {
+      const candidate = currentLine ? `${currentLine} ${part}` : part;
+      if (measureTextWidth(font, size, candidate) <= maxWidth || !currentLine) {
+        currentLine = candidate;
+        return;
+      }
+      lines.push(currentLine);
+      currentLine = part;
+    });
   });
 
   if (currentLine) lines.push(currentLine);
   return lines;
+};
+
+const measurePdfLinesHeight = (lines: string[], lineHeight: number) => lines.length * lineHeight;
+
+const drawArcSegmentsPdf = (
+  page: PDFPage,
+  args: {
+    centerX: number;
+    centerY: number;
+    radius: number;
+    startAngle: number;
+    endAngle: number;
+    color: ReturnType<typeof rgb>;
+    thickness: number;
+    opacity?: number;
+    segments?: number;
+  },
+) => {
+  const segments = Math.max(6, args.segments || Math.round(Math.abs(args.endAngle - args.startAngle) / 3));
+  for (let index = 0; index < segments; index += 1) {
+    const fromAngle = args.startAngle + ((args.endAngle - args.startAngle) * index) / segments;
+    const toAngle = args.startAngle + ((args.endAngle - args.startAngle) * (index + 1)) / segments;
+    const start = polarToCartesian(args.centerX, args.centerY, args.radius, fromAngle);
+    const end = polarToCartesian(args.centerX, args.centerY, args.radius, toAngle);
+    page.drawLine({
+      start,
+      end,
+      color: args.color,
+      thickness: args.thickness,
+      opacity: args.opacity ?? 1,
+    });
+  }
 };
 
 const drawTextLinesTop = (
@@ -2203,9 +2341,36 @@ const drawMetricCardPdf = (
     bold: PDFFont;
   },
 ) => {
+  const cardBottom = args.topY - args.height;
+  const innerWidth = args.width - 24;
+  const titleLines = wrapPdfText(args.title.toUpperCase(), args.bold, 8.5, innerWidth).slice(0, 2);
+  const titleLineHeight = 10;
+  const titleHeight = measurePdfLinesHeight(titleLines, titleLineHeight);
+  const footerLines = args.footer ? wrapPdfText(args.footer, args.regular, 7.5, innerWidth).slice(0, 2) : [];
+  const footerLineHeight = 9;
+  const footerHeight = measurePdfLinesHeight(footerLines, footerLineHeight);
+  const helperLines = args.helper ? wrapPdfText(args.helper, args.regular, 8.5, innerWidth).slice(0, 3) : [];
+  const helperLineHeight = 10;
+  const helperHeight = measurePdfLinesHeight(helperLines, helperLineHeight);
+
+  let valueSize = args.value.length > 28 ? 12.5 : args.value.length > 18 ? 14 : args.value.length > 12 ? 16 : 18;
+  let valueLineHeight = valueSize + 2;
+  let valueLines = wrapPdfText(args.value, args.bold, valueSize, innerWidth).slice(0, 3);
+  const valueTopBoundary = args.topY - 12 - titleHeight - 8;
+  const valueBottomBoundary = cardBottom + 12 + footerHeight + (footerHeight > 0 ? 6 : 0) + helperHeight + (helperHeight > 0 ? 8 : 0);
+  let valueAvailableHeight = Math.max(18, valueTopBoundary - valueBottomBoundary);
+  while (valueSize > 11.5) {
+    valueLines = wrapPdfText(args.value, args.bold, valueSize, innerWidth).slice(0, 3);
+    valueLineHeight = valueSize + 2;
+    if (measurePdfLinesHeight(valueLines, valueLineHeight) <= valueAvailableHeight) break;
+    valueSize -= 0.5;
+  }
+  const valueHeight = measurePdfLinesHeight(valueLines, valueLineHeight);
+  const valueTopY = valueBottomBoundary + valueHeight + Math.max(0, (valueAvailableHeight - valueHeight) / 2);
+
   page.drawRectangle({
     x: args.x,
-    y: args.topY - args.height,
+    y: cardBottom,
     width: args.width,
     height: args.height,
     color: pdfColor('#FFFFFF'),
@@ -2214,55 +2379,50 @@ const drawMetricCardPdf = (
   });
 
   const innerX = args.x + 12;
-  let cursorY = args.topY - 12;
   drawTextLinesTop(page, {
     x: innerX,
-    topY: cursorY,
-    width: args.width - 24,
-    lines: [args.title.toUpperCase()],
+    topY: args.topY - 12,
+    width: innerWidth,
+    lines: titleLines,
     font: args.bold,
     size: 8.5,
     color: pdfColor('#64748B'),
-    lineHeight: 10,
+    lineHeight: titleLineHeight,
   });
-  cursorY -= 18;
   drawTextLinesTop(page, {
     x: innerX,
-    topY: cursorY,
-    width: args.width - 24,
-    lines: [args.value],
+    topY: valueTopY,
+    width: innerWidth,
+    lines: valueLines,
     font: args.bold,
-    size: args.value.length > 16 ? 16 : 18,
+    size: valueSize,
     color: pdfColor('#0F172A'),
-    lineHeight: 18,
+    lineHeight: valueLineHeight,
   });
-  cursorY -= 32;
 
-  if (args.helper) {
-    const helperLines = wrapPdfText(args.helper, args.regular, 8.5, args.width - 24);
+  if (helperLines.length > 0) {
     drawTextLinesTop(page, {
       x: innerX,
-      topY: cursorY,
-      width: args.width - 24,
-      lines: helperLines.slice(0, 2),
+      topY: cardBottom + 12 + footerHeight + (footerHeight > 0 ? 6 : 0) + helperHeight,
+      width: innerWidth,
+      lines: helperLines,
       font: args.regular,
       size: 8.5,
       color: pdfColor('#475569'),
-      lineHeight: 10,
+      lineHeight: helperLineHeight,
     });
   }
 
-  if (args.footer) {
-    const footerLines = wrapPdfText(args.footer, args.regular, 7.5, args.width - 24).slice(0, 2);
+  if (footerLines.length > 0) {
     drawTextLinesTop(page, {
       x: innerX,
-      topY: args.topY - args.height + 24,
-      width: args.width - 24,
+      topY: cardBottom + 12 + footerHeight,
+      width: innerWidth,
       lines: footerLines,
       font: args.regular,
       size: 7.5,
       color: pdfColor('#94A3B8'),
-      lineHeight: 9,
+      lineHeight: footerLineHeight,
     });
   }
 };
@@ -2290,12 +2450,18 @@ const drawGaugePdf = (
   const cardWidth = args.width;
   const cardHeight = args.height;
   const centerX = cardLeft + cardWidth / 2;
-  const centerY = cardBottom + cardHeight * 0.56;
-  const radius = Math.min(cardWidth * 0.34, cardHeight * 0.36);
-  const arcWidth = Math.max(9, radius * 0.16);
+  const centerY = cardBottom + cardHeight * 0.57;
+  const radius = Math.min(cardWidth * 0.34, cardHeight * 0.32);
+  const arcWidth = Math.max(8, radius * 0.15);
   const titleSize = 10;
   const valueSize = args.valueLabel.length > 12 ? 15 : 17;
   const valuePlateWidth = Math.max(78, Math.min(cardWidth - 26, args.valueLabel.length * 8.5 + 18));
+  const progressAngle = 180 - ratio * 180;
+  const gaugeZones = [
+    { startAngle: 180, endAngle: 126, active: pdfColor('#EF4444'), track: pdfColor('#FECACA') },
+    { startAngle: 126, endAngle: 72, active: pdfColor('#F59E0B'), track: pdfColor('#FDE68A') },
+    { startAngle: 72, endAngle: 0, active: pdfColor('#34A853'), track: pdfColor('#C7E5D0') },
+  ];
 
   page.drawRectangle({
     x: cardLeft,
@@ -2321,25 +2487,34 @@ const drawGaugePdf = (
     });
   }
 
-  page.drawSvgPath(describeArcPath(centerX, centerY, radius, 180, 0), {
-    borderColor: pdfColor('#C7E5D0'),
-    borderWidth: arcWidth,
-    opacity: 1,
+  gaugeZones.forEach((zone) => {
+    drawArcSegmentsPdf(page, {
+      centerX,
+      centerY,
+      radius,
+      startAngle: zone.startAngle,
+      endAngle: zone.endAngle,
+      color: zone.track,
+      thickness: arcWidth,
+      opacity: 1,
+    });
   });
-  page.drawSvgPath(describeArcPath(centerX, centerY, radius, 180, 126), {
-    borderColor: pdfColor('#EF4444'),
-    borderWidth: arcWidth,
-  });
-  page.drawSvgPath(describeArcPath(centerX, centerY, radius, 126, 72), {
-    borderColor: pdfColor('#F59E0B'),
-    borderWidth: arcWidth,
-  });
-  page.drawSvgPath(describeArcPath(centerX, centerY, radius, 72, 0), {
-    borderColor: pdfColor('#34A853'),
-    borderWidth: arcWidth,
+  gaugeZones.forEach((zone) => {
+    if (progressAngle >= zone.startAngle) return;
+    const activeEndAngle = progressAngle <= zone.endAngle ? zone.endAngle : progressAngle;
+    drawArcSegmentsPdf(page, {
+      centerX,
+      centerY,
+      radius,
+      startAngle: zone.startAngle,
+      endAngle: activeEndAngle,
+      color: zone.active,
+      thickness: arcWidth,
+      opacity: 1,
+    });
   });
 
-  const pointerAngle = 180 - ratio * 180;
+  const pointerAngle = progressAngle;
   const pointerEnd = polarToCartesian(centerX, centerY, radius - 8, pointerAngle);
   page.drawLine({
     start: { x: centerX, y: centerY },
@@ -2351,7 +2526,7 @@ const drawGaugePdf = (
 
   page.drawRectangle({
     x: centerX - valuePlateWidth / 2,
-    y: cardBottom + cardHeight * 0.24,
+    y: cardBottom + 46,
     width: valuePlateWidth,
     height: 24,
     color: pdfColor('#FFFFFF'),
@@ -2359,7 +2534,7 @@ const drawGaugePdf = (
   });
   drawCenteredText(page, args.valueLabel, {
     x: centerX - valuePlateWidth / 2,
-    y: cardBottom + cardHeight * 0.24 + 7,
+    y: cardBottom + 53,
     width: valuePlateWidth,
     size: valueSize,
     font: args.bold,
@@ -2367,7 +2542,7 @@ const drawGaugePdf = (
   });
   drawCenteredText(page, args.title.toUpperCase(), {
     x: cardLeft + 10,
-    y: cardBottom + 38,
+    y: cardBottom + 30,
     width: cardWidth - 20,
     size: titleSize,
     font: args.bold,
@@ -2378,7 +2553,7 @@ const drawGaugePdf = (
   helperLines.forEach((line, index) => {
     drawCenteredText(page, line, {
       x: cardLeft + 11,
-      y: cardBottom + 24 - index * 10,
+      y: cardBottom + 18 - index * 10,
       width: cardWidth - 22,
       size: 8.5,
       font: args.regular,
@@ -2391,7 +2566,7 @@ const drawGaugePdf = (
     freshnessLines.forEach((line, index) => {
       drawCenteredText(page, line, {
         x: cardLeft + 11,
-        y: cardBottom + 8 - index * 9,
+        y: cardBottom + 8 - index * 8,
         width: cardWidth - 22,
         size: 7.5,
         font: args.regular,
@@ -2403,7 +2578,7 @@ const drawGaugePdf = (
 
 export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayload) => {
   const pdfDoc = await PDFDocument.create();
-  pdfDoc.setTitle(`Checklist Recepcao - ${payload.selectedUnitLabel}`);
+  pdfDoc.setTitle(`Checklist Recepção - ${payload.selectedUnitLabel}`);
   pdfDoc.setAuthor('Consultare Hub');
 
   const regular = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -2430,7 +2605,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       height: headerHeight,
       color: pdfColor('#17407E'),
     });
-    page.drawText('Checklist Recepcao', {
+    page.drawText('Checklist Recepção', {
       x: margin,
       y: pageSize[1] - 26,
       size: 18,
@@ -2438,7 +2613,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       color: pdfColor('#FFFFFF'),
     });
     page.drawText(
-      `${payload.selectedUnitLabel} • ${payload.viewMode === 'd1' ? 'D-1 congelado' : 'Hoje editavel'} • ${payload.referenceDate}`,
+      `${payload.selectedUnitLabel} • ${payload.viewMode === 'd1' ? 'D-1 congelado' : 'Hoje editável'} • ${formatPdfDateBr(payload.referenceDate)}`,
       {
         x: margin,
         y: pageSize[1] - 42,
@@ -2447,8 +2622,8 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
         color: pdfColor('#E2E8F0'),
       },
     );
-    page.drawText(`Pagina ${pageIndex}`, {
-      x: pageSize[0] - margin - measureTextWidth(regular, 9, `Pagina ${pageIndex}`),
+    page.drawText(`Página ${pageIndex}`, {
+      x: pageSize[0] - margin - measureTextWidth(regular, 9, `Página ${pageIndex}`),
       y: 10,
       size: 9,
       font: regular,
@@ -2716,26 +2891,162 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
     cursorY -= blockHeight + 12;
   };
 
+  const drawTaskDetailsList = (title: string, items: RecepcaoChecklistTaskDetail[], emptyMessage: string) => {
+    drawSectionTitle(title);
+    if (items.length <= 0) {
+      drawNotesBlock(title, emptyMessage);
+      return;
+    }
+
+    items.forEach((item) => {
+      const titleLines = wrapPdfText(item.title, bold, 9.5, contentWidth - 20).slice(0, 3);
+      const descriptionLines = wrapPdfText(item.description || 'Sem descrição', regular, 8.5, contentWidth - 20);
+      const titleHeight = measurePdfLinesHeight(titleLines, 12);
+      const descriptionHeight = measurePdfLinesHeight(descriptionLines, 10);
+      const blockHeight = Math.max(54, 24 + titleHeight + descriptionHeight);
+      ensureSpace(blockHeight);
+      page.drawRectangle({
+        x: margin,
+        y: cursorY - blockHeight,
+        width: contentWidth,
+        height: blockHeight,
+        color: pdfColor('#FFFFFF'),
+        borderColor: cardBorder,
+        borderWidth: 0.8,
+      });
+      drawTextLinesTop(page, {
+        x: margin + 10,
+        topY: cursorY - 10,
+        width: contentWidth - 20,
+        lines: titleLines,
+        font: bold,
+        size: 9.5,
+        color: darkText,
+        lineHeight: 12,
+      });
+      drawTextLinesTop(page, {
+        x: margin + 10,
+        topY: cursorY - 14 - titleHeight,
+        width: contentWidth - 20,
+        lines: descriptionLines,
+        font: regular,
+        size: 8.5,
+        color: lightText,
+        lineHeight: 10,
+      });
+      cursorY -= blockHeight + 10;
+    });
+  };
+
+  const drawRiskGroupBlock = (group: RecepcaoChecklistPayload['riskGroups'][number]) => {
+    const sections = [
+      {
+        lines: wrapPdfText(
+          `Meta mensal: ${formatCurrency(group.monthlyGoal)} • Realizado: ${formatCurrency(group.actualMonth)} • Deveria até a data: ${formatCurrency(group.shouldHaveUntilDate)} • Progresso: ${formatPercent(group.progressPct)}`,
+          regular,
+          8.5,
+          contentWidth - 20,
+        ),
+        lineHeight: 10,
+        font: regular,
+        size: 8.5,
+        color: darkText,
+      },
+      {
+        lines: wrapPdfText(`Plano de ação: ${group.planAction || '-'}`, regular, 8.5, contentWidth - 20),
+        lineHeight: 10,
+        font: regular,
+        size: 8.5,
+        color: lightText,
+      },
+      {
+        lines: wrapPdfText(`Fato: ${group.fact || '-'}`, regular, 8.5, contentWidth - 20),
+        lineHeight: 10,
+        font: regular,
+        size: 8.5,
+        color: lightText,
+      },
+      {
+        lines: wrapPdfText(`Causa: ${group.cause || '-'}`, regular, 8.5, contentWidth - 20),
+        lineHeight: 10,
+        font: regular,
+        size: 8.5,
+        color: lightText,
+      },
+      {
+        lines: wrapPdfText(`Ação: ${group.action || '-'}`, regular, 8.5, contentWidth - 20),
+        lineHeight: 10,
+        font: regular,
+        size: 8.5,
+        color: lightText,
+      },
+    ];
+    const titleLines = wrapPdfText(group.groupName, bold, 10.5, contentWidth - 20).slice(0, 3);
+    const titleHeight = measurePdfLinesHeight(titleLines, 12);
+    const sectionsHeight = sections.reduce((total, section) => total + measurePdfLinesHeight(section.lines, section.lineHeight) + 6, 0);
+    const blockHeight = Math.max(86, 22 + titleHeight + sectionsHeight);
+
+    ensureSpace(blockHeight);
+    page.drawRectangle({
+      x: margin,
+      y: cursorY - blockHeight,
+      width: contentWidth,
+      height: blockHeight,
+      color: group.atRisk ? pdfColor('#FFF7ED') : pdfColor('#FFFFFF'),
+      borderColor: group.atRisk ? pdfColor('#FDBA74') : cardBorder,
+      borderWidth: 0.8,
+    });
+
+    let blockCursorTop = cursorY - 10;
+    drawTextLinesTop(page, {
+      x: margin + 10,
+      topY: blockCursorTop,
+      width: contentWidth - 20,
+      lines: titleLines,
+      font: bold,
+      size: 10.5,
+      color: darkText,
+      lineHeight: 12,
+    });
+    blockCursorTop -= titleHeight + 6;
+
+    sections.forEach((section) => {
+      drawTextLinesTop(page, {
+        x: margin + 10,
+        topY: blockCursorTop,
+        width: contentWidth - 20,
+        lines: section.lines,
+        font: section.font,
+        size: section.size,
+        color: section.color,
+        lineHeight: section.lineHeight,
+      });
+      blockCursorTop -= measurePdfLinesHeight(section.lines, section.lineHeight) + 6;
+    });
+
+    cursorY -= blockHeight + 12;
+  };
+
   drawPageHeader();
 
   drawMetricCardGrid(
     'Contexto e resumo',
-    'Visao geral da unidade, da configuracao local e do recorte exportado.',
+    'Visão geral da unidade, da configuração local e do recorte exportado.',
     [
       {
-        title: 'Configuracao local',
+        title: 'Configuração local',
         value: payload.config?.name || 'Sem configuracao',
-        helper: `Lider: ${payload.config?.leaderName || '-'} • Equipe local: ${payload.config?.teamMembers.length || 0} colaborador(es)`,
-        footer: `Gerado em ${payload.generatedAt}`,
+        helper: `Líder: ${payload.config?.leaderName || '-'} • Equipe local: ${payload.config?.teamMembers.length || 0} colaborador(es)`,
+        footer: `Gerado em ${formatPdfDateTimeBr(payload.generatedAt)}`,
       },
       {
         title: 'Faturamento do dia',
         value: formatCurrency(payload.metrics.unit.revenueDay),
-        helper: `Ticket medio: ${formatCurrency(payload.metrics.unit.ticketAverageDay)}`,
+        helper: `Ticket médio: ${formatCurrency(payload.metrics.unit.ticketAverageDay)}`,
         footer: formatPdfFreshness(payload.metrics.unit.freshness.revenueDay),
       },
       {
-        title: 'Faturamento no mes',
+        title: 'Faturamento no mês',
         value: formatCurrency(payload.metrics.unit.revenueMonth),
         helper: `Meta mensal: ${formatCurrency(payload.metrics.unit.monthlyGoal)}`,
         footer: formatPdfFreshness(payload.metrics.unit.freshness.revenueMonth),
@@ -2753,7 +3064,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
 
   drawGaugeGrid(
     'Faturamento da unidade',
-    `Velocimetros principais da unidade, no mesmo padrao do painel, para ${payload.referenceDate}.`,
+    `Velocímetros principais da unidade, no mesmo padrão do painel, para ${formatPdfDateBr(payload.referenceDate)}.`,
     [
       {
         title: 'Faturamento mensal',
@@ -2764,7 +3075,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
         freshness: payload.metrics.unit.freshness.revenueMonth,
       },
       {
-        title: 'Faturamento diario',
+        title: 'Faturamento diário',
         value: payload.metrics.unit.revenueDay,
         max: payload.metrics.unit.dynamicDailyTarget || 1,
         valueLabel: formatCompactCurrency(payload.metrics.unit.revenueDay),
@@ -2772,7 +3083,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
         freshness: payload.metrics.unit.freshness.revenueDay,
       },
       {
-        title: 'Deveria ate a data',
+        title: 'Deveria até a data',
         value: payload.metrics.unit.revenueMonth,
         max: payload.metrics.unit.shouldHaveUntilDate || 1,
         valueLabel: formatPercent(
@@ -2797,10 +3108,10 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
 
   drawGaugeGrid(
     'Equipe comercial e assistencial',
-    'Confirmacao D+1 e metas gerais manuais de Resolve e Check-up.',
+    'Confirmação D+1 e metas gerais manuais de Resolve e Check-up.',
     [
       {
-        title: 'Confirmacao D+1',
+        title: 'Confirmação D+1',
         value: payload.metrics.appointmentsConfirmation.ratePct,
         max: 100,
         valueLabel: formatPercent(payload.metrics.appointmentsConfirmation.ratePct),
@@ -2827,29 +3138,29 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
   );
 
   drawMetricCardGrid(
-    'Operacao',
-    'Indicadores complementares da operacao e da lideranca.',
+    'Operação',
+    'Indicadores complementares da operação e da liderança.',
     [
       {
-        title: 'Pos-consulta equipe',
+        title: 'Pós-consulta equipe',
         value: formatPercent(payload.metrics.postConsult.conversionRate),
         helper: `${payload.metrics.postConsult.totalClosedEvents}/${payload.metrics.postConsult.totalEvents} fechados`,
         footer: formatPdfFreshness(payload.metrics.postConsult.freshness),
       },
       {
-        title: 'Espera recepcao',
+        title: 'Espera recepção',
         value: `${payload.metrics.waits.receptionAverageMinutes} min`,
         helper: `${payload.metrics.waits.receptionAttendedCount} atendidos`,
         footer: formatPdfFreshness(payload.metrics.waits.freshness.reception),
       },
       {
-        title: 'Espera medico',
+        title: 'Espera médico',
         value: `${payload.metrics.waits.medicAverageMinutes} min`,
         helper: `${payload.metrics.waits.medicAttendedCount} atendidos`,
         footer: formatPdfFreshness(payload.metrics.waits.freshness.medic),
       },
       {
-        title: 'Tarefas da lider',
+        title: 'Tarefas da líder',
         value: String(payload.metrics.tasks.overdueTasks),
         helper: `${payload.metrics.tasks.dueNext7DaysTasks} vencem em 7 dias`,
         footer: formatPdfFreshness(payload.metrics.tasks.freshness),
@@ -2859,6 +3170,18 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
     92,
   );
 
+  drawSectionTitle('Tarefas da liderança', formatPdfFreshness(payload.metrics.tasks.freshness));
+  drawTaskDetailsList(
+    'Tarefas vencidas',
+    payload.metrics.tasks.overdueItems,
+    'Nenhuma tarefa vencida foi encontrada para a líder neste recorte.',
+  );
+  drawTaskDetailsList(
+    'Tarefas a vencer em 7 dias',
+    payload.metrics.tasks.dueSoonItems,
+    'Nenhuma tarefa a vencer nos próximos 7 dias foi encontrada para a líder neste recorte.',
+  );
+
   drawTable(
     {
       title: 'Faturamento por colaborador',
@@ -2866,8 +3189,8 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       columns: [
         { label: 'Colaborador', width: contentWidth * 0.34, render: (row) => row.fullName },
         { label: 'Meta mensal', width: contentWidth * 0.18, align: 'right', render: (row) => formatCurrency(row.monthlyGoal) },
-        { label: 'Realizado no mes', width: contentWidth * 0.18, align: 'right', render: (row) => formatCurrency(row.revenueMonth) },
-        { label: 'Meta diaria', width: contentWidth * 0.18, align: 'right', render: (row) => formatCurrency(row.dynamicDailyTarget) },
+        { label: 'Realizado no mês', width: contentWidth * 0.18, align: 'right', render: (row) => formatCurrency(row.revenueMonth) },
+        { label: 'Meta diária', width: contentWidth * 0.18, align: 'right', render: (row) => formatCurrency(row.dynamicDailyTarget) },
         { label: 'Progresso', width: contentWidth * 0.12, align: 'right', render: (row) => formatPercent(row.progressPct) },
       ],
       rows: payload.metrics.collaborators,
@@ -2877,18 +3200,18 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
 
   drawMetricCardGrid(
     'Faltas e atrasos',
-    'Resumo do periodo para a equipe local configurada.',
+    'Resumo do período para a equipe local configurada.',
     [
       {
-        title: 'Faltas no periodo',
+        title: 'Faltas no período',
         value: String(payload.metrics.absences.absenceDays),
         helper: `${payload.metrics.absences.trackedEmployees} colaborador(es) monitorados`,
         footer: formatPdfFreshness(payload.metrics.absences.freshness),
       },
       {
-        title: 'Atrasos no periodo',
+        title: 'Atrasos no período',
         value: `${payload.metrics.absences.lateMinutes} min`,
-        helper: `${payload.metrics.absences.rows.length} colaborador(es) com ocorrencia`,
+        helper: `${payload.metrics.absences.rows.length} colaborador(es) com ocorrência`,
         footer: formatPdfFreshness(payload.metrics.absences.freshness),
       },
     ],
@@ -2939,48 +3262,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
   if (payload.riskGroups.length <= 0) {
     drawNotesBlock('Grupos em risco', 'Nenhum grupo com meta mensal configurada foi encontrado para esta unidade.');
   } else {
-    payload.riskGroups.forEach((group) => {
-      const detailLines = [
-        `Meta mensal: ${formatCurrency(group.monthlyGoal)} • Realizado: ${formatCurrency(group.actualMonth)} • Deveria ate a data: ${formatCurrency(group.shouldHaveUntilDate)} • Progresso: ${formatPercent(group.progressPct)}`,
-        `Plano de acao: ${group.planAction || '-'}`,
-        `Fato: ${group.fact || '-'}`,
-        `Causa: ${group.cause || '-'}`,
-        `Acao: ${group.action || '-'}`,
-      ];
-      const lines = detailLines.flatMap((line) => wrapPdfText(line, regular, 8.5, contentWidth - 20));
-      const blockHeight = Math.max(70, lines.length * 10 + 24);
-      ensureSpace(blockHeight);
-      page.drawRectangle({
-        x: margin,
-        y: cursorY - blockHeight,
-        width: contentWidth,
-        height: blockHeight,
-        color: group.atRisk ? pdfColor('#FFF7ED') : pdfColor('#FFFFFF'),
-        borderColor: group.atRisk ? pdfColor('#FDBA74') : cardBorder,
-        borderWidth: 0.8,
-      });
-      drawTextLinesTop(page, {
-        x: margin + 10,
-        topY: cursorY - 10,
-        width: contentWidth - 20,
-        lines: [group.groupName],
-        font: bold,
-        size: 10.5,
-        color: darkText,
-        lineHeight: 12,
-      });
-      drawTextLinesTop(page, {
-        x: margin + 10,
-        topY: cursorY - 28,
-        width: contentWidth - 20,
-        lines,
-        font: regular,
-        size: 8.5,
-        color: lightText,
-        lineHeight: 10,
-      });
-      cursorY -= blockHeight + 12;
-    });
+    payload.riskGroups.forEach(drawRiskGroupBlock);
   }
 
   const pdfBytes = await pdfDoc.save();
