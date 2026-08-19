@@ -597,7 +597,10 @@ export default function ChecklistRecepcaoPage() {
     [configForm.leaderUserId, configPayload?.options.leaders],
   );
 
-  if (loading) {
+  const isInitialLoading = loading && !data;
+  const isRefreshing = loading && !!data;
+
+  if (isInitialLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="flex items-center gap-2 text-slate-700">
@@ -625,6 +628,12 @@ export default function ChecklistRecepcaoPage() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {isRefreshing ? (
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
+                    <Loader2 size={15} className="animate-spin" />
+                    Atualizando indicadores...
+                  </div>
+                ) : null}
                 {data?.access.isManager ? (
                   <button
                     type="button"

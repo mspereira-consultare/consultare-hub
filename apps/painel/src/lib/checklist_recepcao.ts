@@ -25,7 +25,6 @@ import {
   shiftDate,
   type RecepcaoChecklistViewMode,
 } from '@/lib/checklist_recepcao_domain';
-import { calculateKpi } from '@/lib/kpi_engine';
 import { DEFAULT_POINT_FILTERS } from '@/lib/point/filters';
 import { listPointDailyControlRowsByDateRange } from '@/lib/point/repository';
 import { listPostConsultExportRows, normalizePostConsultFilters } from '@/lib/post_consulta/repository';
@@ -36,6 +35,10 @@ const PROPOSAL_EXEC_STATUSES = "('executada','aprovada pelo cliente','ganho','re
 const IS_MYSQL =
   String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL || !!process.env.MYSQL_PUBLIC_URL;
 const GOOGLE_RATING_TARGET = 4.7;
+const CLINIC_REVENUE_EXCLUSION = "AND unidade NOT LIKE '%Card%' AND unidade NOT LIKE '%Resolve%'";
+const SQL_DATE_ANALITICO = IS_MYSQL
+  ? `(CASE WHEN INSTR(data_do_pagamento, '/') > 0 THEN CONCAT(SUBSTR(data_do_pagamento, 7, 4), '-', SUBSTR(data_do_pagamento, 4, 2), '-', SUBSTR(data_do_pagamento, 1, 2)) ELSE data_do_pagamento END)`
+  : `(CASE WHEN instr(data_do_pagamento, '/') > 0 THEN substr(data_do_pagamento, 7, 4) || '-' || substr(data_do_pagamento, 4, 2) || '-' || substr(data_do_pagamento, 1, 2) ELSE data_do_pagamento END)`;
 
 type ViewMode = RecepcaoChecklistViewMode;
 
@@ -281,6 +284,7 @@ const safeJsonParse = <T>(value: unknown, fallback: T): T => {
   }
 };
 const unique = <T>(items: T[]) => Array.from(new Set(items));
+let cachedCollaboratorColumn: string | null | undefined;
 
 const normalizeHumanText = (value: unknown) =>
   clean(value)
@@ -288,6 +292,16 @@ const normalizeHumanText = (value: unknown) =>
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/\s+/g, ' ');
+
+const quoteIdentifier = (value: string) => (/^[A-Za-z_][A-Za-z0-9_]*$/.test(value) ? value : `"${value.replace(/"/g, '""')}"`);
+
+const namesLookEquivalent = (left: string, right: string) => {
+  const normalizedLeft = normalizeHumanText(left);
+  const normalizedRight = normalizeHumanText(right);
+  if (!normalizedLeft || !normalizedRight) return false;
+  if (normalizedLeft === normalizedRight) return true;
+  return normalizedLeft.startsWith(`${normalizedRight} `) || normalizedRight.startsWith(`${normalizedLeft} `);
+};
 
 const toNumber = (value: unknown) => {
   const parsed = Number(value);
@@ -743,23 +757,23 @@ const queryVersionRow = async (
 const loadUnitFinancialMetrics = async (db: DbInterface, referenceDate: string, unit: FinancialUnitDefinition) => {
   const dayParams: Array<string | number> = [referenceDate];
   const unitDaySql = buildFinancialUnitClause('unidade', unit.key, dayParams);
-  const dayRows = await db.query(
+  const dayRowsPromise = db.query(
     `
-      SELECT COALESCE(SUM(total_pago), 0) AS total_pago, COALESCE(SUM(qtd), 0) AS qtd
-      FROM faturamento_resumo_diario
-      WHERE data_ref = ? ${unitDaySql}
-    `,
+    SELECT COALESCE(SUM(total_pago), 0) AS total_pago, COALESCE(SUM(qtd), 0) AS qtd
+    FROM faturamento_resumo_diario
+    WHERE data_ref = ? ${unitDaySql}
+  `,
     dayParams,
   );
 
   const monthParams: Array<string | number> = [monthStart(referenceDate), referenceDate];
   const unitMonthSql = buildFinancialUnitClause('unidade', unit.key, monthParams);
-  const monthRows = await db.query(
+  const monthRowsPromise = db.query(
     `
-      SELECT COALESCE(SUM(total_pago), 0) AS total_pago
-      FROM faturamento_resumo_diario
-      WHERE data_ref BETWEEN ? AND ? ${unitMonthSql}
-    `,
+    SELECT COALESCE(SUM(total_pago), 0) AS total_pago
+    FROM faturamento_resumo_diario
+    WHERE data_ref BETWEEN ? AND ? ${unitMonthSql}
+  `,
     monthParams,
   );
 
@@ -776,14 +790,16 @@ const loadUnitFinancialMetrics = async (db: DbInterface, referenceDate: string, 
 
   const goalUnitParams: Array<string | number> = [referenceDate, referenceDate];
   const goalUnitSql = buildFinancialUnitClause('clinic_unit', unit.key, goalUnitParams);
-  const goalRows = await db.query(
+  const goalRowsPromise = db.query(
     `
-      SELECT COALESCE(SUM(target_value), 0) AS total
-      FROM goals_config
-      WHERE ${commonGoalFilter} ${goalUnitSql}
-    `,
+    SELECT COALESCE(SUM(target_value), 0) AS total
+    FROM goals_config
+    WHERE ${commonGoalFilter} ${goalUnitSql}
+  `,
     goalUnitParams,
   );
+
+  const [dayRows, monthRows, goalRows] = await Promise.all([dayRowsPromise, monthRowsPromise, goalRowsPromise]);
 
   let monthlyGoal = toNumber(goalRows[0]?.total);
   if (monthlyGoal <= 0) {
@@ -868,37 +884,115 @@ const loadCollaboratorGoals = async (
   return byMember;
 };
 
+const getCollaboratorColumn = async (db: DbInterface) => {
+  if (cachedCollaboratorColumn !== undefined) return cachedCollaboratorColumn;
+  try {
+    const rows = await db.query(
+      IS_MYSQL
+        ? `
+          SELECT COLUMN_NAME AS name
+          FROM information_schema.columns
+          WHERE table_schema = DATABASE()
+            AND table_name = ?
+          ORDER BY ORDINAL_POSITION
+        `
+        : 'PRAGMA table_info(faturamento_analitico)',
+      IS_MYSQL ? ['faturamento_analitico'] : [],
+    );
+    const names = (rows as DbRow[])
+      .map((row) => clean(IS_MYSQL ? row.name : (row.name ?? row[1] ?? row[0])))
+      .filter(Boolean);
+
+    const exactCandidates = ['usuario_da_conta', 'usuário_da_conta', 'usuario_que_agendou', 'usuário_que_agendou'];
+    for (const candidate of exactCandidates) {
+      if (names.includes(candidate)) {
+        cachedCollaboratorColumn = candidate;
+        return cachedCollaboratorColumn;
+      }
+    }
+
+    const normalizedCandidates = ['usuario_da_conta', 'usuario_que_agendou'].map(normalizeHumanText);
+    cachedCollaboratorColumn =
+      names.find((name) => normalizedCandidates.includes(normalizeHumanText(name))) || null;
+    return cachedCollaboratorColumn;
+  } catch (error) {
+    console.warn('[CHECKLIST_RECEPCAO] Nao foi possivel detectar coluna de colaborador em faturamento_analitico:', error);
+    cachedCollaboratorColumn = null;
+    return cachedCollaboratorColumn;
+  }
+};
+
+const loadCollaboratorRevenueMap = async (
+  db: DbInterface,
+  referenceDate: string,
+  unit: FinancialUnitDefinition,
+  members: RecepcaoChecklistTeamMember[],
+) => {
+  const byMember = new Map<string, number>();
+  for (const member of members) byMember.set(member.employeeId, 0);
+  if (members.length <= 0) return byMember;
+
+  const collaboratorColumn = await getCollaboratorColumn(db);
+  if (!collaboratorColumn) return byMember;
+
+  const params: Array<string | number> = [monthStart(referenceDate), referenceDate];
+  const unitSql = buildFinancialUnitClause('unidade', unit.key, params);
+  const collaboratorIdentifier = quoteIdentifier(collaboratorColumn);
+  const rows = await db.query(
+    `
+      SELECT
+        TRIM(COALESCE(${collaboratorIdentifier}, '')) AS collaborator_name,
+        COALESCE(SUM(total_pago), 0) AS total
+      FROM faturamento_analitico
+      WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ?
+        ${unitSql}
+        ${CLINIC_REVENUE_EXCLUSION}
+        AND COALESCE(TRIM(${collaboratorIdentifier}), '') <> ''
+      GROUP BY TRIM(COALESCE(${collaboratorIdentifier}, ''))
+    `,
+    params,
+  ).catch(() => []);
+
+  const groupedRows = (rows as DbRow[]).map((row) => ({
+    collaboratorName: clean(row.collaborator_name),
+    total: toNumber(row.total),
+  }));
+
+  for (const member of members) {
+    const revenueMonth = groupedRows
+      .filter((row) => namesLookEquivalent(row.collaboratorName, member.fullName))
+      .reduce((sum, row) => sum + row.total, 0);
+    byMember.set(member.employeeId, revenueMonth);
+  }
+
+  return byMember;
+};
+
 const loadCollaboratorMetrics = async (
   db: DbInterface,
   referenceDate: string,
   unit: FinancialUnitDefinition,
   members: RecepcaoChecklistTeamMember[],
 ) => {
-  const goalMap = await loadCollaboratorGoals(db, referenceDate, unit, members);
-  const startDate = monthStart(referenceDate);
+  const [goalMap, revenueMap] = await Promise.all([
+    loadCollaboratorGoals(db, referenceDate, unit, members),
+    loadCollaboratorRevenueMap(db, referenceDate, unit, members),
+  ]);
 
-  return Promise.all(
-    members.map(async (member) => {
-      const monthlyGoal = goalMap.get(member.employeeId) || 0;
-      const revenueMonth = await calculateKpi('revenue', startDate, referenceDate, {
-        unit_filter: unit.label,
-        collaborator: member.fullName,
-        employee_id: member.employeeId,
-      })
-        .then((result) => toNumber(result.currentValue))
-        .catch(() => 0);
+  return members.map((member) => {
+    const monthlyGoal = goalMap.get(member.employeeId) || 0;
+    const revenueMonth = revenueMap.get(member.employeeId) || 0;
 
-      return {
-        employeeId: member.employeeId,
-        userId: member.userId,
-        fullName: member.fullName,
-        monthlyGoal,
-        revenueMonth,
-        dynamicDailyTarget: calculateDailyTarget(monthlyGoal, revenueMonth, referenceDate),
-        progressPct: monthlyGoal > 0 ? (revenueMonth * 100) / monthlyGoal : 0,
-      };
-    }),
-  );
+    return {
+      employeeId: member.employeeId,
+      userId: member.userId,
+      fullName: member.fullName,
+      monthlyGoal,
+      revenueMonth,
+      dynamicDailyTarget: calculateDailyTarget(monthlyGoal, revenueMonth, referenceDate),
+      progressPct: monthlyGoal > 0 ? (revenueMonth * 100) / monthlyGoal : 0,
+    };
+  });
 };
 
 const loadConfirmationMetrics = async (
@@ -1248,24 +1342,61 @@ export const buildRecepcaoChecklistPayload = async (
   const readOnly = resolveReadOnly(viewMode);
   const unit = resolveUnitForConfig(config, filters.unitKey);
   const selectedUnit = unit || listFinancialUnits()[0];
-  const suggestedConfig = config ? null : await loadSuggestedConfig(actor.db, actor.userId);
-  const suggestedConfigDraft =
-    actor.isManager && !config && suggestedConfig
-      ? buildSuggestedConfigInput(await loadOptions(actor.db), suggestedConfig)
-      : null;
+  const suggestedConfigPromise = config ? Promise.resolve(null) : loadSuggestedConfig(actor.db, actor.userId);
+  const optionsPromise = actor.isManager && !config ? loadOptions(actor.db) : Promise.resolve(null);
+  const versionsPromise = config ? queryVersionSummaries(actor.db, config.id, selectedUnit.key) : Promise.resolve([]);
+  const versionRowPromise = config
+    ? queryVersionRow(actor.db, {
+        configId: config.id,
+        unitKey: selectedUnit.key,
+        referenceDate,
+        versionId: filters.versionId,
+      })
+    : Promise.resolve(null);
+  const legacyManualPromise = queryLegacyManualFallback(actor.db, selectedUnit.key).catch(() => null);
+  const unitMetricsPromise = loadUnitFinancialMetrics(actor.db, referenceDate, selectedUnit);
+  const collaboratorsPromise = loadCollaboratorMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
+  const appointmentsConfirmationPromise = loadConfirmationMetrics(actor.db, referenceDate, selectedUnit, readOnly);
+  const postConsultPromise = loadPostConsultMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
+  const waitsPromise = loadWaitMetrics(actor.db, referenceDate, selectedUnit);
+  const tasksPromise = loadTaskMetrics(actor.db, config?.leaderUserId || null);
+  const proposalsPromise = loadProposalMetrics(actor.db, selectedUnit);
+  const absencesPromise = loadAbsenceMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
 
-  const versions = config ? await queryVersionSummaries(actor.db, config.id, selectedUnit.key) : [];
-  const selectedVersion = config
-    ? resolveManualFromVersionRow(
-        await queryVersionRow(actor.db, {
-          configId: config.id,
-          unitKey: selectedUnit.key,
-          referenceDate,
-          versionId: filters.versionId,
-        }),
-      )
-    : null;
-  const legacyManual = await queryLegacyManualFallback(actor.db, selectedUnit.key).catch(() => null);
+  const [
+    suggestedConfig,
+    checklistOptions,
+    versions,
+    versionRow,
+    legacyManual,
+    unitMetrics,
+    collaborators,
+    appointmentsConfirmation,
+    postConsult,
+    waits,
+    tasks,
+    proposals,
+    absences,
+  ] = await Promise.all([
+    suggestedConfigPromise,
+    optionsPromise,
+    versionsPromise,
+    versionRowPromise,
+    legacyManualPromise,
+    unitMetricsPromise,
+    collaboratorsPromise,
+    appointmentsConfirmationPromise,
+    postConsultPromise,
+    waitsPromise,
+    tasksPromise,
+    proposalsPromise,
+    absencesPromise,
+  ]);
+  const suggestedConfigDraft =
+    actor.isManager && !config && suggestedConfig && checklistOptions
+      ? buildSuggestedConfigInput(checklistOptions, suggestedConfig)
+      : null;
+  const selectedVersion = config ? resolveManualFromVersionRow(versionRow) : null;
 
   const manual =
     selectedVersion?.payload?.manual
@@ -1277,8 +1408,6 @@ export const buildRecepcaoChecklistPayload = async (
     hasLegacyManual: !!legacyManual,
   });
 
-  const unitMetrics = await loadUnitFinancialMetrics(actor.db, referenceDate, selectedUnit);
-  const collaborators = await loadCollaboratorMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
   const teamProduction = {
     resolveMonthlyTarget: manual.resolveMonthlyTarget,
     resolveActual: manual.resolveActual,
@@ -1289,14 +1418,6 @@ export const buildRecepcaoChecklistPayload = async (
     checkupDynamicDailyTarget: calculateDailyTarget(manual.checkupMonthlyTarget, manual.checkupActual, referenceDate),
     checkupProgressPct: manual.checkupMonthlyTarget > 0 ? (manual.checkupActual * 100) / manual.checkupMonthlyTarget : 0,
   };
-  const [appointmentsConfirmation, postConsult, waits, tasks, proposals, absences] = await Promise.all([
-    loadConfirmationMetrics(actor.db, referenceDate, selectedUnit, readOnly),
-    loadPostConsultMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []),
-    loadWaitMetrics(actor.db, referenceDate, selectedUnit),
-    loadTaskMetrics(actor.db, config?.leaderUserId || null),
-    loadProposalMetrics(actor.db, selectedUnit),
-    loadAbsenceMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []),
-  ]);
 
   const riskGroups = await loadRiskGroups(actor.db, referenceDate, selectedUnit, unitMetrics, manual);
   const google = {
