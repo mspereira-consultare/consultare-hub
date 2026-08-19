@@ -5,16 +5,20 @@ import { useSession } from 'next-auth/react';
 import {
   AlertTriangle,
   CalendarDays,
+  CircleHelp,
   Download,
   FileText,
   Gauge,
   Loader2,
+  Plus,
   RefreshCw,
   Save,
   Settings2,
   Target,
+  Trash2,
   TrendingUp,
   Users,
+  X,
 } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
 
@@ -32,6 +36,11 @@ type TeamMember = {
   fullName: string;
   department: string | null;
   units: string[];
+};
+
+type RecollectionEntry = {
+  id: string;
+  notes: string;
 };
 
 type ChecklistData = {
@@ -91,6 +100,7 @@ type ChecklistData = {
     googleNewReviewsCount: number;
     recollectionCount: number;
     recollectionNotes: string;
+    recollections: RecollectionEntry[];
     pendingNotes: string;
     generalNotes: string;
     riskGroups: Array<{
@@ -282,6 +292,43 @@ const Card = ({ title, value, helper, icon }: { title: string; value: string; he
 );
 
 const sectionClassName = 'rounded-3xl border border-slate-200 bg-white shadow-sm';
+const tableShellClassName = 'mt-4 max-h-[24rem] overflow-auto rounded-2xl border border-slate-200';
+
+const helpWorkflowCards = [
+  {
+    title: '1. Defina o contexto local',
+    description: 'A gerência configura líder, unidades habilitadas e equipe local da checklist. Esse escopo vale apenas nesta página.',
+  },
+  {
+    title: '2. Use Hoje para operar',
+    description: 'O modo Hoje é a única área editável. Cada salvamento cria uma nova versão imutável da checklist.',
+  },
+  {
+    title: '3. Use D-1 para auditoria',
+    description: 'O modo D-1 é somente leitura e exibe o histórico congelado da data selecionada.',
+  },
+  {
+    title: '4. Leia os velocímetros',
+    description: 'Os gauges mostram realizado versus meta mensal, meta diária dinâmica, taxa de confirmação, nota Google e metas gerais de Resolve e Check-up.',
+  },
+  {
+    title: '5. Registre exceções manuais',
+    description: 'Pendências, validações, avaliações Google, recoletas e FCA ficam versionados junto com cada salvamento.',
+  },
+  {
+    title: '6. Exporte o retrato da tela',
+    description: 'O PDF respeita filtros, unidade, data, versão e os velocímetros que estiverem sendo exibidos na página.',
+  },
+];
+
+const helpRules = [
+  'As unidades visíveis dependem da configuração local da checklist, não da equipe local.',
+  'A equipe local afeta faturamento individual, faltas/atrasos e parte dos indicadores operacionais.',
+  'Resolve e Check-up permanecem manuais no v1, mas já versionados e prontos para integração futura.',
+  'No modo D-1 não é possível editar campos nem sobrescrever o histórico.',
+  'Recoletas agora são registradas uma a uma, com observações independentes e contagem automática.',
+  'Se uma unidade não aparecer, revise as unidades habilitadas na configuração local da checklist.',
+];
 
 const GaugeCard = ({
   title,
@@ -334,6 +381,68 @@ const GaugeCard = ({
   );
 };
 
+const HelpModal = ({ open, onClose }: { open: boolean; onClose: () => void }) => {
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 px-4 py-6" onMouseDown={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="checklist-recepcao-help-title"
+        className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Ajuda guiada</div>
+            <h3 id="checklist-recepcao-help-title" className="mt-1 text-lg font-bold text-slate-900">
+              Como funciona a checklist da recepção
+            </h3>
+            <p className="mt-1 max-w-3xl text-sm text-slate-500">
+              Esta página consolida o acompanhamento gerencial da recepção com visão atual, histórico D-1, campos versionados e escopo local por líder.
+            </p>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Fechar ajuda">
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="max-h-[72vh] overflow-y-auto px-5 py-4">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {helpWorkflowCards.map((item) => (
+              <div key={item.title} className="rounded-xl border border-slate-200 bg-white p-4">
+                <div className="text-sm font-semibold text-slate-900">{item.title}</div>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{item.description}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50/60 p-4">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-[#17407E]">Fontes e regras</div>
+            <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {helpRules.map((rule) => (
+                <div key={rule} className="rounded-lg border border-blue-100 bg-white/80 px-3 py-2 text-xs leading-5 text-slate-600">
+                  {rule}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const emptyManual = (data?: ChecklistData | null): ManualState => ({
   resolveMonthlyTarget: data?.manual.resolveMonthlyTarget || 0,
   resolveActual: data?.manual.resolveActual || 0,
@@ -345,6 +454,7 @@ const emptyManual = (data?: ChecklistData | null): ManualState => ({
   googleNewReviewsCount: data?.manual.googleNewReviewsCount || 0,
   recollectionCount: data?.manual.recollectionCount || 0,
   recollectionNotes: data?.manual.recollectionNotes || '',
+  recollections: data?.manual.recollections || [],
   pendingNotes: data?.manual.pendingNotes || '',
   generalNotes: data?.manual.generalNotes || '',
   riskGroups: data?.manual.riskGroups || [],
@@ -387,6 +497,7 @@ export default function ChecklistRecepcaoPage() {
   const [referenceDate, setReferenceDate] = useState('');
   const [selectedVersionId, setSelectedVersionId] = useState('');
   const [refreshSeed, setRefreshSeed] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [configLoading, setConfigLoading] = useState(false);
@@ -407,6 +518,27 @@ export default function ChecklistRecepcaoPage() {
     () => (data?.versions || []).filter((version) => version.referenceDate === referenceDate && version.unitKey === selectedUnitKey),
     [data?.versions, referenceDate, selectedUnitKey],
   );
+
+  const updateRecollections = useCallback((nextRows: RecollectionEntry[]) => {
+    setManual((current) => ({
+      ...current,
+      recollections: nextRows,
+      recollectionCount: nextRows.length,
+      recollectionNotes: nextRows.map((entry) => entry.notes).filter(Boolean).join('\n\n'),
+    }));
+  }, []);
+
+  const addRecollection = useCallback(() => {
+    updateRecollections([...(manual.recollections || []), { id: crypto.randomUUID(), notes: '' }]);
+  }, [manual.recollections, updateRecollections]);
+
+  const removeRecollection = useCallback((id: string) => {
+    updateRecollections((manual.recollections || []).filter((entry) => entry.id !== id));
+  }, [manual.recollections, updateRecollections]);
+
+  const updateRecollectionNotes = useCallback((id: string, notes: string) => {
+    updateRecollections((manual.recollections || []).map((entry) => (entry.id === id ? { ...entry, notes } : entry)));
+  }, [manual.recollections, updateRecollections]);
 
   const fetchData = useCallback(async (opts?: { forceFresh?: boolean; nextConfigId?: string; nextLeaderUserId?: string; nextUnitKey?: string; nextViewMode?: 'current' | 'd1'; nextReferenceDate?: string; nextVersionId?: string }) => {
     setLoading(true);
@@ -503,6 +635,8 @@ export default function ChecklistRecepcaoPage() {
           viewMode: 'current',
           manual: {
             ...manual,
+            recollectionCount: (manual.recollections || []).length,
+            recollectionNotes: (manual.recollections || []).map((entry) => entry.notes).filter(Boolean).join('\n\n'),
             googleRating: Number(manual.googleRating),
             riskGroups: riskGroups.map((group) => ({
               groupName: group.groupName,
@@ -597,6 +731,14 @@ export default function ChecklistRecepcaoPage() {
     [configForm.leaderUserId, configPayload?.options.leaders],
   );
 
+  const applyCurrentLeaderUnits = () => {
+    if (!currentLeader) return;
+    setConfigForm((current) => ({
+      ...current,
+      units: currentLeader.units || [],
+    }));
+  };
+
   const isInitialLoading = loading && !data;
   const isRefreshing = loading && !!data;
 
@@ -605,7 +747,7 @@ export default function ChecklistRecepcaoPage() {
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="flex items-center gap-2 text-slate-700">
           <Loader2 size={16} className="animate-spin" />
-          Carregando checklist da recepcao...
+          Carregando checklist da recepção...
         </div>
       </div>
     );
@@ -622,9 +764,9 @@ export default function ChecklistRecepcaoPage() {
                   <Gauge size={13} />
                   Checklist gerencial
                 </div>
-                <h1 className="mt-3 text-2xl font-bold text-slate-900">Checklist Recepcao</h1>
+                <h1 className="mt-3 text-2xl font-bold text-slate-900">Checklist Recepção</h1>
                 <p className="mt-2 max-w-3xl text-sm text-slate-500">
-                  Visao operacional versionada com modo atual, historico D-1 congelado, escopo local de lideranca e exportacao em PDF.
+                  Visão operacional versionada com modo atual, histórico D-1 congelado, escopo local de liderança e exportação em PDF.
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -634,6 +776,14 @@ export default function ChecklistRecepcaoPage() {
                     Atualizando indicadores...
                   </div>
                 ) : null}
+                <button
+                  type="button"
+                  onClick={() => setHelpOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  <CircleHelp size={15} />
+                  Como funciona
+                </button>
                 {data?.access.isManager ? (
                   <button
                     type="button"
@@ -641,7 +791,7 @@ export default function ChecklistRecepcaoPage() {
                     className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
                   >
                     <Settings2 size={15} />
-                    Configurar lider/equipe
+                    Configurar líder/equipe
                   </button>
                 ) : null}
                 <button
@@ -668,7 +818,7 @@ export default function ChecklistRecepcaoPage() {
                   className="inline-flex items-center gap-2 rounded-xl bg-[#17407E] px-4 py-2 text-sm font-semibold text-white hover:bg-[#123666] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-                  {saving ? 'Salvando...' : 'Salvar nova versao'}
+                  {saving ? 'Salvando...' : 'Salvar nova versão'}
                 </button>
               </div>
             </div>
@@ -677,7 +827,7 @@ export default function ChecklistRecepcaoPage() {
           <div className="grid gap-4 bg-slate-50/70 px-5 py-4 md:grid-cols-2 xl:grid-cols-7">
             {data?.access.isManager ? (
               <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                Lider
+                Líder
                 <select
                   value={selectedLeaderUserId}
                   onChange={(event) =>
@@ -690,7 +840,7 @@ export default function ChecklistRecepcaoPage() {
                   }
                   className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
                 >
-                  <option value="">Todos os lideres</option>
+                  <option value="">Todos os líderes</option>
                   {(data?.availableLeaderFilters || []).map((leader) => (
                     <option key={leader.userId} value={leader.userId}>
                       {leader.name}
@@ -700,7 +850,7 @@ export default function ChecklistRecepcaoPage() {
               </label>
             ) : null}
             <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Configuracao
+              Configuração
               <select
                 value={selectedConfigId}
                 onChange={(event) => void fetchData({ nextConfigId: event.target.value, nextVersionId: '' })}
@@ -746,7 +896,7 @@ export default function ChecklistRecepcaoPage() {
               </select>
             </label>
             <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Data de referencia
+              Data de referência
               <input
                 type="date"
                 value={referenceDate}
@@ -759,7 +909,7 @@ export default function ChecklistRecepcaoPage() {
               />
             </label>
             <label className="flex flex-col gap-1 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-              Versao salva
+              Versão salva
               <select
                 value={selectedVersionId}
                 onChange={(event) => {
@@ -769,7 +919,7 @@ export default function ChecklistRecepcaoPage() {
                 }}
                 className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
-                <option value="">Ultima referencia</option>
+                <option value="">Última referência</option>
                 {availableVersions.map((version) => (
                   <option key={version.id} value={version.id}>
                     {version.createdAt ? `${formatDateBr(version.referenceDate)} - ${version.createdAt}` : version.id}
@@ -779,8 +929,12 @@ export default function ChecklistRecepcaoPage() {
             </label>
             <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3">
               <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Escopo local</div>
-              <div className="mt-2 text-sm font-semibold text-slate-900">{data?.config?.leaderName || 'Sem configuracao'}</div>
+              <div className="mt-2 text-sm font-semibold text-slate-900">{data?.config?.leaderName || 'Sem configuração'}</div>
               <div className="mt-1 text-xs text-slate-500">{data?.config?.teamMembers.length || 0} colaborador(es) na equipe local</div>
+              <div className="mt-1 text-xs text-slate-500">
+                Unidades habilitadas: {data?.config?.units.map((unitKey) => data.availableUnits.find((unit) => unit.key === unitKey)?.label || unitKey).join(', ') || 'Nenhuma'}
+              </div>
+              <div className="mt-2 text-xs text-slate-500">As unidades exibidas dependem da configuração local da checklist, não da equipe local.</div>
             </div>
           </div>
         </section>
@@ -794,10 +948,10 @@ export default function ChecklistRecepcaoPage() {
             <div className="flex items-start gap-3">
               <AlertTriangle className="mt-0.5 text-amber-600" size={18} />
               <div>
-                <h2 className="text-base font-semibold text-slate-900">Nenhuma configuracao local encontrada</h2>
+                <h2 className="text-base font-semibold text-slate-900">Nenhuma configuração local encontrada</h2>
                 <p className="mt-1 text-sm text-slate-500">
-                  Esta pagina depende de uma configuracao local de lider, unidades e equipe. A gerencia pode criar a primeira configuracao pelo modal
-                  de ajuste proprio da checklist.
+                  Esta página depende de uma configuração local de líder, unidades e equipe. A gerência pode criar a primeira configuração pelo modal
+                  de ajuste próprio da checklist.
                 </p>
                 {data?.access.isManager && data?.suggestedConfigDraft ? (
                   <div className="mt-4 flex flex-wrap gap-3">
@@ -808,7 +962,7 @@ export default function ChecklistRecepcaoPage() {
                       className="inline-flex items-center gap-2 rounded-xl bg-[#17407E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
                     >
                       {configSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-                      {configSaving ? 'Criando...' : 'Criar configuracao sugerida'}
+                      {configSaving ? 'Criando...' : 'Criar configuração sugerida'}
                     </button>
                     <button
                       type="button"
@@ -829,23 +983,23 @@ export default function ChecklistRecepcaoPage() {
               <Card
                 title="Faturamento do Dia"
                 value={formatCurrency(data.metrics.unit.revenueDay)}
-                helper={`Ticket medio: ${formatCurrency(data.metrics.unit.ticketAverageDay)}`}
+                helper={`Ticket médio: ${formatCurrency(data.metrics.unit.ticketAverageDay)}`}
                 icon={<TrendingUp size={16} />}
               />
               <Card
-                title="Faturamento no Mes"
+                title="Faturamento no Mês"
                 value={formatCurrency(data.metrics.unit.revenueMonth)}
                 helper={`Meta mensal: ${formatCurrency(data.metrics.unit.monthlyGoal)}`}
                 icon={<Target size={16} />}
               />
               <Card
-                title="Meta Diaria Dinamica"
+                title="Meta Diária Dinâmica"
                 value={formatCurrency(data.metrics.unit.dynamicDailyTarget)}
-                helper={`${data.metrics.unit.businessDaysRemaining} dia(s) uteis restantes`}
+                helper={`${data.metrics.unit.businessDaysRemaining} dia(s) úteis restantes`}
                 icon={<CalendarDays size={16} />}
               />
               <Card
-                title="Orcamentos em Aberto"
+                title="Orçamentos em Aberto"
                 value={String(data.metrics.proposals.openCount)}
                 helper={formatCurrency(data.metrics.proposals.openValue)}
                 icon={<FileText size={16} />}
@@ -857,11 +1011,11 @@ export default function ChecklistRecepcaoPage() {
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">Faturamento da unidade</h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Velocimetros da unidade com realizado diario, acumulado do mes, referencia esperada ate {formatDateBr(data.referenceDate)} e nota Google.
+                    Velocímetros da unidade com realizado diário, acumulado do mês, referência esperada até {formatDateBr(data.referenceDate)} e nota Google.
                   </p>
                 </div>
                 <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                  {data.readOnly ? 'D-1 congelado' : 'Hoje editavel'}
+                  {data.readOnly ? 'D-1 congelado' : 'Hoje editável'}
                 </div>
               </div>
               <div className="mt-5 grid gap-4 xl:grid-cols-4">
@@ -872,14 +1026,14 @@ export default function ChecklistRecepcaoPage() {
                   helper={`${formatCurrency(data.metrics.unit.revenueMonth)} / ${formatCurrency(data.metrics.unit.monthlyGoal)}`}
                 />
                 <GaugeCard
-                  title="Faturamento diario"
+                  title="Faturamento diário"
                   value={data.metrics.unit.revenueDay}
                   max={data.metrics.unit.dynamicDailyTarget}
                   helper={`${formatCurrency(data.metrics.unit.revenueDay)} / ${formatCurrency(data.metrics.unit.dynamicDailyTarget)}`}
                   accent="#1D4ED8"
                 />
                 <GaugeCard
-                  title="Deveria ate a data"
+                  title="Deveria até a data"
                   value={data.metrics.unit.revenueMonth}
                   max={data.metrics.unit.shouldHaveUntilDate}
                   helper={`${formatCurrency(data.metrics.unit.shouldHaveUntilDate)} previsto`}
@@ -900,17 +1054,17 @@ export default function ChecklistRecepcaoPage() {
                 <Users className="text-slate-500" size={18} />
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">Faturamento por colaborador</h2>
-                  <p className="mt-1 text-sm text-slate-500">A equipe local configurada nesta pagina alimenta a visao individual de metas e realizado.</p>
+                  <p className="mt-1 text-sm text-slate-500">A equipe local configurada nesta página alimenta a visão individual de metas e realizado.</p>
                 </div>
               </div>
-              <div className="mt-4 overflow-x-auto">
+              <div className={tableShellClassName}>
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-50">
                     <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                       <th className="px-4 py-3">Colaborador</th>
                       <th className="px-4 py-3">Meta mensal</th>
-                      <th className="px-4 py-3">Realizado no mes</th>
-                      <th className="px-4 py-3">Meta diaria dinamica</th>
+                      <th className="px-4 py-3">Realizado no mês</th>
+                      <th className="px-4 py-3">Meta diária dinâmica</th>
                       <th className="px-4 py-3">Progresso</th>
                     </tr>
                   </thead>
@@ -940,7 +1094,7 @@ export default function ChecklistRecepcaoPage() {
             <div className="grid gap-6 xl:grid-cols-2">
               <section className={`${sectionClassName} p-5`}>
                 <h2 className="text-lg font-bold text-slate-900">Resolve e Check-up da equipe</h2>
-                <p className="mt-1 text-sm text-slate-500">Velocimetros da meta geral da equipe no v1 manual versionado, prontos para troca futura da origem sem mudar a interface.</p>
+                <p className="mt-1 text-sm text-slate-500">Velocímetros da meta geral da equipe no v1 manual versionado, prontos para troca futura da origem sem mudar a interface.</p>
                 <div className="mt-5 grid gap-4 md:grid-cols-2">
                   <GaugeCard
                     title="Meta geral Resolve"
@@ -1002,10 +1156,10 @@ export default function ChecklistRecepcaoPage() {
               </section>
 
               <section className={`${sectionClassName} p-5`}>
-                <h2 className="text-lg font-bold text-slate-900">Operacao e equipe</h2>
+                <h2 className="text-lg font-bold text-slate-900">Operação e equipe</h2>
                 <div className="mt-4">
                   <GaugeCard
-                    title="Confirmacao de agendamentos D+1"
+                    title="Confirmação de agendamentos D+1"
                     value={data.metrics.appointmentsConfirmation.ratePct}
                     max={100}
                     helper={`${formatPercent(data.metrics.appointmentsConfirmation.ratePct)} | ${data.metrics.appointmentsConfirmation.confirmed}/${data.metrics.appointmentsConfirmation.total}`}
@@ -1014,33 +1168,27 @@ export default function ChecklistRecepcaoPage() {
                 </div>
                 <div className="mt-4 grid gap-4 sm:grid-cols-2">
                   <Card
-                    title="Pos-consulta equipe"
+                    title="Pós-consulta equipe"
                     value={formatPercent(data.metrics.postConsult.conversionRate)}
                     helper={`${data.metrics.postConsult.totalClosedEvents}/${data.metrics.postConsult.totalEvents} fechados`}
                     icon={<TrendingUp size={16} />}
                   />
                   <Card
-                    title="Espera recepcao"
+                    title="Espera recepção"
                     value={`${data.metrics.waits.receptionAverageMinutes} min`}
                     helper={`${data.metrics.waits.receptionAttendedCount} atendidos`}
                     icon={<Users size={16} />}
                   />
                   <Card
-                    title="Espera medico"
+                    title="Espera médico"
                     value={`${data.metrics.waits.medicAverageMinutes} min`}
                     helper={`${data.metrics.waits.medicAttendedCount} atendidos`}
                     icon={<Users size={16} />}
                   />
                   <Card
-                    title="Tarefas da lider"
+                    title="Tarefas da líder"
                     value={String(data.metrics.tasks.overdueTasks)}
                     helper={`${data.metrics.tasks.dueNext7DaysTasks} vencem em 7 dias`}
-                    icon={<AlertTriangle size={16} />}
-                  />
-                  <Card
-                    title="Faltas e atrasos"
-                    value={`${data.metrics.absences.absenceDays} / ${data.metrics.absences.lateMinutes}`}
-                    helper={`${data.metrics.absences.trackedEmployees} colaborador(es) monitorados`}
                     icon={<AlertTriangle size={16} />}
                   />
                 </div>
@@ -1048,7 +1196,63 @@ export default function ChecklistRecepcaoPage() {
             </div>
 
             <section className={`${sectionClassName} p-5`}>
-              <h2 className="text-lg font-bold text-slate-900">Pendencias, validacoes e recoletas</h2>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Faltas e atrasos da equipe local</h2>
+                  <p className="mt-1 text-sm text-slate-500">Indicadores consolidados da equipe vinculada à líder desta configuração.</p>
+                </div>
+              </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <Card
+                  title="Faltas no período"
+                  value={String(data.metrics.absences.absenceDays)}
+                  helper={`${data.metrics.absences.trackedEmployees} colaborador(es) monitorados`}
+                  icon={<AlertTriangle size={16} />}
+                />
+                <Card
+                  title="Atrasos no período"
+                  value={`${data.metrics.absences.lateMinutes} min`}
+                  helper={`${data.metrics.absences.rows.length} colaborador(es) com ocorrência`}
+                  icon={<AlertTriangle size={16} />}
+                />
+              </div>
+              <div className={tableShellClassName}>
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50">
+                    <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <th className="px-4 py-3">Colaborador</th>
+                      <th className="px-4 py-3">Faltas</th>
+                      <th className="px-4 py-3">Atrasos</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {data.metrics.absences.rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="px-4 py-6 text-center text-slate-500">
+                          Nenhuma falta ou atraso foi encontrado para a equipe local no período.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.metrics.absences.rows.map((row) => (
+                        <tr key={`${row.employeeId || row.employeeName}`}>
+                          <td className="px-4 py-3 font-medium text-slate-900">{row.employeeName}</td>
+                          <td className="px-4 py-3 text-slate-600">{row.absenceDays}</td>
+                          <td className="px-4 py-3 text-slate-600">{row.lateMinutes} min</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className={`${sectionClassName} p-5`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Pendências e validações</h2>
+                  <p className="mt-1 text-sm text-slate-500">Campos manuais versionados junto com cada salvamento da checklist.</p>
+                </div>
+              </div>
               <fieldset disabled={!canEdit || data.readOnly} className={`mt-4 grid gap-4 md:grid-cols-2 ${!canEdit || data.readOnly ? 'opacity-70' : ''}`}>
                 <label className="text-sm font-medium text-slate-700">
                   Nota fiscal em aberto
@@ -1059,7 +1263,7 @@ export default function ChecklistRecepcaoPage() {
                   >
                     <option value="">Selecione</option>
                     <option value="Validado">Validado</option>
-                    <option value="Nao validado">Nao validado</option>
+                    <option value="Nao validado">Não validado</option>
                   </select>
                 </label>
                 <label className="text-sm font-medium text-slate-700">
@@ -1071,11 +1275,11 @@ export default function ChecklistRecepcaoPage() {
                   >
                     <option value="">Selecione</option>
                     <option value="Validado">Validado</option>
-                    <option value="Nao validado">Nao validado</option>
+                    <option value="Nao validado">Não validado</option>
                   </select>
                 </label>
                 <label className="text-sm font-medium text-slate-700">
-                  Avaliacao Google
+                  Avaliação Google
                   <input
                     type="number"
                     min={0}
@@ -1087,7 +1291,7 @@ export default function ChecklistRecepcaoPage() {
                   />
                 </label>
                 <label className="text-sm font-medium text-slate-700">
-                  Novas avaliacoes no Google
+                  Novas avaliações no Google
                   <input
                     type="number"
                     min={0}
@@ -1096,27 +1300,8 @@ export default function ChecklistRecepcaoPage() {
                     className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 outline-none"
                   />
                 </label>
-                <label className="text-sm font-medium text-slate-700">
-                  Quantidade de recoletas
-                  <input
-                    type="number"
-                    min={0}
-                    value={manual.recollectionCount}
-                    onChange={(event) => setManual((current) => ({ ...current, recollectionCount: toNumberInput(event.target.value) }))}
-                    className="mt-1 h-11 w-full rounded-xl border border-slate-200 px-3 outline-none"
-                  />
-                </label>
                 <label className="text-sm font-medium text-slate-700 md:col-span-2">
-                  Observacoes de recoletas
-                  <textarea
-                    rows={3}
-                    value={manual.recollectionNotes}
-                    onChange={(event) => setManual((current) => ({ ...current, recollectionNotes: event.target.value }))}
-                    className="mt-1 w-full rounded-2xl border border-slate-200 px-3 py-3 outline-none"
-                  />
-                </label>
-                <label className="text-sm font-medium text-slate-700 md:col-span-2">
-                  Pendencias da unidade
+                  Pendências da unidade
                   <textarea
                     rows={4}
                     value={manual.pendingNotes}
@@ -1125,7 +1310,7 @@ export default function ChecklistRecepcaoPage() {
                   />
                 </label>
                 <label className="text-sm font-medium text-slate-700 md:col-span-2">
-                  Observacoes gerais
+                  Observações gerais
                   <textarea
                     rows={4}
                     value={manual.generalNotes}
@@ -1137,16 +1322,73 @@ export default function ChecklistRecepcaoPage() {
             </section>
 
             <section className={`${sectionClassName} p-5`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-bold text-slate-900">Recoletas</h2>
+                  <p className="mt-1 text-sm text-slate-500">Registre cada recoleta separadamente com observações individuais. A contagem é automática.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                    {manual.recollections.length} recoleta(s)
+                  </div>
+                  <button
+                    type="button"
+                    onClick={addRecollection}
+                    disabled={!canEdit || data.readOnly}
+                    className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Plus size={15} />
+                    Adicionar recoleta
+                  </button>
+                </div>
+              </div>
+              <div className="mt-4 max-h-[24rem] overflow-auto rounded-2xl border border-slate-200 bg-slate-50/40 p-4">
+                {manual.recollections.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-8 text-center text-sm text-slate-500">
+                    Nenhuma recoleta registrada até o momento.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {manual.recollections.map((entry, index) => (
+                      <div key={entry.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-sm font-semibold text-slate-900">Recoleta {index + 1}</div>
+                          <button
+                            type="button"
+                            onClick={() => removeRecollection(entry.id)}
+                            disabled={!canEdit || data.readOnly}
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Trash2 size={14} />
+                            Remover
+                          </button>
+                        </div>
+                        <textarea
+                          rows={4}
+                          disabled={!canEdit || data.readOnly}
+                          value={entry.notes}
+                          onChange={(event) => updateRecollectionNotes(entry.id, event.target.value)}
+                          placeholder="Descreva o motivo, contexto e observações da recoleta."
+                          className="mt-3 w-full rounded-2xl border border-slate-200 px-3 py-3 text-sm outline-none disabled:bg-slate-50"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section className={`${sectionClassName} p-5`}>
               <h2 className="text-lg font-bold text-slate-900">Grupos de faturamento em risco</h2>
-              <p className="mt-1 text-sm text-slate-500">Somente grupos com meta configurada entram nesta lista. O FCA fica salvo dentro de cada versao criada.</p>
-              <div className="mt-4 overflow-x-auto">
+              <p className="mt-1 text-sm text-slate-500">Somente grupos com meta configurada entram nesta lista. O FCA fica salvo dentro de cada versão criada.</p>
+              <div className={tableShellClassName}>
                 <table className="min-w-full divide-y divide-slate-200 text-sm">
                   <thead className="bg-slate-50">
                     <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                       <th className="px-4 py-3">Grupo</th>
                       <th className="px-4 py-3">Meta</th>
                       <th className="px-4 py-3">Realizado</th>
-                      <th className="px-4 py-3">Deveria ate a data</th>
+                      <th className="px-4 py-3">Deveria até a data</th>
                       <th className="px-4 py-3">Plano</th>
                       <th className="px-4 py-3">Fato</th>
                       <th className="px-4 py-3">Causa</th>
@@ -1192,42 +1434,19 @@ export default function ChecklistRecepcaoPage() {
               </div>
             </section>
 
-            {data.metrics.absences.rows.length > 0 ? (
-              <section className={`${sectionClassName} p-5`}>
-                <h2 className="text-lg font-bold text-slate-900">Colaboradores com faltas ou atrasos</h2>
-                <div className="mt-4 overflow-x-auto">
-                  <table className="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead className="bg-slate-50">
-                      <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                        <th className="px-4 py-3">Colaborador</th>
-                        <th className="px-4 py-3">Faltas</th>
-                        <th className="px-4 py-3">Atrasos</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white">
-                      {data.metrics.absences.rows.map((row) => (
-                        <tr key={`${row.employeeId || row.employeeName}`}>
-                          <td className="px-4 py-3 font-medium text-slate-900">{row.employeeName}</td>
-                          <td className="px-4 py-3 text-slate-600">{row.absenceDays}</td>
-                          <td className="px-4 py-3 text-slate-600">{row.lateMinutes} min</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            ) : null}
           </>
         )}
       </div>
+
+      <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       {configModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
           <div className="w-full max-w-4xl rounded-3xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">Configuracao local da checklist</h3>
-                <p className="mt-1 text-sm text-slate-500">Importa o contexto do cadastro do colaborador, mas o ajuste vale apenas para esta pagina.</p>
+                <h3 className="text-lg font-bold text-slate-900">Configuração local da checklist</h3>
+                <p className="mt-1 text-sm text-slate-500">Importa o contexto do cadastro do colaborador, mas o ajuste vale apenas para esta página.</p>
               </div>
               <button type="button" onClick={() => setConfigModalOpen(false)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
                 Fechar
@@ -1237,16 +1456,16 @@ export default function ChecklistRecepcaoPage() {
               {configLoading ? (
                 <div className="flex items-center gap-2 text-sm text-slate-600">
                   <Loader2 size={15} className="animate-spin" />
-                  Carregando configuracoes...
+                  Carregando configurações...
                 </div>
               ) : (
                 <div className="space-y-4">
                   {configPayload?.suggestedConfigDraft ? (
                     <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                       <div>
-                        <div className="font-semibold">Sugestao pronta para bootstrap</div>
+                        <div className="font-semibold">Sugestão pronta para bootstrap</div>
                         <div className="mt-1 text-emerald-800/90">
-                          Lider: {configPayload.suggestedConfigDraft.leaderName || 'Nao identificado'} | {configPayload.suggestedConfigDraft.units.length} unidade(s) |
+                          Líder: {configPayload.suggestedConfigDraft.leaderName || 'Não identificado'} | {configPayload.suggestedConfigDraft.units.length} unidade(s) |
                           {' '}{configPayload.suggestedConfigDraft.teamEmployeeIds.length} colaborador(es)
                         </div>
                       </div>
@@ -1257,14 +1476,14 @@ export default function ChecklistRecepcaoPage() {
                         className="inline-flex items-center gap-2 rounded-xl border border-emerald-300 bg-white px-3 py-2 font-semibold text-emerald-900 disabled:opacity-60"
                       >
                         {configSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-                        Aplicar sugestao
+                        Aplicar sugestão
                       </button>
                     </div>
                   ) : null}
 
                   <div className="grid gap-4 lg:grid-cols-2">
                     <label className="text-sm font-medium text-slate-700">
-                      Nome da configuracao
+                      Nome da configuração
                       <input
                         value={configForm.name}
                         onChange={(event) => setConfigForm((current) => ({ ...current, name: event.target.value }))}
@@ -1272,7 +1491,7 @@ export default function ChecklistRecepcaoPage() {
                       />
                     </label>
                     <label className="text-sm font-medium text-slate-700">
-                      Lider
+                      Líder
                       <select
                         value={configForm.leaderUserId}
                         onChange={(event) => {
@@ -1297,7 +1516,17 @@ export default function ChecklistRecepcaoPage() {
                     </label>
                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 lg:col-span-2">
                       <div className="font-semibold text-slate-800">Dados importados do cadastro</div>
-                      <div className="mt-2">Unidades do lider: {currentLeader?.units.join(', ') || 'Sem unidades mapeadas no cadastro oficial.'}</div>
+                      <div className="mt-2">Unidades do líder: {currentLeader?.units.join(', ') || 'Sem unidades mapeadas no cadastro oficial.'}</div>
+                      <div className="mt-2">A equipe local não controla a lista de unidades exibidas na página. Esse controle vem da configuração local da checklist.</div>
+                      <button
+                        type="button"
+                        onClick={applyCurrentLeaderUnits}
+                        disabled={!currentLeader}
+                        className="mt-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Settings2 size={14} />
+                        Usar unidades do cadastro do líder
+                      </button>
                     </div>
                     <div className="lg:col-span-2">
                       <div className="text-sm font-medium text-slate-700">Unidades desta checklist</div>
@@ -1324,7 +1553,7 @@ export default function ChecklistRecepcaoPage() {
                   </div>
 
                   <div>
-                    <div className="text-sm font-medium text-slate-700">Equipe local da pagina</div>
+                    <div className="text-sm font-medium text-slate-700">Equipe local da página</div>
                     <div className="mt-2 max-h-80 overflow-y-auto rounded-2xl border border-slate-200 p-3">
                       <div className="grid gap-2 md:grid-cols-2">
                         {(configPayload?.options.teamMembers || []).map((member) => (
@@ -1364,7 +1593,7 @@ export default function ChecklistRecepcaoPage() {
                 className="inline-flex items-center gap-2 rounded-xl bg-[#17407E] px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
               >
                 {configSaving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-                {configSaving ? 'Salvando...' : 'Salvar configuracao'}
+                {configSaving ? 'Salvando...' : 'Salvar configuração'}
               </button>
             </div>
           </div>

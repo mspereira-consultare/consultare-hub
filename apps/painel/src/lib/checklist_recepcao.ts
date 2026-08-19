@@ -75,6 +75,11 @@ export type RecepcaoChecklistRiskManual = {
   action: string;
 };
 
+export type RecepcaoChecklistRecollectionEntry = {
+  id: string;
+  notes: string;
+};
+
 export type RecepcaoChecklistManualPayload = {
   resolveMonthlyTarget: number;
   resolveActual: number;
@@ -86,6 +91,7 @@ export type RecepcaoChecklistManualPayload = {
   googleNewReviewsCount: number;
   recollectionCount: number;
   recollectionNotes: string;
+  recollections: RecepcaoChecklistRecollectionEntry[];
   pendingNotes: string;
   generalNotes: string;
   riskGroups: RecepcaoChecklistRiskManual[];
@@ -358,7 +364,33 @@ const normalizeTeamMembers = (values: unknown): RecepcaoChecklistTeamMember[] =>
     }))
     .filter((row) => row.employeeId && row.fullName);
 
+const normalizeRecollectionEntries = (
+  value: Partial<RecepcaoChecklistManualPayload> | null | undefined,
+): RecepcaoChecklistRecollectionEntry[] => {
+  const explicitRows = Array.isArray(value?.recollections)
+    ? value!.recollections
+        .map((row) => ({
+          id: clean(row?.id) || randomUUID(),
+          notes: clean(row?.notes).slice(0, 4000),
+        }))
+        .filter((row) => row.notes)
+    : [];
+
+  if (explicitRows.length > 0) return explicitRows;
+
+  const legacyNotes = clean(value?.recollectionNotes).slice(0, 4000);
+  const legacyCount = toInt(value?.recollectionCount);
+  if (!legacyNotes && legacyCount <= 0) return [];
+
+  const size = Math.max(legacyCount, legacyNotes ? 1 : 0);
+  return Array.from({ length: size }).map((_, index) => ({
+    id: `legacy-${index + 1}`,
+    notes: index === 0 ? legacyNotes : '',
+  }));
+};
+
 const normalizeManualPayload = (value: Partial<RecepcaoChecklistManualPayload> | null | undefined): RecepcaoChecklistManualPayload => ({
+  recollections: normalizeRecollectionEntries(value),
   resolveMonthlyTarget: toInt(value?.resolveMonthlyTarget),
   resolveActual: toInt(value?.resolveActual),
   checkupMonthlyTarget: toInt(value?.checkupMonthlyTarget),
@@ -367,8 +399,11 @@ const normalizeManualPayload = (value: Partial<RecepcaoChecklistManualPayload> |
   accountsOpenStatus: clean(value?.accountsOpenStatus),
   googleRating: Number(toNumber(value?.googleRating).toFixed(2)),
   googleNewReviewsCount: toInt(value?.googleNewReviewsCount),
-  recollectionCount: toInt(value?.recollectionCount),
-  recollectionNotes: clean(value?.recollectionNotes).slice(0, 4000),
+  recollectionCount: normalizeRecollectionEntries(value).length,
+  recollectionNotes: normalizeRecollectionEntries(value)
+    .map((entry) => entry.notes)
+    .filter(Boolean)
+    .join('\n\n'),
   pendingNotes: clean(value?.pendingNotes).slice(0, 4000),
   generalNotes: clean(value?.generalNotes).slice(0, 4000),
   riskGroups: Array.isArray(value?.riskGroups)
