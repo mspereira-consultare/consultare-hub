@@ -40,6 +40,9 @@ const PROPOSAL_EXEC_STATUSES = "('executada','aprovada pelo cliente','ganho','re
 const IS_MYSQL =
   String(process.env.DB_PROVIDER || '').toLowerCase() === 'mysql' || !!process.env.MYSQL_URL || !!process.env.MYSQL_PUBLIC_URL;
 const GOOGLE_RATING_TARGET = 4.7;
+/** Tetos de linhas no PDF para títulos e descrições de tarefa da liderança. */
+const TASK_TITLE_MAX_LINES = 3;
+const TASK_DESCRIPTION_MAX_LINES = 3;
 const CLINIC_REVENUE_EXCLUSION = "AND unidade NOT LIKE '%Card%' AND unidade NOT LIKE '%Resolve%'";
 export const RECEPCAO_CHECKLIST_REFRESH_SERVICE = 'checklist_recepcao_refresh';
 export const RECEPCAO_CHECKLIST_REFRESH_SERVICES = [
@@ -2444,6 +2447,24 @@ const wrapPdfText = (text: string, font: PDFFont, size: number, maxWidth: number
   return lines;
 };
 
+/**
+ * Corta um texto já quebrado em linhas para caber em `maxLines`, marcando o
+ * corte com reticências. Usado para que um campo livre muito longo (descrição
+ * de tarefa, nome de configuração) não empurre o layout do PDF.
+ */
+const capPdfLines = (lines: string[], maxLines: number, font: PDFFont, size: number, maxWidth: number) => {
+  if (maxLines <= 0 || lines.length <= maxLines) return lines;
+
+  const capped = lines.slice(0, maxLines);
+  const lastIndex = capped.length - 1;
+  let truncated = `${capped[lastIndex]}...`;
+  while (truncated.length > 4 && measureTextWidth(font, size, truncated) > maxWidth) {
+    truncated = `${truncated.slice(0, -4)}...`;
+  }
+  capped[lastIndex] = truncated;
+  return capped;
+};
+
 const measurePdfLinesHeight = (lines: string[], lineHeight: number) => lines.length * lineHeight;
 
 const drawArcSegmentsPdf = (
@@ -2567,15 +2588,7 @@ const drawMetricCardPdf = (
   }
 
   const maxValueLines = Math.max(1, Math.floor(valueAvailableHeight / valueLineHeight));
-  if (valueLines.length > maxValueLines) {
-    valueLines = valueLines.slice(0, maxValueLines);
-    const lastIndex = valueLines.length - 1;
-    let truncated = `${valueLines[lastIndex]}...`;
-    while (truncated.length > 4 && measureTextWidth(args.bold, valueSize, truncated) > innerWidth) {
-      truncated = `${truncated.slice(0, -4)}...`;
-    }
-    valueLines[lastIndex] = truncated;
-  }
+  valueLines = capPdfLines(valueLines, maxValueLines, args.bold, valueSize, innerWidth);
 
   const valueHeight = measurePdfLinesHeight(valueLines, valueLineHeight);
   const valueTopY = Math.min(
@@ -3128,8 +3141,17 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
     }
 
     items.forEach((item) => {
-      const titleLines = wrapPdfText(item.title, bold, 9.5, contentWidth - 20).slice(0, 3);
-      const descriptionLines = wrapPdfText(item.description || 'Sem descrição', regular, 8.5, contentWidth - 20);
+      const textWidth = contentWidth - 20;
+      const titleLines = capPdfLines(wrapPdfText(item.title, bold, 9.5, textWidth), TASK_TITLE_MAX_LINES, bold, 9.5, textWidth);
+      // A descrição vem de campo livre e já apareceu com mais de 2 mil caracteres.
+      // Sem teto, um único item ocupa meia página (ou estoura a página inteira).
+      const descriptionLines = capPdfLines(
+        wrapPdfText(item.description || 'Sem descrição', regular, 8.5, textWidth),
+        TASK_DESCRIPTION_MAX_LINES,
+        regular,
+        8.5,
+        textWidth,
+      );
       const titleHeight = measurePdfLinesHeight(titleLines, 12);
       const descriptionHeight = measurePdfLinesHeight(descriptionLines, 10);
       const blockHeight = Math.max(54, 24 + titleHeight + descriptionHeight);
