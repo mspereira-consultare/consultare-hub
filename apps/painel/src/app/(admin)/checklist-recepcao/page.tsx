@@ -170,6 +170,7 @@ type ChecklistData = {
       revenueDay: number;
       revenueMonth: number;
       dynamicDailyTarget: number;
+      dailyProgressPct: number | null;
       progressPct: number;
     }>;
     collaboratorsFreshness: MetricFreshness;
@@ -1453,6 +1454,7 @@ export default function ChecklistRecepcaoPage() {
                   <h2 className="text-[0.98rem] font-bold text-slate-900">Faturamento por colaborador</h2>
                   <p className="mt-1 text-[12px] text-slate-500">
                     A equipe local configurada nesta página alimenta a visão individual de metas e realizado. O realizado no dia refere-se a {formatDateBr(data.referenceDate)}.
+                    O progresso diário compara o realizado do dia com a meta diária dinâmica; o mensal compara o acumulado do mês com a meta mensal.
                   </p>
                   <p className="mt-1 text-[10px] text-slate-400">{renderFreshnessLabel(data.metrics.collaboratorsFreshness)}</p>
                 </div>
@@ -1466,13 +1468,14 @@ export default function ChecklistRecepcaoPage() {
                       <th className="px-4 py-3">Realizado no dia</th>
                       <th className="px-4 py-3">Realizado no mês</th>
                       <th className="px-4 py-3">Meta diária dinâmica</th>
-                      <th className="px-4 py-3">Progresso</th>
+                      <th className="px-4 py-3">Progresso diário</th>
+                      <th className="px-4 py-3">Progresso mensal</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {data.metrics.collaborators.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
+                        <td colSpan={7} className="px-4 py-6 text-center text-slate-500">
                           Nenhum colaborador foi configurado na equipe local desta checklist.
                         </td>
                       </tr>
@@ -1486,6 +1489,24 @@ export default function ChecklistRecepcaoPage() {
                           </td>
                           <td className="px-4 py-3 text-slate-600">{formatCurrency(row.revenueMonth)}</td>
                           <td className="px-4 py-3 text-slate-600">{formatCurrency(row.dynamicDailyTarget)}</td>
+                          <td
+                            className={`px-4 py-3 font-semibold ${
+                              row.dailyProgressPct === null
+                                ? 'text-slate-400'
+                                : row.dailyProgressPct >= 100
+                                  ? 'text-emerald-700'
+                                  : row.dailyProgressPct >= 85
+                                    ? 'text-amber-700'
+                                    : 'text-rose-700'
+                            }`}
+                            title={
+                              row.dailyProgressPct === null
+                                ? 'Sem meta diária a perseguir nesta data.'
+                                : `${formatCurrency(row.revenueDay)} de ${formatCurrency(row.dynamicDailyTarget)}`
+                            }
+                          >
+                            {row.dailyProgressPct === null ? '—' : formatPercent(row.dailyProgressPct)}
+                          </td>
                           <td className="px-4 py-3 text-slate-600">{formatPercent(row.progressPct)}</td>
                         </tr>
                       ))

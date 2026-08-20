@@ -263,6 +263,8 @@ export type RecepcaoChecklistPayload = {
       revenueDay: number;
       revenueMonth: number;
       dynamicDailyTarget: number;
+      /** Realizado no dia sobre a meta diária dinâmica. null quando não há meta a perseguir. */
+      dailyProgressPct: number | null;
       progressPct: number;
     }>;
     collaboratorsFreshness: RecepcaoChecklistMetricFreshness;
@@ -1240,6 +1242,7 @@ const loadCollaboratorMetrics = async (
     const monthlyGoal = goalMap.get(member.employeeId) || 0;
     const revenue = revenueMap.get(member.employeeId) || { month: 0, day: 0 };
     const revenueMonth = revenue.month;
+    const dynamicDailyTarget = calculateDailyTarget(monthlyGoal, revenueMonth, referenceDate);
 
     return {
       employeeId: member.employeeId,
@@ -1248,7 +1251,10 @@ const loadCollaboratorMetrics = async (
       monthlyGoal,
       revenueDay: revenue.day,
       revenueMonth,
-      dynamicDailyTarget: calculateDailyTarget(monthlyGoal, revenueMonth, referenceDate),
+      dynamicDailyTarget,
+      // Sem meta diária a perseguir (sem meta mensal, ou mensal já batida) não
+      // existe percentual: a UI mostra "—" em vez de um zero enganoso.
+      dailyProgressPct: dynamicDailyTarget > 0 ? (revenue.day * 100) / dynamicDailyTarget : null,
       progressPct: monthlyGoal > 0 ? (revenueMonth * 100) / monthlyGoal : 0,
     };
   });
@@ -3037,7 +3043,9 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       });
       let x = margin;
       args.columns.forEach((column) => {
-        page.drawText(pdfSafeText(column.label), {
+        const labelWidth = Math.max(12, column.width - 10);
+        const [labelLine] = capPdfLines(wrapPdfText(column.label, bold, 8.5, labelWidth), 1, bold, 8.5, labelWidth);
+        page.drawText(pdfSafeText(labelLine || ''), {
           x: x + 6,
           y: cursorY - 15,
           size: 8.5,
@@ -3452,14 +3460,20 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
   drawTable(
     {
       title: 'Faturamento por colaborador',
-      subtitle: `Realizado no dia refere-se a ${formatPdfDateBr(payload.referenceDate)}. ${formatPdfFreshness(payload.metrics.collaboratorsFreshness)}`.trim(),
+      subtitle: `Realizado no dia refere-se a ${formatPdfDateBr(payload.referenceDate)}. Prog. diário compara o realizado do dia com a meta diária dinâmica; prog. mensal compara o acumulado do mês com a meta mensal. ${formatPdfFreshness(payload.metrics.collaboratorsFreshness)}`.trim(),
       columns: [
-        { label: 'Colaborador', width: contentWidth * 0.3, render: (row) => row.fullName },
-        { label: 'Meta mensal', width: contentWidth * 0.15, align: 'right', render: (row) => formatCurrency(row.monthlyGoal) },
-        { label: 'Realizado no dia', width: contentWidth * 0.15, align: 'right', render: (row) => formatCurrency(row.revenueDay) },
-        { label: 'Realizado no mês', width: contentWidth * 0.16, align: 'right', render: (row) => formatCurrency(row.revenueMonth) },
-        { label: 'Meta diária', width: contentWidth * 0.14, align: 'right', render: (row) => formatCurrency(row.dynamicDailyTarget) },
-        { label: 'Progresso', width: contentWidth * 0.1, align: 'right', render: (row) => formatPercent(row.progressPct) },
+        { label: 'Colaborador', width: contentWidth * 0.26, render: (row) => row.fullName },
+        { label: 'Meta mensal', width: contentWidth * 0.13, align: 'right', render: (row) => formatCurrency(row.monthlyGoal) },
+        { label: 'Realizado no dia', width: contentWidth * 0.13, align: 'right', render: (row) => formatCurrency(row.revenueDay) },
+        { label: 'Realizado no mês', width: contentWidth * 0.14, align: 'right', render: (row) => formatCurrency(row.revenueMonth) },
+        { label: 'Meta diária', width: contentWidth * 0.13, align: 'right', render: (row) => formatCurrency(row.dynamicDailyTarget) },
+        {
+          label: 'Prog. diário',
+          width: contentWidth * 0.105,
+          align: 'right',
+          render: (row) => (row.dailyProgressPct === null ? '-' : formatPercent(row.dailyProgressPct)),
+        },
+        { label: 'Prog. mensal', width: contentWidth * 0.105, align: 'right', render: (row) => formatPercent(row.progressPct) },
       ],
       rows: payload.metrics.collaborators,
       emptyMessage: 'Nenhum colaborador foi configurado na equipe local desta checklist.',
