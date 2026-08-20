@@ -49,17 +49,13 @@ export async function POST(request: Request) {
     if (!auth.ok) return auth.response;
 
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-    const viewMode = String(body.viewMode || 'current').trim().toLowerCase();
-    if (viewMode !== 'current') {
-      return NextResponse.json(
-        { status: 'error', error: 'Apenas a visao de Hoje pode gerar novas versoes do checklist.' },
-        { status: 400 },
-      );
-    }
 
     const saved = await saveRecepcaoChecklistFill(auth, {
       configId: String(body.configId || '').trim(),
       unitKey: String(body.unitKey || '').trim(),
+      // A data de negócio vem do recorte da página: dias passados podem ser
+      // corrigidos; a validação de data futura fica na camada de domínio.
+      referenceDate: String(body.referenceDate || '').trim() || null,
       manual: (body.manual || {}) as Record<string, unknown>,
     });
 

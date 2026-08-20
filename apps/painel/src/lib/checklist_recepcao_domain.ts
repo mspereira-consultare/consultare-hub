@@ -54,7 +54,19 @@ export const previousBusinessDate = (dateIso: string) => previousOperationalDate
 export const resolveReferenceDate = (today: string, viewMode: RecepcaoChecklistViewMode, rawReferenceDate?: string | null) =>
   parseIsoDate(clean(rawReferenceDate)) || (viewMode === 'd1' ? previousBusinessDate(today) : today);
 
-export const resolveReadOnly = (viewMode: RecepcaoChecklistViewMode) => viewMode === 'd1';
+/**
+ * Somente leitura vale apenas para data futura: não existe checklist de um dia
+ * que ainda não aconteceu. Datas passadas são editáveis (correção de D-1), e
+ * todo salvamento fica registrado no log de preenchimentos.
+ */
+export const resolveReadOnly = (referenceDate: string, today: string) => referenceDate > today;
+
+/**
+ * Recorte histórico: muda a ORIGEM dos indicadores (confirmação D+1 vem do
+ * snapshot congelado, não da visão viva) e desliga o fallback do manual legado.
+ * É independente de poder editar ou não.
+ */
+export const resolveIsHistorical = (referenceDate: string, today: string) => referenceDate < today;
 
 /**
  * Valor que a unidade deveria ter faturado até a data de referência.
@@ -90,10 +102,10 @@ export const operationalDaysSummary = (referenceDate: string) => ({
 
 export const resolveFreezeSource = (args: {
   hasSelectedVersion: boolean;
-  readOnly: boolean;
+  isHistorical: boolean;
   hasLegacyManual: boolean;
 }): RecepcaoChecklistFreezeSource => {
   if (args.hasSelectedVersion) return 'version';
-  if (!args.readOnly && args.hasLegacyManual) return 'legacy-fallback';
+  if (!args.isHistorical && args.hasLegacyManual) return 'legacy-fallback';
   return 'live-fallback';
 };

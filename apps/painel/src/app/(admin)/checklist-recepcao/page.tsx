@@ -77,6 +77,7 @@ type ChecklistData = {
   viewMode: 'current' | 'd1';
   referenceDate: string;
   readOnly: boolean;
+  isHistorical: boolean;
   selectedUnitKey: string;
   selectedUnitLabel: string;
   config: {
@@ -409,7 +410,7 @@ const helpWorkflowCards = [
   },
   {
     title: '3. Use D-1 para auditoria',
-    description: 'O modo D-1 é somente leitura e exibe o histórico congelado da data selecionada.',
+    description: 'O modo D-1 exibe a data anterior com indicadores do histórico congelado, e permite corrigir o preenchimento manual daquele dia.',
   },
   {
     title: '4. Leia os velocímetros',
@@ -429,7 +430,9 @@ const helpRules = [
   'As unidades visíveis dependem da configuração local da checklist, não da equipe local.',
   'A equipe local afeta faturamento individual, faltas/atrasos e parte dos indicadores operacionais.',
   'Resolve e Check-up permanecem manuais no v1, mas já gravados a cada salvamento e prontos para integração futura.',
-  'No modo D-1 não é possível editar campos: só o dia de hoje é gravável, então dia fechado nunca é reescrito.',
+  'Dias passados podem ser corrigidos: o preenchimento é gravado na data em que a página está, e cada correção aparece no log de preenchimentos.',
+  'Datas futuras são somente leitura, porque não existe checklist de um dia que ainda não aconteceu.',
+  'Corrigir um dia passado muda apenas os campos manuais. Faturamento, confirmação D+1, esperas, tarefas e faltas continuam vindo do histórico daquela data.',
   'Recoletas agora são registradas uma a uma, com observações independentes e contagem automática.',
   'Se uma unidade não aparecer, revise as unidades habilitadas na configuração local da checklist.',
   'A projeção do mês usa dias operacionais: segunda a sexta valem 1 dia, sábado vale meio dia, domingos e feriados não contam.',
@@ -882,7 +885,8 @@ export default function ChecklistRecepcaoPage() {
         body: JSON.stringify({
           configId: data.config.id,
           unitKey: data.selectedUnitKey,
-          viewMode: 'current',
+          // Salva na data em que a página está: permite corrigir um dia fechado.
+          referenceDate: data.referenceDate,
           manual: {
             ...manual,
             recollectionCount: (manual.recollections || []).length,
@@ -902,7 +906,13 @@ export default function ChecklistRecepcaoPage() {
       if (!response.ok || payload?.status !== 'success') {
         throw new Error(payload?.error || 'Falha ao salvar checklist.');
       }
-      await fetchData({ forceFresh: true, nextConfigId: data.config.id, nextUnitKey: data.selectedUnitKey, nextViewMode: 'current', nextReferenceDate: data.today });
+      await fetchData({
+        forceFresh: true,
+        nextConfigId: data.config.id,
+        nextUnitKey: data.selectedUnitKey,
+        nextViewMode: data.viewMode,
+        nextReferenceDate: data.referenceDate,
+      });
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Erro ao salvar checklist.');
     } finally {
@@ -1126,7 +1136,7 @@ export default function ChecklistRecepcaoPage() {
                 </div>
                 <h1 className="mt-2 text-[1.7rem] font-bold leading-tight text-slate-900">Checklist Recepção</h1>
                 <p className="mt-1.5 max-w-4xl text-[13px] leading-6 text-slate-500">
-                  Visão operacional com modo atual, histórico D-1 congelado, escopo local de liderança e exportação em PDF.
+                  Visão operacional com modo atual, histórico D-1 editável para correção, escopo local de liderança e exportação em PDF.
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-1.5">
@@ -1260,6 +1270,7 @@ export default function ChecklistRecepcaoPage() {
               <input
                 type="date"
                 value={referenceDate}
+                max={data?.today || undefined}
                 onChange={(event) => {
                   const nextDate = event.target.value;
                   setReferenceDate(nextDate);
@@ -1395,7 +1406,7 @@ export default function ChecklistRecepcaoPage() {
                   </p>
                 </div>
                 <div className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
-                  {data.readOnly ? 'D-1 congelado' : 'Hoje editável'}
+                  {data.readOnly ? 'Data futura' : data.isHistorical ? 'D-1 editável' : 'Hoje editável'}
                 </div>
               </div>
               <div className="mt-3 grid gap-2.5 xl:grid-cols-4">

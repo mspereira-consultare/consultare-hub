@@ -21,7 +21,9 @@ import {
   calculateShouldHaveUntilDate,
   monthStart,
   operationalDaysSummary,
+  parseIsoDate,
   resolveFreezeSource,
+  resolveIsHistorical,
   resolveReferenceDate,
   resolveReadOnly,
   shiftDate,
@@ -187,7 +189,10 @@ export type RecepcaoChecklistPayload = {
   }>;
   viewMode: ViewMode;
   referenceDate: string;
+  /** Data futura: não há o que preencher. */
   readOnly: boolean;
+  /** Data anterior a hoje: indicadores vêm do histórico congelado. */
+  isHistorical: boolean;
   selectedUnitKey: string;
   selectedUnitLabel: string;
   config: RecepcaoChecklistConfig | null;
@@ -1253,13 +1258,13 @@ const loadConfirmationMetrics = async (
   db: DbInterface,
   referenceDate: string,
   unit: FinancialUnitDefinition,
-  readOnly: boolean,
+  isHistorical: boolean,
 ) => {
   const targetDate = shiftDate(referenceDate, 1);
   const params: Array<string | number> = [targetDate];
   const unitSql = buildFinancialUnitClause('unit_name', unit.key, params);
 
-  if (readOnly) {
+  if (isHistorical) {
     const snapshotParams: Array<string | number> = [targetDate, referenceDate];
     const snapshotUnitSql = buildFinancialUnitClause('unit_name', unit.key, snapshotParams);
     const rows = await db.query(
@@ -1304,7 +1309,7 @@ const loadConfirmationMetrics = async (
     total,
     confirmed,
     ratePct: total > 0 ? (confirmed * 100) / total : 0,
-    source: readOnly ? ('snapshot-fallback' as const) : ('live' as const),
+    source: isHistorical ? ('snapshot-fallback' as const) : ('live' as const),
   };
 };
 
@@ -1779,7 +1784,8 @@ export const buildRecepcaoChecklistPayload = async (
   const today = toSaoPauloDate();
   const viewMode: ViewMode = clean(filters.viewMode) === 'd1' ? 'd1' : 'current';
   const referenceDate = resolveReferenceDate(today, viewMode, filters.referenceDate);
-  const readOnly = resolveReadOnly(viewMode);
+  const readOnly = resolveReadOnly(referenceDate, today);
+  const isHistorical = resolveIsHistorical(referenceDate, today);
   const unit = resolveUnitForConfig(config, filters.unitKey);
   const selectedUnit = unit || listFinancialUnits()[0];
   const suggestedConfigPromise = config ? Promise.resolve(null) : loadSuggestedConfig(actor.db, actor.userId);
@@ -1794,7 +1800,7 @@ export const buildRecepcaoChecklistPayload = async (
   const legacyManualPromise = queryLegacyManualFallback(actor.db, selectedUnit.key).catch(() => null);
   const unitMetricsPromise = loadUnitFinancialMetrics(actor.db, referenceDate, selectedUnit);
   const collaboratorsPromise = loadCollaboratorMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
-  const appointmentsConfirmationPromise = loadConfirmationMetrics(actor.db, referenceDate, selectedUnit, readOnly);
+  const appointmentsConfirmationPromise = loadConfirmationMetrics(actor.db, referenceDate, selectedUnit, isHistorical);
   const postConsultPromise = loadPostConsultMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
   const waitsPromise = loadWaitMetrics(actor.db, referenceDate, selectedUnit);
   const tasksPromise = loadTaskMetrics(actor.db, config?.leaderUserId || null, referenceDate);
@@ -1805,7 +1811,7 @@ export const buildRecepcaoChecklistPayload = async (
     unit: selectedUnit,
     leaderUserId: config?.leaderUserId || null,
     readOnly,
-    appointmentsConfirmationSource: readOnly ? 'snapshot' : 'live',
+    appointmentsConfirmationSource: isHistorical ? 'snapshot' : 'live',
   });
 
   const [
@@ -1845,11 +1851,11 @@ export const buildRecepcaoChecklistPayload = async (
 
   const manual =
     selectedVersion?.payload?.manual
-    || (!readOnly && legacyManual ? normalizeLegacyManual(legacyManual) : normalizeManualPayload(null));
+    || (!isHistorical && legacyManual ? normalizeLegacyManual(legacyManual) : normalizeManualPayload(null));
 
   const source = resolveFreezeSource({
     hasSelectedVersion: !!selectedVersion,
-    readOnly,
+    isHistorical,
     hasLegacyManual: !!legacyManual,
   });
 
@@ -1902,6 +1908,7 @@ export const buildRecepcaoChecklistPayload = async (
     viewMode,
     referenceDate,
     readOnly,
+    isHistorical,
     selectedUnitKey: selectedUnit.key,
     selectedUnitLabel: selectedUnit.label,
     config,
@@ -1927,7 +1934,7 @@ export const buildRecepcaoChecklistPayload = async (
       : null,
     manual,
     freezeMetadata: {
-      isFrozen: readOnly,
+      isFrozen: isHistorical,
       source,
     },
     metrics: {
@@ -2121,6 +2128,8 @@ export const listRecepcaoChecklistHistory = async (
 type SaveFillInput = {
   configId: string;
   unitKey: string;
+  /** Data de negócio do preenchimento. Padrão: hoje. Não aceita data futura. */
+  referenceDate?: string | null;
   manual: Partial<RecepcaoChecklistManualPayload>;
 };
 
@@ -2149,11 +2158,21 @@ export const saveRecepcaoChecklistFill = async (
   }
 
   const today = toSaoPauloDate();
+  const requestedDate = parseIsoDate(clean(input.referenceDate)) || today;
+  if (requestedDate > today) {
+    const error = new Error('Não é possível preencher a checklist de uma data futura.') as Error & { status?: number };
+    error.status = 400;
+    throw error;
+  }
+
+  const isHistorical = requestedDate < today;
+  // Parte do preenchimento anterior daquela data, para que salvar um campo não
+  // apague os demais.
   const payload = await buildRecepcaoChecklistPayload(actor, {
     configId,
     unitKey: unit.key,
-    viewMode: 'current',
-    referenceDate: today,
+    viewMode: isHistorical ? 'd1' : 'current',
+    referenceDate: requestedDate,
   });
 
   const manual = normalizeManualPayload({
@@ -2167,8 +2186,8 @@ export const saveRecepcaoChecklistFill = async (
     manual,
     selectedUnitKey: unit.key,
     snapshot: {
-      mode: 'current',
-      referenceDate: today,
+      mode: isHistorical ? 'd1' : 'current',
+      referenceDate: requestedDate,
       summaryGeneratedAt: payload.generatedAt,
     },
   };
@@ -2183,9 +2202,9 @@ export const saveRecepcaoChecklistFill = async (
     [
       versionId,
       config.id,
-      today,
+      requestedDate,
       unit.key,
-      'current',
+      isHistorical ? 'd1' : 'current',
       createdAt,
       actor.userId,
       await resolveActorDisplayName(actor.db, actor.userId),
@@ -2854,7 +2873,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
     });
     page.drawText(
       pdfSafeText(
-        `${payload.selectedUnitLabel} • ${payload.viewMode === 'd1' ? 'D-1 congelado' : 'Hoje editável'} • ${formatPdfDateBr(payload.referenceDate)}`,
+        `${payload.selectedUnitLabel} • ${payload.isHistorical ? 'Recorte histórico' : 'Dia corrente'} • ${formatPdfDateBr(payload.referenceDate)}`,
       ),
       {
         x: margin,
