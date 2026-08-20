@@ -25,7 +25,6 @@ export async function GET(request: Request) {
       unitKey: url.searchParams.get('unitKey'),
       viewMode: url.searchParams.get('viewMode'),
       referenceDate: url.searchParams.get('referenceDate'),
-      versionId: url.searchParams.get('versionId'),
     });
 
     const pdf = await buildRecepcaoChecklistPdf(payload);

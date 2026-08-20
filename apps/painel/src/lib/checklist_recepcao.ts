@@ -118,14 +118,17 @@ export type RecepcaoChecklistManualPayload = {
   riskGroups: RecepcaoChecklistRiskManual[];
 };
 
-export type RecepcaoChecklistVersionSummary = {
+export type RecepcaoChecklistHistoryEntry = {
   id: string;
   referenceDate: string;
   unitKey: string;
-  createdAt: string | null;
-  createdByName: string | null;
-  viewMode: ViewMode;
+  savedAt: string | null;
+  savedByName: string | null;
+  /** Resumo legível do que entrou neste salvamento. */
+  changes: string[];
+  isLatestForDate: boolean;
 };
+
 
 export type RecepcaoChecklistMetricFreshness = {
   updatedAt: string | null;
@@ -200,8 +203,11 @@ export type RecepcaoChecklistPayload = {
     units: string[];
   } | null;
   suggestedConfigDraft: SaveConfigInput | null;
-  versionSelectedId: string | null;
-  versions: RecepcaoChecklistVersionSummary[];
+  /** Quem salvou o preenchimento exibido e quando. */
+  lastSave: {
+    savedAt: string | null;
+    savedByName: string | null;
+  } | null;
   manual: RecepcaoChecklistManualPayload;
   freezeMetadata: {
     isFrozen: boolean;
@@ -343,7 +349,6 @@ type ConfigFilters = {
   unitKey?: string | null;
   viewMode?: string | null;
   referenceDate?: string | null;
-  versionId?: string | null;
 };
 
 type SystemStatusRow = {
@@ -894,11 +899,21 @@ const resolveConfigForActor = (
   actor: RecepcaoChecklistActor,
   filters: ConfigFilters,
 ) => {
+  const requestedUnitKey = getFinancialUnitByKey(clean(filters.unitKey))?.key || null;
   const requested = clean(filters.configId);
-  if (requested) {
-    const found = configs.find((config) => config.id === requested);
-    if (found) return found;
+  const requestedConfig = requested ? configs.find((config) => config.id === requested) : undefined;
+
+  // A unidade escolhida manda: se a configuração selecionada não habilita
+  // aquela unidade, buscamos a configuração que a habilita, para que a equipe
+  // cadastrada daquela unidade continue sendo o contexto da página.
+  if (requestedUnitKey) {
+    if (requestedConfig?.units.includes(requestedUnitKey)) return requestedConfig;
+    const byUnit = configs.find((config) => config.units.includes(requestedUnitKey));
+    if (byUnit) return byUnit;
   }
+
+  if (requestedConfig) return requestedConfig;
+
   const ownConfig = configs.find((config) => config.leaderUserId === actor.userId);
   return ownConfig || configs[0] || null;
 };
@@ -941,49 +956,15 @@ const queryLegacyManualFallback = async (db: DbInterface, unitKey: string) => {
   return (legacyRows[0] as DbRow | undefined) || null;
 };
 
-const queryVersionSummaries = async (db: DbInterface, configId: string, unitKey: string) => {
-  const rows = await db.query(
-    `
-      SELECT id, reference_date, unit_key, created_at, created_by_name, view_mode
-      FROM recepcao_checklist_versions
-      WHERE config_id = ?
-        AND unit_key = ?
-      ORDER BY reference_date DESC, created_at DESC
-      LIMIT 120
-    `,
-    [configId, unitKey],
-  );
-  return (rows as DbRow[]).map(
-    (row): RecepcaoChecklistVersionSummary => ({
-      id: clean(row.id),
-      referenceDate: clean(row.reference_date),
-      unitKey: clean(row.unit_key),
-      createdAt: clean(row.created_at) || null,
-      createdByName: clean(row.created_by_name) || null,
-      viewMode: clean(row.view_mode) === 'd1' ? 'd1' : 'current',
-    }),
-  );
-};
-
-const queryVersionRow = async (
+/**
+ * O preenchimento exibido é sempre o mais recente daquela data. O histórico
+ * continua gravado linha a linha, mas serve só para auditoria (ver
+ * listRecepcaoChecklistHistory), nunca para a leitura da página.
+ */
+const queryLatestFillRow = async (
   db: DbInterface,
-  args: { configId: string; unitKey: string; referenceDate: string; versionId?: string | null },
+  args: { configId: string; unitKey: string; referenceDate: string },
 ) => {
-  if (clean(args.versionId)) {
-    const rows = await db.query(
-      `
-        SELECT *
-        FROM recepcao_checklist_versions
-        WHERE id = ?
-          AND config_id = ?
-          AND unit_key = ?
-        LIMIT 1
-      `,
-      [clean(args.versionId), args.configId, args.unitKey],
-    );
-    if (rows.length > 0) return rows[0] as DbRow;
-  }
-
   const rows = await db.query(
     `
       SELECT *
@@ -1800,13 +1781,11 @@ export const buildRecepcaoChecklistPayload = async (
   const selectedUnit = unit || listFinancialUnits()[0];
   const suggestedConfigPromise = config ? Promise.resolve(null) : loadSuggestedConfig(actor.db, actor.userId);
   const optionsPromise = actor.isManager && !config ? loadOptions(actor.db) : Promise.resolve(null);
-  const versionsPromise = config ? queryVersionSummaries(actor.db, config.id, selectedUnit.key) : Promise.resolve([]);
   const versionRowPromise = config
-    ? queryVersionRow(actor.db, {
+    ? queryLatestFillRow(actor.db, {
         configId: config.id,
         unitKey: selectedUnit.key,
         referenceDate,
-        versionId: filters.versionId,
       })
     : Promise.resolve(null);
   const legacyManualPromise = queryLegacyManualFallback(actor.db, selectedUnit.key).catch(() => null);
@@ -1829,7 +1808,6 @@ export const buildRecepcaoChecklistPayload = async (
   const [
     suggestedConfig,
     checklistOptions,
-    versions,
     versionRow,
     legacyManual,
     unitMetrics,
@@ -1844,7 +1822,6 @@ export const buildRecepcaoChecklistPayload = async (
   ] = await Promise.all([
     suggestedConfigPromise,
     optionsPromise,
-    versionsPromise,
     versionRowPromise,
     legacyManualPromise,
     unitMetricsPromise,
@@ -1932,11 +1909,19 @@ export const buildRecepcaoChecklistPayload = async (
       units: item.units,
       isActive: item.isActive,
     })),
-    availableUnits: listFinancialUnits().map((item) => ({ key: item.key, label: item.label })),
+    availableUnits: (() => {
+      // União das unidades habilitadas nas configurações acessíveis; sem
+      // configuração, oferece todas para permitir o bootstrap.
+      const enabled = new Set(configs.flatMap((item) => item.units));
+      const units = listFinancialUnits().map((item) => ({ key: item.key, label: item.label }));
+      const scoped = units.filter((item) => enabled.has(item.key));
+      return scoped.length > 0 ? scoped : units;
+    })(),
     suggestedConfig,
     suggestedConfigDraft,
-    versionSelectedId: selectedVersion?.versionId || null,
-    versions,
+    lastSave: selectedVersion
+      ? { savedAt: selectedVersion.createdAt, savedByName: selectedVersion.createdByName }
+      : null,
     manual,
     freezeMetadata: {
       isFrozen: readOnly,
@@ -1991,15 +1976,158 @@ export const buildRecepcaoChecklistPayload = async (
   };
 };
 
-type SaveVersionInput = {
+/** Nome de exibição do autor do salvamento, para o log de preenchimentos. */
+const resolveActorDisplayName = async (db: DbInterface, userId: string) => {
+  const rows = await db
+    .query('SELECT name FROM users WHERE id = ? LIMIT 1', [userId])
+    .catch(() => []);
+  return clean((rows as DbRow[])[0]?.name) || userId;
+};
+
+const describeNumber = (value: number) =>
+  Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+
+const summarizeRiskGroups = (groups: RecepcaoChecklistRiskManual[]) =>
+  groups.filter((group) => clean(group.planAction) || clean(group.fact) || clean(group.cause) || clean(group.action));
+
+/**
+ * Traduz a diferença entre dois preenchimentos em frases curtas para o log.
+ * Sem preenchimento anterior, descreve o que foi informado pela primeira vez.
+ */
+const describeManualChanges = (
+  previous: RecepcaoChecklistManualPayload | null,
+  current: RecepcaoChecklistManualPayload,
+): string[] => {
+  const changes: string[] = [];
+  const changedNumber = (label: string, key: keyof RecepcaoChecklistManualPayload, formatted?: (value: number) => string) => {
+    const currentValue = Number(current[key] as number) || 0;
+    const previousValue = previous ? Number(previous[key] as number) || 0 : null;
+    if (previousValue === currentValue) return;
+    if (previousValue === null && currentValue === 0) return;
+    const format = formatted || describeNumber;
+    changes.push(previousValue === null ? `${label}: ${format(currentValue)}` : `${label}: ${format(previousValue)} → ${format(currentValue)}`);
+  };
+  const changedText = (label: string, key: keyof RecepcaoChecklistManualPayload) => {
+    const currentValue = clean(current[key] as string);
+    const previousValue = previous ? clean(previous[key] as string) : '';
+    if (currentValue === previousValue) return;
+    if (!previousValue && !currentValue) return;
+    if (!currentValue) {
+      changes.push(`${label} removido`);
+      return;
+    }
+    changes.push(previous && previousValue ? `${label} atualizado` : `${label} preenchido`);
+  };
+
+  changedNumber('Meta Resolve', 'resolveMonthlyTarget');
+  changedNumber('Realizado Resolve', 'resolveActual');
+  changedNumber('Meta Check-up', 'checkupMonthlyTarget');
+  changedNumber('Realizado Check-up', 'checkupActual');
+  changedNumber('Nota Google', 'googleRating', (value) => value.toFixed(1).replace('.', ','));
+  changedNumber('Novas avaliações Google', 'googleNewReviewsCount');
+  changedText('Status de NF', 'nfOpenStatus');
+  changedText('Status de contas', 'accountsOpenStatus');
+  changedText('Pendências da unidade', 'pendingNotes');
+  changedText('Observações gerais', 'generalNotes');
+
+  const currentRecollections = (current.recollections || []).length;
+  const previousRecollections = previous ? (previous.recollections || []).length : null;
+  if (previousRecollections !== currentRecollections && !(previousRecollections === null && currentRecollections === 0)) {
+    changes.push(
+      previousRecollections === null
+        ? `Recoletas: ${currentRecollections}`
+        : `Recoletas: ${previousRecollections} → ${currentRecollections}`,
+    );
+  }
+
+  const currentFilledGroups = summarizeRiskGroups(current.riskGroups || []);
+  const previousByGroup = new Map(
+    (previous?.riskGroups || []).map((group) => [normalizeHumanText(group.groupName), group] as const),
+  );
+  const touchedGroups = currentFilledGroups.filter((group) => {
+    const before = previousByGroup.get(normalizeHumanText(group.groupName));
+    if (!before) return true;
+    return (
+      clean(before.planAction) !== clean(group.planAction) ||
+      clean(before.fact) !== clean(group.fact) ||
+      clean(before.cause) !== clean(group.cause) ||
+      clean(before.action) !== clean(group.action)
+    );
+  });
+  if (touchedGroups.length > 0) {
+    const names = touchedGroups.slice(0, 3).map((group) => group.groupName).join(', ');
+    const rest = touchedGroups.length > 3 ? ` e mais ${touchedGroups.length - 3}` : '';
+    changes.push(`FCA de grupo em risco: ${names}${rest}`);
+  }
+
+  return changes;
+};
+
+export const listRecepcaoChecklistHistory = async (
+  actor: RecepcaoChecklistActor,
+  filters: { configId?: string | null; unitKey?: string | null; limit?: number },
+): Promise<RecepcaoChecklistHistoryEntry[]> => {
+  const configs = await listAccessibleConfigs(actor.db, actor);
+  const config = configs.find((item) => item.id === clean(filters.configId)) || configs[0] || null;
+  const unit = getFinancialUnitByKey(clean(filters.unitKey));
+  if (!config || !unit) return [];
+
+  const limit = Math.min(Math.max(Math.floor(Number(filters.limit) || 40), 1), 200);
+  const rows = (await actor.db
+    .query(
+      `
+        SELECT id, reference_date, unit_key, created_at, created_by_name, payload_json
+        FROM recepcao_checklist_versions
+        WHERE config_id = ?
+          AND unit_key = ?
+        ORDER BY reference_date DESC, created_at DESC
+        LIMIT ${limit}
+      `,
+      [config.id, unit.key],
+    )
+    .catch(() => [])) as DbRow[];
+
+  const latestByDate = new Set<string>();
+  return rows.map((row) => {
+    const referenceDate = clean(row.reference_date);
+    const isLatestForDate = !latestByDate.has(referenceDate);
+    latestByDate.add(referenceDate);
+
+    const current = resolveManualFromVersionRow(row)?.payload.manual || normalizeManualPayload(null);
+    // O anterior é o salvamento imediatamente mais antigo da MESMA data.
+    const previousRow = rows.find(
+      (candidate) =>
+        clean(candidate.reference_date) === referenceDate &&
+        clean(candidate.created_at) < clean(row.created_at),
+    );
+    const previous = previousRow ? resolveManualFromVersionRow(previousRow)?.payload.manual || null : null;
+    const changes = describeManualChanges(previous, current);
+
+    return {
+      id: clean(row.id),
+      referenceDate,
+      unitKey: clean(row.unit_key),
+      savedAt: clean(row.created_at) || null,
+      savedByName: clean(row.created_by_name) || null,
+      changes: changes.length > 0 ? changes : ['Salvo sem alteração nos campos manuais'],
+      isLatestForDate,
+    };
+  });
+};
+
+type SaveFillInput = {
   configId: string;
   unitKey: string;
   manual: Partial<RecepcaoChecklistManualPayload>;
 };
 
-export const saveRecepcaoChecklistVersion = async (
+/**
+ * Grava o preenchimento manual do dia. Cada salvamento acrescenta uma linha,
+ * preservando o log de auditoria, mas a página sempre lê a mais recente da data.
+ */
+export const saveRecepcaoChecklistFill = async (
   actor: RecepcaoChecklistActor,
-  input: SaveVersionInput,
+  input: SaveFillInput,
 ) => {
   const configId = clean(input.configId);
   const unit = getFinancialUnitByKey(input.unitKey || '');
@@ -2057,7 +2185,7 @@ export const saveRecepcaoChecklistVersion = async (
       'current',
       createdAt,
       actor.userId,
-      actor.scope?.matchedGroupLabel || actor.userId,
+      await resolveActorDisplayName(actor.db, actor.userId),
       JSON.stringify(storedPayload),
     ],
   );
@@ -2428,15 +2556,32 @@ const drawMetricCardPdf = (
   let valueLines = wrapPdfText(args.value, args.bold, valueSize, innerWidth).slice(0, 3);
   const valueTopBoundary = args.topY - 12 - titleHeight - 8;
   const valueBottomBoundary = cardBottom + 12 + footerHeight + (footerHeight > 0 ? 6 : 0) + helperHeight + (helperHeight > 0 ? 8 : 0);
-  const valueAvailableHeight = Math.max(18, valueTopBoundary - valueBottomBoundary);
-  while (valueSize > 11.5) {
+  // Sem piso artificial: se o espaço real é pequeno, o valor encolhe e é
+  // truncado, nunca invade a área do título.
+  const valueAvailableHeight = Math.max(0, valueTopBoundary - valueBottomBoundary);
+  while (valueSize > 10) {
     valueLines = wrapPdfText(args.value, args.bold, valueSize, innerWidth).slice(0, 3);
     valueLineHeight = valueSize + 2;
     if (measurePdfLinesHeight(valueLines, valueLineHeight) <= valueAvailableHeight) break;
     valueSize -= 0.5;
   }
+
+  const maxValueLines = Math.max(1, Math.floor(valueAvailableHeight / valueLineHeight));
+  if (valueLines.length > maxValueLines) {
+    valueLines = valueLines.slice(0, maxValueLines);
+    const lastIndex = valueLines.length - 1;
+    let truncated = `${valueLines[lastIndex]}...`;
+    while (truncated.length > 4 && measureTextWidth(args.bold, valueSize, truncated) > innerWidth) {
+      truncated = `${truncated.slice(0, -4)}...`;
+    }
+    valueLines[lastIndex] = truncated;
+  }
+
   const valueHeight = measurePdfLinesHeight(valueLines, valueLineHeight);
-  const valueTopY = valueBottomBoundary + valueHeight + Math.max(0, (valueAvailableHeight - valueHeight) / 2);
+  const valueTopY = Math.min(
+    valueTopBoundary,
+    valueBottomBoundary + valueHeight + Math.max(0, (valueAvailableHeight - valueHeight) / 2),
+  );
 
   page.drawRectangle({
     x: args.x,
@@ -2594,9 +2739,55 @@ const drawGaugePdf = (
   });
   page.drawCircle({ x: centerX, y: centerY, size: 5.8, color: pdfColor('#17213A') });
 
+  // O bloco de texto do rodapé é empilhado de baixo para cima: quando o helper
+  // ou o carimbo de atualização quebram em duas linhas, tudo sobe junto em vez
+  // de um escrever por cima do outro.
+  const freshnessLines = args.freshness ? wrapPdfText(args.freshness, args.regular, 7.5, cardWidth - 22).slice(0, 2) : [];
+  const helperLines = wrapPdfText(args.helper, args.regular, 8.5, cardWidth - 22).slice(0, 2);
+  const freshnessLineHeight = 8;
+  const helperLineHeight = 10;
+
+  let baselineY = cardBottom + 8;
+  for (let index = freshnessLines.length - 1; index >= 0; index -= 1) {
+    drawCenteredText(page, freshnessLines[index], {
+      x: cardLeft + 11,
+      y: baselineY,
+      width: cardWidth - 22,
+      size: 7.5,
+      font: args.regular,
+      color: pdfColor('#94A3B8'),
+    });
+    baselineY += freshnessLineHeight;
+  }
+
+  if (freshnessLines.length > 0) baselineY += 2;
+
+  for (let index = helperLines.length - 1; index >= 0; index -= 1) {
+    drawCenteredText(page, helperLines[index], {
+      x: cardLeft + 11,
+      y: baselineY,
+      width: cardWidth - 22,
+      size: 8.5,
+      font: args.regular,
+      color: pdfColor('#64748B'),
+    });
+    baselineY += helperLineHeight;
+  }
+
+  const titleBaselineY = baselineY + 2;
+  drawCenteredText(page, args.title.toUpperCase(), {
+    x: cardLeft + 10,
+    y: titleBaselineY,
+    width: cardWidth - 20,
+    size: titleSize,
+    font: args.bold,
+    color: pdfColor('#64748B'),
+  });
+
+  const plateBottomY = titleBaselineY + titleSize + 6;
   page.drawRectangle({
     x: centerX - valuePlateWidth / 2,
-    y: cardBottom + 46,
+    y: plateBottomY,
     width: valuePlateWidth,
     height: 24,
     color: pdfColor('#FFFFFF'),
@@ -2604,46 +2795,12 @@ const drawGaugePdf = (
   });
   drawCenteredText(page, args.valueLabel, {
     x: centerX - valuePlateWidth / 2,
-    y: cardBottom + 53,
+    y: plateBottomY + 7,
     width: valuePlateWidth,
     size: valueSize,
     font: args.bold,
     color: pdfColor('#17213A'),
   });
-  drawCenteredText(page, args.title.toUpperCase(), {
-    x: cardLeft + 10,
-    y: cardBottom + 30,
-    width: cardWidth - 20,
-    size: titleSize,
-    font: args.bold,
-    color: pdfColor('#64748B'),
-  });
-
-  const helperLines = wrapPdfText(args.helper, args.regular, 8.5, cardWidth - 22).slice(0, 2);
-  helperLines.forEach((line, index) => {
-    drawCenteredText(page, line, {
-      x: cardLeft + 11,
-      y: cardBottom + 18 - index * 10,
-      width: cardWidth - 22,
-      size: 8.5,
-      font: args.regular,
-      color: pdfColor('#64748B'),
-    });
-  });
-
-  if (args.freshness) {
-    const freshnessLines = wrapPdfText(args.freshness, args.regular, 7.5, cardWidth - 22).slice(0, 2);
-    freshnessLines.forEach((line, index) => {
-      drawCenteredText(page, line, {
-        x: cardLeft + 11,
-        y: cardBottom + 8 - index * 8,
-        width: cardWidth - 22,
-        size: 7.5,
-        font: args.regular,
-        color: pdfColor('#94A3B8'),
-      });
-    });
-  }
 };
 
 export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayload) => {
@@ -3108,8 +3265,8 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       {
         title: 'Configuração local',
         value: payload.config?.name || 'Sem configuracao',
-        helper: `Líder: ${payload.config?.leaderName || '-'} • Equipe local: ${payload.config?.teamMembers.length || 0} colaborador(es)`,
-        footer: `Gerado em ${formatPdfDateTimeBr(payload.generatedAt)}`,
+        helper: `Líder: ${payload.config?.leaderName || '-'}`,
+        footer: `Equipe local: ${payload.config?.teamMembers.length || 0} colaborador(es) • Gerado em ${formatPdfDateTimeBr(payload.generatedAt)}`,
       },
       {
         title: 'Faturamento do dia',
@@ -3131,7 +3288,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       },
     ],
     4,
-    92,
+    104,
   );
 
   drawGaugeGrid(
@@ -3303,7 +3460,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
     },
   );
 
-  drawSectionTitle('Pendencias e validacoes', 'Campos manuais versionados e observacoes da unidade.');
+  drawSectionTitle('Pendencias e validacoes', 'Campos manuais salvos no preenchimento do dia e observacoes da unidade.');
   drawMetricCardGrid(
     '',
     '',

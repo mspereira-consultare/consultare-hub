@@ -9,6 +9,7 @@ import {
   Download,
   FileText,
   Gauge,
+  History,
   Loader2,
   Plus,
   RefreshCw,
@@ -21,6 +22,16 @@ import {
   X,
 } from 'lucide-react';
 import { hasPermission } from '@/lib/permissions';
+
+type HistoryEntry = {
+  id: string;
+  referenceDate: string;
+  unitKey: string;
+  savedAt: string | null;
+  savedByName: string | null;
+  changes: string[];
+  isLatestForDate: boolean;
+};
 
 type ConfigSummary = {
   id: string;
@@ -94,15 +105,7 @@ type ChecklistData = {
     teamEmployeeIds: string[];
     isActive?: boolean;
   } | null;
-  versionSelectedId: string | null;
-  versions: Array<{
-    id: string;
-    referenceDate: string;
-    unitKey: string;
-    createdAt: string | null;
-    createdByName: string | null;
-    viewMode: 'current' | 'd1';
-  }>;
+  lastSave: { savedAt: string | null; savedByName: string | null } | null;
   manual: {
     resolveMonthlyTarget: number;
     resolveActual: number;
@@ -402,7 +405,7 @@ const helpWorkflowCards = [
   },
   {
     title: '2. Use Hoje para operar',
-    description: 'O modo Hoje é a única área editável. Cada salvamento cria uma nova versão imutável da checklist.',
+    description: 'O modo Hoje é a única área editável. Salvar sobrescreve o preenchimento do dia; o histórico de quem salvou o quê fica no botão Preenchimento.',
   },
   {
     title: '3. Use D-1 para auditoria',
@@ -414,19 +417,19 @@ const helpWorkflowCards = [
   },
   {
     title: '5. Registre exceções manuais',
-    description: 'Pendências, validações, avaliações Google, recoletas e FCA ficam versionados junto com cada salvamento.',
+    description: 'Pendências, validações, avaliações Google, recoletas e FCA ficam gravados a cada salvamento, sempre por unidade e data.',
   },
   {
     title: '6. Exporte o retrato da tela',
-    description: 'O PDF respeita filtros, unidade, data, versão e os velocímetros que estiverem sendo exibidos na página.',
+    description: 'O PDF respeita filtros, unidade, data e os velocímetros que estiverem sendo exibidos na página.',
   },
 ];
 
 const helpRules = [
   'As unidades visíveis dependem da configuração local da checklist, não da equipe local.',
   'A equipe local afeta faturamento individual, faltas/atrasos e parte dos indicadores operacionais.',
-  'Resolve e Check-up permanecem manuais no v1, mas já versionados e prontos para integração futura.',
-  'No modo D-1 não é possível editar campos nem sobrescrever o histórico.',
+  'Resolve e Check-up permanecem manuais no v1, mas já gravados a cada salvamento e prontos para integração futura.',
+  'No modo D-1 não é possível editar campos: só o dia de hoje é gravável, então dia fechado nunca é reescrito.',
   'Recoletas agora são registradas uma a uma, com observações independentes e contagem automática.',
   'Se uma unidade não aparecer, revise as unidades habilitadas na configuração local da checklist.',
   'A projeção do mês usa dias operacionais: segunda a sexta valem 1 dia, sábado vale meio dia, domingos e feriados não contam.',
@@ -604,7 +607,7 @@ const HelpModal = ({ open, onClose }: { open: boolean; onClose: () => void }) =>
               Como funciona a checklist da recepção
             </h3>
             <p className="mt-1 max-w-3xl text-sm text-slate-500">
-              Esta página consolida o acompanhamento gerencial da recepção com visão atual, histórico D-1, campos versionados e escopo local por líder.
+              Esta página consolida o acompanhamento gerencial da recepção com visão atual, histórico D-1, campos manuais salvos por dia e escopo local por líder.
             </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-full border border-slate-200 p-2 text-slate-500 hover:bg-slate-50" aria-label="Fechar ajuda">
@@ -690,13 +693,16 @@ export default function ChecklistRecepcaoPage() {
   const [selectedUnitKey, setSelectedUnitKey] = useState('');
   const [viewMode, setViewMode] = useState<'current' | 'd1'>('current');
   const [referenceDate, setReferenceDate] = useState('');
-  const [selectedVersionId, setSelectedVersionId] = useState('');
   const [refreshSeed, setRefreshSeed] = useState(0);
   const [helpOpen, setHelpOpen] = useState(false);
   const [refreshRequesting, setRefreshRequesting] = useState(false);
   const [refreshStatusMessage, setRefreshStatusMessage] = useState<string | null>(null);
   const [refreshServices, setRefreshServices] = useState<RefreshServiceStatus[]>([]);
   const [batchStatus, setBatchStatus] = useState<RefreshServiceStatus | null>(null);
+
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
 
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [configLoading, setConfigLoading] = useState(false);
@@ -711,14 +717,8 @@ export default function ChecklistRecepcaoPage() {
     selectedUnitKey: '',
     viewMode: 'current' as 'current' | 'd1',
     referenceDate: '',
-    selectedVersionId: '',
     refreshSeed: 0,
   });
-
-  const availableVersions = useMemo(
-    () => (data?.versions || []).filter((version) => version.referenceDate === referenceDate && version.unitKey === selectedUnitKey),
-    [data?.versions, referenceDate, selectedUnitKey],
-  );
 
   const updateRecollections = useCallback((nextRows: RecollectionEntry[]) => {
     setManual((current) => ({
@@ -741,7 +741,7 @@ export default function ChecklistRecepcaoPage() {
     updateRecollections((manual.recollections || []).map((entry) => (entry.id === id ? { ...entry, notes } : entry)));
   }, [manual.recollections, updateRecollections]);
 
-  const fetchData = useCallback(async (opts?: { forceFresh?: boolean; nextConfigId?: string; nextLeaderUserId?: string; nextUnitKey?: string; nextViewMode?: 'current' | 'd1'; nextReferenceDate?: string; nextVersionId?: string }) => {
+  const fetchData = useCallback(async (opts?: { forceFresh?: boolean; nextConfigId?: string; nextLeaderUserId?: string; nextUnitKey?: string; nextViewMode?: 'current' | 'd1'; nextReferenceDate?: string }) => {
     setLoading(true);
     setError(null);
     try {
@@ -752,14 +752,12 @@ export default function ChecklistRecepcaoPage() {
       const unitKey = opts?.nextUnitKey ?? currentState.selectedUnitKey;
       const mode = opts?.nextViewMode ?? currentState.viewMode;
       const date = opts?.nextReferenceDate ?? currentState.referenceDate;
-      const versionId = opts?.nextVersionId ?? currentState.selectedVersionId;
 
       if (configId) params.set('configId', configId);
       if (leaderUserId) params.set('leaderUserId', leaderUserId);
       if (unitKey) params.set('unitKey', unitKey);
       params.set('viewMode', mode);
       if (date) params.set('referenceDate', date);
-      if (versionId) params.set('versionId', versionId);
       if (opts?.forceFresh || currentState.refreshSeed > 0) params.set('refresh', String(Date.now()));
 
       const response = await fetch(`/api/admin/checklist/recepcao?${params.toString()}`, { cache: 'no-store' });
@@ -775,7 +773,6 @@ export default function ChecklistRecepcaoPage() {
       setSelectedUnitKey(nextData.selectedUnitKey);
       setViewMode(nextData.viewMode);
       setReferenceDate(nextData.referenceDate);
-      setSelectedVersionId(nextData.versionSelectedId || '');
       setManual(emptyManual(nextData));
       setRiskGroups(nextData.riskGroups || []);
     } catch (fetchError) {
@@ -859,10 +856,9 @@ export default function ChecklistRecepcaoPage() {
       selectedUnitKey,
       viewMode,
       referenceDate,
-      selectedVersionId,
       refreshSeed,
     };
-  }, [referenceDate, refreshSeed, selectedConfigId, selectedLeaderUserId, selectedUnitKey, selectedVersionId, viewMode]);
+  }, [referenceDate, refreshSeed, selectedConfigId, selectedLeaderUserId, selectedUnitKey, viewMode]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -921,8 +917,28 @@ export default function ChecklistRecepcaoPage() {
     if (selectedUnitKey) params.set('unitKey', selectedUnitKey);
     if (referenceDate) params.set('referenceDate', referenceDate);
     params.set('viewMode', viewMode);
-    if (selectedVersionId) params.set('versionId', selectedVersionId);
     window.open(`/api/admin/checklist/recepcao/export.pdf?${params.toString()}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const openHistory = async () => {
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedConfigId) params.set('configId', selectedConfigId);
+      if (selectedUnitKey) params.set('unitKey', selectedUnitKey);
+      const response = await fetch(`/api/admin/checklist/recepcao/history?${params.toString()}`, { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok || payload?.status !== 'success') {
+        throw new Error(payload?.error || 'Falha ao carregar o histórico de preenchimentos.');
+      }
+      setHistoryEntries((payload.data || []) as HistoryEntry[]);
+    } catch (historyError) {
+      setError(historyError instanceof Error ? historyError.message : 'Erro ao carregar o histórico.');
+      setHistoryEntries([]);
+    } finally {
+      setHistoryLoading(false);
+    }
   };
 
   const openConfigModal = async () => {
@@ -972,7 +988,6 @@ export default function ChecklistRecepcaoPage() {
         forceFresh: true,
         nextLeaderUserId: '',
         nextConfigId: payload?.data?.id || '',
-        nextVersionId: '',
         nextUnitKey: '',
       });
     } catch (createError) {
@@ -1111,7 +1126,7 @@ export default function ChecklistRecepcaoPage() {
                 </div>
                 <h1 className="mt-2 text-[1.7rem] font-bold leading-tight text-slate-900">Checklist Recepção</h1>
                 <p className="mt-1.5 max-w-4xl text-[13px] leading-6 text-slate-500">
-                  Visão operacional versionada com modo atual, histórico D-1 congelado, escopo local de liderança e exportação em PDF.
+                  Visão operacional com modo atual, histórico D-1 congelado, escopo local de liderança e exportação em PDF.
                 </p>
               </div>
               <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-1.5">
@@ -1164,7 +1179,7 @@ export default function ChecklistRecepcaoPage() {
                     className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#17407E] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#123666] disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
                 >
                   {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                  {saving ? 'Salvando...' : 'Salvar nova versão'}
+                  {saving ? 'Salvando...' : 'Salvar'}
                 </button>
                 </div>
               </div>
@@ -1182,8 +1197,7 @@ export default function ChecklistRecepcaoPage() {
                       nextLeaderUserId: event.target.value,
                       nextConfigId: '',
                       nextUnitKey: '',
-                      nextVersionId: '',
-                    })
+                                  })
                   }
                   className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
                 >
@@ -1200,7 +1214,7 @@ export default function ChecklistRecepcaoPage() {
               Configuração
               <select
                 value={selectedConfigId}
-                onChange={(event) => void fetchData({ nextConfigId: event.target.value, nextVersionId: '' })}
+                onChange={(event) => void fetchData({ nextConfigId: event.target.value })}
                 className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 <option value="">Selecione</option>
@@ -1215,10 +1229,10 @@ export default function ChecklistRecepcaoPage() {
               Unidade
               <select
                 value={selectedUnitKey}
-                onChange={(event) => void fetchData({ nextUnitKey: event.target.value, nextVersionId: '' })}
+                onChange={(event) => void fetchData({ nextUnitKey: event.target.value })}
                 className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
-                {(data?.availableUnits || []).filter((unit) => !data?.config || data.config.units.includes(unit.key)).map((unit) => (
+                {(data?.availableUnits || []).map((unit) => (
                   <option key={unit.key} value={unit.key}>
                     {unit.label}
                   </option>
@@ -1233,8 +1247,7 @@ export default function ChecklistRecepcaoPage() {
                   void fetchData({
                     nextViewMode: event.target.value === 'd1' ? 'd1' : 'current',
                     nextReferenceDate: event.target.value === 'd1' ? data?.referenceDate || referenceDate : data?.today || referenceDate,
-                    nextVersionId: '',
-                  })
+                              })
                 }
                 className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
@@ -1250,30 +1263,26 @@ export default function ChecklistRecepcaoPage() {
                 onChange={(event) => {
                   const nextDate = event.target.value;
                   setReferenceDate(nextDate);
-                  void fetchData({ nextReferenceDate: nextDate, nextVersionId: '' });
+                  void fetchData({ nextReferenceDate: nextDate });
                 }}
                 className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               />
             </label>
-            <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
-              Versão salva
-              <select
-                value={selectedVersionId}
-                onChange={(event) => {
-                  const nextVersionId = event.target.value;
-                  setSelectedVersionId(nextVersionId);
-                  void fetchData({ nextVersionId });
-                }}
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
+            <div className="flex flex-col justify-end gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
+              Preenchimento
+              <button
+                type="button"
+                onClick={openHistory}
+                className="inline-flex h-9 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 hover:bg-slate-50"
               >
-                <option value="">Última referência</option>
-                {availableVersions.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    {version.createdAt ? `${formatDateBr(version.referenceDate)} - ${version.createdAt}` : version.id}
-                  </option>
-                ))}
-              </select>
-            </label>
+                <span className="truncate">
+                  {data?.lastSave?.savedAt
+                    ? `${formatDateTimeBr(data.lastSave.savedAt)}${data.lastSave.savedByName ? ` · ${data.lastSave.savedByName}` : ''}`
+                    : 'Ainda não preenchido'}
+                </span>
+                <History size={14} className="shrink-0 text-slate-400" />
+              </button>
+            </div>
             <div className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 md:col-span-2 xl:col-span-12">
               <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">Escopo local</div>
               <div className="mt-1.5 text-[14px] font-semibold text-slate-900">{data?.config?.leaderName || 'Sem configuração'}</div>
@@ -1478,7 +1487,7 @@ export default function ChecklistRecepcaoPage() {
             <div className="grid gap-4 xl:grid-cols-2">
               <section className={`${sectionClassName} p-3.5`}>
                 <h2 className="text-[0.98rem] font-bold text-slate-900">Resolve e Check-up da equipe</h2>
-                <p className="mt-1 text-[12px] text-slate-500">Velocímetros da meta geral da equipe no v1 manual versionado, prontos para troca futura da origem sem mudar a interface.</p>
+                <p className="mt-1 text-[12px] text-slate-500">Velocímetros da meta geral da equipe no v1 manual, prontos para troca futura da origem sem mudar a interface.</p>
                 <div className="mt-3 grid gap-2.5 md:grid-cols-2">
                   <GaugeCard
                     title="Meta geral Resolve"
@@ -1655,7 +1664,7 @@ export default function ChecklistRecepcaoPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-[0.98rem] font-bold text-slate-900">Pendências e validações</h2>
-                  <p className="mt-1 text-[12px] text-slate-500">Campos manuais versionados junto com cada salvamento da checklist.</p>
+                  <p className="mt-1 text-[12px] text-slate-500">Campos manuais gravados a cada salvamento da checklist.</p>
                 </div>
               </div>
               <fieldset disabled={!canEdit || data.readOnly} className={`mt-3 grid gap-2.5 md:grid-cols-2 ${!canEdit || data.readOnly ? 'opacity-70' : ''}`}>
@@ -1785,7 +1794,7 @@ export default function ChecklistRecepcaoPage() {
 
             <section className={`${sectionClassName} p-5`}>
               <h2 className="text-lg font-bold text-slate-900">Grupos de faturamento em risco</h2>
-              <p className="mt-1 text-sm text-slate-500">Somente grupos com meta configurada entram nesta lista. O FCA fica salvo dentro de cada versão criada.</p>
+              <p className="mt-1 text-sm text-slate-500">Somente grupos com meta configurada entram nesta lista. O FCA é salvo junto com o preenchimento do dia.</p>
               <p className="mt-1 text-xs text-amber-700/90">
                 Os grupos em amarelo estão em risco: o realizado acumulado no mês está abaixo do valor que o grupo deveria ter alcançado até a data de referência.
               </p>
@@ -1848,6 +1857,78 @@ export default function ChecklistRecepcaoPage() {
       </div>
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
+
+      {historyOpen ? (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-2 sm:items-center sm:p-4">
+          <div className="flex max-h-[95vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:max-h-[92vh] sm:rounded-3xl">
+            <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5 sm:py-4">
+              <div className="min-w-0">
+                <h3 className="text-[1.05rem] font-bold text-slate-900">Histórico de preenchimentos</h3>
+                <p className="mt-1 text-[13px] text-slate-500">
+                  A página sempre mostra o preenchimento mais recente de cada data. Aqui ficam todos os salvamentos de {data?.selectedUnitLabel || 'unidade'}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoryOpen(false)}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700"
+              >
+                Fechar
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
+              {historyLoading ? (
+                <div className="flex items-center gap-2 text-sm text-slate-600">
+                  <Loader2 size={15} className="animate-spin" />
+                  Carregando histórico...
+                </div>
+              ) : historyEntries.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">
+                  Nenhum preenchimento salvo para esta unidade ainda.
+                </div>
+              ) : (
+                <ol className="space-y-2.5">
+                  {historyEntries.map((entry) => (
+                    <li
+                      key={entry.id}
+                      className={`rounded-2xl border px-4 py-3 ${entry.isLatestForDate ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-white'}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-[13px] font-semibold text-slate-900">
+                          {formatDateBr(entry.referenceDate)}
+                          <span className="ml-2 font-normal text-slate-500">{formatDateTimeBr(entry.savedAt)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {entry.isLatestForDate ? (
+                            <span className="rounded-full border border-emerald-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                              Em exibição
+                            </span>
+                          ) : (
+                            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500">
+                              Substituído
+                            </span>
+                          )}
+                          <span className="text-[12px] text-slate-600">{entry.savedByName || 'Autor não identificado'}</span>
+                        </div>
+                      </div>
+                      <ul className="mt-2 flex flex-wrap gap-1.5">
+                        {entry.changes.map((change, index) => (
+                          <li
+                            key={`${entry.id}-${index}`}
+                            className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[12px] text-slate-600"
+                          >
+                            {change}
+                          </li>
+                        ))}
+                      </ul>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {configModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-2 sm:items-center sm:p-4">

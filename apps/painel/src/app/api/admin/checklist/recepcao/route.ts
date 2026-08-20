@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import {
   buildRecepcaoChecklistPayload,
   requireRecepcaoChecklistAccess,
-  saveRecepcaoChecklistVersion,
+  saveRecepcaoChecklistFill,
 } from '@/lib/checklist_recepcao';
 import { buildCacheKey, withCache } from '@/lib/api_cache';
 
@@ -30,7 +30,6 @@ export async function GET(request: Request) {
         unitKey: url.searchParams.get('unitKey'),
         viewMode: url.searchParams.get('viewMode'),
         referenceDate: url.searchParams.get('referenceDate'),
-        versionId: url.searchParams.get('versionId'),
       }),
     );
 
@@ -58,7 +57,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const saved = await saveRecepcaoChecklistVersion(auth, {
+    const saved = await saveRecepcaoChecklistFill(auth, {
       configId: String(body.configId || '').trim(),
       unitKey: String(body.unitKey || '').trim(),
       manual: (body.manual || {}) as Record<string, unknown>,
