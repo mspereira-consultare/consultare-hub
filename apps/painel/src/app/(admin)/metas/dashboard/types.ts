@@ -1,8 +1,17 @@
 export interface DashboardGoal {
   goal_id: number;
   name: string;
+  /** Alvo efetivo do período (derivado da meta mensal quando aplicável). */
   target: number;
+  /** Alvo originalmente cadastrado em goals_config. */
+  configured_target?: number;
+  /** 'derived' quando o alvo veio da meta mensal correspondente. */
+  target_source?: 'derived' | 'configured';
+  target_source_name?: string | null;
   current: number;
+  /** Realizado somente do dia corrente, usado pela projeção exata. */
+  current_today?: number | null;
+  reference_date?: string;
   percentage: number;
   unit: string;
   periodicity: string;

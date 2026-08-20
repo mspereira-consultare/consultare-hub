@@ -17,22 +17,24 @@ import {
 } from '@/lib/financial_units';
 import {
   calculateDailyTarget,
+  calculateMonthProjection,
   calculateShouldHaveUntilDate,
-  countBusinessDays,
-  monthEnd,
   monthStart,
+  operationalDaysSummary,
   resolveFreezeSource,
   resolveReferenceDate,
   resolveReadOnly,
   shiftDate,
   type RecepcaoChecklistViewMode,
 } from '@/lib/checklist_recepcao_domain';
+import { calculateProjection, getProjectionStatus, type ProjectionStatus } from '@/lib/goals/projection';
 import { DEFAULT_POINT_FILTERS } from '@/lib/point/filters';
 import { listPointDailyControlRowsByDateRange } from '@/lib/point/repository';
 import { listPostConsultExportRows, normalizePostConsultFilters } from '@/lib/post_consulta/repository';
 import { invalidateCache } from '@/lib/api_cache';
 import { listTasks } from '@consultare/core/tasks/repository';
 import { parseSystemStatusTimestamp } from '@/lib/system_status_time';
+import { pdfSafeText } from '@/lib/pdf/win_ansi';
 
 const PROPOSAL_EXEC_STATUSES = "('executada','aprovada pelo cliente','ganho','realizado','concluido','pago')";
 const IS_MYSQL =
@@ -215,6 +217,17 @@ export type RecepcaoChecklistPayload = {
       dynamicDailyTarget: number;
       progressPct: number;
       expectedPct: number;
+      /** Projeção do mês pela regra única de metas (dia corrente proporcional). */
+      projectionMonth: number;
+      /** Atingimento projetado sobre a meta mensal. */
+      projectionPct: number;
+      projectionStatus: ProjectionStatus;
+      projectionSuppressed: boolean;
+      projectionHint: string;
+      /** Projeção do dia; null enquanto o expediente estiver abaixo do limiar de confiança. */
+      projectionDay: number | null;
+      /** Ritmo do mês: realizado sobre o que deveria ter até a data. */
+      pacePct: number;
       businessDaysElapsed: number;
       businessDaysInMonth: number;
       businessDaysRemaining: number;
@@ -232,6 +245,8 @@ export type RecepcaoChecklistPayload = {
       userId: string | null;
       fullName: string;
       monthlyGoal: number;
+      /** Realizado somente no dia de referência. */
+      revenueDay: number;
       revenueMonth: number;
       dynamicDailyTarget: number;
       progressPct: number;
@@ -260,6 +275,7 @@ export type RecepcaoChecklistPayload = {
       totalClosedEvents: number;
       pendingPatients: number;
       executedProposalValue: number;
+      /** % de eventos fechados no contexto (data de referência + equipe local). */
       conversionRate: number;
       freshness: RecepcaoChecklistMetricFreshness;
     };
@@ -1047,10 +1063,20 @@ const loadUnitFinancialMetrics = async (db: DbInterface, referenceDate: string, 
   const revenueDay = toNumber(dayRows[0]?.total_pago);
   const qtdDay = toNumber(dayRows[0]?.qtd);
   const revenueMonth = toNumber(monthRows[0]?.total_pago);
-  const businessDaysElapsed = countBusinessDays(monthStart(referenceDate), referenceDate);
-  const businessDaysInMonth = countBusinessDays(monthStart(referenceDate), monthEnd(referenceDate));
-  const businessDaysRemaining = countBusinessDays(referenceDate, monthEnd(referenceDate));
+  const operationalDays = operationalDaysSummary(referenceDate);
   const shouldHaveUntilDate = calculateShouldHaveUntilDate(monthlyGoal, referenceDate);
+
+  // Projeção do mês pela regra única de metas: o realizado parcial de hoje é
+  // extrapolado para o dia cheio antes de virar base da média diária.
+  const monthProjection = calculateMonthProjection({ revenueMonth, revenueDay, referenceDate });
+  const projectionPct = monthlyGoal > 0 ? (monthProjection.value * 100) / monthlyGoal : 0;
+
+  const dynamicDailyTarget = calculateDailyTarget(monthlyGoal, revenueMonth, referenceDate);
+  const dayProjection = calculateProjection({
+    current: revenueDay,
+    periodicity: 'daily',
+    referenceDate,
+  });
 
   return {
     revenueDay,
@@ -1058,12 +1084,19 @@ const loadUnitFinancialMetrics = async (db: DbInterface, referenceDate: string, 
     ticketAverageDay: qtdDay > 0 ? revenueDay / qtdDay : 0,
     monthlyGoal,
     shouldHaveUntilDate,
-    dynamicDailyTarget: calculateDailyTarget(monthlyGoal, revenueMonth, referenceDate),
+    dynamicDailyTarget,
     progressPct: monthlyGoal > 0 ? (revenueMonth * 100) / monthlyGoal : 0,
     expectedPct: monthlyGoal > 0 ? (shouldHaveUntilDate * 100) / monthlyGoal : 0,
-    businessDaysElapsed,
-    businessDaysInMonth,
-    businessDaysRemaining,
+    projectionMonth: monthProjection.value,
+    projectionPct,
+    projectionStatus: monthProjection.suppressed ? getProjectionStatus(null) : getProjectionStatus(projectionPct),
+    projectionSuppressed: monthProjection.suppressed,
+    projectionHint: `Base de ${monthProjection.elapsedOperationalDays.toFixed(2)} de ${monthProjection.totalOperationalDays.toFixed(2)} dias operacionais (sábado conta meio dia, domingos e feriados não contam).`,
+    projectionDay: dayProjection.suppressed ? null : dayProjection.value,
+    pacePct: shouldHaveUntilDate > 0 ? (revenueMonth * 100) / shouldHaveUntilDate : 0,
+    businessDaysElapsed: operationalDays.elapsed,
+    businessDaysInMonth: operationalDays.total,
+    businessDaysRemaining: operationalDays.remaining,
   };
 };
 
@@ -1151,27 +1184,31 @@ const getCollaboratorColumn = async (db: DbInterface) => {
   }
 };
 
+type CollaboratorRevenue = { month: number; day: number };
+
 const loadCollaboratorRevenueMap = async (
   db: DbInterface,
   referenceDate: string,
   unit: FinancialUnitDefinition,
   members: RecepcaoChecklistTeamMember[],
 ) => {
-  const byMember = new Map<string, number>();
-  for (const member of members) byMember.set(member.employeeId, 0);
+  const byMember = new Map<string, CollaboratorRevenue>();
+  for (const member of members) byMember.set(member.employeeId, { month: 0, day: 0 });
   if (members.length <= 0) return byMember;
 
   const collaboratorColumn = await getCollaboratorColumn(db);
   if (!collaboratorColumn) return byMember;
 
-  const params: Array<string | number> = [monthStart(referenceDate), referenceDate];
+  // O realizado do dia sai da mesma varredura do mês, sem query adicional.
+  const params: Array<string | number> = [referenceDate, monthStart(referenceDate), referenceDate];
   const unitSql = buildFinancialUnitClause('unidade', unit.key, params);
   const collaboratorIdentifier = quoteIdentifier(collaboratorColumn);
   const rows = await db.query(
     `
       SELECT
         TRIM(COALESCE(${collaboratorIdentifier}, '')) AS collaborator_name,
-        COALESCE(SUM(total_pago), 0) AS total
+        COALESCE(SUM(total_pago), 0) AS total,
+        COALESCE(SUM(CASE WHEN ${SQL_DATE_ANALITICO} = ? THEN total_pago ELSE 0 END), 0) AS total_day
       FROM faturamento_analitico
       WHERE ${SQL_DATE_ANALITICO} BETWEEN ? AND ?
         ${unitSql}
@@ -1185,13 +1222,15 @@ const loadCollaboratorRevenueMap = async (
   const groupedRows = (rows as DbRow[]).map((row) => ({
     collaboratorName: clean(row.collaborator_name),
     total: toNumber(row.total),
+    totalDay: toNumber(row.total_day),
   }));
 
   for (const member of members) {
-    const revenueMonth = groupedRows
-      .filter((row) => namesLookEquivalent(row.collaboratorName, member.fullName))
-      .reduce((sum, row) => sum + row.total, 0);
-    byMember.set(member.employeeId, revenueMonth);
+    const matched = groupedRows.filter((row) => namesLookEquivalent(row.collaboratorName, member.fullName));
+    byMember.set(member.employeeId, {
+      month: matched.reduce((sum, row) => sum + row.total, 0),
+      day: matched.reduce((sum, row) => sum + row.totalDay, 0),
+    });
   }
 
   return byMember;
@@ -1210,13 +1249,15 @@ const loadCollaboratorMetrics = async (
 
   return members.map((member) => {
     const monthlyGoal = goalMap.get(member.employeeId) || 0;
-    const revenueMonth = revenueMap.get(member.employeeId) || 0;
+    const revenue = revenueMap.get(member.employeeId) || { month: 0, day: 0 };
+    const revenueMonth = revenue.month;
 
     return {
       employeeId: member.employeeId,
       userId: member.userId,
       fullName: member.fullName,
       monthlyGoal,
+      revenueDay: revenue.day,
       revenueMonth,
       dynamicDailyTarget: calculateDailyTarget(monthlyGoal, revenueMonth, referenceDate),
       progressPct: monthlyGoal > 0 ? (revenueMonth * 100) / monthlyGoal : 0,
@@ -1283,20 +1324,21 @@ const loadConfirmationMetrics = async (
   };
 };
 
-const buildTeamNameSet = (members: RecepcaoChecklistTeamMember[]) =>
-  new Set(members.map((member) => normalizeHumanText(member.fullName)).filter(Boolean));
-
 const loadPostConsultMetrics = async (
   db: DbInterface,
   referenceDate: string,
   unit: FinancialUnitDefinition,
   members: RecepcaoChecklistTeamMember[],
 ) => {
+  // O filtro de unidade da lib de pós-consulta compara o texto exato de
+  // faturamento_analitico.unidade (ex.: "SHOPPING CAMPINAS"), que não é igual
+  // ao label da unidade financeira ("Campinas Shopping"). Por isso buscamos sem
+  // filtro de unidade e resolvemos a unidade aqui, onde os apelidos são conhecidos.
   const baseRows = await listPostConsultExportRows(
     normalizePostConsultFilters({
-      startDate: monthStart(referenceDate),
+      startDate: referenceDate,
       endDate: referenceDate,
-      unit: unit.label,
+      unit: 'all',
       status: 'all',
       responsible: 'all',
       closed: 'all',
@@ -1306,10 +1348,12 @@ const loadPostConsultMetrics = async (
     db,
   ).catch(() => []);
 
-  const teamNames = buildTeamNameSet(members);
-  const rows = teamNames.size > 0
-    ? baseRows.filter((row) => teamNames.has(normalizeHumanText(row.attendantResponsible)))
-    : baseRows;
+  const unitRows = baseRows.filter((row) => resolveFinancialUnit(row.consultUnit)?.key === unit.key);
+
+  // Equipe local: mesmo critério de equivalência de nomes usado no faturamento individual.
+  const rows = members.length > 0
+    ? unitRows.filter((row) => members.some((member) => namesLookEquivalent(row.attendantResponsible, member.fullName)))
+    : unitRows;
 
   const totalEvents = rows.length;
   const totalClosedEvents = rows.filter((row) => row.closed).length;
@@ -1497,9 +1541,10 @@ const loadAbsenceMetrics = async (
     });
   });
   const employeeIds = new Set((scopedMembers.length > 0 ? scopedMembers : members).map((member) => member.employeeId).filter(Boolean));
+  // Contexto da checklist é o dia de referência, não o mês inteiro.
   const rows = await listPointDailyControlRowsByDateRange(
     db,
-    { startDate: monthStart(referenceDate), endDate: referenceDate },
+    { startDate: referenceDate, endDate: referenceDate },
     {
       ...DEFAULT_POINT_FILTERS,
       unit: 'all',
@@ -2032,6 +2077,15 @@ type SaveConfigInput = {
   isActive?: boolean;
 };
 
+/** Equipe já persistida na configuração, usada para não perder membros fora das opções atuais. */
+const loadConfigTeamMembers = async (db: DbInterface, configId: string): Promise<RecepcaoChecklistTeamMember[]> => {
+  if (!configId) return [];
+  const rows = await db
+    .query('SELECT team_members_json FROM recepcao_checklist_configs WHERE id = ? LIMIT 1', [configId])
+    .catch(() => []);
+  return normalizeTeamMembers((rows as DbRow[])[0]?.team_members_json);
+};
+
 export const saveRecepcaoChecklistConfig = async (
   actor: RecepcaoChecklistActor,
   input: SaveConfigInput,
@@ -2050,7 +2104,21 @@ export const saveRecepcaoChecklistConfig = async (
     throw error;
   }
 
-  const teamMembers = options.teamMembers.filter((item) => input.teamEmployeeIds.includes(item.employeeId));
+  const requestedIds = unique(input.teamEmployeeIds.map((item) => clean(item)).filter(Boolean));
+  const matchedMembers = options.teamMembers.filter((item) => requestedIds.includes(item.employeeId));
+
+  // Um colaborador que saiu da lista de opções (inativado, sem cadastro ativo no
+  // momento do salvamento) não pode sumir da equipe em silêncio: a configuração
+  // preserva o que já estava salvo, senão a líder precisaria recadastrar a equipe.
+  const matchedIds = new Set(matchedMembers.map((item) => item.employeeId));
+  const previousMembers = clean(input.id) ? await loadConfigTeamMembers(actor.db, clean(input.id)) : [];
+  const preservedMembers = previousMembers.filter(
+    (item) => requestedIds.includes(item.employeeId) && !matchedIds.has(item.employeeId),
+  );
+  const teamMembers = [...matchedMembers, ...preservedMembers].sort((left, right) =>
+    left.fullName.localeCompare(right.fullName, 'pt-BR', { sensitivity: 'base' }),
+  );
+
   const units = unique(
     input.units
       .map((item) => getFinancialUnitByKey(item)?.key || '')
@@ -2166,7 +2234,8 @@ const describeArcPath = (centerX: number, centerY: number, radius: number, start
   return `M ${start.x} ${start.y} A ${radius} ${radius} 0 ${largeArcFlag} 0 ${end.x} ${end.y}`;
 };
 
-const measureTextWidth = (font: PDFFont, size: number, text: string) => font.widthOfTextAtSize(String(text || ''), size);
+const measureTextWidth = (font: PDFFont, size: number, text: string) =>
+  font.widthOfTextAtSize(pdfSafeText(text), size);
 
 const formatPdfDateBr = (value: string | null | undefined) => {
   const raw = clean(value);
@@ -2195,7 +2264,7 @@ const drawCenteredText = (
   text: string,
   options: { x: number; y: number; width: number; size: number; font: PDFFont; color: ReturnType<typeof rgb> },
 ) => {
-  const safeText = String(text || '');
+  const safeText = pdfSafeText(text);
   const textWidth = measureTextWidth(options.font, options.size, safeText);
   page.drawText(safeText, {
     x: options.x + Math.max(0, (options.width - textWidth) / 2),
@@ -2207,7 +2276,7 @@ const drawCenteredText = (
 };
 
 const wrapPdfText = (text: string, font: PDFFont, size: number, maxWidth: number) => {
-  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const words = pdfSafeText(text).split(/\s+/).filter(Boolean);
   if (words.length === 0) return [''];
 
   const splitLongToken = (token: string) => {
@@ -2293,7 +2362,8 @@ const drawTextLinesTop = (
   },
 ) => {
   const lineHeight = args.lineHeight || args.size + 3;
-  args.lines.forEach((line, index) => {
+  args.lines.forEach((rawLine, index) => {
+    const line = pdfSafeText(rawLine);
     page.drawText(line, {
       x: args.x,
       y: args.topY - args.size - index * lineHeight,
@@ -2358,7 +2428,7 @@ const drawMetricCardPdf = (
   let valueLines = wrapPdfText(args.value, args.bold, valueSize, innerWidth).slice(0, 3);
   const valueTopBoundary = args.topY - 12 - titleHeight - 8;
   const valueBottomBoundary = cardBottom + 12 + footerHeight + (footerHeight > 0 ? 6 : 0) + helperHeight + (helperHeight > 0 ? 8 : 0);
-  let valueAvailableHeight = Math.max(18, valueTopBoundary - valueBottomBoundary);
+  const valueAvailableHeight = Math.max(18, valueTopBoundary - valueBottomBoundary);
   while (valueSize > 11.5) {
     valueLines = wrapPdfText(args.value, args.bold, valueSize, innerWidth).slice(0, 3);
     valueLineHeight = valueSize + 2;
@@ -2605,7 +2675,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       height: headerHeight,
       color: pdfColor('#17407E'),
     });
-    page.drawText('Checklist Recepção', {
+    page.drawText(pdfSafeText('Checklist Recepção'), {
       x: margin,
       y: pageSize[1] - 26,
       size: 18,
@@ -2613,7 +2683,9 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       color: pdfColor('#FFFFFF'),
     });
     page.drawText(
-      `${payload.selectedUnitLabel} • ${payload.viewMode === 'd1' ? 'D-1 congelado' : 'Hoje editável'} • ${formatPdfDateBr(payload.referenceDate)}`,
+      pdfSafeText(
+        `${payload.selectedUnitLabel} • ${payload.viewMode === 'd1' ? 'D-1 congelado' : 'Hoje editável'} • ${formatPdfDateBr(payload.referenceDate)}`,
+      ),
       {
         x: margin,
         y: pageSize[1] - 42,
@@ -2622,7 +2694,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
         color: pdfColor('#E2E8F0'),
       },
     );
-    page.drawText(`Página ${pageIndex}`, {
+    page.drawText(pdfSafeText(`Página ${pageIndex}`), {
       x: pageSize[0] - margin - measureTextWidth(regular, 9, `Página ${pageIndex}`),
       y: 10,
       size: 9,
@@ -2776,7 +2848,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       });
       let x = margin;
       args.columns.forEach((column) => {
-        page.drawText(column.label, {
+        page.drawText(pdfSafeText(column.label), {
           x: x + 6,
           y: cursorY - 15,
           size: 8.5,
@@ -2799,7 +2871,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
         borderColor: cardBorder,
         borderWidth: 0.8,
       });
-      page.drawText(args.emptyMessage, {
+      page.drawText(pdfSafeText(args.emptyMessage), {
         x: margin + 10,
         y: cursorY - 22,
         size: 9,
@@ -3064,7 +3136,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
 
   drawGaugeGrid(
     'Faturamento da unidade',
-    `Velocímetros principais da unidade, no mesmo padrão do painel, para ${formatPdfDateBr(payload.referenceDate)}.`,
+    `Velocímetros principais da unidade, no mesmo padrão do painel, para ${formatPdfDateBr(payload.referenceDate)}. ${payload.metrics.unit.projectionHint} Deveria até a data: ${formatCurrency(payload.metrics.unit.shouldHaveUntilDate)}.`,
     [
       {
         title: 'Faturamento mensal',
@@ -3083,15 +3155,12 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
         freshness: payload.metrics.unit.freshness.revenueDay,
       },
       {
-        title: 'Deveria até a data',
-        value: payload.metrics.unit.revenueMonth,
-        max: payload.metrics.unit.shouldHaveUntilDate || 1,
-        valueLabel: formatPercent(
-          payload.metrics.unit.shouldHaveUntilDate > 0
-            ? (payload.metrics.unit.revenueMonth * 100) / payload.metrics.unit.shouldHaveUntilDate
-            : 0,
-        ),
-        helper: `${formatCurrency(payload.metrics.unit.shouldHaveUntilDate)} previsto`,
+        title: 'Projeção do mês',
+        value: payload.metrics.unit.projectionSuppressed ? payload.metrics.unit.revenueMonth : payload.metrics.unit.projectionMonth,
+        max: payload.metrics.unit.monthlyGoal || 1,
+        valueLabel: payload.metrics.unit.projectionSuppressed ? '-' : formatPercent(payload.metrics.unit.projectionPct),
+        // O helper do gauge cabe em duas linhas: valores compactos evitam corte.
+        helper: `Proj. ${formatCompactCurrency(payload.metrics.unit.projectionMonth)} / Meta ${formatCompactCurrency(payload.metrics.unit.monthlyGoal)} • Ritmo: ${formatPercent(payload.metrics.unit.pacePct)} do esperado`,
         freshness: payload.metrics.unit.freshness.shouldHaveUntilDate,
       },
       {
@@ -3144,7 +3213,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       {
         title: 'Pós-consulta equipe',
         value: formatPercent(payload.metrics.postConsult.conversionRate),
-        helper: `${payload.metrics.postConsult.totalClosedEvents}/${payload.metrics.postConsult.totalEvents} fechados`,
+        helper: `${payload.metrics.postConsult.totalClosedEvents}/${payload.metrics.postConsult.totalEvents} fechados em ${formatPdfDateBr(payload.referenceDate)}`,
         footer: formatPdfFreshness(payload.metrics.postConsult.freshness),
       },
       {
@@ -3185,13 +3254,14 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
   drawTable(
     {
       title: 'Faturamento por colaborador',
-      subtitle: formatPdfFreshness(payload.metrics.collaboratorsFreshness),
+      subtitle: `Realizado no dia refere-se a ${formatPdfDateBr(payload.referenceDate)}. ${formatPdfFreshness(payload.metrics.collaboratorsFreshness)}`.trim(),
       columns: [
-        { label: 'Colaborador', width: contentWidth * 0.34, render: (row) => row.fullName },
-        { label: 'Meta mensal', width: contentWidth * 0.18, align: 'right', render: (row) => formatCurrency(row.monthlyGoal) },
-        { label: 'Realizado no mês', width: contentWidth * 0.18, align: 'right', render: (row) => formatCurrency(row.revenueMonth) },
-        { label: 'Meta diária', width: contentWidth * 0.18, align: 'right', render: (row) => formatCurrency(row.dynamicDailyTarget) },
-        { label: 'Progresso', width: contentWidth * 0.12, align: 'right', render: (row) => formatPercent(row.progressPct) },
+        { label: 'Colaborador', width: contentWidth * 0.3, render: (row) => row.fullName },
+        { label: 'Meta mensal', width: contentWidth * 0.15, align: 'right', render: (row) => formatCurrency(row.monthlyGoal) },
+        { label: 'Realizado no dia', width: contentWidth * 0.15, align: 'right', render: (row) => formatCurrency(row.revenueDay) },
+        { label: 'Realizado no mês', width: contentWidth * 0.16, align: 'right', render: (row) => formatCurrency(row.revenueMonth) },
+        { label: 'Meta diária', width: contentWidth * 0.14, align: 'right', render: (row) => formatCurrency(row.dynamicDailyTarget) },
+        { label: 'Progresso', width: contentWidth * 0.1, align: 'right', render: (row) => formatPercent(row.progressPct) },
       ],
       rows: payload.metrics.collaborators,
       emptyMessage: 'Nenhum colaborador foi configurado na equipe local desta checklist.',
@@ -3200,16 +3270,16 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
 
   drawMetricCardGrid(
     'Faltas e atrasos',
-    'Resumo do período para a equipe local configurada.',
+    `Somente o dia de referência (${formatPdfDateBr(payload.referenceDate)}) para a equipe local configurada.`,
     [
       {
-        title: 'Faltas no período',
+        title: 'Faltas no dia',
         value: String(payload.metrics.absences.absenceDays),
         helper: `${payload.metrics.absences.trackedEmployees} colaborador(es) monitorados`,
         footer: formatPdfFreshness(payload.metrics.absences.freshness),
       },
       {
-        title: 'Atrasos no período',
+        title: 'Atrasos no dia',
         value: `${payload.metrics.absences.lateMinutes} min`,
         helper: `${payload.metrics.absences.rows.length} colaborador(es) com ocorrência`,
         footer: formatPdfFreshness(payload.metrics.absences.freshness),
@@ -3222,14 +3292,14 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
   drawTable(
     {
       title: 'Detalhamento de faltas e atrasos',
-      subtitle: formatPdfFreshness(payload.metrics.absences.freshness),
+      subtitle: `Dia ${formatPdfDateBr(payload.referenceDate)}. ${formatPdfFreshness(payload.metrics.absences.freshness)}`.trim(),
       columns: [
         { label: 'Colaborador', width: contentWidth * 0.56, render: (row) => row.employeeName },
         { label: 'Faltas', width: contentWidth * 0.18, align: 'right', render: (row) => String(row.absenceDays) },
         { label: 'Atrasos', width: contentWidth * 0.26, align: 'right', render: (row) => `${row.lateMinutes} min` },
       ],
       rows: payload.metrics.absences.rows,
-      emptyMessage: 'Nenhuma falta ou atraso foi encontrado para a equipe local no periodo.',
+      emptyMessage: 'Nenhuma falta ou atraso foi encontrado para a equipe local no dia de referencia.',
     },
   );
 

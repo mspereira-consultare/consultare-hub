@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { pdfSafeText } from '@/lib/pdf/win_ansi';
 import ExcelJS from 'exceljs';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { requirePropostasPosConsultaPermission } from '@/lib/proposals/auth';
@@ -171,14 +172,14 @@ const buildPdf = async (args: {
         font: bold,
         color: rgb(1, 1, 1),
       });
-      target.drawText(`Período: ${args.filters.startDate} até ${args.filters.endDate}`, {
+      target.drawText(pdfSafeText(`Período: ${args.filters.startDate} até ${args.filters.endDate}`), {
         x: margin,
         y: height - 78,
         size: 9,
         font: regular,
         color: rgb(0.2, 0.2, 0.2),
       });
-      target.drawText(`Gerado em: ${args.generatedAt}`, {
+      target.drawText(pdfSafeText(`Gerado em: ${args.generatedAt}`), {
         x: margin,
         y: height - 92,
         size: 9,
@@ -202,7 +203,7 @@ const buildPdf = async (args: {
     let x = margin;
     for (const col of cols) {
       target.drawRectangle({ x, y, width: col.width, height: rowHeight, color: rgb(0.09, 0.25, 0.49) });
-      target.drawText(col.label, { x: x + 4, y: y + 5, size: 8, font: bold, color: rgb(1, 1, 1) });
+      target.drawText(pdfSafeText(col.label), { x: x + 4, y: y + 5, size: 8, font: bold, color: rgb(1, 1, 1) });
       x += col.width;
     }
   };
@@ -241,7 +242,8 @@ const buildPdf = async (args: {
         borderColor: rgb(0.85, 0.88, 0.92),
         borderWidth: 0.5,
       });
-      page.drawText(String(data[index]), { x: x + 4, y: y + 5, size: 7.5, font: regular, color: rgb(0.1, 0.1, 0.1) });
+      // pdfSafeText evita "WinAnsi cannot encode" em nomes/status com emoji.
+      page.drawText(pdfSafeText(data[index]), { x: x + 4, y: y + 5, size: 7.5, font: regular, color: rgb(0.1, 0.1, 0.1) });
       x += cols[index].width;
     }
     y -= rowHeight;

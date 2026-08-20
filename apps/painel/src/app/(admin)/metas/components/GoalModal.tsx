@@ -557,6 +557,23 @@ export const GoalModal = ({ isOpen, onClose, onSave, initialData }: GoalModalPro
                                 </div>
                             </div>
                             
+                            {formData.periodicity === 'daily' ? (
+                                <label className="flex items-start gap-2 rounded-lg border border-indigo-100 bg-indigo-50/60 p-3 text-xs text-slate-600">
+                                    <input
+                                        type="checkbox"
+                                        className="mt-0.5"
+                                        checked={formData.derive_daily_from_monthly !== 0}
+                                        onChange={e => setFormData({ ...formData, derive_daily_from_monthly: e.target.checked ? 1 : 0 })}
+                                    />
+                                    <span>
+                                        <span className="block font-semibold text-slate-700">Derivar da meta mensal</span>
+                                        Usa <strong>meta mensal ÷ dias operacionais do mês × peso do dia</strong> (sábado vale meio dia,
+                                        domingos e feriados não contam). Assim a soma das metas diárias fecha com a mensal. Desmarque para
+                                        manter o valor alvo digitado acima.
+                                    </span>
+                                </label>
+                            ) : null}
+
                             {/* Unidade */}
                             <div>
                                 <label className="text-xs font-semibold text-slate-500">Unidade de Medida</label>

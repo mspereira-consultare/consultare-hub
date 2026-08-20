@@ -22,7 +22,7 @@ import { GoalsDashboardTable } from './components/GoalsDashboardTable';
 import { GoalsDashboardTabNav } from './components/GoalsDashboardTabNav';
 import { PostConsultRankingPanel } from './components/PostConsultRankingPanel';
 import { DashboardGoal, GoalFilters } from './types';
-import { calculateGoalProjectedPercentage, calculateGoalProjection, calculateGoalRemaining } from '@/lib/goals_metrics';
+import { buildGoalProjectionView, calculateGoalRemaining } from '@/lib/goals_metrics';
 import type { PostConsultRankingResponse } from '@/app/(admin)/propostas/pos-consulta/components/types';
 
 const DEFAULT_FILTERS: GoalFilters = {
@@ -468,15 +468,13 @@ export default function GoalsDashboardPage() {
       globalProgress,
     },
     goals: goalsForExport.map((goal) => {
-      const projection = calculateGoalProjection({
+      const projection = buildGoalProjectionView({
         current: goal.current,
+        currentToday: goal.current_today ?? null,
         target: goal.target,
         periodicity: goal.periodicity,
-      });
-      const projectedPercentage = calculateGoalProjectedPercentage({
-        current: goal.current,
-        target: goal.target,
-        periodicity: goal.periodicity,
+        unit: goal.unit,
+        referenceDate: goal.reference_date ?? null,
       });
       const remaining = calculateGoalRemaining({
         current: goal.current,
@@ -496,10 +494,10 @@ export default function GoalsDashboardPage() {
         teamLabel: goal.team || '—',
         startDate: goal.start_date || '—',
         endDate: goal.end_date || '—',
-        targetLabel: formatValue(goal.target, goal.unit),
+        targetLabel: `${formatValue(goal.target, goal.unit)}${goal.target_source === 'derived' ? ' (derivada da mensal)' : ''}`,
         currentLabel: formatValue(goal.current, goal.unit),
-        projectionLabel: formatValue(projection, goal.unit),
-        projectionPercentageLabel: `${projectedPercentage}%`,
+        projectionLabel: projection.value === null ? '—' : formatValue(projection.value, goal.unit),
+        projectionPercentageLabel: projection.percentageLabel,
         remainingLabel: formatValue(remaining, goal.unit),
         percentageLabel: `${goal.percentage}%`,
         statusLabel: STATUS_LABELS[goal.status],

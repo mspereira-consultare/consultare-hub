@@ -139,6 +139,13 @@ type ChecklistData = {
       dynamicDailyTarget: number;
       progressPct: number;
       expectedPct: number;
+      projectionMonth: number;
+      projectionPct: number;
+      projectionStatus: 'SUCCESS' | 'WARNING' | 'DANGER';
+      projectionSuppressed: boolean;
+      projectionHint: string;
+      projectionDay: number | null;
+      pacePct: number;
       businessDaysElapsed: number;
       businessDaysInMonth: number;
       businessDaysRemaining: number;
@@ -156,6 +163,7 @@ type ChecklistData = {
       userId: string | null;
       fullName: string;
       monthlyGoal: number;
+      revenueDay: number;
       revenueMonth: number;
       dynamicDailyTarget: number;
       progressPct: number;
@@ -263,6 +271,8 @@ type ConfigOptionsPayload = {
     units: string[];
     teamMembers: TeamMember[];
     isActive: boolean;
+    updatedAt?: string | null;
+    updatedBy?: string | null;
   }>;
   options: {
     leaders: Array<{
@@ -323,6 +333,10 @@ const formatDateBr = (value: string) => {
   const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 };
+
+/** Dias operacionais podem ser fracionários porque sábado vale meio dia. */
+const formatOperationalDays = (value: number) =>
+  Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
 
 const formatDateTimeBr = (value: string | null | undefined) => {
   const raw = String(value || '').trim();
@@ -396,7 +410,7 @@ const helpWorkflowCards = [
   },
   {
     title: '4. Leia os velocímetros',
-    description: 'Os gauges mostram realizado versus meta mensal, meta diária dinâmica, taxa de confirmação, nota Google e metas gerais de Resolve e Check-up.',
+    description: 'Os gauges mostram realizado versus meta mensal, meta diária dinâmica, projeção de fechamento do mês, taxa de confirmação, nota Google e metas gerais de Resolve e Check-up.',
   },
   {
     title: '5. Registre exceções manuais',
@@ -415,6 +429,10 @@ const helpRules = [
   'No modo D-1 não é possível editar campos nem sobrescrever o histórico.',
   'Recoletas agora são registradas uma a uma, com observações independentes e contagem automática.',
   'Se uma unidade não aparecer, revise as unidades habilitadas na configuração local da checklist.',
+  'A projeção do mês usa dias operacionais: segunda a sexta valem 1 dia, sábado vale meio dia, domingos e feriados não contam.',
+  'O faturamento parcial de hoje é extrapolado para o dia cheio antes de entrar na projeção, para não achatar o resultado de quem está performando bem agora.',
+  'Projeções diárias só aparecem a partir de 60% do expediente; antes disso o painel exibe "—" porque o número seria ruído.',
+  'Faltas, atrasos e pós-consulta consideram apenas o dia de referência da checklist, não o mês inteiro.',
 ];
 
 const GaugeCard = ({
@@ -423,6 +441,8 @@ const GaugeCard = ({
   max,
   helper,
   valueLabel,
+  footnote,
+  tooltip,
   freshness,
 }: {
   title: string;
@@ -430,6 +450,9 @@ const GaugeCard = ({
   max: number;
   helper: string;
   valueLabel?: string;
+  /** Linha extra abaixo do helper, para contexto secundário (ex.: ritmo do mês). */
+  footnote?: string;
+  tooltip?: string;
   freshness?: MetricFreshness | null;
 }) => {
   const gradientId = useId().replace(/:/g, '');
@@ -447,7 +470,7 @@ const GaugeCard = ({
   const valuePlateWidth = Math.max(66, Math.min(116, displayedValue.length * 9.4));
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-2.5">
+    <div className="rounded-xl border border-slate-200 bg-white p-2.5" title={tooltip}>
       <svg viewBox="0 0 200 150" className="mx-auto h-36 w-full max-w-[14.5rem]">
         <defs>
           <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="0%">
@@ -521,6 +544,7 @@ const GaugeCard = ({
         </text>
       </svg>
       <div className="mt-0.5 text-center text-[10px] text-slate-500">{helper}</div>
+      {footnote ? <div className="mt-0.5 text-center text-[10px] text-slate-400">{footnote}</div> : null}
       {freshness ? <div className="mt-1 text-center text-[10px] text-slate-400">{renderFreshnessLabel(freshness)}</div> : null}
     </div>
   );
@@ -972,19 +996,78 @@ export default function ChecklistRecepcaoPage() {
     );
   }, [configPayload?.options.leaders, leaderSearch]);
 
+  /** Configuração que o modal está editando no momento (vazio = nova). */
+  const editingConfig = useMemo(
+    () => (configPayload?.configs || []).find((item) => item.id === configForm.id) || null,
+    [configForm.id, configPayload?.configs],
+  );
+
+  /**
+   * Lista de colaboradores do modal: as opções atuais mais quem já estava salvo
+   * na configuração e saiu do cadastro ativo. Sem isso, um colaborador inativado
+   * some da tela e é descartado no próximo salvamento.
+   */
+  const teamOptionsForForm = useMemo(() => {
+    const options = configPayload?.options.teamMembers || [];
+    const knownIds = new Set(options.map((member) => member.employeeId));
+    const preserved = (editingConfig?.teamMembers || []).filter((member) => !knownIds.has(member.employeeId));
+    return [...options, ...preserved].sort((left, right) =>
+      left.fullName.localeCompare(right.fullName, 'pt-BR', { sensitivity: 'base' }),
+    );
+  }, [configPayload?.options.teamMembers, editingConfig?.teamMembers]);
+
+  const inactiveTeamMemberIds = useMemo(() => {
+    const knownIds = new Set((configPayload?.options.teamMembers || []).map((member) => member.employeeId));
+    return new Set(teamOptionsForForm.filter((member) => !knownIds.has(member.employeeId)).map((member) => member.employeeId));
+  }, [configPayload?.options.teamMembers, teamOptionsForForm]);
+
   const filteredTeamOptions = useMemo(() => {
     const search = normalizeSearchText(teamSearch);
-    const items = configPayload?.options.teamMembers || [];
+    const items = teamOptionsForForm;
     if (!search) return items;
     return items.filter((member) =>
       normalizeSearchText(`${member.fullName} ${member.department || ''} ${(member.units || []).join(' ')}`).includes(search),
     );
-  }, [configPayload?.options.teamMembers, teamSearch]);
+  }, [teamOptionsForForm, teamSearch]);
 
   const selectedTeamMembersPreview = useMemo(() => {
     const selectedIds = new Set(configForm.teamEmployeeIds);
-    return (configPayload?.options.teamMembers || []).filter((member) => selectedIds.has(member.employeeId));
-  }, [configForm.teamEmployeeIds, configPayload?.options.teamMembers]);
+    return teamOptionsForForm.filter((member) => selectedIds.has(member.employeeId));
+  }, [configForm.teamEmployeeIds, teamOptionsForForm]);
+
+  const startNewConfig = () => {
+    setConfigForm({
+      id: '',
+      name: '',
+      leaderUserId: '',
+      leaderEmployeeId: '',
+      leaderName: '',
+      units: [],
+      teamEmployeeIds: [],
+      isActive: true,
+    });
+    setLeaderSearch('');
+    setTeamSearch('');
+  };
+
+  const selectConfigToEdit = (configId: string) => {
+    if (!configId) {
+      startNewConfig();
+      return;
+    }
+    const target = (configPayload?.configs || []).find((item) => item.id === configId);
+    if (!target) return;
+    setConfigForm({
+      id: target.id,
+      name: target.name,
+      leaderUserId: target.leaderUserId,
+      leaderEmployeeId: target.leaderEmployeeId || '',
+      leaderName: target.leaderName,
+      units: target.units,
+      teamEmployeeIds: (target.teamMembers || []).map((member) => member.employeeId),
+      isActive: target.isActive,
+    });
+  };
 
   const googleGaugeActual = manual.googleRating;
   const googleGaugeTarget = data?.metrics.google.ratingTarget || 4.7;
@@ -1281,7 +1364,7 @@ export default function ChecklistRecepcaoPage() {
               <Card
                 title="Meta Diária Dinâmica"
                 value={formatCurrency(data.metrics.unit.dynamicDailyTarget)}
-                helper={`${data.metrics.unit.businessDaysRemaining} dia(s) úteis restantes`}
+                helper={`${formatOperationalDays(data.metrics.unit.businessDaysRemaining)} dia(s) operacionais restantes`}
                 icon={<CalendarDays size={16} />}
                 freshness={data.metrics.unit.freshness.dynamicDailyTarget}
               />
@@ -1299,7 +1382,7 @@ export default function ChecklistRecepcaoPage() {
                 <div>
                   <h2 className="text-[0.98rem] font-bold text-slate-900">Faturamento da unidade</h2>
                   <p className="mt-1 text-[12px] text-slate-500">
-                    Velocímetros da unidade com realizado diário, acumulado do mês, referência esperada até {formatDateBr(data.referenceDate)} e nota Google.
+                    Velocímetros da unidade com realizado diário, acumulado do mês, projeção de fechamento até {formatDateBr(data.referenceDate)} e nota Google.
                   </p>
                 </div>
                 <div className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
@@ -1324,13 +1407,13 @@ export default function ChecklistRecepcaoPage() {
                   freshness={data.metrics.unit.freshness.revenueDay}
                 />
                 <GaugeCard
-                  title="Deveria até a data"
-                  value={data.metrics.unit.revenueMonth}
-                  max={data.metrics.unit.shouldHaveUntilDate}
-                  helper={`${formatCurrency(data.metrics.unit.shouldHaveUntilDate)} previsto`}
-                  valueLabel={formatPercent(
-                    data.metrics.unit.shouldHaveUntilDate > 0 ? (data.metrics.unit.revenueMonth / data.metrics.unit.shouldHaveUntilDate) * 100 : 0,
-                  )}
+                  title="Projeção do mês"
+                  value={data.metrics.unit.projectionSuppressed ? data.metrics.unit.revenueMonth : data.metrics.unit.projectionMonth}
+                  max={data.metrics.unit.monthlyGoal}
+                  helper={`Proj. ${formatCurrency(data.metrics.unit.projectionMonth)} / Meta ${formatCurrency(data.metrics.unit.monthlyGoal)}`}
+                  valueLabel={data.metrics.unit.projectionSuppressed ? '—' : formatPercent(data.metrics.unit.projectionPct)}
+                  footnote={`Ritmo até hoje: ${formatPercent(data.metrics.unit.pacePct)} do esperado (${formatCurrency(data.metrics.unit.shouldHaveUntilDate)})`}
+                  tooltip={data.metrics.unit.projectionHint}
                   freshness={data.metrics.unit.freshness.shouldHaveUntilDate}
                 />
                 <GaugeCard
@@ -1348,7 +1431,9 @@ export default function ChecklistRecepcaoPage() {
                 <Users className="text-slate-500" size={18} />
                 <div>
                   <h2 className="text-[0.98rem] font-bold text-slate-900">Faturamento por colaborador</h2>
-                  <p className="mt-1 text-[12px] text-slate-500">A equipe local configurada nesta página alimenta a visão individual de metas e realizado.</p>
+                  <p className="mt-1 text-[12px] text-slate-500">
+                    A equipe local configurada nesta página alimenta a visão individual de metas e realizado. O realizado no dia refere-se a {formatDateBr(data.referenceDate)}.
+                  </p>
                   <p className="mt-1 text-[10px] text-slate-400">{renderFreshnessLabel(data.metrics.collaboratorsFreshness)}</p>
                 </div>
               </div>
@@ -1358,6 +1443,7 @@ export default function ChecklistRecepcaoPage() {
                     <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
                       <th className="px-4 py-3">Colaborador</th>
                       <th className="px-4 py-3">Meta mensal</th>
+                      <th className="px-4 py-3">Realizado no dia</th>
                       <th className="px-4 py-3">Realizado no mês</th>
                       <th className="px-4 py-3">Meta diária dinâmica</th>
                       <th className="px-4 py-3">Progresso</th>
@@ -1366,7 +1452,7 @@ export default function ChecklistRecepcaoPage() {
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {data.metrics.collaborators.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="px-4 py-6 text-center text-slate-500">
+                        <td colSpan={6} className="px-4 py-6 text-center text-slate-500">
                           Nenhum colaborador foi configurado na equipe local desta checklist.
                         </td>
                       </tr>
@@ -1375,6 +1461,9 @@ export default function ChecklistRecepcaoPage() {
                         <tr key={row.employeeId}>
                           <td className="px-4 py-3 font-medium text-slate-900">{row.fullName}</td>
                           <td className="px-4 py-3 text-slate-600">{formatCurrency(row.monthlyGoal)}</td>
+                          <td className={`px-4 py-3 ${row.revenueDay > 0 ? 'font-semibold text-slate-900' : 'text-slate-400'}`}>
+                            {formatCurrency(row.revenueDay)}
+                          </td>
                           <td className="px-4 py-3 text-slate-600">{formatCurrency(row.revenueMonth)}</td>
                           <td className="px-4 py-3 text-slate-600">{formatCurrency(row.dynamicDailyTarget)}</td>
                           <td className="px-4 py-3 text-slate-600">{formatPercent(row.progressPct)}</td>
@@ -1466,7 +1555,7 @@ export default function ChecklistRecepcaoPage() {
                   <Card
                     title="Pós-consulta equipe"
                     value={formatPercent(data.metrics.postConsult.conversionRate)}
-                    helper={`${data.metrics.postConsult.totalClosedEvents}/${data.metrics.postConsult.totalEvents} fechados`}
+                    helper={`${data.metrics.postConsult.totalClosedEvents}/${data.metrics.postConsult.totalEvents} fechados em ${formatDateBr(data.referenceDate)}`}
                     icon={<TrendingUp size={16} />}
                     freshness={data.metrics.postConsult.freshness}
                   />
@@ -1511,19 +1600,21 @@ export default function ChecklistRecepcaoPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-[0.98rem] font-bold text-slate-900">Faltas e atrasos da equipe local</h2>
-                  <p className="mt-1 text-[12px] text-slate-500">Indicadores consolidados da equipe vinculada à líder desta configuração.</p>
+                  <p className="mt-1 text-[12px] text-slate-500">
+                    Somente o dia de referência ({formatDateBr(data.referenceDate)}), para a equipe vinculada à líder desta configuração.
+                  </p>
                 </div>
               </div>
               <div className="mt-3 grid gap-2.5 md:grid-cols-2">
                 <Card
-                  title="Faltas no período"
+                  title="Faltas no dia"
                   value={String(data.metrics.absences.absenceDays)}
                   helper={`${data.metrics.absences.trackedEmployees} colaborador(es) monitorados`}
                   icon={<AlertTriangle size={16} />}
                   freshness={data.metrics.absences.freshness}
                 />
                 <Card
-                  title="Atrasos no período"
+                  title="Atrasos no dia"
                   value={`${data.metrics.absences.lateMinutes} min`}
                   helper={`${data.metrics.absences.rows.length} colaborador(es) com ocorrência`}
                   icon={<AlertTriangle size={16} />}
@@ -1543,7 +1634,7 @@ export default function ChecklistRecepcaoPage() {
                     {data.metrics.absences.rows.length === 0 ? (
                       <tr>
                         <td colSpan={3} className="px-4 py-6 text-center text-slate-500">
-                          Nenhuma falta ou atraso foi encontrado para a equipe local no período.
+                          Nenhuma falta ou atraso foi encontrado para a equipe local nesse dia.
                         </td>
                       </tr>
                     ) : (
@@ -1759,18 +1850,23 @@ export default function ChecklistRecepcaoPage() {
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
 
       {configModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 p-4">
-          <div className="w-full max-w-4xl rounded-3xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <div>
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/45 p-2 sm:items-center sm:p-4">
+          <div className="flex max-h-[95vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl sm:max-h-[92vh] sm:rounded-3xl">
+            <div className="flex shrink-0 flex-wrap items-start justify-between gap-3 border-b border-slate-200 px-4 py-3 sm:px-5 sm:py-4">
+              <div className="min-w-0">
                 <h3 className="text-[1.05rem] font-bold text-slate-900">Configuração local da checklist</h3>
                 <p className="mt-1 text-[13px] text-slate-500">Importa o contexto do cadastro do colaborador, mas o ajuste vale apenas para esta página.</p>
+                <p className="mt-1 text-[12px] font-medium text-slate-600">
+                  {configForm.id
+                    ? `Editando: ${editingConfig?.name || configForm.name || 'configuração existente'}${editingConfig?.updatedAt ? ` • atualizada em ${formatDateTimeBr(editingConfig.updatedAt)}` : ''}`
+                    : 'Criando uma nova configuração.'}
+                </p>
               </div>
               <button type="button" onClick={() => setConfigModalOpen(false)} className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
                 Fechar
               </button>
             </div>
-            <div className="px-5 py-5">
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-5 sm:py-5">
               {configLoading ? (
                 <div className="flex items-center gap-2 text-sm text-slate-600">
                   <Loader2 size={15} className="animate-spin" />
@@ -1799,7 +1895,35 @@ export default function ChecklistRecepcaoPage() {
                     </div>
                   ) : null}
 
-                  <div className="grid gap-4 lg:grid-cols-2">
+                  {(configPayload?.configs || []).length > 0 ? (
+                    <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                      <label className="min-w-[16rem] flex-1 text-[13px] font-medium text-slate-700">
+                        Configuração em edição
+                        <select
+                          value={configForm.id}
+                          onChange={(event) => selectConfigToEdit(event.target.value)}
+                          className="mt-1 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal outline-none"
+                        >
+                          <option value="">Nova configuração</option>
+                          {(configPayload?.configs || []).map((item) => (
+                            <option key={item.id} value={item.id}>
+                              {item.name} ({item.leaderName})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={startNewConfig}
+                        className="inline-flex h-10 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700"
+                      >
+                        <Settings2 size={14} />
+                        Nova configuração
+                      </button>
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-4 md:grid-cols-2">
                     <label className="text-[13px] font-medium text-slate-700">
                       Nome da configuração
                       <input
@@ -1820,13 +1944,19 @@ export default function ChecklistRecepcaoPage() {
                         value={configForm.leaderUserId}
                         onChange={(event) => {
                           const nextLeader = configPayload?.options.leaders.find((item) => item.userId === event.target.value) || null;
-                          setConfigForm((current) => ({
-                            ...current,
-                            leaderUserId: event.target.value,
-                            leaderEmployeeId: nextLeader?.employeeId || '',
-                            leaderName: nextLeader?.name || '',
-                            units: current.units.length > 0 ? current.units : nextLeader?.units || [],
-                          }));
+                          setConfigForm((current) => {
+                            // Trocar a líder de uma configuração salva sobrescreveria a
+                            // configuração de outra pessoa: nesse caso vira uma nova.
+                            const becomesNewConfig = Boolean(current.id) && event.target.value !== current.leaderUserId;
+                            return {
+                              ...current,
+                              id: becomesNewConfig ? '' : current.id,
+                              leaderUserId: event.target.value,
+                              leaderEmployeeId: nextLeader?.employeeId || '',
+                              leaderName: nextLeader?.name || '',
+                              units: current.units.length > 0 ? current.units : nextLeader?.units || [],
+                            };
+                          });
                         }}
                         className="mt-2 h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-normal outline-none"
                       >
@@ -1843,7 +1973,7 @@ export default function ChecklistRecepcaoPage() {
                         </div>
                       ) : null}
                     </div>
-                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 lg:col-span-2">
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600 md:col-span-2">
                       <div className="font-semibold text-slate-800">Dados importados do cadastro</div>
                       <div className="mt-2">Unidades do líder: {currentLeader?.units.join(', ') || 'Sem unidades mapeadas no cadastro oficial.'}</div>
                       <div className="mt-2">A equipe local não controla a lista de unidades exibidas na página. Esse controle vem da configuração local da checklist.</div>
@@ -1857,9 +1987,9 @@ export default function ChecklistRecepcaoPage() {
                         Usar unidades do cadastro do líder
                       </button>
                     </div>
-                    <div className="lg:col-span-2">
+                    <div className="md:col-span-2">
                       <div className="text-[13px] font-medium text-slate-700">Unidades desta checklist</div>
-                      <div className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                         {(configPayload?.options.units || []).map((unit) => (
                           <label key={unit.key} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
                             <input
@@ -1892,8 +2022,8 @@ export default function ChecklistRecepcaoPage() {
                       placeholder="Buscar colaborador por nome, setor ou unidade"
                       className="mt-2 h-10 w-full rounded-xl border border-slate-200 px-3 text-sm outline-none"
                     />
-                    <div className="mt-2 max-h-72 overflow-y-auto rounded-2xl border border-slate-200 p-3">
-                      <div className="grid gap-2 md:grid-cols-2">
+                    <div className="mt-2 max-h-[40vh] min-h-[9rem] overflow-y-auto rounded-2xl border border-slate-200 p-3">
+                      <div className="grid gap-2 sm:grid-cols-2">
                         {filteredTeamOptions.map((member) => (
                           <label key={member.employeeId} className="inline-flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-3 text-sm text-slate-700">
                             <input
@@ -1911,6 +2041,11 @@ export default function ChecklistRecepcaoPage() {
                             <span>
                               <span className="block font-medium text-slate-900">{member.fullName}</span>
                               <span className="mt-1 block text-xs text-slate-500">{member.department || 'Sem departamento'} | {member.units.join(', ') || 'Sem unidades'}</span>
+                              {inactiveTeamMemberIds.has(member.employeeId) ? (
+                                <span className="mt-1 block text-[11px] font-medium text-amber-600">
+                                  Fora do cadastro ativo — mantido na equipe salva
+                                </span>
+                              ) : null}
                             </span>
                           </label>
                         ))}
@@ -1939,7 +2074,7 @@ export default function ChecklistRecepcaoPage() {
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-end gap-3 border-t border-slate-200 px-5 py-4">
+            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-slate-200 bg-white px-4 py-3 sm:gap-3 sm:px-5 sm:py-4">
               <button type="button" onClick={() => setConfigModalOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700">
                 Cancelar
               </button>

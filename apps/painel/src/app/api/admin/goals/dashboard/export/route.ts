@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { pdfSafeText } from '@/lib/pdf/win_ansi';
 import ExcelJS from 'exceljs';
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from 'pdf-lib';
 import { getServerSession } from 'next-auth';
@@ -70,7 +71,9 @@ const ensurePermission = async () => {
 };
 
 const cleanText = (value: unknown) => {
-  const text = String(value ?? '').trim();
+  // pdfSafeText protege a exportação em PDF do erro "WinAnsi cannot encode"
+  // quando um nome de meta, grupo ou colaborador carrega emoji.
+  const text = pdfSafeText(String(value ?? '')).trim();
   return text || '—';
 };
 

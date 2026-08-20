@@ -5,6 +5,7 @@ import {
 } from '@/lib/appointments_confirmation_repository';
 import { runInTransaction, type DbInterface } from '@/lib/db';
 import { calculateKpi } from '@/lib/kpi_engine';
+import { calculateProjection, getProjectionStatus } from '@/lib/goals/projection';
 import { hasPermission } from '@/lib/permissions';
 import { loadUserPermissionMatrix } from '@/lib/permissions_server';
 import { getAgendaOcupacaoHeartbeat, listAgendaOcupacaoDailyRows } from '@/lib/agenda_ocupacao/repository';
@@ -884,11 +885,10 @@ const getSchedulingGoalWidget = async (
     );
   }
 
-  const { currentDayOfMonth, monthEndDay } = getDateRange();
-  const projectionValue = currentDayOfMonth > 0 ? (goal.currentValue / currentDayOfMonth) * monthEndDay : goal.currentValue;
+  const projection = calculateProjection({ current: goal.currentValue, periodicity: 'monthly' });
+  const projectionValue = projection.value;
   const projectionPercentage = goal.targetValue > 0 ? (projectionValue / goal.targetValue) * 100 : 0;
-  const projectedStatus: ExecutiveIndicatorStatus =
-    projectionPercentage >= 100 ? 'SUCCESS' : projectionPercentage >= 70 ? 'WARNING' : 'DANGER';
+  const projectedStatus: ExecutiveIndicatorStatus = getProjectionStatus(projectionPercentage);
 
   return buildSummaryWidget(
     widgetKey,
@@ -1119,7 +1119,7 @@ const getWhatsappLive = async (db: DbInterface) => {
 };
 
 const getFinanceArea = async (db: DbInterface, scope: ExecutiveScope): Promise<ExecutiveAreaBlock> => {
-  const { today, weekStart, monthStart, monthEndDay, currentDayOfMonth } = getDateRange();
+  const { today, weekStart, monthStart, currentDayOfMonth } = getDateRange();
   const [day, week, month, goals, heartbeats] = await Promise.all([
     getFinancialTotals(db, today, today, scope.units),
     getFinancialTotals(db, weekStart, today, scope.units),
@@ -1128,7 +1128,13 @@ const getFinanceArea = async (db: DbInterface, scope: ExecutiveScope): Promise<E
     getSystemHeartbeats(db, ['faturamento']),
   ]);
 
-  const monthProjection = currentDayOfMonth > 0 ? (month.total / currentDayOfMonth) * monthEndDay : month.total;
+  // Projeção exata: o realizado de hoje é conhecido, então o dia corrente é
+  // extrapolado para o dia cheio em vez de ser contado como dia inteiro.
+  const monthProjection = calculateProjection({
+    current: month.total,
+    currentToday: day.total,
+    periodicity: 'monthly',
+  }).value;
   const monthTarget = goals.monthly ? Number(goals.monthly.target_value || 0) : null;
   const dayTarget = goals.daily ? Number(goals.daily.target_value || 0) : null;
   const monthStatus: ExecutiveIndicatorStatus =
@@ -1192,7 +1198,7 @@ const getFinanceArea = async (db: DbInterface, scope: ExecutiveScope): Promise<E
 };
 
 const getCommercialArea = async (db: DbInterface, scope: ExecutiveScope): Promise<ExecutiveAreaBlock> => {
-  const { today, weekStart, monthStart, monthEndDay, currentDayOfMonth } = getDateRange();
+  const { today, weekStart, monthStart } = getDateRange();
   const [day, week, month, heartbeats] = await Promise.all([
     getProposalSummary(db, today, today, scope.units),
     getProposalSummary(db, weekStart, today, scope.units),
@@ -1200,7 +1206,11 @@ const getCommercialArea = async (db: DbInterface, scope: ExecutiveScope): Promis
     getSystemHeartbeats(db, ['comercial']),
   ]);
 
-  const monthProjection = currentDayOfMonth > 0 ? (month.valor / currentDayOfMonth) * monthEndDay : month.valor;
+  const monthProjection = calculateProjection({
+    current: month.valor,
+    currentToday: day.valor,
+    periodicity: 'monthly',
+  }).value;
   const approvalRate = month.qtd > 0 ? (month.wonQtd / month.qtd) * 100 : null;
   const waitingStatus: ExecutiveIndicatorStatus =
     month.waitingQtd >= 20 ? 'DANGER' : month.waitingQtd >= 8 ? 'WARNING' : 'SUCCESS';

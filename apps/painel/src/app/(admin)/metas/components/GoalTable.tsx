@@ -13,12 +13,30 @@ import {
   Trash2,
   TrendingUp,
 } from 'lucide-react';
-import { calculateGoalProjectedPercentage, calculateGoalProjection, calculateGoalRemaining } from '@/lib/goals_metrics';
+import { buildGoalProjectionView, calculateGoalRemaining } from '@/lib/goals_metrics';
 import { Goal } from '../constants';
+
+// Bug 5 - escala única: verde >= 100%, laranja 85-99%, vermelho < 85%.
+const PROJECTION_TEXT_STYLES = {
+  SUCCESS: 'text-emerald-600',
+  WARNING: 'text-amber-600',
+  DANGER: 'text-red-500',
+} as const;
 
 interface GoalTableProps {
   goals: Goal[];
-  dashboardData: Record<number, { current: number; percentage: number }>;
+  dashboardData: Record<
+    number,
+    {
+      current: number;
+      percentage: number;
+      current_today?: number | null;
+      target?: number;
+      target_source?: 'derived' | 'configured';
+      target_source_name?: string | null;
+      reference_date?: string;
+    }
+  >;
   onEdit: (goal: Goal) => void;
   onDelete: (id: number) => void;
   onViewDetails: (goal: Goal) => void;
@@ -115,19 +133,19 @@ export const GoalTable = ({ goals, dashboardData, onEdit, onDelete, onViewDetail
                     {sectorGoals.map((goal) => {
                       const data = dashboardData[goal.id!] || { current: 0, percentage: 0 };
                       const progress = Math.min(Math.max(data.percentage, 0), 100);
-                      const projection = calculateGoalProjection({
+                      // Alvo efetivo: a API deriva a meta diária da mensal quando há correspondente.
+                      const effectiveTarget = typeof data.target === 'number' && data.target > 0 ? data.target : goal.target_value;
+                      const projection = buildGoalProjectionView({
                         current: data.current || 0,
-                        target: goal.target_value,
+                        currentToday: data.current_today ?? null,
+                        target: effectiveTarget,
                         periodicity: goal.periodicity,
-                      });
-                      const projectedPercentage = calculateGoalProjectedPercentage({
-                        current: data.current || 0,
-                        target: goal.target_value,
-                        periodicity: goal.periodicity,
+                        unit: goal.unit,
+                        referenceDate: data.reference_date ?? null,
                       });
                       const remaining = calculateGoalRemaining({
                         current: data.current || 0,
-                        target: goal.target_value,
+                        target: effectiveTarget,
                       });
 
                       let statusColor = 'bg-red-500';
@@ -188,27 +206,29 @@ export const GoalTable = ({ goals, dashboardData, onEdit, onDelete, onViewDetail
                           <td className="px-4 py-2.5">
                             <div className="flex items-center gap-1.5 font-medium text-slate-500">
                               <Target size={14} />
-                              {formatValue(goal.target_value, goal.unit)}
+                              {formatValue(effectiveTarget, goal.unit)}
                             </div>
+                            {data.target_source === 'derived' ? (
+                              <div
+                                className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-indigo-600"
+                                title={`Derivada da meta mensal${data.target_source_name ? ` "${data.target_source_name}"` : ''}. Cadastrada: ${formatValue(goal.target_value, goal.unit)}`}
+                              >
+                                derivada da mensal
+                              </div>
+                            ) : null}
                           </td>
 
                           <td className="px-4 py-2.5">
                             <div className="text-base font-bold text-slate-800">{formatValue(data.current, goal.unit)}</div>
                           </td>
 
-                          <td className="px-4 py-2.5">
+                          <td className="px-4 py-2.5" title={projection.hint}>
                             <div className="text-xs font-semibold text-slate-700">
-                              {formatValue(projection, goal.unit)}
+                              {projection.value === null ? '—' : formatValue(projection.value, goal.unit)}
                               <span
-                                className={`ml-1 font-bold ${
-                                  projectedPercentage >= 100
-                                    ? 'text-emerald-600'
-                                    : projectedPercentage >= 70
-                                      ? 'text-amber-600'
-                                      : 'text-red-500'
-                                }`}
+                                className={`ml-1 font-bold ${projection.suppressed ? 'text-slate-400' : PROJECTION_TEXT_STYLES[projection.status]}`}
                               >
-                                · {projectedPercentage}%
+                                · {projection.percentageLabel}
                               </span>
                             </div>
                           </td>

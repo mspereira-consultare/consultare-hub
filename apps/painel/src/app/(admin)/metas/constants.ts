@@ -16,6 +16,10 @@ export interface Goal {
     employee_id?: string | null; // Vinculo oficial com employees.id quando a meta for individual
     collaborator?: string; // Nome do colaborador (ex.: Profissional / Agendador)
     team?: string; // Equipe/setor alvo da meta (ex.: CRC, Recepção)
+    // Metas diárias derivam da meta mensal correspondente por padrão
+    // (meta_mensal / dias_operacionais_do_mes * peso_do_dia). Marque 0 para
+    // manter o valor cadastrado manualmente.
+    derive_daily_from_monthly?: number;
 }
 
 export const GOAL_SCOPES = [

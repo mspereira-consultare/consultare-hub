@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { buildGoalProjectionView } from '@/lib/goals_metrics';
 import { 
     UserCheck, Calendar, Trophy, Info, Headphones, Activity,
     RefreshCw, Clock, Loader2, Search, Settings, X, Download
@@ -133,48 +134,12 @@ export default function ProductivityPage() {
         return { goal: teamGoals[0], source: 'team' as const };
     };
 
-    const WORK_START_HOUR = 8;
-    const WORK_END_HOUR = 19;
-    const WORK_HOURS = WORK_END_HOUR - WORK_START_HOUR;
+    // A regra de projeção vive em @/lib/goals/projection (dias operacionais
+    // ponderados, dia corrente proporcional ao expediente e trava de confiança
+    // na projeção diária). Não duplicar a fórmula aqui.
+    const projectByPeriodicity = (periodicity: string, current: number, target: number, unit?: string) =>
+        buildGoalProjectionView({ current, target, periodicity, unit });
 
-    const getWorkingHoursPassed = () => {
-        const now = new Date();
-        const hoursNow = now.getHours() + now.getMinutes() / 60;
-        if (hoursNow <= WORK_START_HOUR) return 0;
-        if (hoursNow >= WORK_END_HOUR) return WORK_HOURS;
-        return hoursNow - WORK_START_HOUR;
-    };
-
-    const projectDailyValue = (current: number) => {
-        const hoursPassed = getWorkingHoursPassed();
-        if (hoursPassed <= 0) return 0;
-        const hourlyRate = current / hoursPassed;
-        return hourlyRate * WORK_HOURS;
-    };
-
-    const projectMonthlyValue = (current: number) => {
-        const now = new Date();
-        const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-        const daysPassed = Math.min(now.getDate(), daysInMonth);
-        const dailyRate = daysPassed > 0 ? current / daysPassed : 0;
-        return dailyRate * daysInMonth;
-    };
-
-    const projectWeeklyValue = (current: number) => {
-        const now = new Date();
-        const day = now.getDay(); // 0=domingo ... 6=sabado
-        const daysInWeek = 7;
-        const daysPassed = day === 0 ? 7 : day;
-        const dailyRate = daysPassed > 0 ? current / daysPassed : 0;
-        return dailyRate * daysInWeek;
-    };
-
-    const projectByPeriodicity = (periodicity: string, current: number) => {
-        if (periodicity === 'daily') return projectDailyValue(current);
-        if (periodicity === 'weekly') return projectWeeklyValue(current);
-        return projectMonthlyValue(current);
-    };
-    
     // Controle UI
     const [isUpdating, setIsUpdating] = useState(false);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -639,7 +604,7 @@ export default function ProductivityPage() {
                           .filter((g: any) => g.team && g.team !== 'all' && (!g.collaborator || g.collaborator === 'all'))
                           .map((goal: any) => {
                           const currentValue = Number(goal.current) || 0;
-                          const projectedValue = projectByPeriodicity(goal.periodicity, currentValue);
+                          const projection = projectByPeriodicity(goal.periodicity, currentValue, Number(goal.target) || 0, goal.unit);
 
                           return (
                             <div 
@@ -698,10 +663,11 @@ export default function ProductivityPage() {
                                 </div>
                                 
                                 {/* Projeção */}
-                                <div className="pt-2 border-t border-slate-300/50 text-[10px]">
+                                <div className="pt-2 border-t border-slate-300/50 text-[10px]" title={projection.hint}>
                                     <p className="text-slate-500 mb-1">Projeção:</p>
                                     <p className="font-bold text-slate-700">
-                                        {projectedValue.toFixed(0)}
+                                        {projection.value === null ? '—' : projection.value.toFixed(0)}
+                                        <span className="ml-1 font-semibold text-slate-500">· {projection.percentageLabel}</span>
                                     </p>
                                 </div>
                             </div>

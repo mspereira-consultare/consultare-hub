@@ -1,66 +1,92 @@
+import {
+  calculateCatchUpDailyTarget,
+  calculateExpectedUntilDate,
+  calculateProjection,
+  type ProjectionResult,
+} from '@/lib/goals/projection';
+import {
+  dayWeight,
+  isOperationalDay,
+  monthEnd,
+  monthStart,
+  operationalDaysClosedInMonth,
+  operationalDaysInMonth,
+  operationalDaysRemainingInMonth,
+  parseIsoDate,
+  previousOperationalDate,
+  shiftDate,
+} from '@/lib/goals/operational_calendar';
+
 export type RecepcaoChecklistViewMode = 'current' | 'd1';
 
 export type RecepcaoChecklistFreezeSource = 'version' | 'live-fallback' | 'legacy-fallback';
 
 const clean = (value: unknown) => String(value ?? '').trim();
 
-export const parseIsoDate = (value: string) => (/^\d{4}-\d{2}-\d{2}$/.test(clean(value)) ? clean(value) : null);
+export { monthEnd, monthStart, parseIsoDate, shiftDate };
 
-export const shiftDate = (dateIso: string, deltaDays: number) => {
-  const [year, month, day] = dateIso.split('-').map(Number);
-  const date = new Date(Date.UTC(year || 0, (month || 1) - 1, day || 1));
-  date.setUTCDate(date.getUTCDate() + deltaDays);
-  return date.toISOString().slice(0, 10);
-};
+/**
+ * Dia operacional segundo o critério único da clínica (ver goals/operational_calendar):
+ * segunda a sexta valem 1, sábado vale 0,5 e domingos/feriados não contam.
+ */
+export const isBusinessDay = (dateIso: string) => isOperationalDay(dateIso);
 
-export const isBusinessDay = (dateIso: string) => {
-  const [year, month, day] = dateIso.split('-').map(Number);
-  const weekday = new Date(Date.UTC(year || 0, (month || 1) - 1, day || 1)).getUTCDay();
-  return weekday !== 0;
-};
-
-export const monthStart = (dateIso: string) => `${dateIso.slice(0, 7)}-01`;
-
-export const monthEnd = (dateIso: string) => {
-  const [year, month] = dateIso.slice(0, 7).split('-').map(Number);
-  const date = new Date(Date.UTC(year || 0, month || 1, 0));
-  return date.toISOString().slice(0, 10);
-};
-
+/**
+ * Soma ponderada de dias operacionais no intervalo. Mantém o nome antigo para
+ * não quebrar os consumidores, mas agora devolve valor fracionário por causa
+ * do peso do sábado.
+ */
 export const countBusinessDays = (startDate: string, endDate: string) => {
-  if (endDate < startDate) return 0;
-  let cursor = startDate;
+  const start = parseIsoDate(startDate);
+  const end = parseIsoDate(endDate);
+  if (!start || !end || end < start) return 0;
+  let cursor = start;
   let total = 0;
-  while (cursor <= endDate) {
-    if (isBusinessDay(cursor)) total += 1;
+  while (cursor <= end) {
+    total += dayWeight(cursor);
     cursor = shiftDate(cursor, 1);
   }
-  return total;
+  return Number(total.toFixed(6));
 };
 
-export const previousBusinessDate = (dateIso: string) => {
-  let cursor = shiftDate(dateIso, -1);
-  while (!isBusinessDay(cursor)) cursor = shiftDate(cursor, -1);
-  return cursor;
-};
+export const previousBusinessDate = (dateIso: string) => previousOperationalDate(dateIso);
 
 export const resolveReferenceDate = (today: string, viewMode: RecepcaoChecklistViewMode, rawReferenceDate?: string | null) =>
   parseIsoDate(clean(rawReferenceDate)) || (viewMode === 'd1' ? previousBusinessDate(today) : today);
 
 export const resolveReadOnly = (viewMode: RecepcaoChecklistViewMode) => viewMode === 'd1';
 
-export const calculateShouldHaveUntilDate = (monthlyGoal: number, referenceDate: string) => {
-  const businessDaysElapsed = countBusinessDays(monthStart(referenceDate), referenceDate);
-  const businessDaysInMonth = countBusinessDays(monthStart(referenceDate), monthEnd(referenceDate));
-  return businessDaysInMonth > 0 ? (monthlyGoal * businessDaysElapsed) / businessDaysInMonth : 0;
-};
+/**
+ * Valor que a unidade deveria ter faturado até a data de referência.
+ * O dia corrente entra proporcionalmente ao expediente já decorrido.
+ */
+export const calculateShouldHaveUntilDate = (monthlyGoal: number, referenceDate: string, now?: Date) =>
+  calculateExpectedUntilDate({ monthlyTarget: monthlyGoal, referenceDate, now });
 
-export const calculateDailyTarget = (monthlyGoal: number, currentValue: number, referenceDate: string) => {
-  const remaining = Math.max(0, monthlyGoal - currentValue);
-  const daysRemaining = countBusinessDays(referenceDate, monthEnd(referenceDate));
-  if (daysRemaining <= 0) return remaining;
-  return remaining / daysRemaining;
-};
+/** Meta diária de recuperação: o que falta dividido pelos dias operacionais restantes. */
+export const calculateDailyTarget = (monthlyGoal: number, currentValue: number, referenceDate: string) =>
+  calculateCatchUpDailyTarget(monthlyGoal, currentValue, referenceDate);
+
+/** Projeção do mês para a unidade, separando o realizado parcial do dia corrente. */
+export const calculateMonthProjection = (args: {
+  revenueMonth: number;
+  revenueDay: number;
+  referenceDate: string;
+  now?: Date;
+}): ProjectionResult =>
+  calculateProjection({
+    current: args.revenueMonth,
+    currentToday: args.revenueDay,
+    periodicity: 'monthly',
+    referenceDate: args.referenceDate,
+    now: args.now,
+  });
+
+export const operationalDaysSummary = (referenceDate: string) => ({
+  elapsed: operationalDaysClosedInMonth(referenceDate) + dayWeight(referenceDate),
+  total: operationalDaysInMonth(referenceDate),
+  remaining: operationalDaysRemainingInMonth(referenceDate),
+});
 
 export const resolveFreezeSource = (args: {
   hasSelectedVersion: boolean;
