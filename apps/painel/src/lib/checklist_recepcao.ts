@@ -317,6 +317,9 @@ export type RecepcaoChecklistPayload = {
     proposals: {
       openCount: number;
       openValue: number;
+      /** Janela considerada: dia 1 do mês da data de referência até ela. */
+      periodStart: string;
+      periodEnd: string;
       freshness: RecepcaoChecklistMetricFreshness;
     };
     absences: {
@@ -1501,14 +1504,20 @@ const loadTaskMetrics = async (db: DbInterface, leaderUserId: string | null, ref
   };
 };
 
-const loadProposalMetrics = async (db: DbInterface, unit: FinancialUnitDefinition) => {
-  const params: Array<string | number> = [];
+/**
+ * Orçamentos em aberto do mês corrente, do dia 1 até a data de referência.
+ * Sem esse recorte a contagem acumulava o ano inteiro e não dizia nada sobre o
+ * mês em curso. `feegow_proposals.date` é varchar ISO, então BETWEEN funciona.
+ */
+const loadProposalMetrics = async (db: DbInterface, referenceDate: string, unit: FinancialUnitDefinition) => {
+  const params: Array<string | number> = [monthStart(referenceDate), referenceDate];
   const unitSql = buildFinancialUnitClause('unit_name', unit.key, params);
   const rows = await db.query(
     `
       SELECT COUNT(*) AS total_count, COALESCE(SUM(total_value), 0) AS total_value
       FROM feegow_proposals
       WHERE (status IS NULL OR lower(status) NOT IN ${PROPOSAL_EXEC_STATUSES})
+        AND date BETWEEN ? AND ?
         ${unitSql}
     `,
     params,
@@ -1516,6 +1525,8 @@ const loadProposalMetrics = async (db: DbInterface, unit: FinancialUnitDefinitio
   return {
     openCount: toInt(rows[0]?.total_count),
     openValue: toNumber(rows[0]?.total_value),
+    periodStart: monthStart(referenceDate),
+    periodEnd: referenceDate,
   };
 };
 
@@ -1810,7 +1821,7 @@ export const buildRecepcaoChecklistPayload = async (
   const postConsultPromise = loadPostConsultMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
   const waitsPromise = loadWaitMetrics(actor.db, referenceDate, selectedUnit);
   const tasksPromise = loadTaskMetrics(actor.db, config?.leaderUserId || null, referenceDate);
-  const proposalsPromise = loadProposalMetrics(actor.db, selectedUnit);
+  const proposalsPromise = loadProposalMetrics(actor.db, referenceDate, selectedUnit);
   const absencesPromise = loadAbsenceMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
   const freshnessPromise = loadChecklistFreshness(actor.db, {
     referenceDate,
@@ -3332,7 +3343,7 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       {
         title: 'Orcamentos em aberto',
         value: String(payload.metrics.proposals.openCount),
-        helper: formatCurrency(payload.metrics.proposals.openValue),
+        helper: `${formatCurrency(payload.metrics.proposals.openValue)} • ${formatPdfDateBr(payload.metrics.proposals.periodStart)} a ${formatPdfDateBr(payload.metrics.proposals.periodEnd)}`,
         footer: formatPdfFreshness(payload.metrics.proposals.freshness),
       },
     ],

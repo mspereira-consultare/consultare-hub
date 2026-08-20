@@ -222,6 +222,8 @@ type ChecklistData = {
     proposals: {
       openCount: number;
       openValue: number;
+      periodStart: string;
+      periodEnd: string;
       freshness: MetricFreshness;
     };
     absences: {
@@ -1392,7 +1394,7 @@ export default function ChecklistRecepcaoPage() {
               <Card
                 title="Orçamentos em Aberto"
                 value={String(data.metrics.proposals.openCount)}
-                helper={formatCurrency(data.metrics.proposals.openValue)}
+                helper={`${formatCurrency(data.metrics.proposals.openValue)} • ${formatDateBr(data.metrics.proposals.periodStart)} a ${formatDateBr(data.metrics.proposals.periodEnd)}`}
                 icon={<FileText size={16} />}
                 freshness={data.metrics.proposals.freshness}
               />
