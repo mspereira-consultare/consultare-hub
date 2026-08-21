@@ -37,6 +37,8 @@ import {
   LIFE_INSURANCE_STATUSES,
   LOCKER_KEY_STATUSES,
   MARITAL_STATUSES,
+  RESOLVE_SAUDE_MONTHLY_AMOUNT,
+  RESOLVE_SAUDE_OPT_IN_OPTIONS,
   UNIFORM_DELIVERY_TYPES,
   UNIFORM_ITEM_STATUSES,
   type EmployeeDocumentTypeCode,
@@ -144,6 +146,7 @@ type EmployeeFormState = {
   transportVoucherMonthlyFixed: string;
   mealVoucherPerDay: string;
   totalpassDiscountFixed: string;
+  resolveSaudeOptedIn: boolean;
   otherFixedDiscountAmount: string;
   otherFixedDiscountDescription: string;
   payrollNotes: string;
@@ -187,6 +190,9 @@ type PendingUpload = {
   expiresAt: string;
   notes: string;
 };
+
+const formatResolveSaudeAmount = (optedIn: boolean) =>
+  (optedIn ? RESOLVE_SAUDE_MONTHLY_AMOUNT : 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 type ModalTab = 'cadastro' | 'beneficios' | 'uniforme' | 'recesso' | 'documentos' | 'portal';
 type PageSection = 'cadastro' | 'dashboard' | 'lifecycle' | 'qualityGoals';
@@ -291,6 +297,7 @@ const emptyEmployeeForm = (): EmployeeFormState => ({
   transportVoucherMonthlyFixed: '',
   mealVoucherPerDay: '',
   totalpassDiscountFixed: '',
+  resolveSaudeOptedIn: true,
   otherFixedDiscountAmount: '',
   otherFixedDiscountDescription: '',
   payrollNotes: '',
@@ -413,6 +420,7 @@ const mapEmployeeToForm = (employee: EmployeeListItem): EmployeeFormState => ({
   transportVoucherMonthlyFixed: employee.transportVoucherMonthlyFixed === null ? '' : String(employee.transportVoucherMonthlyFixed),
   mealVoucherPerDay: employee.mealVoucherPerDay === null ? '' : String(employee.mealVoucherPerDay),
   totalpassDiscountFixed: employee.totalpassDiscountFixed === null ? '' : String(employee.totalpassDiscountFixed),
+  resolveSaudeOptedIn: employee.resolveSaudeOptedIn !== false,
   otherFixedDiscountAmount: employee.otherFixedDiscountAmount === null ? '' : String(employee.otherFixedDiscountAmount),
   otherFixedDiscountDescription: employee.otherFixedDiscountDescription || '',
   payrollNotes: employee.payrollNotes || '',
@@ -1847,6 +1855,29 @@ export default function ColaboradoresPage() {
                         <div className="md:col-span-3">
                           <label className={fieldLabelClassName}>Desconto Totalpass (R$)</label>
                           <input disabled={currentEmployeeReadOnly} value={form.totalpassDiscountFixed} onChange={(event) => setForm((prev) => ({ ...prev, totalpassDiscountFixed: event.target.value }))} className={filterInputClassName} placeholder="0,00" />
+                        </div>
+                        <div className="md:col-span-3">
+                          <label className={fieldLabelClassName}>Resolvesaúde</label>
+                          <select
+                            disabled={currentEmployeeReadOnly}
+                            value={form.resolveSaudeOptedIn ? 'true' : 'false'}
+                            onChange={(event) => setForm((prev) => ({ ...prev, resolveSaudeOptedIn: event.target.value === 'true' }))}
+                            className={filterInputClassName}
+                          >
+                            {RESOLVE_SAUDE_OPT_IN_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                          </select>
+                        </div>
+                        <div className="md:col-span-3">
+                          <label className={fieldLabelClassName}>Resolvesaúde (R$)</label>
+                          <input
+                            disabled
+                            readOnly
+                            value={formatResolveSaudeAmount(form.resolveSaudeOptedIn)}
+                            className={filterInputClassName}
+                          />
+                          <p className="mt-1 text-[11px] text-slate-500">
+                            Valor padrão do benefício, descontado em folha apenas de quem optou.
+                          </p>
                         </div>
                         <div className="md:col-span-3">
                           <label className={fieldLabelClassName}>Outro desconto fixo (R$)</label>

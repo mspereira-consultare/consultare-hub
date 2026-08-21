@@ -41,19 +41,20 @@ export function PayrollPreviewTable({
               <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Faltas (dias)" description="Quantidade de faltas consideradas no fechamento. A observação detalha as datas quando houver." source="Sólides + cálculo da folha" align="center" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Outros Descontos (R$)" description="Soma dos descontos que não têm coluna própria no modelo contábil." source="Painel + cálculo da folha" formula="Outros descontos fixos + D.V.T. + atraso + ajuste manual negativo" align="right" /></th>
               <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Desc. Totalpass (R$)" description="Desconto de Totalpass exportado separadamente para a contabilidade." source="Painel" align="right" /></th>
+              <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Resolvesaúde (R$)" description="Desconto mensal do Resolvesaúde exportado em coluna própria para a contabilidade. Aplicado apenas a quem optou pelo benefício no cadastro." source="Painel" align="right" /></th>
               <th className="px-3 py-3 text-left"><PayrollColumnTooltip label="Observação" description="Descrição contábil dos descontos aplicados, das faltas consideradas e de observações relevantes da linha." source="Painel + cálculo da folha" /></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={14} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={15} className="px-4 py-16 text-center text-slate-500">
                   Carregando prévia da planilha...
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={14} className="px-4 py-16 text-center text-slate-500">
+                <td colSpan={15} className="px-4 py-16 text-center text-slate-500">
                   Nenhuma linha disponível para a competência atual.
                 </td>
               </tr>
@@ -82,6 +83,7 @@ export function PayrollPreviewTable({
                   <td className="px-3 py-3 text-center">{row.absenceDays === null ? '-' : row.absenceDays}</td>
                   <td className="px-3 py-3 text-right">{row.otherDiscountsExport === null ? '-' : formatMoney(row.otherDiscountsExport)}</td>
                   <td className="px-3 py-3 text-right">{row.totalpassDiscountExport === null ? '-' : formatMoney(row.totalpassDiscountExport)}</td>
+                  <td className="px-3 py-3 text-right">{row.resolveSaudeDiscountExport === null ? '-' : formatMoney(row.resolveSaudeDiscountExport)}</td>
                   <td className="px-3 py-3 text-slate-600">{row.exportObservation || '-'}</td>
                 </tr>
               ))

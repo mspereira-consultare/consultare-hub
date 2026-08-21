@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto';
 import { ensureRuntimeSchemaBootstrap, runInTransaction, type DbInterface } from '@/lib/db';
 import { ensureEmployeesTables } from '@/lib/colaboradores/repository';
+import { RESOLVE_SAUDE_MONTHLY_AMOUNT } from '@/lib/colaboradores/constants';
 import {
   ensurePointTables,
   getPointHeartbeat,
@@ -733,6 +734,7 @@ const mapLine = (row: any): PayrollLine => {
     vtProvisioned: toNumber(row.vt_provisioned),
     vtDiscount: toNumber(row.vt_discount),
     totalpassDiscount: toNumber(row.totalpass_discount),
+    resolveSaudeDiscount: toNumber(row.resolve_saude_discount),
     otherFixedDiscount: toNumber(row.other_fixed_discount),
     otherFixedDiscountDescription: clean(row.other_fixed_discount_description) || null,
     adjustmentsAmount: toNumber(row.adjustments_amount),
@@ -773,6 +775,7 @@ type EmployeePayrollSource = {
   transportVoucherMode: PayrollTransportVoucherMode;
   transportVoucherMonthlyFixed: number;
   totalpassDiscountFixed: number;
+  resolveSaudeOptedIn: boolean;
   otherFixedDiscountAmount: number;
   otherFixedDiscountDescription: string | null;
   payrollNotes: string | null;
@@ -805,6 +808,7 @@ const mapEmployeePayrollSource = (row: any): EmployeePayrollSource => ({
   transportVoucherMode: upper(row.transport_voucher_mode || 'PER_DAY') as PayrollTransportVoucherMode,
   transportVoucherMonthlyFixed: toNumber(row.transport_voucher_monthly_fixed),
   totalpassDiscountFixed: toNumber(row.totalpass_discount_fixed),
+  resolveSaudeOptedIn: row.resolve_saude_opted_in === null || row.resolve_saude_opted_in === undefined ? true : Number(row.resolve_saude_opted_in) === 1,
   otherFixedDiscountAmount: toNumber(row.other_fixed_discount_amount),
   otherFixedDiscountDescription: clean(row.other_fixed_discount_description) || null,
   payrollNotes: clean(row.payroll_notes) || null,
@@ -902,10 +906,14 @@ const resolveStaleCalculationCodes = (
   const changedMode = snapshotMode !== currentMode;
   const changedPerDay = !sameMoney(snapshotPerDay, employee.transportVoucherPerDay);
   const changedMonthlyFixed = !sameMoney(snapshotMonthlyFixed, employee.transportVoucherMonthlyFixed);
+  const snapshotResolveSaudeOptedIn = snapshot.resolveSaudeOptedIn === undefined ? null : Boolean(snapshot.resolveSaudeOptedIn);
   const calculatedAt = getPayrollLineCalculatedAt(line);
   const codes: PayrollLineStaleCode[] = [];
   if (changedMode || changedPerDay || changedMonthlyFixed) {
     codes.push('VT_RULE_UPDATED_AFTER_GENERATION');
+  }
+  if (snapshotResolveSaudeOptedIn !== null && snapshotResolveSaudeOptedIn !== employee.resolveSaudeOptedIn) {
+    codes.push('RESOLVE_SAUDE_RULE_UPDATED_AFTER_GENERATION');
   }
   if (latestPointOverrideAt && calculatedAt && latestPointOverrideAt > calculatedAt) {
     codes.push('POINT_OVERRIDE_UPDATED_AFTER_GENERATION');
@@ -1303,6 +1311,7 @@ export const ensurePayrollTables = async (db: DbInterface) => {
       vt_provisioned DECIMAL(12,2) NOT NULL DEFAULT 0,
       vt_discount DECIMAL(12,2) NOT NULL DEFAULT 0,
       totalpass_discount DECIMAL(12,2) NOT NULL DEFAULT 0,
+      resolve_saude_discount DECIMAL(12,2) NOT NULL DEFAULT 0,
       other_fixed_discount DECIMAL(12,2) NOT NULL DEFAULT 0,
       other_fixed_discount_description LONGTEXT NULL,
       adjustments_amount DECIMAL(12,2) NOT NULL DEFAULT 0,
@@ -1376,11 +1385,13 @@ export const ensurePayrollTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN transport_voucher_mode VARCHAR(20) NOT NULL DEFAULT 'PER_DAY'`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN transport_voucher_monthly_fixed DECIMAL(12,2) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN totalpass_discount_fixed DECIMAL(12,2) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN resolve_saude_opted_in INTEGER NOT NULL DEFAULT 1`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN other_fixed_discount_amount DECIMAL(12,2) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN other_fixed_discount_description TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN payroll_notes TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN solides_employee_id VARCHAR(80) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN solides_external_id VARCHAR(120) NULL`);
+  await safeAddColumn(db, `ALTER TABLE payroll_lines ADD COLUMN resolve_saude_discount DECIMAL(12,2) NOT NULL DEFAULT 0`);
   await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN solides_employee_id VARCHAR(80) NULL`);
   await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN planned_minutes INTEGER NOT NULL DEFAULT 0`);
   await safeAddColumn(db, `ALTER TABLE payroll_point_daily ADD COLUMN day_balance_minutes INTEGER NOT NULL DEFAULT 0`);
@@ -2643,7 +2654,7 @@ const evaluatePayrollApprovalReadiness = (
         code: 'BENEFIT_RULES_UPDATED_AFTER_GENERATION',
         severity: 'BLOCKING',
         title: 'Linhas exigem recálculo antes da aprovação',
-        description: `${staleLines.length} linha(s) ficaram desatualizadas após mudança no cadastro de VT, atualização da base operacional do ponto e/ou alteração no abatimento de atraso com banco. Recalcule essas linhas antes de aprovar a competência.`,
+        description: `${staleLines.length} linha(s) ficaram desatualizadas após mudança no cadastro de VT ou Resolvesaúde, atualização da base operacional do ponto e/ou alteração no abatimento de atraso com banco. Recalcule essas linhas antes de aprovar a competência.`,
         count: staleLines.length,
         sampleEmployees: staleLines.map((line) => ({
           employeeId: line.employeeId,
@@ -3193,6 +3204,7 @@ const buildLineRecord = (
   const vtDiscountCap = transportVoucherDiscountCap;
   const vtDiscount = transportVoucherDiscountApplied;
   const totalpassDiscount = hasPendingRegistration ? 0 : roundMoney(employee.totalpassDiscountFixed || 0);
+  const resolveSaudeDiscount = hasPendingRegistration || !employee.resolveSaudeOptedIn ? 0 : roundMoney(RESOLVE_SAUDE_MONTHLY_AMOUNT);
   const otherFixedDiscount = hasPendingRegistration ? 0 : roundMoney(employee.otherFixedDiscountAmount || 0);
   const adjustmentsAmount = roundMoney(existingLine?.adjustmentsAmount || 0);
   const primaryHoursBalance = selectPrimaryHoursBalance(hoursBalanceRows);
@@ -3207,7 +3219,9 @@ const buildLineRecord = (
   const lateDiscount = lateBankCompensationValues.lateDiscountFinal;
 
   let totalProvents = hasPendingRegistration ? 0 : employee.salaryAmount + insalubrityAmount;
-  let totalDiscounts = hasPendingRegistration ? 0 : absenceDiscount + lateDiscount + vtDiscount + totalpassDiscount + otherFixedDiscount;
+  let totalDiscounts = hasPendingRegistration
+    ? 0
+    : absenceDiscount + lateDiscount + vtDiscount + totalpassDiscount + resolveSaudeDiscount + otherFixedDiscount;
   if (!hasPendingRegistration) {
     if (adjustmentsAmount >= 0) totalProvents += adjustmentsAmount;
     else totalDiscounts += Math.abs(adjustmentsAmount);
@@ -3247,6 +3261,7 @@ const buildLineRecord = (
     vtProvisioned,
     vtDiscount,
     totalpassDiscount,
+    resolveSaudeDiscount,
     otherFixedDiscount,
     otherFixedDiscountDescription: employee.otherFixedDiscountDescription,
     adjustmentsAmount,
@@ -3277,6 +3292,7 @@ const buildLineRecord = (
       transportVoucherPerDay: employee.transportVoucherPerDay,
       transportVoucherMonthlyFixed: employee.transportVoucherMonthlyFixed,
       totalpassDiscountFixed: employee.totalpassDiscountFixed,
+      resolveSaudeOptedIn: employee.resolveSaudeOptedIn,
       otherFixedDiscountAmount: employee.otherFixedDiscountAmount,
       otherFixedDiscountDescription: employee.otherFixedDiscountDescription,
       payrollNotes: employee.payrollNotes,
@@ -3320,6 +3336,8 @@ const buildLineRecord = (
         vtProvisioned,
         vtDiscountCap,
         vtDiscount,
+        resolveSaudeOptedIn: employee.resolveSaudeOptedIn,
+        resolveSaudeDiscount,
         totalpassDiscount,
         otherFixedDiscount,
         adjustmentsAmount,
@@ -3360,10 +3378,10 @@ const persistPayrollLineRecord = async (db: DbInterface, line: PayrollLine) => {
       id, period_id, employee_id, comparison_key, employee_name, employee_cpf, center_cost, unit_name,
       contract_type, salary_base, insalubrity_percent, insalubrity_amount, days_worked, absences_count,
       absence_discount, late_minutes, late_discount, vt_provisioned, vt_discount, totalpass_discount,
-      other_fixed_discount, other_fixed_discount_description, adjustments_amount, adjustments_notes,
+      resolve_saude_discount, other_fixed_discount, other_fixed_discount_description, adjustments_amount, adjustments_notes,
       total_provents, total_discounts, net_operational, line_status, payroll_notes, pending_data_codes_json,
       employee_snapshot_json, calculation_memory_json, comparison_status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       line.id,
       line.periodId,
@@ -3385,6 +3403,7 @@ const persistPayrollLineRecord = async (db: DbInterface, line: PayrollLine) => {
       line.vtProvisioned,
       line.vtDiscount,
       line.totalpassDiscount,
+      line.resolveSaudeDiscount,
       line.otherFixedDiscount,
       line.otherFixedDiscountDescription,
       line.adjustmentsAmount,
@@ -4113,6 +4132,7 @@ type PayrollLineSnapshot = Partial<{
   transportVoucherMonthlyFixed: number;
   insalubrityPercent: number;
   totalpassDiscountFixed: number;
+  resolveSaudeOptedIn: boolean;
   otherFixedDiscountAmount: number;
   otherFixedDiscountDescription: string | null;
 }>;
@@ -4279,7 +4299,6 @@ const buildPayrollExportObservation = (line: PayrollLine, occurrences: PayrollOc
   } else if (Number(line.otherFixedDiscount || 0) > 0) {
     parts.push(`Outros descontos fixos: ${formatMoney(line.otherFixedDiscount)}`);
   }
-  if (Number(line.vtDiscount || 0) > 0) parts.push(`D.V.T.: ${formatMoney(line.vtDiscount)}`);
   if (Number(line.lateDiscount || 0) > 0) parts.push(`Atrasos: ${formatMoney(line.lateDiscount)}`);
   if (manualNegativeAdjustment > 0) parts.push(`Ajuste manual negativo: ${formatMoney(manualNegativeAdjustment)}`);
   if (clean(line.payrollNotes)) parts.push(clean(line.payrollNotes));
@@ -4438,6 +4457,8 @@ const buildPayrollPreviewRow = (
     otherDiscountsExport,
     totalpassDiscount: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.totalpassDiscount),
     totalpassDiscountExport: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.totalpassDiscount),
+    resolveSaudeDiscount: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.resolveSaudeDiscount),
+    resolveSaudeDiscountExport: missingSalary || missingSolidesLink ? null : nullableSheetMoney(line.resolveSaudeDiscount),
     adjustmentsAmount: roundMoney(line.adjustmentsAmount),
     observation: exportObservation,
     exportObservation,
@@ -4516,8 +4537,11 @@ const buildPayrollBenefitsSummary = (rows: PayrollBenefitRow[]): PayrollBenefits
   const cashTransportBenefitTotal = roundMoney(rows.reduce((sum, row) => sum + row.cashTransportBenefitAmount, 0));
   const transportVoucherPayrollDiscountTotal = roundMoney(rows.reduce((sum, row) => sum + row.transportVoucherPayrollDiscount, 0));
   const totalpassPayrollDiscountTotal = roundMoney(rows.reduce((sum, row) => sum + row.totalpassPayrollDiscount, 0));
+  const resolveSaudePayrollDiscountTotal = roundMoney(rows.reduce((sum, row) => sum + row.resolveSaudePayrollDiscount, 0));
   const otherPayrollDiscountTotal = roundMoney(rows.reduce((sum, row) => sum + row.otherPayrollDiscount, 0));
-  const payrollDiscountsTotal = roundMoney(transportVoucherPayrollDiscountTotal + totalpassPayrollDiscountTotal + otherPayrollDiscountTotal);
+  const payrollDiscountsTotal = roundMoney(
+    transportVoucherPayrollDiscountTotal + totalpassPayrollDiscountTotal + resolveSaudePayrollDiscountTotal + otherPayrollDiscountTotal,
+  );
 
   return {
     totalEmployees: rows.length,
@@ -4528,6 +4552,7 @@ const buildPayrollBenefitsSummary = (rows: PayrollBenefitRow[]): PayrollBenefits
     cashTransportBenefitTotal,
     transportVoucherPayrollDiscountTotal,
     totalpassPayrollDiscountTotal,
+    resolveSaudePayrollDiscountTotal,
     otherPayrollDiscountTotal,
     payrollDiscountsTotal,
     companyProvisionTotal: roundMoney(mealVoucherPurchaseTotal + cashTransportBenefitTotal),
@@ -4572,8 +4597,11 @@ const buildPayrollBenefitRow = (
   const cashTransportBenefitAmount = roundMoney(line.vtProvisioned);
   const transportVoucherPayrollDiscount = roundMoney(line.vtDiscount);
   const totalpassPayrollDiscount = roundMoney(line.totalpassDiscount);
+  const resolveSaudePayrollDiscount = roundMoney(line.resolveSaudeDiscount);
   const otherPayrollDiscount = roundMoney(line.otherFixedDiscount);
-  const payrollDiscountsTotal = roundMoney(transportVoucherPayrollDiscount + totalpassPayrollDiscount + otherPayrollDiscount);
+  const payrollDiscountsTotal = roundMoney(
+    transportVoucherPayrollDiscount + totalpassPayrollDiscount + resolveSaudePayrollDiscount + otherPayrollDiscount,
+  );
 
   const issues: PayrollBenefitIssue[] = [];
 
@@ -4662,6 +4690,8 @@ const buildPayrollBenefitRow = (
     transportVoucherPayrollDiscount,
     totalpassDiscount: totalpassPayrollDiscount,
     totalpassPayrollDiscount,
+    resolveSaudeDiscount: resolveSaudePayrollDiscount,
+    resolveSaudePayrollDiscount,
     otherFixedDiscount: otherPayrollDiscount,
     otherPayrollDiscount,
     payrollDiscountsTotal,
@@ -5103,7 +5133,13 @@ export const patchPayrollLine = async (db: DbInterface, lineId: string, input: P
   }
 
   let totalProvents = detail.line.salaryBase + detail.line.insalubrityAmount;
-  let totalDiscounts = detail.line.absenceDiscount + detail.line.lateDiscount + detail.line.vtDiscount + detail.line.totalpassDiscount + detail.line.otherFixedDiscount;
+  let totalDiscounts =
+    detail.line.absenceDiscount +
+    detail.line.lateDiscount +
+    detail.line.vtDiscount +
+    detail.line.totalpassDiscount +
+    detail.line.resolveSaudeDiscount +
+    detail.line.otherFixedDiscount;
   if (nextAdjustmentsAmount >= 0) totalProvents += nextAdjustmentsAmount;
   else totalDiscounts += Math.abs(nextAdjustmentsAmount);
 

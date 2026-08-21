@@ -234,6 +234,7 @@ export type PayrollLine = {
   vtProvisioned: number;
   vtDiscount: number;
   totalpassDiscount: number;
+  resolveSaudeDiscount: number;
   otherFixedDiscount: number;
   otherFixedDiscountDescription: string | null;
   adjustmentsAmount: number;
@@ -273,6 +274,8 @@ export type PayrollPreviewRow = {
   otherDiscountsExport: number | null;
   totalpassDiscount: number | null;
   totalpassDiscountExport: number | null;
+  resolveSaudeDiscount: number | null;
+  resolveSaudeDiscountExport: number | null;
   adjustmentsAmount: number;
   observation: string | null;
   exportObservation: string | null;
@@ -395,6 +398,8 @@ export type PayrollBenefitRow = {
   transportVoucherPayrollDiscount: number;
   totalpassDiscount: number;
   totalpassPayrollDiscount: number;
+  resolveSaudeDiscount: number;
+  resolveSaudePayrollDiscount: number;
   otherFixedDiscount: number;
   otherPayrollDiscount: number;
   payrollDiscountsTotal: number;
@@ -422,6 +427,7 @@ export type PayrollBenefitsSummary = {
   cashTransportBenefitTotal: number;
   transportVoucherPayrollDiscountTotal: number;
   totalpassPayrollDiscountTotal: number;
+  resolveSaudePayrollDiscountTotal: number;
   otherPayrollDiscountTotal: number;
   payrollDiscountsTotal: number;
   companyProvisionTotal: number;
@@ -463,6 +469,7 @@ export type PayrollEligibilitySummary = {
 export type PayrollPendingDataCode = 'MISSING_SALARY' | 'MISSING_SOLIDES_LINK';
 export type PayrollLineStaleCode =
   | 'VT_RULE_UPDATED_AFTER_GENERATION'
+  | 'RESOLVE_SAUDE_RULE_UPDATED_AFTER_GENERATION'
   | 'POINT_OVERRIDE_UPDATED_AFTER_GENERATION'
   | 'LATE_BANK_COMPENSATION_OUTDATED';
 

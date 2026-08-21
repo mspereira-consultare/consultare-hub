@@ -103,6 +103,12 @@ const bool = (value: any) =>
   String(value) === '1' ||
   String(value ?? '').toLowerCase() === 'true';
 
+const normalizeResolveSaudeOptedIn = (payload: any) => {
+  const raw = payload?.resolveSaudeOptedIn ?? payload?.resolve_saude_opted_in;
+  if (raw === undefined || raw === null || String(raw).trim() === '') return true;
+  return bool(raw);
+};
+
 const allowedUnits = new Set(EMPLOYEE_UNITS);
 const allowedDocTypes = new Set(EMPLOYEE_DOCUMENT_TYPES.map((item) => item.code));
 const allowedRegimes = new Set(EMPLOYMENT_REGIMES.map((item) => item.value));
@@ -328,6 +334,7 @@ const mapEmployee = (row: any): Employee => ({
   transportVoucherMonthlyFixed: row.transport_voucher_monthly_fixed === null || row.transport_voucher_monthly_fixed === undefined ? null : Number(row.transport_voucher_monthly_fixed),
   mealVoucherPerDay: row.meal_voucher_per_day === null || row.meal_voucher_per_day === undefined ? null : Number(row.meal_voucher_per_day),
   totalpassDiscountFixed: row.totalpass_discount_fixed === null || row.totalpass_discount_fixed === undefined ? null : Number(row.totalpass_discount_fixed),
+  resolveSaudeOptedIn: row.resolve_saude_opted_in === null || row.resolve_saude_opted_in === undefined ? true : bool(row.resolve_saude_opted_in),
   otherFixedDiscountAmount: row.other_fixed_discount_amount === null || row.other_fixed_discount_amount === undefined ? null : Number(row.other_fixed_discount_amount),
   otherFixedDiscountDescription: clean(row.other_fixed_discount_description) || null,
   payrollNotes: clean(row.payroll_notes) || null,
@@ -707,6 +714,7 @@ const normalizeInput = (payload: any): EmployeeInput => {
     transportVoucherMonthlyFixed: toMoneyNumber(payload?.transportVoucherMonthlyFixed || payload?.transport_voucher_monthly_fixed),
     mealVoucherPerDay: toMoneyNumber(payload?.mealVoucherPerDay || payload?.meal_voucher_per_day),
     totalpassDiscountFixed: toMoneyNumber(payload?.totalpassDiscountFixed || payload?.totalpass_discount_fixed),
+    resolveSaudeOptedIn: normalizeResolveSaudeOptedIn(payload),
     otherFixedDiscountAmount: toMoneyNumber(payload?.otherFixedDiscountAmount || payload?.other_fixed_discount_amount),
     otherFixedDiscountDescription: clean(payload?.otherFixedDiscountDescription || payload?.other_fixed_discount_description) || null,
     payrollNotes: clean(payload?.payrollNotes || payload?.payroll_notes) || null,
@@ -853,6 +861,7 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
       transport_voucher_monthly_fixed DECIMAL(12,2) NULL,
       meal_voucher_per_day DECIMAL(12,2) NULL,
       totalpass_discount_fixed DECIMAL(12,2) NULL,
+      resolve_saude_opted_in INTEGER NOT NULL DEFAULT 1,
       other_fixed_discount_amount DECIMAL(12,2) NULL,
       other_fixed_discount_description TEXT NULL,
       payroll_notes TEXT NULL,
@@ -1044,6 +1053,7 @@ export const ensureEmployeesTables = async (db: DbInterface) => {
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN transport_voucher_mode VARCHAR(20) NOT NULL DEFAULT 'PER_DAY'`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN transport_voucher_monthly_fixed DECIMAL(12,2) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN totalpass_discount_fixed DECIMAL(12,2) NULL`);
+  await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN resolve_saude_opted_in INTEGER NOT NULL DEFAULT 1`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN other_fixed_discount_amount DECIMAL(12,2) NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN other_fixed_discount_description TEXT NULL`);
   await safeAddColumn(db, `ALTER TABLE employees ADD COLUMN payroll_notes TEXT NULL`);
@@ -1630,10 +1640,10 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
         department_catalog_id, job_title_catalog_id,
         supervisor_name, cost_center, insalubrity_percent, transport_voucher_per_day,
         transport_voucher_mode, transport_voucher_monthly_fixed, meal_voucher_per_day,
-        totalpass_discount_fixed, other_fixed_discount_amount, other_fixed_discount_description,
+        totalpass_discount_fixed, resolve_saude_opted_in, other_fixed_discount_amount, other_fixed_discount_description,
         payroll_notes, life_insurance_status, marital_status, has_children, children_count,
         bank_name, bank_agency, bank_account, pix_key, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         id,
@@ -1680,6 +1690,7 @@ export const createEmployee = async (db: DbInterface, payload: any, actorUserId:
         input.transportVoucherMonthlyFixed,
         input.mealVoucherPerDay,
         input.totalpassDiscountFixed,
+        input.resolveSaudeOptedIn === false ? 0 : 1,
         input.otherFixedDiscountAmount,
         input.otherFixedDiscountDescription,
         input.payrollNotes,
@@ -1776,6 +1787,7 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
         transport_voucher_monthly_fixed = ?,
         meal_voucher_per_day = ?,
         totalpass_discount_fixed = ?,
+        resolve_saude_opted_in = ?,
         other_fixed_discount_amount = ?,
         other_fixed_discount_description = ?,
         payroll_notes = ?,
@@ -1835,6 +1847,7 @@ export const updateEmployee = async (db: DbInterface, employeeId: string, payloa
         input.transportVoucherMonthlyFixed,
         input.mealVoucherPerDay,
         input.totalpassDiscountFixed,
+        input.resolveSaudeOptedIn === false ? 0 : 1,
         input.otherFixedDiscountAmount,
         input.otherFixedDiscountDescription,
         input.payrollNotes,

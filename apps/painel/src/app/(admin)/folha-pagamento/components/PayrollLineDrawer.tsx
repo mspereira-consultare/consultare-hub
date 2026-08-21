@@ -203,7 +203,7 @@ export function PayrollLineDrawer({
             <section className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <div className="font-semibold">Linha desatualizada após mudança na base operacional</div>
               <div className="mt-1 text-amber-800">
-                O cadastro de VT, a base sincronizada do ponto e/ou o abatimento de atraso com banco mudaram depois que a linha foi gerada. Use <strong>Recalcular selecionados</strong> ou gere a folha novamente antes de aprovar esta linha.
+                O cadastro de VT ou Resolvesaúde, a base sincronizada do ponto e/ou o abatimento de atraso com banco mudaram depois que a linha foi gerada. Use <strong>Recalcular selecionados</strong> ou gere a folha novamente antes de aprovar esta linha.
               </div>
               {pointAdjustmentHref ? (
                 <div className="mt-3">
@@ -291,6 +291,7 @@ export function PayrollLineDrawer({
                   <Info label="VT por dia" value={preview.vtPerDay === null ? '-' : formatMoney(preview.vtPerDay)} />
                   <Info label="VT total no mês" value={preview.vtMonth === null ? '-' : formatMoney(preview.vtMonth)} />
                   <Info label="D.V.T." value={preview.vtDiscount === null ? '-' : formatMoney(preview.vtDiscount)} />
+                  <Info label="Resolvesaúde" value={preview.resolveSaudeDiscount === null ? '-' : formatMoney(preview.resolveSaudeDiscount)} />
                   <Info label="Insalubridade" value={formatSheetInsalubrity(preview.insalubrityValue)} />
                   <div className="sm:col-span-2">
                     <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-5 text-slate-600">

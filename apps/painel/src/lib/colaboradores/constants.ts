@@ -87,6 +87,17 @@ export const MARITAL_STATUSES: Array<{ value: MaritalStatus; label: string }> = 
   { value: 'VIUVO', label: 'Viúvo(a)' },
 ];
 
+/**
+ * Valor mensal do benefício Resolvesaúde descontado em folha de quem optou pelo plano.
+ * Fonte única compartilhada entre o cadastro do colaborador e o cálculo da folha.
+ */
+export const RESOLVE_SAUDE_MONTHLY_AMOUNT = 1;
+
+export const RESOLVE_SAUDE_OPT_IN_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'true', label: 'Optou pelo benefício' },
+  { value: 'false', label: 'Não optou' },
+];
+
 export const LIFE_INSURANCE_STATUSES: Array<{ value: LifeInsuranceStatus; label: string }> = [
   { value: 'ATIVO', label: 'Ativo' },
   { value: 'INATIVO', label: 'Inativo' },

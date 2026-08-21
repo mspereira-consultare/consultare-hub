@@ -33,7 +33,7 @@ const summaryCards = [
   {
     key: 'payrollDiscountsTotal',
     title: 'Descontos em folha',
-    helper: 'D.V.T., Totalpass e descontos fixos.',
+    helper: 'D.V.T., Totalpass, Resolvesaúde e descontos fixos.',
     icon: Landmark,
     format: (summary: PayrollBenefitsSummary) => formatMoney(summary.payrollDiscountsTotal),
     tone: 'slate',
@@ -82,6 +82,7 @@ export function PayrollBenefitsPanel({
     cashTransportBenefitTotal: 0,
     transportVoucherPayrollDiscountTotal: 0,
     totalpassPayrollDiscountTotal: 0,
+    resolveSaudePayrollDiscountTotal: 0,
     otherPayrollDiscountTotal: 0,
     payrollDiscountsTotal: 0,
     companyProvisionTotal: 0,
@@ -140,7 +141,7 @@ export function PayrollBenefitsPanel({
           <MetricLine
             label="Total descontado em folha"
             value={formatMoney(data.payrollDiscountsTotal)}
-            helper={`D.V.T. ${formatMoney(data.transportVoucherPayrollDiscountTotal)} | Totalpass ${formatMoney(data.totalpassPayrollDiscountTotal)} | Outros ${formatMoney(data.otherPayrollDiscountTotal)}`}
+            helper={`D.V.T. ${formatMoney(data.transportVoucherPayrollDiscountTotal)} | Totalpass ${formatMoney(data.totalpassPayrollDiscountTotal)} | Resolvesaúde ${formatMoney(data.resolveSaudePayrollDiscountTotal)} | Outros ${formatMoney(data.otherPayrollDiscountTotal)}`}
           />
           <MetricLine
             label="Impacto líquido do VT"
@@ -163,7 +164,7 @@ export function PayrollBenefitsPanel({
                 <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Colab." description="Quantidade de colaboradores elegíveis nesse centro de custo." source="Cálculo da folha" align="center" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VR a comprar" description="Total estimado para compra ou carga de vale-refeição." source="Painel + cálculo da folha" formula="VR por dia x dias elegíveis" align="right" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT pago em folha" description="Total de VT provisionado para pagamento em dinheiro na competência." source="Painel + cálculo da folha" formula="Mensal fixo ou VT por dia x dias elegíveis" align="right" /></th>
-                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Descontos em folha" description="Soma dos descontos de benefícios lançados na folha." source="Cálculo da folha" formula="D.V.T. + Totalpass + outros descontos fixos" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Descontos em folha" description="Soma dos descontos de benefícios lançados na folha." source="Cálculo da folha" formula="D.V.T. + Totalpass + Resolvesaúde + outros descontos fixos" align="right" /></th>
                 <th className="px-3 py-3 text-center"><PayrollColumnTooltip label="Pendências" description="Quantidade de colaboradores com cadastro incompleto nesse centro de custo." source="Painel" align="center" /></th>
               </tr>
             </thead>
@@ -219,6 +220,7 @@ export function PayrollBenefitsPanel({
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="VT pago em folha" description="Valor de VT provisionado para pagamento em dinheiro junto à folha, respeitando apenas os dias elegíveis de benefício." source="Cálculo da folha" align="right" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="D.V.T." description="Desconto efetivo de vale-transporte aplicado na folha." source="Cálculo da folha" formula="Menor valor entre VT provisionado e teto percentual da competência" align="right" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Desconto Totalpass" description="Desconto fixo de Totalpass lançado na linha." source="Painel" align="right" /></th>
+                <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Resolvesaúde" description="Desconto mensal do Resolvesaúde. Aplicado apenas a quem optou pelo benefício no cadastro do colaborador." source="Painel" align="right" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Outros desc." description="Outros descontos fixos cadastrados para o colaborador." source="Painel" align="right" /></th>
                 <th className="px-3 py-3 text-right"><PayrollColumnTooltip label="Total desc." description="Total de descontos de benefícios na competência." source="Cálculo da folha" align="right" /></th>
                 <th className="w-[280px] px-3 py-3 text-left whitespace-nowrap"><PayrollColumnTooltip label="Status e pendências" description="Mostra se a memória mensal está pronta, exige atenção ou possui cadastro incompleto." source="Painel + cálculo da folha" /></th>
@@ -227,13 +229,13 @@ export function PayrollBenefitsPanel({
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={15} className="px-4 py-16 text-center text-slate-500">
+                  <td colSpan={16} className="px-4 py-16 text-center text-slate-500">
                     Carregando memória mensal de benefícios...
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="px-4 py-16 text-center text-slate-500">
+                  <td colSpan={16} className="px-4 py-16 text-center text-slate-500">
                     Nenhum benefício consolidado para a competência atual. Gere a folha após validar o ponto para montar a memória mensal desta aba.
                   </td>
                 </tr>
@@ -264,6 +266,7 @@ export function PayrollBenefitsPanel({
                     <td className="px-3 py-3 text-right">{formatMoney(row.cashTransportBenefitAmount)}</td>
                     <td className="px-3 py-3 text-right">{formatMoney(row.transportVoucherPayrollDiscount)}</td>
                     <td className="px-3 py-3 text-right">{formatMoney(row.totalpassPayrollDiscount)}</td>
+                    <td className="px-3 py-3 text-right">{formatMoney(row.resolveSaudePayrollDiscount)}</td>
                     <td className="px-3 py-3 text-right">{formatMoney(row.otherPayrollDiscount)}</td>
                     <td className="px-3 py-3 text-right">{formatMoney(row.payrollDiscountsTotal)}</td>
                     <td className="px-3 py-3 align-middle">

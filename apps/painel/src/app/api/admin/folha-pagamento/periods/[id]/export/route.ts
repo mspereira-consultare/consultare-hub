@@ -160,6 +160,7 @@ export async function GET(request: Request, context: ParamsContext) {
       { header: 'Faltas\n(dias)', key: 'absenceDays', width: 9.5 },
       { header: 'Outros Descontos\n(R$)', key: 'otherDiscountsExport', width: 10.5 },
       { header: 'Desc. Totalpass\n(R$)', key: 'totalpassDiscountExport', width: 27.5 },
+      { header: 'Resolvesaúde\n(R$)', key: 'resolveSaudeDiscountExport', width: 13.5 },
       { header: 'Observação', key: 'observation', width: 30.5 },
     ] as const;
 
@@ -175,8 +176,8 @@ export async function GET(request: Request, context: ParamsContext) {
 
     mainSheet.addRow([`FOLHA DE PAGAMENTO – ${headerMonth} | Período: ${periodLabel} | Empresa: ${companyName}`]);
     mainSheet.addRow([`Dias úteis (2ª-Sáb) em ${headerMonthSlash}: ${businessDays} dias${holidaysLabel} | VT base: ${vtBaseLabel}`]);
-    mainSheet.mergeCells('A1:M1');
-    mainSheet.mergeCells('A2:M2');
+    mainSheet.mergeCells('A1:O1');
+    mainSheet.mergeCells('A2:O2');
     mainSheet.getCell('A1').font = { bold: true, color: { argb: 'FF17407E' } };
     mainSheet.getCell('A1').alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
     mainSheet.getCell('A2').font = { color: { argb: 'FF475569' } };
@@ -188,7 +189,7 @@ export async function GET(request: Request, context: ParamsContext) {
     mainSheet.getRow(3).font = { bold: true, color: { argb: 'FFFFFFFF' } };
     mainSheet.getRow(3).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF17407E' } };
     mainSheet.getRow(3).alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
-    mainSheet.getColumn(14).alignment = { vertical: 'top', wrapText: true };
+    mainSheet.getColumn(15).alignment = { vertical: 'top', wrapText: true };
 
     for (const row of payload.previewRows) {
       mainSheet.addRow({
@@ -205,12 +206,13 @@ export async function GET(request: Request, context: ParamsContext) {
         absenceDays: row.absenceDays ?? null,
         otherDiscountsExport: row.otherDiscountsExport ?? null,
         totalpassDiscountExport: row.totalpassDiscountExport ?? null,
+        resolveSaudeDiscountExport: row.resolveSaudeDiscountExport ?? null,
         observation: row.exportObservation || '',
       });
     }
 
     for (let rowIndex = 4; rowIndex <= mainSheet.rowCount; rowIndex += 1) {
-      setCurrency(mainSheet, rowIndex, [7, 9, 10, 12, 13]);
+      setCurrency(mainSheet, rowIndex, [7, 9, 10, 12, 13, 14]);
       setNumber(mainSheet, rowIndex, [8]);
       setNumber(mainSheet, rowIndex, [11], '0');
       mainSheet.getRow(rowIndex).alignment = { vertical: 'top' };

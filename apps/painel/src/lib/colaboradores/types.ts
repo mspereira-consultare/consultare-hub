@@ -56,6 +56,7 @@ export type Employee = {
   transportVoucherMonthlyFixed: number | null;
   mealVoucherPerDay: number | null;
   totalpassDiscountFixed: number | null;
+  resolveSaudeOptedIn: boolean;
   otherFixedDiscountAmount: number | null;
   otherFixedDiscountDescription: string | null;
   payrollNotes: string | null;
@@ -191,6 +192,7 @@ export type EmployeeInput = {
   transportVoucherMonthlyFixed?: number | null;
   mealVoucherPerDay?: number | null;
   totalpassDiscountFixed?: number | null;
+  resolveSaudeOptedIn?: boolean;
   otherFixedDiscountAmount?: number | null;
   otherFixedDiscountDescription?: string | null;
   payrollNotes?: string | null;
