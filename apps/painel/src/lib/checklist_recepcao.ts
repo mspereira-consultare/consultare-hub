@@ -22,6 +22,7 @@ import {
   monthStart,
   operationalDaysSummary,
   parseIsoDate,
+  previousBusinessDate,
   resolveFreezeSource,
   resolveIsHistorical,
   resolveReferenceDate,
@@ -179,6 +180,8 @@ type RecepcaoChecklistVersionStoredPayload = {
 export type RecepcaoChecklistPayload = {
   generatedAt: string;
   today: string;
+  /** Dia operacional anterior, para o atalho "Ontem" da barra de filtros. */
+  previousBusinessDate: string;
   access: {
     isManager: boolean;
   };
@@ -204,6 +207,14 @@ export type RecepcaoChecklistPayload = {
     isActive: boolean;
   }>;
   availableUnits: Array<{ key: string; label: string }>;
+  /** Combinações endereçáveis de configuração x unidade, para o seletor de escopo. */
+  availableScopes: Array<{
+    configId: string;
+    unitKey: string;
+    unitLabel: string;
+    configName: string;
+    leaderName: string;
+  }>;
   suggestedConfig: {
     leaderUserId: string;
     leaderEmployeeId: string | null;
@@ -1907,10 +1918,14 @@ export const buildRecepcaoChecklistPayload = async (
       : allConfigs;
   const config = resolveConfigForActor(configs, actor, filters);
   const today = toSaoPauloDate();
-  const viewMode: ViewMode = clean(filters.viewMode) === 'd1' ? 'd1' : 'current';
-  const referenceDate = resolveReferenceDate(today, viewMode, filters.referenceDate);
+  // O modo pedido só serve para resolver a data padrão quando nenhuma é enviada.
+  // O modo devolvido é sempre derivado da data, para rótulo e recorte nunca
+  // discordarem (era o que produzia "D-1 congelado" com a data de hoje).
+  const requestedViewMode: ViewMode = clean(filters.viewMode) === 'd1' ? 'd1' : 'current';
+  const referenceDate = resolveReferenceDate(today, requestedViewMode, filters.referenceDate);
   const readOnly = resolveReadOnly(referenceDate, today);
   const isHistorical = resolveIsHistorical(referenceDate, today);
+  const viewMode: ViewMode = isHistorical ? 'd1' : 'current';
   const unit = resolveUnitForConfig(config, filters.unitKey);
   const selectedUnit = unit || listFinancialUnits()[0];
   const suggestedConfigPromise = config ? Promise.resolve(null) : loadSuggestedConfig(actor.db, actor.userId);
@@ -2027,6 +2042,7 @@ export const buildRecepcaoChecklistPayload = async (
   return {
     generatedAt: toSaoPauloDateTime(),
     today,
+    previousBusinessDate: previousBusinessDate(today),
     access: {
       isManager: actor.isManager,
     },
@@ -2050,6 +2066,20 @@ export const buildRecepcaoChecklistPayload = async (
       units: item.units,
       isActive: item.isActive,
     })),
+    availableScopes: allConfigs
+      .flatMap((item) =>
+        item.units.map((unitKey) => {
+          const scopeUnit = getFinancialUnitByKey(unitKey);
+          return {
+            configId: item.id,
+            unitKey: scopeUnit?.key || unitKey,
+            unitLabel: scopeUnit?.label || unitKey,
+            configName: item.name,
+            leaderName: item.leaderName,
+          };
+        }),
+      )
+      .sort((left, right) => left.unitLabel.localeCompare(right.unitLabel, 'pt-BR', { sensitivity: 'base' })),
     availableUnits: (() => {
       // União das unidades habilitadas nas configurações acessíveis; sem
       // configuração, oferece todas para permitir o bootstrap.

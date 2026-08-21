@@ -33,13 +33,6 @@ type HistoryEntry = {
   isLatestForDate: boolean;
 };
 
-type ConfigSummary = {
-  id: string;
-  name: string;
-  leaderName: string;
-  units: string[];
-  isActive: boolean;
-};
 
 type TeamMember = {
   employeeId: string;
@@ -71,9 +64,8 @@ type MetricFreshness = {
 type ChecklistData = {
   generatedAt: string;
   today: string;
+  previousBusinessDate: string;
   access: { isManager: boolean };
-  selectedLeaderUserId: string | null;
-  availableLeaderFilters: Array<{ userId: string; name: string }>;
   viewMode: 'current' | 'd1';
   referenceDate: string;
   readOnly: boolean;
@@ -89,8 +81,14 @@ type ChecklistData = {
     units: string[];
     teamMembers: TeamMember[];
   } | null;
-  availableConfigs: ConfigSummary[];
   availableUnits: Array<{ key: string; label: string }>;
+  availableScopes: Array<{
+    configId: string;
+    unitKey: string;
+    unitLabel: string;
+    configName: string;
+    leaderName: string;
+  }>;
   suggestedConfig: {
     leaderUserId: string;
     leaderEmployeeId: string | null;
@@ -773,7 +771,6 @@ export default function ChecklistRecepcaoPage() {
   const [manual, setManual] = useState<ManualState>(emptyManual());
   const [riskGroups, setRiskGroups] = useState<RiskState>([]);
   const [selectedConfigId, setSelectedConfigId] = useState('');
-  const [selectedLeaderUserId, setSelectedLeaderUserId] = useState('');
   const [selectedUnitKey, setSelectedUnitKey] = useState('');
   const [viewMode, setViewMode] = useState<'current' | 'd1'>('current');
   const [referenceDate, setReferenceDate] = useState('');
@@ -797,7 +794,6 @@ export default function ChecklistRecepcaoPage() {
   const [teamSearch, setTeamSearch] = useState('');
   const requestStateRef = useRef({
     selectedConfigId: '',
-    selectedLeaderUserId: '',
     selectedUnitKey: '',
     viewMode: 'current' as 'current' | 'd1',
     referenceDate: '',
@@ -825,20 +821,18 @@ export default function ChecklistRecepcaoPage() {
     updateRecollections((manual.recollections || []).map((entry) => (entry.id === id ? { ...entry, notes } : entry)));
   }, [manual.recollections, updateRecollections]);
 
-  const fetchData = useCallback(async (opts?: { forceFresh?: boolean; nextConfigId?: string; nextLeaderUserId?: string; nextUnitKey?: string; nextViewMode?: 'current' | 'd1'; nextReferenceDate?: string }) => {
+  const fetchData = useCallback(async (opts?: { forceFresh?: boolean; nextConfigId?: string; nextUnitKey?: string; nextViewMode?: 'current' | 'd1'; nextReferenceDate?: string }) => {
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       const currentState = requestStateRef.current;
       const configId = opts?.nextConfigId ?? currentState.selectedConfigId;
-      const leaderUserId = opts?.nextLeaderUserId ?? currentState.selectedLeaderUserId;
       const unitKey = opts?.nextUnitKey ?? currentState.selectedUnitKey;
       const mode = opts?.nextViewMode ?? currentState.viewMode;
       const date = opts?.nextReferenceDate ?? currentState.referenceDate;
 
       if (configId) params.set('configId', configId);
-      if (leaderUserId) params.set('leaderUserId', leaderUserId);
       if (unitKey) params.set('unitKey', unitKey);
       params.set('viewMode', mode);
       if (date) params.set('referenceDate', date);
@@ -853,7 +847,6 @@ export default function ChecklistRecepcaoPage() {
       const nextData = payload.data as ChecklistData;
       setData(nextData);
       setSelectedConfigId(nextData.config?.id || configId || '');
-      setSelectedLeaderUserId(nextData.selectedLeaderUserId || leaderUserId || '');
       setSelectedUnitKey(nextData.selectedUnitKey);
       setViewMode(nextData.viewMode);
       setReferenceDate(nextData.referenceDate);
@@ -936,13 +929,12 @@ export default function ChecklistRecepcaoPage() {
   useEffect(() => {
     requestStateRef.current = {
       selectedConfigId,
-      selectedLeaderUserId,
       selectedUnitKey,
       viewMode,
       referenceDate,
       refreshSeed,
     };
-  }, [referenceDate, refreshSeed, selectedConfigId, selectedLeaderUserId, selectedUnitKey, viewMode]);
+  }, [referenceDate, refreshSeed, selectedConfigId, selectedUnitKey, viewMode]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -1004,7 +996,6 @@ export default function ChecklistRecepcaoPage() {
   const handleExportPdf = () => {
     const params = new URLSearchParams();
     if (selectedConfigId) params.set('configId', selectedConfigId);
-    if (selectedLeaderUserId) params.set('leaderUserId', selectedLeaderUserId);
     if (selectedUnitKey) params.set('unitKey', selectedUnitKey);
     if (referenceDate) params.set('referenceDate', referenceDate);
     params.set('viewMode', viewMode);
@@ -1077,7 +1068,6 @@ export default function ChecklistRecepcaoPage() {
       setConfigModalOpen(false);
       await fetchData({
         forceFresh: true,
-        nextLeaderUserId: '',
         nextConfigId: payload?.data?.id || '',
         nextUnitKey: '',
       });
@@ -1190,6 +1180,19 @@ export default function ChecklistRecepcaoPage() {
     }));
   };
 
+  const selectedScopeValue = `${selectedConfigId}|${selectedUnitKey}`;
+
+  // "Ontem" usa o dia útil anterior calculado pelo backend, não D-1 de calendário:
+  // numa segunda-feira o dia anterior com movimento é o sábado.
+  const dateShortcuts = useMemo(() => {
+    const today = data?.today || '';
+    if (!today) return [] as Array<{ label: string; date: string }>;
+    const previous = data?.previousBusinessDate || '';
+    const shortcuts = [{ label: 'Hoje', date: today }];
+    if (previous && previous !== today) shortcuts.push({ label: 'Ontem', date: previous });
+    return shortcuts;
+  }, [data?.previousBusinessDate, data?.today]);
+
   const isRefreshServiceFailed = (service: RefreshServiceStatus) =>
     ['ERROR', 'FAILED', 'ERRO'].includes(String(service.status || '').toUpperCase());
 
@@ -1269,6 +1272,23 @@ export default function ChecklistRecepcaoPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={openHistory}
+                  title={
+                    data?.lastSave?.savedAt
+                      ? `Último preenchimento em ${formatDateTimeBr(data.lastSave.savedAt)}${data.lastSave.savedByName ? ` por ${data.lastSave.savedByName}` : ''}`
+                      : 'Nenhum preenchimento salvo para esta data'
+                  }
+                  className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] font-medium text-slate-700 hover:bg-slate-50 sm:col-span-2"
+                >
+                  <History size={13} />
+                  <span className="truncate">
+                    {data?.lastSave?.savedAt
+                      ? `Preenchido ${formatDateTimeBr(data.lastSave.savedAt)}${data.lastSave.savedByName ? ` · ${data.lastSave.savedByName}` : ''}`
+                      : 'Ainda não preenchido'}
+                  </span>
+                </button>
+                <button
+                  type="button"
                   onClick={handleSave}
                   disabled={!canEdit || data?.readOnly || saving || !data?.config}
                     className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg bg-[#17407E] px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-[#123666] disabled:cursor-not-allowed disabled:opacity-60 sm:col-span-2"
@@ -1282,128 +1302,74 @@ export default function ChecklistRecepcaoPage() {
           </div>
 
           <div className="grid gap-2.5 bg-slate-50/70 px-4 py-3 md:grid-cols-2 xl:grid-cols-12">
-            {data?.access.isManager ? (
-              <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
-                Líder
-                <select
-                  value={selectedLeaderUserId}
+            <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-5">
+              Escopo
+              <select
+                value={selectedScopeValue}
+                disabled={isRefreshing}
+                onChange={(event) => {
+                  // Um seletor só: configuração e unidade são a mesma escolha.
+                  const [nextConfigId, nextUnitKey] = event.target.value.split('|');
+                  setSelectedConfigId(nextConfigId);
+                  setSelectedUnitKey(nextUnitKey);
+                  void fetchData({ nextConfigId, nextUnitKey });
+                }}
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
+              >
+                {(data?.availableScopes || []).length === 0 ? <option value="">Sem configuração disponível</option> : null}
+                {(data?.availableScopes || []).map((scope) => (
+                  <option key={`${scope.configId}|${scope.unitKey}`} value={`${scope.configId}|${scope.unitKey}`}>
+                    {scope.unitLabel} — {scope.leaderName}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-4">
+              Data de referência
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={referenceDate}
+                  max={data?.today || undefined}
                   disabled={isRefreshing}
                   onChange={(event) => {
-                    // Reflete a escolha imediatamente: sem isso o select volta ao
-                    // valor anterior até a resposta chegar e parece que o clique falhou.
-                    setSelectedLeaderUserId(event.target.value);
-                    setSelectedConfigId('');
-                    setSelectedUnitKey('');
-                    void fetchData({
-                      nextLeaderUserId: event.target.value,
-                      nextConfigId: '',
-                      nextUnitKey: '',
-                    });
+                    const nextDate = event.target.value;
+                    setReferenceDate(nextDate);
+                    void fetchData({ nextReferenceDate: nextDate });
                   }}
-                  className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
-                >
-                  <option value="">Todos os líderes</option>
-                  {(data?.availableLeaderFilters || []).map((leader) => (
-                    <option key={leader.userId} value={leader.userId}>
-                      {leader.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
-              Configuração
-              <select
-                value={selectedConfigId}
-                disabled={isRefreshing}
-                onChange={(event) => {
-                  setSelectedConfigId(event.target.value);
-                  void fetchData({ nextConfigId: event.target.value });
-                }}
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
-              >
-                <option value="">Selecione</option>
-                {(data?.availableConfigs || []).map((config) => (
-                  <option key={config.id} value={config.id}>
-                    {config.name} - {config.leaderName}
-                  </option>
+                  className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
+                />
+                {dateShortcuts.map((shortcut) => (
+                  <button
+                    key={shortcut.label}
+                    type="button"
+                    disabled={isRefreshing}
+                    onClick={() => {
+                      setReferenceDate(shortcut.date);
+                      void fetchData({ nextReferenceDate: shortcut.date });
+                    }}
+                    className={`h-9 shrink-0 rounded-lg border px-2.5 text-[12px] font-semibold normal-case tracking-normal transition ${
+                      referenceDate === shortcut.date
+                        ? 'border-[#17407E] bg-[#17407E] text-white'
+                        : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    }`}
+                  >
+                    {shortcut.label}
+                  </button>
                 ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
-              Unidade
-              <select
-                value={selectedUnitKey}
-                disabled={isRefreshing}
-                onChange={(event) => {
-                  setSelectedUnitKey(event.target.value);
-                  void fetchData({ nextUnitKey: event.target.value });
-                }}
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
-              >
-                {(data?.availableUnits || []).map((unit) => (
-                  <option key={unit.key} value={unit.key}>
-                    {unit.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
-              Modo
-              <select
-                value={viewMode}
-                disabled={isRefreshing}
-                onChange={(event) => {
-                  const nextViewMode = event.target.value === 'd1' ? 'd1' : 'current';
-                  const nextReferenceDate = nextViewMode === 'd1' ? data?.referenceDate || referenceDate : data?.today || referenceDate;
-                  setViewMode(nextViewMode);
-                  setReferenceDate(nextReferenceDate);
-                  void fetchData({ nextViewMode, nextReferenceDate });
-                }}
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
-              >
-                <option value="current">Hoje</option>
-                <option value="d1">D-1</option>
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
-              Data de referência
-              <input
-                type="date"
-                value={referenceDate}
-                max={data?.today || undefined}
-                disabled={isRefreshing}
-                onChange={(event) => {
-                  const nextDate = event.target.value;
-                  setReferenceDate(nextDate);
-                  void fetchData({ nextReferenceDate: nextDate });
-                }}
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
-              />
-            </label>
-            <div className="flex flex-col justify-end gap-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500 xl:col-span-2">
-              Preenchimento
-              <button
-                type="button"
-                onClick={openHistory}
-                className="inline-flex h-9 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 hover:bg-slate-50"
-              >
-                <span className="truncate">
-                  {data?.lastSave?.savedAt
-                    ? `${formatDateTimeBr(data.lastSave.savedAt)}${data.lastSave.savedByName ? ` · ${data.lastSave.savedByName}` : ''}`
-                    : 'Ainda não preenchido'}
-                </span>
-                <History size={14} className="shrink-0 text-slate-400" />
-              </button>
-            </div>
-            <div className="w-full rounded-xl border border-slate-200 bg-white px-3.5 py-3 md:col-span-2 xl:col-span-12">
-              <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">Escopo local</div>
-              <div className="mt-1.5 text-[14px] font-semibold text-slate-900">{data?.config?.leaderName || 'Sem configuração'}</div>
-              <div className="mt-1 text-[12px] text-slate-500">{data?.config?.teamMembers.length || 0} colaborador(es) na equipe local</div>
-              <div className="mt-1.5 text-[12px] text-slate-500">
-                Unidades habilitadas: {data?.config?.units.map((unitKey) => data.availableUnits.find((unit) => unit.key === unitKey)?.label || unitKey).join(', ') || 'Nenhuma'}
               </div>
-              <div className="mt-1.5 text-[12px] leading-5 text-slate-500">As unidades exibidas dependem da configuração local da checklist, não da equipe local.</div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-[12px] text-slate-500 md:col-span-2 xl:col-span-3">
+              <span>
+                <span className="font-semibold text-slate-900">{data?.config?.teamMembers.length || 0}</span> colaborador(es) na equipe local
+              </span>
+              {data?.readOnly ? (
+                <span className="font-semibold text-amber-600">Data futura — somente leitura</span>
+              ) : data?.isHistorical ? (
+                <span className="font-semibold text-slate-600">Recorte histórico — editável</span>
+              ) : null}
             </div>
           </div>
         </section>
