@@ -172,6 +172,8 @@ type ChecklistData = {
       dynamicDailyTarget: number;
       dailyProgressPct: number | null;
       progressPct: number;
+      revenueMatched: boolean;
+      feegowAlias: string | null;
     }>;
     collaboratorsFreshness: MetricFreshness;
     teamProduction: {
@@ -1620,7 +1622,17 @@ export default function ChecklistRecepcaoPage() {
                     ) : (
                       data.metrics.collaborators.map((row) => (
                         <tr key={row.employeeId}>
-                          <td className="px-4 py-3 font-medium text-slate-900">{row.fullName}</td>
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            {row.fullName}
+                            {!row.revenueMatched ? (
+                              <span
+                                className="mt-0.5 block text-[11px] font-normal text-amber-600"
+                                title="Nenhum lançamento de faturamento foi associado a esta pessoa. Verifique se o nome do cadastro é o mesmo usado na conta do Feegow."
+                              >
+                                Sem faturamento associado
+                              </span>
+                            ) : null}
+                          </td>
                           <td className="px-4 py-3 text-slate-600">{formatCurrency(row.monthlyGoal)}</td>
                           <td className={`px-4 py-3 ${row.revenueDay > 0 ? 'font-semibold text-slate-900' : 'text-slate-400'}`}>
                             {formatCurrency(row.revenueDay)}

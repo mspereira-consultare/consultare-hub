@@ -266,6 +266,10 @@ export type RecepcaoChecklistPayload = {
       /** Realizado no dia sobre a meta diária dinâmica. null quando não há meta a perseguir. */
       dailyProgressPct: number | null;
       progressPct: number;
+      /** false quando nenhum lançamento foi associado a esta pessoa no faturamento. */
+      revenueMatched: boolean;
+      /** Nome usado no Feegow, quando declarado pela meta do colaborador. */
+      feegowAlias: string | null;
     }>;
     collaboratorsFreshness: RecepcaoChecklistMetricFreshness;
     teamProduction: {
@@ -1125,7 +1129,7 @@ const loadCollaboratorGoals = async (
   unit: FinancialUnitDefinition,
   members: RecepcaoChecklistTeamMember[],
 ) => {
-  if (members.length <= 0) return new Map<string, number>();
+  if (members.length <= 0) return new Map<string, { target: number; feegowAlias: string | null }>();
 
   const employeeIds = members.map((member) => member.employeeId).filter(Boolean);
   const collaboratorNames = members.map((member) => member.fullName).filter(Boolean);
@@ -1153,14 +1157,20 @@ const loadCollaboratorGoals = async (
     [...params, ...employeeIds, ...collaboratorNames],
   );
 
-  const byMember = new Map<string, number>();
+  // Além do alvo, guardamos o nome que a meta usa para identificar a pessoa no
+  // Feegow. Ele costuma divergir do cadastro (ex.: "Teodorio" x "TEODORO") e é
+  // a única ponte confiável entre o colaborador e o faturamento.
+  const byMember = new Map<string, { target: number; feegowAlias: string | null }>();
   for (const member of members) {
     const match = (rows as DbRow[]).find(
       (row) =>
         clean(row.employee_id) === member.employeeId ||
         normalizeHumanText(row.collaborator) === normalizeHumanText(member.fullName),
     );
-    byMember.set(member.employeeId, toNumber(match?.total));
+    byMember.set(member.employeeId, {
+      target: toNumber(match?.total),
+      feegowAlias: clean(match?.collaborator) || null,
+    });
   }
   return byMember;
 };
@@ -1203,20 +1213,18 @@ const getCollaboratorColumn = async (db: DbInterface) => {
   }
 };
 
-type CollaboratorRevenue = { month: number; day: number };
+type CollaboratorRevenueRow = { collaboratorName: string; total: number; totalDay: number };
 
-const loadCollaboratorRevenueMap = async (
+const loadCollaboratorRevenueRows = async (
   db: DbInterface,
   referenceDate: string,
   unit: FinancialUnitDefinition,
   members: RecepcaoChecklistTeamMember[],
-) => {
-  const byMember = new Map<string, CollaboratorRevenue>();
-  for (const member of members) byMember.set(member.employeeId, { month: 0, day: 0 });
-  if (members.length <= 0) return byMember;
+): Promise<CollaboratorRevenueRow[]> => {
+  if (members.length <= 0) return [];
 
   const collaboratorColumn = await getCollaboratorColumn(db);
-  if (!collaboratorColumn) return byMember;
+  if (!collaboratorColumn) return [];
 
   // O realizado do dia sai da mesma varredura do mês, sem query adicional.
   const params: Array<string | number> = [referenceDate, monthStart(referenceDate), referenceDate];
@@ -1238,21 +1246,11 @@ const loadCollaboratorRevenueMap = async (
     params,
   ).catch(() => []);
 
-  const groupedRows = (rows as DbRow[]).map((row) => ({
+  return (rows as DbRow[]).map((row) => ({
     collaboratorName: clean(row.collaborator_name),
     total: toNumber(row.total),
     totalDay: toNumber(row.total_day),
   }));
-
-  for (const member of members) {
-    const matched = groupedRows.filter((row) => namesLookEquivalent(row.collaboratorName, member.fullName));
-    byMember.set(member.employeeId, {
-      month: matched.reduce((sum, row) => sum + row.total, 0),
-      day: matched.reduce((sum, row) => sum + row.totalDay, 0),
-    });
-  }
-
-  return byMember;
 };
 
 const loadCollaboratorMetrics = async (
@@ -1261,15 +1259,27 @@ const loadCollaboratorMetrics = async (
   unit: FinancialUnitDefinition,
   members: RecepcaoChecklistTeamMember[],
 ) => {
-  const [goalMap, revenueMap] = await Promise.all([
+  // As duas consultas seguem em paralelo; o casamento por nome acontece depois,
+  // já com a meta em mãos, para poder usar o alias que ela declara.
+  const [goalMap, revenueRows] = await Promise.all([
     loadCollaboratorGoals(db, referenceDate, unit, members),
-    loadCollaboratorRevenueMap(db, referenceDate, unit, members),
+    loadCollaboratorRevenueRows(db, referenceDate, unit, members),
   ]);
 
   return members.map((member) => {
-    const monthlyGoal = goalMap.get(member.employeeId) || 0;
-    const revenue = revenueMap.get(member.employeeId) || { month: 0, day: 0 };
-    const revenueMonth = revenue.month;
+    const goal = goalMap.get(member.employeeId) || { target: 0, feegowAlias: null };
+    const monthlyGoal = goal.target;
+
+    // O nome do cadastro nem sempre bate com o do Feegow (uma letra de
+    // diferença já zera o indicador em silêncio). A meta do colaborador guarda
+    // o nome usado no Feegow, então ele entra como identificador alternativo.
+    const matched = revenueRows.filter(
+      (row) =>
+        namesLookEquivalent(row.collaboratorName, member.fullName) ||
+        (goal.feegowAlias ? namesLookEquivalent(row.collaboratorName, goal.feegowAlias) : false),
+    );
+    const revenueMonth = matched.reduce((sum, row) => sum + row.total, 0);
+    const revenueDay = matched.reduce((sum, row) => sum + row.totalDay, 0);
     const dynamicDailyTarget = calculateDailyTarget(monthlyGoal, revenueMonth, referenceDate);
 
     return {
@@ -1277,13 +1287,16 @@ const loadCollaboratorMetrics = async (
       userId: member.userId,
       fullName: member.fullName,
       monthlyGoal,
-      revenueDay: revenue.day,
+      revenueDay,
       revenueMonth,
       dynamicDailyTarget,
       // Sem meta diária a perseguir (sem meta mensal, ou mensal já batida) não
       // existe percentual: a UI mostra "—" em vez de um zero enganoso.
-      dailyProgressPct: dynamicDailyTarget > 0 ? (revenue.day * 100) / dynamicDailyTarget : null,
+      dailyProgressPct: dynamicDailyTarget > 0 ? (revenueDay * 100) / dynamicDailyTarget : null,
       progressPct: monthlyGoal > 0 ? (revenueMonth * 100) / monthlyGoal : 0,
+      // Distingue "faturou zero" de "não encontrei esta pessoa no faturamento".
+      revenueMatched: matched.length > 0,
+      feegowAlias: goal.feegowAlias,
     };
   });
 };
