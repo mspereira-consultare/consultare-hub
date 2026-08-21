@@ -9,7 +9,11 @@ import { buildCacheKey, withCache } from '@/lib/api_cache';
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
-const CACHE_TTL_MS = 15000;
+// A troca de contexto (líder, unidade, data) gera uma chave de cache nova, então
+// um TTL curto fazia a página remontar o payload inteiro a cada ida e volta.
+// O botão "Atualizar" manda `refresh=<timestamp>`, que muda a chave e ignora o
+// cache, então um TTL maior não impede ver dado fresco quando se quer.
+const CACHE_TTL_MS = 2 * 60 * 1000;
 
 const errorStatus = (error: unknown) =>
   typeof error === 'object' && error && 'status' in error ? Number((error as { status?: unknown }).status) || 500 : 500;

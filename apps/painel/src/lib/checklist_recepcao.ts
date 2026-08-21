@@ -722,7 +722,17 @@ const queryMaxTimestamp = async (
   return buildFreshness(clean(rows[0]?.updated_at) || null, sourceLabel, false);
 };
 
+/**
+ * Bootstrap de schema roda uma vez por processo. Antes disto era executado a
+ * cada requisição: 2 CREATE, 12 ALTER (que sempre falhavam por coluna já
+ * existente, e o erro era engolido) e 2 CREATE INDEX, tudo sequencial. Mesmo
+ * padrão já usado em equipamentos e ponto.
+ */
+let schemaEnsured = false;
+
 export const ensureRecepcaoChecklistSchema = async (db: DbInterface) => {
+  if (schemaEnsured) return;
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS recepcao_checklist_configs (
       id VARCHAR(64) PRIMARY KEY,
@@ -770,6 +780,8 @@ export const ensureRecepcaoChecklistSchema = async (db: DbInterface) => {
 
   await safeCreateIndex(db, `CREATE INDEX idx_recepcao_checklist_configs_leader ON recepcao_checklist_configs (leader_user_id, is_active)`);
   await safeCreateIndex(db, `CREATE INDEX idx_recepcao_checklist_versions_ref ON recepcao_checklist_versions (config_id, reference_date, unit_key)`);
+
+  schemaEnsured = true;
 };
 
 export const requireRecepcaoChecklistAccess = async (
@@ -1648,11 +1660,15 @@ const loadEquipmentMaintenance = async (db: DbInterface, unit: FinancialUnitDefi
   return { items, lastUpdatedAt };
 };
 
-const loadRiskGroups = async (
+/**
+ * As consultas dos grupos em risco não dependem dos campos manuais, então
+ * rodam junto com o restante do payload. Só a mesclagem com o FCA salvo
+ * (mergeRiskGroupManual) precisa esperar o preenchimento do dia.
+ */
+const loadRiskGroupRows = async (
   db: DbInterface,
   referenceDate: string,
   unit: FinancialUnitDefinition,
-  manual: RecepcaoChecklistManualPayload,
 ) => {
   const params: Array<string | number> = [referenceDate, referenceDate];
   const unitSql = buildFinancialUnitClause('clinic_unit', unit.key, params);
@@ -1691,9 +1707,6 @@ const loadRiskGroups = async (
     actualParams,
   ).catch(() => []);
 
-  const manualByGroup = new Map(
-    manual.riskGroups.map((entry) => [normalizeHumanText(entry.groupName), entry] as const),
-  );
   const actualByGroup = new Map(
     (actualRows as DbRow[]).map((row) => [normalizeHumanText(row.grupo), toNumber(row.total)] as const),
   );
@@ -1703,7 +1716,6 @@ const loadRiskGroups = async (
     const monthlyGoal = toNumber(row.total);
     const actualMonth = actualByGroup.get(normalizeHumanText(groupName)) || 0;
     const shouldHaveUntilDate = calculateShouldHaveUntilDate(monthlyGoal, referenceDate);
-    const saved = manualByGroup.get(normalizeHumanText(groupName));
     return {
       groupName,
       monthlyGoal,
@@ -1711,6 +1723,21 @@ const loadRiskGroups = async (
       shouldHaveUntilDate,
       progressPct: monthlyGoal > 0 ? (actualMonth * 100) / monthlyGoal : 0,
       atRisk: actualMonth < shouldHaveUntilDate,
+    };
+  });
+};
+
+const mergeRiskGroupManual = (
+  rows: Array<Omit<RecepcaoChecklistPayload['riskGroups'][number], 'planAction' | 'fact' | 'cause' | 'action'>>,
+  manual: RecepcaoChecklistManualPayload,
+): RecepcaoChecklistPayload['riskGroups'] => {
+  const manualByGroup = new Map(
+    manual.riskGroups.map((entry) => [normalizeHumanText(entry.groupName), entry] as const),
+  );
+  return rows.map((row) => {
+    const saved = manualByGroup.get(normalizeHumanText(row.groupName));
+    return {
+      ...row,
       planAction: clean(saved?.planAction),
       fact: clean(saved?.fact),
       cause: clean(saved?.cause),
@@ -1892,6 +1919,7 @@ export const buildRecepcaoChecklistPayload = async (
   const proposalsPromise = loadProposalMetrics(actor.db, referenceDate, selectedUnit);
   const absencesPromise = loadAbsenceMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
   const equipmentPromise = loadEquipmentMaintenance(actor.db, selectedUnit);
+  const riskGroupRowsPromise = loadRiskGroupRows(actor.db, referenceDate, selectedUnit);
   const freshnessPromise = loadChecklistFreshness(actor.db, {
     referenceDate,
     unit: selectedUnit,
@@ -1914,6 +1942,7 @@ export const buildRecepcaoChecklistPayload = async (
     proposals,
     absences,
     equipment,
+    riskGroupRows,
     freshness,
   ] = await Promise.all([
     suggestedConfigPromise,
@@ -1929,6 +1958,7 @@ export const buildRecepcaoChecklistPayload = async (
     proposalsPromise,
     absencesPromise,
     equipmentPromise,
+    riskGroupRowsPromise,
     freshnessPromise,
   ]);
   const suggestedConfigDraft =
@@ -1958,7 +1988,7 @@ export const buildRecepcaoChecklistPayload = async (
     checkupProgressPct: manual.checkupMonthlyTarget > 0 ? (manual.checkupActual * 100) / manual.checkupMonthlyTarget : 0,
   };
 
-  const riskGroups = await loadRiskGroups(actor.db, referenceDate, selectedUnit, manual);
+  const riskGroups = mergeRiskGroupManual(riskGroupRows, manual);
   const google = {
     ratingTarget: GOOGLE_RATING_TARGET,
     ratingActual: manual.googleRating,

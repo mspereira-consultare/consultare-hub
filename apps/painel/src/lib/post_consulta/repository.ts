@@ -301,18 +301,48 @@ const createHttpError = (message: string, status: number) => {
   return error;
 };
 
+/**
+ * Cache de colunas por processo. Cada leitura é um round trip ao banco, e a
+ * página da checklist chamava isto 16 vezes por requisição.
+ */
+const columnNamesCache = new Map<string, Set<string>>();
+
 const listColumnNames = async (db: DbInterface, tableName: string) => {
+  const cached = columnNamesCache.get(tableName);
+  if (cached) return cached;
   const rows = await db.query(`PRAGMA table_info(${tableName})`);
-  return new Set(rows.map((row) => normalizeString((row as RowLike)?.name || (row as RowLike)?.COLUMN_NAME)).filter(Boolean));
+  const columns = new Set(
+    rows.map((row) => normalizeString((row as RowLike)?.name || (row as RowLike)?.COLUMN_NAME)).filter(Boolean),
+  );
+  columnNamesCache.set(tableName, columns);
+  return columns;
 };
 
-const ensureColumn = async (db: DbInterface, tableName: string, columnName: string, definition: string) => {
-  const columns = await listColumnNames(db, tableName);
-  if (columns.has(columnName)) return;
-  await db.execute(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
-};
+const POST_CONSULT_SUPPORT_COLUMNS: Array<[string, string]> = [
+  ['patient_id', 'BIGINT NULL'],
+  ['patient_name', 'TEXT NULL'],
+  ['consult_date', 'TEXT NULL'],
+  ['consult_unit', 'TEXT NULL'],
+  ['consult_procedure', 'TEXT NULL'],
+  ['attendant_responsible', 'TEXT NULL'],
+  ['first_contact_closed', 'INTEGER NULL'],
+  ['first_contact_at', 'TEXT NULL'],
+  ['second_contact_closed', 'INTEGER NULL'],
+  ['second_contact_at', 'TEXT NULL'],
+  ['non_closure_reason', 'VARCHAR(64) NULL'],
+  ['observation', 'TEXT NULL'],
+  ['updated_by_user_id', 'VARCHAR(64) NULL'],
+  ['updated_by_user_name', 'TEXT NULL'],
+  ['updated_at', 'TEXT NULL'],
+];
+
+let supportTableEnsured = false;
 
 export const ensurePostConsultSupportTable = async (db: DbInterface = getDbConnection()) => {
+  // Antes isto fazia um PRAGMA por coluna, a cada chamada: 16 round trips
+  // sequenciais só para descobrir que o schema já estava correto.
+  if (supportTableEnsured) return;
+
   await db.execute(`
     CREATE TABLE IF NOT EXISTS post_consulta_followup_control (
       event_key VARCHAR(64) PRIMARY KEY,
@@ -334,21 +364,14 @@ export const ensurePostConsultSupportTable = async (db: DbInterface = getDbConne
     )
   `);
 
-  await ensureColumn(db, 'post_consulta_followup_control', 'patient_id', 'BIGINT NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'patient_name', 'TEXT NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'consult_date', 'TEXT NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'consult_unit', 'TEXT NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'consult_procedure', 'TEXT NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'attendant_responsible', 'TEXT NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'first_contact_closed', 'INTEGER NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'first_contact_at', 'TEXT NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'second_contact_closed', 'INTEGER NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'second_contact_at', 'TEXT NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'non_closure_reason', 'VARCHAR(64) NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'observation', 'TEXT NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'updated_by_user_id', 'VARCHAR(64) NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'updated_by_user_name', 'TEXT NULL');
-  await ensureColumn(db, 'post_consulta_followup_control', 'updated_at', 'TEXT NULL');
+  const columns = await listColumnNames(db, 'post_consulta_followup_control');
+  const missing = POST_CONSULT_SUPPORT_COLUMNS.filter(([name]) => !columns.has(name));
+  for (const [name, definition] of missing) {
+    await db.execute(`ALTER TABLE post_consulta_followup_control ADD COLUMN ${name} ${definition}`);
+    columns.add(name);
+  }
+
+  supportTableEnsured = true;
 };
 
 const getTodayRef = () =>
