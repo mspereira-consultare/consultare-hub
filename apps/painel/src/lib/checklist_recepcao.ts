@@ -340,6 +340,19 @@ export type RecepcaoChecklistPayload = {
       ratingProgressPct: number;
       newReviewsCount: number;
     };
+    equipmentMaintenance: {
+      items: Array<{
+        equipmentId: string;
+        name: string;
+        identificationNumber: string;
+        serialNumber: string;
+        operationalStatus: string;
+        operationalStatusLabel: string;
+        locationDetail: string | null;
+        updatedAt: string | null;
+      }>;
+      freshness: RecepcaoChecklistMetricFreshness;
+    };
   };
   riskGroups: Array<{
     groupName: string;
@@ -1580,6 +1593,61 @@ const loadAbsenceMetrics = async (
   };
 };
 
+/**
+ * Equipamentos parados da unidade. Inclui tanto os que já estão em manutenção
+ * quanto os marcados para enviar: dos dois jeitos o equipamento não está
+ * disponível para a operação, e o status na tabela distingue os casos.
+ */
+const EQUIPMENT_MAINTENANCE_STATUSES = ['EM_MANUTENCAO', 'ENVIAR_MANUTENCAO'] as const;
+
+const EQUIPMENT_STATUS_LABELS: Record<string, string> = {
+  EM_MANUTENCAO: 'Em manutenção',
+  ENVIAR_MANUTENCAO: 'Enviar para manutenção',
+  ATIVO: 'Ativo',
+  INATIVO: 'Inativo',
+  DESCARTADO: 'Descartado',
+};
+
+const loadEquipmentMaintenance = async (db: DbInterface, unit: FinancialUnitDefinition) => {
+  const params: Array<string | number> = [...EQUIPMENT_MAINTENANCE_STATUSES];
+  const unitSql = buildFinancialUnitClause('unit_name', unit.key, params);
+  const rows = (await db
+    .query(
+      `
+        SELECT id, description, identification_number, serial_number, operational_status, location_detail, updated_at
+        FROM clinic_equipment
+        WHERE operational_status IN (${EQUIPMENT_MAINTENANCE_STATUSES.map(() => '?').join(', ')})
+          ${unitSql}
+        ORDER BY description ASC
+        LIMIT 50
+      `,
+      params,
+    )
+    .catch(() => [])) as DbRow[];
+
+  const items = rows.map((row) => {
+    const status = upper(row.operational_status);
+    return {
+      equipmentId: clean(row.id),
+      name: clean(row.description) || 'Sem descrição',
+      identificationNumber: clean(row.identification_number) || '-',
+      serialNumber: clean(row.serial_number) || '-',
+      operationalStatus: status,
+      operationalStatusLabel: EQUIPMENT_STATUS_LABELS[status] || status || '-',
+      locationDetail: clean(row.location_detail) || null,
+      updatedAt: clean(row.updated_at) || null,
+    };
+  });
+
+  const lastUpdatedAt = items
+    .map((item) => item.updatedAt)
+    .filter(Boolean)
+    .sort()
+    .pop() || null;
+
+  return { items, lastUpdatedAt };
+};
+
 const loadRiskGroups = async (
   db: DbInterface,
   referenceDate: string,
@@ -1823,6 +1891,7 @@ export const buildRecepcaoChecklistPayload = async (
   const tasksPromise = loadTaskMetrics(actor.db, config?.leaderUserId || null, referenceDate);
   const proposalsPromise = loadProposalMetrics(actor.db, referenceDate, selectedUnit);
   const absencesPromise = loadAbsenceMetrics(actor.db, referenceDate, selectedUnit, config?.teamMembers || []);
+  const equipmentPromise = loadEquipmentMaintenance(actor.db, selectedUnit);
   const freshnessPromise = loadChecklistFreshness(actor.db, {
     referenceDate,
     unit: selectedUnit,
@@ -1844,6 +1913,7 @@ export const buildRecepcaoChecklistPayload = async (
     tasks,
     proposals,
     absences,
+    equipment,
     freshness,
   ] = await Promise.all([
     suggestedConfigPromise,
@@ -1858,6 +1928,7 @@ export const buildRecepcaoChecklistPayload = async (
     tasksPromise,
     proposalsPromise,
     absencesPromise,
+    equipmentPromise,
     freshnessPromise,
   ]);
   const suggestedConfigDraft =
@@ -1997,6 +2068,10 @@ export const buildRecepcaoChecklistPayload = async (
         freshness: freshness.pointFreshness,
       },
       google,
+      equipmentMaintenance: {
+        items: equipment.items,
+        freshness: buildFreshness(equipment.lastUpdatedAt, 'Cadastro de equipamentos'),
+      },
     },
     riskGroups,
     riskGroupsFreshness,
@@ -3523,6 +3598,25 @@ export const buildRecepcaoChecklistPdf = async (payload: RecepcaoChecklistPayloa
       ],
       rows: payload.metrics.absences.rows,
       emptyMessage: 'Nenhuma falta ou atraso foi encontrado para a equipe local no dia de referencia.',
+    },
+  );
+
+  drawTable(
+    {
+      title: 'Equipamentos em manutenção',
+      subtitle: `Equipamentos da unidade fora de operação, do cadastro de equipamentos. ${formatPdfFreshness(payload.metrics.equipmentMaintenance.freshness)}`.trim(),
+      columns: [
+        {
+          label: 'Equipamento',
+          width: contentWidth * 0.4,
+          render: (row) => (row.locationDetail ? `${row.name} (${row.locationDetail})` : row.name),
+        },
+        { label: 'Identificação', width: contentWidth * 0.17, render: (row) => row.identificationNumber },
+        { label: 'Série', width: contentWidth * 0.21, render: (row) => row.serialNumber },
+        { label: 'Status operacional', width: contentWidth * 0.22, render: (row) => row.operationalStatusLabel },
+      ],
+      rows: payload.metrics.equipmentMaintenance.items,
+      emptyMessage: 'Nenhum equipamento desta unidade esta em manutencao.',
     },
   );
 

@@ -244,6 +244,19 @@ type ChecklistData = {
       ratingProgressPct: number;
       newReviewsCount: number;
     };
+    equipmentMaintenance: {
+      items: Array<{
+        equipmentId: string;
+        name: string;
+        identificationNumber: string;
+        serialNumber: string;
+        operationalStatus: string;
+        operationalStatusLabel: string;
+        locationDetail: string | null;
+        updatedAt: string | null;
+      }>;
+      freshness: MetricFreshness;
+    };
   };
   riskGroups: Array<{
     groupName: string;
@@ -1686,6 +1699,66 @@ export default function ChecklistRecepcaoPage() {
                           <td className="px-4 py-3 font-medium text-slate-900">{row.employeeName}</td>
                           <td className="px-4 py-3 text-slate-600">{row.absenceDays}</td>
                           <td className="px-4 py-3 text-slate-600">{row.lateMinutes} min</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className={`${sectionClassName} p-3.5`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[0.98rem] font-bold text-slate-900">Equipamentos em manutenção</h2>
+                  <p className="mt-1 text-[12px] text-slate-500">
+                    Equipamentos da unidade fora de operação, vindos do cadastro de equipamentos. Inclui os que já estão em manutenção e os marcados para enviar.
+                  </p>
+                  <p className="mt-1 text-[10px] text-slate-400">{renderFreshnessLabel(data.metrics.equipmentMaintenance.freshness)}</p>
+                </div>
+                <div className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600">
+                  {data.metrics.equipmentMaintenance.items.length} equipamento(s)
+                </div>
+              </div>
+              <div className={tableShellClassName}>
+                <table className="min-w-full divide-y divide-slate-200 text-sm">
+                  <thead className="bg-slate-50">
+                    <tr className="text-left text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                      <th className="px-4 py-3">Equipamento</th>
+                      <th className="px-4 py-3">Identificação</th>
+                      <th className="px-4 py-3">Série</th>
+                      <th className="px-4 py-3">Status operacional</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {data.metrics.equipmentMaintenance.items.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-6 text-center text-slate-500">
+                          Nenhum equipamento desta unidade está em manutenção.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.metrics.equipmentMaintenance.items.map((item) => (
+                        <tr key={item.equipmentId}>
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            {item.name}
+                            {item.locationDetail ? (
+                              <span className="mt-0.5 block text-[11px] font-normal text-slate-500">{item.locationDetail}</span>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">{item.identificationNumber}</td>
+                          <td className="px-4 py-3 text-slate-600">{item.serialNumber}</td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                item.operationalStatus === 'EM_MANUTENCAO'
+                                  ? 'border-amber-200 bg-amber-50 text-amber-700'
+                                  : 'border-rose-200 bg-rose-50 text-rose-700'
+                              }`}
+                            >
+                              {item.operationalStatusLabel}
+                            </span>
+                          </td>
                         </tr>
                       ))
                     )}
