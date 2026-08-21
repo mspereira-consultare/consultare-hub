@@ -75,10 +75,17 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        // Barra de progresso indeterminada, para esperas sem percentual conhecido.
+        "indeterminate-bar": {
+          "0%": { transform: "translateX(-100%) scaleX(0.35)" },
+          "50%": { transform: "translateX(20%) scaleX(0.6)" },
+          "100%": { transform: "translateX(100%) scaleX(0.35)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "indeterminate-bar": "indeterminate-bar 1.1s ease-in-out infinite",
       },
     },
   },

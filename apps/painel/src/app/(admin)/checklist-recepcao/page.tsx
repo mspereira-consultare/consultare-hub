@@ -386,6 +386,69 @@ const toNumberInput = (value: string) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+/** Barra fina no topo da viewport, para qualquer espera sem percentual conhecido. */
+const TopLoadingBar = ({ active, label }: { active: boolean; label: string }) => {
+  if (!active) return null;
+  return (
+    <div className="fixed inset-x-0 top-0 z-[60]" role="status" aria-live="polite">
+      <div className="h-1 w-full overflow-hidden bg-slate-200">
+        <div className="h-full w-full origin-left animate-indeterminate-bar rounded-full bg-[#17407E]" />
+      </div>
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+};
+
+const SkeletonBlock = ({ className }: { className: string }) => (
+  <div className={`animate-pulse rounded-xl bg-slate-200/70 ${className}`} />
+);
+
+/** Esqueleto com a forma real da página, para o primeiro carregamento. */
+const ChecklistSkeleton = () => (
+  <main className="min-h-screen bg-slate-50 p-3 md:p-4" aria-busy="true">
+    <div className="mx-auto flex max-w-[1500px] flex-col gap-4">
+      <section className={`${sectionClassName} p-4`}>
+        <SkeletonBlock className="h-4 w-40" />
+        <SkeletonBlock className="mt-3 h-8 w-72" />
+        <div className="mt-4 grid gap-2.5 md:grid-cols-3 xl:grid-cols-6">
+          {Array.from({ length: 6 }, (_, index) => (
+            <SkeletonBlock key={`filtro-${index}`} className="h-9" />
+          ))}
+        </div>
+      </section>
+
+      <div className="grid gap-2.5 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <SkeletonBlock key={`card-${index}`} className="h-24" />
+        ))}
+      </div>
+
+      <section className={`${sectionClassName} p-3.5`}>
+        <SkeletonBlock className="h-4 w-56" />
+        <div className="mt-3 grid gap-2.5 xl:grid-cols-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <SkeletonBlock key={`gauge-${index}`} className="h-44" />
+          ))}
+        </div>
+      </section>
+
+      <section className={`${sectionClassName} p-3.5`}>
+        <SkeletonBlock className="h-4 w-64" />
+        <div className="mt-3 space-y-2">
+          {Array.from({ length: 6 }, (_, index) => (
+            <SkeletonBlock key={`linha-${index}`} className="h-9" />
+          ))}
+        </div>
+      </section>
+
+      <div className="flex items-center justify-center gap-2 py-2 text-[13px] text-slate-500">
+        <Loader2 size={15} className="animate-spin" />
+        Carregando checklist da recepção...
+      </div>
+    </div>
+  </main>
+);
+
 const Card = ({
   title,
   value,
@@ -1125,22 +1188,26 @@ export default function ChecklistRecepcaoPage() {
     }));
   };
 
+  const isRefreshServiceFailed = (service: RefreshServiceStatus) =>
+    ['ERROR', 'FAILED', 'ERRO'].includes(String(service.status || '').toUpperCase());
+
+  // Progresso real do lote: o backend já devolve o estado de cada serviço.
+  // Só faz sentido enquanto o lote está rodando — parado, "5 de 5 concluídos"
+  // com a barra cheia daria a impressão de uma atualização que acabou de rodar.
+  const refreshDoneCount = refreshServices.filter((service) => !service.isActive).length;
+  const isBatchRunning = refreshRequesting || !!batchStatus?.isActive;
+
   const isInitialLoading = loading && !data;
   const isRefreshing = loading && !!data;
 
-  if (isInitialLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50">
-        <div className="flex items-center gap-2 text-slate-700">
-          <Loader2 size={16} className="animate-spin" />
-          Carregando checklist da recepção...
-        </div>
-      </div>
-    );
-  }
+  if (isInitialLoading) return <ChecklistSkeleton />;
 
   return (
     <main className="min-h-screen bg-slate-50 p-3 md:p-4">
+      <TopLoadingBar
+        active={isRefreshing || refreshRequesting || !!batchStatus?.isActive}
+        label={isRefreshing ? 'Carregando indicadores' : 'Atualizando dados'}
+      />
       <div className="mx-auto flex max-w-[1500px] flex-col gap-4">
         <section className={`${sectionClassName} overflow-hidden`}>
           <div className="border-b border-slate-200 bg-white px-4 py-3.5">
@@ -1218,13 +1285,19 @@ export default function ChecklistRecepcaoPage() {
                 Líder
                 <select
                   value={selectedLeaderUserId}
-                  onChange={(event) =>
+                  disabled={isRefreshing}
+                  onChange={(event) => {
+                    // Reflete a escolha imediatamente: sem isso o select volta ao
+                    // valor anterior até a resposta chegar e parece que o clique falhou.
+                    setSelectedLeaderUserId(event.target.value);
+                    setSelectedConfigId('');
+                    setSelectedUnitKey('');
                     void fetchData({
                       nextLeaderUserId: event.target.value,
                       nextConfigId: '',
                       nextUnitKey: '',
-                                  })
-                  }
+                    });
+                  }}
                   className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
                 >
                   <option value="">Todos os líderes</option>
@@ -1240,7 +1313,11 @@ export default function ChecklistRecepcaoPage() {
               Configuração
               <select
                 value={selectedConfigId}
-                onChange={(event) => void fetchData({ nextConfigId: event.target.value })}
+                disabled={isRefreshing}
+                onChange={(event) => {
+                  setSelectedConfigId(event.target.value);
+                  void fetchData({ nextConfigId: event.target.value });
+                }}
                 className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 <option value="">Selecione</option>
@@ -1255,7 +1332,11 @@ export default function ChecklistRecepcaoPage() {
               Unidade
               <select
                 value={selectedUnitKey}
-                onChange={(event) => void fetchData({ nextUnitKey: event.target.value })}
+                disabled={isRefreshing}
+                onChange={(event) => {
+                  setSelectedUnitKey(event.target.value);
+                  void fetchData({ nextUnitKey: event.target.value });
+                }}
                 className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 {(data?.availableUnits || []).map((unit) => (
@@ -1269,12 +1350,14 @@ export default function ChecklistRecepcaoPage() {
               Modo
               <select
                 value={viewMode}
-                onChange={(event) =>
-                  void fetchData({
-                    nextViewMode: event.target.value === 'd1' ? 'd1' : 'current',
-                    nextReferenceDate: event.target.value === 'd1' ? data?.referenceDate || referenceDate : data?.today || referenceDate,
-                              })
-                }
+                disabled={isRefreshing}
+                onChange={(event) => {
+                  const nextViewMode = event.target.value === 'd1' ? 'd1' : 'current';
+                  const nextReferenceDate = nextViewMode === 'd1' ? data?.referenceDate || referenceDate : data?.today || referenceDate;
+                  setViewMode(nextViewMode);
+                  setReferenceDate(nextReferenceDate);
+                  void fetchData({ nextViewMode, nextReferenceDate });
+                }}
                 className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-[13px] font-medium normal-case tracking-normal text-slate-800 outline-none"
               >
                 <option value="current">Hoje</option>
@@ -1287,6 +1370,7 @@ export default function ChecklistRecepcaoPage() {
                 type="date"
                 value={referenceDate}
                 max={data?.today || undefined}
+                disabled={isRefreshing}
                 onChange={(event) => {
                   const nextDate = event.target.value;
                   setReferenceDate(nextDate);
@@ -1328,16 +1412,46 @@ export default function ChecklistRecepcaoPage() {
 
         {refreshStatusMessage || batchStatus ? (
           <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-            {refreshStatusMessage ? <div>{refreshStatusMessage}</div> : null}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                {isBatchRunning ? <Loader2 size={15} className="animate-spin text-[#17407E]" /> : null}
+                <span>{refreshStatusMessage || 'Atualização de indicadores'}</span>
+              </div>
+              {isBatchRunning && refreshServices.length > 0 ? (
+                <span className="text-[12px] font-semibold text-slate-700">
+                  {refreshDoneCount} de {refreshServices.length} serviços concluídos
+                </span>
+              ) : null}
+            </div>
+
+            {isBatchRunning && refreshServices.length > 0 ? (
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className="h-full rounded-full bg-[#17407E] transition-all duration-500"
+                  style={{ width: `${Math.round((refreshDoneCount / refreshServices.length) * 100)}%` }}
+                />
+              </div>
+            ) : null}
+
             {batchStatus ? (
-              <div className="mt-1 text-[12px] text-slate-500">
+              <div className="mt-1.5 text-[12px] text-slate-500">
                 Lote: {batchStatus.status} • {formatDateTimeBr(batchStatus.lastRun)}
               </div>
             ) : null}
             {refreshServices.length > 0 ? (
               <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-500">
                 {refreshServices.map((service) => (
-                  <span key={service.serviceName} className="rounded-full bg-slate-100 px-2 py-1">
+                  <span
+                    key={service.serviceName}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-1 ${
+                      service.isActive
+                        ? 'border-[#17407E]/30 bg-[#17407E]/5 text-[#17407E]'
+                        : isRefreshServiceFailed(service)
+                          ? 'border-rose-200 bg-rose-50 text-rose-700'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    }`}
+                  >
+                    {service.isActive ? <Loader2 size={11} className="animate-spin" /> : null}
                     {service.serviceName}: {service.status}
                   </span>
                 ))}
@@ -1346,6 +1460,15 @@ export default function ChecklistRecepcaoPage() {
           </div>
         ) : null}
 
+        <div
+          aria-busy={isRefreshing}
+          className={
+            isRefreshing
+              ? 'pointer-events-none select-none opacity-50 transition-opacity duration-150'
+              : 'transition-opacity duration-150'
+          }
+        >
+        <div className="flex flex-col gap-4">
         {!data?.config ? (
           <section className={`${sectionClassName} p-6`}>
             <div className="flex items-start gap-3">
@@ -1961,6 +2084,8 @@ export default function ChecklistRecepcaoPage() {
 
           </>
         )}
+        </div>
+        </div>
       </div>
 
       <HelpModal open={helpOpen} onClose={() => setHelpOpen(false)} />
